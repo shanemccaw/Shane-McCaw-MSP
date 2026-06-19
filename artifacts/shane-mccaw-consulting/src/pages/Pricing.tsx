@@ -217,6 +217,57 @@ function RetainerCard({ plan, index }: { plan: PublicService; index: number }) {
   );
 }
 
+function EngagementProjectCard({ project, index }: { project: EngagementProject; index: number }) {
+  return (
+    <div
+      className="bg-white rounded-xl border border-border p-6 flex flex-col hover:border-[#0078D4]/30 hover:shadow-sm transition-all duration-200"
+      data-testid={`project-type-${index}`}
+    >
+      <div className="flex items-start justify-between gap-3 mb-3">
+        <h3 className="font-extrabold text-[#0A2540] text-base leading-snug">{project.title}</h3>
+        <span className="text-[#0078D4] font-extrabold text-sm flex-shrink-0 whitespace-nowrap">{project.priceRange}</span>
+      </div>
+      {project.description && (
+        <p className="text-muted-foreground text-sm leading-relaxed mb-4">{project.description}</p>
+      )}
+      {project.triggeredBy.length > 0 && (
+        <div className="mb-4">
+          <p className="text-xs font-semibold text-[#0A2540] uppercase tracking-wide mb-2">Triggered by</p>
+          <ul className="space-y-1">
+            {project.triggeredBy.map((item, i) => (
+              <li key={i} className="flex items-start gap-2 text-xs text-muted-foreground">
+                <AlertTriangle className="w-3.5 h-3.5 text-[#00B4D8] flex-shrink-0 mt-0.5" />
+                <span>{item}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {project.sowItems.length > 0 && (
+        <div className="mb-4">
+          <p className="text-xs font-semibold text-[#0A2540] uppercase tracking-wide mb-2">Typical SOW includes</p>
+          <ul className="space-y-1">
+            {project.sowItems.map((item, i) => (
+              <li key={i} className="flex items-start gap-2 text-xs text-muted-foreground">
+                <CheckCircle className="w-3.5 h-3.5 text-[#0078D4] flex-shrink-0 mt-0.5" />
+                <span>{item}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+      <div className="mt-auto pt-4 border-t border-border">
+        <a
+          href="/book"
+          className="text-[#0078D4] text-sm font-semibold hover:underline flex items-center gap-1"
+        >
+          Book a free scoping call <ArrowRight className="w-3.5 h-3.5" />
+        </a>
+      </div>
+    </div>
+  );
+}
+
 function FAQItem({ q, a, index }: { q: string; a: string; index: number }) {
   const [open, setOpen] = useState(false);
   return (
@@ -540,59 +591,50 @@ export default function Pricing() {
       {/* Track 02 — Project-Based */}
       <section id="project-based" className="bg-white py-20 scroll-mt-24">
         <div className="max-w-[1200px] mx-auto px-6">
-          <div className="grid grid-cols-1 lg:grid-cols-[1.1fr_1fr] gap-12 items-start">
-            <div>
-              <div className="flex items-center gap-3 mb-4">
-                <div className="w-9 h-9 rounded-lg bg-[#0078D4]/10 flex items-center justify-center">
-                  <FolderOpen className="w-4 h-4 text-[#0078D4]" />
-                </div>
-                <span className="text-[#0078D4] text-xs font-bold uppercase tracking-wider">Track 02 — Core Tier</span>
+          <div className="mb-10">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-9 h-9 rounded-lg bg-[#0078D4]/10 flex items-center justify-center">
+                <FolderOpen className="w-4 h-4 text-[#0078D4]" />
               </div>
-              <h2 className="text-3xl md:text-4xl font-extrabold text-[#0A2540] mb-4 leading-tight">
-                Project-Based Engagements
-              </h2>
-              <p className="text-muted-foreground leading-relaxed mb-6">
-                For complex, multi-phase work that goes beyond a packaged deliverable — full tenant migrations, governance overhauls, Copilot deployment programs, or SharePoint intranet builds. Every project is priced as a fixed fee with defined deliverables and a committed timeline.
-              </p>
-              <p className="text-muted-foreground leading-relaxed mb-8">
-                You'll receive a detailed proposal before any commitment. The proposal includes the exact scope of work, every deliverable, the project timeline, and a single fixed price — not an hourly estimate. Scope changes require a signed change order.
-              </p>
-              <div className="bg-[#F7F9FC] rounded-xl border border-border p-6 mb-6">
-                <p className="text-xs font-bold text-[#0A2540] uppercase tracking-wider mb-3">Typical project range</p>
-                <p className="text-3xl font-extrabold text-[#0078D4] mb-1">$2,500 – $25,000+</p>
-                <p className="text-muted-foreground text-sm">Scoped after a free discovery call. No commitment required to get a proposal.</p>
-              </div>
-              <CTAButton href="/book" className="text-sm" data-testid="project-cta">
-                Book a Free Scoping Call
-              </CTAButton>
+              <span className="text-[#0078D4] text-xs font-bold uppercase tracking-wider">Track 02 — Core Tier</span>
             </div>
-            <div className="space-y-4">
-              <p className="text-sm font-bold text-[#0A2540] uppercase tracking-wider mb-4">Common project engagements</p>
-              {projectsLoading ? (
-                <>
-                  {[...Array(4)].map((_, i) => (
-                    <div key={i} className="bg-[#F7F9FC] rounded-xl border border-border p-5 h-16 animate-pulse" />
-                  ))}
-                </>
-              ) : engagementProjects.length === 0 ? (
-                <p className="text-sm text-muted-foreground italic">No project types configured yet.</p>
-              ) : (
-                engagementProjects.map((project, i) => (
-                  <div key={project.id} className="bg-[#F7F9FC] rounded-xl border border-border p-5" data-testid={`project-type-${i}`}>
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <p className="font-bold text-[#0A2540] text-sm mb-1">{project.title}</p>
-                        {project.description && (
-                          <p className="text-muted-foreground text-xs leading-relaxed">{project.description}</p>
-                        )}
-                      </div>
-                      <span className="text-[#0078D4] font-bold text-xs text-right flex-shrink-0 whitespace-nowrap">{project.priceRange}</span>
-                    </div>
-                  </div>
-                ))
-              )}
+            <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-6">
+              <div className="max-w-2xl">
+                <h2 className="text-3xl md:text-4xl font-extrabold text-[#0A2540] mb-4 leading-tight">
+                  Project-Based Engagements
+                </h2>
+                <p className="text-muted-foreground leading-relaxed mb-3">
+                  For complex, multi-phase work that goes beyond a packaged deliverable. Every project is priced as a fixed fee with defined deliverables and a committed timeline — not an hourly estimate.
+                </p>
+                <p className="text-muted-foreground leading-relaxed text-sm">
+                  You'll receive a detailed proposal before any commitment. Scope changes require a signed change order.
+                </p>
+              </div>
+              <div className="flex-shrink-0">
+                <div className="bg-[#F7F9FC] rounded-xl border border-border p-5 mb-4 text-center lg:text-right">
+                  <p className="text-xs font-bold text-[#0A2540] uppercase tracking-wider mb-1">Typical project range</p>
+                  <p className="text-2xl font-extrabold text-[#0078D4]">$2,500 – $25,000+</p>
+                  <p className="text-muted-foreground text-xs mt-1">Scoped after a free discovery call.</p>
+                </div>
+                <CTAButton href="/book" className="text-sm w-full justify-center" data-testid="project-cta">
+                  Book a Free Scoping Call
+                </CTAButton>
+              </div>
             </div>
           </div>
+          {projectsLoading ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+              {[...Array(5)].map((_, i) => <div key={i} className="h-72 rounded-xl border border-border bg-gray-100 animate-pulse" />)}
+            </div>
+          ) : engagementProjects.length === 0 ? (
+            <p className="text-sm text-muted-foreground italic">No project types configured yet.</p>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+              {engagementProjects.map((project, i) => (
+                <EngagementProjectCard key={project.id} project={project} index={i} />
+              ))}
+            </div>
+          )}
         </div>
       </section>
 
