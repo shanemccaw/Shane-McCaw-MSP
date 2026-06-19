@@ -249,6 +249,8 @@ export const contractsTable = pgTable("contracts", {
   stripeSessionId: text("stripe_session_id"),
   projectId: integer("project_id").references(() => projectsTable.id),
   pdfFilename: text("pdf_filename"),
+  finalPrice: numeric("final_price"),
+  wizardSelections: jsonb("wizard_selections"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 

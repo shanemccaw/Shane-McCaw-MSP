@@ -1765,8 +1765,9 @@ router.get("/portal/onboarding/services", async (_req: Request, res: Response) =
 // ─── ONBOARDING: Sign a contract (supports multi-service) ────────────────────
 router.post("/portal/onboarding/contract", requireAuth, async (req: Request, res: Response) => {
   const userId = req.user!.id;
-  const { serviceId, serviceIds: rawServiceIds, signatureData, signerName } = req.body as {
+  const { serviceId, serviceIds: rawServiceIds, signatureData, signerName, wizardSelections } = req.body as {
     serviceId?: number; serviceIds?: number[]; signatureData?: string; signerName?: string;
+    wizardSelections?: Record<string, { stepId: string; optionId: string }[]>;
   };
 
   // Support both single serviceId (legacy) and serviceIds array (multi-service)
@@ -1814,12 +1815,35 @@ router.post("/portal/onboarding/contract", requireAuth, async (req: Request, res
       .limit(1);
 
     // Substitute template variables into the body
+    // ── Compute server-side wizard price for this service ───────────────
+    let computedFinalPrice: number | null = null;
+    const svcSelections = wizardSelections?.[String(svc.id)] ?? [];
+
+    if (svcSelections.length > 0 && svc.orderWorkflow && svc.basePrice) {
+      const workflow = svc.orderWorkflow as Array<{ id: string; title: string; options: Array<{ id: string; label: string; priceAdjustment: number }> }>;
+      let total = parseFloat(String(svc.basePrice));
+      for (const sel of svcSelections) {
+        const wStep = workflow.find(s => s.id === sel.stepId);
+        const wOpt = wStep?.options.find(o => o.id === sel.optionId);
+        if (wOpt) total += wOpt.priceAdjustment;
+      }
+      // Clamp to maxPrice ceiling if set
+      if (svc.maxPrice) {
+        const max = parseFloat(String(svc.maxPrice));
+        total = Math.min(total, max);
+      }
+      computedFinalPrice = Math.round(total * 100) / 100;
+    }
+
     const signedDate = new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
+    const effectivePriceStr = computedFinalPrice != null
+      ? `$${computedFinalPrice.toLocaleString("en-US")}`
+      : svc.price ? `$${parseFloat(String(svc.price)).toLocaleString("en-US")}` : "—";
     const templateBody = contractTemplate?.body?.trim()
       ? contractTemplate.body
           .replace(/\{\{client_name\}\}/g, signerName.trim())
           .replace(/\{\{service_name\}\}/g, svc.name)
-          .replace(/\{\{price\}\}/g, svc.price ? `$${parseFloat(String(svc.price)).toLocaleString("en-US")}` : "—")
+          .replace(/\{\{price\}\}/g, effectivePriceStr)
           .replace(/\{\{date\}\}/g, signedDate)
       : undefined;
 
@@ -1831,6 +1855,8 @@ router.post("/portal/onboarding/contract", requireAuth, async (req: Request, res
       ipAddress,
       userAgent,
       contractVersion: contractTemplate?.version ?? "v1",
+      finalPrice: computedFinalPrice != null ? String(computedFinalPrice) : null,
+      wizardSelections: svcSelections.length > 0 ? svcSelections as never : null,
     }).returning();
 
     // ── Generate signed PDF immediately at signing time ──────────────────
@@ -1839,7 +1865,7 @@ router.post("/portal/onboarding/contract", requireAuth, async (req: Request, res
         contractId: contract.id,
         signerName: signerName.trim(),
         serviceName: svc.name,
-        servicePrice: svc.price ? `$${parseFloat(String(svc.price)).toLocaleString("en-US")}` : "—",
+        servicePrice: effectivePriceStr,
         serviceDeliverables: svc.deliverables ?? "as described on the service page",
         serviceTurnaround: svc.turnaround ?? "see service details",
         signedAt: contract.signedAt ?? new Date(),
@@ -1913,12 +1939,11 @@ router.post("/portal/checkout/create-session", requireAuth, async (req: Request,
   const {
     serviceId, serviceIds: rawServiceIds,
     contractId, contractIds: rawContractIds,
-    returnUrl, startDate, priceOverrides,
+    returnUrl, startDate,
   } = req.body as {
     serviceId?: number; serviceIds?: number[];
     contractId?: number; contractIds?: number[];
     returnUrl?: string; startDate?: string;
-    priceOverrides?: Record<string, number>;
   };
 
   // Support legacy single-service and new multi-service formats
@@ -1935,6 +1960,8 @@ router.post("/portal/checkout/create-session", requireAuth, async (req: Request,
   }
 
   // ── Security: verify all contracts belong to this user and match services ──
+  // Also capture finalPrice from each contract (server-computed wizard price)
+  const contractFinalPrices = new Map<number, number | null>();
   for (let i = 0; i < resolvedContractIds.length; i++) {
     const [contract] = await db.select().from(contractsTable)
       .where(and(eq(contractsTable.id, resolvedContractIds[i]), eq(contractsTable.userId, userId)));
@@ -1946,13 +1973,17 @@ router.post("/portal/checkout/create-session", requireAuth, async (req: Request,
       res.status(403).json({ error: "Contract service mismatch" });
       return;
     }
+    contractFinalPrices.set(
+      resolvedServiceIds[i],
+      contract.finalPrice != null ? parseFloat(String(contract.finalPrice)) : null,
+    );
   }
 
   // Fetch all services
   const services = await db.select().from(servicesTable)
     .where(sql`${servicesTable.id} = ANY(ARRAY[${sql.join(resolvedServiceIds.map(id => sql`${id}`), sql`, `)}]::int[])`);
 
-  const missingPrices = services.filter(s => !s.price && !priceOverrides?.[String(s.id)]);
+  const missingPrices = services.filter(s => !s.price && contractFinalPrices.get(s.id) == null);
   if (missingPrices.length > 0) {
     res.status(400).json({ error: `Service "${missingPrices[0].name}" has no price configured` });
     return;
@@ -1996,7 +2027,7 @@ router.post("/portal/checkout/create-session", requireAuth, async (req: Request,
         price_data: {
           currency: "usd",
           product_data: { name: s.name, description: s.description ?? undefined },
-          unit_amount: Math.round((priceOverrides?.[String(s.id)] ?? parseFloat(String(s.price!))) * 100),
+          unit_amount: Math.round((contractFinalPrices.get(s.id) ?? parseFloat(String(s.price!))) * 100),
         },
         quantity: 1,
       })),
@@ -2025,7 +2056,7 @@ router.post("/portal/checkout/create-session", requireAuth, async (req: Request,
         price_data: {
           currency: "usd",
           product_data: { name: s.name, description: s.description ?? undefined },
-          unit_amount: Math.round((priceOverrides?.[String(s.id)] ?? parseFloat(String(s.price!))) * 100),
+          unit_amount: Math.round((contractFinalPrices.get(s.id) ?? parseFloat(String(s.price!))) * 100),
           recurring: { interval: "month" as const },
         },
         quantity: 1,

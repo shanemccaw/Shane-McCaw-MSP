@@ -9,6 +9,7 @@ interface Service {
   name: string;
   description: string | null;
   price: string | null;
+  basePrice: string | null;
   turnaround: string | null;
   deliverables: string | null;
   billingType: "one_time" | "recurring_monthly";
@@ -22,18 +23,6 @@ interface WizardSelection {
   priceAdjustment: number;
 }
 
-function parseWizardPrices(wp: string): Record<number, number> {
-  const result: Record<number, number> = {};
-  if (!wp) return result;
-  for (const pair of wp.split(",")) {
-    const [id, price] = pair.split(":");
-    const idNum = parseInt(id, 10);
-    const priceNum = parseFloat(price);
-    if (!isNaN(idNum) && !isNaN(priceNum)) result[idNum] = priceNum;
-  }
-  return result;
-}
-
 function fmtPrice(p: number, billingType: "one_time" | "recurring_monthly") {
   const n = `$${p.toLocaleString("en-US", { minimumFractionDigits: 0 })}`;
   return billingType === "recurring_monthly" ? `${n}/month` : n;
@@ -44,19 +33,24 @@ function fmt(p: string | null, billingType: "one_time" | "recurring_monthly") {
   return fmtPrice(parseFloat(p), billingType);
 }
 
+function computeWizardDisplayPrice(svc: Service, sels: WizardSelection[]): number | null {
+  if (!svc.basePrice || sels.length === 0) return null;
+  const base = parseFloat(svc.basePrice);
+  const adjustments = sels.reduce((sum, s) => sum + s.priceAdjustment, 0);
+  return Math.round((base + adjustments) * 100) / 100;
+}
+
 function buildContractHtml(
   services: Service[],
   signerName: string,
   today: string,
-  wizardPrices: Record<number, number>,
+  getPrice: (s: Service) => string,
 ): string {
   const hasRecurring = services.some(s => s.billingType === "recurring_monthly");
   const hasOneTime = services.some(s => s.billingType === "one_time");
 
   const serviceTable = services.map(s => {
-    const effectivePrice = wizardPrices[s.id] != null
-      ? fmtPrice(wizardPrices[s.id], s.billingType)
-      : fmt(s.price, s.billingType);
+    const effectivePrice = getPrice(s);
     return `
     <tr>
       <td style="padding:6px 12px 6px 0;vertical-align:top;"><strong>${s.name}</strong></td>
@@ -128,11 +122,9 @@ export default function OnboardingContract() {
     .filter(n => !isNaN(n) && n > 0);
   const startDate = params.get("startDate") ?? new Date().toISOString().slice(0, 10);
 
-  // Parse wizard price overrides from ?wp=serviceId:price,…
-  const wizardPrices = parseWizardPrices(params.get("wp") ?? "");
-
-  // Load wizard selections from sessionStorage (set by OnboardingSelect)
-  const wizardSelections: Record<string, WizardSelection[]> = JSON.parse(
+  // Load wizard selections from sessionStorage (set by OnboardingSelect after wizard review step)
+  // These are WizardSelection[] (with priceAdjustment info) keyed by serviceId string
+  const wizardSelectionsData: Record<string, WizardSelection[]> = JSON.parse(
     sessionStorage.getItem("wizardSelections") ?? "{}"
   );
 
@@ -235,6 +227,14 @@ export default function OnboardingContract() {
       const canvas = canvasRef.current;
       const signatureData = canvas?.toDataURL("image/png") ?? null;
 
+      // Derive { stepId, optionId }[] per service from stored display selections
+      const wizardSelectionsInput: Record<string, { stepId: string; optionId: string }[]> = {};
+      for (const [svcIdStr, sels] of Object.entries(wizardSelectionsData)) {
+        if (sels.length > 0) {
+          wizardSelectionsInput[svcIdStr] = sels.map(s => ({ stepId: s.stepId, optionId: s.optionId }));
+        }
+      }
+
       const contractRes = await fetchWithAuth("/api/portal/onboarding/contract", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -242,6 +242,7 @@ export default function OnboardingContract() {
           serviceIds: services.map(s => s.id),
           signatureData,
           signerName,
+          wizardSelections: Object.keys(wizardSelectionsInput).length > 0 ? wizardSelectionsInput : undefined,
         }),
       });
       if (!contractRes.ok) {
@@ -259,7 +260,6 @@ export default function OnboardingContract() {
           contractIds,
           startDate,
           returnUrl: window.location.origin + import.meta.env.BASE_URL.replace(/\/$/, ""),
-          priceOverrides: Object.keys(wizardPrices).length > 0 ? wizardPrices : undefined,
         }),
       });
 
@@ -306,18 +306,19 @@ export default function OnboardingContract() {
 
   if (services.length === 0) return null;
 
+  const getDisplayPrice = (s: Service): number => {
+    const sels = wizardSelectionsData[String(s.id)] ?? [];
+    const wizardPrice = computeWizardDisplayPrice(s, sels);
+    if (wizardPrice != null) return wizardPrice;
+    return s.price ? parseFloat(s.price) : 0;
+  };
+
   const oneTimeTotal = services
     .filter(s => s.billingType === "one_time")
-    .reduce((sum, s) => {
-      const p = wizardPrices[s.id] ?? (s.price ? parseFloat(s.price) : 0);
-      return sum + p;
-    }, 0);
+    .reduce((sum, s) => sum + getDisplayPrice(s), 0);
   const monthlyTotal = services
     .filter(s => s.billingType === "recurring_monthly")
-    .reduce((sum, s) => {
-      const p = wizardPrices[s.id] ?? (s.price ? parseFloat(s.price) : 0);
-      return sum + p;
-    }, 0);
+    .reduce((sum, s) => sum + getDisplayPrice(s), 0);
 
   return (
     <div className="min-h-screen bg-[#F7F9FC]">
@@ -344,11 +345,12 @@ export default function OnboardingContract() {
           <p className="text-xs text-muted-foreground mb-3">You're purchasing</p>
           <div className="space-y-2">
             {services.map(s => {
-              const overridePrice = wizardPrices[s.id];
-              const displayPrice = overridePrice != null
-                ? fmtPrice(overridePrice, s.billingType)
+              const sels = wizardSelectionsData[String(s.id)] ?? [];
+              const wizardPrice = computeWizardDisplayPrice(s, sels);
+              const isCustom = wizardPrice != null;
+              const displayPrice = isCustom
+                ? fmtPrice(wizardPrice, s.billingType)
                 : fmt(s.price, s.billingType);
-              const sels = wizardSelections[String(s.id)];
               return (
                 <div key={s.id}>
                   <div className="flex items-center justify-between gap-4">
@@ -360,7 +362,7 @@ export default function OnboardingContract() {
                           monthly
                         </span>
                       )}
-                      {overridePrice != null && (
+                      {isCustom && (
                         <span className="text-[10px] bg-amber-50 text-amber-700 border border-amber-200 rounded-full px-1.5 py-0.5 flex items-center gap-1">
                           <Sparkles className="w-2.5 h-2.5" />
                           custom quote
@@ -369,7 +371,7 @@ export default function OnboardingContract() {
                     </div>
                     <span className="font-bold text-[#0078D4] text-sm">{displayPrice}</span>
                   </div>
-                  {sels && sels.length > 0 && (
+                  {sels.length > 0 && (
                     <div className="mt-1 ml-2 space-y-0.5">
                       {sels.map(sel => (
                         <div key={sel.stepId} className="flex items-center gap-2 text-xs text-muted-foreground">
@@ -421,7 +423,11 @@ export default function OnboardingContract() {
               ref={contractScrollRef}
               onScroll={handleContractScroll}
               className="px-5 py-4 prose prose-sm max-h-[500px] overflow-y-auto text-[#0A2540]"
-              dangerouslySetInnerHTML={{ __html: buildContractHtml(services, signerName || "Client", today, wizardPrices) }}
+              dangerouslySetInnerHTML={{ __html: buildContractHtml(services, signerName || "Client", today, (s) => {
+                const sels = wizardSelectionsData[String(s.id)] ?? [];
+                const wp = computeWizardDisplayPrice(s, sels);
+                return wp != null ? fmtPrice(wp, s.billingType) : fmt(s.price, s.billingType);
+              }) }}
             />
           </div>
 

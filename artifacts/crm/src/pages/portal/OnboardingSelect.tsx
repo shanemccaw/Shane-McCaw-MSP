@@ -110,15 +110,11 @@ export default function OnboardingSelect() {
     });
   };
 
-  const navigateToContract = (prices: Record<number, number>) => {
+  const navigateToContract = () => {
     const qs = new URLSearchParams({
       serviceIds: Array.from(selectedIds).join(","),
       startDate,
     });
-    const overrideEntries = Object.entries(prices);
-    if (overrideEntries.length > 0) {
-      qs.set("wp", overrideEntries.map(([id, p]) => `${id}:${p}`).join(","));
-    }
     setLocation(`/portal/onboarding/contract?${qs.toString()}`);
   };
 
@@ -137,15 +133,13 @@ export default function OnboardingSelect() {
       setWizardIndex(0);
       setWizardPrices({});
     } else {
-      navigateToContract({});
+      navigateToContract();
     }
   };
 
-  const handleWizardComplete = (finalPrice: number, selections: WizardSelection[]) => {
+  const handleWizardComplete = (_finalPrice: number, selections: WizardSelection[]) => {
     const currentService = wizardQueue[wizardIndex];
-    const updatedPrices = { ...wizardPrices, [currentService.id]: finalPrice };
-    setWizardPrices(updatedPrices);
-
+    // Store display selections (with labels + price adjustments) in sessionStorage for the contract page
     const allSelections = JSON.parse(sessionStorage.getItem("wizardSelections") ?? "{}") as Record<string, WizardSelection[]>;
     allSelections[String(currentService.id)] = selections;
     sessionStorage.setItem("wizardSelections", JSON.stringify(allSelections));
@@ -154,7 +148,7 @@ export default function OnboardingSelect() {
       setWizardIndex(i => i + 1);
     } else {
       setWizardQueue([]);
-      navigateToContract(updatedPrices);
+      navigateToContract();
     }
   };
 
