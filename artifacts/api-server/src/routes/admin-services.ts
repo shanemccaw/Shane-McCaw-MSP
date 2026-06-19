@@ -72,6 +72,34 @@ router.put("/admin/services/:id", requireAdmin, async (req: Request, res: Respon
   }
 });
 
+router.post("/admin/services", requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const body = req.body as Record<string, unknown>;
+    const { name, slug, billingType } = body;
+    if (!name || typeof name !== "string" || !name.trim()) {
+      res.status(400).json({ error: "name is required" }); return;
+    }
+    if (!slug || typeof slug !== "string" || !slug.trim()) {
+      res.status(400).json({ error: "slug is required" }); return;
+    }
+    const [created] = await db
+      .insert(servicesTable)
+      .values({
+        name: name.trim(),
+        slug: slug.trim(),
+        billingType: ((billingType as string) === "recurring_monthly" ? "recurring_monthly" : "one_time") as "one_time" | "recurring_monthly",
+      })
+      .returning();
+    res.status(201).json(created);
+  } catch (err: unknown) {
+    const pg = err as { code?: string };
+    if (pg.code === "23505") {
+      res.status(409).json({ error: "A service with that slug already exists." }); return;
+    }
+    res.status(500).json({ error: "Failed to create service" });
+  }
+});
+
 router.delete("/admin/services/:id", requireAdmin, async (req: Request, res: Response) => {
   try {
     const id = Number(req.params.id);
