@@ -111,11 +111,43 @@ export default function ArticlePage() {
     return <NotFound />;
   }
 
+  const canonicalUrl = `https://shanemccaw.com/resources/${article.slug}`;
+  const dateIso = (() => {
+    const d = new Date(article.date);
+    return isNaN(d.getTime()) ? article.date : d.toISOString().split("T")[0];
+  })();
+
+  const articleJsonLd = {
+    "@context": "https://schema.org",
+    "@type": "Article",
+    headline: article.title,
+    description: article.summary,
+    datePublished: dateIso,
+    url: canonicalUrl,
+    author: {
+      "@type": "Person",
+      name: "Shane McCaw",
+      jobTitle: "Lead Microsoft 365 Architect",
+      url: "https://shanemccaw.com/about",
+    },
+    publisher: {
+      "@type": "Organization",
+      name: "Shane McCaw Consulting",
+      url: "https://shanemccaw.com",
+      logo: {
+        "@type": "ImageObject",
+        url: "https://shanemccaw.com/og-image.png",
+      },
+    },
+  };
+
   return (
     <Layout>
       <SEOMeta
         title={`${article.title} | Shane McCaw Consulting`}
         description={article.summary}
+        ogUrl={canonicalUrl}
+        jsonLd={articleJsonLd}
       />
 
       <section className="bg-[#0A2540] pt-32 pb-20">
