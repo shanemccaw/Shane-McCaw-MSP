@@ -1,5 +1,6 @@
 import nodemailer from "nodemailer";
 import { Resend } from "resend";
+import { ReplitConnectors } from "@replit/connectors-sdk";
 import { logger } from "./logger";
 
 // ─── Brand constants ──────────────────────────────────────────────────────────
@@ -60,6 +61,26 @@ export function emailButton(label: string, url: string): string {
 // ─── Transport selection ──────────────────────────────────────────────────────
 type Sender = (to: string, subject: string, html: string) => Promise<void>;
 
+function getConnectorSender(): Sender | null {
+  const hasConnectorEnv =
+    process.env.REPLIT_CONNECTORS_HOSTNAME &&
+    process.env.REPL_IDENTITY;
+  if (!hasConnectorEnv) return null;
+  const from = process.env.RESEND_FROM ?? BRAND_FROM;
+  return async (to, subject, html) => {
+    const connectors = new ReplitConnectors();
+    const res = await connectors.proxy("resend", "/emails", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ from, to, subject, html }),
+    });
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error(`Resend connector error ${res.status}: ${text}`);
+    }
+  };
+}
+
 function getResendSender(): Sender | null {
   const apiKey = process.env.RESEND_API_KEY;
   if (!apiKey) return null;
@@ -87,12 +108,14 @@ function getSmtpSender(): Sender | null {
 // ─── Public API ───────────────────────────────────────────────────────────────
 
 /**
- * Send an email. Prefers Resend when RESEND_API_KEY is set; falls back to
- * SMTP (SMTP_HOST / SMTP_USER / SMTP_PASS). Logs a warning and no-ops when
- * neither is configured.
+ * Send an email. Prefers Resend via Replit Connector (REPLIT_CONNECTORS_HOSTNAME),
+ * then falls back to RESEND_API_KEY, then SMTP. Logs a warning and no-ops when
+ * none are configured.
  *
  * Pass raw body HTML — it will be wrapped in the branded template automatically
  * unless you pass `{ skipWrapper: true }`.
+ *
+ * Errors are caught and logged — use sendEmailOrThrow when you need confirmed delivery.
  */
 export async function sendEmail(
   to: string,
@@ -100,18 +123,31 @@ export async function sendEmail(
   bodyHtml: string,
   opts?: { skipWrapper?: boolean },
 ): Promise<void> {
-  const sender = getResendSender() ?? getSmtpSender();
-  if (!sender) {
-    logger.warn({ to, subject }, "Email not sent — set RESEND_API_KEY (or SMTP_HOST/SMTP_USER/SMTP_PASS) to enable email");
-    return;
-  }
-  const html = opts?.skipWrapper ? bodyHtml : brandedEmail(bodyHtml);
   try {
-    await sender(to, subject, html);
-    logger.info({ to, subject }, "Email sent");
+    await sendEmailOrThrow(to, subject, bodyHtml, opts);
   } catch (err) {
     logger.warn({ err, to, subject }, "Failed to send email");
   }
+}
+
+/**
+ * Like sendEmail but throws on transport failure or missing configuration.
+ * Use this when the caller needs confirmed delivery (e.g. a route that must
+ * return an error to the client if the email could not be sent).
+ */
+export async function sendEmailOrThrow(
+  to: string,
+  subject: string,
+  bodyHtml: string,
+  opts?: { skipWrapper?: boolean },
+): Promise<void> {
+  const sender = getConnectorSender() ?? getResendSender() ?? getSmtpSender();
+  if (!sender) {
+    throw new Error("No email transport configured — set REPLIT_CONNECTORS_HOSTNAME, RESEND_API_KEY, or SMTP_HOST/SMTP_USER/SMTP_PASS");
+  }
+  const html = opts?.skipWrapper ? bodyHtml : brandedEmail(bodyHtml);
+  await sender(to, subject, html);
+  logger.info({ to, subject }, "Email sent");
 }
 
 // ─── Named template helpers ───────────────────────────────────────────────────
@@ -168,6 +204,61 @@ export function passwordResetEmail(opts: { resetUrl: string }): string {
     ${emailButton("Reset my password", opts.resetUrl)}
     <p style="margin-top:24px;color:#64748b;font-size:13px;">If you didn't request a password reset, you can safely ignore this email — your password won't change.</p>
     <p style="margin-top:24px;">— Shane McCaw Consulting</p>
+  `;
+}
+
+function escapeHtml(str: string): string {
+  return str
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+export function contactInquiryNotificationEmail(opts: {
+  name: string;
+  email: string;
+  company: string;
+  companySize?: string;
+  serviceArea?: string;
+  message: string;
+  howFound?: string;
+}): string {
+  const serviceLabels: Record<string, string> = {
+    m365: "M365 Setup/Optimization",
+    copilot: "Copilot AI",
+    sharepoint: "SharePoint",
+    "power-platform": "Power Platform",
+    governance: "Governance/Compliance",
+    migration: "Cloud Migration",
+    retainer: "Retainer/Ongoing Support",
+    "not-sure": "Not Sure",
+  };
+  const name = escapeHtml(opts.name);
+  const email = escapeHtml(opts.email);
+  const company = escapeHtml(opts.company);
+  const companySize = opts.companySize ? escapeHtml(opts.companySize) : undefined;
+  const howFound = opts.howFound ? escapeHtml(opts.howFound) : undefined;
+  const rawServiceArea = opts.serviceArea ?? "";
+  const serviceLabel = escapeHtml((serviceLabels[rawServiceArea] ?? rawServiceArea) || "—");
+  const message = escapeHtml(opts.message).replace(/\n/g, "<br/>");
+
+  return `
+    <p>Hi Shane,</p>
+    <p>A new contact form inquiry just came in from <strong>${name}</strong>. Here are the details:</p>
+    <table cellpadding="0" cellspacing="0" style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:16px 20px;margin:16px 0;width:100%;">
+      <tr><td style="padding:4px 0;color:#64748b;font-size:13px;width:160px;">Name</td><td style="padding:4px 0;font-weight:600;">${name}</td></tr>
+      <tr><td style="padding:4px 0;color:#64748b;font-size:13px;">Email</td><td style="padding:4px 0;"><a href="mailto:${email}" style="color:#0078D4;">${email}</a></td></tr>
+      <tr><td style="padding:4px 0;color:#64748b;font-size:13px;">Company</td><td style="padding:4px 0;">${company}</td></tr>
+      ${companySize ? `<tr><td style="padding:4px 0;color:#64748b;font-size:13px;">Company size</td><td style="padding:4px 0;">${companySize}</td></tr>` : ""}
+      <tr><td style="padding:4px 0;color:#64748b;font-size:13px;">Service needed</td><td style="padding:4px 0;font-weight:600;">${serviceLabel}</td></tr>
+      ${howFound ? `<tr><td style="padding:4px 0;color:#64748b;font-size:13px;">How they found you</td><td style="padding:4px 0;">${howFound}</td></tr>` : ""}
+    </table>
+    <p style="font-weight:600;margin-bottom:4px;">Message:</p>
+    <blockquote style="margin:0;padding:12px 16px;background:#f8fafc;border-left:4px solid #0078D4;border-radius:0 6px 6px 0;color:#1e293b;font-size:15px;line-height:1.6;">${message}</blockquote>
+    ${emailButton("Reply to " + name, `mailto:${email}`)}
+    <p style="margin-top:24px;">— Shane McCaw Consulting (automated notification)</p>
   `;
 }
 

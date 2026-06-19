@@ -31,8 +31,9 @@ export default function Contact() {
   } = useForm<FormData>({ resolver: zodResolver(schema) });
 
   const onSubmit = async (data: FormData) => {
+    let res: Response;
     try {
-      const res = await fetch("/api/leads", {
+      res = await fetch("/api/leads", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -46,12 +47,24 @@ export default function Contact() {
           howFound: data.howFound,
         }),
       });
-      if (!res.ok) {
-        throw new Error("Submission failed");
-      }
     } catch {
-      // Continue regardless — don't block the UX on API failure
+      toast({
+        title: "Something went wrong",
+        description: "Your message couldn't be sent. Please check your connection and try again, or email info@shanemccaw.com directly.",
+        variant: "destructive",
+      });
+      return;
     }
+
+    if (!res.ok) {
+      toast({
+        title: "Something went wrong",
+        description: "Your message couldn't be sent. Please try again or email info@shanemccaw.com directly.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     toast({
       title: "Message sent!",
       description: "Thanks! Shane will personally respond within 1 business day.",

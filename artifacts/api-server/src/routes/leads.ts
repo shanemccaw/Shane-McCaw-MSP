@@ -2,6 +2,7 @@ import { Router, type IRouter, type Request, type Response } from "express";
 import { db, leadsTable } from "@workspace/db";
 import { eq, desc, count, gte, and, type SQL } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/requireAuth";
+import { sendEmailOrThrow, contactInquiryNotificationEmail } from "../lib/mailer";
 
 const router: IRouter = Router();
 
@@ -42,6 +43,29 @@ router.post("/leads", async (req: Request, res: Response) => {
     howFound: howFound ?? null,
     status: "new",
   }).returning();
+
+  if (leadSource === "contact_form") {
+    const adminEmail = process.env.CONTACT_NOTIFICATION_EMAIL ?? process.env.CRM_ADMIN_EMAIL ?? "info@shanemccaw.com";
+    try {
+      await sendEmailOrThrow(
+        adminEmail,
+        `New contact inquiry from ${name.trim()} — ${company ?? ""}`,
+        contactInquiryNotificationEmail({
+          name: name.trim(),
+          email: email.toLowerCase().trim(),
+          company: company ?? "",
+          companySize: companySize ?? undefined,
+          serviceArea: serviceArea ?? undefined,
+          message: message ?? "",
+          howFound: howFound ?? undefined,
+        }),
+      );
+    } catch (err) {
+      req.log.error({ err }, "Failed to send contact notification email");
+      res.status(503).json({ error: "Message could not be delivered. Please try again or email info@shanemccaw.com directly." });
+      return;
+    }
+  }
 
   res.status(201).json(lead);
 });
