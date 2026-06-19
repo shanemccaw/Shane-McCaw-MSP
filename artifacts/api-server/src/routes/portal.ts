@@ -1592,14 +1592,17 @@ router.get("/admin/services", requireAdmin, async (_req: Request, res: Response)
 });
 
 router.post("/admin/services", requireAdmin, async (req: Request, res: Response) => {
-  const { name, description, category, deliverables, price, durationDays } = req.body as {
-    name?: string; description?: string; category?: string; deliverables?: string; price?: string; durationDays?: number;
+  const { name, description, category, deliverables, price, basePrice, maxPrice, durationDays } = req.body as {
+    name?: string; description?: string; category?: string; deliverables?: string;
+    price?: string; basePrice?: string; maxPrice?: string; durationDays?: number;
   };
   if (!name) { res.status(400).json({ error: "name is required" }); return; }
 
   const [service] = await db.insert(servicesTable).values({
     name, description: description ?? null, category: category ?? null,
-    deliverables: deliverables ?? null, price: price ?? null, durationDays: durationDays ?? null,
+    deliverables: deliverables ?? null, price: price ?? null,
+    basePrice: basePrice ?? null, maxPrice: maxPrice ?? null,
+    durationDays: durationDays ?? null,
   }).returning();
   res.status(201).json(service);
 });
@@ -1607,8 +1610,9 @@ router.post("/admin/services", requireAdmin, async (req: Request, res: Response)
 router.patch("/admin/services/:id", requireAdmin, async (req: Request, res: Response) => {
   const id = parseInt(String(req.params.id ?? ""), 10);
   if (isNaN(id)) { res.status(400).json({ error: "Invalid ID" }); return; }
-  const { name, description, category, deliverables, price, durationDays } = req.body as {
-    name?: string; description?: string; category?: string; deliverables?: string; price?: string; durationDays?: number;
+  const { name, description, category, deliverables, price, basePrice, maxPrice, durationDays } = req.body as {
+    name?: string; description?: string; category?: string; deliverables?: string;
+    price?: string; basePrice?: string; maxPrice?: string; durationDays?: number;
   };
   const updates: Partial<typeof servicesTable.$inferInsert> = {};
   if (name !== undefined) updates.name = name;
@@ -1616,10 +1620,34 @@ router.patch("/admin/services/:id", requireAdmin, async (req: Request, res: Resp
   if (category !== undefined) updates.category = category;
   if (deliverables !== undefined) updates.deliverables = deliverables;
   if (price !== undefined) updates.price = price;
+  if (basePrice !== undefined) updates.basePrice = basePrice;
+  if (maxPrice !== undefined) updates.maxPrice = maxPrice;
   if (durationDays !== undefined) updates.durationDays = durationDays;
   const [updated] = await db.update(servicesTable).set(updates).where(eq(servicesTable.id, id)).returning();
   if (!updated) { res.status(404).json({ error: "Not found" }); return; }
   res.json(updated);
+});
+
+// ─── ADMIN: Get/set order workflow for a service ──────────────────────────────
+router.get("/admin/services/:id/workflow", requireAdmin, async (req: Request, res: Response) => {
+  const id = parseInt(String(req.params.id ?? ""), 10);
+  if (isNaN(id)) { res.status(400).json({ error: "Invalid ID" }); return; }
+  const [service] = await db.select({ orderWorkflow: servicesTable.orderWorkflow })
+    .from(servicesTable).where(eq(servicesTable.id, id));
+  if (!service) { res.status(404).json({ error: "Not found" }); return; }
+  res.json({ workflow: service.orderWorkflow ?? [] });
+});
+
+router.put("/admin/services/:id/workflow", requireAdmin, async (req: Request, res: Response) => {
+  const id = parseInt(String(req.params.id ?? ""), 10);
+  if (isNaN(id)) { res.status(400).json({ error: "Invalid ID" }); return; }
+  const { workflow } = req.body as { workflow: unknown };
+  if (!Array.isArray(workflow)) { res.status(400).json({ error: "workflow must be an array" }); return; }
+  const [updated] = await db.update(servicesTable)
+    .set({ orderWorkflow: workflow as never })
+    .where(eq(servicesTable.id, id)).returning();
+  if (!updated) { res.status(404).json({ error: "Not found" }); return; }
+  res.json({ workflow: updated.orderWorkflow ?? [] });
 });
 
 // ─── ADMIN: Assign service to client ─────────────────────────────────────────
@@ -1885,11 +1913,12 @@ router.post("/portal/checkout/create-session", requireAuth, async (req: Request,
   const {
     serviceId, serviceIds: rawServiceIds,
     contractId, contractIds: rawContractIds,
-    returnUrl, startDate,
+    returnUrl, startDate, priceOverrides,
   } = req.body as {
     serviceId?: number; serviceIds?: number[];
     contractId?: number; contractIds?: number[];
     returnUrl?: string; startDate?: string;
+    priceOverrides?: Record<string, number>;
   };
 
   // Support legacy single-service and new multi-service formats
@@ -1923,7 +1952,7 @@ router.post("/portal/checkout/create-session", requireAuth, async (req: Request,
   const services = await db.select().from(servicesTable)
     .where(sql`${servicesTable.id} = ANY(ARRAY[${sql.join(resolvedServiceIds.map(id => sql`${id}`), sql`, `)}]::int[])`);
 
-  const missingPrices = services.filter(s => !s.price);
+  const missingPrices = services.filter(s => !s.price && !priceOverrides?.[String(s.id)]);
   if (missingPrices.length > 0) {
     res.status(400).json({ error: `Service "${missingPrices[0].name}" has no price configured` });
     return;
@@ -1967,7 +1996,7 @@ router.post("/portal/checkout/create-session", requireAuth, async (req: Request,
         price_data: {
           currency: "usd",
           product_data: { name: s.name, description: s.description ?? undefined },
-          unit_amount: Math.round(parseFloat(String(s.price!)) * 100),
+          unit_amount: Math.round((priceOverrides?.[String(s.id)] ?? parseFloat(String(s.price!))) * 100),
         },
         quantity: 1,
       })),
@@ -1996,7 +2025,7 @@ router.post("/portal/checkout/create-session", requireAuth, async (req: Request,
         price_data: {
           currency: "usd",
           product_data: { name: s.name, description: s.description ?? undefined },
-          unit_amount: Math.round(parseFloat(String(s.price!)) * 100),
+          unit_amount: Math.round((priceOverrides?.[String(s.id)] ?? parseFloat(String(s.price!))) * 100),
           recurring: { interval: "month" as const },
         },
         quantity: 1,

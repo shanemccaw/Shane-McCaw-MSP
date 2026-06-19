@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useLocation, useSearch } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
-import { ShieldCheck, Loader2, ArrowRight, ArrowLeft, PenLine, X, RefreshCw } from "lucide-react";
+import { ShieldCheck, Loader2, ArrowRight, ArrowLeft, PenLine, X, RefreshCw, Sparkles } from "lucide-react";
 
 interface Service {
   id: number;
@@ -14,25 +14,59 @@ interface Service {
   billingType: "one_time" | "recurring_monthly";
 }
 
-function fmt(p: string | null, billingType: "one_time" | "recurring_monthly") {
-  if (!p) return "—";
-  const n = `$${parseFloat(p).toLocaleString("en-US", { minimumFractionDigits: 0 })}`;
+interface WizardSelection {
+  stepId: string;
+  stepTitle: string;
+  optionId: string;
+  optionLabel: string;
+  priceAdjustment: number;
+}
+
+function parseWizardPrices(wp: string): Record<number, number> {
+  const result: Record<number, number> = {};
+  if (!wp) return result;
+  for (const pair of wp.split(",")) {
+    const [id, price] = pair.split(":");
+    const idNum = parseInt(id, 10);
+    const priceNum = parseFloat(price);
+    if (!isNaN(idNum) && !isNaN(priceNum)) result[idNum] = priceNum;
+  }
+  return result;
+}
+
+function fmtPrice(p: number, billingType: "one_time" | "recurring_monthly") {
+  const n = `$${p.toLocaleString("en-US", { minimumFractionDigits: 0 })}`;
   return billingType === "recurring_monthly" ? `${n}/month` : n;
 }
 
-function buildContractHtml(services: Service[], signerName: string, today: string): string {
+function fmt(p: string | null, billingType: "one_time" | "recurring_monthly") {
+  if (!p) return "—";
+  return fmtPrice(parseFloat(p), billingType);
+}
+
+function buildContractHtml(
+  services: Service[],
+  signerName: string,
+  today: string,
+  wizardPrices: Record<number, number>,
+): string {
   const hasRecurring = services.some(s => s.billingType === "recurring_monthly");
   const hasOneTime = services.some(s => s.billingType === "one_time");
 
-  const serviceTable = services.map(s => `
+  const serviceTable = services.map(s => {
+    const effectivePrice = wizardPrices[s.id] != null
+      ? fmtPrice(wizardPrices[s.id], s.billingType)
+      : fmt(s.price, s.billingType);
+    return `
     <tr>
       <td style="padding:6px 12px 6px 0;vertical-align:top;"><strong>${s.name}</strong></td>
-      <td style="padding:6px 0;vertical-align:top;">${fmt(s.price, s.billingType)}${s.billingType === "recurring_monthly" ? " (billed monthly)" : " (one-time)"}</td>
+      <td style="padding:6px 0;vertical-align:top;">${effectivePrice}${s.billingType === "recurring_monthly" ? " (billed monthly)" : " (one-time)"}</td>
     </tr>
     <tr>
       <td colspan="2" style="padding:0 0 10px 0;font-size:0.875em;color:#555;">${s.deliverables ?? "As described on the service page"}</td>
     </tr>
-  `).join("");
+  `;
+  }).join("");
 
   return `
     <h2>Service Agreement — Shane McCaw Consulting LLC</h2>
@@ -87,13 +121,20 @@ export default function OnboardingContract() {
   const search = useSearch();
   const params = new URLSearchParams(search);
 
-  // Support both serviceIds (multi) and serviceId (legacy single)
   const serviceIdsParam = params.get("serviceIds") ?? params.get("serviceId") ?? "";
   const serviceIds = serviceIdsParam
     .split(",")
     .map(s => parseInt(s.trim(), 10))
     .filter(n => !isNaN(n) && n > 0);
   const startDate = params.get("startDate") ?? new Date().toISOString().slice(0, 10);
+
+  // Parse wizard price overrides from ?wp=serviceId:price,…
+  const wizardPrices = parseWizardPrices(params.get("wp") ?? "");
+
+  // Load wizard selections from sessionStorage (set by OnboardingSelect)
+  const wizardSelections: Record<string, WizardSelection[]> = JSON.parse(
+    sessionStorage.getItem("wizardSelections") ?? "{}"
+  );
 
   const [services, setServices] = useState<Service[]>([]);
   const [loading, setLoading] = useState(true);
@@ -194,7 +235,6 @@ export default function OnboardingContract() {
       const canvas = canvasRef.current;
       const signatureData = canvas?.toDataURL("image/png") ?? null;
 
-      // Create contracts for all selected services
       const contractRes = await fetchWithAuth("/api/portal/onboarding/contract", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -211,7 +251,6 @@ export default function OnboardingContract() {
       const contractData = await contractRes.json() as { contractIds: number[] };
       const contractIds = contractData.contractIds;
 
-      // Create Stripe checkout session(s) for all services
       const checkoutRes = await fetchWithAuth("/api/portal/checkout/create-session", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -220,6 +259,7 @@ export default function OnboardingContract() {
           contractIds,
           startDate,
           returnUrl: window.location.origin + import.meta.env.BASE_URL.replace(/\/$/, ""),
+          priceOverrides: Object.keys(wizardPrices).length > 0 ? wizardPrices : undefined,
         }),
       });
 
@@ -230,13 +270,10 @@ export default function OnboardingContract() {
 
       const { url, secondaryUrl } = await checkoutRes.json() as { url: string; secondaryUrl?: string };
 
-      // Persist full cart context so the final success screen can list ALL purchased items
-      // (needed for mixed carts where two Stripe sessions complete sequentially)
       sessionStorage.setItem("onboardingCartSummary", JSON.stringify(
         services.map(s => ({ name: s.name, billingType: s.billingType }))
       ));
 
-      // Store secondary URL (subscription) so the success page can redirect to it next
       if (secondaryUrl) {
         sessionStorage.setItem("pendingCheckoutUrl", secondaryUrl);
       }
@@ -269,8 +306,18 @@ export default function OnboardingContract() {
 
   if (services.length === 0) return null;
 
-  const oneTimeTotal = services.filter(s => s.billingType === "one_time").reduce((sum, s) => sum + (parseFloat(s.price ?? "0") || 0), 0);
-  const monthlyTotal = services.filter(s => s.billingType === "recurring_monthly").reduce((sum, s) => sum + (parseFloat(s.price ?? "0") || 0), 0);
+  const oneTimeTotal = services
+    .filter(s => s.billingType === "one_time")
+    .reduce((sum, s) => {
+      const p = wizardPrices[s.id] ?? (s.price ? parseFloat(s.price) : 0);
+      return sum + p;
+    }, 0);
+  const monthlyTotal = services
+    .filter(s => s.billingType === "recurring_monthly")
+    .reduce((sum, s) => {
+      const p = wizardPrices[s.id] ?? (s.price ? parseFloat(s.price) : 0);
+      return sum + p;
+    }, 0);
 
   return (
     <div className="min-h-screen bg-[#F7F9FC]">
@@ -293,24 +340,51 @@ export default function OnboardingContract() {
       </div>
 
       <div className="max-w-4xl mx-auto px-6 py-10">
-        {/* Services summary bar */}
         <div className="bg-white border border-border rounded-xl px-5 py-4 mb-6">
           <p className="text-xs text-muted-foreground mb-3">You're purchasing</p>
-          <div className="space-y-1.5">
-            {services.map(s => (
-              <div key={s.id} className="flex items-center justify-between gap-4">
-                <div className="flex items-center gap-2">
-                  <span className="text-sm font-medium text-[#0A2540]">{s.name}</span>
-                  {s.billingType === "recurring_monthly" && (
-                    <span className="text-[10px] bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-full px-1.5 py-0.5 flex items-center gap-1">
-                      <RefreshCw className="w-2.5 h-2.5" />
-                      monthly
-                    </span>
+          <div className="space-y-2">
+            {services.map(s => {
+              const overridePrice = wizardPrices[s.id];
+              const displayPrice = overridePrice != null
+                ? fmtPrice(overridePrice, s.billingType)
+                : fmt(s.price, s.billingType);
+              const sels = wizardSelections[String(s.id)];
+              return (
+                <div key={s.id}>
+                  <div className="flex items-center justify-between gap-4">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-sm font-medium text-[#0A2540]">{s.name}</span>
+                      {s.billingType === "recurring_monthly" && (
+                        <span className="text-[10px] bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-full px-1.5 py-0.5 flex items-center gap-1">
+                          <RefreshCw className="w-2.5 h-2.5" />
+                          monthly
+                        </span>
+                      )}
+                      {overridePrice != null && (
+                        <span className="text-[10px] bg-amber-50 text-amber-700 border border-amber-200 rounded-full px-1.5 py-0.5 flex items-center gap-1">
+                          <Sparkles className="w-2.5 h-2.5" />
+                          custom quote
+                        </span>
+                      )}
+                    </div>
+                    <span className="font-bold text-[#0078D4] text-sm">{displayPrice}</span>
+                  </div>
+                  {sels && sels.length > 0 && (
+                    <div className="mt-1 ml-2 space-y-0.5">
+                      {sels.map(sel => (
+                        <div key={sel.stepId} className="flex items-center gap-2 text-xs text-muted-foreground">
+                          <span className="font-medium text-[#0A2540]/70">{sel.stepTitle}:</span>
+                          <span>{sel.optionLabel}</span>
+                          {sel.priceAdjustment > 0 && (
+                            <span className="text-[#0078D4] font-medium">+${sel.priceAdjustment.toLocaleString()}</span>
+                          )}
+                        </div>
+                      ))}
+                    </div>
                   )}
                 </div>
-                <span className="font-bold text-[#0078D4] text-sm">{fmt(s.price, s.billingType)}</span>
-              </div>
-            ))}
+              );
+            })}
           </div>
           {(oneTimeTotal > 0 || monthlyTotal > 0) && (
             <div className="border-t border-border mt-3 pt-3 flex flex-wrap gap-4">
@@ -331,7 +405,6 @@ export default function OnboardingContract() {
         </div>
 
         <div className="grid md:grid-cols-2 gap-6">
-          {/* Left: Contract text */}
           <div className="bg-white border border-border rounded-2xl overflow-hidden">
             <div className="px-5 py-4 border-b border-border bg-[#F7F9FC]">
               <h2 className="font-bold text-[#0A2540] text-sm">Service Agreement</h2>
@@ -348,11 +421,10 @@ export default function OnboardingContract() {
               ref={contractScrollRef}
               onScroll={handleContractScroll}
               className="px-5 py-4 prose prose-sm max-h-[500px] overflow-y-auto text-[#0A2540]"
-              dangerouslySetInnerHTML={{ __html: buildContractHtml(services, signerName || "Client", today) }}
+              dangerouslySetInnerHTML={{ __html: buildContractHtml(services, signerName || "Client", today, wizardPrices) }}
             />
           </div>
 
-          {/* Right: Signature capture */}
           <div className="space-y-4">
             <div className="bg-white border border-border rounded-2xl p-5">
               <label className="block text-sm font-semibold text-[#0A2540] mb-2">

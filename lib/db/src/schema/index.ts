@@ -1,5 +1,18 @@
-import { pgTable, serial, text, timestamp, integer, boolean, numeric } from "drizzle-orm/pg-core";
+import { pgTable, serial, text, timestamp, integer, boolean, numeric, jsonb } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
+
+export interface WizardOption {
+  id: string;
+  label: string;
+  description?: string;
+  priceAdjustment: number;
+}
+
+export interface WizardStep {
+  id: string;
+  title: string;
+  options: WizardOption[];
+}
 
 export const usersTable = pgTable("users", {
   id: serial("id").primaryKey(),
@@ -44,6 +57,9 @@ export const servicesTable = pgTable("services", {
   category: text("category"),
   deliverables: text("deliverables"),
   price: numeric("price", { precision: 10, scale: 2 }),
+  basePrice: numeric("base_price", { precision: 10, scale: 2 }),
+  maxPrice: numeric("max_price", { precision: 10, scale: 2 }),
+  orderWorkflow: jsonb("order_workflow").$type<WizardStep[]>(),
   durationDays: integer("duration_days"),
   turnaround: text("turnaround"),
   billingType: text("billing_type", { enum: ["one_time", "recurring_monthly"] }).notNull().default("one_time"),

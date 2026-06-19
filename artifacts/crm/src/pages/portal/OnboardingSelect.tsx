@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useLocation, useSearch, Link } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
 import { CheckCircle, Clock, ArrowRight, Loader2, ShieldCheck, Calendar, Phone, ShoppingCart, RefreshCw } from "lucide-react";
+import OrderWizard, { type WizardStep, type WizardSelection } from "./OrderWizard";
 
 interface Service {
   id: number;
@@ -11,9 +12,12 @@ interface Service {
   category: string | null;
   deliverables: string | null;
   price: string | null;
+  basePrice: string | null;
+  maxPrice: string | null;
   durationDays: number | null;
   turnaround: string | null;
   billingType: "one_time" | "recurring_monthly";
+  orderWorkflow: WizardStep[] | null;
 }
 
 const MICRO_OFFER_SLUGS = [
@@ -34,10 +38,16 @@ const CONSULTING_SLUGS = [
   "cloud-migration-consulting",
 ];
 
-function fmt(p: string | null, billingType: "one_time" | "recurring_monthly") {
-  if (!p) return "Contact for pricing";
-  const formatted = `$${parseFloat(p).toLocaleString("en-US", { minimumFractionDigits: 0 })}`;
-  return billingType === "recurring_monthly" ? `${formatted}/mo` : formatted;
+function fmtService(s: Service) {
+  if (s.orderWorkflow?.length && s.basePrice) {
+    const base = parseFloat(s.basePrice).toLocaleString("en-US", { minimumFractionDigits: 0 });
+    const max = s.maxPrice ? parseFloat(s.maxPrice).toLocaleString("en-US", { minimumFractionDigits: 0 }) : null;
+    const range = max ? `$${base} – $${max}` : `from $${base}`;
+    return s.billingType === "recurring_monthly" ? `${range}/mo` : range;
+  }
+  if (!s.price) return "Contact for pricing";
+  const formatted = `$${parseFloat(s.price).toLocaleString("en-US", { minimumFractionDigits: 0 })}`;
+  return s.billingType === "recurring_monthly" ? `${formatted}/mo` : formatted;
 }
 
 function fmtNum(p: string | null) {
@@ -60,6 +70,11 @@ export default function OnboardingSelect() {
   const [loading, setLoading] = useState(true);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [startDate, setStartDate] = useState<string>(todayIso());
+
+  // Wizard state
+  const [wizardQueue, setWizardQueue] = useState<Service[]>([]);
+  const [wizardIndex, setWizardIndex] = useState(0);
+  const [wizardPrices, setWizardPrices] = useState<Record<number, number>>({});
 
   useEffect(() => {
     fetch("/api/portal/onboarding/services")
@@ -95,6 +110,18 @@ export default function OnboardingSelect() {
     });
   };
 
+  const navigateToContract = (prices: Record<number, number>) => {
+    const qs = new URLSearchParams({
+      serviceIds: Array.from(selectedIds).join(","),
+      startDate,
+    });
+    const overrideEntries = Object.entries(prices);
+    if (overrideEntries.length > 0) {
+      qs.set("wp", overrideEntries.map(([id, p]) => `${id}:${p}`).join(","));
+    }
+    setLocation(`/portal/onboarding/contract?${qs.toString()}`);
+  };
+
   const handleContinue = () => {
     if (selectedIds.size === 0) return;
     if (!user) {
@@ -102,26 +129,66 @@ export default function OnboardingSelect() {
       setLocation("/");
       return;
     }
-    const qs = new URLSearchParams({
-      serviceIds: Array.from(selectedIds).join(","),
-      startDate,
-    });
-    setLocation(`/portal/onboarding/contract?${qs.toString()}`);
+    const selected = services.filter(s => selectedIds.has(s.id));
+    const needsWizard = selected.filter(s => s.orderWorkflow?.length && s.basePrice);
+    if (needsWizard.length > 0) {
+      sessionStorage.removeItem("wizardSelections");
+      setWizardQueue(needsWizard);
+      setWizardIndex(0);
+      setWizardPrices({});
+    } else {
+      navigateToContract({});
+    }
+  };
+
+  const handleWizardComplete = (finalPrice: number, selections: WizardSelection[]) => {
+    const currentService = wizardQueue[wizardIndex];
+    const updatedPrices = { ...wizardPrices, [currentService.id]: finalPrice };
+    setWizardPrices(updatedPrices);
+
+    const allSelections = JSON.parse(sessionStorage.getItem("wizardSelections") ?? "{}") as Record<string, WizardSelection[]>;
+    allSelections[String(currentService.id)] = selections;
+    sessionStorage.setItem("wizardSelections", JSON.stringify(allSelections));
+
+    if (wizardIndex + 1 < wizardQueue.length) {
+      setWizardIndex(i => i + 1);
+    } else {
+      setWizardQueue([]);
+      navigateToContract(updatedPrices);
+    }
+  };
+
+  const handleWizardCancel = () => {
+    setWizardQueue([]);
+    setWizardIndex(0);
+    setWizardPrices({});
   };
 
   const selectedServices = services.filter(s => selectedIds.has(s.id));
   const oneTimeTotal = selectedServices
-    .filter(s => s.billingType === "one_time")
+    .filter(s => s.billingType === "one_time" && !s.orderWorkflow?.length)
     .reduce((sum, s) => sum + fmtNum(s.price), 0);
   const monthlyTotal = selectedServices
-    .filter(s => s.billingType === "recurring_monthly")
+    .filter(s => s.billingType === "recurring_monthly" && !s.orderWorkflow?.length)
     .reduce((sum, s) => sum + fmtNum(s.price), 0);
 
+  const hasWizardServices = selectedServices.some(s => s.orderWorkflow?.length && s.basePrice);
   const microOffers = services.filter(s => s.billingType === "one_time");
   const consultingServices = services.filter(s => s.billingType === "recurring_monthly");
+  const activeWizardService = wizardQueue.length > 0 ? wizardQueue[wizardIndex] : null;
 
   return (
     <div className="min-h-screen bg-[#F7F9FC]">
+      {activeWizardService && (
+        <OrderWizard
+          serviceName={activeWizardService.name}
+          basePrice={parseFloat(activeWizardService.basePrice!)}
+          steps={activeWizardService.orderWorkflow!}
+          onComplete={handleWizardComplete}
+          onCancel={handleWizardCancel}
+        />
+      )}
+
       <div className="bg-[#0A2540] border-b border-white/10">
         <div className="max-w-5xl mx-auto px-6 py-4 flex items-center justify-between">
           <div className="flex items-center gap-2.5">
@@ -166,6 +233,7 @@ export default function OnboardingSelect() {
                   <div className="grid sm:grid-cols-2 gap-3">
                     {microOffers.map(service => {
                       const isSelected = selectedIds.has(service.id);
+                      const hasWizard = !!(service.orderWorkflow?.length && service.basePrice);
                       return (
                         <button
                           key={service.id}
@@ -187,7 +255,14 @@ export default function OnboardingSelect() {
                             {service.description}
                           </p>
                           <div className="flex items-center justify-between">
-                            <span className="text-base font-extrabold text-[#0A2540]">{fmt(service.price, service.billingType)}</span>
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="text-base font-extrabold text-[#0A2540]">{fmtService(service)}</span>
+                              {hasWizard && (
+                                <span className="text-[10px] text-amber-600 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded font-medium">
+                                  custom quote
+                                </span>
+                              )}
+                            </div>
                             {service.turnaround && (
                               <div className="flex items-center gap-1 text-[10px] text-muted-foreground">
                                 <Clock className="w-3 h-3" />
@@ -214,6 +289,7 @@ export default function OnboardingSelect() {
                   <div className="grid sm:grid-cols-2 gap-3">
                     {consultingServices.map(service => {
                       const isSelected = selectedIds.has(service.id);
+                      const hasWizard = !!(service.orderWorkflow?.length && service.basePrice);
                       return (
                         <button
                           key={service.id}
@@ -235,8 +311,13 @@ export default function OnboardingSelect() {
                             {service.description}
                           </p>
                           <div className="flex items-center justify-between">
-                            <div>
-                              <span className="text-base font-extrabold text-[#0A2540]">{fmt(service.price, service.billingType)}</span>
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="text-base font-extrabold text-[#0A2540]">{fmtService(service)}</span>
+                              {hasWizard && (
+                                <span className="text-[10px] text-amber-600 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded font-medium">
+                                  custom quote
+                                </span>
+                              )}
                             </div>
                             <div className="flex items-center gap-1 text-[10px] text-emerald-600 font-medium">
                               <RefreshCw className="w-3 h-3" />
@@ -288,39 +369,54 @@ export default function OnboardingSelect() {
                       </p>
                     ) : (
                       <div className="space-y-2">
-                        {selectedServices.map(s => (
-                          <div key={s.id} className="flex items-start justify-between gap-2 text-sm">
-                            <div className="flex-1 min-w-0">
-                              <p className="text-[#0A2540] font-medium text-xs leading-snug line-clamp-2">{s.name}</p>
-                              <p className="text-[10px] text-muted-foreground mt-0.5">
-                                {s.billingType === "recurring_monthly" ? "monthly subscription" : "one-time"}
-                              </p>
+                        {selectedServices.map(s => {
+                          const hasWizard = !!(s.orderWorkflow?.length && s.basePrice);
+                          return (
+                            <div key={s.id} className="flex items-start justify-between gap-2 text-sm">
+                              <div className="flex-1 min-w-0">
+                                <p className="text-[#0A2540] font-medium text-xs leading-snug line-clamp-2">{s.name}</p>
+                                <p className="text-[10px] text-muted-foreground mt-0.5">
+                                  {s.billingType === "recurring_monthly" ? "monthly subscription" : "one-time"}
+                                </p>
+                              </div>
+                              <span className="font-semibold text-xs whitespace-nowrap flex-shrink-0">
+                                {hasWizard
+                                  ? <span className="text-amber-600 font-medium">custom</span>
+                                  : <span className="text-[#0A2540]">{fmtService(s)}</span>
+                                }
+                              </span>
                             </div>
-                            <span className="font-semibold text-[#0A2540] text-xs whitespace-nowrap flex-shrink-0">
-                              {fmt(s.price, s.billingType)}
-                            </span>
-                          </div>
-                        ))}
+                          );
+                        })}
 
-                        <div className="border-t border-border pt-2 mt-2 space-y-1">
-                          {oneTimeTotal > 0 && (
-                            <div className="flex items-center justify-between text-sm">
-                              <span className="text-muted-foreground text-xs">One-time total</span>
-                              <span className="font-bold text-[#0A2540] text-xs">${oneTimeTotal.toLocaleString("en-US")}</span>
-                            </div>
-                          )}
-                          {monthlyTotal > 0 && (
-                            <div className="flex items-center justify-between text-sm">
-                              <span className="text-muted-foreground text-xs">Monthly total</span>
-                              <span className="font-bold text-emerald-700 text-xs">${monthlyTotal.toLocaleString("en-US")}/mo</span>
-                            </div>
-                          )}
-                          {monthlyTotal > 0 && (
-                            <p className="text-[10px] text-muted-foreground leading-relaxed pt-1">
-                              Subscription items renew monthly. Cancel any time.
+                        {!hasWizardServices && (
+                          <div className="border-t border-border pt-2 mt-2 space-y-1">
+                            {oneTimeTotal > 0 && (
+                              <div className="flex items-center justify-between text-sm">
+                                <span className="text-muted-foreground text-xs">One-time total</span>
+                                <span className="font-bold text-[#0A2540] text-xs">${oneTimeTotal.toLocaleString("en-US")}</span>
+                              </div>
+                            )}
+                            {monthlyTotal > 0 && (
+                              <div className="flex items-center justify-between text-sm">
+                                <span className="text-muted-foreground text-xs">Monthly total</span>
+                                <span className="font-bold text-emerald-700 text-xs">${monthlyTotal.toLocaleString("en-US")}/mo</span>
+                              </div>
+                            )}
+                            {monthlyTotal > 0 && (
+                              <p className="text-[10px] text-muted-foreground leading-relaxed pt-1">
+                                Subscription items renew monthly. Cancel any time.
+                              </p>
+                            )}
+                          </div>
+                        )}
+                        {hasWizardServices && (
+                          <div className="border-t border-border pt-2 mt-2">
+                            <p className="text-[10px] text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1.5 leading-relaxed">
+                              You'll answer a few questions to get your custom price on the next step.
                             </p>
-                          )}
-                        </div>
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>
@@ -331,7 +427,7 @@ export default function OnboardingSelect() {
                   disabled={selectedIds.size === 0}
                   className="w-full flex items-center justify-center gap-2 bg-[#0078D4] text-white font-semibold px-5 py-3 rounded-xl hover:bg-[#005A9E] transition-colors disabled:opacity-40 disabled:cursor-not-allowed text-sm"
                 >
-                  Continue to Agreement
+                  {hasWizardServices ? "Get Your Custom Quote" : "Continue to Agreement"}
                   <ArrowRight className="w-4 h-4" />
                 </button>
 
