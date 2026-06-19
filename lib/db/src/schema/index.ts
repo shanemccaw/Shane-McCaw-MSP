@@ -53,3 +53,13 @@ export const projectUpdatesTable = pgTable("project_updates", {
 
 export type InsertProjectUpdate = typeof projectUpdatesTable.$inferInsert;
 export type ProjectUpdate = typeof projectUpdatesTable.$inferSelect;
+
+export const shareEventsTable = pgTable("share_events", {
+  id: serial("id").primaryKey(),
+  slug: text("slug").notNull(),
+  platform: text("platform", { enum: ["linkedin", "x"] }).notNull(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export type InsertShareEvent = typeof shareEventsTable.$inferInsert;
+export type ShareEvent = typeof shareEventsTable.$inferSelect;
