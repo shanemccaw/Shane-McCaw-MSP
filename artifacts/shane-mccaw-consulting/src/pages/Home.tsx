@@ -5,11 +5,25 @@ import { CTAButton } from "@/components/CTAButton";
 import {
   Cloud, Bot, Shield, Zap, Server, Users,
   Layout as LayoutIcon, Sparkles,
-  CheckCircle, ArrowRight, Star, Quote, type LucideIcon
+  CheckCircle, ArrowRight, Star, Quote, ShieldCheck, Lock, Globe,
+  Settings, FileText, BarChart2, Award, Briefcase, Target, Code,
+  Database, Monitor, Cpu, BookOpen, MessageSquare, Calendar, Clock,
+  type LucideIcon
 } from "lucide-react";
 import { useServices, formatPriceDisplay, type PublicService } from "@/hooks/useServices";
 
-const ICON_MAP: Record<string, LucideIcon> = { Cloud, Bot, Shield, Zap, Server, Users, Layout: LayoutIcon, Sparkles };
+const ICON_MAP: Record<string, LucideIcon> = {
+  Cloud, Bot, Shield, Zap, Server, Users, Layout: LayoutIcon, Sparkles,
+  ShieldCheck, Lock, Globe, Settings, FileText, BarChart2, Award,
+  Briefcase, Target, Code, Database, Monitor, Cpu, BookOpen,
+  MessageSquare, Calendar, Star, CheckCircle, Clock,
+};
+
+function resolveIcon(name: string | null, fallback: LucideIcon = Sparkles): LucideIcon {
+  if (!name) return fallback;
+  const pascal = name.split("-").map(w => w.charAt(0).toUpperCase() + w.slice(1)).join("");
+  return ICON_MAP[pascal] ?? ICON_MAP[name] ?? fallback;
+}
 
 const BADGE_COLORS: Record<string, string> = {
   Popular: "bg-[#0078D4]/10 text-[#0078D4]",
@@ -178,7 +192,7 @@ export default function Home() {
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {dbServices.slice(0, 6).map((s, i) => {
-                const Icon = (s.iconName ? ICON_MAP[s.iconName] : null) ?? Cloud;
+                const Icon = resolveIcon(s.iconName, Cloud);
                 return (
                   <div
                     key={s.slug ?? i}
@@ -279,7 +293,7 @@ export default function Home() {
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-10">
               {dbOffers.slice(0, 3).map((offer: PublicService, i) => {
-                const Icon = (offer.iconName ? ICON_MAP[offer.iconName] : null) ?? Sparkles;
+                const Icon = resolveIcon(offer.iconName);
                 return (
                   <div key={offer.slug ?? i} className="bg-white p-8 rounded-lg border border-border hover:shadow-lg hover:-translate-y-1 transition-all duration-300" data-testid={`micro-offer-${i}`}>
                     <div className="flex items-start justify-between mb-4">

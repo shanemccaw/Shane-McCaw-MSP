@@ -3,13 +3,24 @@ import { Layout } from "@/components/Layout";
 import { CTAButton } from "@/components/CTAButton";
 import {
   CheckCircle, Clock, Sparkles, Cloud, Bot, Shield, Zap, Server, Users,
-  Layout as LayoutIcon, type LucideIcon
+  Layout as LayoutIcon, ShieldCheck, Lock, Globe, Settings, FileText,
+  BarChart2, Award, Briefcase, Target, Code, Database, Monitor, Cpu,
+  BookOpen, MessageSquare, Calendar, Star, type LucideIcon
 } from "lucide-react";
 import { useServices, formatPriceDisplay, type PublicService } from "@/hooks/useServices";
 
 const ICON_MAP: Record<string, LucideIcon> = {
   Cloud, Bot, Shield, Zap, Server, Users, Layout: LayoutIcon, Sparkles,
+  ShieldCheck, Lock, Globe, Settings, FileText, BarChart2, Award,
+  Briefcase, Target, Code, Database, Monitor, Cpu, BookOpen,
+  MessageSquare, Calendar, Star, CheckCircle, Clock,
 };
+
+function resolveIcon(name: string | null, fallback: LucideIcon = Sparkles): LucideIcon {
+  if (!name) return fallback;
+  const pascal = name.split("-").map(w => w.charAt(0).toUpperCase() + w.slice(1)).join("");
+  return ICON_MAP[pascal] ?? ICON_MAP[name] ?? fallback;
+}
 
 const BADGE_COLORS: Record<string, string> = {
   Popular: "bg-[#0078D4]/10 text-[#0078D4]",
@@ -23,7 +34,7 @@ function badgeClass(badge: string): string {
 }
 
 function OfferCard({ offer, index }: { offer: PublicService; index: number }) {
-  const Icon = (offer.iconName ? ICON_MAP[offer.iconName] : null) ?? Sparkles;
+  const Icon = resolveIcon(offer.iconName);
   const priceDisplay = formatPriceDisplay(offer);
   const inclusions = offer.inclusions ?? [];
   const features = offer.features ?? [];

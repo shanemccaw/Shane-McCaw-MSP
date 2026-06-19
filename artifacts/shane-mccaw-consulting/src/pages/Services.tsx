@@ -3,19 +3,27 @@ import { Link } from "wouter";
 import { Layout } from "@/components/Layout";
 import { CTAButton } from "@/components/CTAButton";
 import { ServiceCard } from "@/components/ServiceCard";
-import { Cloud, Bot, Layout as LayoutIcon, Zap, Shield, Server, Users, ArrowRight, type LucideIcon } from "lucide-react";
+import {
+  Cloud, Bot, Layout as LayoutIcon, Zap, Shield, Server, Users, ArrowRight,
+  ShieldCheck, Lock, Globe, Settings, FileText, BarChart2, Award, Sparkles,
+  Briefcase, Target, Code, Database, Monitor, Cpu, BookOpen,
+  MessageSquare, Calendar, Star, CheckCircle, Clock, type LucideIcon
+} from "lucide-react";
 import { ConsultationCTA } from "@/components/ConsultationCTA";
 import { useServices } from "@/hooks/useServices";
 
 const ICON_MAP: Record<string, LucideIcon> = {
-  Cloud,
-  Bot,
-  Layout: LayoutIcon,
-  Zap,
-  Shield,
-  Server,
-  Users,
+  Cloud, Bot, Layout: LayoutIcon, Zap, Shield, Server, Users, Sparkles,
+  ShieldCheck, Lock, Globe, Settings, FileText, BarChart2, Award,
+  Briefcase, Target, Code, Database, Monitor, Cpu, BookOpen,
+  MessageSquare, Calendar, Star, CheckCircle, Clock,
 };
+
+function resolveIcon(name: string | null, fallback: LucideIcon = Cloud): LucideIcon {
+  if (!name) return fallback;
+  const pascal = name.split("-").map(w => w.charAt(0).toUpperCase() + w.slice(1)).join("");
+  return ICON_MAP[pascal] ?? ICON_MAP[name] ?? fallback;
+}
 
 export default function Services() {
   const { services: allServiceAreas, loading } = useServices("service_area");
@@ -67,7 +75,7 @@ export default function Services() {
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {services.map((s, i) => {
-                const Icon = (s.iconName ? ICON_MAP[s.iconName] : null) ?? Cloud;
+                const Icon = resolveIcon(s.iconName);
                 return (
                   <ServiceCard
                     key={s.slug ?? i}
