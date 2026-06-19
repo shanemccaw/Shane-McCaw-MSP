@@ -1,107 +1,353 @@
 import { useEffect } from "react";
+import { Link } from "wouter";
 import { Layout } from "@/components/Layout";
 import { CTAButton } from "@/components/CTAButton";
-import { Bot, CheckCircle, AlertCircle } from "lucide-react";
+import {
+  Bot, Shield, Tag, Rocket, Users, TrendingUp,
+  CheckCircle, ArrowRight, AlertTriangle, Star
+} from "lucide-react";
+
+const pillars = [
+  {
+    icon: Bot,
+    number: "01",
+    title: "Copilot Readiness Assessment",
+    tagline: "Know your score before you spend another dollar.",
+    description:
+      "Shane conducts a structured, NASA-methodology audit across your entire Microsoft 365 environment — evaluating tenant configuration, licensing eligibility, identity posture, SharePoint oversharing exposure, and Teams data sprawl. The output is a readiness scorecard with a prioritized remediation list. Not a vendor checklist. A real architect's assessment of whether your environment is safe to enable Copilot in — and what it will take to get there.",
+    deliverables: [
+      "Copilot readiness scorecard across 6 dimensions",
+      "Oversharing and permissions risk inventory",
+      "Licensing eligibility and optimization review",
+      "Identity and conditional access posture check",
+      "Prioritized remediation roadmap with effort estimates",
+    ],
+  },
+  {
+    icon: Shield,
+    number: "02",
+    title: "Data Governance Alignment",
+    tagline: "Copilot surfaces everything your permissions allow. Get your governance right first.",
+    description:
+      "Microsoft Copilot respects your existing permissions model — which means if your data governance is weak, Copilot will expose it. Shane aligns your governance framework to Copilot's access model: scoping what Copilot can see, enforcing least-privilege access across SharePoint and OneDrive, and ensuring your DLP policies are configured to catch sensitive data before it surfaces in AI-generated outputs.",
+    deliverables: [
+      "DLP policy review and gap remediation",
+      "SharePoint permissions cleanup and scoping",
+      "OneDrive oversharing assessment",
+      "Copilot-specific governance policy documentation",
+      "Admin controls and eDiscovery configuration",
+    ],
+  },
+  {
+    icon: Tag,
+    number: "03",
+    title: "Sensitivity Labeling Maturity",
+    tagline: "Labels are the foundation. Without them, Copilot governance is guesswork.",
+    description:
+      "Sensitivity labels are the cornerstone of a secure Copilot deployment — they tell the platform what data is confidential, who can access it, and how it can be shared. Shane assesses your current labeling maturity against the framework NASA uses internally, designs a labeling taxonomy that fits your organization's data classification needs, and deploys auto-labeling policies that protect content without creating friction for end users.",
+    deliverables: [
+      "Current labeling maturity assessment",
+      "Sensitivity label taxonomy design",
+      "Auto-labeling policy configuration",
+      "Label inheritance and encryption rules",
+      "User training on labeling workflow",
+    ],
+  },
+  {
+    icon: Rocket,
+    number: "04",
+    title: "Secure Rollout Planning",
+    tagline: "Phased. Controlled. No surprises.",
+    description:
+      "Deploying Copilot to your entire organization on day one is the fastest way to create a governance incident and destroy end-user trust. Shane designs a phased deployment architecture that sequences rollout in controllable waves, with monitoring checkpoints between each phase. Every phase has defined entry criteria, rollback procedures, and compliance validation steps — the same rigorous deployment discipline applied to NASA's Copilot implementation.",
+    deliverables: [
+      "Phased deployment architecture document",
+      "Go/no-go criteria for each rollout phase",
+      "Rollback and incident response procedures",
+      "Copilot admin controls and policy configuration",
+      "Monitoring and compliance telemetry setup",
+    ],
+  },
+  {
+    icon: Users,
+    number: "05",
+    title: "Pilot Group Strategy",
+    tagline: "The right 50 users will tell you everything. The wrong 5,000 will create chaos.",
+    description:
+      "A successful enterprise Copilot deployment starts with a well-designed pilot. Shane identifies the right pilot cohort — power users with high data literacy, varied role representation, and willingness to provide structured feedback — and builds the pilot program around measurable outcomes. You get real productivity data, real governance feedback, and real adoption patterns before you scale. No guesswork on whether the broader rollout will work.",
+    deliverables: [
+      "Pilot group selection criteria and cohort design",
+      "Pilot program structure and timeline",
+      "Feedback collection and analysis framework",
+      "Success metrics and KPI definition",
+      "Pilot-to-production transition criteria",
+    ],
+  },
+  {
+    icon: TrendingUp,
+    number: "06",
+    title: "Enterprise Adoption Guidance",
+    tagline: "Deployed doesn't mean adopted. Adoption is where the ROI actually lives.",
+    description:
+      "Most Copilot deployments stall not because the technology fails, but because users don't know how to use it effectively. Shane builds an adoption program tailored to your organization's roles and workflows — including a custom prompt library for key departments, role-specific use case guides, manager enablement content, and a 90-day adoption measurement framework. The goal is organizational behavior change, not license utilization statistics.",
+    deliverables: [
+      "Custom Copilot prompt library (role-specific, 25+ prompts)",
+      "Department use case guides",
+      "Manager and champion enablement materials",
+      "90-day adoption measurement framework",
+      "Ongoing coaching and optimization support",
+    ],
+  },
+];
+
+const riskSignals = [
+  "You've purchased Copilot licenses but haven't enabled them — or enabled them and seen near-zero adoption",
+  "Your SharePoint environment has broad sharing permissions or anonymous links",
+  "You don't have sensitivity labels deployed, or they're inconsistently applied",
+  "You're in a regulated industry (healthcare, finance, government contracting) with compliance obligations",
+  "Legal or compliance teams have raised concerns about AI data access",
+  "Previous Copilot rollout attempts stalled due to governance uncertainty",
+];
 
 export default function CopilotAI() {
   useEffect(() => {
-    document.title = "Microsoft Copilot AI Readiness & Deployment | Shane McCaw Consulting";
+    document.title = "Microsoft Copilot Consulting — NASA's Copilot SME | Shane McCaw Consulting";
   }, []);
 
   return (
     <Layout>
-      <section className="bg-[#0A2540] pt-32 pb-20">
-        <div className="max-w-[1200px] mx-auto px-6">
-          <Bot className="w-10 h-10 text-[#0078D4] mb-6" />
-          <p className="text-[#0078D4] text-sm font-semibold uppercase tracking-[0.1em] mb-4">Service</p>
-          <h1 className="text-4xl md:text-5xl lg:text-6xl font-extrabold text-white leading-tight max-w-4xl">
-            Microsoft Copilot AI Readiness & Deployment
-          </h1>
-          <p className="text-white/70 text-lg mt-6 max-w-2xl">
-            Copilot is powerful when deployed correctly. It's a liability when it isn't. Shane ensures your deployment is safe, effective, and adopted.
-          </p>
+      {/* Hero */}
+      <section className="relative bg-[#0A2540] pt-32 pb-24 overflow-hidden">
+        <div
+          className="absolute inset-0 opacity-10"
+          style={{
+            backgroundImage: `
+              linear-gradient(#0078D4 1px, transparent 1px),
+              linear-gradient(90deg, #0078D4 1px, transparent 1px)
+            `,
+            backgroundSize: "60px 60px",
+          }}
+        />
+        <div
+          className="absolute inset-0 opacity-15"
+          style={{ background: "radial-gradient(ellipse 80% 60% at 60% 30%, #0078D4, transparent)" }}
+        />
+        <div className="relative z-10 max-w-[1200px] mx-auto px-6">
+          <div className="inline-flex items-center gap-2 bg-[#0078D4]/15 border border-[#0078D4]/40 rounded-full px-5 py-2 mb-8">
+            <span className="w-2 h-2 rounded-full bg-[#00B4D8] animate-pulse" />
+            <p className="text-[#00B4D8] text-sm font-semibold uppercase tracking-[0.1em]">
+              Microsoft Copilot SME — NASA
+            </p>
+          </div>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-end">
+            <div>
+              <h1 className="text-4xl md:text-5xl lg:text-[3.5rem] font-extrabold text-white leading-[1.1] mb-6">
+                Microsoft Copilot Consulting — Governed, Secure, and Built to Last.
+              </h1>
+              <p className="text-lg text-white/75 leading-relaxed mb-8">
+                Shane McCaw is the serving Copilot for Microsoft 365 Subject Matter Expert at NASA — one of the most security-sensitive and compliance-constrained M365 environments in existence. He brings that same methodology to your organization's Copilot deployment.
+              </p>
+              <CTAButton href="/book" className="text-base px-8 py-4" data-testid="copilot-hero-cta">
+                Book a Copilot Assessment
+              </CTAButton>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              {[
+                { label: "NASA Copilot SME", sub: "Serving role, not a credential" },
+                { label: "30+ Years", sub: "Microsoft ecosystem expertise" },
+                { label: "6 Pillars", sub: "Structured deployment framework" },
+                { label: "Zero data loss", sub: "Governance-first methodology" },
+              ].map((stat, i) => (
+                <div key={i} className="bg-white/5 border border-white/10 rounded-xl p-5" data-testid={`hero-stat-${i}`}>
+                  <p className="text-white font-bold text-lg leading-tight mb-1">{stat.label}</p>
+                  <p className="text-white/50 text-xs">{stat.sub}</p>
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
       </section>
 
+      {/* Authority statement */}
+      <section className="bg-[#F7F9FC] border-b border-border py-12">
+        <div className="max-w-[1200px] mx-auto px-6">
+          <div className="flex flex-col md:flex-row items-start md:items-center gap-6">
+            <div className="flex-shrink-0 w-14 h-14 rounded-full bg-[#0078D4] flex items-center justify-center">
+              <Star className="w-7 h-7 text-white" />
+            </div>
+            <div>
+              <p className="font-bold text-[#0A2540] text-lg mb-1">
+                Shane McCaw is not a Copilot trainer or a reseller. He is NASA's Copilot Subject Matter Expert.
+              </p>
+              <p className="text-muted-foreground leading-relaxed">
+                That means he works daily inside the governance, compliance, and deployment challenges that enterprise Copilot creates at the highest security tier — and translates that institutional knowledge into your organization's rollout. No theory. No vendor slides. Real implementation expertise from the most demanding M365 environment in the federal government.
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Risk signals */}
+      <section className="bg-white py-20">
+        <div className="max-w-[1200px] mx-auto px-6">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-start">
+            <div>
+              <p className="text-[#0078D4] text-sm font-semibold uppercase tracking-[0.1em] mb-4">Warning Signs</p>
+              <h2 className="text-3xl md:text-4xl font-extrabold text-[#0A2540] mb-4">
+                You Need This Engagement If…
+              </h2>
+              <p className="text-muted-foreground leading-relaxed mb-8">
+                Copilot is not plug-and-play. The organizations that struggle with it share common warning signs — most of which are invisible until something goes wrong.
+              </p>
+              <ul className="space-y-3">
+                {riskSignals.map((signal, i) => (
+                  <li key={i} className="flex items-start gap-3" data-testid={`risk-signal-${i}`}>
+                    <AlertTriangle className="w-4 h-4 text-amber-500 flex-shrink-0 mt-1" />
+                    <span className="text-foreground text-sm leading-relaxed">{signal}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+            <div className="bg-[#0A2540] rounded-2xl p-8 text-white">
+              <p className="text-[#00B4D8] text-sm font-semibold uppercase tracking-[0.1em] mb-4">The Stakes</p>
+              <h3 className="text-2xl font-extrabold mb-4 leading-tight">
+                Why Copilot Governance Failures Are Different From Other IT Problems
+              </h3>
+              <p className="text-white/70 leading-relaxed mb-6">
+                When a SharePoint migration fails, you restore from backup. When Copilot surfaces a confidential HR document to a line manager who technically had read access to the folder it lived in — that's a different class of incident. It damages trust, creates legal exposure, and can permanently undermine AI adoption across your organization.
+              </p>
+              <p className="text-white/70 leading-relaxed">
+                Shane designs Copilot deployments the way NASA designs mission systems: with failure modes analyzed in advance and mitigations built in from the start — not patched in after the incident.
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Six pillars */}
       <section className="bg-[#F7F9FC] py-20">
         <div className="max-w-[1200px] mx-auto px-6">
-          <p className="text-[#0078D4] text-sm font-semibold uppercase tracking-[0.1em] mb-4">Pain Points</p>
-          <h2 className="text-3xl font-extrabold text-[#0A2540] mb-8">Does This Sound Like Your Organization?</h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="text-center mb-16">
+            <p className="text-[#0078D4] text-sm font-semibold uppercase tracking-[0.1em] mb-3">The Framework</p>
+            <h2 className="text-3xl md:text-4xl font-extrabold text-[#0A2540]">
+              Six-Pillar Copilot Deployment Framework
+            </h2>
+            <p className="text-muted-foreground mt-4 max-w-2xl mx-auto leading-relaxed">
+              Every Shane McCaw Consulting Copilot engagement covers all six pillars. They're not optional modules — they're interdependent. Skipping one undermines the others.
+            </p>
+          </div>
+
+          <div className="space-y-6">
+            {pillars.map((pillar, i) => {
+              const Icon = pillar.icon;
+              return (
+                <div
+                  key={i}
+                  className="bg-white rounded-2xl border border-border overflow-hidden hover:border-[#0078D4]/30 hover:shadow-lg transition-all duration-300"
+                  data-testid={`pillar-${i}`}
+                >
+                  <div className="p-8 grid grid-cols-1 lg:grid-cols-[1fr_1.4fr] gap-8">
+                    {/* Left */}
+                    <div>
+                      <div className="flex items-center gap-4 mb-4">
+                        <div className="w-11 h-11 rounded-xl bg-[#0078D4]/10 flex items-center justify-center flex-shrink-0">
+                          <Icon className="w-5 h-5 text-[#0078D4]" />
+                        </div>
+                        <span className="text-[#0078D4]/40 font-extrabold text-3xl leading-none">{pillar.number}</span>
+                      </div>
+                      <h3 className="text-xl font-extrabold text-[#0A2540] mb-2">{pillar.title}</h3>
+                      <p className="text-[#0078D4] text-sm font-semibold italic mb-4">{pillar.tagline}</p>
+                      <p className="text-muted-foreground text-sm leading-relaxed">{pillar.description}</p>
+                    </div>
+                    {/* Right — deliverables */}
+                    <div className="bg-[#F7F9FC] rounded-xl p-6 border border-border">
+                      <p className="text-xs font-bold text-[#0A2540] uppercase tracking-wider mb-4">Deliverables</p>
+                      <ul className="space-y-3">
+                        {pillar.deliverables.map((d, j) => (
+                          <li key={j} className="flex items-start gap-2.5" data-testid={`pillar-${i}-deliverable-${j}`}>
+                            <CheckCircle className="w-4 h-4 text-[#0078D4] flex-shrink-0 mt-0.5" />
+                            <span className="text-foreground text-sm">{d}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </section>
+
+      {/* Engagement options */}
+      <section className="bg-white py-20">
+        <div className="max-w-[1200px] mx-auto px-6">
+          <div className="text-center mb-12">
+            <p className="text-[#0078D4] text-sm font-semibold uppercase tracking-[0.1em] mb-3">How to Engage</p>
+            <h2 className="text-3xl font-extrabold text-[#0A2540]">Start Where Your Organization Is</h2>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             {[
-              { title: "Bought licenses nobody uses", desc: "You invested in Copilot licenses expecting transformation, but adoption is near zero. Users don't know how to use it or don't see the value." },
-              { title: "Worried about data exposure", desc: "You've heard the horror stories — Copilot surfacing sensitive files to the wrong people. You need someone who can verify your environment is safe before you flip the switch." },
-              { title: "Stalled by governance uncertainty", desc: "Legal, compliance, and IT can't agree on what's safe. The project has been 'on hold pending review' for months." },
-              { title: "No adoption strategy", desc: "Even when Copilot is deployed, nobody is using it consistently. You need a change management and coaching plan, not just a technical rollout." },
-            ].map((item, i) => (
-              <div key={i} className="bg-white border border-border rounded-lg p-6" data-testid={`copilot-pain-${i}`}>
-                <AlertCircle className="w-6 h-6 text-[#0078D4] mb-3" />
-                <h3 className="font-bold text-[#0A2540] mb-2">{item.title}</h3>
-                <p className="text-muted-foreground text-sm leading-relaxed">{item.desc}</p>
+              {
+                label: "Not deployed yet",
+                title: "Copilot Readiness Assessment",
+                price: "$797",
+                desc: "The right first step for any organization evaluating or planning a Copilot deployment. Full six-dimension readiness audit + deployment roadmap delivered in 5 business days.",
+                cta: "Start with the Assessment",
+              },
+              {
+                label: "Deployed but struggling",
+                title: "Governance & Adoption Remediation",
+                price: "Project-based",
+                desc: "For organizations that deployed Copilot but are seeing low adoption, governance concerns, or end-user complaints. Shane diagnoses the root cause and rebuilds the deployment correctly.",
+                cta: "Book a Diagnosis Call",
+              },
+              {
+                label: "Planning at scale",
+                title: "Full Six-Pillar Engagement",
+                price: "Scoped on discovery",
+                desc: "The complete Copilot deployment program for organizations that need all six pillars executed from scratch — governance, labeling, rollout architecture, pilot, and adoption.",
+                cta: "Book a Discovery Call",
+              },
+            ].map((option, i) => (
+              <div
+                key={i}
+                className={`rounded-xl border p-7 flex flex-col ${i === 0 ? "bg-[#0A2540] border-[#0078D4]" : "bg-[#F7F9FC] border-border"}`}
+                data-testid={`engagement-option-${i}`}
+              >
+                <span className={`text-xs font-bold uppercase tracking-wider mb-3 ${i === 0 ? "text-[#00B4D8]" : "text-[#0078D4]"}`}>
+                  {option.label}
+                </span>
+                <h3 className={`text-lg font-extrabold mb-2 ${i === 0 ? "text-white" : "text-[#0A2540]"}`}>{option.title}</h3>
+                <p className={`text-2xl font-extrabold mb-3 text-[#0078D4]`}>{option.price}</p>
+                <p className={`text-sm leading-relaxed flex-grow mb-6 ${i === 0 ? "text-white/70" : "text-muted-foreground"}`}>{option.desc}</p>
+                <CTAButton href="/book" className="w-full justify-center text-sm" data-testid={`engagement-cta-${i}`}>
+                  {option.cta}
+                </CTAButton>
               </div>
             ))}
           </div>
         </div>
       </section>
 
-      <section className="bg-white py-20">
-        <div className="max-w-[1200px] mx-auto px-6">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-12">
-            <div>
-              <p className="text-[#0078D4] text-sm font-semibold uppercase tracking-[0.1em] mb-4">Scope</p>
-              <h2 className="text-3xl font-extrabold text-[#0A2540] mb-8">What's Included</h2>
-              <ul className="space-y-4">
-                {[
-                  "Copilot readiness assessment across all M365 workloads",
-                  "Data governance audit — sensitivity labels, DLP, retention policies",
-                  "SharePoint oversharing and permissions review",
-                  "Licensing review and optimization",
-                  "Remediation roadmap for identified gaps",
-                  "Copilot configuration and deployment",
-                  "Adoption coaching and user enablement plan",
-                  "Custom Copilot prompt library for key roles",
-                  "Governance policy documentation",
-                ].map((item, i) => (
-                  <li key={i} className="flex items-start gap-3">
-                    <CheckCircle className="w-5 h-5 text-[#0078D4] flex-shrink-0 mt-0.5" />
-                    <span className="text-foreground">{item}</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-            <div>
-              <p className="text-[#0078D4] text-sm font-semibold uppercase tracking-[0.1em] mb-4">Outcomes</p>
-              <h2 className="text-3xl font-extrabold text-[#0A2540] mb-8">What You'll Achieve</h2>
-              <div className="space-y-4">
-                {[
-                  { title: "Productivity gains from day one", desc: "Users who know how to use Copilot correctly see immediate productivity improvements in writing, research, meeting summarization, and analysis." },
-                  { title: "Safe, secure deployment", desc: "No data exposure risk. Your sensitive information stays secure even as AI accesses it." },
-                  { title: "High adoption rates", desc: "A structured adoption program means employees use Copilot consistently — not just the first week." },
-                ].map((item, i) => (
-                  <div key={i} className="bg-[#F7F9FC] rounded-lg p-5 border border-border" data-testid={`copilot-outcome-${i}`}>
-                    <h4 className="font-bold text-[#0A2540] mb-1">{item.title}</h4>
-                    <p className="text-muted-foreground text-sm">{item.desc}</p>
-                  </div>
-                ))}
-              </div>
-
-              <div className="mt-6 bg-[#0078D4]/10 border border-[#0078D4]/30 rounded-xl p-6">
-                <p className="text-[#0078D4] text-sm font-semibold uppercase tracking-wide mb-2">Quick Win Package</p>
-                <h4 className="font-bold text-[#0A2540] mb-2">Copilot Readiness Assessment — $797</h4>
-                <p className="text-muted-foreground text-sm">Full readiness review + deployment plan delivered in 5 business days.</p>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
+      {/* Final CTA */}
       <section className="bg-[#0A2540] py-20">
         <div className="max-w-[1200px] mx-auto px-6 text-center">
-          <h2 className="text-3xl font-extrabold text-white mb-4">Get Your Copilot Readiness Assessment — $797</h2>
-          <p className="text-white/70 max-w-xl mx-auto mb-10">Know exactly where your organization stands before deploying. Full review and deployment plan in 5 business days.</p>
-          <CTAButton href="/book" className="px-10 py-4 text-base" data-testid="copilot-cta">
-            Get Your Copilot Readiness Assessment
-          </CTAButton>
+          <Bot className="w-12 h-12 text-[#0078D4] mx-auto mb-6" />
+          <h2 className="text-3xl md:text-4xl font-extrabold text-white mb-4">
+            Ready to Deploy Copilot the Right Way?
+          </h2>
+          <p className="text-white/70 text-lg max-w-2xl mx-auto mb-10 leading-relaxed">
+            Book a free 30-minute call with NASA's Copilot SME. Walk away knowing exactly where your environment stands and what your deployment needs.
+          </p>
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
+            <CTAButton href="/book" className="text-base px-10 py-4" data-testid="copilot-final-cta">
+              Book a Copilot Assessment Call
+            </CTAButton>
+            <Link href="/micro-offers" className="text-white/70 hover:text-white text-sm font-medium flex items-center gap-1.5 transition-colors" data-testid="copilot-micro-offers-link">
+              View the $797 Readiness Package <ArrowRight className="w-4 h-4" />
+            </Link>
+          </div>
         </div>
       </section>
     </Layout>
