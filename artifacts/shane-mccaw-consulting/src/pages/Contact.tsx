@@ -85,7 +85,7 @@ export default function Contact() {
             Let's Talk Microsoft 365.
           </h1>
           <p className="text-white/70 text-lg mt-6 max-w-2xl leading-relaxed">
-            You're contacting the former Lead M365 Architect at NASA — 30 years of Microsoft ecosystem experience, now available to mid&#8209;market and regulated&#8209;industry organizations.
+            You're contacting the Lead M365 Architect at NASA — 30 years of Microsoft ecosystem experience, now available to mid&#8209;market and regulated&#8209;industry organizations.
           </p>
           <p className="text-white/70 text-lg mt-4 max-w-xl leading-relaxed">
             Tell me what you're dealing with and I'll give you a straight answer on whether and how I can help.
