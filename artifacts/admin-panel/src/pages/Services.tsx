@@ -125,15 +125,19 @@ export default function ServicesPage() {
       const res = await fetchWithAuth(`/api/admin/services/${deleteTarget.id}`, { method: "DELETE" });
       if (!res.ok) {
         const body = await res.json() as { error?: string };
-        toast({ title: body.error ?? "Delete failed", variant: "destructive" });
+        toast({
+          title: "Cannot delete service",
+          description: body.error ?? "Delete failed. Please try again.",
+          variant: "destructive",
+        });
         return;
       }
       toast({ title: "Service deleted" });
       if (selected?.id === deleteTarget.id) { setSelected(null); setForm({}); }
+      setDeleteTarget(null);
       await fetchServices();
     } finally {
       setDeleting(false);
-      setDeleteTarget(null);
     }
   }
 
