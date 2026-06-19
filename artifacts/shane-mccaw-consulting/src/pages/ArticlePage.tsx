@@ -8,6 +8,7 @@ import type { Components } from "react-markdown";
 import { SEOMeta } from "@/components/SEOMeta";
 import { Layout } from "@/components/Layout";
 import { ConsultationCTA } from "@/components/ConsultationCTA";
+import { AuthorBio } from "@/components/AuthorBio";
 import { articles } from "@/data/articles";
 import NotFound from "@/pages/not-found";
 
@@ -193,12 +194,10 @@ export default function ArticlePage() {
             </ReactMarkdown>
           </div>
 
-          <div className="mt-16 pt-10 border-t border-border">
-            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6">
-              <div>
-                <p className="text-sm font-semibold text-[#0A2540]">Shane McCaw</p>
-                <p className="text-xs text-muted-foreground">Lead Microsoft 365 Architect · 30-Year Microsoft Veteran</p>
-              </div>
+          <AuthorBio />
+
+          <div className="mt-10 pt-8 border-t border-border">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-4">
               <Link
                 href="/resources"
                 className="inline-flex items-center gap-2 text-[#0078D4] text-sm font-semibold hover:underline"
