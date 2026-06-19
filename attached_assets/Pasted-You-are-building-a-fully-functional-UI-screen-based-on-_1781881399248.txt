@@ -1,0 +1,256 @@
+You are building a fully functional UI screen based on the following design system. 
+Use modern HTML, CSS (Tailwind or clean utility classes), and minimal JavaScript.
+
+Your job:
+1. Convert the entire design system into a real, functional screen.
+2. Implement the layout, spacing, typography, colors, and components exactly as described.
+3. Use a clean, responsive grid (12-col desktop, 8-col tablet, 4-col mobile).
+4. Build a dashboard-style screen with cards, sections, and structure that matches the design language.
+
+-------------------------------------
+DESIGN SYSTEM (IMPLEMENT EXACTLY)
+-------------------------------------
+---
+name: Executive Precision
+colors:
+  surface: '#f7f9fb'
+  surface-dim: '#d8dadc'
+  surface-bright: '#f7f9fb'
+  surface-container-lowest: '#ffffff'
+  surface-container-low: '#f2f4f6'
+  surface-container: '#eceef0'
+  surface-container-high: '#e6e8ea'
+  surface-container-highest: '#e0e3e5'
+  on-surface: '#191c1e'
+  on-surface-variant: '#45464d'
+  inverse-surface: '#2d3133'
+  inverse-on-surface: '#eff1f3'
+  outline: '#76777d'
+  outline-variant: '#c6c6cd'
+  surface-tint: '#565e74'
+  primary: '#000000'
+  on-primary: '#ffffff'
+  primary-container: '#131b2e'
+  on-primary-container: '#7c839b'
+  inverse-primary: '#bec6e0'
+  secondary: '#505f76'
+  on-secondary: '#ffffff'
+  secondary-container: '#d0e1fb'
+  on-secondary-container: '#54647a'
+  tertiary: '#000000'
+  on-tertiary: '#ffffff'
+  tertiary-container: '#00201d'
+  on-tertiary-container: '#0c9488'
+  error: '#ba1a1a'
+  on-error: '#ffffff'
+  error-container: '#ffdad6'
+  on-error-container: '#93000a'
+  primary-fixed: '#dae2fd'
+  primary-fixed-dim: '#bec6e0'
+  on-primary-fixed: '#131b2e'
+  on-primary-fixed-variant: '#3f465c'
+  secondary-fixed: '#d3e4fe'
+  secondary-fixed-dim: '#b7c8e1'
+  on-secondary-fixed: '#0b1c30'
+  on-secondary-fixed-variant: '#38485d'
+  tertiary-fixed: '#89f5e7'
+  tertiary-fixed-dim: '#6bd8cb'
+  on-tertiary-fixed: '#00201d'
+  on-tertiary-fixed-variant: '#005049'
+  background: '#f7f9fb'
+  on-background: '#191c1e'
+  surface-variant: '#e0e3e5'
+typography:
+  display-lg:
+    fontFamily: Inter
+    fontSize: 48px
+    fontWeight: '700'
+    lineHeight: 56px
+    letterSpacing: -0.02em
+  headline-lg:
+    fontFamily: Inter
+    fontSize: 32px
+    fontWeight: '600'
+    lineHeight: 40px
+    letterSpacing: -0.01em
+  headline-lg-mobile:
+    fontFamily: Inter
+    fontSize: 24px
+    fontWeight: '600'
+    lineHeight: 32px
+  headline-md:
+    fontFamily: Inter
+    fontSize: 24px
+    fontWeight: '600'
+    lineHeight: 32px
+  body-lg:
+    fontFamily: Inter
+    fontSize: 18px
+    fontWeight: '400'
+    lineHeight: 28px
+  body-md:
+    fontFamily: Inter
+    fontSize: 16px
+    fontWeight: '400'
+    lineHeight: 24px
+  body-sm:
+    fontFamily: Inter
+    fontSize: 14px
+    fontWeight: '400'
+    lineHeight: 20px
+  label-md:
+    fontFamily: Inter
+    fontSize: 12px
+    fontWeight: '600'
+    lineHeight: 16px
+    letterSpacing: 0.05em
+  mono-sm:
+    fontFamily: JetBrains Mono
+    fontSize: 13px
+    fontWeight: '400'
+    lineHeight: 18px
+rounded:
+  sm: 0.125rem
+  DEFAULT: 0.25rem
+  md: 0.375rem
+  lg: 0.5rem
+  xl: 0.75rem
+  full: 9999px
+spacing:
+  base: 8px
+  container-max: 1280px
+  gutter: 24px
+  margin-mobile: 16px
+  margin-desktop: 40px
+---
+
+## Brand & Style
+The design system is engineered to project expertise, organization, and unwavering reliability for high-level consultancy. The brand personality is "The Trusted Advisor"—calm under pressure, meticulously organized, and fundamentally efficient. 
+
+The aesthetic follows a **Modern Corporate Minimalism** approach. It prioritizes clarity and functional density over decorative flair. The interface uses a card-based architecture to modularize complex data, utilizing generous whitespace to prevent cognitive overload. Every element is aligned to a strict mathematical grid to evoke a sense of structural integrity and professional discipline.
+
+## Colors
+The palette is anchored by "Deep Slate" (Primary), providing a grounded and authoritative foundation. "Cool Gray" (Secondary) is reserved for metadata and de-emphasized text to maintain hierarchy. 
+
+"Corporate Teal" serves as the primary action color, used sparingly for CTA buttons, progress indicators, and active states to ensure high visibility against the neutral backdrop. Surfaces utilize a range of very light grays and crisp whites to create distinct containment areas without the "heaviness" of dark borders.
+
+## Typography
+This design system utilizes **Inter** for all UI roles to leverage its exceptional legibility in data-heavy environments. The typographic scale is highly disciplined, using weight (SemiBold/700) and color (Primary vs. Secondary) rather than drastic size changes to establish hierarchy. 
+
+Label styles are set in uppercase with slight letter spacing to differentiate them from body copy at a glance. For technical or ID-based data strings, a secondary monospace font is used to ensure character distinction.
+
+## Layout & Spacing
+The layout relies on a **Fixed-Fluid Hybrid Grid**. Content is centered within a 1280px container on desktop, while internal components utilize an 8px soft-grid system for all padding and margins.
+
+- **Desktop:** 12-column grid with 24px gutters.
+- **Tablet:** 8-column grid with 20px gutters.
+- **Mobile:** 4-column grid with 16px gutters and 16px side margins.
+
+Spacing should be generous between major sections (64px+) but tight within functional groups (8px-16px) to reinforce the "organized" brand personality.
+
+## Elevation & Depth
+Elevation is communicated through **Tonal Layering** and **Ambient Shadows**. Instead of heavy borders, the design system uses subtle background shifts (White on Light Gray) to denote hierarchy.
+
+- **Level 0 (Background):** #F8FAFC.
+- **Level 1 (Cards/Sidebar):** White (#FFFFFF) with a very soft, diffused shadow: `0 2px 10px rgba(15, 23, 42, 0.04)`.
+- **Level 2 (Hover/Active):** Slightly more pronounced shadow: `0 10px 25px rgba(15, 23, 42, 0.08)`.
+- **Level 3 (Modals):** High-diffusion shadow: `0 20px 48px rgba(15, 23, 42, 0.12)`.
+
+## Shapes
+The shape language is **Soft (0.25rem base)**. This provides a modern, approachable feel while maintaining the professional rigor of straight lines. 
+
+- **Standard Elements (Buttons, Inputs):** 4px (0.25rem).
+- **Cards & Large Containers:** 8px (0.5rem).
+- **Progress Bars & Badges:** Full pill-round (999px) to contrast against the structured grid of the layout.
+
+## Components
+
+### Kanban Boards
+Columns should have a transparent background with a dashed 1px border. Task cards use the "Level 1" elevation style. Ensure a clear vertical drag-and-drop indicator using the Teal accent color.
+
+### Status Badges
+Small, low-contrast pills. For example, a "Completed" badge uses a light teal background with dark teal text. Do not use high-saturation red/green unless for critical errors/successes; stick to muted corporate tones.
+
+### Progress Bars
+Ultra-thin (4px height) tracks using a light gray background. The fill uses a Teal gradient. For high-priority projects, the track height may increase to 8px with a percentage label positioned above it.
+
+### Service Cards
+A structured header with a thin-stroke icon (24px) followed by a 3-line truncated description. The bottom of the card should contain a "metadata row" with small-caps labels for "Status," "Deadline," or "Owner."
+
+### Input Fields
+Strictly rectangular (4px radius) with a 1px border (#E2E8F0). On focus, the border changes to Primary Blue with a 2px outer glow in light teal. Icons inside inputs should be 20px with a 1.5px stroke weight.
+
+-------------------------------------
+REQUIRED OUTPUT
+-------------------------------------
+
+Create a complete, production-ready screen that includes:
+
+### 1. Global Layout
+- A centered container with max-width: 1280px
+- 24px gutters on desktop, 16px on mobile
+- Background using `background` and `surface` tokens
+- Use tonal layering for depth (Level 0–3)
+
+### 2. Header Section
+- Large headline using `headline-lg`
+- Subheader using `body-md`
+- Use primary color for emphasis
+
+### 3. Card Grid
+Create a 3-column responsive grid of cards:
+- Each card uses Level 1 elevation
+- Rounded corners according to the design system
+- Internal padding based on spacing rules
+- Title (headline-md)
+- Metadata row using label-md
+- Body text using body-sm
+
+### 4. Progress Bar Component
+Implement the ultra-thin progress bar:
+- 4px height
+- Light gray track
+- Teal gradient fill
+- Optional percentage label above
+
+### 5. Status Badge Component
+- Small pill shape (full radius)
+- Muted teal background
+- Dark teal text
+- Use label-md typography
+
+### 6. Kanban Board Section
+- 4 columns
+- Transparent background
+- Dashed 1px border
+- Cards using Level 1 elevation
+- Drag indicator using teal accent
+
+### 7. Input Field Component
+- 4px radius
+- 1px border (#E2E8F0)
+- On focus: primary blue border + light teal glow
+- Optional left icon (20px, 1.5px stroke)
+
+### 8. Responsive Behavior
+- Collapse grid to 1-column on mobile
+- Maintain spacing rules (8px internal, 64px between sections)
+
+### 9. Code Requirements
+- Use semantic HTML
+- Use Tailwind classes OR generate a custom CSS file using the design tokens
+- Keep code clean, modular, and readable
+- Include comments explaining component structure
+
+### 10. Deliverables
+Output:
+- Full HTML
+- Full CSS (or Tailwind classes)
+- Any minimal JS needed for interactions (drag/drop, hover states)
+- No placeholder lorem ipsum — use meaningful labels and sample data
+
+-------------------------------------
+GOAL
+-------------------------------------
+Produce a polished, professional, functional UI screen that visually matches the design system and demonstrates the brand personality: “The Trusted Advisor” — calm, organized, efficient, and precise.
+
