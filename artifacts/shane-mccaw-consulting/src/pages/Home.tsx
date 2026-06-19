@@ -2,39 +2,11 @@ import { Link } from "wouter";
 import { Layout } from "@/components/Layout";
 import { SEOMeta } from "@/components/SEOMeta";
 import { CTAButton } from "@/components/CTAButton";
+import { OfferCard } from "@/components/OfferCard";
 import {
-  Cloud, Bot, Shield, Zap, Server, Users,
-  Layout as LayoutIcon, Sparkles,
-  CheckCircle, ArrowRight, Star, Quote, ShieldCheck, Lock, Globe,
-  Settings, FileText, BarChart2, Award, Briefcase, Target, Code,
-  Database, Monitor, Cpu, BookOpen, MessageSquare, Calendar, Clock,
-  type LucideIcon
+  CheckCircle, ArrowRight, Quote,
 } from "lucide-react";
-import { useServices, formatPriceDisplay, type PublicService } from "@/hooks/useServices";
-
-const ICON_MAP: Record<string, LucideIcon> = {
-  Cloud, Bot, Shield, Zap, Server, Users, Layout: LayoutIcon, Sparkles,
-  ShieldCheck, Lock, Globe, Settings, FileText, BarChart2, Award,
-  Briefcase, Target, Code, Database, Monitor, Cpu, BookOpen,
-  MessageSquare, Calendar, Star, CheckCircle, Clock,
-};
-
-function resolveIcon(name: string | null, fallback: LucideIcon = Sparkles): LucideIcon {
-  if (!name) return fallback;
-  const pascal = name.split("-").map(w => w.charAt(0).toUpperCase() + w.slice(1)).join("");
-  return ICON_MAP[pascal] ?? ICON_MAP[name] ?? fallback;
-}
-
-const BADGE_COLORS: Record<string, string> = {
-  Popular: "bg-[#0078D4]/10 text-[#0078D4]",
-  New: "bg-emerald-100 text-emerald-700",
-  "Best Value": "bg-amber-100 text-amber-700",
-  Featured: "bg-purple-100 text-purple-700",
-};
-
-function badgeClass(badge: string): string {
-  return BADGE_COLORS[badge] ?? "bg-[#0078D4]/10 text-[#0078D4]";
-}
+import { useServices } from "@/hooks/useServices";
 
 const whyPoints = [
   "NASA-grade thinking from 6+ years as Lead M365 Architect — mission-critical standards applied to your business.",
@@ -187,39 +159,19 @@ export default function Home() {
           </div>
           {servicesLoading && dbServices.length === 0 ? (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {[...Array(6)].map((_, i) => <div key={i} className="h-52 rounded-xl border border-border bg-gray-100 animate-pulse" />)}
+              {[...Array(6)].map((_, i) => <div key={i} className="h-96 rounded-xl border border-border bg-gray-100 animate-pulse" />)}
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {dbServices.slice(0, 6).map((s, i) => {
-                const Icon = resolveIcon(s.iconName, Cloud);
-                return (
-                  <div
-                    key={s.slug ?? i}
-                    className="group relative bg-white border border-border rounded-xl p-7 flex flex-col hover:-translate-y-1 hover:shadow-xl hover:border-[#0078D4]/30 transition-all duration-300"
-                    data-testid={`service-card-${i}`}
-                  >
-                    {s.badge && (
-                      <span className="absolute top-4 right-4 bg-[#0078D4]/10 text-[#0078D4] text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full">
-                        {s.badge}
-                      </span>
-                    )}
-                    <div className="w-11 h-11 rounded-lg bg-[#0078D4]/10 flex items-center justify-center mb-5 flex-shrink-0">
-                      <Icon className="w-5 h-5 text-[#0078D4]" />
-                    </div>
-                    {s.tagline && <p className="text-[#0078D4] text-xs font-semibold uppercase tracking-[0.08em] mb-1.5">{s.tagline}</p>}
-                    <h3 className="text-[1.1rem] font-bold text-[#0A2540] leading-snug mb-3">{s.name}</h3>
-                    <p className="text-muted-foreground text-sm leading-relaxed flex-grow mb-6">{s.description}</p>
-                    <Link
-                      href={s.pageHref ?? "/services"}
-                      className="inline-flex items-center gap-1.5 text-[#0078D4] text-sm font-semibold hover:gap-2.5 transition-all"
-                      data-testid={`service-link-${i}`}
-                    >
-                      Learn More <ArrowRight className="w-3.5 h-3.5" />
-                    </Link>
-                  </div>
-                );
-              })}
+              {dbServices.map((s, i) => (
+                <OfferCard
+                  key={s.slug ?? i}
+                  offer={s}
+                  index={i}
+                  ctaHref={s.pageHref ?? "/services"}
+                  ctaLabel="Learn More"
+                />
+              ))}
             </div>
           )}
           <div className="text-center mt-10">
@@ -287,39 +239,19 @@ export default function Home() {
             <p className="text-muted-foreground mt-4 max-w-xl mx-auto">Fixed-price packages with clear deliverables. Get results fast without a long commitment.</p>
           </div>
           {offersLoading && dbOffers.length === 0 ? (
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-10">
-              {[...Array(3)].map((_, i) => <div key={i} className="h-48 rounded-lg border border-border bg-gray-100 animate-pulse" />)}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-10">
+              {[...Array(6)].map((_, i) => <div key={i} className="h-96 rounded-xl border border-border bg-gray-100 animate-pulse" />)}
             </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-10">
-              {dbOffers.slice(0, 3).map((offer: PublicService, i) => {
-                const Icon = resolveIcon(offer.iconName);
-                return (
-                  <div key={offer.slug ?? i} className="bg-white p-8 rounded-lg border border-border hover:shadow-lg hover:-translate-y-1 transition-all duration-300" data-testid={`micro-offer-${i}`}>
-                    <div className="flex items-start justify-between mb-4">
-                      <div className="w-11 h-11 rounded-lg bg-[#0078D4]/10 flex items-center justify-center flex-shrink-0">
-                        <Icon className="w-5 h-5 text-[#0078D4]" />
-                      </div>
-                      {offer.badge && (
-                        <span className={`text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full ${badgeClass(offer.badge)}`}>
-                          {offer.badge}
-                        </span>
-                      )}
-                    </div>
-                    <p className="text-[#0078D4] text-3xl font-extrabold mb-2">{formatPriceDisplay(offer)}</p>
-                    <h3 className="text-lg font-bold text-[#0A2540] mb-3">{offer.name}</h3>
-                    <p className="text-muted-foreground text-sm mb-6 leading-relaxed">{offer.description}</p>
-                    <CTAButton href="/book" className="w-full justify-center text-sm" data-testid={`micro-offer-cta-${i}`}>
-                      Get Started
-                    </CTAButton>
-                  </div>
-                );
-              })}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-10">
+              {dbOffers.map((offer, i) => (
+                <OfferCard key={offer.slug ?? i} offer={offer} index={i} />
+              ))}
             </div>
           )}
           <div className="text-center">
             <Link href="/micro-offers" className="text-[#0078D4] font-semibold hover:underline flex items-center justify-center gap-1" data-testid="view-all-offers">
-              View All 6 Quick Win Packages <ArrowRight className="w-4 h-4" />
+              View All Quick Win Packages <ArrowRight className="w-4 h-4" />
             </Link>
           </div>
         </div>
