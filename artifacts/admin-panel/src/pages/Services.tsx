@@ -381,10 +381,8 @@ function WorkflowBuilder({ service, onClose }: { service: Service; onClose: () =
                 <div className="ml-12 space-y-2">
                   {step.options.length === 0 && <p className="text-xs text-muted-foreground italic">No options yet.</p>}
                   {step.options.map((opt, oi) => (
-                    <div key={opt.id} className="grid grid-cols-1 sm:grid-cols-[1fr_1fr_110px_28px] gap-2 items-start">
+                    <div key={opt.id} className="grid grid-cols-1 sm:grid-cols-[1fr_110px_28px] gap-2 items-start">
                       <input type="text" placeholder="Option label" value={opt.label} onChange={e => updateOption(si, oi, "label", e.target.value)}
-                        className="border border-border rounded-lg px-3 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-[#0078D4]" />
-                      <input type="text" placeholder="Short description (optional)" value={opt.description} onChange={e => updateOption(si, oi, "description", e.target.value)}
                         className="border border-border rounded-lg px-3 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-[#0078D4]" />
                       <div className="relative">
                         <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">+$</span>
