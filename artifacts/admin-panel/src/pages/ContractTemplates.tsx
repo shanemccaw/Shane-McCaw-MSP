@@ -1,6 +1,16 @@
 import { useState, useEffect, useCallback } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 interface Service { id: number; name: string; category: string | null; }
 interface ContractTemplate {
@@ -21,6 +31,8 @@ export default function ContractTemplatesPage() {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [loadingServices, setLoadingServices] = useState(true);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   const fetchServices = useCallback(async () => {
     setLoadingServices(true);
@@ -61,6 +73,25 @@ export default function ContractTemplatesPage() {
       setTemplate(data);
       toast({ title: "Contract template saved" });
     } finally { setSaving(false); }
+  }
+
+  async function handleDelete() {
+    if (!selected) return;
+    setDeleting(true);
+    try {
+      const res = await fetchWithAuth(`/api/admin/contract-templates/${selected.id}`, { method: "DELETE" });
+      if (!res.ok) {
+        const err = await res.json() as { error?: string };
+        toast({ title: "Delete failed", description: err.error ?? "Could not delete the contract template.", variant: "destructive" });
+        return;
+      }
+      toast({ title: "Contract template deleted", description: `The template for "${selected.name}" has been removed.` });
+      setTemplate(null);
+      setBody("");
+      setConfirmDelete(false);
+    } finally {
+      setDeleting(false);
+    }
   }
 
   function formatDate(d: string | null) {
@@ -120,6 +151,15 @@ export default function ContractTemplatesPage() {
                 </div>
               </div>
               <div className="flex items-center gap-2">
+                {template && template.body && (
+                  <button
+                    onClick={() => setConfirmDelete(true)}
+                    disabled={deleting}
+                    className="px-3 py-1.5 text-xs font-medium rounded-lg border border-red-200 text-red-600 hover:bg-red-50 transition-colors disabled:opacity-50"
+                  >
+                    Delete
+                  </button>
+                )}
                 <button
                   onClick={() => setPreview(p => !p)}
                   className={`px-3 py-1.5 text-xs font-medium rounded-lg border transition-colors ${preview ? "border-[#0078D4] text-[#0078D4] bg-blue-50" : "border-gray-300 text-gray-600 hover:border-gray-400"}`}
@@ -170,6 +210,27 @@ export default function ContractTemplatesPage() {
           </div>
         )}
       </div>
+
+      <AlertDialog open={confirmDelete} onOpenChange={open => { if (!open) setConfirmDelete(false); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete contract template?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently remove the contract template for <strong>{selected?.name}</strong>. The service itself will not be affected, but any future contracts for this service will fall back to the default template. This cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={deleting}
+              onClick={e => { e.preventDefault(); void handleDelete(); }}
+              className="bg-red-600 hover:bg-red-700 text-white"
+            >
+              {deleting ? "Deleting…" : "Yes, delete template"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

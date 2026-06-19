@@ -79,4 +79,22 @@ router.put("/admin/contract-templates/:serviceId", requireAdmin, async (req: Req
   }
 });
 
+router.delete("/admin/contract-templates/:serviceId", requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const serviceId = Number(req.params.serviceId);
+    if (isNaN(serviceId)) { res.status(400).json({ error: "Invalid serviceId" }); return; }
+
+    const [deleted] = await db
+      .delete(contractTemplatesTable)
+      .where(eq(contractTemplatesTable.serviceId, serviceId))
+      .returning({ id: contractTemplatesTable.id });
+
+    if (!deleted) { res.status(404).json({ error: "No contract template found for this service" }); return; }
+    res.status(204).end();
+  } catch (err: unknown) {
+    req.log?.error(err);
+    res.status(500).json({ error: "Failed to delete contract template" });
+  }
+});
+
 export default router;
