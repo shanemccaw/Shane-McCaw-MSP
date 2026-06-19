@@ -147,7 +147,7 @@ const faqs = [
 ];
 
 function MicroOfferCard({ offer, index }: { offer: typeof microOffers[number]; index: number }) {
-  const { price } = useServicePrice(offer.slug, offer.price);
+  const { price, loading } = useServicePrice(offer.slug, offer.price);
   return (
     <div
       className="bg-white rounded-xl border border-border p-6 flex flex-col hover:border-[#0078D4]/30 hover:shadow-sm transition-all duration-200 relative"
@@ -160,7 +160,11 @@ function MicroOfferCard({ offer, index }: { offer: typeof microOffers[number]; i
       )}
       <div className="flex items-start justify-between gap-3 mb-3">
         <h3 className="font-extrabold text-[#0A2540] text-base leading-snug">{offer.name}</h3>
-        <span className="text-[#0078D4] font-extrabold text-lg flex-shrink-0">{price}</span>
+        {loading ? (
+          <span className="inline-block h-5 w-16 rounded bg-[#0078D4]/20 animate-pulse flex-shrink-0 align-middle" aria-hidden="true" />
+        ) : (
+          <span className="text-[#0078D4] font-extrabold text-lg flex-shrink-0">{price}</span>
+        )}
       </div>
       <p className="text-muted-foreground text-sm leading-relaxed flex-grow mb-4">{offer.desc}</p>
       <div className="border-t border-border pt-4 space-y-2">
@@ -185,7 +189,7 @@ function MicroOfferCard({ offer, index }: { offer: typeof microOffers[number]; i
 }
 
 function RetainerCard({ plan, index }: { plan: typeof retainers[number]; index: number }) {
-  const { price } = useServicePrice(plan.slug, plan.price);
+  const { price, loading } = useServicePrice(plan.slug, plan.price);
   return (
     <div
       className={`rounded-2xl p-8 border flex flex-col relative ${plan.highlight ? "bg-[#0A2540] border-[#0078D4]/60" : "bg-white border-border"}`}
@@ -199,7 +203,14 @@ function RetainerCard({ plan, index }: { plan: typeof retainers[number]; index: 
       <div className="mb-2">
         <h3 className={`text-lg font-extrabold mb-4 ${plan.highlight ? "text-white" : "text-[#0A2540]"}`}>{plan.name}</h3>
         <div className="flex items-baseline gap-1 mb-1">
-          <span className="text-4xl font-extrabold text-[#0078D4]">{price}</span>
+          {loading ? (
+            <span
+              className={`inline-block h-10 w-28 rounded animate-pulse align-middle ${plan.highlight ? "bg-white/20" : "bg-[#0078D4]/20"}`}
+              aria-hidden="true"
+            />
+          ) : (
+            <span className="text-4xl font-extrabold text-[#0078D4]">{price}</span>
+          )}
           <span className={`text-sm ${plan.highlight ? "text-white/50" : "text-muted-foreground"}`}>{plan.period}</span>
         </div>
         <p className={`text-sm mb-4 ${plan.highlight ? "text-[#00B4D8]" : "text-[#0078D4]"}`}>{plan.hours}/month</p>
