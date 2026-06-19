@@ -2,7 +2,6 @@ import { SEOMeta } from "@/components/SEOMeta";
 import { Link } from "wouter";
 import { Layout } from "@/components/Layout";
 import { CTAButton } from "@/components/CTAButton";
-import { ServiceCard } from "@/components/ServiceCard";
 import {
   Cloud, Bot, Layout as LayoutIcon, Zap, Shield, Server, Users, ArrowRight,
   ShieldCheck, Lock, Globe, Settings, FileText, BarChart2, Award, Sparkles,
@@ -10,7 +9,7 @@ import {
   MessageSquare, Calendar, Star, CheckCircle, Clock, type LucideIcon
 } from "lucide-react";
 import { ConsultationCTA } from "@/components/ConsultationCTA";
-import { useServices } from "@/hooks/useServices";
+import { useServices, formatPriceDisplay, type PublicService } from "@/hooks/useServices";
 
 const ICON_MAP: Record<string, LucideIcon> = {
   Cloud, Bot, Layout: LayoutIcon, Zap, Shield, Server, Users, Sparkles,
@@ -23,6 +22,150 @@ function resolveIcon(name: string | null, fallback: LucideIcon = Cloud): LucideI
   if (!name) return fallback;
   const pascal = name.split("-").map(w => w.charAt(0).toUpperCase() + w.slice(1)).join("");
   return ICON_MAP[pascal] ?? ICON_MAP[name] ?? fallback;
+}
+
+const BADGE_COLORS: Record<string, string> = {
+  Popular: "bg-[#0078D4]/10 text-[#0078D4]",
+  New: "bg-emerald-100 text-emerald-700",
+  "Best Value": "bg-amber-100 text-amber-700",
+  Featured: "bg-purple-100 text-purple-700",
+};
+
+function badgeClass(badge: string): string {
+  return BADGE_COLORS[badge] ?? "bg-[#0078D4]/10 text-[#0078D4]";
+}
+
+function ServiceDetailCard({ s, index }: { s: PublicService; index: number }) {
+  const Icon = resolveIcon(s.iconName);
+  const inclusions = s.inclusions ?? [];
+  const features = s.features ?? [];
+  const priceDisplay = formatPriceDisplay(s);
+  const deliverableLines = s.deliverables
+    ? s.deliverables.split("\n").filter(l => l.trim())
+    : [];
+
+  return (
+    <div
+      className="bg-white rounded-xl border border-border p-8 flex flex-col hover:shadow-lg hover:-translate-y-1 transition-all duration-300"
+      data-testid={`service-card-${index}`}
+    >
+      {/* Header: icon + badge */}
+      <div className="flex items-start justify-between mb-4">
+        <div className="w-11 h-11 rounded-lg bg-[#0078D4]/10 flex items-center justify-center flex-shrink-0">
+          <Icon className="w-5 h-5 text-[#0078D4]" />
+        </div>
+        {s.badge && (
+          <span className={`text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full ${badgeClass(s.badge)}`}>
+            {s.badge}
+          </span>
+        )}
+      </div>
+
+      {/* Category */}
+      {s.category && (
+        <p className="text-xs text-muted-foreground font-medium uppercase tracking-wider mb-2">{s.category}</p>
+      )}
+
+      {/* Price */}
+      {priceDisplay !== "Contact for pricing" && (
+        <p className="text-[#0078D4] text-2xl font-extrabold mb-2">{priceDisplay}</p>
+      )}
+
+      {/* Name */}
+      <h3 className="text-xl font-bold text-[#0A2540] leading-snug mb-2">{s.name}</h3>
+
+      {/* Tagline */}
+      {s.tagline && (
+        <p className="text-sm italic text-muted-foreground mb-3">{s.tagline}</p>
+      )}
+
+      {/* Description */}
+      {s.description && (
+        <p className="text-sm text-muted-foreground leading-relaxed mb-4">{s.description}</p>
+      )}
+
+      {/* Meta chips */}
+      {(s.turnaround || s.billingType) && (
+        <div className="flex flex-wrap gap-2 mb-4">
+          {s.turnaround && (
+            <span className="inline-flex items-center gap-1 text-xs font-medium bg-[#F7F9FC] border border-border rounded-full px-2.5 py-1 text-muted-foreground">
+              <Clock className="w-3 h-3" />{s.turnaround}
+            </span>
+          )}
+          <span className="inline-flex items-center gap-1 text-xs font-medium bg-[#F7F9FC] border border-border rounded-full px-2.5 py-1 text-muted-foreground">
+            {s.billingType === "recurring_monthly" ? "Monthly retainer" : "One-time"}
+          </span>
+          {s.hoursPerMonth && (
+            <span className="inline-flex items-center gap-1 text-xs font-medium bg-[#F7F9FC] border border-border rounded-full px-2.5 py-1 text-muted-foreground">
+              {s.hoursPerMonth}/mo
+            </span>
+          )}
+        </div>
+      )}
+
+      {/* Target audience */}
+      {s.targetAudience && (
+        <p className="text-sm text-muted-foreground mb-4">
+          <span className="font-semibold text-[#0A2540]">Best for:</span> {s.targetAudience}
+        </p>
+      )}
+
+      {/* Deliverables */}
+      {deliverableLines.length > 0 && (
+        <div className="mb-4">
+          <p className="text-sm font-semibold text-[#0A2540] mb-1.5">Deliverables:</p>
+          <ul className="space-y-1">
+            {deliverableLines.map((line, i) => (
+              <li key={i} className="flex items-start gap-2 text-sm text-muted-foreground">
+                <span className="mt-1.5 w-1.5 h-1.5 rounded-full bg-[#0078D4] flex-shrink-0" />
+                {line.trim()}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {/* Inclusions */}
+      {inclusions.length > 0 && (
+        <div className="border-t border-border pt-4 mb-4">
+          <p className="text-sm font-semibold text-[#0A2540] mb-3">What's Included:</p>
+          <ul className="space-y-2">
+            {inclusions.map((item, i) => (
+              <li key={i} className="flex items-start gap-2 text-sm text-muted-foreground">
+                <CheckCircle className="w-4 h-4 text-[#0078D4] flex-shrink-0 mt-0.5" />
+                {item}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {/* Features */}
+      {features.length > 0 && (
+        <div className="mb-4">
+          <ul className="space-y-1">
+            {features.map((f, i) => (
+              <li key={i} className="flex items-start gap-2 text-sm text-muted-foreground">
+                <span className="mt-1.5 w-1.5 h-1.5 rounded-full bg-[#00B4D8] flex-shrink-0" />
+                {f}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {/* CTA */}
+      <div className="mt-auto pt-4">
+        <Link
+          href={s.pageHref ?? "/book"}
+          className="inline-flex items-center gap-1.5 text-[#0078D4] text-sm font-semibold hover:gap-2.5 transition-all"
+          data-testid={`service-link-${index}`}
+        >
+          Learn More <ArrowRight className="w-3.5 h-3.5" />
+        </Link>
+      </div>
+    </div>
+  );
 }
 
 export default function Services() {
@@ -71,21 +214,13 @@ export default function Services() {
                 <div key={i} className="bg-white rounded-xl border border-border p-8 h-52 animate-pulse" />
               ))}
             </div>
+          ) : services.length === 0 ? (
+            <p className="text-center text-muted-foreground text-sm py-12">No services published yet.</p>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {services.map((s, i) => {
-                const Icon = resolveIcon(s.iconName);
-                return (
-                  <ServiceCard
-                    key={s.slug ?? i}
-                    icon={Icon}
-                    title={s.name}
-                    description={s.description ?? ""}
-                    href={s.pageHref ?? "/services"}
-                    data-testid={`service-card-${i}`}
-                  />
-                );
-              })}
+              {services.map((s, i) => (
+                <ServiceDetailCard key={s.slug ?? i} s={s} index={i} />
+              ))}
             </div>
           )}
         </div>
