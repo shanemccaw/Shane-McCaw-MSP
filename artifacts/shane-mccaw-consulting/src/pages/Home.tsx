@@ -4,7 +4,7 @@ import { SEOMeta } from "@/components/SEOMeta";
 import { CTAButton } from "@/components/CTAButton";
 import { OfferCard } from "@/components/OfferCard";
 import {
-  CheckCircle, ArrowRight, Quote,
+  CheckCircle, ArrowRight, Shield, Building2, Rocket, Briefcase,
 } from "lucide-react";
 import { useServices } from "@/hooks/useServices";
 
@@ -15,27 +15,55 @@ const whyPoints = [
   "Forum of Innovation Award winner, 20+ former Microsoft certifications, ex-Microsoft engineer, founder of McCawSoft.",
 ];
 
-const testimonials = [
+const nasaCompliance = [
+  { label: "FedRAMP", desc: "Federal Risk and Authorization Management Program — cloud authorization at the highest level." },
+  { label: "FISMA", desc: "Federal Information Security Management Act — data security controls for government-level risk." },
+  { label: "ITAR", desc: "International Traffic in Arms Regulations — export-controlled data handling across M365 tenants." },
+  { label: "GCC / GCC High", desc: "Government Community Cloud configurations for regulated and defense-adjacent workloads." },
+  { label: "Multi-Stakeholder Governance", desc: "Cross-agency, multi-department policy design for complex organizational hierarchies." },
+  { label: "High-Risk Compliance Environments", desc: "Architecture designed for environments where misconfiguration carries real legal and mission consequences." },
+];
+
+const whoIServe = [
   {
-    quote: "Shane's expertise transformed our M365 environment completely. We went from a chaotic, misconfigured tenant to a secure, well-governed platform in weeks. His NASA-grade approach gave us confidence we hadn't felt before.",
-    name: "Jennifer M.",
-    title: "Director of IT",
-    company: "Regional Healthcare Network",
-    placeholder: true,
+    icon: Building2,
+    title: "Mid-Market Enterprises",
+    subtitle: "200–2,000 Employees",
+    painPoints: [
+      "M365 sprawl from years of ungoverned growth",
+      "Governance gaps blocking Copilot adoption",
+      "Copilot readiness blocked by data hygiene issues",
+      "Shadow IT undermining security posture",
+      "Failed or stalled migration projects",
+    ],
+    value: "You get NASA-level architecture discipline applied to your tenant — without hiring a full-time team.",
+    color: "#0078D4",
   },
   {
-    quote: "Our Copilot rollout was stalled for months. Shane came in, assessed our data governance gaps, fixed them, and had us productively using AI within three weeks. ROI was immediate.",
-    name: "David K.",
-    title: "CTO",
-    company: "Financial Services Firm",
-    placeholder: true,
+    icon: Shield,
+    title: "Regulated Industries",
+    subtitle: "Healthcare · Legal · Financial · Gov Contractors",
+    painPoints: [
+      "HIPAA compliance for healthcare orgs on M365",
+      "Data residency and sovereignty for legal firms",
+      "SOC 2 readiness for financial services",
+      "CMMC, FedRAMP, and ITAR for government contractors",
+    ],
+    value: "Your compliance requirements aren't a constraint — they're Shane's native environment.",
+    color: "#00B4D8",
   },
   {
-    quote: "The SharePoint intranet Shane built for us is the first one our employees actually use. Clean architecture, fast performance, and a governance model that keeps it organized as we grow.",
-    name: "Sandra R.",
-    title: "VP of Operations",
-    company: "National Nonprofit Organization",
-    placeholder: true,
+    icon: Rocket,
+    title: "Startups & Scale-Ups",
+    subtitle: "Rapid Growth · First-Time Architecture",
+    painPoints: [
+      "Rapid headcount growth outpacing initial M365 setup",
+      "Poor tenant foundation from early configuration shortcuts",
+      "Audit preparation with no existing governance framework",
+      "First-time enterprise architecture needs",
+    ],
+    value: "Build it right from the start — or fix it before scale makes it exponentially harder.",
+    color: "#0A2540",
   },
 ];
 
@@ -73,6 +101,7 @@ export default function Home() {
           }
         }}
       />
+
       {/* HERO */}
       <section className="relative min-h-screen flex items-center justify-center bg-[#0A2540] overflow-hidden">
         {/* Grid overlay */}
@@ -100,11 +129,24 @@ export default function Home() {
               Current Microsoft 365 Architect & Copilot SME — NASA
             </p>
           </div>
+
+          {/* Credential labels */}
+          <div className="flex flex-wrap items-center justify-center gap-3 mb-6">
+            <span className="inline-flex items-center gap-2 bg-white/10 border border-white/20 rounded px-4 py-1.5 text-white/90 text-sm font-semibold">
+              <Briefcase className="w-3.5 h-3.5 text-[#00B4D8] flex-shrink-0" />
+              Lead M365 Architect at NASA
+            </span>
+            <span className="inline-flex items-center gap-2 bg-white/10 border border-white/20 rounded px-4 py-1.5 text-white/90 text-sm font-semibold">
+              <CheckCircle className="w-3.5 h-3.5 text-[#00B4D8] flex-shrink-0" />
+              30 Years Microsoft Ecosystem Experience
+            </span>
+          </div>
+
           <h1 className="text-4xl md:text-5xl lg:text-[3.75rem] font-extrabold text-white leading-[1.1] mb-7 max-w-5xl mx-auto">
-            Fractional Microsoft 365 Architecture — Built to NASA Standards. Delivered to Your Organization.
+            The Architect Who Built at NASA Scale — Available to You.
           </h1>
           <p className="text-lg md:text-xl text-white/75 max-w-3xl mx-auto mb-12 leading-relaxed">
-            Shane McCaw is the serving Microsoft 365 Architect and Copilot AI Subject Matter Expert at NASA — and he brings that same mission-critical discipline to your cloud modernization, governance, and Copilot readiness engagement. No generalists. No offshore handoffs. Senior Microsoft expertise, available to your organization on a fractional basis.
+            Shane McCaw brings the same mission-critical Microsoft 365 discipline he built at NASA to regulated industries and mid-market companies. No generalists. No offshore handoffs. Senior Microsoft expertise, available to your organization on a fractional basis.
           </p>
           <CTAButton href="/book" className="text-base px-10 py-4 shadow-lg shadow-[#0078D4]/30" data-testid="hero-cta-primary">
             Book a Consultation
@@ -125,6 +167,111 @@ export default function Home() {
           </div>
         </div>
         <div className="absolute bottom-0 left-0 right-0 h-16 bg-gradient-to-t from-[#F7F9FC] to-transparent" />
+      </section>
+
+      {/* NASA COMPLIANCE CREDENTIALS */}
+      <section className="bg-[#F7F9FC] py-20" data-testid="nasa-compliance-section">
+        <div className="max-w-[1200px] mx-auto px-6">
+          <div className="text-center mb-14">
+            <p className="text-[#0078D4] text-sm font-semibold uppercase tracking-[0.1em] mb-3">NASA Compliance Credentials</p>
+            <h2 className="text-3xl md:text-4xl font-extrabold text-[#0A2540]">Built on the Standards That Matter Most</h2>
+            <p className="text-muted-foreground mt-4 max-w-2xl mx-auto leading-relaxed">
+              Shane's tenure as Lead M365 Architect at NASA required mastery of the most demanding compliance frameworks in existence. That expertise now benefits mid-market companies, regulated industries, government contractors, and startups scaling into their first compliance obligations.
+            </p>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+            {nasaCompliance.map((item, i) => (
+              <div key={i} className="bg-white rounded-lg border border-border p-6 flex items-start gap-4">
+                <div className="flex-shrink-0 w-10 h-10 rounded-lg bg-[#0078D4]/10 flex items-center justify-center">
+                  <Shield className="w-5 h-5 text-[#0078D4]" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-[#0A2540] mb-1">{item.label}</h3>
+                  <p className="text-muted-foreground text-sm leading-relaxed">{item.desc}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* POSITIONING STATEMENT CALLOUT */}
+      <section className="bg-[#0078D4] py-16" data-testid="positioning-callout">
+        <div className="max-w-[1200px] mx-auto px-6 text-center">
+          <p className="text-white/80 text-sm font-semibold uppercase tracking-[0.15em] mb-4">Core Positioning</p>
+          <blockquote className="text-2xl md:text-3xl lg:text-4xl font-extrabold text-white leading-tight max-w-4xl mx-auto">
+            "The Architect Who Built at NASA Scale — Available to You."
+          </blockquote>
+        </div>
+      </section>
+
+      {/* ELEVATOR PITCH */}
+      <section className="bg-white py-20" data-testid="elevator-pitch-section">
+        <div className="max-w-[860px] mx-auto px-6 text-center">
+          <p className="text-[#0078D4] text-sm font-semibold uppercase tracking-[0.1em] mb-3">Why Shane</p>
+          <h2 className="text-3xl md:text-4xl font-extrabold text-[#0A2540] mb-8">
+            30 Years. One Architect. Your Organization.
+          </h2>
+          <div className="text-lg text-foreground leading-relaxed space-y-4 text-left md:text-center">
+            <p>
+              Shane McCaw has spent three decades inside the Microsoft ecosystem — as an engineer, director, founder, and now Lead M365 Architect at NASA — building the deep technical fluency that most consultants simply don't have.
+            </p>
+            <p>
+              For mid-market companies and regulated-industry organizations, that means access to an architect who has designed governance frameworks, led Copilot rollouts, and navigated the most complex compliance environments in the world — on a fractional basis, without the cost of a full-time hire.
+            </p>
+            <p>
+              If Microsoft 365 is holding your business back, Shane can fix it. Let's connect.
+            </p>
+          </div>
+          <div className="mt-10">
+            <CTAButton href="/about" className="text-base px-8 py-3.5" data-testid="pitch-cta">
+              Learn More About Shane
+            </CTAButton>
+          </div>
+        </div>
+      </section>
+
+      {/* WHO I SERVE */}
+      <section className="bg-[#F7F9FC] py-20" data-testid="who-i-serve-section">
+        <div className="max-w-[1200px] mx-auto px-6">
+          <div className="text-center mb-14">
+            <p className="text-[#0078D4] text-sm font-semibold uppercase tracking-[0.1em] mb-3">Ideal Clients</p>
+            <h2 className="text-3xl md:text-4xl font-extrabold text-[#0A2540]">Who I Serve</h2>
+            <p className="text-muted-foreground mt-4 max-w-2xl mx-auto leading-relaxed">
+              Shane works best with organizations that have real complexity — and the ambition to fix it properly.
+            </p>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            {whoIServe.map((segment, i) => {
+              const Icon = segment.icon;
+              return (
+                <div key={i} className="bg-white rounded-xl border border-border p-8 flex flex-col" data-testid={`segment-${i}`}>
+                  <div className="flex items-center gap-3 mb-2">
+                    <div className="w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0" style={{ backgroundColor: `${segment.color}18` }}>
+                      <Icon className="w-5 h-5" style={{ color: segment.color }} />
+                    </div>
+                    <div>
+                      <h3 className="font-extrabold text-[#0A2540] text-lg leading-tight">{segment.title}</h3>
+                      <p className="text-xs text-muted-foreground font-medium mt-0.5">{segment.subtitle}</p>
+                    </div>
+                  </div>
+                  <div className="w-12 h-0.5 mt-4 mb-5 rounded-full" style={{ backgroundColor: segment.color }} />
+                  <ul className="space-y-2.5 flex-1 mb-6">
+                    {segment.painPoints.map((point, j) => (
+                      <li key={j} className="flex items-start gap-2.5 text-sm text-foreground leading-snug">
+                        <span className="w-1.5 h-1.5 rounded-full mt-1.5 flex-shrink-0" style={{ backgroundColor: segment.color }} />
+                        {point}
+                      </li>
+                    ))}
+                  </ul>
+                  <div className="border-t border-border pt-5">
+                    <p className="text-sm font-semibold text-[#0A2540] leading-snug italic">"{segment.value}"</p>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
       </section>
 
       {/* CREDIBILITY BAR */}
@@ -260,26 +407,14 @@ export default function Home() {
         </div>
       </section>
 
-      {/* TESTIMONIALS */}
-      <section className="bg-white py-20" data-testid="testimonials-section">
-        <div className="max-w-[1200px] mx-auto px-6">
-          <div className="text-center mb-14">
-            <p className="text-[#0078D4] text-sm font-semibold uppercase tracking-[0.1em] mb-3">Client Feedback</p>
-            <h2 className="text-3xl md:text-4xl font-extrabold text-[#0A2540]">What Clients Say</h2>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {testimonials.map((t, i) => (
-              <div key={i} className="bg-[#F7F9FC] p-8 rounded-lg border-l-4 border-[#0078D4]" data-testid={`testimonial-${i}`}>
-                <Quote className="w-8 h-8 text-[#0078D4]/30 mb-4" />
-                <p className="text-foreground italic leading-relaxed mb-6">"{t.quote}"</p>
-                <div>
-                  <p className="font-semibold text-[#0A2540]">{t.name}</p>
-                  <p className="text-muted-foreground text-sm">{t.title}, {t.company}</p>
-                  <span className="inline-block mt-2 text-xs bg-[#0078D4]/10 text-[#0078D4] px-2 py-0.5 rounded font-medium">PLACEHOLDER</span>
-                </div>
-              </div>
-            ))}
-          </div>
+      {/* CASE STUDIES COMING SOON */}
+      <section className="bg-[#F7F9FC] py-20" data-testid="case-studies-section">
+        <div className="max-w-[1200px] mx-auto px-6 text-center">
+          <p className="text-[#0078D4] text-sm font-semibold uppercase tracking-[0.1em] mb-3">Results</p>
+          <h2 className="text-3xl md:text-4xl font-extrabold text-[#0A2540] mb-4">Case Studies Coming Soon</h2>
+          <p className="text-muted-foreground max-w-xl mx-auto leading-relaxed">
+            Real client outcomes — documented engagements with measurable results — will be published here. Check back soon.
+          </p>
         </div>
       </section>
 
