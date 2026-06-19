@@ -4,7 +4,7 @@ import { Layout } from "@/components/Layout";
 import { CTAButton } from "@/components/CTAButton";
 import { ConsultationCTA } from "@/components/ConsultationCTA";
 import { CheckCircle, ChevronDown, Zap, FolderOpen, Calendar, ArrowRight } from "lucide-react";
-import { useServices, formatPrice, type PublicService } from "@/hooks/useServices";
+import { useServices, formatPriceDisplay, type PublicService } from "@/hooks/useServices";
 
 const faqs = [
   {
@@ -38,7 +38,7 @@ const faqs = [
 ];
 
 function MicroOfferCard({ offer, index }: { offer: PublicService; index: number }) {
-  const price = formatPrice(offer.price) ?? offer.price ?? "$?";
+  const price = formatPriceDisplay(offer);
   return (
     <div
       className="bg-white rounded-xl border border-border p-6 flex flex-col hover:border-[#0078D4]/30 hover:shadow-sm transition-all duration-200 relative"
@@ -53,8 +53,43 @@ function MicroOfferCard({ offer, index }: { offer: PublicService; index: number 
         <h3 className="font-extrabold text-[#0A2540] text-base leading-snug">{offer.name}</h3>
         <span className="text-[#0078D4] font-extrabold text-lg flex-shrink-0">{price}</span>
       </div>
-      <p className="text-muted-foreground text-sm leading-relaxed flex-grow mb-4">{offer.description}</p>
-      <div className="border-t border-border pt-4 space-y-2">
+      {offer.tagline && (
+        <p className="text-[#0078D4] text-xs font-semibold mb-1">{offer.tagline}</p>
+      )}
+      <p className="text-muted-foreground text-sm leading-relaxed mb-4">{offer.description}</p>
+      {offer.targetAudience && (
+        <div className="mb-3">
+          <p className="text-xs font-semibold text-[#0A2540] uppercase tracking-wide mb-1">Who it&apos;s for</p>
+          <p className="text-xs text-muted-foreground">{offer.targetAudience}</p>
+        </div>
+      )}
+      {offer.inclusions && offer.inclusions.length > 0 && (
+        <div className="mb-3">
+          <p className="text-xs font-semibold text-[#0A2540] uppercase tracking-wide mb-1">What&apos;s included</p>
+          <ul className="space-y-1">
+            {offer.inclusions.map((item, i) => (
+              <li key={i} className="flex items-start gap-2 text-xs text-muted-foreground">
+                <CheckCircle className="w-3.5 h-3.5 text-[#0078D4] flex-shrink-0 mt-0.5" />
+                <span>{item}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {offer.features && offer.features.length > 0 && (
+        <div className="mb-3">
+          <p className="text-xs font-semibold text-[#0A2540] uppercase tracking-wide mb-1">Features</p>
+          <ul className="space-y-1">
+            {offer.features.map((item, i) => (
+              <li key={i} className="flex items-start gap-2 text-xs text-muted-foreground">
+                <CheckCircle className="w-3.5 h-3.5 text-[#0078D4] flex-shrink-0 mt-0.5" />
+                <span>{item}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+      <div className="border-t border-border pt-4 space-y-2 mt-auto">
         {offer.deliverables && (
           <div className="flex items-center gap-2 text-xs">
             <CheckCircle className="w-3.5 h-3.5 text-[#0078D4] flex-shrink-0" />
@@ -80,40 +115,74 @@ function MicroOfferCard({ offer, index }: { offer: PublicService; index: number 
 }
 
 function RetainerCard({ plan, index }: { plan: PublicService; index: number }) {
-  const price = formatPrice(plan.price) ?? plan.price ?? "$?";
+  const price = formatPriceDisplay(plan);
   const features = plan.features ?? [];
+  const hl = plan.highlighted;
   return (
     <div
-      className={`rounded-2xl p-8 border flex flex-col relative ${plan.highlighted ? "bg-[#0A2540] border-[#0078D4]/60" : "bg-white border-border"}`}
+      className={`rounded-2xl p-8 border flex flex-col relative ${hl ? "bg-[#0A2540] border-[#0078D4]/60" : "bg-white border-border"}`}
       data-testid={`retainer-${index}`}
     >
-      {plan.highlighted && (
+      {hl && (
         <div className="absolute -top-4 left-1/2 -translate-x-1/2 bg-[#0078D4] text-white text-xs font-bold px-5 py-1.5 rounded-full uppercase tracking-wide whitespace-nowrap">
           Most Popular
         </div>
       )}
       <div className="mb-2">
-        <h3 className={`text-lg font-extrabold mb-4 ${plan.highlighted ? "text-white" : "text-[#0A2540]"}`}>{plan.name}</h3>
+        <h3 className={`text-lg font-extrabold mb-4 ${hl ? "text-white" : "text-[#0A2540]"}`}>{plan.name}</h3>
         <div className="flex items-baseline gap-1 mb-1">
           <span className="text-4xl font-extrabold text-[#0078D4]">{price}</span>
-          <span className={`text-sm ${plan.highlighted ? "text-white/50" : "text-muted-foreground"}`}>/month</span>
+          <span className={`text-sm ${hl ? "text-white/50" : "text-muted-foreground"}`}>/month</span>
         </div>
         {plan.hoursPerMonth && (
-          <p className={`text-sm mb-4 ${plan.highlighted ? "text-[#00B4D8]" : "text-[#0078D4]"}`}>{plan.hoursPerMonth}/month</p>
+          <p className={`text-sm mb-4 ${hl ? "text-[#00B4D8]" : "text-[#0078D4]"}`}>{plan.hoursPerMonth}/month</p>
         )}
-        <p className={`text-xs leading-relaxed mb-6 ${plan.highlighted ? "text-white/60" : "text-muted-foreground"}`}>{plan.tagline ?? plan.description}</p>
+        <p className={`text-xs leading-relaxed mb-6 ${hl ? "text-white/60" : "text-muted-foreground"}`}>{plan.tagline ?? plan.description}</p>
       </div>
-      <ul className="space-y-3 flex-grow mb-8">
+      <ul className="space-y-3 mb-6">
         {features.map((f, j) => (
           <li key={j} className="flex items-start gap-2.5" data-testid={`retainer-${index}-feature-${j}`}>
             <CheckCircle className="w-4 h-4 text-[#0078D4] flex-shrink-0 mt-0.5" />
-            <span className={`text-sm ${plan.highlighted ? "text-white/80" : "text-foreground"}`}>{f}</span>
+            <span className={`text-sm ${hl ? "text-white/80" : "text-foreground"}`}>{f}</span>
           </li>
         ))}
       </ul>
-      <CTAButton href="/book" className="w-full justify-center text-sm" data-testid={`retainer-cta-${index}`}>
-        Start a Retainer
-      </CTAButton>
+      {plan.targetAudience && (
+        <div className="mb-4">
+          <p className={`text-xs font-semibold uppercase tracking-wide mb-1 ${hl ? "text-white/50" : "text-[#0A2540]"}`}>Who it&apos;s for</p>
+          <p className={`text-xs ${hl ? "text-white/60" : "text-muted-foreground"}`}>{plan.targetAudience}</p>
+        </div>
+      )}
+      {plan.inclusions && plan.inclusions.length > 0 && (
+        <div className="mb-4">
+          <p className={`text-xs font-semibold uppercase tracking-wide mb-2 ${hl ? "text-white/50" : "text-[#0A2540]"}`}>Also included</p>
+          <ul className="space-y-1.5">
+            {plan.inclusions.map((item, i) => (
+              <li key={i} className="flex items-start gap-2 text-xs">
+                <CheckCircle className="w-3.5 h-3.5 text-[#0078D4] flex-shrink-0 mt-0.5" />
+                <span className={hl ? "text-white/70" : "text-muted-foreground"}>{item}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {plan.deliverables && (
+        <div className="mb-3">
+          <p className={`text-xs font-semibold uppercase tracking-wide mb-1 ${hl ? "text-white/50" : "text-[#0A2540]"}`}>Deliverable</p>
+          <p className={`text-xs ${hl ? "text-white/60" : "text-muted-foreground"}`}>{plan.deliverables}</p>
+        </div>
+      )}
+      {plan.turnaround && (
+        <div className="mb-4">
+          <p className={`text-xs font-semibold uppercase tracking-wide mb-1 ${hl ? "text-white/50" : "text-[#0A2540]"}`}>Turnaround</p>
+          <p className={`text-xs ${hl ? "text-white/60" : "text-muted-foreground"}`}>{plan.turnaround}</p>
+        </div>
+      )}
+      <div className="mt-auto">
+        <CTAButton href="/book" className="w-full justify-center text-sm" data-testid={`retainer-cta-${index}`}>
+          Start a Retainer
+        </CTAButton>
+      </div>
     </div>
   );
 }
