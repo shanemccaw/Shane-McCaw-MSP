@@ -5,6 +5,7 @@ import { Layout } from "@/components/Layout";
 import { CTAButton } from "@/components/CTAButton";
 import { ConsultationCTA } from "@/components/ConsultationCTA";
 import { Download, ArrowRight } from "lucide-react";
+import { FaLinkedin, FaXTwitter } from "react-icons/fa6";
 import { articles } from "@/data/articles";
 
 const categories = ["All", "Copilot AI Tips", "M365 Best Practices", "Power Platform How-Tos", "Governance & Compliance", "Digital Transformation"];
@@ -119,13 +120,37 @@ export default function Resources() {
                   <p className="text-muted-foreground text-sm leading-relaxed mb-6">{post.summary}</p>
                   <div className="flex items-center justify-between">
                     <p className="text-muted-foreground text-xs">{post.date}</p>
-                    <Link
-                      href={`/resources/${post.slug}`}
-                      className="text-[#0078D4] text-sm font-semibold hover:underline flex items-center gap-1"
-                      data-testid={`read-more-${i}`}
-                    >
-                      Read More <ArrowRight className="w-3 h-3" />
-                    </Link>
+                    <div className="flex items-center gap-3">
+                      <a
+                        href={`https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(`${window.location.origin}/resources/${post.slug}`)}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        aria-label={`Share "${post.title}" on LinkedIn`}
+                        className="text-muted-foreground hover:text-[#0A66C2] transition-colors"
+                        data-testid={`share-linkedin-${i}`}
+                        onClick={e => e.stopPropagation()}
+                      >
+                        <FaLinkedin className="w-4 h-4" />
+                      </a>
+                      <a
+                        href={`https://twitter.com/intent/tweet?text=${encodeURIComponent(post.title)}&url=${encodeURIComponent(`${window.location.origin}/resources/${post.slug}`)}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        aria-label={`Share "${post.title}" on X`}
+                        className="text-muted-foreground hover:text-foreground transition-colors"
+                        data-testid={`share-x-${i}`}
+                        onClick={e => e.stopPropagation()}
+                      >
+                        <FaXTwitter className="w-4 h-4" />
+                      </a>
+                      <Link
+                        href={`/resources/${post.slug}`}
+                        className="text-[#0078D4] text-sm font-semibold hover:underline flex items-center gap-1"
+                        data-testid={`read-more-${i}`}
+                      >
+                        Read More <ArrowRight className="w-3 h-3" />
+                      </Link>
+                    </div>
                   </div>
                 </div>
               </article>
