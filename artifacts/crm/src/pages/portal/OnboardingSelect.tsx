@@ -74,7 +74,6 @@ export default function OnboardingSelect() {
   // Wizard state
   const [wizardQueue, setWizardQueue] = useState<Service[]>([]);
   const [wizardIndex, setWizardIndex] = useState(0);
-  const [wizardPrices, setWizardPrices] = useState<Record<number, number>>({});
 
   useEffect(() => {
     fetch("/api/portal/onboarding/services")
@@ -131,7 +130,6 @@ export default function OnboardingSelect() {
       sessionStorage.removeItem("wizardSelections");
       setWizardQueue(needsWizard);
       setWizardIndex(0);
-      setWizardPrices({});
     } else {
       navigateToContract();
     }
@@ -155,7 +153,6 @@ export default function OnboardingSelect() {
   const handleWizardCancel = () => {
     setWizardQueue([]);
     setWizardIndex(0);
-    setWizardPrices({});
   };
 
   const selectedServices = services.filter(s => selectedIds.has(s.id));

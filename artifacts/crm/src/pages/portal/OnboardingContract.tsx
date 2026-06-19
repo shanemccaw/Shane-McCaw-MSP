@@ -10,6 +10,7 @@ interface Service {
   description: string | null;
   price: string | null;
   basePrice: string | null;
+  maxPrice: string | null;
   turnaround: string | null;
   deliverables: string | null;
   billingType: "one_time" | "recurring_monthly";
@@ -37,7 +38,12 @@ function computeWizardDisplayPrice(svc: Service, sels: WizardSelection[]): numbe
   if (!svc.basePrice || sels.length === 0) return null;
   const base = parseFloat(svc.basePrice);
   const adjustments = sels.reduce((sum, s) => sum + s.priceAdjustment, 0);
-  return Math.round((base + adjustments) * 100) / 100;
+  let total = Math.round((base + adjustments) * 100) / 100;
+  if (svc.maxPrice) {
+    const max = parseFloat(svc.maxPrice);
+    total = Math.min(total, max);
+  }
+  return total;
 }
 
 function buildContractHtml(

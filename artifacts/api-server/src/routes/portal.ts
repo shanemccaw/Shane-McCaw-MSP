@@ -476,10 +476,11 @@ interface ContractPdfOptions {
   signedAt: Date;
   signatureDataUrl?: string;
   contractTemplateBody?: string; // When provided, replaces hardcoded sections with admin-authored content
+  selectionsSummary?: string;    // Plain-text wizard selection summary, injected after price row
 }
 
 async function generateContractPdf(opts: ContractPdfOptions): Promise<string> {
-  const { contractId, signerName, serviceName, servicePrice, serviceDeliverables, serviceTurnaround, signedAt, signatureDataUrl, contractTemplateBody } = opts;
+  const { contractId, signerName, serviceName, servicePrice, serviceDeliverables, serviceTurnaround, signedAt, signatureDataUrl, contractTemplateBody, selectionsSummary } = opts;
 
   const pdfDoc = await PDFDocument.create();
   const helveticaBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
@@ -536,6 +537,20 @@ async function generateContractPdf(opts: ContractPdfOptions): Promise<string> {
   y -= 10;
   page1.drawLine({ start: { x: margin, y }, end: { x: 535, y }, thickness: 0.5, color: rgb(0.85, 0.85, 0.85) });
   y -= 18;
+
+  // ── Wizard selections summary (if any) ────────────────────────────────────
+  if (selectionsSummary) {
+    drawText(page1, "Customisation Selections", margin, y, { font: helveticaBold, size: 10, color: navy });
+    y -= 14;
+    for (const line of selectionsSummary.split("\n").filter(l => l.trim() !== "Customisation selections:")) {
+      if (y < 80) break;
+      drawText(page1, line, margin + 4, y, { size: 9, color: grey });
+      y -= 13;
+    }
+    y -= 8;
+    page1.drawLine({ start: { x: margin, y }, end: { x: 535, y }, thickness: 0.5, color: rgb(0.85, 0.85, 0.85) });
+    y -= 18;
+  }
 
   if (contractTemplateBody) {
     // Render admin-authored contract body (variable substitution already applied by caller)
@@ -1642,7 +1657,50 @@ router.put("/admin/services/:id/workflow", requireAdmin, async (req: Request, re
   const id = parseInt(String(req.params.id ?? ""), 10);
   if (isNaN(id)) { res.status(400).json({ error: "Invalid ID" }); return; }
   const { workflow } = req.body as { workflow: unknown };
-  if (!Array.isArray(workflow)) { res.status(400).json({ error: "workflow must be an array" }); return; }
+  if (!Array.isArray(workflow)) { res.status(400).json({ error: "workflow must be a non-empty array of steps" }); return; }
+
+  // Validate each step and its options
+  const stepIds = new Set<string>();
+  for (let si = 0; si < workflow.length; si++) {
+    const step = workflow[si] as Record<string, unknown>;
+    if (typeof step !== "object" || step === null) {
+      res.status(400).json({ error: `step[${si}] must be an object` }); return;
+    }
+    if (typeof step.id !== "string" || step.id.trim() === "") {
+      res.status(400).json({ error: `step[${si}].id must be a non-empty string` }); return;
+    }
+    if (stepIds.has(step.id)) {
+      res.status(400).json({ error: `duplicate step id "${step.id}"` }); return;
+    }
+    stepIds.add(step.id);
+    if (typeof step.title !== "string" || step.title.trim() === "") {
+      res.status(400).json({ error: `step[${si}].title must be a non-empty string` }); return;
+    }
+    if (!Array.isArray(step.options) || step.options.length === 0) {
+      res.status(400).json({ error: `step[${si}].options must be a non-empty array` }); return;
+    }
+    const optionIds = new Set<string>();
+    for (let oi = 0; oi < step.options.length; oi++) {
+      const opt = step.options[oi] as Record<string, unknown>;
+      if (typeof opt !== "object" || opt === null) {
+        res.status(400).json({ error: `step[${si}].options[${oi}] must be an object` }); return;
+      }
+      if (typeof opt.id !== "string" || opt.id.trim() === "") {
+        res.status(400).json({ error: `step[${si}].options[${oi}].id must be a non-empty string` }); return;
+      }
+      if (optionIds.has(opt.id)) {
+        res.status(400).json({ error: `step[${si}] has duplicate option id "${opt.id}"` }); return;
+      }
+      optionIds.add(opt.id);
+      if (typeof opt.label !== "string" || opt.label.trim() === "") {
+        res.status(400).json({ error: `step[${si}].options[${oi}].label must be a non-empty string` }); return;
+      }
+      if (typeof opt.priceAdjustment !== "number" || !isFinite(opt.priceAdjustment)) {
+        res.status(400).json({ error: `step[${si}].options[${oi}].priceAdjustment must be a finite number` }); return;
+      }
+    }
+  }
+
   const [updated] = await db.update(servicesTable)
     .set({ orderWorkflow: workflow as never })
     .where(eq(servicesTable.id, id)).returning();
@@ -1839,12 +1897,32 @@ router.post("/portal/onboarding/contract", requireAuth, async (req: Request, res
     const effectivePriceStr = computedFinalPrice != null
       ? `$${computedFinalPrice.toLocaleString("en-US")}`
       : svc.price ? `$${parseFloat(String(svc.price)).toLocaleString("en-US")}` : "—";
+
+    // Build a plain-text summary of wizard selections for the contract body/PDF
+    let selectionsSummary = "";
+    if (svcSelections.length > 0 && svc.orderWorkflow) {
+      const wf = svc.orderWorkflow as Array<{ id: string; title: string; options: Array<{ id: string; label: string; priceAdjustment: number }> }>;
+      const lines = svcSelections.map(sel => {
+        const wStep = wf.find(s => s.id === sel.stepId);
+        const wOpt = wStep?.options.find(o => o.id === sel.optionId);
+        if (!wStep || !wOpt) return null;
+        const adj = wOpt.priceAdjustment !== 0
+          ? ` (${wOpt.priceAdjustment > 0 ? "+" : ""}$${wOpt.priceAdjustment.toLocaleString("en-US")})`
+          : "";
+        return `• ${wStep.title}: ${wOpt.label}${adj}`;
+      }).filter(Boolean);
+      if (lines.length > 0) {
+        selectionsSummary = "Customisation selections:\n" + lines.join("\n");
+      }
+    }
+
     const templateBody = contractTemplate?.body?.trim()
       ? contractTemplate.body
           .replace(/\{\{client_name\}\}/g, signerName.trim())
           .replace(/\{\{service_name\}\}/g, svc.name)
           .replace(/\{\{price\}\}/g, effectivePriceStr)
           .replace(/\{\{date\}\}/g, signedDate)
+          .replace(/\{\{selections_summary\}\}/g, selectionsSummary)
       : undefined;
 
     const [contract] = await db.insert(contractsTable).values({
@@ -1871,6 +1949,7 @@ router.post("/portal/onboarding/contract", requireAuth, async (req: Request, res
         signedAt: contract.signedAt ?? new Date(),
         signatureDataUrl: signatureData,
         contractTemplateBody: templateBody,
+        selectionsSummary: selectionsSummary || undefined,
       });
       await db.update(contractsTable)
         .set({ pdfFilename })
