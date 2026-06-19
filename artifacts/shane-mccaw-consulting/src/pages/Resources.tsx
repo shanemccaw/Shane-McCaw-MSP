@@ -7,6 +7,8 @@ import { ConsultationCTA } from "@/components/ConsultationCTA";
 import { Download, ArrowRight, Share2 } from "lucide-react";
 import { FaLinkedin, FaXTwitter } from "react-icons/fa6";
 import { articles } from "@/data/articles";
+import { pdf } from "@react-pdf/renderer";
+import { CopilotReadinessPDF } from "@/lib/CopilotReadinessPDF";
 
 const categories = ["All", "Copilot AI Tips", "M365 Best Practices", "Power Platform How-Tos", "Governance & Compliance", "Digital Transformation"];
 
@@ -48,6 +50,21 @@ export default function Resources() {
     } catch {
       // Continue regardless — don't block the UX on API failure
     }
+
+    try {
+      const blob = await pdf(<CopilotReadinessPDF />).toBlob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "M365-Copilot-Readiness-Checklist-Shane-McCaw.pdf";
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch {
+      // PDF generation failed silently — success state still shown
+    }
+
     setSubmitted(true);
   };
 

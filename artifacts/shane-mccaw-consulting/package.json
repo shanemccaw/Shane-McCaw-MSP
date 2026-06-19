@@ -76,6 +76,7 @@
     "zod": "catalog:"
   },
   "dependencies": {
+    "@react-pdf/renderer": "^4.5.1",
     "react-markdown": "^10.1.0"
   }
 }
