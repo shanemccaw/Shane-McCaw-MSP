@@ -2,6 +2,7 @@ import { SEOMeta } from "@/components/SEOMeta";
 import { Layout } from "@/components/Layout";
 import { CTAButton } from "@/components/CTAButton";
 import { CheckCircle, Clock } from "lucide-react";
+import { useServicePrice } from "@/components/use-service-price";
 
 const offers = [
   {
@@ -92,6 +93,54 @@ const offers = [
     ],
   },
 ];
+
+function OfferCard({ offer, index }: { offer: typeof offers[number]; index: number }) {
+  const { price, loading } = useServicePrice(offer.slug, offer.price);
+
+  return (
+    <div
+      className="bg-white rounded-xl border border-border p-8 flex flex-col hover:shadow-lg hover:-translate-y-1 transition-all duration-300"
+      data-testid={`offer-card-${index}`}
+    >
+      <div className="mb-6">
+        {loading ? (
+          <span
+            className="inline-block h-10 w-24 rounded bg-[#0078D4]/20 animate-pulse mb-1"
+            aria-hidden="true"
+          />
+        ) : (
+          <p className="text-[#0078D4] text-4xl font-extrabold mb-1">{price}</p>
+        )}
+        <h3 className="text-xl font-bold text-[#0A2540]">{offer.title}</h3>
+      </div>
+
+      <div className="flex items-center gap-2 text-muted-foreground text-sm mb-4">
+        <Clock className="w-4 h-4 text-[#0078D4]" />
+        <span>Turnaround: {offer.turnaround}</span>
+      </div>
+
+      <p className="text-sm text-muted-foreground italic mb-4 leading-relaxed">
+        For: {offer.forWho}
+      </p>
+
+      <div className="border-t border-border pt-4 mb-6 flex-grow">
+        <p className="text-sm font-semibold text-[#0A2540] mb-3">What's Included:</p>
+        <ul className="space-y-2">
+          {offer.inclusions.map((item, j) => (
+            <li key={j} className="flex items-start gap-2 text-sm text-foreground" data-testid={`offer-${index}-inclusion-${j}`}>
+              <CheckCircle className="w-4 h-4 text-[#0078D4] flex-shrink-0 mt-0.5" />
+              {item}
+            </li>
+          ))}
+        </ul>
+      </div>
+
+      <CTAButton href={`/crm/portal/onboarding/select?service=${offer.slug}`} className="w-full justify-center text-sm" data-testid={`offer-cta-${index}`}>
+        Get Started
+      </CTAButton>
+    </div>
+  );
+}
 
 export default function MicroOffers() {
   return (
@@ -197,37 +246,7 @@ export default function MicroOffers() {
         <div className="max-w-[1200px] mx-auto px-6">
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {offers.map((offer, i) => (
-              <div key={i} className="bg-white rounded-xl border border-border p-8 flex flex-col hover:shadow-lg hover:-translate-y-1 transition-all duration-300" data-testid={`offer-card-${i}`}>
-                <div className="mb-6">
-                  <p className="text-[#0078D4] text-4xl font-extrabold mb-1">{offer.price}</p>
-                  <h3 className="text-xl font-bold text-[#0A2540]">{offer.title}</h3>
-                </div>
-
-                <div className="flex items-center gap-2 text-muted-foreground text-sm mb-4">
-                  <Clock className="w-4 h-4 text-[#0078D4]" />
-                  <span>Turnaround: {offer.turnaround}</span>
-                </div>
-
-                <p className="text-sm text-muted-foreground italic mb-4 leading-relaxed">
-                  For: {offer.forWho}
-                </p>
-
-                <div className="border-t border-border pt-4 mb-6 flex-grow">
-                  <p className="text-sm font-semibold text-[#0A2540] mb-3">What's Included:</p>
-                  <ul className="space-y-2">
-                    {offer.inclusions.map((item, j) => (
-                      <li key={j} className="flex items-start gap-2 text-sm text-foreground" data-testid={`offer-${i}-inclusion-${j}`}>
-                        <CheckCircle className="w-4 h-4 text-[#0078D4] flex-shrink-0 mt-0.5" />
-                        {item}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-
-                <CTAButton href={`/crm/portal/onboarding/select?service=${offer.slug}`} className="w-full justify-center text-sm" data-testid={`offer-cta-${i}`}>
-                  Get Started
-                </CTAButton>
-              </div>
+              <OfferCard key={offer.slug} offer={offer} index={i} />
             ))}
           </div>
         </div>
