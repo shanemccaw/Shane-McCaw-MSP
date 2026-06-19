@@ -138,7 +138,16 @@ export default function CopilotAI() {
             "name": "Shane McCaw",
             "jobTitle": "Lead Microsoft 365 Architect",
             "url": "https://shanemccawconsulting.com"
-          }
+          },
+          "offers": [
+            {
+              "@type": "Offer",
+              "name": "Copilot Readiness Assessment",
+              "price": "797",
+              "priceCurrency": "USD",
+              "url": "https://shanemccawconsulting.com/micro-offers"
+            }
+          ]
         }}
       />
       {/* Hero */}

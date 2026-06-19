@@ -108,6 +108,7 @@ export default function MicroOffers() {
                 "name": "M365 Health Check",
                 "price": "497",
                 "priceCurrency": "USD",
+                "url": "https://shanemccawconsulting.com/micro-offers",
                 "seller": { "@type": "Person", "name": "Shane McCaw" }
               }
             },
@@ -119,6 +120,7 @@ export default function MicroOffers() {
                 "name": "Copilot Readiness Assessment",
                 "price": "797",
                 "priceCurrency": "USD",
+                "url": "https://shanemccawconsulting.com/micro-offers",
                 "seller": { "@type": "Person", "name": "Shane McCaw" }
               }
             },
@@ -130,6 +132,7 @@ export default function MicroOffers() {
                 "name": "SharePoint Intranet Blueprint",
                 "price": "997",
                 "priceCurrency": "USD",
+                "url": "https://shanemccawconsulting.com/micro-offers",
                 "seller": { "@type": "Person", "name": "Shane McCaw" }
               }
             },
@@ -141,6 +144,7 @@ export default function MicroOffers() {
                 "name": "Power Automate Quick Win",
                 "price": "597",
                 "priceCurrency": "USD",
+                "url": "https://shanemccawconsulting.com/micro-offers",
                 "seller": { "@type": "Person", "name": "Shane McCaw" }
               }
             },
@@ -152,6 +156,7 @@ export default function MicroOffers() {
                 "name": "M365 Security & Governance Audit",
                 "price": "897",
                 "priceCurrency": "USD",
+                "url": "https://shanemccawconsulting.com/micro-offers",
                 "seller": { "@type": "Person", "name": "Shane McCaw" }
               }
             },
@@ -163,6 +168,7 @@ export default function MicroOffers() {
                 "name": "Copilot Prompt Library Build",
                 "price": "397",
                 "priceCurrency": "USD",
+                "url": "https://shanemccawconsulting.com/micro-offers",
                 "seller": { "@type": "Person", "name": "Shane McCaw" }
               }
             }

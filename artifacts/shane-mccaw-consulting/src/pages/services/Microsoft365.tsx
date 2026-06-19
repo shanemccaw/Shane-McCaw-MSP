@@ -32,7 +32,16 @@ export default function Microsoft365() {
             "name": "Shane McCaw",
             "jobTitle": "Lead Microsoft 365 Architect",
             "url": "https://shanemccawconsulting.com"
-          }
+          },
+          "offers": [
+            {
+              "@type": "Offer",
+              "name": "M365 Health Check",
+              "price": "497",
+              "priceCurrency": "USD",
+              "url": "https://shanemccawconsulting.com/micro-offers"
+            }
+          ]
         }}
       />
       <section className="bg-[#0A2540] pt-32 pb-20">
