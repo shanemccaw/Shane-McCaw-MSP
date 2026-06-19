@@ -227,15 +227,15 @@ export default function LoginPage() {
     <div className="min-h-screen flex flex-col md:flex-row">
       {/* ── Left hero panel ──────────────────────────────────────── */}
       <div className="md:w-[55%] bg-[#0A2540] flex flex-col px-8 py-10 md:px-12 md:py-14">
-        {/* Logo */}
-        <div className="flex items-center gap-2.5 mb-10">
+        {/* Logo — links back to main site */}
+        <a href="/" className="flex items-center gap-2.5 mb-10 group w-fit">
           <div className="w-8 h-8 rounded-lg bg-[#0078D4] flex items-center justify-center flex-shrink-0">
             <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5 text-white" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7" />
             </svg>
           </div>
-          <span className="text-white font-bold text-base">Shane McCaw Consulting</span>
-        </div>
+          <span className="text-white font-bold text-base group-hover:text-white/80 transition-colors">Shane McCaw Consulting</span>
+        </a>
 
         {/* Headline */}
         <div className="mb-8">
