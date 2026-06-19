@@ -8,6 +8,8 @@ export interface PublicService {
   category: string | null;
   deliverables: string | null;
   price: string | null;
+  basePrice: string | null;
+  maxPrice: string | null;
   turnaround: string | null;
   billingType: "one_time" | "recurring_monthly";
   serviceType: string | null;
@@ -28,6 +30,22 @@ export function formatPrice(price: string | null): string | null {
   const num = parseFloat(price);
   if (isNaN(num)) return null;
   return "$" + num.toLocaleString("en-US", { maximumFractionDigits: 0 });
+}
+
+export function formatPriceDisplay(service: PublicService): string {
+  const fmt = (v: string | null) => {
+    if (!v) return null;
+    const n = parseFloat(v);
+    if (isNaN(n)) return null;
+    return "$" + n.toLocaleString("en-US", { maximumFractionDigits: 0 });
+  };
+  const base = fmt(service.basePrice);
+  const max = fmt(service.maxPrice);
+  if (base && max) return `${base}–${max}`;
+  if (base) return base;
+  const single = fmt(service.price);
+  if (single) return single;
+  return "Contact for pricing";
 }
 
 const _cache: Record<string, PublicService[]> = {};
