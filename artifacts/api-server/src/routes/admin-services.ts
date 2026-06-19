@@ -32,7 +32,7 @@ router.put("/admin/services/:id", requireAdmin, async (req: Request, res: Respon
     if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
     const body = (req.body ?? {}) as Record<string, unknown>;
     const {
-      name, description, category, deliverables, price, durationDays, turnaround,
+      name, description, category, deliverables, price, basePrice, maxPrice, durationDays, turnaround,
       billingType, isPublic, slug,
       serviceType, tagline, targetAudience, inclusions, features, badge,
       highlighted, hoursPerMonth, iconName, pageHref, sortOrder,
@@ -46,6 +46,8 @@ router.put("/admin/services/:id", requireAdmin, async (req: Request, res: Respon
         category: (category as string | null) ?? null,
         deliverables: (deliverables as string | null) ?? null,
         price: price != null ? String(price) : null,
+        basePrice: basePrice != null ? String(basePrice) : null,
+        maxPrice: maxPrice != null ? String(maxPrice) : null,
         durationDays: durationDays != null ? Number(durationDays) : null,
         turnaround: (turnaround as string | null) ?? null,
         billingType: ((billingType as string) ?? "one_time") as "one_time" | "recurring_monthly",

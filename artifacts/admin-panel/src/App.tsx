@@ -12,7 +12,6 @@ import ContractTemplatesPage from "@/pages/ContractTemplates";
 import LeadsPage from "@/pages/crm/Leads";
 import ClientsPage from "@/pages/crm/Clients";
 import ProjectsPage from "@/pages/crm/Projects";
-import CrmServicesPage from "@/pages/crm/CrmServices";
 import ReportsPage from "@/pages/crm/Reports";
 import InvoicesPage from "@/pages/crm/Invoices";
 import DocumentsPage from "@/pages/crm/Documents";
@@ -84,9 +83,6 @@ function Router() {
       </Route>
       <Route path="/crm/projects">
         <RequireAdmin><DashboardShell><ProjectsPage /></DashboardShell></RequireAdmin>
-      </Route>
-      <Route path="/crm/services">
-        <RequireAdmin><DashboardShell><CrmServicesPage /></DashboardShell></RequireAdmin>
       </Route>
       <Route path="/crm/reports">
         <RequireAdmin><DashboardShell><ReportsPage /></DashboardShell></RequireAdmin>
