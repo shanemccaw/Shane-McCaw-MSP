@@ -2,6 +2,7 @@ import { SEOMeta } from "@/components/SEOMeta";
 import { Layout } from "@/components/Layout";
 import { Server, CheckCircle, ArrowRight } from "lucide-react";
 import { ConsultationCTA } from "@/components/ConsultationCTA";
+import { useServicePrice } from "@/components/use-service-price";
 
 const migrationSteps = [
   { step: "01", title: "Discovery", desc: "Inventory all source systems, data volumes, user counts, and dependencies. Identify risks before they become problems." },
@@ -21,6 +22,7 @@ const riskChecklist = [
 ];
 
 export default function CloudMigration() {
+  const price = useServicePrice("cloud-migration-consulting", "$2,500");
   return (
     <Layout>
       <SEOMeta
@@ -163,7 +165,7 @@ export default function CloudMigration() {
             </div>
             <div className="flex flex-col items-start md:items-end gap-4">
               <div>
-                <span className="text-3xl font-extrabold text-white">$2,500</span>
+                <span className="text-3xl font-extrabold text-white">{price}</span>
                 <span className="text-lg font-normal text-white/60">/mo</span>
               </div>
               <a

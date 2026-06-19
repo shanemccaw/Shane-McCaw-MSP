@@ -3,8 +3,10 @@ import { Layout } from "@/components/Layout";
 import { CTAButton } from "@/components/CTAButton";
 import { Zap, CheckCircle, ArrowRight } from "lucide-react";
 import { ConsultationCTA } from "@/components/ConsultationCTA";
+import { useServicePrice } from "@/components/use-service-price";
 
 export default function PowerPlatform() {
+  const price = useServicePrice("power-platform-consulting", "$1,500");
   return (
     <Layout>
       <SEOMeta
@@ -127,7 +129,7 @@ export default function PowerPlatform() {
             </div>
             <div className="flex flex-col items-start md:items-end gap-4">
               <div>
-                <span className="text-3xl font-extrabold text-white">$1,500</span>
+                <span className="text-3xl font-extrabold text-white">{price}</span>
                 <span className="text-lg font-normal text-white/60">/mo</span>
               </div>
               <a

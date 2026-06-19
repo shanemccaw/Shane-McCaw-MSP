@@ -3,6 +3,7 @@ import { Link } from "wouter";
 import { Layout } from "@/components/Layout";
 import { CTAButton } from "@/components/CTAButton";
 import { ConsultationCTA } from "@/components/ConsultationCTA";
+import { useServicePrice } from "@/components/use-service-price";
 import {
   Bot, Shield, Tag, Rocket, Users, TrendingUp,
   CheckCircle, ArrowRight, AlertTriangle, Star
@@ -111,6 +112,7 @@ const riskSignals = [
 ];
 
 export default function CopilotAI() {
+  const price = useServicePrice("copilot-ai-consulting", "$2,000");
   return (
     <Layout>
       <SEOMeta
@@ -377,7 +379,7 @@ export default function CopilotAI() {
             </div>
             <div className="flex flex-col items-start md:items-end gap-4">
               <div>
-                <span className="text-3xl font-extrabold text-white">$2,000</span>
+                <span className="text-3xl font-extrabold text-white">{price}</span>
                 <span className="text-lg font-normal text-white/60">/mo</span>
               </div>
               <a
