@@ -132,7 +132,14 @@ export default function Resources() {
                         aria-label={`Share "${post.title}" on LinkedIn`}
                         className="text-muted-foreground hover:text-[#0A66C2] transition-colors"
                         data-testid={`share-linkedin-${i}`}
-                        onClick={e => e.stopPropagation()}
+                        onClick={e => {
+                          e.stopPropagation();
+                          void fetch("/api/shares", {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ slug: post.slug, platform: "linkedin" }),
+                          });
+                        }}
                       >
                         <FaLinkedin className="w-4 h-4" />
                       </a>
@@ -143,7 +150,14 @@ export default function Resources() {
                         aria-label={`Share "${post.title}" on X`}
                         className="text-muted-foreground hover:text-foreground transition-colors"
                         data-testid={`share-x-${i}`}
-                        onClick={e => e.stopPropagation()}
+                        onClick={e => {
+                          e.stopPropagation();
+                          void fetch("/api/shares", {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ slug: post.slug, platform: "x" }),
+                          });
+                        }}
                       >
                         <FaXTwitter className="w-4 h-4" />
                       </a>

@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { useToast } from "@/hooks/use-toast";
+import { FaLinkedin, FaXTwitter } from "react-icons/fa6";
 
 interface Article {
   slug: string;
@@ -8,6 +9,19 @@ interface Article {
   summary: string;
   date: string;
   content: string;
+}
+
+interface ShareCounts {
+  [slug: string]: {
+    linkedin: number;
+    x: number;
+    total: number;
+  };
+}
+
+interface ShareData {
+  counts: ShareCounts;
+  total: number;
 }
 
 const STORAGE_KEY = "admin_password";
@@ -35,11 +49,13 @@ export default function Admin() {
   const [authed, setAuthed] = useState(false);
   const [articles, setArticles] = useState<Article[]>([]);
   const [loading, setLoading] = useState(false);
-  const [view, setView] = useState<"list" | "edit">("list");
+  const [view, setView] = useState<"list" | "edit" | "shares">("list");
   const [editingSlug, setEditingSlug] = useState<string | null>(null);
   const [form, setForm] = useState<Article>(EMPTY_ARTICLE);
   const [saving, setSaving] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
+  const [shareData, setShareData] = useState<ShareData | null>(null);
+  const [sharesLoading, setSharesLoading] = useState(false);
   const { toast } = useToast();
 
   const fetchArticles = useCallback(async (pw: string) => {
@@ -65,6 +81,25 @@ export default function Admin() {
     }
   }, [toast]);
 
+  const fetchShares = useCallback(async (pw: string) => {
+    setSharesLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/shares`, {
+        headers: apiHeaders(pw),
+      });
+      if (!res.ok) {
+        toast({ title: "Could not load share analytics", variant: "destructive" });
+        return;
+      }
+      const data = await res.json() as ShareData;
+      setShareData(data);
+    } catch {
+      toast({ title: "Could not reach the API server", variant: "destructive" });
+    } finally {
+      setSharesLoading(false);
+    }
+  }, [toast]);
+
   useEffect(() => {
     if (password) {
       fetchArticles(password);
@@ -85,7 +120,13 @@ export default function Admin() {
     setPassword("");
     setAuthed(false);
     setArticles([]);
+    setShareData(null);
     setView("list");
+  }
+
+  function openShares() {
+    setView("shares");
+    void fetchShares(password);
   }
 
   function openNew() {
@@ -224,15 +265,104 @@ export default function Admin() {
             <p className="text-xs text-blue-300">Article Manager</p>
           </div>
         </div>
-        <button
-          onClick={handleLogout}
-          className="text-xs text-blue-300 hover:text-white transition-colors"
-        >
-          Sign out
-        </button>
+        <div className="flex items-center gap-4">
+          <nav className="flex items-center gap-1">
+            <button
+              onClick={() => setView("list")}
+              className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${view === "list" || view === "edit" ? "bg-white/10 text-white" : "text-blue-300 hover:text-white"}`}
+            >
+              Articles
+            </button>
+            <button
+              onClick={openShares}
+              className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${view === "shares" ? "bg-white/10 text-white" : "text-blue-300 hover:text-white"}`}
+            >
+              Share Analytics
+            </button>
+          </nav>
+          <button
+            onClick={handleLogout}
+            className="text-xs text-blue-300 hover:text-white transition-colors"
+          >
+            Sign out
+          </button>
+        </div>
       </header>
 
       <div className="max-w-5xl mx-auto px-4 py-8">
+        {view === "shares" && (
+          <>
+            <div className="flex items-center justify-between mb-6">
+              <div>
+                <h2 className="text-xl font-bold text-[#0A2540]">Share Analytics</h2>
+                <p className="text-sm text-gray-500 mt-0.5">
+                  {shareData ? `${shareData.total} total share${shareData.total !== 1 ? "s" : ""} recorded` : "Loading…"}
+                </p>
+              </div>
+              <button
+                onClick={() => void fetchShares(password)}
+                className="text-xs text-[#0078D4] hover:underline font-medium"
+              >
+                Refresh
+              </button>
+            </div>
+
+            {sharesLoading ? (
+              <div className="text-center py-16 text-gray-400">Loading share data…</div>
+            ) : !shareData || Object.keys(shareData.counts).length === 0 ? (
+              <div className="text-center py-16 bg-white rounded-xl border border-gray-200">
+                <p className="text-gray-500">No shares recorded yet.</p>
+                <p className="text-xs text-gray-400 mt-2">Share events appear here as readers click the LinkedIn and X buttons on article cards.</p>
+              </div>
+            ) : (
+              <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+                <table className="w-full text-sm">
+                  <thead className="bg-gray-50 border-b border-gray-200">
+                    <tr>
+                      <th className="text-left px-5 py-3 text-xs font-semibold text-gray-600 uppercase tracking-wide">Article</th>
+                      <th className="text-center px-4 py-3 text-xs font-semibold text-gray-600 uppercase tracking-wide">
+                        <span className="flex items-center justify-center gap-1.5"><FaLinkedin className="w-3.5 h-3.5 text-[#0A66C2]" /> LinkedIn</span>
+                      </th>
+                      <th className="text-center px-4 py-3 text-xs font-semibold text-gray-600 uppercase tracking-wide">
+                        <span className="flex items-center justify-center gap-1.5"><FaXTwitter className="w-3.5 h-3.5" /> X</span>
+                      </th>
+                      <th className="text-center px-4 py-3 text-xs font-semibold text-gray-600 uppercase tracking-wide">Total</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {Object.entries(shareData.counts)
+                      .sort(([, a], [, b]) => b.total - a.total)
+                      .map(([slug, counts]) => {
+                        const article = articles.find(a => a.slug === slug);
+                        return (
+                          <tr key={slug} className="hover:bg-gray-50 transition-colors">
+                            <td className="px-5 py-4">
+                              <p className="font-medium text-[#0A2540] text-sm leading-snug">
+                                {article?.title ?? slug}
+                              </p>
+                              <p className="text-xs text-gray-400 font-mono mt-0.5">{slug}</p>
+                            </td>
+                            <td className="px-4 py-4 text-center">
+                              <span className="text-sm font-semibold text-[#0A66C2]">{counts.linkedin}</span>
+                            </td>
+                            <td className="px-4 py-4 text-center">
+                              <span className="text-sm font-semibold text-gray-800">{counts.x}</span>
+                            </td>
+                            <td className="px-4 py-4 text-center">
+                              <span className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-[#0078D4]/10 text-[#0078D4] text-sm font-bold">
+                                {counts.total}
+                              </span>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </>
+        )}
+
         {view === "list" && (
           <>
             <div className="flex items-center justify-between mb-6">
