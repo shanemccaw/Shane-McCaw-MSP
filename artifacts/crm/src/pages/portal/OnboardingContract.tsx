@@ -77,7 +77,11 @@ function buildContractHtml(
     </tr>
     ${selectionsHtml}
     <tr>
-      <td colspan="2" style="padding:0 0 10px 0;font-size:0.875em;color:#555;">${s.deliverables ?? "As described on the service page"}</td>
+      <td colspan="2" style="padding:0 0 10px 0;font-size:0.875em;color:#555;">
+        ${s.deliverables
+          ? `<ul style="margin:4px 0 0 0;padding-left:18px;">${s.deliverables.split("\n").filter((l: string) => l.trim()).map((l: string) => `<li style="margin-bottom:2px;">${l.trim()}</li>`).join("")}</ul>`
+          : "As described on the service page"}
+      </td>
     </tr>
   `;
   }).join("");
