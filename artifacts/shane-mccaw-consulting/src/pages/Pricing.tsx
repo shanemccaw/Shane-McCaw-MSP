@@ -482,7 +482,7 @@ export default function Pricing() {
                 label: "Track 03",
                 tier: "Strategic",
                 title: "Monthly Fractional Retainer",
-                range: "$1,500 \u2013 $5,500/mo",
+                range: "$2,500 \u2013 $11,000/mo",
                 desc: "Consistent, predictable access to Shane\u2019s expertise every month \u2014 for architecture reviews, ongoing governance, strategic planning, or Copilot rollout support. Cancel with 30 days\u2019 notice.",
                 bestFor: "Organizations in regulated industries, government contractors, or startups scaling into compliance that need a senior M365 architect available on a sustained basis — without full-time overhead.",
                 anchor: "#retainers",
