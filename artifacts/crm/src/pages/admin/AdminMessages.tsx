@@ -84,9 +84,9 @@ export default function AdminMessages() {
   };
 
   return (
-    <div className="flex gap-4 h-[600px]">
-      {/* Client list */}
-      <div className="w-64 flex-shrink-0 bg-white border border-border rounded-xl overflow-hidden flex flex-col">
+    <div className="flex flex-col md:flex-row gap-4 md:h-[600px]">
+      {/* Client list — full-width compact on mobile, sidebar on desktop */}
+      <div className={`md:w-64 flex-shrink-0 bg-white border border-border rounded-xl overflow-hidden flex flex-col ${selectedClient ? "hidden md:flex" : "flex"} max-h-52 md:max-h-none`}>
         <div className="px-4 py-3 border-b border-border">
           <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Clients</p>
         </div>
@@ -116,7 +116,16 @@ export default function AdminMessages() {
       </div>
 
       {/* Messages panel */}
-      <div className="flex-1 bg-white border border-border rounded-xl overflow-hidden flex flex-col min-w-0">
+      <div className={`flex-1 bg-white border border-border rounded-xl overflow-hidden flex flex-col min-w-0 min-h-[400px] md:min-h-0 ${selectedClient ? "flex" : "hidden md:flex"}`}>
+        {selectedClient && (
+          <button
+            onClick={() => setSelectedClient(null)}
+            className="md:hidden flex items-center gap-1.5 px-4 py-2.5 border-b border-border text-xs font-semibold text-muted-foreground hover:bg-[#F7F9FC] transition-colors text-left"
+          >
+            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" /></svg>
+            Back to clients
+          </button>
+        )}
         {!selectedClient ? (
           <div className="flex-1 flex items-center justify-center text-center">
             <div>

@@ -216,10 +216,10 @@ export default function Admin() {
 
   if (!authed) {
     return (
-      <div className="min-h-screen bg-[#0A2540] flex items-center justify-center p-4">
+      <div className="min-h-screen bg-[#2D3748] flex items-center justify-center p-4">
         <div className="bg-white rounded-2xl shadow-xl p-8 w-full max-w-sm">
           <div className="text-center mb-6">
-            <div className="w-12 h-12 bg-[#0078D4] rounded-xl flex items-center justify-center mx-auto mb-3">
+            <div className="w-12 h-12 bg-[#4A90A4] rounded-xl flex items-center justify-center mx-auto mb-3">
               <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
               </svg>
@@ -234,14 +234,14 @@ export default function Admin() {
                 type="password"
                 value={passwordInput}
                 onChange={(e) => setPasswordInput(e.target.value)}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4]"
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#4A90A4]"
                 placeholder="Enter admin password"
                 autoFocus
               />
             </div>
             <button
               type="submit"
-              className="w-full bg-[#0078D4] text-white rounded-lg px-4 py-2 text-sm font-medium hover:bg-[#006ab8] transition-colors"
+              className="w-full bg-[#4A90A4] text-white rounded-lg px-4 py-2 text-sm font-medium hover:bg-[#3B7A8C] transition-colors"
             >
               Sign in
             </button>
@@ -253,36 +253,37 @@ export default function Admin() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <header className="bg-[#0A2540] text-white px-6 py-4 flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <div className="w-8 h-8 bg-[#0078D4] rounded-lg flex items-center justify-center">
+      <header className="bg-[#2D3748] text-white px-4 sm:px-6 py-3 flex items-center justify-between gap-2 flex-wrap">
+        <div className="flex items-center gap-2.5">
+          <div className="w-8 h-8 bg-[#4A90A4] rounded-lg flex items-center justify-center flex-shrink-0">
             <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
             </svg>
           </div>
-          <div>
-            <p className="font-semibold text-sm">Shane McCaw Consulting</p>
-            <p className="text-xs text-blue-300">Article Manager</p>
+          <div className="hidden sm:block">
+            <p className="font-semibold text-sm leading-tight">Shane McCaw Consulting</p>
+            <p className="text-xs text-[#9FBFC9] leading-tight">Article Manager</p>
           </div>
+          <p className="font-semibold text-sm sm:hidden">Article Manager</p>
         </div>
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-2 flex-wrap">
           <nav className="flex items-center gap-1">
             <button
               onClick={() => setView("list")}
-              className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${view === "list" || view === "edit" ? "bg-white/10 text-white" : "text-blue-300 hover:text-white"}`}
+              className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${view === "list" || view === "edit" ? "bg-white/10 text-white" : "text-[#9FBFC9] hover:text-white"}`}
             >
               Articles
             </button>
             <button
               onClick={openShares}
-              className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${view === "shares" ? "bg-white/10 text-white" : "text-blue-300 hover:text-white"}`}
+              className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${view === "shares" ? "bg-white/10 text-white" : "text-[#9FBFC9] hover:text-white"}`}
             >
-              Share Analytics
+              Analytics
             </button>
           </nav>
           <button
             onClick={handleLogout}
-            className="text-xs text-blue-300 hover:text-white transition-colors"
+            className="text-xs text-[#9FBFC9] hover:text-white transition-colors px-2 py-1.5"
           >
             Sign out
           </button>
@@ -301,7 +302,7 @@ export default function Admin() {
               </div>
               <button
                 onClick={() => void fetchShares(password)}
-                className="text-xs text-[#0078D4] hover:underline font-medium"
+                className="text-xs text-[#4A90A4] hover:underline font-medium"
               >
                 Refresh
               </button>
@@ -315,8 +316,8 @@ export default function Admin() {
                 <p className="text-xs text-gray-400 mt-2">Share events appear here as readers click the LinkedIn and X buttons on article cards.</p>
               </div>
             ) : (
-              <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-                <table className="w-full text-sm">
+              <div className="bg-white rounded-xl border border-gray-200 overflow-hidden overflow-x-auto">
+                <table className="w-full text-sm min-w-[480px]">
                   <thead className="bg-gray-50 border-b border-gray-200">
                     <tr>
                       <th className="text-left px-5 py-3 text-xs font-semibold text-gray-600 uppercase tracking-wide">Article</th>
@@ -349,7 +350,7 @@ export default function Admin() {
                               <span className="text-sm font-semibold text-gray-800">{counts.x}</span>
                             </td>
                             <td className="px-4 py-4 text-center">
-                              <span className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-[#0078D4]/10 text-[#0078D4] text-sm font-bold">
+                              <span className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-[#4A90A4]/10 text-[#4A90A4] text-sm font-bold">
                                 {counts.total}
                               </span>
                             </td>
@@ -372,7 +373,7 @@ export default function Admin() {
               </div>
               <button
                 onClick={openNew}
-                className="bg-[#0078D4] text-white rounded-lg px-4 py-2 text-sm font-medium hover:bg-[#006ab8] transition-colors flex items-center gap-2"
+                className="bg-[#4A90A4] text-white rounded-lg px-4 py-2 text-sm font-medium hover:bg-[#3B7A8C] transition-colors flex items-center gap-2"
               >
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
@@ -386,26 +387,26 @@ export default function Admin() {
             ) : articles.length === 0 ? (
               <div className="text-center py-16 bg-white rounded-xl border border-gray-200">
                 <p className="text-gray-500 mb-4">No articles yet.</p>
-                <button onClick={openNew} className="text-[#0078D4] font-medium text-sm hover:underline">Create your first article</button>
+                <button onClick={openNew} className="text-[#4A90A4] font-medium text-sm hover:underline">Create your first article</button>
               </div>
             ) : (
               <div className="space-y-3">
                 {articles.map((article) => (
-                  <div key={article.slug} className="bg-white rounded-xl border border-gray-200 p-5 flex items-start justify-between gap-4 hover:border-gray-300 transition-colors">
-                    <div className="min-w-0">
+                  <div key={article.slug} className="bg-white rounded-xl border border-gray-200 p-4 sm:p-5 flex flex-wrap sm:flex-nowrap items-start justify-between gap-3 hover:border-gray-300 transition-colors">
+                    <div className="min-w-0 flex-1">
                       {article.category && (
-                        <span className="inline-block text-xs font-medium text-[#0078D4] bg-blue-50 rounded-full px-2 py-0.5 mb-2">{article.category}</span>
+                        <span className="inline-block text-xs font-medium text-[#4A90A4] bg-[#4A90A4]/10 rounded-full px-2 py-0.5 mb-2">{article.category}</span>
                       )}
                       <h3 className="font-semibold text-[#0A2540] text-sm leading-snug mb-1">{article.title}</h3>
                       <p className="text-xs text-gray-500 truncate">{article.summary}</p>
                       <p className="text-xs text-gray-400 mt-1">{article.date} · <span className="font-mono">{article.slug}</span></p>
                     </div>
-                    <div className="flex items-center gap-2 shrink-0">
+                    <div className="flex items-center gap-2 flex-shrink-0 flex-wrap w-full sm:w-auto">
                       <a
                         href={`/resources/${article.slug}`}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="text-xs text-gray-500 hover:text-[#0078D4] transition-colors px-2 py-1 rounded"
+                        className="text-xs text-gray-500 hover:text-[#4A90A4] transition-colors px-2 py-1 rounded"
                         title="View article"
                       >
                         View
@@ -460,7 +461,7 @@ export default function Admin() {
                     }
                   }}
                   required
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4]"
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#4A90A4]"
                   placeholder="Article title"
                 />
               </div>
@@ -472,7 +473,7 @@ export default function Admin() {
                   value={form.slug}
                   onChange={(e) => setField("slug", e.target.value.toLowerCase().replace(/\s+/g, "-"))}
                   required
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-[#0078D4]"
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-[#4A90A4]"
                   placeholder="url-friendly-slug"
                 />
                 {form.slug && (
@@ -486,7 +487,7 @@ export default function Admin() {
                   type="text"
                   value={form.category}
                   onChange={(e) => setField("category", e.target.value)}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4]"
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#4A90A4]"
                   placeholder="e.g. Copilot AI Tips"
                 />
               </div>
@@ -498,7 +499,7 @@ export default function Admin() {
                   value={form.date}
                   onChange={(e) => setField("date", e.target.value)}
                   required
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4]"
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#4A90A4]"
                   placeholder="e.g. June 19, 2026"
                 />
               </div>
@@ -509,7 +510,7 @@ export default function Admin() {
                   value={form.summary}
                   onChange={(e) => setField("summary", e.target.value)}
                   rows={2}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4] resize-none"
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#4A90A4] resize-none"
                   placeholder="One-sentence description shown in article listings"
                 />
               </div>
@@ -522,7 +523,7 @@ export default function Admin() {
                 value={form.content}
                 onChange={(e) => setField("content", e.target.value)}
                 rows={22}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-[#0078D4] resize-y leading-relaxed"
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-[#4A90A4] resize-y leading-relaxed"
                 placeholder="Write your article in Markdown…"
               />
             </div>
@@ -531,7 +532,7 @@ export default function Admin() {
               <button
                 type="submit"
                 disabled={saving}
-                className="bg-[#0078D4] text-white rounded-lg px-6 py-2.5 text-sm font-medium hover:bg-[#006ab8] transition-colors disabled:opacity-60"
+                className="bg-[#4A90A4] text-white rounded-lg px-6 py-2.5 text-sm font-medium hover:bg-[#3B7A8C] transition-colors disabled:opacity-60"
               >
                 {saving ? "Saving…" : editingSlug ? "Save Changes" : "Create Article"}
               </button>

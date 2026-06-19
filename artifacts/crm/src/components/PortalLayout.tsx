@@ -53,46 +53,47 @@ function NavLink({ item, isActive }: { item: NavItem; isActive: boolean }) {
   );
 }
 
+const CLIENT_NAV_ITEMS = (unreadMessages: number): NavItem[] => [
+  {
+    label: "Dashboard",
+    path: "/portal",
+    icon: <svg className="w-4.5 h-4.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" /></svg>,
+  },
+  {
+    label: "Projects",
+    path: "/portal/projects",
+    icon: <svg className="w-4.5 h-4.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" /></svg>,
+  },
+  {
+    label: "Services",
+    path: "/portal/services",
+    icon: <svg className="w-4.5 h-4.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" /></svg>,
+  },
+  {
+    label: "Billing",
+    path: "/portal/billing",
+    icon: <svg className="w-4.5 h-4.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" /></svg>,
+  },
+  {
+    label: "Reports",
+    path: "/portal/reports",
+    icon: <svg className="w-4.5 h-4.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>,
+  },
+  {
+    label: "Messages",
+    path: "/portal/messages",
+    badge: unreadMessages,
+    icon: <svg className="w-4.5 h-4.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" /></svg>,
+  },
+];
+
 export function ClientSidebar({ unreadNotifications = 0, unreadMessages = 0 }: { unreadNotifications?: number; unreadMessages?: number }) {
   const [location] = useLocation();
   const { user, logout } = useAuth();
-
-  const navItems: NavItem[] = [
-    {
-      label: "Dashboard",
-      path: "/portal",
-      icon: <svg className="w-4.5 h-4.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" /></svg>,
-    },
-    {
-      label: "Projects",
-      path: "/portal/projects",
-      icon: <svg className="w-4.5 h-4.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" /></svg>,
-    },
-    {
-      label: "Services",
-      path: "/portal/services",
-      icon: <svg className="w-4.5 h-4.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" /></svg>,
-    },
-    {
-      label: "Reports",
-      path: "/portal/reports",
-      icon: <svg className="w-4.5 h-4.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>,
-    },
-    {
-      label: "Billing",
-      path: "/portal/billing",
-      icon: <svg className="w-4.5 h-4.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" /></svg>,
-    },
-    {
-      label: "Messages",
-      path: "/portal/messages",
-      badge: unreadMessages,
-      icon: <svg className="w-4.5 h-4.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" /></svg>,
-    },
-  ];
+  const navItems = CLIENT_NAV_ITEMS(unreadMessages);
 
   return (
-    <aside className="w-60 flex-shrink-0 bg-[#0A2540] flex flex-col h-screen sticky top-0">
+    <aside className="hidden md:flex w-60 flex-shrink-0 bg-[#0A2540] flex-col h-screen sticky top-0">
       <Logo />
       <nav className="flex-1 py-3 overflow-y-auto space-y-0.5">
         {navItems.map(item => (
@@ -119,6 +120,34 @@ export function ClientSidebar({ unreadNotifications = 0, unreadMessages = 0 }: {
   );
 }
 
+function MobileBottomNav({ unreadMessages = 0 }: { unreadMessages?: number }) {
+  const [location] = useLocation();
+  const navItems = CLIENT_NAV_ITEMS(unreadMessages);
+
+  return (
+    <nav className="fixed bottom-0 inset-x-0 bg-[#0A2540] border-t border-white/10 flex md:hidden z-40">
+      {navItems.map(item => {
+        const isActive = item.path === "/portal" ? location === "/portal" : location.startsWith(item.path);
+        return (
+          <Link key={item.path} href={item.path} className="flex-1">
+            <div className={`flex flex-col items-center justify-center py-2 gap-0.5 relative transition-colors ${isActive ? "text-[#0078D4]" : "text-white/45 hover:text-white/70"}`}>
+              <span className="relative">
+                {item.icon}
+                {item.badge !== undefined && item.badge > 0 && (
+                  <span className="absolute -top-1 -right-1 w-3.5 h-3.5 rounded-full bg-red-500 text-white text-[8px] font-bold flex items-center justify-center">
+                    {item.badge > 9 ? "9+" : item.badge}
+                  </span>
+                )}
+              </span>
+              <span className="text-[9px] font-semibold leading-none">{item.label}</span>
+            </div>
+          </Link>
+        );
+      })}
+    </nav>
+  );
+}
+
 export function AdminSidebar({ activeTab, onTabChange }: { activeTab: string; onTabChange: (tab: string) => void }) {
   const adminTabs = [
     { key: "leads", label: "Leads", icon: <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" /></svg> },
@@ -131,22 +160,24 @@ export function AdminSidebar({ activeTab, onTabChange }: { activeTab: string; on
   ];
 
   return (
-    <nav className="flex flex-wrap gap-1.5 mb-6">
-      {adminTabs.map(tab => (
-        <button
-          key={tab.key}
-          onClick={() => onTabChange(tab.key)}
-          className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-semibold transition-all ${
-            activeTab === tab.key
-              ? "bg-[#0078D4] text-white shadow-md"
-              : "bg-white text-[#0A2540] border border-border hover:border-[#0078D4]/40 hover:text-[#0078D4]"
-          }`}
-        >
-          {tab.icon}
-          {tab.label}
-        </button>
-      ))}
-    </nav>
+    <div className="overflow-x-auto mb-6 -mx-1 px-1">
+      <nav className="flex gap-1.5 flex-nowrap min-w-max">
+        {adminTabs.map(tab => (
+          <button
+            key={tab.key}
+            onClick={() => onTabChange(tab.key)}
+            className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-semibold transition-all flex-shrink-0 ${
+              activeTab === tab.key
+                ? "bg-[#0078D4] text-white shadow-md"
+                : "bg-white text-[#0A2540] border border-border hover:border-[#0078D4]/40 hover:text-[#0078D4]"
+            }`}
+          >
+            {tab.icon}
+            {tab.label}
+          </button>
+        ))}
+      </nav>
+    </div>
   );
 }
 
@@ -154,9 +185,10 @@ export default function PortalLayout({ children, unreadNotifications = 0, unread
   return (
     <div className="flex min-h-screen bg-[#F7F9FC]">
       <ClientSidebar unreadNotifications={unreadNotifications} unreadMessages={unreadMessages} />
-      <main className="flex-1 overflow-auto min-w-0">
+      <main className="flex-1 overflow-auto min-w-0 pb-16 md:pb-0">
         {children}
       </main>
+      <MobileBottomNav unreadMessages={unreadMessages} />
     </div>
   );
 }
