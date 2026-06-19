@@ -22,7 +22,7 @@ export default function Privacy() {
                 Shane McCaw Consulting ("we," "us," or "our") respects your privacy and is committed
                 to protecting the personal information you share with us. This Privacy Policy explains
                 what information we collect, how we use it, and the choices you have regarding your
-                information when you visit <strong>shanemccawconsulting.com</strong> or contact us
+                information when you visit <strong>shanemccaw.com</strong> or contact us
                 through any of our channels.
               </p>
             </section>
@@ -118,10 +118,10 @@ export default function Privacy() {
                 <p>
                   Email:{" "}
                   <a
-                    href="mailto:shane@shanemccawconsulting.com"
+                    href="mailto:shane@shanemccaw.com"
                     className="text-[#0078D4] hover:underline"
                   >
-                    shane@shanemccawconsulting.com
+                    shane@shanemccaw.com
                   </a>
                 </p>
               </address>

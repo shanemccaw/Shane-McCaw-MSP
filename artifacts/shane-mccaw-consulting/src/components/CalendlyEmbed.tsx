@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 
-const CALENDLY_URL = "https://calendly.com/shanemccawconsulting/discovery";
+const CALENDLY_URL = "https://calendly.com/shanemccaw/discovery";
 
 interface CalendlyEmbedProps {
   minHeight?: number;

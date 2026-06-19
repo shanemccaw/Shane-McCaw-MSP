@@ -210,8 +210,8 @@ export default function Contact() {
                   <Mail className="w-5 h-5 text-[#0078D4] mt-0.5 flex-shrink-0" />
                   <div>
                     <h4 className="font-bold text-[#0A2540] mb-1">Direct Email</h4>
-                    <a href="mailto:info@shanemccawconsulting.com" className="text-[#0078D4] text-sm hover:underline" data-testid="contact-email">
-                      info@shanemccawconsulting.com
+                    <a href="mailto:info@shanemccaw.com" className="text-[#0078D4] text-sm hover:underline" data-testid="contact-email">
+                      info@shanemccaw.com
                     </a>
                   </div>
                 </div>
