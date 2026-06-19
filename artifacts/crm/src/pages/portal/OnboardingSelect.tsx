@@ -76,10 +76,21 @@ export default function OnboardingSelect() {
   }, [preselectedSlug]);
 
   const toggleService = (id: number) => {
+    const svc = services.find(s => s.id === id);
     setSelectedIds(prev => {
       const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        if (svc?.billingType === "recurring_monthly") {
+          for (const existing of next) {
+            if (services.find(s => s.id === existing)?.billingType === "recurring_monthly") {
+              next.delete(existing);
+            }
+          }
+        }
+        next.add(id);
+      }
       return next;
     });
   };
