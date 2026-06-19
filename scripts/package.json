@@ -6,10 +6,12 @@
   "scripts": {
     "hello": "tsx ./src/hello.ts",
     "generate:og": "node ../scripts/generate-og-image.mjs",
+    "sync-webhooks": "tsx ./src/sync-stripe-webhooks.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "devDependencies": {
     "@types/node": "catalog:",
+    "stripe": "^22.2.1",
     "tsx": "catalog:"
   }
 }

@@ -769,7 +769,23 @@ async function provisionOnboardingProject(
   }
 }
 
-// Stripe webhook to mark invoice paid
+// ── Stripe webhook handler ───────────────────────────────────────────────────
+// RUNBOOK: Stripe Dashboard webhook endpoints ↔ Replit Secrets
+//
+//  Endpoint URL                                    | Signing secret (Replit Secret)
+//  ------------------------------------------------+--------------------------------
+//  https://<your>.replit.dev/api/portal/stripe/webhook  | STRIPE_WEBHOOK_SECRET
+//  https://shanemccaw.com/api/portal/stripe/webhook     | STRIPE_WEBHOOK_SECRET_PROD
+//
+//  To verify or auto-repair these registrations after a redeploy, run:
+//    pnpm --filter @workspace/scripts run sync-webhooks          # check only
+//    pnpm --filter @workspace/scripts run sync-webhooks -- --fix # check + auto-create
+//
+//  The script reads REPLIT_DOMAINS (set automatically by Replit in production)
+//  and STRIPE_SECRET_KEY, then compares against registered Stripe endpoints.
+//
+//  If you change the webhook path or add a new domain, re-run the script.
+//
 // NOTE: app.ts registers express.raw() for this path before express.json(), so req.body is a raw Buffer here.
 // Supports two signing secrets simultaneously:
 //   STRIPE_WEBHOOK_SECRET     — dev endpoint (*.replit.dev)
