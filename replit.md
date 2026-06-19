@@ -61,7 +61,7 @@ A professional multi-page consulting website for Shane McCaw — Lead Microsoft 
 
 ## Product
 
-A marketing website for Shane McCaw Consulting positioning Shane as the premier Microsoft 365 and Copilot AI consultant. Includes full service pages, fixed-price micro-offer packages, retainer pricing, resource/blog section, contact form with validation, and a Calendly booking placeholder.
+A marketing website for Shane McCaw Consulting positioning Shane as the premier Microsoft 365 and Copilot AI consultant. Includes full service pages, fixed-price micro-offer packages, retainer pricing, resource/blog section, contact form with validation, and a Microsoft Bookings embed for scheduling.
 
 ## User preferences
 
