@@ -147,6 +147,7 @@ export default function OnboardingSelect() {
     <div className="min-h-screen bg-[#F7F9FC]">
       {activeWizardService && (
         <OrderWizard
+          key={activeWizardService.id}
           serviceName={activeWizardService.name}
           basePrice={parseFloat(activeWizardService.basePrice!)}
           steps={activeWizardService.orderWorkflow!}
