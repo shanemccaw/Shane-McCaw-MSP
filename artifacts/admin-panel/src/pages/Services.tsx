@@ -289,13 +289,42 @@ function WorkflowBuilder({ service, onClose }: { service: Service; onClose: () =
   const [savedMsg, setSavedMsg] = useState(false);
   const [saveError, setSaveError] = useState("");
 
+  const [allServices, setAllServices] = useState<Service[]>([]);
+  const [showCopyFrom, setShowCopyFrom] = useState(false);
+  const [copySourceId, setCopySourceId] = useState("");
+  const [copyMode, setCopyMode] = useState<"replace" | "append">("replace");
+  const [copying, setCopying] = useState(false);
+
   useEffect(() => {
     fetchWithAuth(`/api/admin/services/${service.id}/workflow`)
       .then(r => r.json() as Promise<{ workflow: WizardStep[] }>)
       .then(data => { setSteps(data.workflow ?? []); setLoading(false); })
       .catch(() => setLoading(false));
+    fetchWithAuth("/api/admin/services")
+      .then(r => r.json() as Promise<Service[]>)
+      .then(data => setAllServices(data.filter(s => s.id !== service.id)))
+      .catch(() => {});
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [service.id]);
+
+  const handleCopyFrom = async () => {
+    if (!copySourceId) return;
+    setCopying(true);
+    try {
+      const res = await fetchWithAuth(`/api/admin/services/${copySourceId}/workflow`);
+      const data = await res.json() as { workflow: WizardStep[] };
+      const imported = (data.workflow ?? []).map(st => ({
+        ...st,
+        id: nanoid(),
+        options: st.options.map(o => ({ ...o, id: nanoid() })),
+      }));
+      setSteps(prev => copyMode === "append" ? [...prev, ...imported] : imported);
+      setShowCopyFrom(false);
+      setCopySourceId("");
+    } finally {
+      setCopying(false);
+    }
+  };
 
   const addStep = () => setSteps(s => [...s, { id: nanoid(), title: "", options: [] }]);
   const removeStep = (idx: number) => setSteps(s => s.filter((_, i) => i !== idx));
@@ -352,13 +381,56 @@ function WorkflowBuilder({ service, onClose }: { service: Service; onClose: () =
 
   return (
     <div className="border border-[#0078D4]/30 bg-[#F7F9FC] rounded-xl p-5 mb-6">
-      <div className="flex items-center justify-between mb-4">
+      <div className="flex items-center justify-between mb-4 gap-3 flex-wrap">
         <div>
           <h4 className="text-sm font-bold text-[#0A2540]">Order Workflow — {service.name}</h4>
           <p className="text-xs text-muted-foreground mt-0.5">Build the questionnaire clients walk through to calculate their final price.</p>
         </div>
-        <button onClick={onClose} className="text-xs text-muted-foreground hover:text-[#0A2540] font-medium">Close</button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => { setShowCopyFrom(p => !p); setCopySourceId(""); }}
+            className={`text-xs font-semibold px-3 py-1.5 rounded-lg border transition-colors ${showCopyFrom ? "bg-[#0078D4] text-white border-[#0078D4]" : "border-gray-300 text-gray-600 hover:border-[#0078D4] hover:text-[#0078D4]"}`}
+          >
+            Copy from…
+          </button>
+          <button onClick={onClose} className="text-xs text-muted-foreground hover:text-[#0A2540] font-medium">Close</button>
+        </div>
       </div>
+
+      {showCopyFrom && (
+        <div className="bg-white border border-border rounded-xl p-4 mb-4 space-y-3">
+          <p className="text-xs font-semibold text-[#0A2540]">Copy workflow steps from another service</p>
+          <select
+            value={copySourceId}
+            onChange={e => setCopySourceId(e.target.value)}
+            className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4] bg-white"
+          >
+            <option value="">— Select a service —</option>
+            {allServices.map(s => (
+              <option key={s.id} value={s.id}>{s.name}</option>
+            ))}
+          </select>
+          <div className="flex items-center gap-4">
+            {(["replace", "append"] as const).map(m => (
+              <label key={m} className="flex items-center gap-1.5 text-xs text-[#0A2540] cursor-pointer">
+                <input type="radio" name="copyMode" value={m} checked={copyMode === m} onChange={() => setCopyMode(m)} className="text-[#0078D4]" />
+                {m === "replace" ? "Replace current steps" : "Append to current steps"}
+              </label>
+            ))}
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => void handleCopyFrom()}
+              disabled={!copySourceId || copying}
+              className="flex items-center gap-1.5 text-xs bg-[#0078D4] text-white px-3 py-1.5 rounded-lg font-medium hover:bg-[#006CBE] disabled:opacity-50 transition-colors"
+            >
+              {copying ? <Loader2 className="w-3 h-3 animate-spin" /> : null}
+              {copying ? "Copying…" : "Copy steps"}
+            </button>
+            <button onClick={() => setShowCopyFrom(false)} className="text-xs text-gray-500 hover:text-gray-700 px-2 py-1.5">Cancel</button>
+          </div>
+        </div>
+      )}
       {loading ? (
         <div className="flex items-center justify-center py-8"><Loader2 className="w-5 h-5 animate-spin text-[#0078D4]" /></div>
       ) : (
