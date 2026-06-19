@@ -32,7 +32,16 @@ export default function PowerPlatform() {
             "name": "Shane McCaw",
             "jobTitle": "Lead Microsoft 365 Architect",
             "url": "https://shanemccawconsulting.com"
-          }
+          },
+          "offers": [
+            {
+              "@type": "Offer",
+              "name": "Power Automate Quick Win",
+              "price": "597",
+              "priceCurrency": "USD",
+              "url": "https://shanemccawconsulting.com/micro-offers"
+            }
+          ]
         }}
       />
       <section className="bg-[#0A2540] pt-32 pb-20">

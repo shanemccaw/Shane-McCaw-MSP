@@ -31,7 +31,16 @@ export default function Governance() {
             "name": "Shane McCaw",
             "jobTitle": "Lead Microsoft 365 Architect",
             "url": "https://shanemccawconsulting.com"
-          }
+          },
+          "offers": [
+            {
+              "@type": "Offer",
+              "name": "M365 Security & Governance Audit",
+              "price": "897",
+              "priceCurrency": "USD",
+              "url": "https://shanemccawconsulting.com/micro-offers"
+            }
+          ]
         }}
       />
       <section className="bg-[#0A2540] pt-32 pb-20">
