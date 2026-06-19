@@ -4,6 +4,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { Layout } from "@/components/Layout";
 import { CTAButton } from "@/components/CTAButton";
+import { CalendlyEmbed } from "@/components/CalendlyEmbed";
 import { Mail, MapPin, Clock } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
@@ -185,13 +186,10 @@ export default function Contact() {
                 </form>
               </div>
 
-              {/* Calendly Placeholder */}
-              <div className="mt-10">
+              {/* Calendly Inline Embed */}
+              <div className="mt-10" data-testid="calendly-embed-contact">
                 <h3 className="text-xl font-bold text-[#0A2540] mb-4">Or Book Directly on My Calendar</h3>
-                <div className="bg-white border border-border rounded-xl p-10 text-center text-muted-foreground" data-testid="calendly-placeholder-contact">
-                  <p className="font-medium text-foreground mb-2">Calendly Booking Widget</p>
-                  <p className="text-sm">Replace with: <code className="bg-[#F7F9FC] px-2 py-0.5 rounded text-[#0078D4] text-xs">https://calendly.com/shanemccawconsulting/discovery</code></p>
-                </div>
+                <CalendlyEmbed minHeight={630} />
               </div>
             </div>
 

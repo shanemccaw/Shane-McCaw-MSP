@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import { Layout } from "@/components/Layout";
+import { CalendlyEmbed } from "@/components/CalendlyEmbed";
 import { CheckCircle } from "lucide-react";
 
 export default function Book() {
@@ -47,27 +48,8 @@ export default function Book() {
               </div>
             </div>
 
-            <div className="lg:col-span-2">
-              <div className="bg-white rounded-xl border border-border overflow-hidden" data-testid="calendly-embed">
-                <div
-                  className="w-full flex flex-col items-center justify-center text-center p-16 text-muted-foreground"
-                  style={{ minHeight: "700px" }}
-                >
-                  <div className="w-16 h-16 rounded-full bg-[#0078D4]/10 flex items-center justify-center mx-auto mb-6">
-                    <CheckCircle className="w-8 h-8 text-[#0078D4]" />
-                  </div>
-                  <h3 className="text-xl font-bold text-[#0A2540] mb-3">Calendly Booking Widget</h3>
-                  <p className="text-muted-foreground text-sm max-w-sm">
-                    To embed your Calendly, replace this placeholder with an inline Calendly widget using:
-                  </p>
-                  <code className="mt-4 bg-[#F7F9FC] border border-border px-4 py-2 rounded text-xs text-[#0078D4] block max-w-sm break-all">
-                    https://calendly.com/shanemccawconsulting/discovery
-                  </code>
-                  <p className="text-xs text-muted-foreground mt-4">
-                    Add the Calendly script to index.html and use their inline embed code.
-                  </p>
-                </div>
-              </div>
+            <div className="lg:col-span-2" data-testid="calendly-embed">
+              <CalendlyEmbed minHeight={700} />
             </div>
           </div>
         </div>
