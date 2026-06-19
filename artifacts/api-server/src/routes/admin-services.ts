@@ -1,5 +1,5 @@
 import { Router, type IRouter, type Request, type Response } from "express";
-import { db, servicesTable, clientServicesTable } from "@workspace/db";
+import { db, servicesTable, clientServicesTable, contractsTable, workflowTemplatesTable, projectTemplatesTable, contractTemplatesTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/requireAuth";
 
@@ -30,7 +30,7 @@ router.put("/admin/services/:id", requireAdmin, async (req: Request, res: Respon
   try {
     const id = Number(req.params.id);
     if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
-    const body = req.body as Record<string, unknown>;
+    const body = (req.body ?? {}) as Record<string, unknown>;
     const {
       name, description, category, deliverables, price, durationDays, turnaround,
       billingType, isPublic, slug,
@@ -67,14 +67,15 @@ router.put("/admin/services/:id", requireAdmin, async (req: Request, res: Respon
       .returning();
     if (!updated) { res.status(404).json({ error: "Service not found" }); return; }
     res.json(updated);
-  } catch {
+  } catch (err: unknown) {
+    req.log?.error(err);
     res.status(500).json({ error: "Failed to update service" });
   }
 });
 
 router.post("/admin/services", requireAdmin, async (req: Request, res: Response) => {
   try {
-    const body = req.body as Record<string, unknown>;
+    const body = (req.body ?? {}) as Record<string, unknown>;
     const { name, slug, billingType } = body;
     if (!name || typeof name !== "string" || !name.trim()) {
       res.status(400).json({ error: "name is required" }); return;
@@ -92,6 +93,7 @@ router.post("/admin/services", requireAdmin, async (req: Request, res: Response)
       .returning();
     res.status(201).json(created);
   } catch (err: unknown) {
+    req.log?.error(err);
     const pg = err as { code?: string };
     if (pg.code === "23505") {
       res.status(409).json({ error: "A service with that slug already exists." }); return;
@@ -105,14 +107,26 @@ router.delete("/admin/services/:id", requireAdmin, async (req: Request, res: Res
     const id = Number(req.params.id);
     if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
 
-    const linked = await db
-      .select({ id: clientServicesTable.id })
-      .from(clientServicesTable)
-      .where(eq(clientServicesTable.serviceId, id))
-      .limit(1);
+    const blockers: string[] = [];
 
-    if (linked.length > 0) {
-      res.status(409).json({ error: "This service is assigned to one or more clients and cannot be deleted." });
+    const [clientSvc, contract, workflowTpl, projectTpl, contractTpl] = await Promise.all([
+      db.select({ id: clientServicesTable.id }).from(clientServicesTable).where(eq(clientServicesTable.serviceId, id)).limit(1),
+      db.select({ id: contractsTable.id }).from(contractsTable).where(eq(contractsTable.serviceId, id)).limit(1),
+      db.select({ id: workflowTemplatesTable.id }).from(workflowTemplatesTable).where(eq(workflowTemplatesTable.serviceId, id)).limit(1),
+      db.select({ id: projectTemplatesTable.id }).from(projectTemplatesTable).where(eq(projectTemplatesTable.serviceId, id)).limit(1),
+      db.select({ id: contractTemplatesTable.id }).from(contractTemplatesTable).where(eq(contractTemplatesTable.serviceId, id)).limit(1),
+    ]);
+
+    if (clientSvc.length > 0) blockers.push("active client service assignments");
+    if (contract.length > 0) blockers.push("contracts");
+    if (workflowTpl.length > 0) blockers.push("workflow templates");
+    if (projectTpl.length > 0) blockers.push("project templates");
+    if (contractTpl.length > 0) blockers.push("contract templates");
+
+    if (blockers.length > 0) {
+      res.status(409).json({
+        error: `This service cannot be deleted because it is referenced by: ${blockers.join(", ")}. Remove those links first.`,
+      });
       return;
     }
 
@@ -123,7 +137,13 @@ router.delete("/admin/services/:id", requireAdmin, async (req: Request, res: Res
 
     if (!deleted) { res.status(404).json({ error: "Service not found" }); return; }
     res.status(204).end();
-  } catch {
+  } catch (err: unknown) {
+    req.log?.error(err);
+    const pg = err as { code?: string };
+    if (pg.code === "23503") {
+      res.status(409).json({ error: "This service is referenced by other records and cannot be deleted." });
+      return;
+    }
     res.status(500).json({ error: "Failed to delete service" });
   }
 });

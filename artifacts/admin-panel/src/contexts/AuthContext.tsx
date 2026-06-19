@@ -102,6 +102,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (accessTokenRef.current) {
       headers.set("Authorization", `Bearer ${accessTokenRef.current}`);
     }
+    if (typeof init?.body === "string" && !headers.has("Content-Type")) {
+      headers.set("Content-Type", "application/json");
+    }
 
     const res = await fetch(input, { ...init, credentials: "include", headers });
 
@@ -115,6 +118,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     const retryHeaders = new Headers(init?.headers);
     retryHeaders.set("Authorization", `Bearer ${newToken}`);
+    if (typeof init?.body === "string" && !retryHeaders.has("Content-Type")) {
+      retryHeaders.set("Content-Type", "application/json");
+    }
     return fetch(input, { ...init, credentials: "include", headers: retryHeaders });
   }, [refresh]);
 
