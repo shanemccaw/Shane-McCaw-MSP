@@ -93,6 +93,81 @@ export default function MicroOffers() {
       <SEOMeta
         title="Quick Win Packages — Fixed Price Microsoft 365 Services | Shane McCaw Consulting"
         description="Fixed-price Microsoft 365 quick-win packages by Shane McCaw. Clear scope, flat fees, and senior-level delivery — starting at $1,500. No hourly billing surprises."
+        jsonLd={{
+          "@context": "https://schema.org",
+          "@type": "ItemList",
+          "name": "Fixed-Price Microsoft 365 Quick-Win Packages",
+          "description": "Fixed-price Microsoft 365 consulting packages by Shane McCaw. Clear scope, defined deliverables, no hourly billing.",
+          "url": "https://shanemccaw.com/micro-offers",
+          "itemListElement": [
+            {
+              "@type": "ListItem",
+              "position": 1,
+              "item": {
+                "@type": "Offer",
+                "name": "M365 Health Check",
+                "price": "497",
+                "priceCurrency": "USD",
+                "seller": { "@type": "Person", "name": "Shane McCaw" }
+              }
+            },
+            {
+              "@type": "ListItem",
+              "position": 2,
+              "item": {
+                "@type": "Offer",
+                "name": "Copilot Readiness Assessment",
+                "price": "797",
+                "priceCurrency": "USD",
+                "seller": { "@type": "Person", "name": "Shane McCaw" }
+              }
+            },
+            {
+              "@type": "ListItem",
+              "position": 3,
+              "item": {
+                "@type": "Offer",
+                "name": "SharePoint Intranet Blueprint",
+                "price": "997",
+                "priceCurrency": "USD",
+                "seller": { "@type": "Person", "name": "Shane McCaw" }
+              }
+            },
+            {
+              "@type": "ListItem",
+              "position": 4,
+              "item": {
+                "@type": "Offer",
+                "name": "Power Automate Quick Win",
+                "price": "597",
+                "priceCurrency": "USD",
+                "seller": { "@type": "Person", "name": "Shane McCaw" }
+              }
+            },
+            {
+              "@type": "ListItem",
+              "position": 5,
+              "item": {
+                "@type": "Offer",
+                "name": "M365 Security & Governance Audit",
+                "price": "897",
+                "priceCurrency": "USD",
+                "seller": { "@type": "Person", "name": "Shane McCaw" }
+              }
+            },
+            {
+              "@type": "ListItem",
+              "position": 6,
+              "item": {
+                "@type": "Offer",
+                "name": "Copilot Prompt Library Build",
+                "price": "397",
+                "priceCurrency": "USD",
+                "seller": { "@type": "Person", "name": "Shane McCaw" }
+              }
+            }
+          ]
+        }}
       />
       <section className="bg-[#0A2540] pt-32 pb-20">
         <div className="max-w-[1200px] mx-auto px-6">

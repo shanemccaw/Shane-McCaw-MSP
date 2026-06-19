@@ -8,6 +8,7 @@ interface SEOMetaProps {
   description: string;
   ogImage?: string;
   ogUrl?: string;
+  jsonLd?: object | object[];
 }
 
 function setMeta(property: string, content: string, isName = false) {
@@ -21,7 +22,7 @@ function setMeta(property: string, content: string, isName = false) {
   el.setAttribute("content", content);
 }
 
-export function SEOMeta({ title, description, ogImage = DEFAULT_OG_IMAGE, ogUrl }: SEOMetaProps) {
+export function SEOMeta({ title, description, ogImage = DEFAULT_OG_IMAGE, ogUrl, jsonLd }: SEOMetaProps) {
   useEffect(() => {
     document.title = title;
 
@@ -39,6 +40,22 @@ export function SEOMeta({ title, description, ogImage = DEFAULT_OG_IMAGE, ogUrl 
     setMeta("twitter:description", description, true);
     setMeta("twitter:image", ogImage, true);
   }, [title, description, ogImage, ogUrl]);
+
+  useEffect(() => {
+    if (!jsonLd) return;
+    const scriptId = "jsonld-page";
+    let script = document.getElementById(scriptId) as HTMLScriptElement | null;
+    if (!script) {
+      script = document.createElement("script");
+      script.id = scriptId;
+      script.type = "application/ld+json";
+      document.head.appendChild(script);
+    }
+    script.textContent = JSON.stringify(jsonLd);
+    return () => {
+      document.getElementById(scriptId)?.remove();
+    };
+  }, [jsonLd]);
 
   return null;
 }

@@ -102,6 +102,28 @@ export default function Home() {
       <SEOMeta
         title="Enterprise Microsoft 365 & Copilot AI Consulting | Shane McCaw Consulting"
         description="Shane McCaw is NASA's Lead Microsoft 365 Architect — 30 years of Microsoft expertise, delivering M365 tenant audits, Copilot AI readiness, SharePoint, and governance. Fixed-price packages, senior-level delivery."
+        jsonLd={{
+          "@context": "https://schema.org",
+          "@type": "ProfessionalService",
+          "name": "Shane McCaw Consulting",
+          "url": "https://shanemccaw.com",
+          "description": "Enterprise Microsoft 365 and Copilot AI consulting by Shane McCaw — NASA's Lead M365 Architect with 30 years of Microsoft expertise.",
+          "founder": { "@type": "Person", "name": "Shane McCaw" },
+          "areaServed": "US",
+          "priceRange": "$397 – $25,000+",
+          "hasOfferCatalog": {
+            "@type": "OfferCatalog",
+            "name": "Microsoft 365 Consulting Services",
+            "itemListElement": [
+              { "@type": "Offer", "itemOffered": { "@type": "Service", "name": "Microsoft 365 Consulting" } },
+              { "@type": "Offer", "itemOffered": { "@type": "Service", "name": "Copilot AI Readiness" } },
+              { "@type": "Offer", "itemOffered": { "@type": "Service", "name": "SharePoint Architecture" } },
+              { "@type": "Offer", "itemOffered": { "@type": "Service", "name": "Power Platform Development" } },
+              { "@type": "Offer", "itemOffered": { "@type": "Service", "name": "Governance & Compliance" } },
+              { "@type": "Offer", "itemOffered": { "@type": "Service", "name": "Cloud Migration" } }
+            ]
+          }
+        }}
       />
       {/* HERO */}
       <section className="relative min-h-screen flex items-center justify-center bg-[#0A2540] overflow-hidden">

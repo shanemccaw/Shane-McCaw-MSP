@@ -164,6 +164,54 @@ export default function Pricing() {
       <SEOMeta
         title="Pricing — Transparent Microsoft 365 Consulting | Shane McCaw Consulting"
         description="Transparent Microsoft 365 consulting pricing by Shane McCaw. Fixed-price micro-offer packages and retainer options — know your investment before you commit."
+        jsonLd={{
+          "@context": "https://schema.org",
+          "@type": "ItemList",
+          "name": "Microsoft 365 Consulting Pricing",
+          "description": "Transparent pricing for Shane McCaw's Microsoft 365 consulting retainers and fixed-price packages.",
+          "url": "https://shanemccaw.com/pricing",
+          "itemListElement": [
+            {
+              "@type": "ListItem",
+              "position": 1,
+              "item": {
+                "@type": "Offer",
+                "name": "Starter Retainer",
+                "description": "Ongoing strategic M365 guidance — ideal for SMBs maintaining their environment.",
+                "price": "1500",
+                "priceCurrency": "USD",
+                "priceSpecification": { "@type": "UnitPriceSpecification", "price": "1500", "priceCurrency": "USD", "unitText": "month" },
+                "seller": { "@type": "Person", "name": "Shane McCaw" }
+              }
+            },
+            {
+              "@type": "ListItem",
+              "position": 2,
+              "item": {
+                "@type": "Offer",
+                "name": "Growth Retainer",
+                "description": "Active improvement and project delivery for teams scaling M365 adoption.",
+                "price": "3000",
+                "priceCurrency": "USD",
+                "priceSpecification": { "@type": "UnitPriceSpecification", "price": "3000", "priceCurrency": "USD", "unitText": "month" },
+                "seller": { "@type": "Person", "name": "Shane McCaw" }
+              }
+            },
+            {
+              "@type": "ListItem",
+              "position": 3,
+              "item": {
+                "@type": "Offer",
+                "name": "Enterprise Retainer",
+                "description": "Embedded senior M365 architect capacity for large-scale transformation programs.",
+                "price": "5500",
+                "priceCurrency": "USD",
+                "priceSpecification": { "@type": "UnitPriceSpecification", "price": "5500", "priceCurrency": "USD", "unitText": "month" },
+                "seller": { "@type": "Person", "name": "Shane McCaw" }
+              }
+            }
+          ]
+        }}
       />
       {/* Hero */}
       <section className="relative bg-[#0A2540] pt-32 pb-24 overflow-hidden">

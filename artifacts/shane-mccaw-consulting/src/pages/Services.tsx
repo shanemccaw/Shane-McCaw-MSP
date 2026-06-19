@@ -51,6 +51,27 @@ export default function Services() {
       <SEOMeta
         title="Microsoft 365 Consulting Services | Shane McCaw Consulting"
         description="Explore Shane McCaw's Microsoft 365, Copilot AI, SharePoint, Power Platform, governance, and cloud migration consulting services. Senior-level expertise, delivered personally."
+        jsonLd={{
+          "@context": "https://schema.org",
+          "@type": "ProfessionalService",
+          "name": "Shane McCaw Consulting",
+          "url": "https://shanemccaw.com/services",
+          "description": "Microsoft 365, Copilot AI, SharePoint, Power Platform, governance, and cloud migration consulting services by Shane McCaw.",
+          "founder": { "@type": "Person", "name": "Shane McCaw" },
+          "areaServed": "US",
+          "hasOfferCatalog": {
+            "@type": "OfferCatalog",
+            "name": "Microsoft 365 Consulting Services",
+            "itemListElement": [
+              { "@type": "Offer", "itemOffered": { "@type": "Service", "name": "Microsoft 365 Consulting", "url": "https://shanemccaw.com/services/microsoft-365" } },
+              { "@type": "Offer", "itemOffered": { "@type": "Service", "name": "Copilot AI Readiness & Deployment", "url": "https://shanemccaw.com/services/copilot-ai" } },
+              { "@type": "Offer", "itemOffered": { "@type": "Service", "name": "SharePoint Architecture & Intranet Design", "url": "https://shanemccaw.com/services/sharepoint" } },
+              { "@type": "Offer", "itemOffered": { "@type": "Service", "name": "Power Platform Development", "url": "https://shanemccaw.com/services/power-platform" } },
+              { "@type": "Offer", "itemOffered": { "@type": "Service", "name": "Governance, Risk & Compliance", "url": "https://shanemccaw.com/services/governance" } },
+              { "@type": "Offer", "itemOffered": { "@type": "Service", "name": "Cloud Migration", "url": "https://shanemccaw.com/services/cloud-migration" } }
+            ]
+          }
+        }}
       />
       <section className="bg-[#0A2540] pt-32 pb-20">
         <div className="max-w-[1200px] mx-auto px-6">
