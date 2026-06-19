@@ -63,6 +63,20 @@ export default function Resources() {
       a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
+
+      void fetch("/api/downloads/checklist", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ asset: "copilot-readiness" }),
+      }).catch(() => {});
+
+      const w = window as unknown as { gtag?: (...args: unknown[]) => void };
+      if (typeof w.gtag === "function") {
+        w.gtag("event", "checklist_downloaded", {
+          event_category: "lead_magnet",
+          event_label: "M365-Copilot-Readiness-Checklist",
+        });
+      }
     } catch {
       // PDF generation failed silently — success state still shown
     }

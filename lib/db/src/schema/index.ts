@@ -63,3 +63,12 @@ export const shareEventsTable = pgTable("share_events", {
 
 export type InsertShareEvent = typeof shareEventsTable.$inferInsert;
 export type ShareEvent = typeof shareEventsTable.$inferSelect;
+
+export const checklistDownloadsTable = pgTable("checklist_downloads", {
+  id: serial("id").primaryKey(),
+  asset: text("asset").notNull().default("copilot-readiness"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export type InsertChecklistDownload = typeof checklistDownloadsTable.$inferInsert;
+export type ChecklistDownload = typeof checklistDownloadsTable.$inferSelect;
