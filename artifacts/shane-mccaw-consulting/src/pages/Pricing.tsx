@@ -1,10 +1,10 @@
 import { useState } from "react";
 import { SEOMeta } from "@/components/SEOMeta";
-import { Link } from "wouter";
 import { Layout } from "@/components/Layout";
 import { CTAButton } from "@/components/CTAButton";
 import { ConsultationCTA } from "@/components/ConsultationCTA";
 import { CheckCircle, ChevronDown, Zap, FolderOpen, Calendar, ArrowRight } from "lucide-react";
+import { useServicePrice } from "@/components/use-service-price";
 
 const microOffers = [
   {
@@ -60,6 +60,7 @@ const microOffers = [
 
 const retainers = [
   {
+    slug: "architect-essentials",
     name: "Architect Essentials",
     price: "$1,500",
     period: "/month",
@@ -76,6 +77,7 @@ const retainers = [
     ],
   },
   {
+    slug: "architect-growth",
     name: "Architect Growth",
     price: "$3,000",
     period: "/month",
@@ -93,6 +95,7 @@ const retainers = [
     ],
   },
   {
+    slug: "architect-enterprise",
     name: "Architect Enterprise",
     price: "$5,500",
     period: "/month",
@@ -142,6 +145,80 @@ const faqs = [
     a: "Microsoft 365 Copilot requires an M365 E3 or E5 base license plus the Copilot add-on ($30/user/month). However, licensing is only the starting point — data governance, sensitivity labeling, and permissions hygiene must be in place first. The Copilot Readiness Assessment covers all of this.",
   },
 ];
+
+function MicroOfferCard({ offer, index }: { offer: typeof microOffers[number]; index: number }) {
+  const { price } = useServicePrice(offer.slug, offer.price);
+  return (
+    <div
+      className="bg-white rounded-xl border border-border p-6 flex flex-col hover:border-[#0078D4]/30 hover:shadow-sm transition-all duration-200 relative"
+      data-testid={`micro-offer-${index}`}
+    >
+      {offer.badge && (
+        <span className="absolute -top-3 left-5 bg-[#0078D4] text-white text-xs font-bold px-3 py-1 rounded-full">
+          {offer.badge}
+        </span>
+      )}
+      <div className="flex items-start justify-between gap-3 mb-3">
+        <h3 className="font-extrabold text-[#0A2540] text-base leading-snug">{offer.name}</h3>
+        <span className="text-[#0078D4] font-extrabold text-lg flex-shrink-0">{price}</span>
+      </div>
+      <p className="text-muted-foreground text-sm leading-relaxed flex-grow mb-4">{offer.desc}</p>
+      <div className="border-t border-border pt-4 space-y-2">
+        <div className="flex items-center gap-2 text-xs">
+          <CheckCircle className="w-3.5 h-3.5 text-[#0078D4] flex-shrink-0" />
+          <span className="text-foreground font-medium">{offer.deliverable}</span>
+        </div>
+        <div className="flex items-center gap-2 text-xs">
+          <span className="w-3.5 h-3.5 flex-shrink-0 text-center text-muted-foreground">⏱</span>
+          <span className="text-muted-foreground">Turnaround: {offer.turnaround}</span>
+        </div>
+      </div>
+      <a
+        href={`/crm/portal/onboarding/select?service=${offer.slug}`}
+        className="mt-4 text-[#0078D4] text-sm font-semibold hover:underline flex items-center gap-1"
+        data-testid={`micro-offer-cta-${index}`}
+      >
+        Get started <ArrowRight className="w-3.5 h-3.5" />
+      </a>
+    </div>
+  );
+}
+
+function RetainerCard({ plan, index }: { plan: typeof retainers[number]; index: number }) {
+  const { price } = useServicePrice(plan.slug, plan.price);
+  return (
+    <div
+      className={`rounded-2xl p-8 border flex flex-col relative ${plan.highlight ? "bg-[#0A2540] border-[#0078D4]/60" : "bg-white border-border"}`}
+      data-testid={`retainer-${index}`}
+    >
+      {plan.highlight && (
+        <div className="absolute -top-4 left-1/2 -translate-x-1/2 bg-[#0078D4] text-white text-xs font-bold px-5 py-1.5 rounded-full uppercase tracking-wide whitespace-nowrap">
+          Most Popular
+        </div>
+      )}
+      <div className="mb-2">
+        <h3 className={`text-lg font-extrabold mb-4 ${plan.highlight ? "text-white" : "text-[#0A2540]"}`}>{plan.name}</h3>
+        <div className="flex items-baseline gap-1 mb-1">
+          <span className="text-4xl font-extrabold text-[#0078D4]">{price}</span>
+          <span className={`text-sm ${plan.highlight ? "text-white/50" : "text-muted-foreground"}`}>{plan.period}</span>
+        </div>
+        <p className={`text-sm mb-4 ${plan.highlight ? "text-[#00B4D8]" : "text-[#0078D4]"}`}>{plan.hours}/month</p>
+        <p className={`text-xs leading-relaxed mb-6 ${plan.highlight ? "text-white/60" : "text-muted-foreground"}`}>{plan.tagline}</p>
+      </div>
+      <ul className="space-y-3 flex-grow mb-8">
+        {plan.features.map((f, j) => (
+          <li key={j} className="flex items-start gap-2.5" data-testid={`retainer-${index}-feature-${j}`}>
+            <CheckCircle className="w-4 h-4 text-[#0078D4] flex-shrink-0 mt-0.5" />
+            <span className={`text-sm ${plan.highlight ? "text-white/80" : "text-foreground"}`}>{f}</span>
+          </li>
+        ))}
+      </ul>
+      <CTAButton href="/book" className="w-full justify-center text-sm" data-testid={`retainer-cta-${index}`}>
+        Start a Retainer
+      </CTAButton>
+    </div>
+  );
+}
 
 function FAQItem({ q, a, index }: { q: string; a: string; index: number }) {
   const [open, setOpen] = useState(false);
@@ -435,39 +512,7 @@ export default function Pricing() {
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
             {microOffers.map((offer, i) => (
-              <div
-                key={i}
-                className="bg-white rounded-xl border border-border p-6 flex flex-col hover:border-[#0078D4]/30 hover:shadow-sm transition-all duration-200 relative"
-                data-testid={`micro-offer-${i}`}
-              >
-                {offer.badge && (
-                  <span className="absolute -top-3 left-5 bg-[#0078D4] text-white text-xs font-bold px-3 py-1 rounded-full">
-                    {offer.badge}
-                  </span>
-                )}
-                <div className="flex items-start justify-between gap-3 mb-3">
-                  <h3 className="font-extrabold text-[#0A2540] text-base leading-snug">{offer.name}</h3>
-                  <span className="text-[#0078D4] font-extrabold text-lg flex-shrink-0">{offer.price}</span>
-                </div>
-                <p className="text-muted-foreground text-sm leading-relaxed flex-grow mb-4">{offer.desc}</p>
-                <div className="border-t border-border pt-4 space-y-2">
-                  <div className="flex items-center gap-2 text-xs">
-                    <CheckCircle className="w-3.5 h-3.5 text-[#0078D4] flex-shrink-0" />
-                    <span className="text-foreground font-medium">{offer.deliverable}</span>
-                  </div>
-                  <div className="flex items-center gap-2 text-xs">
-                    <span className="w-3.5 h-3.5 flex-shrink-0 text-center text-muted-foreground">⏱</span>
-                    <span className="text-muted-foreground">Turnaround: {offer.turnaround}</span>
-                  </div>
-                </div>
-                <a
-                  href={`/crm/portal/onboarding/select?service=${offer.slug}`}
-                  className="mt-4 text-[#0078D4] text-sm font-semibold hover:underline flex items-center gap-1"
-                  data-testid={`micro-offer-cta-${i}`}
-                >
-                  Get started <ArrowRight className="w-3.5 h-3.5" />
-                </a>
-              </div>
+              <MicroOfferCard key={offer.slug} offer={offer} index={i} />
             ))}
           </div>
         </div>
@@ -543,37 +588,7 @@ export default function Pricing() {
           </div>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             {retainers.map((plan, i) => (
-              <div
-                key={i}
-                className={`rounded-2xl p-8 border flex flex-col relative ${plan.highlight ? "bg-[#0A2540] border-[#0078D4]/60" : "bg-white border-border"}`}
-                data-testid={`retainer-${i}`}
-              >
-                {plan.highlight && (
-                  <div className="absolute -top-4 left-1/2 -translate-x-1/2 bg-[#0078D4] text-white text-xs font-bold px-5 py-1.5 rounded-full uppercase tracking-wide whitespace-nowrap">
-                    Most Popular
-                  </div>
-                )}
-                <div className="mb-2">
-                  <h3 className={`text-lg font-extrabold mb-4 ${plan.highlight ? "text-white" : "text-[#0A2540]"}`}>{plan.name}</h3>
-                  <div className="flex items-baseline gap-1 mb-1">
-                    <span className="text-4xl font-extrabold text-[#0078D4]">{plan.price}</span>
-                    <span className={`text-sm ${plan.highlight ? "text-white/50" : "text-muted-foreground"}`}>{plan.period}</span>
-                  </div>
-                  <p className={`text-sm mb-4 ${plan.highlight ? "text-[#00B4D8]" : "text-[#0078D4]"}`}>{plan.hours}/month</p>
-                  <p className={`text-xs leading-relaxed mb-6 ${plan.highlight ? "text-white/60" : "text-muted-foreground"}`}>{plan.tagline}</p>
-                </div>
-                <ul className="space-y-3 flex-grow mb-8">
-                  {plan.features.map((f, j) => (
-                    <li key={j} className="flex items-start gap-2.5" data-testid={`retainer-${i}-feature-${j}`}>
-                      <CheckCircle className="w-4 h-4 text-[#0078D4] flex-shrink-0 mt-0.5" />
-                      <span className={`text-sm ${plan.highlight ? "text-white/80" : "text-foreground"}`}>{f}</span>
-                    </li>
-                  ))}
-                </ul>
-                <CTAButton href="/book" className="w-full justify-center text-sm" data-testid={`retainer-cta-${i}`}>
-                  Start a Retainer
-                </CTAButton>
-              </div>
+              <RetainerCard key={plan.slug} plan={plan} index={i} />
             ))}
           </div>
           <p className="text-center text-muted-foreground text-sm mt-8">
