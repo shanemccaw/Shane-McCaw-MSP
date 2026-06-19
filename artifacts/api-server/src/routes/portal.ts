@@ -766,8 +766,7 @@ async function provisionOnboardingProject(
     startDate,
   }).returning();
 
-  // ── Seed workflow steps: prefer project template tasks, fall back to hardcoded ──
-  // Check if the primary purchased service has an admin-authored project template
+  // ── Look up project template for the primary service (used in step seeding below) ──
   const primaryServiceId = orderedServices[0]?.id;
   const [projTemplate] = primaryServiceId
     ? await db.select().from(projectTemplatesTable)
@@ -775,84 +774,14 @@ async function provisionOnboardingProject(
         .limit(1)
     : [undefined];
 
-  let steps: Array<{ title: string; description: string }>;
-
+  let primaryTemplateTasks: Array<{ title: string; description: string | null }> = [];
   if (projTemplate) {
-    // Use tasks from the admin-configured project template
-    const templateTasks = await db
+    primaryTemplateTasks = await db
       .select()
       .from(projectTemplateTasksTable)
       .where(eq(projectTemplateTasksTable.projectTemplateId, projTemplate.id))
       .orderBy(asc(projectTemplateTasksTable.order));
-    steps = templateTasks.map(t => ({ title: t.title, description: t.description ?? "" }));
   }
-
-  if (!steps! || steps.length === 0) {
-    // Fall back to hardcoded slug-based steps (legacy behaviour)
-    const stepTemplates: Record<string, Array<{ title: string; description: string }>> = {
-      "m365-health-check": [
-        { title: "Kickoff Call", description: "30-minute video call to confirm scope, access requirements, and expected deliverables." },
-        { title: "Tenant Access Setup", description: "Client provisions read-only admin access or provides required tenant data exports." },
-        { title: "Assessment Scan", description: "Shane runs automated and manual checks across your M365 environment." },
-        { title: "Findings Report Draft", description: "Draft Health Check Report shared for review — client provides any corrections." },
-        { title: "Final Report Delivery", description: "Signed-off Health Check Report delivered with prioritised remediation roadmap." },
-      ],
-      "copilot-readiness": [
-        { title: "Kickoff Call", description: "30-minute video call to confirm scope, users in scope, and key use cases." },
-        { title: "Readiness Questionnaire", description: "Client completes structured questionnaire covering licensing, data governance, and training readiness." },
-        { title: "Environment Review", description: "Shane reviews M365 tenant configuration, licensing posture, and data sensitivity." },
-        { title: "Gap Analysis", description: "Gaps between current state and Copilot-ready state documented with effort estimates." },
-        { title: "Readiness Report Delivery", description: "Final Copilot Readiness Assessment Report with 90-day activation roadmap delivered." },
-      ],
-      "sharepoint-blueprint": [
-        { title: "Kickoff Call", description: "60-minute discovery call to capture requirements, stakeholders, and success criteria." },
-        { title: "Requirements Workshop", description: "Structured workshop to capture navigation needs, content types, audience segments, and governance rules." },
-        { title: "IA & Navigation Design", description: "Information architecture, site map, and global navigation design produced and shared for feedback." },
-        { title: "Wireframe Review", description: "Low-fidelity wireframes for key page types reviewed with the client." },
-        { title: "Blueprint Delivery", description: "Full SharePoint Intranet Blueprint document delivered — ready to hand to any implementation team." },
-      ],
-      "power-automate": [
-        { title: "Kickoff Call", description: "30-minute call to identify the highest-value process to automate." },
-        { title: "Process Discovery", description: "Shane maps the current manual process end-to-end and identifies automation touchpoints." },
-        { title: "Flow Build & Test", description: "Power Automate flow built and tested in a staging environment." },
-        { title: "Refinement", description: "Flow adjusted based on client feedback; edge cases and error handling added." },
-        { title: "Handover & Training", description: "Live walkthrough of the finished flow, documentation, and 30-day support window." },
-      ],
-      "security-audit": [
-        { title: "Kickoff Call", description: "30-minute call to confirm scope, tenant access requirements, and risk appetite." },
-        { title: "Tenant Access & Scan", description: "Read-only admin access granted; automated and manual security scans run across the tenant." },
-        { title: "Risk Assessment", description: "Findings categorised by severity (Critical / High / Medium / Low) with NIST alignment." },
-        { title: "Audit Report Draft", description: "Draft M365 Security & Governance Audit Report shared for review." },
-        { title: "Final Audit Report", description: "Final report delivered with a prioritised remediation plan and optional 60-minute debrief call." },
-      ],
-      "copilot-prompts": [
-        { title: "Kickoff Call", description: "30-minute call to understand your team roles, workflows, and top productivity pain points." },
-        { title: "Use-Case Discovery", description: "Client provides sample tasks and documents; Shane identifies the highest-value Copilot scenarios." },
-        { title: "Prompt Engineering", description: "Shane writes, tests, and refines prompts across Word, Excel, Teams, Outlook, and Loop." },
-        { title: "Prompt Library Build", description: "Structured prompt library built as a SharePoint page or Word document — role-organised and searchable." },
-        { title: "Handover", description: "Library delivered with a short video walkthrough and guidance on prompt maintenance." },
-      ],
-    };
-    const primarySlug = orderedServices[0]?.slug ?? "";
-    steps = (primarySlug && stepTemplates[primarySlug])
-      ? stepTemplates[primarySlug]
-      : [
-          { title: "Kickoff Call", description: "Initial call to align on scope and next steps." },
-          { title: "Discovery", description: "Information gathering and requirements review." },
-          { title: "Delivery", description: "Core deliverable produced and shared for review." },
-          { title: "Sign-off", description: "Final approval and handover." },
-        ];
-  }
-
-  await db.insert(workflowStepsTable).values(
-    steps.map((s, i) => ({
-      projectId: project.id,
-      title: s.title,
-      description: s.description,
-      status: "pending" as const,
-      order: i + 1,
-    }))
-  );
 
   // ── Loop over every service: assign clientService, link contract, create invoice ──
   for (let i = 0; i < orderedServices.length; i++) {
@@ -861,7 +790,7 @@ async function provisionOnboardingProject(
     const svcAmount = svc.price ? parseFloat(String(svc.price)).toFixed(2) : "0.00";
 
     // Assign service to client
-    await db.insert(clientServicesTable).values({
+    const [newCs] = await db.insert(clientServicesTable).values({
       clientUserId: uid,
       serviceId: svc.id,
       projectId: project.id,
@@ -869,7 +798,25 @@ async function provisionOnboardingProject(
       progress: 0,
       startDate,
       stripeSubscriptionId: svc.billingType === "recurring_monthly" ? (stripeSubscriptionId ?? null) : null,
-    });
+    }).returning();
+
+    // ── Seed workflow steps for this client service ────────────────────────
+    // Primary service: prefer admin-authored template tasks, then slug-based defaults.
+    // Secondary services: always use slug-based defaults.
+    if (i === 0 && primaryTemplateTasks.length > 0) {
+      await db.insert(workflowStepsTable).values(
+        primaryTemplateTasks.map((t, idx) => ({
+          clientServiceId: newCs.id,
+          projectId: project.id,
+          title: t.title,
+          description: t.description ?? "",
+          status: "pending" as const,
+          order: idx + 1,
+        }))
+      );
+    } else {
+      await seedDefaultWorkflowSteps(newCs.id, project.id, svc.slug ?? "");
+    }
 
     // Link contract → project and attach pre-generated PDF as document
     if (!isNaN(cid)) {
@@ -979,6 +926,134 @@ async function provisionOnboardingProject(
       }),
     ).catch(() => null);
   }
+}
+
+// ─── Default workflow step templates (mirrors Dashboard2 mock labels) ────────
+// Slug matching is substring-based so "m365-health-check" hits the m365 bucket,
+// "security-audit" hits security, "cloud-migration" hits migration, etc.
+function getDefaultSteps(slug: string): Array<{ title: string; description: string }> {
+  const s = slug.toLowerCase();
+
+  if (s.includes("m365") || s.includes("microsoft-365") || s.includes("microsoft365") || s.includes("health-check")) {
+    return [
+      { title: "Access", description: "Client provisions required read-only admin access or tenant data exports." },
+      { title: "Schedule", description: "Kickoff call scheduled to confirm scope, timeline, and key contacts." },
+      { title: "Execute", description: "Shane runs automated and manual checks across the M365 environment." },
+      { title: "Review", description: "Initial findings reviewed internally; data validated for accuracy." },
+      { title: "Assessments", description: "Deep-dive assessments run against flagged areas identified during execution." },
+      { title: "Report", description: "Health Check Report drafted with prioritised findings and remediation roadmap." },
+      { title: "Debrief", description: "60-minute debrief call to walk through report findings and answer questions." },
+      { title: "End", description: "Final report delivered. Engagement closed and next steps agreed." },
+    ];
+  }
+
+  if (s.includes("security") || s.includes("audit")) {
+    return [
+      { title: "Intake", description: "Intake call to confirm scope, tenant access requirements, and risk appetite." },
+      { title: "Scope", description: "Scope document agreed and signed off; access credentials provisioned." },
+      { title: "Scan", description: "Automated and manual security scans run across the M365 tenant." },
+      { title: "Analyze", description: "Findings categorised by severity (Critical / High / Medium / Low) with NIST alignment." },
+      { title: "Validate", description: "Results validated and false positives filtered before drafting the report." },
+      { title: "Findings", description: "Draft audit findings report shared with the client for review and corrections." },
+      { title: "Strategy", description: "Remediation strategy and prioritised action plan agreed with the client." },
+      { title: "Close", description: "Final audit report delivered with optional 60-minute debrief call." },
+    ];
+  }
+
+  if (s.includes("migration") || s.includes("cloud") || s.includes("azure")) {
+    return [
+      { title: "Discovery", description: "Current environment inventory, dependencies, and constraints documented." },
+      { title: "Assessment", description: "Workloads assessed for cloud readiness; risk and effort estimated." },
+      { title: "Pilot", description: "Low-risk workload migrated as a proof-of-concept to validate approach." },
+      { title: "Planning", description: "Full migration plan finalised — wave schedule, rollback steps, comms plan." },
+      { title: "Migration", description: "Workloads migrated in agreed waves with continuous monitoring." },
+      { title: "Testing", description: "Post-migration testing: functionality, performance, and security validation." },
+      { title: "Go-Live", description: "Cutover to production; legacy environment decommissioned on confirmation." },
+      { title: "Support", description: "Hypercare support window — issues resolved and knowledge transferred." },
+    ];
+  }
+
+  if (s.includes("copilot")) {
+    return [
+      { title: "Intake", description: "Intake call to understand team roles, workflows, and key productivity pain points." },
+      { title: "Scope", description: "Use-case shortlist agreed; licensing and data governance posture reviewed." },
+      { title: "Discovery", description: "Client provides sample tasks and documents for prompt discovery." },
+      { title: "Prompts", description: "Prompts written, tested, and refined across Word, Excel, Teams, Outlook, and Loop." },
+      { title: "Validation", description: "Prompts validated with real client workflows and edge cases resolved." },
+      { title: "Delivery", description: "Prompt library built as a SharePoint page or Word document and delivered." },
+      { title: "Training", description: "Short video walkthrough recorded and prompt-maintenance guidance shared." },
+      { title: "Close", description: "Engagement closed; 30-day follow-up window opens for questions." },
+    ];
+  }
+
+  if (s.includes("sharepoint")) {
+    return [
+      { title: "Discovery", description: "60-minute discovery call to capture requirements, stakeholders, and success criteria." },
+      { title: "Requirements", description: "Structured workshop to capture navigation, content types, audience, and governance rules." },
+      { title: "Design", description: "Information architecture, site map, and global navigation design produced." },
+      { title: "Review", description: "IA and wireframes reviewed with the client; feedback incorporated." },
+      { title: "Build", description: "SharePoint sites and pages built to approved designs in the client tenant." },
+      { title: "Testing", description: "User acceptance testing with key stakeholders; issues resolved." },
+      { title: "Launch", description: "Intranet launched to the organisation with communications support." },
+      { title: "Handover", description: "Full blueprint document and owner training delivered; engagement closed." },
+    ];
+  }
+
+  if (s.includes("power")) {
+    return [
+      { title: "Discovery", description: "30-minute call to identify the highest-value process to automate." },
+      { title: "Scope", description: "Process mapped end-to-end; automation boundaries and triggers agreed." },
+      { title: "Design", description: "Solution design document produced and approved before build begins." },
+      { title: "Build", description: "Power Automate flow (or app) built and unit-tested by Shane." },
+      { title: "Test", description: "Flow tested in a staging environment with realistic data." },
+      { title: "Refine", description: "Client feedback incorporated; edge cases and error handling added." },
+      { title: "Deploy", description: "Solution deployed to production and smoke-tested end-to-end." },
+      { title: "Handover", description: "Live walkthrough, documentation, and 30-day support window activated." },
+    ];
+  }
+
+  // Generic fallback
+  return [
+    { title: "Kickoff", description: "Initial call to align on scope, deliverables, and timeline." },
+    { title: "Discovery", description: "Information gathering, requirements review, and access provisioning." },
+    { title: "Planning", description: "Detailed work plan produced and agreed with the client." },
+    { title: "Execution", description: "Core engagement work carried out according to the agreed plan." },
+    { title: "Review", description: "Draft outputs shared with the client for review and feedback." },
+    { title: "Delivery", description: "Final deliverables produced and shared with the client." },
+    { title: "Sign-off", description: "Client confirms acceptance of all deliverables." },
+    { title: "Close", description: "Engagement closed; next steps and any follow-on work agreed." },
+  ];
+}
+
+/**
+ * Seed default workflow steps for a newly activated client service.
+ * Idempotent: skips insertion if steps already exist for this clientServiceId.
+ */
+async function seedDefaultWorkflowSteps(
+  clientServiceId: number,
+  projectId: number | null,
+  serviceSlug: string,
+): Promise<void> {
+  // Check if steps already exist for this client service
+  const existing = await db
+    .select({ id: workflowStepsTable.id })
+    .from(workflowStepsTable)
+    .where(eq(workflowStepsTable.clientServiceId, clientServiceId))
+    .limit(1);
+
+  if (existing.length > 0) return; // already seeded
+
+  const steps = getDefaultSteps(serviceSlug);
+  await db.insert(workflowStepsTable).values(
+    steps.map((s, i) => ({
+      clientServiceId,
+      projectId: projectId ?? null,
+      title: s.title,
+      description: s.description,
+      status: "pending" as const,
+      order: i + 1,
+    }))
+  );
 }
 
 // ── Stripe webhook handler ───────────────────────────────────────────────────
@@ -1737,6 +1812,9 @@ router.post("/admin/client-services", requireAdmin, async (req: Request, res: Re
       .where(eq(projectTemplatesTable.serviceId, serviceId))
       .limit(1);
 
+    let resolvedProjectId: number | null = projectId ?? null;
+    let templateStepsSeeded = false;
+
     if (projTemplate) {
       const [autoProject] = await db.insert(projectsTable).values({
         title: projTemplate.name,
@@ -1746,6 +1824,8 @@ router.post("/admin/client-services", requireAdmin, async (req: Request, res: Re
         progress: 0,
         startDate: new Date(),
       }).returning();
+
+      resolvedProjectId = autoProject.id;
 
       // Link the client service to this project
       await db.update(clientServicesTable)
@@ -1770,6 +1850,7 @@ router.post("/admin/client-services", requireAdmin, async (req: Request, res: Re
             order: idx,
           }))
         );
+        templateStepsSeeded = true;
       }
 
       // Notify client about the new project
@@ -1780,6 +1861,12 @@ router.post("/admin/client-services", requireAdmin, async (req: Request, res: Re
         type: "project_update",
         linkPath: `/portal/projects/${autoProject.id}`,
       });
+    }
+
+    // If no template steps were seeded, fall back to default slug-based steps
+    // so the Dashboard tracker always has live data rather than showing mock content.
+    if (!templateStepsSeeded) {
+      await seedDefaultWorkflowSteps(cs.id, resolvedProjectId, service.slug ?? "");
     }
   }
 
