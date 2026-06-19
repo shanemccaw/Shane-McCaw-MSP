@@ -40,6 +40,17 @@ A professional multi-page consulting website for Shane McCaw — Lead Microsoft 
 | `/resources` | Resources |
 | `/contact` | Contact |
 | `/book` | Book |
+| `/admin` | Admin (password-protected) |
+
+## Admin Panel
+
+- URL: `/admin`
+- Protected by `ADMIN_PASSWORD` secret (set in Replit Secrets)
+- Password stored in `sessionStorage` for the browser session — no cookies
+- API routes live in `artifacts/api-server/src/routes/admin-articles.ts`
+- All `/api/admin/articles` endpoints require `Authorization: Bearer <password>` header
+- Reads/writes Markdown files in `artifacts/shane-mccaw-consulting/src/content/articles/`
+- Changes appear immediately in the Vite dev server (HMR); in production, a redeploy surfaces new articles to the public site
 
 ## Brand Colors
 
