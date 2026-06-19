@@ -1,5 +1,6 @@
+import { useState } from "react";
 import { useParams, Link } from "wouter";
-import { ArrowLeft, Calendar, Tag } from "lucide-react";
+import { ArrowLeft, Calendar, Tag, Link2, Check } from "lucide-react";
 import { FaLinkedin } from "react-icons/fa";
 import { FaXTwitter } from "react-icons/fa6";
 import ReactMarkdown from "react-markdown";
@@ -46,9 +47,17 @@ const markdownComponents: Components = {
 };
 
 function ShareButtons({ title }: { title: string }) {
+  const [copied, setCopied] = useState(false);
   const url = typeof window !== "undefined" ? window.location.href : "";
   const linkedInUrl = `https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(url)}`;
   const xUrl = `https://twitter.com/intent/tweet?text=${encodeURIComponent(title)}&url=${encodeURIComponent(url)}`;
+
+  function handleCopy() {
+    navigator.clipboard.writeText(url).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  }
 
   return (
     <div className="flex items-center gap-3">
@@ -73,6 +82,23 @@ function ShareButtons({ title }: { title: string }) {
         <FaXTwitter className="w-3.5 h-3.5" />
         X
       </a>
+      <button
+        onClick={handleCopy}
+        aria-label="Copy link to clipboard"
+        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border bg-white text-[#0A2540] text-xs font-semibold hover:bg-[#F7F9FC] transition-colors"
+      >
+        {copied ? (
+          <>
+            <Check className="w-3.5 h-3.5 text-green-600" />
+            <span className="text-green-600">Copied!</span>
+          </>
+        ) : (
+          <>
+            <Link2 className="w-3.5 h-3.5" />
+            Copy link
+          </>
+        )}
+      </button>
     </div>
   );
 }
