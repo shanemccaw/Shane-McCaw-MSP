@@ -1,107 +1,154 @@
 import { useEffect, useState } from "react";
+import { Link } from "wouter";
 import { Layout } from "@/components/Layout";
 import { CTAButton } from "@/components/CTAButton";
-import { CheckCircle, ChevronDown } from "lucide-react";
+import { CheckCircle, ChevronDown, Zap, FolderOpen, Calendar, ArrowRight } from "lucide-react";
 
-const quickWins = [
-  { name: "M365 Health Check", price: "$497", turnaround: "2 business days" },
-  { name: "Copilot Readiness Assessment", price: "$797", turnaround: "5 business days" },
-  { name: "SharePoint Intranet Blueprint", price: "$997", turnaround: "7 business days" },
-  { name: "Power Automate Quick Win", price: "$597", turnaround: "5–7 business days" },
-  { name: "M365 Security & Governance Audit", price: "$897", turnaround: "5 business days" },
-  { name: "Copilot Prompt Library Build", price: "$397", turnaround: "5 business days" },
+const microOffers = [
+  {
+    name: "M365 Tenant Health Audit",
+    price: "$497",
+    turnaround: "2 business days",
+    desc: "A full audit of your M365 tenant configuration — permissions, sharing policies, licensing gaps, and security posture — with a prioritized remediation report.",
+    deliverable: "Written audit report + remediation priority list",
+  },
+  {
+    name: "Copilot Readiness Assessment",
+    price: "$797",
+    turnaround: "5 business days",
+    desc: "A six-dimension readiness scorecard for Copilot deployment: licensing, identity, permissions, governance, sensitivity labeling, and oversharing risk.",
+    deliverable: "Readiness scorecard + deployment roadmap",
+    badge: "Most requested",
+  },
+  {
+    name: "SharePoint Intranet Blueprint",
+    price: "$997",
+    turnaround: "7 business days",
+    desc: "A complete information architecture and navigation blueprint for a SharePoint intranet — site structure, permission model, governance policy, and rollout sequence.",
+    deliverable: "IA document + governance policy + rollout plan",
+  },
+  {
+    name: "Power Automate Quick Win",
+    price: "$597",
+    turnaround: "5–7 business days",
+    desc: "Shane identifies, designs, and builds one high-impact Power Automate flow for your organization — documented and handed off with user instructions.",
+    deliverable: "Live flow + documentation + handoff walkthrough",
+  },
+  {
+    name: "M365 Security & Governance Audit",
+    price: "$897",
+    turnaround: "5 business days",
+    desc: "An in-depth review of your DLP policies, retention labels, conditional access rules, and Entra ID posture — with specific remediation steps for each gap found.",
+    deliverable: "Security audit report + DLP/retention gap analysis",
+  },
+  {
+    name: "Copilot Prompt Library Build",
+    price: "$397",
+    turnaround: "5 business days",
+    desc: "A custom library of 25+ role-specific Copilot prompts built for your organization's departments — covering your actual workflows, not generic examples.",
+    deliverable: "Role-specific prompt library (Word + SharePoint-ready)",
+  },
 ];
 
 const retainers = [
   {
-    name: "Starter",
+    name: "Architect Essentials",
     price: "$1,500",
     period: "/month",
     hours: "10 hours",
+    highlight: false,
+    tagline: "Right for organizations that need a senior M365 resource on call — without the overhead of a full-time hire.",
     features: [
       "10 hours of consulting per month",
-      "Email and chat support",
-      "1 monthly strategy call (60 min)",
-      "Standard response time (within 1 business day)",
-      "Access to all service areas",
+      "Email and Teams support",
+      "Monthly strategy call (60 min)",
+      "Standard response within 1 business day",
+      "Access to all M365 service areas",
+      "Monthly written summary",
     ],
-    highlight: false,
   },
   {
-    name: "Growth",
+    name: "Architect Growth",
     price: "$3,000",
     period: "/month",
     hours: "25 hours",
+    highlight: true,
+    tagline: "Right for organizations actively modernizing their M365 environment or planning a Copilot deployment.",
     features: [
       "25 hours of consulting per month",
-      "Priority email and chat support",
-      "2 monthly strategy calls (60 min each)",
-      "Priority response time (within 4 hours)",
-      "Access to all service areas",
+      "Priority email and Teams support",
+      "Two strategy calls per month (60 min each)",
+      "Priority response within 4 business hours",
+      "Access to all M365 service areas",
       "Monthly written progress report",
+      "Proactive tenant health monitoring",
     ],
-    highlight: true,
   },
   {
-    name: "Enterprise",
+    name: "Architect Enterprise",
     price: "$5,500",
     period: "/month",
     hours: "50 hours",
+    highlight: false,
+    tagline: "Right for organizations that need a dedicated senior architect embedded in their operations every week.",
     features: [
       "50 hours of consulting per month",
-      "Dedicated support channel",
+      "Dedicated Teams support channel",
       "Weekly strategy calls (60 min)",
       "Same-day emergency response",
-      "Access to all service areas",
+      "Access to all M365 service areas",
       "Monthly written progress report",
       "Custom technology roadmap",
       "Quarterly strategic review",
     ],
-    highlight: false,
   },
 ];
 
 const faqs = [
   {
-    q: "How quickly can you start?",
-    a: "For Quick Win packages, work typically begins within 3–5 business days of payment. For retainers and project work, we can usually start within 1–2 weeks of signing. If you have a urgent need, let me know on the discovery call.",
+    q: "How quickly can an engagement start?",
+    a: "Fixed-price micro-offer packages typically begin within 3–5 business days of payment. Retainer engagements and project work usually start within 1–2 weeks of signing. If you have a time-sensitive situation, mention it on the discovery call — Shane can often accelerate.",
   },
   {
     q: "Do you work with small businesses or only enterprises?",
-    a: "Both. While my NASA background gives me enterprise-grade expertise, many small and mid-market businesses have the same Microsoft 365 challenges at a smaller scale. I tailor my approach to your organization's size and complexity.",
+    a: "Both. The same Microsoft 365 governance and architecture challenges that affect NASA-scale environments appear at 50-seat organizations — often with less margin for error, not more. Shane calibrates scope and pricing to your actual size and complexity.",
   },
   {
     q: "Is everything done remotely?",
-    a: "Yes, 100% remote. I'm based in Vero Beach, FL, and serve clients nationwide. Modern Microsoft 365 consulting is entirely remote-capable — screen sharing, Teams calls, and remote admin access are all we need.",
+    a: "Yes, 100% remote. Shane is based in Vero Beach, FL, and serves clients nationally. Microsoft 365 consulting is entirely remote-capable — screen sharing, Teams calls, and delegated admin access are all that's needed.",
   },
   {
-    q: "How are project-based engagements priced?",
-    a: "Project pricing ranges from $2,500 to $25,000+ depending on scope and complexity. Pricing is always presented as a fixed-fee quote after our free discovery call — no hourly billing surprises, no scope creep without change orders.",
+    q: "How are project-based engagements scoped and priced?",
+    a: "After the free discovery call, Shane provides a fixed-fee proposal with defined deliverables, a timeline, and a single project price. No hourly billing, no scope creep without a signed change order. Project pricing typically ranges from $2,500 to $25,000+ depending on complexity.",
   },
   {
-    q: "Can I upgrade or downgrade my retainer plan?",
-    a: "Yes. Retainers can be adjusted with 30 days' notice. If your needs change month to month, we can also structure flexible arrangements — just discuss it on the discovery call.",
+    q: "Can I start with a micro-offer and move to a retainer?",
+    a: "That's the most common path. Most clients start with a fixed-price assessment to establish baseline and build confidence, then move into a retainer once they know the working relationship. Any micro-offer investment can be credited toward the first month of a retainer if you decide to continue.",
   },
   {
-    q: "What Microsoft 365 licenses do my employees need for Copilot?",
-    a: "Microsoft 365 Copilot requires an M365 E3 or E5 base license plus the Copilot add-on. However, license eligibility is only one part of readiness — data governance and permissions must be right first. That's exactly what the Copilot Readiness Assessment covers.",
+    q: "What does a retainer actually look like month to month?",
+    a: "Retainer hours are used however the engagement requires — attending architecture reviews, reviewing configurations, answering time-sensitive questions, or designing a new workload. At the end of each month you receive a written summary of work completed and hours used. Hours do not roll over.",
+  },
+  {
+    q: "What M365 licenses are required for Copilot?",
+    a: "Microsoft 365 Copilot requires an M365 E3 or E5 base license plus the Copilot add-on ($30/user/month). However, licensing is only the starting point — data governance, sensitivity labeling, and permissions hygiene must be in place first. The Copilot Readiness Assessment covers all of this.",
   },
 ];
 
-function FAQItem({ q, a }: { q: string; a: string }) {
+function FAQItem({ q, a, index }: { q: string; a: string; index: number }) {
   const [open, setOpen] = useState(false);
   return (
-    <div className="border border-border rounded-lg overflow-hidden">
+    <div className="border border-border rounded-xl overflow-hidden" data-testid={`faq-item-${index}`}>
       <button
-        className="w-full text-left px-6 py-5 flex items-center justify-between font-semibold text-[#0A2540] hover:bg-[#F7F9FC] transition-colors"
+        className="w-full text-left px-6 py-5 flex items-center justify-between font-semibold text-[#0A2540] hover:bg-[#F7F9FC] transition-colors gap-4"
         onClick={() => setOpen(!open)}
-        data-testid="faq-toggle"
+        data-testid={`faq-toggle-${index}`}
       >
-        {q}
-        <ChevronDown className={`w-5 h-5 text-[#0078D4] flex-shrink-0 transition-transform ${open ? "rotate-180" : ""}`} />
+        <span>{q}</span>
+        <ChevronDown className={`w-5 h-5 text-[#0078D4] flex-shrink-0 transition-transform duration-200 ${open ? "rotate-180" : ""}`} />
       </button>
       {open && (
-        <div className="px-6 pb-6 text-muted-foreground leading-relaxed border-t border-border pt-4">
+        <div className="px-6 pb-6 text-muted-foreground leading-relaxed border-t border-border pt-5 text-sm">
           {a}
         </div>
       )}
@@ -111,111 +158,310 @@ function FAQItem({ q, a }: { q: string; a: string }) {
 
 export default function Pricing() {
   useEffect(() => {
-    document.title = "Transparent Pricing — Microsoft 365 Consulting | Shane McCaw Consulting";
+    document.title = "Pricing — Transparent Microsoft 365 Consulting | Shane McCaw Consulting";
   }, []);
 
   return (
     <Layout>
-      <section className="bg-[#0A2540] pt-32 pb-20">
-        <div className="max-w-[1200px] mx-auto px-6">
-          <p className="text-[#0078D4] text-sm font-semibold uppercase tracking-[0.1em] mb-4">Pricing</p>
-          <h1 className="text-4xl md:text-5xl lg:text-6xl font-extrabold text-white leading-tight">
-            Transparent Pricing
+      {/* Hero */}
+      <section className="relative bg-[#0A2540] pt-32 pb-24 overflow-hidden">
+        <div
+          className="absolute inset-0 opacity-10"
+          style={{
+            backgroundImage: `
+              linear-gradient(#0078D4 1px, transparent 1px),
+              linear-gradient(90deg, #0078D4 1px, transparent 1px)
+            `,
+            backgroundSize: "60px 60px",
+          }}
+        />
+        <div
+          className="absolute inset-0 opacity-10"
+          style={{ background: "radial-gradient(ellipse 70% 60% at 80% 40%, #0078D4, transparent)" }}
+        />
+        <div className="relative z-10 max-w-[1200px] mx-auto px-6">
+          <div className="inline-flex items-center gap-2 bg-[#0078D4]/15 border border-[#0078D4]/40 rounded-full px-5 py-2 mb-8">
+            <span className="w-2 h-2 rounded-full bg-[#00B4D8]" />
+            <p className="text-[#00B4D8] text-sm font-semibold uppercase tracking-[0.1em]">Pricing</p>
+          </div>
+          <h1 className="text-4xl md:text-5xl lg:text-[3.25rem] font-extrabold text-white leading-[1.1] max-w-3xl mb-6">
+            Transparent Pricing. Predictable Investment. No Hourly Surprises.
           </h1>
-          <p className="text-white/70 text-lg mt-6 max-w-2xl leading-relaxed">
-            No hidden fees, no hourly billing surprises. Every engagement is scoped upfront so you know exactly what you're investing before any work begins.
+          <p className="text-lg text-white/70 leading-relaxed max-w-2xl">
+            Every Shane McCaw Consulting engagement is scoped and priced upfront. You know exactly what you're investing before any work begins — and exactly what you'll receive in return.
           </p>
         </div>
       </section>
 
-      {/* Quick Wins */}
-      <section className="bg-white py-20">
+      {/* Engagement model overview */}
+      <section className="bg-white py-20 border-b border-border">
         <div className="max-w-[1200px] mx-auto px-6">
-          <div className="mb-10">
-            <p className="text-[#0078D4] text-sm font-semibold uppercase tracking-[0.1em] mb-3">Fixed-Price Packages</p>
-            <h2 className="text-3xl md:text-4xl font-extrabold text-[#0A2540]">Quick Win Packages</h2>
+          <div className="text-center mb-14">
+            <p className="text-[#0078D4] text-sm font-semibold uppercase tracking-[0.1em] mb-3">How Engagements Work</p>
+            <h2 className="text-3xl md:text-4xl font-extrabold text-[#0A2540]">Three Ways to Engage</h2>
+            <p className="text-muted-foreground mt-4 max-w-2xl mx-auto leading-relaxed">
+              The right engagement structure depends on what you need — a specific deliverable, a defined project, or ongoing architectural leadership. All three options are structured around fixed, predictable pricing.
+            </p>
           </div>
-          <div className="overflow-x-auto rounded-xl border border-border">
-            <table className="w-full text-left">
-              <thead>
-                <tr className="bg-[#F7F9FC]">
-                  <th className="px-6 py-4 font-semibold text-[#0A2540]">Package</th>
-                  <th className="px-6 py-4 font-semibold text-[#0A2540]">Price</th>
-                  <th className="px-6 py-4 font-semibold text-[#0A2540]">Turnaround</th>
-                  <th className="px-6 py-4 font-semibold text-[#0A2540]"></th>
-                </tr>
-              </thead>
-              <tbody>
-                {quickWins.map((item, i) => (
-                  <tr key={i} className="border-t border-border hover:bg-[#F7F9FC]/50 transition-colors" data-testid={`pricing-row-${i}`}>
-                    <td className="px-6 py-4 font-medium text-foreground">{item.name}</td>
-                    <td className="px-6 py-4 text-[#0078D4] font-bold">{item.price}</td>
-                    <td className="px-6 py-4 text-muted-foreground">{item.turnaround}</td>
-                    <td className="px-6 py-4">
-                      <a href="/book" className="text-[#0078D4] text-sm font-semibold hover:underline">Get Started →</a>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            {[
+              {
+                icon: Zap,
+                label: "Track 01",
+                title: "Fixed-Price Micro-Offers",
+                range: "$397 – $997",
+                desc: "Scoped deliverables with a defined price, a defined output, and a defined turnaround. No discovery call required to start — pick the package that matches your need and get in the queue.",
+                bestFor: "Organizations that know what they need and want to move quickly.",
+                anchor: "#micro-offers",
+              },
+              {
+                icon: FolderOpen,
+                label: "Track 02",
+                title: "Project-Based Engagements",
+                range: "$2,500 – $25,000+",
+                desc: "For larger, multi-phase work — tenant migrations, full governance overhauls, Copilot deployment programs, intranet builds. Priced as a fixed project after a free scoping call.",
+                bestFor: "Organizations with a defined initiative that needs a structured plan and committed delivery.",
+                anchor: "#project-based",
+              },
+              {
+                icon: Calendar,
+                label: "Track 03",
+                title: "Monthly Fractional Retainer",
+                range: "$1,500 – $5,500/mo",
+                desc: "Consistent, predictable access to Shane's expertise every month — for architecture reviews, ongoing governance, strategic planning, or Copilot rollout support. Cancel with 30 days' notice.",
+                bestFor: "Organizations that need a senior M365 architect available on a sustained basis.",
+                anchor: "#retainers",
+              },
+            ].map((track, i) => {
+              const Icon = track.icon;
+              return (
+                <a
+                  key={i}
+                  href={track.anchor}
+                  className="group bg-[#F7F9FC] rounded-2xl border border-border p-8 flex flex-col hover:border-[#0078D4]/40 hover:shadow-md transition-all duration-300 cursor-pointer"
+                  data-testid={`engagement-track-${i}`}
+                >
+                  <div className="flex items-center gap-3 mb-6">
+                    <div className="w-11 h-11 rounded-xl bg-[#0078D4]/10 flex items-center justify-center">
+                      <Icon className="w-5 h-5 text-[#0078D4]" />
+                    </div>
+                    <span className="text-[#0078D4]/50 text-xs font-bold uppercase tracking-wider">{track.label}</span>
+                  </div>
+                  <h3 className="text-lg font-extrabold text-[#0A2540] mb-1">{track.title}</h3>
+                  <p className="text-2xl font-extrabold text-[#0078D4] mb-4">{track.range}</p>
+                  <p className="text-muted-foreground text-sm leading-relaxed flex-grow mb-5">{track.desc}</p>
+                  <div className="border-t border-border pt-4">
+                    <p className="text-xs font-semibold text-[#0A2540] uppercase tracking-wide mb-1">Best for</p>
+                    <p className="text-muted-foreground text-xs leading-relaxed">{track.bestFor}</p>
+                  </div>
+                  <span className="mt-4 text-[#0078D4] text-sm font-semibold flex items-center gap-1.5 group-hover:gap-2.5 transition-all">
+                    See details <ArrowRight className="w-4 h-4" />
+                  </span>
+                </a>
+              );
+            })}
           </div>
         </div>
       </section>
 
-      {/* Retainers */}
-      <section className="bg-[#F7F9FC] py-20">
+      {/* Micro-Offers */}
+      <section id="micro-offers" className="bg-[#F7F9FC] py-20 scroll-mt-24">
         <div className="max-w-[1200px] mx-auto px-6">
-          <div className="text-center mb-14">
-            <p className="text-[#0078D4] text-sm font-semibold uppercase tracking-[0.1em] mb-3">Monthly Plans</p>
-            <h2 className="text-3xl md:text-4xl font-extrabold text-[#0A2540]">Ongoing Retainer Plans</h2>
-            <p className="text-muted-foreground mt-4 max-w-xl mx-auto">Consistent, predictable access to Shane's expertise every month. Cancel with 30 days' notice.</p>
+          <div className="mb-12">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-9 h-9 rounded-lg bg-[#0078D4]/10 flex items-center justify-center">
+                <Zap className="w-4 h-4 text-[#0078D4]" />
+              </div>
+              <span className="text-[#0078D4] text-xs font-bold uppercase tracking-wider">Track 01</span>
+            </div>
+            <h2 className="text-3xl md:text-4xl font-extrabold text-[#0A2540] mb-3">Fixed-Price Micro-Offers</h2>
+            <p className="text-muted-foreground max-w-2xl leading-relaxed">
+              Each package has a fixed price, a specific deliverable, and a committed turnaround time. No discovery call required — the scope is defined in advance so you know what you're getting.
+            </p>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {retainers.map((plan, i) => (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+            {microOffers.map((offer, i) => (
               <div
                 key={i}
-                className={`rounded-xl p-8 border flex flex-col ${plan.highlight ? "bg-[#0A2540] border-[#0078D4] relative" : "bg-white border-border"}`}
-                data-testid={`retainer-${i}`}
+                className="bg-white rounded-xl border border-border p-6 flex flex-col hover:border-[#0078D4]/30 hover:shadow-sm transition-all duration-200 relative"
+                data-testid={`micro-offer-${i}`}
               >
-                {plan.highlight && (
-                  <div className="absolute -top-4 left-1/2 -translate-x-1/2 bg-[#0078D4] text-white text-xs font-bold px-4 py-1.5 rounded-full uppercase tracking-wide">Most Popular</div>
+                {offer.badge && (
+                  <span className="absolute -top-3 left-5 bg-[#0078D4] text-white text-xs font-bold px-3 py-1 rounded-full">
+                    {offer.badge}
+                  </span>
                 )}
-                <div className="mb-6">
-                  <h3 className={`text-xl font-bold mb-1 ${plan.highlight ? "text-white" : "text-[#0A2540]"}`}>{plan.name}</h3>
-                  <div className="flex items-baseline gap-1">
-                    <span className="text-4xl font-extrabold text-[#0078D4]">{plan.price}</span>
-                    <span className={`text-sm ${plan.highlight ? "text-white/60" : "text-muted-foreground"}`}>{plan.period}</span>
-                  </div>
-                  <p className={`text-sm mt-2 ${plan.highlight ? "text-white/70" : "text-muted-foreground"}`}>{plan.hours} per month</p>
+                <div className="flex items-start justify-between gap-3 mb-3">
+                  <h3 className="font-extrabold text-[#0A2540] text-base leading-snug">{offer.name}</h3>
+                  <span className="text-[#0078D4] font-extrabold text-lg flex-shrink-0">{offer.price}</span>
                 </div>
-                <ul className="space-y-3 flex-grow mb-8">
-                  {plan.features.map((f, j) => (
-                    <li key={j} className="flex items-start gap-2">
-                      <CheckCircle className="w-4 h-4 text-[#0078D4] flex-shrink-0 mt-0.5" />
-                      <span className={`text-sm ${plan.highlight ? "text-white/80" : "text-foreground"}`}>{f}</span>
-                    </li>
-                  ))}
-                </ul>
-                <CTAButton href="/book" className={`w-full justify-center text-sm ${plan.highlight ? "" : ""}`} data-testid={`retainer-cta-${i}`}>
-                  Get Started
-                </CTAButton>
+                <p className="text-muted-foreground text-sm leading-relaxed flex-grow mb-4">{offer.desc}</p>
+                <div className="border-t border-border pt-4 space-y-2">
+                  <div className="flex items-center gap-2 text-xs">
+                    <CheckCircle className="w-3.5 h-3.5 text-[#0078D4] flex-shrink-0" />
+                    <span className="text-foreground font-medium">{offer.deliverable}</span>
+                  </div>
+                  <div className="flex items-center gap-2 text-xs">
+                    <span className="w-3.5 h-3.5 flex-shrink-0 text-center text-muted-foreground">⏱</span>
+                    <span className="text-muted-foreground">Turnaround: {offer.turnaround}</span>
+                  </div>
+                </div>
+                <Link
+                  href="/book"
+                  className="mt-4 text-[#0078D4] text-sm font-semibold hover:underline flex items-center gap-1"
+                  data-testid={`micro-offer-cta-${i}`}
+                >
+                  Get started <ArrowRight className="w-3.5 h-3.5" />
+                </Link>
               </div>
             ))}
           </div>
         </div>
       </section>
 
-      {/* Project Based */}
+      {/* Project-Based */}
+      <section id="project-based" className="bg-white py-20 scroll-mt-24">
+        <div className="max-w-[1200px] mx-auto px-6">
+          <div className="grid grid-cols-1 lg:grid-cols-[1.1fr_1fr] gap-12 items-start">
+            <div>
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-9 h-9 rounded-lg bg-[#0078D4]/10 flex items-center justify-center">
+                  <FolderOpen className="w-4 h-4 text-[#0078D4]" />
+                </div>
+                <span className="text-[#0078D4] text-xs font-bold uppercase tracking-wider">Track 02</span>
+              </div>
+              <h2 className="text-3xl md:text-4xl font-extrabold text-[#0A2540] mb-4 leading-tight">
+                Project-Based Engagements
+              </h2>
+              <p className="text-muted-foreground leading-relaxed mb-6">
+                For complex, multi-phase work that goes beyond a packaged deliverable — full tenant migrations, governance overhauls, Copilot deployment programs, or SharePoint intranet builds. Every project is priced as a fixed fee with defined deliverables and a committed timeline.
+              </p>
+              <p className="text-muted-foreground leading-relaxed mb-8">
+                You'll receive a detailed proposal before any commitment. The proposal includes the exact scope of work, every deliverable, the project timeline, and a single fixed price — not an hourly estimate. Scope changes require a signed change order.
+              </p>
+              <div className="bg-[#F7F9FC] rounded-xl border border-border p-6 mb-6">
+                <p className="text-xs font-bold text-[#0A2540] uppercase tracking-wider mb-3">Typical project range</p>
+                <p className="text-3xl font-extrabold text-[#0078D4] mb-1">$2,500 – $25,000+</p>
+                <p className="text-muted-foreground text-sm">Scoped after a free discovery call. No commitment required to get a proposal.</p>
+              </div>
+              <CTAButton href="/book" className="text-sm" data-testid="project-cta">
+                Book a Free Scoping Call
+              </CTAButton>
+            </div>
+            <div className="space-y-4">
+              <p className="text-sm font-bold text-[#0A2540] uppercase tracking-wider mb-4">Common project engagements</p>
+              {[
+                { name: "M365 Tenant Migration", range: "$5,000 – $15,000", desc: "Full tenant-to-tenant migration including data migration, governance setup, and user transition." },
+                { name: "Copilot Deployment Program", range: "$7,500 – $20,000", desc: "End-to-end six-pillar Copilot deployment: governance, labeling, rollout, pilot, and adoption." },
+                { name: "SharePoint Intranet Build", range: "$4,000 – $12,000", desc: "Full intranet design and build — IA, governance, content migration, and launch support." },
+                { name: "Governance Overhaul", range: "$3,500 – $10,000", desc: "Comprehensive M365 governance: DLP, retention, sensitivity labels, permissions remediation." },
+                { name: "Power Platform Implementation", range: "$2,500 – $8,000", desc: "Power Apps or Power Automate solution design, build, testing, and documentation." },
+              ].map((project, i) => (
+                <div key={i} className="bg-[#F7F9FC] rounded-xl border border-border p-5" data-testid={`project-type-${i}`}>
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="font-bold text-[#0A2540] text-sm mb-1">{project.name}</p>
+                      <p className="text-muted-foreground text-xs leading-relaxed">{project.desc}</p>
+                    </div>
+                    <span className="text-[#0078D4] font-bold text-xs text-right flex-shrink-0 whitespace-nowrap">{project.range}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Retainers */}
+      <section id="retainers" className="bg-[#F7F9FC] py-20 scroll-mt-24">
+        <div className="max-w-[1200px] mx-auto px-6">
+          <div className="text-center mb-14">
+            <div className="inline-flex items-center gap-3 justify-center mb-4">
+              <div className="w-9 h-9 rounded-lg bg-[#0078D4]/10 flex items-center justify-center">
+                <Calendar className="w-4 h-4 text-[#0078D4]" />
+              </div>
+              <span className="text-[#0078D4] text-xs font-bold uppercase tracking-wider">Track 03</span>
+            </div>
+            <h2 className="text-3xl md:text-4xl font-extrabold text-[#0A2540] mb-4">Monthly Fractional Architect Retainer</h2>
+            <p className="text-muted-foreground max-w-2xl mx-auto leading-relaxed">
+              Consistent, predictable access to a NASA-caliber M365 architect every month — without the cost of a full-time hire. Cancel with 30 days' notice. No long-term commitment required.
+            </p>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            {retainers.map((plan, i) => (
+              <div
+                key={i}
+                className={`rounded-2xl p-8 border flex flex-col relative ${plan.highlight ? "bg-[#0A2540] border-[#0078D4]/60" : "bg-white border-border"}`}
+                data-testid={`retainer-${i}`}
+              >
+                {plan.highlight && (
+                  <div className="absolute -top-4 left-1/2 -translate-x-1/2 bg-[#0078D4] text-white text-xs font-bold px-5 py-1.5 rounded-full uppercase tracking-wide whitespace-nowrap">
+                    Most Popular
+                  </div>
+                )}
+                <div className="mb-2">
+                  <h3 className={`text-lg font-extrabold mb-4 ${plan.highlight ? "text-white" : "text-[#0A2540]"}`}>{plan.name}</h3>
+                  <div className="flex items-baseline gap-1 mb-1">
+                    <span className="text-4xl font-extrabold text-[#0078D4]">{plan.price}</span>
+                    <span className={`text-sm ${plan.highlight ? "text-white/50" : "text-muted-foreground"}`}>{plan.period}</span>
+                  </div>
+                  <p className={`text-sm mb-4 ${plan.highlight ? "text-[#00B4D8]" : "text-[#0078D4]"}`}>{plan.hours}/month</p>
+                  <p className={`text-xs leading-relaxed mb-6 ${plan.highlight ? "text-white/60" : "text-muted-foreground"}`}>{plan.tagline}</p>
+                </div>
+                <ul className="space-y-3 flex-grow mb-8">
+                  {plan.features.map((f, j) => (
+                    <li key={j} className="flex items-start gap-2.5" data-testid={`retainer-${i}-feature-${j}`}>
+                      <CheckCircle className="w-4 h-4 text-[#0078D4] flex-shrink-0 mt-0.5" />
+                      <span className={`text-sm ${plan.highlight ? "text-white/80" : "text-foreground"}`}>{f}</span>
+                    </li>
+                  ))}
+                </ul>
+                <CTAButton href="/book" className="w-full justify-center text-sm" data-testid={`retainer-cta-${i}`}>
+                  Start a Retainer
+                </CTAButton>
+              </div>
+            ))}
+          </div>
+          <p className="text-center text-muted-foreground text-sm mt-8">
+            All retainer tiers include access to all service areas. Hours are used as the engagement requires and do not roll over.
+          </p>
+        </div>
+      </section>
+
+      {/* Why this pricing model */}
       <section className="bg-white py-16">
         <div className="max-w-[1200px] mx-auto px-6">
-          <div className="bg-[#0078D4]/10 border border-[#0078D4]/30 rounded-xl p-8">
-            <h3 className="text-xl font-bold text-[#0A2540] mb-3">Project-Based Engagements</h3>
-            <p className="text-foreground mb-2">
-              For larger, scoped projects — tenant migrations, full intranet builds, governance overhauls — Shane works on a fixed-project basis.
-            </p>
-            <p className="text-muted-foreground">
-              <strong className="text-[#0078D4]">Typical range: $2,500–$25,000+</strong>, scoped after a free discovery call. You'll receive a detailed proposal with fixed deliverables, timeline, and pricing before any commitment.
-            </p>
+          <div className="bg-[#0A2540] rounded-2xl p-10 grid grid-cols-1 lg:grid-cols-[1fr_1.5fr] gap-10 items-center">
+            <div>
+              <p className="text-[#00B4D8] text-sm font-semibold uppercase tracking-[0.1em] mb-4">The Philosophy</p>
+              <h2 className="text-2xl md:text-3xl font-extrabold text-white leading-tight">
+                Why Fixed Pricing — and Why It Matters to You
+              </h2>
+            </div>
+            <div className="space-y-5">
+              {[
+                {
+                  heading: "You budget for an outcome, not a clock.",
+                  body: "Hourly billing creates misaligned incentives. It rewards time spent, not results delivered. Fixed pricing forces Shane to scope the work accurately and deliver it efficiently.",
+                },
+                {
+                  heading: "No scope creep without a conversation.",
+                  body: "If a project changes materially, that becomes a change order discussion — not a surprise on your invoice. You're never in the dark about what you've committed to.",
+                },
+                {
+                  heading: "Enterprise value at a fraction of enterprise cost.",
+                  body: "A full-time senior M365 architect costs $150,000–$200,000/year in salary alone. A fractional retainer delivers the same expertise — applied directly to your highest-priority problems — at a fraction of that cost.",
+                },
+              ].map((item, i) => (
+                <div key={i} className="flex items-start gap-3" data-testid={`philosophy-point-${i}`}>
+                  <CheckCircle className="w-5 h-5 text-[#0078D4] flex-shrink-0 mt-0.5" />
+                  <div>
+                    <p className="text-white font-semibold text-sm mb-1">{item.heading}</p>
+                    <p className="text-white/60 text-sm leading-relaxed">{item.body}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
       </section>
@@ -224,20 +470,26 @@ export default function Pricing() {
       <section className="bg-[#F7F9FC] py-20">
         <div className="max-w-[1200px] mx-auto px-6">
           <div className="text-center mb-12">
-            <h2 className="text-3xl font-extrabold text-[#0A2540]">Frequently Asked Questions</h2>
+            <p className="text-[#0078D4] text-sm font-semibold uppercase tracking-[0.1em] mb-3">FAQ</p>
+            <h2 className="text-3xl font-extrabold text-[#0A2540]">Common Questions</h2>
           </div>
           <div className="max-w-3xl mx-auto space-y-3">
             {faqs.map((item, i) => (
-              <FAQItem key={i} {...item} />
+              <FAQItem key={i} q={item.q} a={item.a} index={i} />
             ))}
           </div>
         </div>
       </section>
 
+      {/* Final CTA */}
       <section className="bg-[#0A2540] py-20">
         <div className="max-w-[1200px] mx-auto px-6 text-center">
-          <h2 className="text-3xl font-extrabold text-white mb-4">Not sure which option is right for you?</h2>
-          <p className="text-white/70 max-w-xl mx-auto mb-10">Book a free 30-minute call and Shane will recommend the right fit for your situation — no pressure, no pitch.</p>
+          <h2 className="text-3xl md:text-4xl font-extrabold text-white mb-4">
+            Not Sure Which Track is Right for You?
+          </h2>
+          <p className="text-white/70 text-lg max-w-xl mx-auto mb-10 leading-relaxed">
+            Book a free 30-minute call. Shane will recommend the right engagement model for your situation — no sales pressure, no commitment required.
+          </p>
           <CTAButton href="/book" className="px-10 py-4 text-base" data-testid="pricing-final-cta">
             Book a Free Discovery Call
           </CTAButton>
