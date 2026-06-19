@@ -104,28 +104,39 @@ export default function Home() {
             backgroundSize: "60px 60px",
           }}
         />
-        <div className="relative z-10 max-w-[1200px] mx-auto px-6 py-32 pt-40 text-center">
-          <p className="text-[#0078D4] text-sm font-semibold uppercase tracking-[0.1em] mb-6">
-            Enterprise Microsoft 365 & AI Authority. Trusted by NASA.
-          </p>
-          <h1 className="text-4xl md:text-5xl lg:text-6xl font-extrabold text-white leading-tight mb-8 max-w-5xl mx-auto">
-            Enterprise Microsoft 365 & Copilot AI Consulting. 30 Years of Mastery. NASA-Tested. Ready for Your Business.
-          </h1>
-          <p className="text-lg md:text-xl text-white/80 max-w-3xl mx-auto mb-10 leading-relaxed">
-            I'm Shane McCaw — Lead Microsoft 365 Architect at NASA and a 30-year Microsoft ecosystem veteran. I help businesses and organizations architect, deploy, and optimize Microsoft 365 and Copilot AI so they work the way they were designed to — securely, intelligently, and at scale.
-          </p>
-          <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-10">
-            <CTAButton href="/book" className="text-base px-8 py-4" data-testid="hero-cta-primary">
-              Book Your Free Discovery Call
-            </CTAButton>
-            <Link href="/about" className="text-white/80 hover:text-white font-medium flex items-center gap-1 transition-colors" data-testid="hero-cta-secondary">
-              See How I Work <ArrowRight className="w-4 h-4" />
-            </Link>
+        {/* Radial glow */}
+        <div
+          className="absolute inset-0 opacity-20"
+          style={{
+            background: "radial-gradient(ellipse 70% 60% at 50% 40%, #0078D4, transparent)",
+          }}
+        />
+        <div className="relative z-10 max-w-[1200px] mx-auto px-6 py-32 pt-44 text-center">
+          <div className="inline-flex items-center gap-2 bg-[#0078D4]/15 border border-[#0078D4]/40 rounded-full px-5 py-2 mb-8">
+            <span className="w-2 h-2 rounded-full bg-[#00B4D8] animate-pulse" />
+            <p className="text-[#00B4D8] text-sm font-semibold uppercase tracking-[0.1em]">
+              Current Microsoft 365 Architect & Copilot SME — NASA
+            </p>
           </div>
-          <div className="flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-white/60 text-sm font-medium">
-            {["30+ Years Microsoft Experience", "Lead Architect at NASA", "Forum of Innovation Award Winner", "Ex-Microsoft Engineer"].map((badge, i) => (
-              <span key={i} className="flex items-center gap-1.5">
-                <CheckCircle className="w-4 h-4 text-[#0078D4]" />
+          <h1 className="text-4xl md:text-5xl lg:text-[3.75rem] font-extrabold text-white leading-[1.1] mb-7 max-w-5xl mx-auto">
+            Fractional Microsoft 365 Architecture — Built to NASA Standards. Delivered to Your Organization.
+          </h1>
+          <p className="text-lg md:text-xl text-white/75 max-w-3xl mx-auto mb-12 leading-relaxed">
+            Shane McCaw is the serving Microsoft 365 Architect and Copilot AI Subject Matter Expert at NASA — and he brings that same mission-critical discipline to your cloud modernization, governance, and Copilot readiness engagement. No generalists. No offshore handoffs. Senior Microsoft expertise, available to your organization on a fractional basis.
+          </p>
+          <CTAButton href="/book" className="text-base px-10 py-4 shadow-lg shadow-[#0078D4]/30" data-testid="hero-cta-primary">
+            Book a Consultation
+          </CTAButton>
+          <div className="mt-14 pt-10 border-t border-white/10 flex flex-wrap items-center justify-center gap-x-8 gap-y-3 text-white/50 text-sm font-medium">
+            {[
+              "Fractional M365 Architecture",
+              "Copilot AI Readiness",
+              "Cloud Modernization",
+              "Governance & Compliance",
+              "30+ Years Microsoft Experience",
+            ].map((badge, i) => (
+              <span key={i} className="flex items-center gap-2">
+                <CheckCircle className="w-4 h-4 text-[#0078D4] flex-shrink-0" />
                 {badge}
               </span>
             ))}
