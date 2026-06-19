@@ -2,67 +2,48 @@ import { useParams, Link } from "wouter";
 import { ArrowLeft, Calendar, Tag } from "lucide-react";
 import { FaLinkedin } from "react-icons/fa";
 import { FaXTwitter } from "react-icons/fa6";
+import ReactMarkdown from "react-markdown";
+import type { Components } from "react-markdown";
 import { SEOMeta } from "@/components/SEOMeta";
 import { Layout } from "@/components/Layout";
 import { ConsultationCTA } from "@/components/ConsultationCTA";
-import { articles, type ArticleSection } from "@/data/articles";
+import { articles } from "@/data/articles";
 import NotFound from "@/pages/not-found";
 
-function renderSection(section: ArticleSection, index: number) {
-  switch (section.type) {
-    case "heading":
-      return (
-        <h2
-          key={index}
-          className="text-2xl font-extrabold text-[#0A2540] mt-10 mb-4 leading-snug"
-        >
-          {section.text}
-        </h2>
-      );
-    case "subheading":
-      return (
-        <h3
-          key={index}
-          className="text-lg font-bold text-[#0A2540] mt-8 mb-3 leading-snug"
-        >
-          {section.text}
-        </h3>
-      );
-    case "paragraph":
-      return (
-        <p key={index} className="text-[#374151] leading-relaxed mb-5">
-          {section.text}
-        </p>
-      );
-    case "list":
-      return (
-        <ul key={index} className="mb-6 space-y-2 pl-0">
-          {section.items?.map((item, i) => (
-            <li
-              key={i}
-              className="flex gap-3 text-[#374151] leading-relaxed"
-            >
-              <span className="mt-2 flex-shrink-0 w-1.5 h-1.5 rounded-full bg-[#0078D4]" />
-              <span>{item}</span>
-            </li>
-          ))}
-        </ul>
-      );
-    case "callout":
-      return (
-        <div
-          key={index}
-          className="my-8 border-l-4 border-[#0078D4] bg-[#0078D4]/6 rounded-r-xl px-6 py-5"
-        >
-          <p className="text-[#0A2540] font-medium leading-relaxed">
-            {section.text}
-          </p>
-        </div>
-      );
-    default:
-      return null;
-  }
-}
+const markdownComponents: Components = {
+  h2: ({ children }) => (
+    <h2 className="text-2xl font-extrabold text-[#0A2540] mt-10 mb-4 leading-snug">
+      {children}
+    </h2>
+  ),
+  h3: ({ children }) => (
+    <h3 className="text-lg font-bold text-[#0A2540] mt-8 mb-3 leading-snug">
+      {children}
+    </h3>
+  ),
+  p: ({ children }) => (
+    <p className="text-[#374151] leading-relaxed mb-5">{children}</p>
+  ),
+  ul: ({ children }) => (
+    <ul className="mb-6 space-y-2 pl-0">{children}</ul>
+  ),
+  li: ({ children }) => (
+    <li className="flex gap-3 text-[#374151] leading-relaxed">
+      <span className="mt-2 flex-shrink-0 w-1.5 h-1.5 rounded-full bg-[#0078D4]" />
+      <span>{children}</span>
+    </li>
+  ),
+  blockquote: ({ children }) => (
+    <div className="my-8 border-l-4 border-[#0078D4] bg-[#0078D4]/6 rounded-r-xl px-6 py-5">
+      <div className="text-[#0A2540] font-medium leading-relaxed [&>p]:mb-0">
+        {children}
+      </div>
+    </div>
+  ),
+  strong: ({ children }) => (
+    <strong className="font-semibold text-[#0A2540]">{children}</strong>
+  ),
+};
 
 function ShareButtons({ title }: { title: string }) {
   const url = typeof window !== "undefined" ? window.location.href : "";
@@ -145,7 +126,9 @@ export default function ArticlePage() {
       <section className="bg-white py-16">
         <div className="max-w-[800px] mx-auto px-6">
           <div className="prose-custom">
-            {article.content.map((section, i) => renderSection(section, i))}
+            <ReactMarkdown components={markdownComponents}>
+              {article.content}
+            </ReactMarkdown>
           </div>
 
           <div className="mt-16 pt-10 border-t border-border">
