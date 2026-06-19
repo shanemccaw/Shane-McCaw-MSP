@@ -763,6 +763,12 @@ export default function ServicesPage() {
                   </div>
                 </div>
               </div>
+              <div className="pt-5 border-t border-gray-100 mt-5">
+                <button type="submit" disabled={saving}
+                  className="w-full bg-[#0078D4] text-white rounded-lg px-5 py-2.5 text-sm font-medium hover:bg-[#006CBE] transition-colors disabled:opacity-60">
+                  {saving ? "Saving…" : "Save Changes"}
+                </button>
+              </div>
             </form>
           </div>
         )}
