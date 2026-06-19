@@ -1,5 +1,16 @@
 import { useEffect, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
+import { useToast } from "@/hooks/use-toast";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 interface Client {
   id: number;
@@ -22,6 +33,7 @@ const EMPTY_FORM: FormState = { email: "", name: "", company: "", phone: "", pas
 
 export default function ClientsPage() {
   const { fetchWithAuth } = useAuth();
+  const { toast } = useToast();
   const [clients, setClients] = useState<Client[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
@@ -29,6 +41,8 @@ export default function ClientsPage() {
   const [saving, setSaving] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [error, setError] = useState("");
+  const [deleteTarget, setDeleteTarget] = useState<Client | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   const load = async () => {
     const res = await fetchWithAuth("/api/admin/clients");
@@ -75,6 +89,24 @@ export default function ClientsPage() {
     setEditingId(c.id);
     setForm({ email: c.email, name: c.name ?? "", company: c.company ?? "", phone: c.phone ?? "", password: "" });
     setShowForm(true);
+  };
+
+  const handleDelete = async () => {
+    if (!deleteTarget) return;
+    setDeleting(true);
+    try {
+      const res = await fetchWithAuth(`/api/admin/clients/${deleteTarget.id}`, { method: "DELETE" });
+      if (res.ok) {
+        toast({ title: "Client deleted", description: `${deleteTarget.name ?? deleteTarget.email} and all their data have been removed.` });
+        setDeleteTarget(null);
+        await load();
+      } else {
+        const err = await res.json() as { error: string };
+        toast({ title: "Delete failed", description: err.error, variant: "destructive" });
+      }
+    } finally {
+      setDeleting(false);
+    }
   };
 
   return (
@@ -171,7 +203,10 @@ export default function ClientsPage() {
                   <td className="px-5 py-3.5 text-muted-foreground hidden md:table-cell">{c.phone ?? "—"}</td>
                   <td className="px-5 py-3.5 text-xs text-muted-foreground hidden lg:table-cell">{new Date(c.createdAt).toLocaleDateString()}</td>
                   <td className="px-5 py-3.5">
-                    <button onClick={() => handleEdit(c)} className="text-xs font-semibold text-[#0078D4] hover:underline">Edit</button>
+                    <div className="flex items-center gap-3">
+                      <button onClick={() => handleEdit(c)} className="text-xs font-semibold text-[#0078D4] hover:underline">Edit</button>
+                      <button onClick={() => setDeleteTarget(c)} className="text-xs font-semibold text-red-500 hover:text-red-700">Delete</button>
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -179,6 +214,27 @@ export default function ClientsPage() {
           </table>
         </div>
       )}
+
+      <AlertDialog open={!!deleteTarget} onOpenChange={open => { if (!open) setDeleteTarget(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete client?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently delete <strong>{deleteTarget?.name ?? deleteTarget?.email}</strong> and cascade-remove all their projects, services, contracts, invoices, messages, and reports. This cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={deleting}
+              onClick={e => { e.preventDefault(); void handleDelete(); }}
+              className="bg-red-600 hover:bg-red-700 text-white"
+            >
+              {deleting ? "Deleting…" : "Yes, delete client"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

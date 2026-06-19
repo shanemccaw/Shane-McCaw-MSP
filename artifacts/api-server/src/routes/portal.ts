@@ -1,6 +1,6 @@
 import { Router, type IRouter, type Request, type Response } from "express";
-import { db, projectsTable, clientServicesTable, servicesTable, workflowStepsTable, kanbanTasksTable, documentsTable, reportsTable, invoicesTable, messagesTable, notificationsTable, projectUpdatesTable, usersTable, contractsTable, projectTemplatesTable, projectTemplateTasksTable, workflowTemplateStepsTable, contractTemplatesTable } from "@workspace/db";
-import { eq, and, desc, asc, count, sql } from "drizzle-orm";
+import { db, projectsTable, clientServicesTable, servicesTable, workflowStepsTable, kanbanTasksTable, documentsTable, reportsTable, invoicesTable, messagesTable, notificationsTable, projectUpdatesTable, usersTable, contractsTable, passwordResetTokensTable, projectTemplatesTable, projectTemplateTasksTable, workflowTemplateStepsTable, contractTemplatesTable } from "@workspace/db";
+import { eq, and, desc, asc, count, sql, inArray } from "drizzle-orm";
 import { requireAuth, requireAdmin } from "../middlewares/requireAuth";
 import { sendEmail, purchaseConfirmationEmail, onboardingConfirmationEmail, adminPurchaseAlertEmail } from "../lib/mailer";
 import multer from "multer";
@@ -1358,6 +1358,50 @@ router.patch("/admin/clients/:id", requireAdmin, async (req: Request, res: Respo
   res.json({ ...updated, passwordHash: undefined });
 });
 
+router.delete("/admin/clients/:id", requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const id = parseInt(String(req.params.id ?? ""), 10);
+    if (isNaN(id)) { res.status(400).json({ error: "Invalid ID" }); return; }
+
+    const [client] = await db.select({ id: usersTable.id }).from(usersTable)
+      .where(and(eq(usersTable.id, id), eq(usersTable.role, "client"))).limit(1);
+    if (!client) { res.status(404).json({ error: "Client not found" }); return; }
+
+    const clientProjectRows = await db.select({ id: projectsTable.id }).from(projectsTable)
+      .where(eq(projectsTable.clientUserId, id));
+    const projectIds = clientProjectRows.map(p => p.id);
+
+    const clientSvcRows = await db.select({ id: clientServicesTable.id }).from(clientServicesTable)
+      .where(eq(clientServicesTable.clientUserId, id));
+    const clientSvcIds = clientSvcRows.map(s => s.id);
+
+    if (projectIds.length > 0) {
+      await db.delete(kanbanTasksTable).where(inArray(kanbanTasksTable.projectId, projectIds));
+      await db.delete(projectUpdatesTable).where(inArray(projectUpdatesTable.projectId, projectIds));
+      await db.delete(documentsTable).where(inArray(documentsTable.projectId, projectIds));
+      await db.delete(workflowStepsTable).where(inArray(workflowStepsTable.projectId, projectIds));
+    }
+    if (clientSvcIds.length > 0) {
+      await db.delete(workflowStepsTable).where(inArray(workflowStepsTable.clientServiceId, clientSvcIds));
+    }
+    await db.delete(clientServicesTable).where(eq(clientServicesTable.clientUserId, id));
+    await db.delete(contractsTable).where(eq(contractsTable.userId, id));
+    await db.delete(reportsTable).where(eq(reportsTable.clientUserId, id));
+    await db.delete(invoicesTable).where(eq(invoicesTable.clientUserId, id));
+    await db.delete(messagesTable).where(eq(messagesTable.clientUserId, id));
+    await db.delete(notificationsTable).where(eq(notificationsTable.userId, id));
+    await db.delete(passwordResetTokensTable).where(eq(passwordResetTokensTable.userId, id));
+    if (projectIds.length > 0) {
+      await db.delete(projectsTable).where(inArray(projectsTable.id, projectIds));
+    }
+    await db.delete(usersTable).where(eq(usersTable.id, id));
+
+    res.status(204).end();
+  } catch {
+    res.status(500).json({ error: "Failed to delete client" });
+  }
+});
+
 // ─── ADMIN: Projects ─────────────────────────────────────────────────────────
 router.get("/admin/projects", requireAdmin, async (_req: Request, res: Response) => {
   const projects = await db.select().from(projectsTable).orderBy(desc(projectsTable.createdAt));
@@ -1417,6 +1461,33 @@ router.patch("/admin/projects/:id", requireAdmin, async (req: Request, res: Resp
   const [updated] = await db.update(projectsTable).set(updates).where(eq(projectsTable.id, id)).returning();
   if (!updated) { res.status(404).json({ error: "Project not found" }); return; }
   res.json(updated);
+});
+
+router.delete("/admin/projects/:id", requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const id = parseInt(String(req.params.id ?? ""), 10);
+    if (isNaN(id)) { res.status(400).json({ error: "Invalid ID" }); return; }
+
+    const [project] = await db.select({ id: projectsTable.id }).from(projectsTable)
+      .where(eq(projectsTable.id, id)).limit(1);
+    if (!project) { res.status(404).json({ error: "Project not found" }); return; }
+
+    await db.delete(kanbanTasksTable).where(eq(kanbanTasksTable.projectId, id));
+    await db.delete(workflowStepsTable).where(eq(workflowStepsTable.projectId, id));
+    await db.delete(documentsTable).where(eq(documentsTable.projectId, id));
+    await db.delete(projectUpdatesTable).where(eq(projectUpdatesTable.projectId, id));
+
+    await db.update(clientServicesTable).set({ projectId: null }).where(eq(clientServicesTable.projectId, id));
+    await db.update(contractsTable).set({ projectId: null }).where(eq(contractsTable.projectId, id));
+    await db.update(invoicesTable).set({ projectId: null }).where(eq(invoicesTable.projectId, id));
+    await db.update(reportsTable).set({ projectId: null }).where(eq(reportsTable.projectId, id));
+
+    await db.delete(projectsTable).where(eq(projectsTable.id, id));
+
+    res.status(204).end();
+  } catch {
+    res.status(500).json({ error: "Failed to delete project" });
+  }
 });
 
 // ─── ADMIN: Workflow Steps ───────────────────────────────────────────────────

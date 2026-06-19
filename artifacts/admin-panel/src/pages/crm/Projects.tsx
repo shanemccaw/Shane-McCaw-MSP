@@ -1,5 +1,16 @@
 import { useEffect, useState, useCallback } from "react";
 import { useAuth } from "@/contexts/AuthContext";
+import { useToast } from "@/hooks/use-toast";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 interface Client {
   id: number;
@@ -67,6 +78,7 @@ const EMPTY_FORM: ProjectFormState = {
 
 export default function ProjectsPage() {
   const { fetchWithAuth } = useAuth();
+  const { toast } = useToast();
   const [projects, setProjects] = useState<Project[]>([]);
   const [clients, setClients] = useState<Client[]>([]);
   const [loading, setLoading] = useState(true);
@@ -75,6 +87,8 @@ export default function ProjectsPage() {
   const [editingId, setEditingId] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [deleteTarget, setDeleteTarget] = useState<Project | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   const [expandedProjectId, setExpandedProjectId] = useState<number | null>(null);
   const [projectDetails, setProjectDetails] = useState<Record<number, { steps: WorkflowStep[]; tasks: KanbanTask[] }>>({});
@@ -162,6 +176,24 @@ export default function ProjectsPage() {
       }
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!deleteTarget) return;
+    setDeleting(true);
+    try {
+      const res = await fetchWithAuth(`/api/admin/projects/${deleteTarget.id}`, { method: "DELETE" });
+      if (res.ok) {
+        toast({ title: "Project deleted", description: `"${deleteTarget.title}" and all its data have been removed.` });
+        setDeleteTarget(null);
+        await load();
+      } else {
+        const err = await res.json() as { error: string };
+        toast({ title: "Delete failed", description: err.error, variant: "destructive" });
+      }
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -345,6 +377,7 @@ export default function ProjectsPage() {
                   </div>
                   <div className="flex items-center gap-3 flex-shrink-0">
                     <button onClick={e => { e.stopPropagation(); handleEdit(p); }} className="text-xs font-semibold text-[#0078D4] hover:underline">Edit</button>
+                    <button onClick={e => { e.stopPropagation(); setDeleteTarget(p); }} className="text-xs font-semibold text-red-500 hover:text-red-700">Delete</button>
                     <svg className={`w-4 h-4 text-muted-foreground transition-transform ${isExpanded ? "rotate-180" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                       <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
                     </svg>
@@ -483,6 +516,27 @@ export default function ProjectsPage() {
           })}
         </div>
       )}
+
+      <AlertDialog open={!!deleteTarget} onOpenChange={open => { if (!open) setDeleteTarget(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete project?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently delete <strong>{deleteTarget?.title}</strong> and all its workflow steps, Kanban tasks, documents, and updates. This cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={deleting}
+              onClick={e => { e.preventDefault(); void handleDelete(); }}
+              className="bg-red-600 hover:bg-red-700 text-white"
+            >
+              {deleting ? "Deleting…" : "Yes, delete project"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
