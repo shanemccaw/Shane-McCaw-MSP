@@ -2311,62 +2311,69 @@ router.post("/portal/checkout/create-session", requireAuth, async (req: Request,
   let subscriptionUrl: string | null = null;
   const startDateStr = startDate ?? new Date().toISOString();
 
-  // ── One-time Checkout Session (payment mode) ─────────────────────────────
-  if (oneTimeServices.length > 0) {
-    const otContractIds = oneTimeServices.map(s => serviceToContract.get(s.id)!);
-    const session = await stripe.checkout.sessions.create({
-      payment_method_types: ["card"],
-      line_items: oneTimeServices.map(s => ({
-        price_data: {
-          currency: "usd",
-          product_data: { name: s.name, description: s.description ?? undefined },
-          unit_amount: Math.round((contractFinalPrices.get(s.id) ?? parseFloat(String(s.price!))) * 100),
+  try {
+    // ── One-time Checkout Session (payment mode) ───────────────────────────
+    if (oneTimeServices.length > 0) {
+      const otContractIds = oneTimeServices.map(s => serviceToContract.get(s.id)!);
+      const session = await stripe.checkout.sessions.create({
+        payment_method_types: ["card"],
+        line_items: oneTimeServices.map(s => ({
+          price_data: {
+            currency: "usd",
+            product_data: { name: s.name, description: s.description ?? undefined },
+            unit_amount: Math.round((contractFinalPrices.get(s.id) ?? parseFloat(String(s.price!))) * 100),
+          },
+          quantity: 1,
+        })),
+        mode: "payment",
+        automatic_tax: { enabled: true },
+        success_url: `${baseUrl}/portal/onboarding/success?session_id={CHECKOUT_SESSION_ID}`,
+        cancel_url: `${baseUrl}/portal/onboarding/contract?serviceIds=${oneTimeServices.map(s => s.id).join(",")}&cancelled=1`,
+        metadata: {
+          type: "onboarding_purchase",
+          userId: String(userId),
+          serviceIds: oneTimeServices.map(s => s.id).join(","),
+          contractIds: otContractIds.join(","),
+          serviceName: oneTimeServices.map(s => s.name).join(", "),
+          startDate: startDateStr,
         },
-        quantity: 1,
-      })),
-      mode: "payment",
-      automatic_tax: { enabled: true },
-      success_url: `${baseUrl}/portal/onboarding/success?session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: `${baseUrl}/portal/onboarding/contract?serviceIds=${oneTimeServices.map(s => s.id).join(",")}&cancelled=1`,
-      metadata: {
-        type: "onboarding_purchase",
-        userId: String(userId),
-        serviceIds: oneTimeServices.map(s => s.id).join(","),
-        contractIds: otContractIds.join(","),
-        serviceName: oneTimeServices.map(s => s.name).join(", "),
-        startDate: startDateStr,
-      },
-    });
-    oneTimeUrl = session.url;
-  }
+      });
+      oneTimeUrl = session.url;
+    }
 
-  // ── Subscription Checkout Session (subscription mode) ────────────────────
-  if (recurringServices.length > 0) {
-    const recContractIds = recurringServices.map(s => serviceToContract.get(s.id)!);
-    const session = await stripe.checkout.sessions.create({
-      payment_method_types: ["card"],
-      line_items: recurringServices.map(s => ({
-        price_data: {
-          currency: "usd",
-          product_data: { name: s.name, description: s.description ?? undefined },
-          unit_amount: Math.round((contractFinalPrices.get(s.id) ?? parseFloat(String(s.price!))) * 100),
-          recurring: { interval: "month" as const },
+    // ── Subscription Checkout Session (subscription mode) ──────────────────
+    if (recurringServices.length > 0) {
+      const recContractIds = recurringServices.map(s => serviceToContract.get(s.id)!);
+      const session = await stripe.checkout.sessions.create({
+        payment_method_types: ["card"],
+        line_items: recurringServices.map(s => ({
+          price_data: {
+            currency: "usd",
+            product_data: { name: s.name, description: s.description ?? undefined },
+            unit_amount: Math.round((contractFinalPrices.get(s.id) ?? parseFloat(String(s.price!))) * 100),
+            recurring: { interval: "month" as const },
+          },
+          quantity: 1,
+        })),
+        mode: "subscription",
+        success_url: `${baseUrl}/portal/onboarding/success?session_id={CHECKOUT_SESSION_ID}`,
+        cancel_url: `${baseUrl}/portal/onboarding/contract?serviceIds=${recurringServices.map(s => s.id).join(",")}&cancelled=1`,
+        metadata: {
+          type: "onboarding_purchase",
+          userId: String(userId),
+          serviceIds: recurringServices.map(s => s.id).join(","),
+          contractIds: recContractIds.join(","),
+          serviceName: recurringServices.map(s => s.name).join(", "),
+          startDate: startDateStr,
         },
-        quantity: 1,
-      })),
-      mode: "subscription",
-      success_url: `${baseUrl}/portal/onboarding/success?session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: `${baseUrl}/portal/onboarding/contract?serviceIds=${recurringServices.map(s => s.id).join(",")}&cancelled=1`,
-      metadata: {
-        type: "onboarding_purchase",
-        userId: String(userId),
-        serviceIds: recurringServices.map(s => s.id).join(","),
-        contractIds: recContractIds.join(","),
-        serviceName: recurringServices.map(s => s.name).join(", "),
-        startDate: startDateStr,
-      },
-    });
-    subscriptionUrl = session.url;
+      });
+      subscriptionUrl = session.url;
+    }
+  } catch (stripeErr) {
+    const msg = stripeErr instanceof Error ? stripeErr.message : "Stripe error";
+    req.log.error({ err: stripeErr }, "checkout: Stripe session creation failed");
+    res.status(502).json({ error: `Payment provider error: ${msg}` });
+    return;
   }
 
   // Primary URL is one-time first (if mixed cart, subscription comes after)

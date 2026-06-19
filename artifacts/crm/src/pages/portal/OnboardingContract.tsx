@@ -288,8 +288,12 @@ export default function OnboardingContract() {
       });
 
       if (!checkoutRes.ok) {
-        const err = await checkoutRes.json() as { error: string };
-        throw new Error(err.error);
+        let errMsg = `Checkout failed (${checkoutRes.status})`;
+        try {
+          const err = await checkoutRes.json() as { error: string };
+          if (err.error) errMsg = err.error;
+        } catch { /* non-JSON body, keep default message */ }
+        throw new Error(errMsg);
       }
 
       const { url, secondaryUrl } = await checkoutRes.json() as { url: string; secondaryUrl?: string };
