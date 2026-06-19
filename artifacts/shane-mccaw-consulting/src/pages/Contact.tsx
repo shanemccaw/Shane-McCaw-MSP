@@ -31,7 +31,27 @@ export default function Contact() {
   } = useForm<FormData>({ resolver: zodResolver(schema) });
 
   const onSubmit = async (data: FormData) => {
-    await new Promise(resolve => setTimeout(resolve, 800));
+    try {
+      const res = await fetch("/api/leads", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: `${data.firstName} ${data.lastName}`,
+          email: data.email,
+          company: data.company,
+          companySize: data.companySize,
+          serviceArea: data.service,
+          message: data.message,
+          source: "contact_form",
+          howFound: data.howFound,
+        }),
+      });
+      if (!res.ok) {
+        throw new Error("Submission failed");
+      }
+    } catch {
+      // Continue regardless — don't block the UX on API failure
+    }
     toast({
       title: "Message sent!",
       description: "Thanks! Shane will personally respond within 1 business day.",

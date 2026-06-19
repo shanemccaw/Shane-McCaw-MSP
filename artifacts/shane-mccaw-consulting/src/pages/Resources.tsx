@@ -18,8 +18,21 @@ export default function Resources() {
 
   const filtered = activeCategory === "All" ? articles : articles.filter(p => p.category === activeCategory);
 
-  const handleLeadMagnet = (e: React.FormEvent) => {
+  const handleLeadMagnet = async (e: React.FormEvent) => {
     e.preventDefault();
+    try {
+      await fetch("/api/leads", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: leadMagnetName,
+          email: leadMagnetEmail,
+          source: "lead_magnet",
+        }),
+      });
+    } catch {
+      // Continue regardless — don't block the UX on API failure
+    }
     setSubmitted(true);
   };
 

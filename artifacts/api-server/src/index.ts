@@ -1,5 +1,6 @@
 import app from "./app";
 import { logger } from "./lib/logger";
+import { seedAdminUser } from "./routes/auth";
 
 const rawPort = process.env["PORT"];
 
@@ -22,4 +23,10 @@ app.listen(port, (err) => {
   }
 
   logger.info({ port }, "Server listening");
+
+  seedAdminUser().then(() => {
+    logger.info("CRM admin user seeded (no-op if exists)");
+  }).catch((seedErr) => {
+    logger.warn({ err: seedErr }, "Could not seed admin user");
+  });
 });
