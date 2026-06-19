@@ -158,37 +158,70 @@ function GoogleIcon() {
   );
 }
 
+function redirectAfterAuth(role: string, setLocation: (path: string) => void) {
+  if (role === "client") {
+    const returnTo = sessionStorage.getItem("onboardingReturnTo");
+    if (returnTo) {
+      sessionStorage.removeItem("onboardingReturnTo");
+      setLocation(returnTo);
+    } else {
+      setLocation("/portal");
+    }
+  } else {
+    setLocation("/dashboard");
+  }
+}
+
 export default function LoginPage() {
-  const { login } = useAuth();
+  const { login, register } = useAuth();
   const [, setLocation] = useLocation();
+  const [mode, setMode] = useState<"login" | "register">("login");
+  const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+
+  const switchMode = (next: "login" | "register") => {
+    setMode(next);
+    setError("");
+    setPassword("");
+    setConfirmPassword("");
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
+
+    if (mode === "register") {
+      if (password !== confirmPassword) {
+        setError("Passwords do not match");
+        return;
+      }
+      if (password.length < 8) {
+        setError("Password must be at least 8 characters");
+        return;
+      }
+    }
+
     setLoading(true);
     try {
-      const loggedInUser = await login(email, password);
-      if (loggedInUser?.role === "client") {
-        const returnTo = sessionStorage.getItem("onboardingReturnTo");
-        if (returnTo) {
-          sessionStorage.removeItem("onboardingReturnTo");
-          setLocation(returnTo);
-        } else {
-          setLocation("/portal");
-        }
+      if (mode === "login") {
+        const user = await login(email, password);
+        redirectAfterAuth(user.role, setLocation);
       } else {
-        setLocation("/dashboard");
+        const user = await register(email, password, name.trim() || undefined);
+        redirectAfterAuth(user.role, setLocation);
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Login failed");
+      setError(err instanceof Error ? err.message : mode === "login" ? "Login failed" : "Registration failed");
     } finally {
       setLoading(false);
     }
   };
+
+  const isLogin = mode === "login";
 
   return (
     <div className="min-h-screen flex flex-col md:flex-row">
@@ -236,12 +269,18 @@ export default function LoginPage() {
         </div>
       </div>
 
-      {/* ── Right login panel ────────────────────────────────────── */}
+      {/* ── Right login/register panel ────────────────────────────── */}
       <div className="md:w-[45%] bg-[#F7F9FC] flex flex-col items-center justify-center px-6 py-12 md:px-12">
         <div className="w-full max-w-sm">
           <div className="mb-8">
-            <h2 className="text-2xl font-extrabold text-[#0A2540] mb-1">Sign in to your portal</h2>
-            <p className="text-muted-foreground text-sm">Enter your credentials below to continue.</p>
+            <h2 className="text-2xl font-extrabold text-[#0A2540] mb-1">
+              {isLogin ? "Sign in to your portal" : "Create your account"}
+            </h2>
+            <p className="text-muted-foreground text-sm">
+              {isLogin
+                ? "Enter your credentials below to continue."
+                : "Set up your client portal in seconds."}
+            </p>
           </div>
 
           {/* OAuth placeholder buttons */}
@@ -251,14 +290,14 @@ export default function LoginPage() {
               className="w-full flex items-center justify-center gap-2.5 border border-border bg-white rounded-lg py-2.5 text-sm font-semibold text-[#0A2540] hover:bg-[#F7F9FC] transition-colors shadow-sm"
             >
               <MicrosoftIcon />
-              Sign in with Microsoft
+              {isLogin ? "Sign in" : "Sign up"} with Microsoft
             </button>
             <button
               type="button"
               className="w-full flex items-center justify-center gap-2.5 border border-border bg-white rounded-lg py-2.5 text-sm font-semibold text-[#0A2540] hover:bg-[#F7F9FC] transition-colors shadow-sm"
             >
               <GoogleIcon />
-              Sign in with Google
+              {isLogin ? "Sign in" : "Sign up"} with Google
             </button>
           </div>
 
@@ -268,13 +307,32 @@ export default function LoginPage() {
               <div className="w-full border-t border-border" />
             </div>
             <div className="relative flex justify-center text-xs">
-              <span className="bg-[#F7F9FC] px-3 text-muted-foreground">or sign in with email</span>
+              <span className="bg-[#F7F9FC] px-3 text-muted-foreground">
+                {isLogin ? "or sign in with email" : "or sign up with email"}
+              </span>
             </div>
           </div>
 
           {/* Email / Password form */}
           <div className="bg-white border border-border rounded-2xl shadow-sm p-6">
             <form onSubmit={handleSubmit} className="space-y-5">
+              {!isLogin && (
+                <div>
+                  <label className="block text-sm font-semibold text-[#0A2540] mb-1.5">
+                    Full Name <span className="text-muted-foreground font-normal">(optional)</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={name}
+                    onChange={e => setName(e.target.value)}
+                    placeholder="Jane Smith"
+                    autoComplete="name"
+                    className="w-full border border-border rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4] transition-shadow"
+                    data-testid="input-name"
+                  />
+                </div>
+              )}
+
               <div>
                 <label className="block text-sm font-semibold text-[#0A2540] mb-1.5">Email</label>
                 <input
@@ -292,7 +350,9 @@ export default function LoginPage() {
               <div>
                 <div className="flex items-center justify-between mb-1.5">
                   <label className="block text-sm font-semibold text-[#0A2540]">Password</label>
-                  <a href="#" className="text-xs text-[#0078D4] hover:underline font-medium">Forgot password?</a>
+                  {isLogin && (
+                    <a href="#" className="text-xs text-[#0078D4] hover:underline font-medium">Forgot password?</a>
+                  )}
                 </div>
                 <input
                   type="password"
@@ -300,11 +360,30 @@ export default function LoginPage() {
                   onChange={e => setPassword(e.target.value)}
                   required
                   placeholder="••••••••"
-                  autoComplete="current-password"
+                  autoComplete={isLogin ? "current-password" : "new-password"}
                   className="w-full border border-border rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4] transition-shadow"
                   data-testid="input-password"
                 />
+                {!isLogin && (
+                  <p className="text-xs text-muted-foreground mt-1">Minimum 8 characters</p>
+                )}
               </div>
+
+              {!isLogin && (
+                <div>
+                  <label className="block text-sm font-semibold text-[#0A2540] mb-1.5">Confirm Password</label>
+                  <input
+                    type="password"
+                    value={confirmPassword}
+                    onChange={e => setConfirmPassword(e.target.value)}
+                    required
+                    placeholder="••••••••"
+                    autoComplete="new-password"
+                    className="w-full border border-border rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4] transition-shadow"
+                    data-testid="input-confirm-password"
+                  />
+                </div>
+              )}
 
               {error && (
                 <div className="bg-red-50 border border-red-200 text-red-700 rounded-lg px-4 py-3 text-sm" data-testid="login-error">
@@ -321,17 +400,46 @@ export default function LoginPage() {
                 {loading ? (
                   <>
                     <Loader2 className="w-4 h-4 animate-spin" />
-                    Signing in…
+                    {isLogin ? "Signing in…" : "Creating account…"}
                   </>
                 ) : (
-                  "Sign In to Your Portal"
+                  isLogin ? "Sign In to Your Portal" : "Create Account"
                 )}
               </button>
             </form>
           </div>
 
+          {/* Mode toggle */}
+          <p className="text-center text-sm text-muted-foreground mt-5">
+            {isLogin ? (
+              <>
+                Don't have an account?{" "}
+                <button
+                  type="button"
+                  onClick={() => switchMode("register")}
+                  className="text-[#0078D4] hover:underline font-semibold"
+                  data-testid="link-create-account"
+                >
+                  Create one
+                </button>
+              </>
+            ) : (
+              <>
+                Already have an account?{" "}
+                <button
+                  type="button"
+                  onClick={() => switchMode("login")}
+                  className="text-[#0078D4] hover:underline font-semibold"
+                  data-testid="link-sign-in"
+                >
+                  Sign in
+                </button>
+              </>
+            )}
+          </p>
+
           {/* Trust bar */}
-          <div className="mt-6 bg-white border border-border rounded-xl px-4 py-3 flex items-start gap-3">
+          <div className="mt-4 bg-white border border-border rounded-xl px-4 py-3 flex items-start gap-3">
             <div className="w-6 h-6 rounded-full bg-[#0078D4]/10 flex items-center justify-center flex-shrink-0 mt-0.5">
               <CheckCircle2 className="w-3.5 h-3.5 text-[#0078D4]" />
             </div>

@@ -97,6 +97,46 @@ router.post("/auth/refresh", async (req: Request, res: Response) => {
   res.json({ accessToken, user: payload });
 });
 
+router.post("/auth/register", async (req: Request, res: Response) => {
+  const { email, password, name } = req.body as { email?: string; password?: string; name?: string };
+
+  if (!email || !password) {
+    res.status(400).json({ error: "email and password are required" });
+    return;
+  }
+
+  if (password.length < 8) {
+    res.status(400).json({ error: "Password must be at least 8 characters" });
+    return;
+  }
+
+  const secret = process.env.JWT_SECRET;
+  if (!secret) {
+    res.status(500).json({ error: "Server misconfiguration" });
+    return;
+  }
+
+  const normalizedEmail = email.toLowerCase().trim();
+  const [existing] = await db.select().from(usersTable).where(eq(usersTable.email, normalizedEmail)).limit(1);
+  if (existing) {
+    res.status(409).json({ error: "An account with that email already exists" });
+    return;
+  }
+
+  const passwordHash = await bcrypt.hash(password, 12);
+  const [user] = await db
+    .insert(usersTable)
+    .values({ email: normalizedEmail, passwordHash, role: "client", name: name?.trim() || null })
+    .returning();
+
+  const payload = { id: user.id, email: user.email, role: user.role };
+  const accessToken = jwt.sign(payload, secret, { expiresIn: ACCESS_TOKEN_TTL });
+  const refreshToken = jwt.sign({ id: user.id }, secret, { expiresIn: `${REFRESH_TOKEN_TTL_DAYS}d` });
+
+  res.cookie("refreshToken", refreshToken, cookieOpts());
+  res.status(201).json({ accessToken, user: payload });
+});
+
 router.post("/auth/logout", (_req: Request, res: Response) => {
   res.clearCookie("refreshToken", { path: "/api/auth" });
   res.json({ success: true });

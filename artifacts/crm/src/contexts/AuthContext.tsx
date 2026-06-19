@@ -14,6 +14,7 @@ interface AuthState {
 
 interface AuthContextValue extends AuthState {
   login: (email: string, password: string) => Promise<AuthUser>;
+  register: (email: string, password: string, name?: string) => Promise<AuthUser>;
   logout: () => Promise<void>;
   getAuthHeader: () => Record<string, string>;
   fetchWithAuth: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
@@ -87,6 +88,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return data.user;
   };
 
+  const register = async (email: string, password: string, name?: string): Promise<AuthUser> => {
+    const res = await fetch("/api/auth/register", {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, password, name }),
+    });
+    if (!res.ok) {
+      const err = await res.json() as { error: string };
+      throw new Error(err.error ?? "Registration failed");
+    }
+    const data = await res.json() as { accessToken: string; user: AuthUser };
+    setState({ user: data.user, accessToken: data.accessToken, isLoading: false });
+    accessTokenRef.current = data.accessToken;
+    return data.user;
+  };
+
   const logout = async () => {
     await fetch("/api/auth/logout", { method: "POST", credentials: "include" });
     setState({ user: null, accessToken: null, isLoading: false });
@@ -120,7 +138,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [refresh]);
 
   return (
-    <AuthContext.Provider value={{ ...state, login, logout, getAuthHeader, fetchWithAuth }}>
+    <AuthContext.Provider value={{ ...state, login, register, logout, getAuthHeader, fetchWithAuth }}>
       {children}
     </AuthContext.Provider>
   );
