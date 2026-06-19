@@ -1,7 +1,13 @@
 import { useState, useEffect, useCallback } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
-import { ChevronDown, ChevronUp, Plus, Trash2, Save, Loader2 } from "lucide-react";
+import {
+  ChevronDown, ChevronUp, Plus, Trash2, Save, Loader2,
+  CheckCircle, Clock, Sparkles, Cloud, Bot, Shield, Zap, Server, Users,
+  Layout as LayoutIcon, ShieldCheck, Lock, Globe, Settings, FileText,
+  BarChart2, Award, Briefcase, Target, Code, Database, Monitor, Cpu,
+  BookOpen, MessageSquare, Calendar, Star, type LucideIcon,
+} from "lucide-react";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -72,6 +78,167 @@ interface AssignForm {
 
 function nanoid() {
   return Math.random().toString(36).slice(2, 10);
+}
+
+// --- Offer Card Preview ---
+
+const ICON_MAP: Record<string, LucideIcon> = {
+  Cloud, Bot, Shield, Zap, Server, Users, Layout: LayoutIcon, Sparkles,
+  ShieldCheck, Lock, Globe, Settings, FileText, BarChart2, Award,
+  Briefcase, Target, Code, Database, Monitor, Cpu, BookOpen,
+  MessageSquare, Calendar, Star, CheckCircle, Clock,
+};
+
+function resolveIcon(name: string | null): LucideIcon {
+  if (!name) return Sparkles;
+  const pascal = name.split("-").map(w => w.charAt(0).toUpperCase() + w.slice(1)).join("");
+  return ICON_MAP[pascal] ?? ICON_MAP[name] ?? Sparkles;
+}
+
+const BADGE_COLORS: Record<string, string> = {
+  Popular: "bg-[#0078D4]/10 text-[#0078D4]",
+  New: "bg-emerald-100 text-emerald-700",
+  "Best Value": "bg-amber-100 text-amber-700",
+  Featured: "bg-purple-100 text-purple-700",
+};
+
+function badgeClass(badge: string): string {
+  return BADGE_COLORS[badge] ?? "bg-[#0078D4]/10 text-[#0078D4]";
+}
+
+function formatPricePreview(form: Partial<Service>): string {
+  const fmt = (v: string | null | undefined) => {
+    if (!v) return null;
+    const n = parseFloat(v);
+    if (isNaN(n)) return null;
+    return "$" + n.toLocaleString("en-US", { maximumFractionDigits: 0 });
+  };
+  const base = fmt(form.basePrice);
+  const max = fmt(form.maxPrice);
+  if (base && max) return `${base}–${max}`;
+  if (base) return base;
+  const single = fmt(form.price);
+  if (single) return single;
+  return "Contact for pricing";
+}
+
+function OfferCardPreview({ form }: { form: Partial<Service> }) {
+  const Icon = resolveIcon(form.iconName ?? null);
+  const priceDisplay = formatPricePreview(form);
+  const inclusions = form.inclusions ?? [];
+  const features = form.features ?? [];
+  const billingLabel = form.billingType === "recurring_monthly" ? "Monthly retainer" : "One-time";
+
+  return (
+    <div className="bg-white rounded-xl border border-border p-6 flex flex-col shadow-sm">
+      {/* Header row — icon + badge */}
+      <div className="flex items-start justify-between mb-4">
+        <div className="w-11 h-11 rounded-lg bg-[#0078D4]/10 flex items-center justify-center flex-shrink-0">
+          <Icon className="w-5 h-5 text-[#0078D4]" />
+        </div>
+        {form.badge && (
+          <span className={`text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full ${badgeClass(form.badge)}`}>
+            {form.badge}
+          </span>
+        )}
+      </div>
+
+      {/* Category */}
+      {form.category && (
+        <p className="text-xs text-muted-foreground font-medium uppercase tracking-wider mb-2">
+          {form.category}
+        </p>
+      )}
+
+      {/* Price */}
+      <p className="text-[#0078D4] text-3xl font-extrabold mb-1">{priceDisplay}</p>
+
+      {/* Title */}
+      <h3 className="text-xl font-bold text-[#0A2540] mb-1">{form.name || <span className="text-gray-300">Untitled Service</span>}</h3>
+
+      {/* Tagline */}
+      {form.tagline && (
+        <p className="text-sm italic text-muted-foreground mb-3">{form.tagline}</p>
+      )}
+
+      {/* Description */}
+      {form.description && (
+        <p className="text-sm text-foreground leading-relaxed mb-4">{form.description}</p>
+      )}
+
+      {/* Meta row — turnaround + billing type */}
+      <div className="flex flex-wrap gap-2 mb-4">
+        {form.turnaround && (
+          <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground bg-[#F7F9FC] px-3 py-1.5 rounded-full border border-border">
+            <Clock className="w-3.5 h-3.5 text-[#0078D4]" />
+            {form.turnaround}
+          </span>
+        )}
+        <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground bg-[#F7F9FC] px-3 py-1.5 rounded-full border border-border">
+          {billingLabel}
+        </span>
+      </div>
+
+      {/* Target audience */}
+      {form.targetAudience && (
+        <p className="text-sm text-muted-foreground italic mb-4">
+          <span className="font-semibold not-italic text-[#0A2540]">Best for:</span> {form.targetAudience}
+        </p>
+      )}
+
+      {/* Deliverables */}
+      {form.deliverables && (
+        <div className="mb-4">
+          <p className="text-sm font-semibold text-[#0A2540] mb-1.5">Deliverables:</p>
+          <ul className="space-y-1">
+            {form.deliverables.split("\n").filter(line => line.trim()).map((line, i) => (
+              <li key={i} className="flex items-start gap-2 text-sm text-muted-foreground">
+                <span className="mt-1.5 w-1.5 h-1.5 rounded-full bg-[#0078D4] flex-shrink-0" />
+                {line.trim()}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {/* What's Included */}
+      {inclusions.length > 0 && (
+        <div className="border-t border-border pt-4 mb-4">
+          <p className="text-sm font-semibold text-[#0A2540] mb-3">What's Included:</p>
+          <ul className="space-y-2">
+            {inclusions.map((item, j) => (
+              <li key={j} className="flex items-start gap-2 text-sm text-foreground">
+                <CheckCircle className="w-4 h-4 text-[#0078D4] flex-shrink-0 mt-0.5" />
+                {item}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {/* Features */}
+      {features.length > 0 && features !== form.inclusions && (
+        <div className="border-t border-border pt-4 mb-4">
+          <p className="text-sm font-semibold text-[#0A2540] mb-3">Features:</p>
+          <ul className="space-y-1.5">
+            {features.map((item, j) => (
+              <li key={j} className="flex items-start gap-2 text-sm text-muted-foreground">
+                <span className="w-1.5 h-1.5 rounded-full bg-[#0078D4] flex-shrink-0 mt-1.5" />
+                {item}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      <div className="flex-grow" />
+
+      {/* CTA (non-interactive placeholder) */}
+      <div className="w-full mt-6 bg-[#0078D4] text-white text-sm font-semibold text-center py-2.5 rounded-lg opacity-70 cursor-default select-none">
+        Get Started
+      </div>
+    </div>
+  );
 }
 
 function WorkflowBuilder({ service, onClose }: { service: Service; onClose: () => void }) {
@@ -490,7 +657,7 @@ export default function ServicesPage() {
             </div>
           </div>
         ) : (
-          <div className="p-6 max-w-2xl">
+          <div className="p-6">
             {/* Header with actions */}
             <div className="flex items-center justify-between mb-6 gap-3 flex-wrap">
               <h2 className="text-xl font-bold text-[#0A2540]">Edit Service</h2>
@@ -576,7 +743,9 @@ export default function ServicesPage() {
               <WorkflowBuilder service={selected} onClose={() => setShowWorkflow(false)} />
             )}
 
-            {/* Edit form */}
+            {/* Edit form + live preview side by side */}
+            <div className="flex gap-6 items-start">
+              <div className="flex-1 min-w-0">
             <form onSubmit={handleSave}>
               <div className="bg-white rounded-xl border border-gray-200 p-6 space-y-5">
                 <div>
@@ -770,6 +939,14 @@ export default function ServicesPage() {
                 </button>
               </div>
             </form>
+              </div>{/* end form column */}
+
+              {/* Live card preview */}
+              <div className="w-72 flex-shrink-0 sticky top-6">
+                <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">Live Preview</p>
+                <OfferCardPreview form={form} />
+              </div>
+            </div>{/* end two-column flex */}
           </div>
         )}
       </div>
