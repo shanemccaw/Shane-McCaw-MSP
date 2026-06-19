@@ -10,6 +10,7 @@ export default function PowerPlatform() {
       <SEOMeta
         title="Power Platform & Automation Consulting | Shane McCaw Consulting"
         description="Power Platform and automation consulting by Shane McCaw. Build governed, scalable Power Apps and Power Automate solutions that deliver ROI without governance nightmares."
+        ogImage="/og-image-power-platform.png"
       />
       <section className="bg-[#0A2540] pt-32 pb-20">
         <div className="max-w-[1200px] mx-auto px-6">

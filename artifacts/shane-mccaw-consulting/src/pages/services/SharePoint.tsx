@@ -9,6 +9,7 @@ export default function SharePoint() {
       <SEOMeta
         title="SharePoint Architecture & Modern Intranets | Shane McCaw Consulting"
         description="SharePoint architecture and modern intranet design by Shane McCaw. 30 years of Microsoft expertise, delivering intranets that employees actually use and IT can govern."
+        ogImage="/og-image-sharepoint.png"
       />
       <section className="bg-[#0A2540] pt-32 pb-20">
         <div className="max-w-[1200px] mx-auto px-6">

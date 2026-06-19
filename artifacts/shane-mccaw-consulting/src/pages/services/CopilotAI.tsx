@@ -116,6 +116,7 @@ export default function CopilotAI() {
       <SEOMeta
         title="Microsoft Copilot Consulting — NASA's Copilot SME | Shane McCaw Consulting"
         description="Deploy Microsoft Copilot safely with Shane McCaw — NASA's Copilot SME. Readiness assessments, data governance checks, and AI deployment roadmaps that eliminate oversharing risk."
+        ogImage="/og-image-copilot-ai.png"
       />
       {/* Hero */}
       <section className="relative bg-[#0A2540] pt-32 pb-24 overflow-hidden">

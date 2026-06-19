@@ -26,6 +26,7 @@ export default function CloudMigration() {
       <SEOMeta
         title="Microsoft 365 Cloud Migration Services | Shane McCaw Consulting"
         description="Microsoft 365 cloud migration consulting by Shane McCaw. Structured, low-risk migrations with zero-surprise timelines and a NASA-proven methodology that protects your data."
+        ogImage="/og-image-cloud-migration.png"
       />
       <section className="bg-[#0A2540] pt-32 pb-20">
         <div className="max-w-[1200px] mx-auto px-6">

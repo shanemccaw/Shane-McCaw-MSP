@@ -10,6 +10,7 @@ export default function Microsoft365() {
       <SEOMeta
         title="Microsoft 365 Setup & Optimization | Shane McCaw Consulting"
         description="Microsoft 365 setup, optimization, and tenant health audits by Shane McCaw. NASA-methodology reviews delivering clear, prioritized remediation roadmaps — not generic checklists."
+        ogImage="/og-image-microsoft-365.png"
       />
       <section className="bg-[#0A2540] pt-32 pb-20">
         <div className="max-w-[1200px] mx-auto px-6">

@@ -9,6 +9,7 @@ export default function Governance() {
       <SEOMeta
         title="Microsoft 365 Governance, Compliance & Security | Shane McCaw Consulting"
         description="Microsoft 365 governance, compliance, and security consulting by Shane McCaw. Frameworks that protect your data, pass audits, and hold up over time — built by NASA's M365 Architect."
+        ogImage="/og-image-governance.png"
       />
       <section className="bg-[#0A2540] pt-32 pb-20">
         <div className="max-w-[1200px] mx-auto px-6">
