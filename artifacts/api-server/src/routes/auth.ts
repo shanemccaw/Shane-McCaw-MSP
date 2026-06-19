@@ -103,8 +103,8 @@ router.post("/auth/logout", (_req: Request, res: Response) => {
 });
 
 export async function seedAdminUser(): Promise<void> {
-  const email = process.env.CRM_ADMIN_EMAIL;
-  const password = process.env.CRM_ADMIN_PASSWORD;
+  const email = process.env.CRM_ADMIN_EMAIL ?? process.env.ADMIN_EMAIL;
+  const password = process.env.CRM_ADMIN_PASSWORD ?? process.env.ADMIN_PASSWORD;
   if (!email || !password) return;
 
   const [existing] = await db.select().from(usersTable).where(eq(usersTable.email, email.toLowerCase())).limit(1);

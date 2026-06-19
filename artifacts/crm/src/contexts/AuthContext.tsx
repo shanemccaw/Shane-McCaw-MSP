@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from "react";
+import { createContext, useContext, useState, useEffect, useCallback, useRef, type ReactNode } from "react";
 
 export interface AuthUser {
   id: number;
@@ -16,6 +16,7 @@ interface AuthContextValue extends AuthState {
   login: (email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
   getAuthHeader: () => Record<string, string>;
+  fetchWithAuth: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -27,20 +28,37 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     isLoading: true,
   });
 
-  const refresh = useCallback(async (): Promise<string | null> => {
+  const accessTokenRef = useRef<string | null>(null);
+  accessTokenRef.current = state.accessToken;
+
+  const refreshInFlight = useRef<Promise<string | null> | null>(null);
+
+  const doRefresh = useCallback(async (): Promise<string | null> => {
     try {
       const res = await fetch("/api/auth/refresh", {
         method: "POST",
         credentials: "include",
       });
-      if (!res.ok) return null;
+      if (!res.ok) {
+        setState({ user: null, accessToken: null, isLoading: false });
+        return null;
+      }
       const data = await res.json() as { accessToken: string; user: AuthUser };
       setState({ user: data.user, accessToken: data.accessToken, isLoading: false });
+      accessTokenRef.current = data.accessToken;
       return data.accessToken;
     } catch {
+      setState({ user: null, accessToken: null, isLoading: false });
       return null;
     }
   }, []);
+
+  const refresh = useCallback((): Promise<string | null> => {
+    if (refreshInFlight.current) return refreshInFlight.current;
+    const p = doRefresh().finally(() => { refreshInFlight.current = null; });
+    refreshInFlight.current = p;
+    return p;
+  }, [doRefresh]);
 
   useEffect(() => {
     refresh().then((token) => {
@@ -65,20 +83,43 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
     const data = await res.json() as { accessToken: string; user: AuthUser };
     setState({ user: data.user, accessToken: data.accessToken, isLoading: false });
+    accessTokenRef.current = data.accessToken;
   };
 
   const logout = async () => {
     await fetch("/api/auth/logout", { method: "POST", credentials: "include" });
     setState({ user: null, accessToken: null, isLoading: false });
+    accessTokenRef.current = null;
   };
 
   const getAuthHeader = (): Record<string, string> => {
-    if (!state.accessToken) return {};
-    return { Authorization: `Bearer ${state.accessToken}` };
+    if (!accessTokenRef.current) return {};
+    return { Authorization: `Bearer ${accessTokenRef.current}` };
   };
 
+  const fetchWithAuth = useCallback(async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+    const headers = new Headers(init?.headers);
+    if (accessTokenRef.current) {
+      headers.set("Authorization", `Bearer ${accessTokenRef.current}`);
+    }
+
+    const res = await fetch(input, { ...init, credentials: "include", headers });
+
+    if (res.status !== 401) return res;
+
+    const newToken = await refresh();
+    if (!newToken) {
+      setState({ user: null, accessToken: null, isLoading: false });
+      return res;
+    }
+
+    const retryHeaders = new Headers(init?.headers);
+    retryHeaders.set("Authorization", `Bearer ${newToken}`);
+    return fetch(input, { ...init, credentials: "include", headers: retryHeaders });
+  }, [refresh]);
+
   return (
-    <AuthContext.Provider value={{ ...state, login, logout, getAuthHeader }}>
+    <AuthContext.Provider value={{ ...state, login, logout, getAuthHeader, fetchWithAuth }}>
       {children}
     </AuthContext.Provider>
   );
