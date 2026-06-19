@@ -39,6 +39,7 @@ interface ClientService {
 
 const MICRO_OFFERS = [
   {
+    slug: "m365-health-check",
     title: "M365 Health Check",
     price: "$497",
     priceInCents: 49700,
@@ -55,6 +56,7 @@ const MICRO_OFFERS = [
     ],
   },
   {
+    slug: "copilot-readiness",
     title: "Copilot Readiness Assessment",
     price: "$797",
     priceInCents: 79700,
@@ -72,6 +74,7 @@ const MICRO_OFFERS = [
     ],
   },
   {
+    slug: "sharepoint-blueprint",
     title: "SharePoint Intranet Blueprint",
     price: "$997",
     priceInCents: 99700,
@@ -89,6 +92,7 @@ const MICRO_OFFERS = [
     ],
   },
   {
+    slug: "power-automate",
     title: "Power Automate Quick Win",
     price: "$597",
     priceInCents: 59700,
@@ -105,6 +109,7 @@ const MICRO_OFFERS = [
     ],
   },
   {
+    slug: "security-audit",
     title: "M365 Security & Governance Audit",
     price: "$897",
     priceInCents: 89700,
@@ -122,6 +127,7 @@ const MICRO_OFFERS = [
     ],
   },
   {
+    slug: "copilot-prompts",
     title: "Copilot Prompt Library Build",
     price: "$397",
     priceInCents: 39700,
@@ -482,7 +488,7 @@ type AlertState = { type: "success" | "error"; message: string } | null;
 
 export default function PortalServices() {
   const { fetchWithAuth } = useAuth();
-  const [location] = useLocation();
+  const [location, setLocation] = useLocation();
   const [purchasedServices, setPurchasedServices] = useState<ClientService[]>([]);
   const [loading, setLoading] = useState(true);
   const [alert, setAlert] = useState<AlertState>(null);
@@ -514,32 +520,10 @@ export default function PortalServices() {
   const active = purchasedServices.filter(s => s.status === "active");
   const completed = purchasedServices.filter(s => s.status === "completed");
 
-  const handleBuy = async (offer: typeof MICRO_OFFERS[0]) => {
-    setBuyingOffer(offer.title);
-    try {
-      const res = await fetchWithAuth("/api/portal/services/checkout", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: offer.title,
-          priceInCents: offer.priceInCents,
-          description: offer.deliverable,
-          category: "Quick-Win Package",
-          returnUrl: window.location.origin,
-        }),
-      });
-      if (res.ok) {
-        const data = await res.json() as { url: string };
-        window.location.href = data.url;
-      } else {
-        const err = await res.json() as { error: string };
-        setAlert({ type: "error", message: err.error ?? "Could not start checkout. Please try again." });
-      }
-    } catch {
-      setAlert({ type: "error", message: "Network error. Please try again." });
-    } finally {
-      setBuyingOffer(null);
-    }
+  const handleBuy = (offer: typeof MICRO_OFFERS[0]) => {
+    // Route all purchases through the onboarding flow so wizard-enabled services
+    // are intercepted and non-wizard services also go through the contract step.
+    setLocation(`/portal/onboarding/select?s=${encodeURIComponent(offer.slug)}`);
   };
 
   return (

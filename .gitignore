@@ -50,3 +50,6 @@ Thumbs.db
 
 # Generated runtime artifacts
 data/uploads/documents/*.pdf
+
+# Prompt paste files (auto-created by Replit when pasting into chat)
+attached_assets/*.txt
