@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useLocation } from "wouter";
 
@@ -34,61 +34,6 @@ interface LeadStats {
   fromLeadMagnet: number;
 }
 
-function useLeadStats(token: string | null) {
-  const [stats, setStats] = useState<LeadStats | null>(null);
-  const [loading, setLoading] = useState(false);
-
-  const fetchStats = useCallback(async () => {
-    if (!token) return;
-    setLoading(true);
-    try {
-      const res = await fetch("/api/leads/stats", {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (res.ok) setStats(await res.json() as LeadStats);
-    } finally {
-      setLoading(false);
-    }
-  }, [token]);
-
-  return { stats, loading, fetchStats };
-}
-
-function useLeads(token: string | null) {
-  const [leads, setLeads] = useState<Lead[]>([]);
-  const [total, setTotal] = useState(0);
-  const [loading, setLoading] = useState(false);
-  const [page, setPage] = useState(1);
-  const [statusFilter, setStatusFilter] = useState<string>("all");
-  const [sourceFilter, setSourceFilter] = useState<string>("all");
-  const LIMIT = 20;
-
-  const fetchLeads = useCallback(async (p = page, status = statusFilter, source = sourceFilter) => {
-    if (!token) return;
-    setLoading(true);
-    try {
-      const params = new URLSearchParams({ page: String(p), limit: String(LIMIT) });
-      if (status !== "all") params.set("status", status);
-      if (source !== "all") params.set("source", source);
-      const res = await fetch(`/api/leads?${params.toString()}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (res.ok) {
-        const data = await res.json() as LeadList;
-        setLeads(data.leads);
-        setTotal(data.total);
-      }
-    } finally {
-      setLoading(false);
-    }
-  }, [token, page, statusFilter, sourceFilter, LIMIT]);
-
-  return {
-    leads, total, loading, page, setPage, statusFilter, setStatusFilter,
-    sourceFilter, setSourceFilter, fetchLeads, LIMIT,
-  };
-}
-
 const STATUS_COLORS: Record<LeadStatus, string> = {
   new: "bg-blue-100 text-blue-700",
   contacted: "bg-yellow-100 text-yellow-700",
@@ -116,22 +61,21 @@ function StatCard({ label, value, icon }: { label: string; value: number; icon: 
   );
 }
 
-function SlideOver({ lead, onClose, onStatusChange, token }: {
+function SlideOver({ lead, onClose, onStatusChange }: {
   lead: Lead;
   onClose: () => void;
   onStatusChange: (lead: Lead) => void;
-  token: string | null;
 }) {
+  const { fetchWithAuth } = useAuth();
   const [status, setStatus] = useState<LeadStatus>(lead.status);
   const [saving, setSaving] = useState(false);
 
   const save = async () => {
-    if (!token) return;
     setSaving(true);
     try {
-      const res = await fetch(`/api/leads/${lead.id}`, {
+      const res = await fetchWithAuth(`/api/leads/${lead.id}`, {
         method: "PATCH",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status }),
       });
       if (res.ok) {
@@ -197,7 +141,6 @@ function SlideOver({ lead, onClose, onStatusChange, token }: {
               <p className="text-sm text-[#0A2540]">{new Date(lead.createdAt).toLocaleDateString()}</p>
             </div>
           </div>
-
           <div>
             <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">Update Status</p>
             <select
@@ -234,44 +177,59 @@ function SlideOver({ lead, onClose, onStatusChange, token }: {
 }
 
 export default function DashboardPage() {
-  const { user, logout, accessToken } = useAuth();
+  const { user, logout, fetchWithAuth } = useAuth();
   const [, setLocation] = useLocation();
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
-  const [initialized, setInitialized] = useState(false);
 
-  const { stats, fetchStats } = useLeadStats(accessToken);
-  const {
-    leads, total, loading, page, setPage, statusFilter, setStatusFilter,
-    sourceFilter, setSourceFilter, fetchLeads, LIMIT,
-  } = useLeads(accessToken);
+  const [stats, setStats] = useState<LeadStats | null>(null);
+  const [leads, setLeads] = useState<Lead[]>([]);
+  const [total, setTotal] = useState(0);
+  const [loading, setLoading] = useState(false);
+  const [page, setPage] = useState(1);
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [sourceFilter, setSourceFilter] = useState("all");
+  const LIMIT = 20;
 
-  const initialize = useCallback(async () => {
-    if (initialized) return;
-    setInitialized(true);
-    await Promise.all([fetchStats(), fetchLeads(1, "all", "all")]);
-  }, [initialized, fetchStats, fetchLeads]);
+  const fetchStats = useCallback(async () => {
+    const res = await fetchWithAuth("/api/leads/stats");
+    if (res.ok) setStats(await res.json() as LeadStats);
+  }, [fetchWithAuth]);
 
-  if (!initialized) {
-    initialize().catch(console.error);
-  }
+  const fetchLeads = useCallback(async (p = 1, status = "all", source = "all") => {
+    setLoading(true);
+    try {
+      const params = new URLSearchParams({ page: String(p), limit: String(LIMIT) });
+      if (status !== "all") params.set("status", status);
+      if (source !== "all") params.set("source", source);
+      const res = await fetchWithAuth(`/api/leads?${params.toString()}`);
+      if (res.ok) {
+        const data = await res.json() as LeadList;
+        setLeads(data.leads);
+        setTotal(data.total);
+      }
+    } finally {
+      setLoading(false);
+    }
+  }, [fetchWithAuth, LIMIT]);
 
-  const handleStatusChange = (updated: Lead) => {
-    fetchLeads(page, statusFilter, sourceFilter).catch(console.error);
-    fetchStats().catch(console.error);
-    void updated;
+  useEffect(() => {
+    void Promise.all([fetchStats(), fetchLeads(1, "all", "all")]);
+  }, [fetchStats, fetchLeads]);
+
+  const handleStatusChange = () => {
+    void Promise.all([fetchLeads(page, statusFilter, sourceFilter), fetchStats()]);
   };
 
-  const handleFilterChange = (newStatus: string, newSource = sourceFilter) => {
+  const handleFilterChange = (newStatus: string) => {
     setStatusFilter(newStatus);
-    setSourceFilter(newSource);
     setPage(1);
-    fetchLeads(1, newStatus, newSource).catch(console.error);
+    void fetchLeads(1, newStatus, sourceFilter);
   };
 
   const handleSourceChange = (newSource: string) => {
     setSourceFilter(newSource);
     setPage(1);
-    fetchLeads(1, statusFilter, newSource).catch(console.error);
+    void fetchLeads(1, statusFilter, newSource);
   };
 
   const handleLogout = async () => {
@@ -292,7 +250,6 @@ export default function DashboardPage() {
 
   return (
     <div className="min-h-screen bg-[#F7F9FC] flex flex-col">
-      {/* Header */}
       <header className="bg-[#0A2540] px-6 py-4 flex items-center justify-between sticky top-0 z-10">
         <div className="flex items-center gap-3">
           <div className="w-8 h-8 rounded-lg bg-[#0078D4] flex items-center justify-center">
@@ -317,7 +274,6 @@ export default function DashboardPage() {
       </header>
 
       <div className="flex-1 max-w-[1280px] mx-auto w-full px-4 sm:px-6 py-8">
-        {/* Stats */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
           <StatCard
             label="Total Leads"
@@ -341,9 +297,7 @@ export default function DashboardPage() {
           />
         </div>
 
-        {/* Table */}
         <div className="bg-white border border-border rounded-xl overflow-hidden">
-          {/* Filters */}
           <div className="px-5 pt-5 pb-4 border-b border-border">
             <div className="flex flex-col sm:flex-row sm:items-center gap-4">
               <div className="flex flex-wrap gap-1.5">
@@ -376,7 +330,6 @@ export default function DashboardPage() {
             </div>
           </div>
 
-          {/* Table */}
           {loading ? (
             <div className="flex items-center justify-center py-20">
               <div className="w-8 h-8 border-4 border-[#0078D4] border-t-transparent rounded-full animate-spin" />
@@ -432,7 +385,6 @@ export default function DashboardPage() {
             </div>
           )}
 
-          {/* Pagination */}
           {totalPages > 1 && (
             <div className="flex items-center justify-between px-5 py-4 border-t border-border">
               <p className="text-xs text-muted-foreground">
@@ -441,14 +393,14 @@ export default function DashboardPage() {
               <div className="flex gap-2">
                 <button
                   disabled={page <= 1}
-                  onClick={() => { setPage(p => p - 1); fetchLeads(page - 1, statusFilter, sourceFilter).catch(console.error); }}
+                  onClick={() => { const p = page - 1; setPage(p); void fetchLeads(p, statusFilter, sourceFilter); }}
                   className="px-3 py-1.5 border border-border rounded-lg text-xs font-medium disabled:opacity-40 hover:bg-[#F7F9FC] transition-colors"
                 >
                   Prev
                 </button>
                 <button
                   disabled={page >= totalPages}
-                  onClick={() => { setPage(p => p + 1); fetchLeads(page + 1, statusFilter, sourceFilter).catch(console.error); }}
+                  onClick={() => { const p = page + 1; setPage(p); void fetchLeads(p, statusFilter, sourceFilter); }}
                   className="px-3 py-1.5 border border-border rounded-lg text-xs font-medium disabled:opacity-40 hover:bg-[#F7F9FC] transition-colors"
                 >
                   Next
@@ -459,13 +411,11 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* Lead detail slide-over */}
       {selectedLead && (
         <SlideOver
           lead={selectedLead}
           onClose={() => setSelectedLead(null)}
           onStatusChange={handleStatusChange}
-          token={accessToken}
         />
       )}
     </div>
