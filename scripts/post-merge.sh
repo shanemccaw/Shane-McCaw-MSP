@@ -15,13 +15,21 @@ else
   echo "Skipping Stripe webhook check (STRIPE_SECRET_KEY or REPLIT_DOMAINS not set)."
 fi
 
-# Sync the services catalogue from dev to production database.
-# Runs when either PROD_DATABASE_URL or DATABASE_URL_PROD is set.
+# Apply schema migrations to production, then sync the services catalogue.
+# Both steps run when either PROD_DATABASE_URL or DATABASE_URL_PROD is set.
 # Skipped silently when neither is set (safe to run locally).
 if [ -n "$PROD_DATABASE_URL" ] || [ -n "$DATABASE_URL_PROD" ]; then
-  echo "Syncing services catalogue to production database…"
-  pnpm --filter @workspace/scripts run sync-services || \
-    echo "WARNING: Services sync failed — see output above. Run manually: pnpm --filter @workspace/scripts run sync-services"
+  echo "Applying schema migrations to production database…"
+  if pnpm --filter @workspace/scripts run migrate-prod; then
+    echo "Migrations applied. Syncing services catalogue to production database…"
+    pnpm --filter @workspace/scripts run sync-services || \
+      echo "WARNING: Services sync failed — see output above. Run manually: pnpm --filter @workspace/scripts run sync-services"
+  else
+    echo "ERROR: migrate-prod failed — skipping services sync to avoid writing into a stale schema."
+    echo "Fix the migration error above, then run manually:"
+    echo "  pnpm --filter @workspace/scripts run migrate-prod"
+    echo "  pnpm --filter @workspace/scripts run sync-services"
+  fi
 else
-  echo "Skipping services sync (PROD_DATABASE_URL and DATABASE_URL_PROD are not set)."
+  echo "Skipping migrations and services sync (PROD_DATABASE_URL and DATABASE_URL_PROD are not set)."
 fi
