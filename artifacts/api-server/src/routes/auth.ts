@@ -1,14 +1,16 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
-import { db, usersTable } from "@workspace/db";
+import { db, usersTable, passwordResetTokensTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import type { CookieOptions } from "express";
+import { sendEmail, passwordResetEmail } from "../lib/mailer";
 
 const router: IRouter = Router();
 
 const REFRESH_TOKEN_TTL_DAYS = 30;
 const ACCESS_TOKEN_TTL = "15m";
+const RESET_TOKEN_TTL_MS = 60 * 60 * 1000; // 1 hour
 
 function getJwtSecret(): string {
   const secret = process.env.JWT_SECRET;
@@ -140,6 +142,79 @@ router.post("/auth/register", async (req: Request, res: Response) => {
 router.post("/auth/logout", (_req: Request, res: Response) => {
   res.clearCookie("refreshToken", { path: "/api/auth" });
   res.json({ success: true });
+});
+
+// ─── Forgot password ──────────────────────────────────────────────────────────
+// Always returns 200 to prevent email enumeration — caller cannot know if
+// the address matched an account.
+router.post("/auth/forgot-password", async (req: Request, res: Response) => {
+  const { email } = req.body as { email?: string };
+
+  // Respond immediately — never reveal whether the email exists
+  res.json({ ok: true });
+
+  if (!email) return;
+
+  const normalizedEmail = email.toLowerCase().trim();
+  const [user] = await db.select().from(usersTable)
+    .where(eq(usersTable.email, normalizedEmail))
+    .limit(1);
+  if (!user) return;
+
+  const { randomBytes } = await import("crypto");
+  const token = randomBytes(32).toString("hex");
+  const expiresAt = new Date(Date.now() + RESET_TOKEN_TTL_MS);
+
+  await db.insert(passwordResetTokensTable).values({ userId: user.id, token, expiresAt });
+
+  const baseUrl = process.env.PORTAL_BASE_URL
+    ?? `${req.protocol}://${req.hostname}/crm`;
+  const resetUrl = `${baseUrl}/reset-password?token=${token}`;
+
+  void sendEmail(
+    user.email,
+    "Reset your Shane McCaw Consulting portal password",
+    passwordResetEmail({ resetUrl }),
+  ).catch(() => null);
+});
+
+// ─── Reset password ───────────────────────────────────────────────────────────
+router.post("/auth/reset-password", async (req: Request, res: Response) => {
+  const { token, password } = req.body as { token?: string; password?: string };
+
+  if (!token || !password) {
+    res.status(400).json({ error: "Token and password are required" });
+    return;
+  }
+
+  if (password.length < 8) {
+    res.status(400).json({ error: "Password must be at least 8 characters" });
+    return;
+  }
+
+  const [record] = await db.select()
+    .from(passwordResetTokensTable)
+    .where(eq(passwordResetTokensTable.token, token))
+    .limit(1);
+
+  const now = new Date();
+
+  if (!record || record.usedAt || record.expiresAt < now) {
+    res.status(400).json({ error: "This reset link is invalid or has expired. Please request a new one." });
+    return;
+  }
+
+  const passwordHash = await bcrypt.hash(password, 12);
+
+  await db.update(usersTable)
+    .set({ passwordHash })
+    .where(eq(usersTable.id, record.userId));
+
+  await db.update(passwordResetTokensTable)
+    .set({ usedAt: now })
+    .where(eq(passwordResetTokensTable.id, record.id));
+
+  res.json({ ok: true });
 });
 
 export async function seedAdminUser(): Promise<void> {

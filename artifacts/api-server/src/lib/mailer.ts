@@ -160,6 +160,17 @@ export function onboardingConfirmationEmail(opts: {
   `;
 }
 
+export function passwordResetEmail(opts: { resetUrl: string }): string {
+  return `
+    <p>Hi there,</p>
+    <p>We received a request to reset your password for your <strong>Shane McCaw Consulting</strong> portal account.</p>
+    <p>Click the button below to set a new password. This link expires in <strong>1 hour</strong>.</p>
+    ${emailButton("Reset my password", opts.resetUrl)}
+    <p style="margin-top:24px;color:#64748b;font-size:13px;">If you didn't request a password reset, you can safely ignore this email — your password won't change.</p>
+    <p style="margin-top:24px;">— Shane McCaw Consulting</p>
+  `;
+}
+
 export function adminPurchaseAlertEmail(opts: {
   clientName: string;
   clientEmail: string;

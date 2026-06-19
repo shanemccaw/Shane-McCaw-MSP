@@ -14,6 +14,7 @@ import PortalMessages from "@/pages/portal/PortalMessages";
 import OnboardingSelect from "@/pages/portal/OnboardingSelect";
 import OnboardingContract from "@/pages/portal/OnboardingContract";
 import OnboardingSuccess from "@/pages/portal/OnboardingSuccess";
+import ResetPasswordPage from "@/pages/ResetPassword";
 import type { ReactNode } from "react";
 
 const queryClient = new QueryClient({
@@ -79,6 +80,11 @@ function Router() {
       </Route>
       <Route path="/portal/messages">
         <RequireAuth role="client"><PortalMessages /></RequireAuth>
+      </Route>
+
+      {/* Public reset-password route — token validated server-side */}
+      <Route path="/reset-password">
+        <ResetPasswordPage />
       </Route>
 
       {/* Onboarding routes — accessible to anyone (redirect to login inside if not authed) */}

@@ -239,6 +239,18 @@ export const contractsTable = pgTable("contracts", {
 export type InsertContract = typeof contractsTable.$inferInsert;
 export type Contract = typeof contractsTable.$inferSelect;
 
+export const passwordResetTokensTable = pgTable("password_reset_tokens", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").notNull().references(() => usersTable.id),
+  token: text("token").notNull().unique(),
+  expiresAt: timestamp("expires_at").notNull(),
+  usedAt: timestamp("used_at"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export type InsertPasswordResetToken = typeof passwordResetTokensTable.$inferInsert;
+export type PasswordResetToken = typeof passwordResetTokensTable.$inferSelect;
+
 export const shareEventsTable = pgTable("share_events", {
   id: serial("id").primaryKey(),
   slug: text("slug").notNull(),

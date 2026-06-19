@@ -175,24 +175,43 @@ function redirectAfterAuth(role: string, setLocation: (path: string) => void) {
 export default function LoginPage() {
   const { login, register } = useAuth();
   const [, setLocation] = useLocation();
-  const [mode, setMode] = useState<"login" | "register">("login");
+  const [mode, setMode] = useState<"login" | "register" | "forgot">("login");
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [forgotSent, setForgotSent] = useState(false);
 
-  const switchMode = (next: "login" | "register") => {
+  const switchMode = (next: "login" | "register" | "forgot") => {
     setMode(next);
     setError("");
     setPassword("");
     setConfirmPassword("");
+    if (next !== "forgot") setForgotSent(false);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
+
+    if (mode === "forgot") {
+      setLoading(true);
+      try {
+        await fetch("/api/auth/forgot-password", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email }),
+        });
+        setForgotSent(true);
+      } catch {
+        setError("Network error. Please try again.");
+      } finally {
+        setLoading(false);
+      }
+      return;
+    }
 
     if (mode === "register") {
       if (password !== confirmPassword) {
@@ -269,174 +288,259 @@ export default function LoginPage() {
         </div>
       </div>
 
-      {/* ── Right login/register panel ────────────────────────────── */}
+      {/* ── Right login/register/forgot panel ─────────────────────── */}
       <div className="md:w-[45%] bg-[#F7F9FC] flex flex-col items-center justify-center px-6 py-12 md:px-12">
         <div className="w-full max-w-sm">
-          <div className="mb-8">
-            <h2 className="text-2xl font-extrabold text-[#0A2540] mb-1">
-              {isLogin ? "Sign in to your portal" : "Create your account"}
-            </h2>
-            <p className="text-muted-foreground text-sm">
-              {isLogin
-                ? "Enter your credentials below to continue."
-                : "Set up your client portal in seconds."}
-            </p>
-          </div>
 
-          {/* OAuth placeholder buttons */}
-          <div className="space-y-2.5 mb-6">
-            <button
-              type="button"
-              className="w-full flex items-center justify-center gap-2.5 border border-border bg-white rounded-lg py-2.5 text-sm font-semibold text-[#0A2540] hover:bg-[#F7F9FC] transition-colors shadow-sm"
-            >
-              <MicrosoftIcon />
-              {isLogin ? "Sign in" : "Sign up"} with Microsoft
-            </button>
-            <button
-              type="button"
-              className="w-full flex items-center justify-center gap-2.5 border border-border bg-white rounded-lg py-2.5 text-sm font-semibold text-[#0A2540] hover:bg-[#F7F9FC] transition-colors shadow-sm"
-            >
-              <GoogleIcon />
-              {isLogin ? "Sign in" : "Sign up"} with Google
-            </button>
-          </div>
-
-          {/* Divider */}
-          <div className="relative mb-6">
-            <div className="absolute inset-0 flex items-center">
-              <div className="w-full border-t border-border" />
-            </div>
-            <div className="relative flex justify-center text-xs">
-              <span className="bg-[#F7F9FC] px-3 text-muted-foreground">
-                {isLogin ? "or sign in with email" : "or sign up with email"}
-              </span>
-            </div>
-          </div>
-
-          {/* Email / Password form */}
-          <div className="bg-white border border-border rounded-2xl shadow-sm p-6">
-            <form onSubmit={handleSubmit} className="space-y-5">
-              {!isLogin && (
-                <div>
-                  <label className="block text-sm font-semibold text-[#0A2540] mb-1.5">
-                    Full Name <span className="text-muted-foreground font-normal">(optional)</span>
-                  </label>
-                  <input
-                    type="text"
-                    value={name}
-                    onChange={e => setName(e.target.value)}
-                    placeholder="Jane Smith"
-                    autoComplete="name"
-                    className="w-full border border-border rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4] transition-shadow"
-                    data-testid="input-name"
-                  />
-                </div>
-              )}
-
-              <div>
-                <label className="block text-sm font-semibold text-[#0A2540] mb-1.5">Email</label>
-                <input
-                  type="email"
-                  value={email}
-                  onChange={e => setEmail(e.target.value)}
-                  required
-                  placeholder="you@example.com"
-                  autoComplete="email"
-                  className="w-full border border-border rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4] transition-shadow"
-                  data-testid="input-email"
-                />
+          {/* ── Forgot-password panel ── */}
+          {mode === "forgot" ? (
+            <>
+              <div className="mb-8">
+                <h2 className="text-2xl font-extrabold text-[#0A2540] mb-1">Reset your password</h2>
+                <p className="text-muted-foreground text-sm">
+                  Enter your email and we'll send you a reset link.
+                </p>
               </div>
 
-              <div>
-                <div className="flex items-center justify-between mb-1.5">
-                  <label className="block text-sm font-semibold text-[#0A2540]">Password</label>
-                  {isLogin && (
-                    <a href="#" className="text-xs text-[#0078D4] hover:underline font-medium">Forgot password?</a>
-                  )}
-                </div>
-                <input
-                  type="password"
-                  value={password}
-                  onChange={e => setPassword(e.target.value)}
-                  required
-                  placeholder="••••••••"
-                  autoComplete={isLogin ? "current-password" : "new-password"}
-                  className="w-full border border-border rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4] transition-shadow"
-                  data-testid="input-password"
-                />
-                {!isLogin && (
-                  <p className="text-xs text-muted-foreground mt-1">Minimum 8 characters</p>
-                )}
-              </div>
-
-              {!isLogin && (
-                <div>
-                  <label className="block text-sm font-semibold text-[#0A2540] mb-1.5">Confirm Password</label>
-                  <input
-                    type="password"
-                    value={confirmPassword}
-                    onChange={e => setConfirmPassword(e.target.value)}
-                    required
-                    placeholder="••••••••"
-                    autoComplete="new-password"
-                    className="w-full border border-border rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4] transition-shadow"
-                    data-testid="input-confirm-password"
-                  />
-                </div>
-              )}
-
-              {error && (
-                <div className="bg-red-50 border border-red-200 text-red-700 rounded-lg px-4 py-3 text-sm" data-testid="login-error">
-                  {error}
-                </div>
-              )}
-
-              <button
-                type="submit"
-                disabled={loading}
-                className="w-full bg-[#0078D4] text-white font-semibold rounded-lg py-3 text-sm hover:bg-[#005A9E] transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-                data-testid="button-login"
-              >
-                {loading ? (
-                  <>
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                    {isLogin ? "Signing in…" : "Creating account…"}
-                  </>
+              <div className="bg-white border border-border rounded-2xl shadow-sm p-6">
+                {forgotSent ? (
+                  <div className="text-center py-2">
+                    <div className="w-12 h-12 rounded-full bg-green-100 flex items-center justify-center mx-auto mb-4">
+                      <CheckCircle2 className="w-6 h-6 text-green-600" />
+                    </div>
+                    <h3 className="font-bold text-[#0A2540] mb-1">Check your email</h3>
+                    <p className="text-sm text-muted-foreground">
+                      If an account exists for <span className="font-semibold text-[#0A2540]">{email}</span>, we've sent a reset link. It expires in 1 hour.
+                    </p>
+                  </div>
                 ) : (
-                  isLogin ? "Sign In to Your Portal" : "Create Account"
-                )}
-              </button>
-            </form>
-          </div>
+                  <form onSubmit={handleSubmit} className="space-y-5">
+                    <div>
+                      <label className="block text-sm font-semibold text-[#0A2540] mb-1.5">Email</label>
+                      <input
+                        type="email"
+                        value={email}
+                        onChange={e => setEmail(e.target.value)}
+                        required
+                        placeholder="you@example.com"
+                        autoComplete="email"
+                        className="w-full border border-border rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4] transition-shadow"
+                        data-testid="input-forgot-email"
+                      />
+                    </div>
 
-          {/* Mode toggle */}
-          <p className="text-center text-sm text-muted-foreground mt-5">
-            {isLogin ? (
-              <>
-                Don't have an account?{" "}
-                <button
-                  type="button"
-                  onClick={() => switchMode("register")}
-                  className="text-[#0078D4] hover:underline font-semibold"
-                  data-testid="link-create-account"
-                >
-                  Create one
-                </button>
-              </>
-            ) : (
-              <>
-                Already have an account?{" "}
+                    {error && (
+                      <div className="bg-red-50 border border-red-200 text-red-700 rounded-lg px-4 py-3 text-sm">
+                        {error}
+                      </div>
+                    )}
+
+                    <button
+                      type="submit"
+                      disabled={loading}
+                      className="w-full bg-[#0078D4] text-white font-semibold rounded-lg py-3 text-sm hover:bg-[#005A9E] transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                      data-testid="button-send-reset"
+                    >
+                      {loading ? (
+                        <>
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                          Sending…
+                        </>
+                      ) : (
+                        "Send reset link"
+                      )}
+                    </button>
+                  </form>
+                )}
+              </div>
+
+              <p className="text-center text-sm text-muted-foreground mt-5">
                 <button
                   type="button"
                   onClick={() => switchMode("login")}
                   className="text-[#0078D4] hover:underline font-semibold"
-                  data-testid="link-sign-in"
+                  data-testid="link-back-to-signin"
                 >
-                  Sign in
+                  ← Back to sign in
                 </button>
-              </>
-            )}
-          </p>
+              </p>
+            </>
+          ) : (
+            <>
+              <div className="mb-8">
+                <h2 className="text-2xl font-extrabold text-[#0A2540] mb-1">
+                  {isLogin ? "Sign in to your portal" : "Create your account"}
+                </h2>
+                <p className="text-muted-foreground text-sm">
+                  {isLogin
+                    ? "Enter your credentials below to continue."
+                    : "Set up your client portal in seconds."}
+                </p>
+              </div>
+
+              {/* OAuth placeholder buttons */}
+              <div className="space-y-2.5 mb-6">
+                <button
+                  type="button"
+                  className="w-full flex items-center justify-center gap-2.5 border border-border bg-white rounded-lg py-2.5 text-sm font-semibold text-[#0A2540] hover:bg-[#F7F9FC] transition-colors shadow-sm"
+                >
+                  <MicrosoftIcon />
+                  {isLogin ? "Sign in" : "Sign up"} with Microsoft
+                </button>
+                <button
+                  type="button"
+                  className="w-full flex items-center justify-center gap-2.5 border border-border bg-white rounded-lg py-2.5 text-sm font-semibold text-[#0A2540] hover:bg-[#F7F9FC] transition-colors shadow-sm"
+                >
+                  <GoogleIcon />
+                  {isLogin ? "Sign in" : "Sign up"} with Google
+                </button>
+              </div>
+
+              {/* Divider */}
+              <div className="relative mb-6">
+                <div className="absolute inset-0 flex items-center">
+                  <div className="w-full border-t border-border" />
+                </div>
+                <div className="relative flex justify-center text-xs">
+                  <span className="bg-[#F7F9FC] px-3 text-muted-foreground">
+                    {isLogin ? "or sign in with email" : "or sign up with email"}
+                  </span>
+                </div>
+              </div>
+
+              {/* Email / Password form */}
+              <div className="bg-white border border-border rounded-2xl shadow-sm p-6">
+                <form onSubmit={handleSubmit} className="space-y-5">
+                  {!isLogin && (
+                    <div>
+                      <label className="block text-sm font-semibold text-[#0A2540] mb-1.5">
+                        Full Name <span className="text-muted-foreground font-normal">(optional)</span>
+                      </label>
+                      <input
+                        type="text"
+                        value={name}
+                        onChange={e => setName(e.target.value)}
+                        placeholder="Jane Smith"
+                        autoComplete="name"
+                        className="w-full border border-border rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4] transition-shadow"
+                        data-testid="input-name"
+                      />
+                    </div>
+                  )}
+
+                  <div>
+                    <label className="block text-sm font-semibold text-[#0A2540] mb-1.5">Email</label>
+                    <input
+                      type="email"
+                      value={email}
+                      onChange={e => setEmail(e.target.value)}
+                      required
+                      placeholder="you@example.com"
+                      autoComplete="email"
+                      className="w-full border border-border rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4] transition-shadow"
+                      data-testid="input-email"
+                    />
+                  </div>
+
+                  <div>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <label className="block text-sm font-semibold text-[#0A2540]">Password</label>
+                      {isLogin && (
+                        <button
+                          type="button"
+                          onClick={() => switchMode("forgot")}
+                          className="text-xs text-[#0078D4] hover:underline font-medium"
+                          data-testid="link-forgot-password"
+                        >
+                          Forgot password?
+                        </button>
+                      )}
+                    </div>
+                    <input
+                      type="password"
+                      value={password}
+                      onChange={e => setPassword(e.target.value)}
+                      required
+                      placeholder="••••••••"
+                      autoComplete={isLogin ? "current-password" : "new-password"}
+                      className="w-full border border-border rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4] transition-shadow"
+                      data-testid="input-password"
+                    />
+                    {!isLogin && (
+                      <p className="text-xs text-muted-foreground mt-1">Minimum 8 characters</p>
+                    )}
+                  </div>
+
+                  {!isLogin && (
+                    <div>
+                      <label className="block text-sm font-semibold text-[#0A2540] mb-1.5">Confirm Password</label>
+                      <input
+                        type="password"
+                        value={confirmPassword}
+                        onChange={e => setConfirmPassword(e.target.value)}
+                        required
+                        placeholder="••••••••"
+                        autoComplete="new-password"
+                        className="w-full border border-border rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4] transition-shadow"
+                        data-testid="input-confirm-password"
+                      />
+                    </div>
+                  )}
+
+                  {error && (
+                    <div className="bg-red-50 border border-red-200 text-red-700 rounded-lg px-4 py-3 text-sm" data-testid="login-error">
+                      {error}
+                    </div>
+                  )}
+
+                  <button
+                    type="submit"
+                    disabled={loading}
+                    className="w-full bg-[#0078D4] text-white font-semibold rounded-lg py-3 text-sm hover:bg-[#005A9E] transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                    data-testid="button-login"
+                  >
+                    {loading ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        {isLogin ? "Signing in…" : "Creating account…"}
+                      </>
+                    ) : (
+                      isLogin ? "Sign In to Your Portal" : "Create Account"
+                    )}
+                  </button>
+                </form>
+              </div>
+
+              {/* Mode toggle */}
+              <p className="text-center text-sm text-muted-foreground mt-5">
+                {isLogin ? (
+                  <>
+                    Don't have an account?{" "}
+                    <button
+                      type="button"
+                      onClick={() => switchMode("register")}
+                      className="text-[#0078D4] hover:underline font-semibold"
+                      data-testid="link-create-account"
+                    >
+                      Create one
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    Already have an account?{" "}
+                    <button
+                      type="button"
+                      onClick={() => switchMode("login")}
+                      className="text-[#0078D4] hover:underline font-semibold"
+                      data-testid="link-sign-in"
+                    >
+                      Sign in
+                    </button>
+                  </>
+                )}
+              </p>
+            </>
+          )}
 
           {/* Trust bar */}
           <div className="mt-4 bg-white border border-border rounded-xl px-4 py-3 flex items-start gap-3">
