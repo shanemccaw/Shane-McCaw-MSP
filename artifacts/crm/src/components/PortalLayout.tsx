@@ -122,29 +122,90 @@ export function ClientSidebar({ unreadNotifications = 0, unreadMessages = 0 }: {
 
 function MobileBottomNav({ unreadMessages = 0 }: { unreadMessages?: number }) {
   const [location] = useLocation();
-  const navItems = CLIENT_NAV_ITEMS(unreadMessages);
+  const { user, logout } = useAuth();
+  const [showAccount, setShowAccount] = useState(false);
+
+  const primaryTabs: NavItem[] = [
+    {
+      label: "Home",
+      path: "/portal",
+      icon: <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" /></svg>,
+    },
+    {
+      label: "Projects",
+      path: "/portal/projects",
+      icon: <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" /></svg>,
+    },
+    {
+      label: "Services",
+      path: "/portal/services",
+      icon: <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" /></svg>,
+    },
+    {
+      label: "Billing",
+      path: "/portal/billing",
+      icon: <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" /></svg>,
+    },
+    {
+      label: "Messages",
+      path: "/portal/messages",
+      badge: unreadMessages,
+      icon: <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" /></svg>,
+    },
+  ];
 
   return (
-    <nav className="fixed bottom-0 inset-x-0 bg-[#0A2540] border-t border-white/10 flex md:hidden z-40">
-      {navItems.map(item => {
-        const isActive = item.path === "/portal" ? location === "/portal" : location.startsWith(item.path);
-        return (
-          <Link key={item.path} href={item.path} className="flex-1">
-            <div className={`flex flex-col items-center justify-center py-2 gap-0.5 relative transition-colors ${isActive ? "text-[#0078D4]" : "text-white/45 hover:text-white/70"}`}>
-              <span className="relative">
-                {item.icon}
-                {item.badge !== undefined && item.badge > 0 && (
-                  <span className="absolute -top-1 -right-1 w-3.5 h-3.5 rounded-full bg-red-500 text-white text-[8px] font-bold flex items-center justify-center">
-                    {item.badge > 9 ? "9+" : item.badge}
-                  </span>
-                )}
-              </span>
-              <span className="text-[9px] font-semibold leading-none">{item.label}</span>
+    <>
+      {showAccount && (
+        <div className="fixed inset-0 z-50" onClick={() => setShowAccount(false)}>
+          <div className="absolute bottom-[64px] inset-x-4" onClick={(e) => e.stopPropagation()}>
+            <div className="bg-white rounded-xl shadow-2xl border border-border p-4">
+              <p className="text-xs text-muted-foreground mb-0.5">Signed in as</p>
+              <p className="text-sm font-semibold text-[#0A2540] truncate mb-3">{user?.email}</p>
+              <button
+                onClick={() => { setShowAccount(false); logout(); }}
+                className="w-full text-left text-sm font-semibold text-red-600 hover:text-red-700 py-1.5 transition-colors flex items-center gap-2"
+              >
+                <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" /></svg>
+                Sign out
+              </button>
             </div>
-          </Link>
-        );
-      })}
-    </nav>
+          </div>
+        </div>
+      )}
+      <nav className="fixed bottom-0 inset-x-0 bg-[#0A2540] border-t border-white/10 flex md:hidden z-40 safe-area-bottom">
+        {primaryTabs.map(item => {
+          const isActive = item.path === "/portal" ? location === "/portal" : location.startsWith(item.path);
+          return (
+            <Link
+              key={item.path}
+              href={item.path}
+              className="flex-1"
+              onClick={() => setShowAccount(false)}
+            >
+              <div className={`flex flex-col items-center justify-center py-2 gap-0.5 relative transition-colors ${isActive ? "text-[#0078D4]" : "text-white/45 hover:text-white/70"}`}>
+                <span className="relative">
+                  {item.icon}
+                  {item.badge !== undefined && item.badge > 0 && (
+                    <span className="absolute -top-1 -right-1 w-3.5 h-3.5 rounded-full bg-red-500 text-white text-[8px] font-bold flex items-center justify-center">
+                      {item.badge > 9 ? "9+" : item.badge}
+                    </span>
+                  )}
+                </span>
+                <span className="text-[9px] font-semibold leading-none">{item.label}</span>
+              </div>
+            </Link>
+          );
+        })}
+        <button
+          onClick={() => setShowAccount(!showAccount)}
+          className={`flex-1 flex flex-col items-center justify-center py-2 gap-0.5 transition-colors ${showAccount ? "text-[#0078D4]" : "text-white/45 hover:text-white/70"}`}
+        >
+          <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>
+          <span className="text-[9px] font-semibold leading-none">Account</span>
+        </button>
+      </nav>
+    </>
   );
 }
 
