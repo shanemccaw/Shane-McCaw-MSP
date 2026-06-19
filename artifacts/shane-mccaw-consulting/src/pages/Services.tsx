@@ -26,8 +26,7 @@ function resolveIcon(name: string | null, fallback: LucideIcon = Cloud): LucideI
 }
 
 export default function Services() {
-  const { services: allServiceAreas, loading } = useServices("service_area");
-  const services = allServiceAreas.filter((s) => s.pageHref?.startsWith("/services/"));
+  const { services, loading } = useServices("service_area");
 
   return (
     <Layout>
