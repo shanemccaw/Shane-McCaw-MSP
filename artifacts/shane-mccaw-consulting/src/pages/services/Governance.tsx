@@ -18,6 +18,14 @@ export default function Governance() {
           "description": "Microsoft 365 governance, compliance, and security consulting by Shane McCaw. Frameworks that protect your data, pass audits, and hold up over time — built by NASA's M365 Architect.",
           "url": "https://shanemccawconsulting.com/services/governance",
           "serviceType": "Microsoft 365 Governance Consulting",
+          "areaServed": {
+            "@type": "Country",
+            "name": "United States"
+          },
+          "audience": {
+            "@type": "Audience",
+            "audienceType": "Compliance teams and regulated-industry organizations in healthcare, finance, defense contracting, and federal government"
+          },
           "provider": {
             "@type": "Person",
             "name": "Shane McCaw",

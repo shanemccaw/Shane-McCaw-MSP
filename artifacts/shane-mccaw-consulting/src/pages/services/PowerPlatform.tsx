@@ -19,6 +19,14 @@ export default function PowerPlatform() {
           "description": "Power Platform and automation consulting by Shane McCaw. Build governed, scalable Power Apps and Power Automate solutions that deliver ROI without governance nightmares.",
           "url": "https://shanemccawconsulting.com/services/power-platform",
           "serviceType": "Power Platform Consulting",
+          "areaServed": {
+            "@type": "Country",
+            "name": "United States"
+          },
+          "audience": {
+            "@type": "Audience",
+            "audienceType": "IT departments and business operations teams seeking workflow automation with Power Platform"
+          },
           "provider": {
             "@type": "Person",
             "name": "Shane McCaw",

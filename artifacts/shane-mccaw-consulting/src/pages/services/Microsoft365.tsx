@@ -19,6 +19,14 @@ export default function Microsoft365() {
           "description": "Microsoft 365 setup, optimization, and tenant health audits by Shane McCaw. NASA-methodology reviews delivering clear, prioritized remediation roadmaps — not generic checklists.",
           "url": "https://shanemccawconsulting.com/services/microsoft-365",
           "serviceType": "Microsoft 365 Consulting",
+          "areaServed": {
+            "@type": "Country",
+            "name": "United States"
+          },
+          "audience": {
+            "@type": "Audience",
+            "audienceType": "Enterprise IT teams and organizations underutilizing their Microsoft 365 investment"
+          },
           "provider": {
             "@type": "Person",
             "name": "Shane McCaw",

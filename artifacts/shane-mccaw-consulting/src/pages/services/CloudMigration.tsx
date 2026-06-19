@@ -35,6 +35,14 @@ export default function CloudMigration() {
           "description": "Microsoft 365 cloud migration consulting by Shane McCaw. Structured, low-risk migrations with zero-surprise timelines and a NASA-proven methodology that protects your data.",
           "url": "https://shanemccawconsulting.com/services/cloud-migration",
           "serviceType": "Cloud Migration Consulting",
+          "areaServed": {
+            "@type": "Country",
+            "name": "United States"
+          },
+          "audience": {
+            "@type": "Audience",
+            "audienceType": "IT departments and enterprise organizations migrating to Microsoft 365 from on-premises or competing platforms"
+          },
           "provider": {
             "@type": "Person",
             "name": "Shane McCaw",

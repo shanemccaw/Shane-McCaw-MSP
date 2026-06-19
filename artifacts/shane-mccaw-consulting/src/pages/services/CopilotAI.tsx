@@ -125,6 +125,14 @@ export default function CopilotAI() {
           "description": "Deploy Microsoft Copilot safely with Shane McCaw — NASA's Copilot SME. Readiness assessments, data governance checks, and AI deployment roadmaps that eliminate oversharing risk.",
           "url": "https://shanemccawconsulting.com/services/copilot-ai",
           "serviceType": "Microsoft Copilot AI Consulting",
+          "areaServed": {
+            "@type": "Country",
+            "name": "United States"
+          },
+          "audience": {
+            "@type": "Audience",
+            "audienceType": "Enterprise IT leaders, compliance officers, and federal agencies deploying Microsoft Copilot"
+          },
           "provider": {
             "@type": "Person",
             "name": "Shane McCaw",

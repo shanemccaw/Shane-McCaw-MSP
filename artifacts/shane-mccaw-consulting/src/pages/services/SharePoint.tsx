@@ -18,6 +18,14 @@ export default function SharePoint() {
           "description": "SharePoint architecture and modern intranet design by Shane McCaw. 30 years of Microsoft expertise, delivering intranets that employees actually use and IT can govern.",
           "url": "https://shanemccawconsulting.com/services/sharepoint",
           "serviceType": "SharePoint Consulting",
+          "areaServed": {
+            "@type": "Country",
+            "name": "United States"
+          },
+          "audience": {
+            "@type": "Audience",
+            "audienceType": "Enterprise IT teams and organizations building or modernizing SharePoint intranets"
+          },
           "provider": {
             "@type": "Person",
             "name": "Shane McCaw",
