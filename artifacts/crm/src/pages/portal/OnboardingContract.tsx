@@ -51,17 +51,31 @@ function buildContractHtml(
   signerName: string,
   today: string,
   getPrice: (s: Service) => string,
+  getSelections: (s: Service) => WizardSelection[],
 ): string {
   const hasRecurring = services.some(s => s.billingType === "recurring_monthly");
   const hasOneTime = services.some(s => s.billingType === "one_time");
 
   const serviceTable = services.map(s => {
     const effectivePrice = getPrice(s);
+    const sels = getSelections(s);
+    const selectionsHtml = sels.length > 0
+      ? `<tr><td colspan="2" style="padding:2px 0 8px 0;">
+          <table style="width:100%;border-collapse:collapse;font-size:0.8em;color:#444;">
+            ${sels.map(sel => `
+            <tr>
+              <td style="padding:2px 12px 2px 12px;color:#666;">${sel.stepTitle}: <strong style="color:#333;">${sel.optionLabel}</strong></td>
+              <td style="padding:2px 0;text-align:right;white-space:nowrap;">${sel.priceAdjustment > 0 ? `+$${sel.priceAdjustment.toLocaleString("en-US")}` : "Included"}</td>
+            </tr>`).join("")}
+          </table>
+         </td></tr>`
+      : "";
     return `
     <tr>
       <td style="padding:6px 12px 6px 0;vertical-align:top;"><strong>${s.name}</strong></td>
       <td style="padding:6px 0;vertical-align:top;">${effectivePrice}${s.billingType === "recurring_monthly" ? " (billed monthly)" : " (one-time)"}</td>
     </tr>
+    ${selectionsHtml}
     <tr>
       <td colspan="2" style="padding:0 0 10px 0;font-size:0.875em;color:#555;">${s.deliverables ?? "As described on the service page"}</td>
     </tr>
@@ -429,11 +443,17 @@ export default function OnboardingContract() {
               ref={contractScrollRef}
               onScroll={handleContractScroll}
               className="px-5 py-4 prose prose-sm max-h-[500px] overflow-y-auto text-[#0A2540]"
-              dangerouslySetInnerHTML={{ __html: buildContractHtml(services, signerName || "Client", today, (s) => {
-                const sels = wizardSelectionsData[String(s.id)] ?? [];
-                const wp = computeWizardDisplayPrice(s, sels);
-                return wp != null ? fmtPrice(wp, s.billingType) : fmt(s.price, s.billingType);
-              }) }}
+              dangerouslySetInnerHTML={{ __html: buildContractHtml(
+                services,
+                signerName || "Client",
+                today,
+                (s) => {
+                  const sels = wizardSelectionsData[String(s.id)] ?? [];
+                  const wp = computeWizardDisplayPrice(s, sels);
+                  return wp != null ? fmtPrice(wp, s.billingType) : fmt(s.price, s.billingType);
+                },
+                (s) => wizardSelectionsData[String(s.id)] ?? [],
+              ) }}
             />
           </div>
 
