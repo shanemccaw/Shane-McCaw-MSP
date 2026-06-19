@@ -80,6 +80,45 @@ function nanoid() {
   return Math.random().toString(36).slice(2, 10);
 }
 
+/**
+ * Canonical routes from artifacts/shane-mccaw-consulting/src/App.tsx.
+ * Static routes are exact strings; dynamic segments use a RegExp.
+ * Update this list whenever a new page is added to the consulting site.
+ */
+const CONSULTING_SITE_ROUTES: Array<string | RegExp> = [
+  "/",
+  "/about",
+  "/services",
+  "/services/microsoft-365",
+  "/services/copilot-ai",
+  "/services/sharepoint",
+  "/services/power-platform",
+  "/services/governance",
+  "/services/cloud-migration",
+  "/micro-offers",
+  "/pricing",
+  "/resources",
+  /^\/resources\/[^/]+$/,   // /resources/:slug
+  "/contact",
+  "/book",
+  "/privacy",
+  "/admin",
+];
+
+/** Datalist suggestions (static routes only, for UX). */
+const KNOWN_PAGE_HREFS = CONSULTING_SITE_ROUTES.filter(
+  (r): r is string => typeof r === "string"
+);
+
+function validatePageHref(href: string | null | undefined): "empty" | "no-slash" | "unknown" | "ok" {
+  if (!href) return "empty";
+  if (!href.startsWith("/")) return "no-slash";
+  const match = CONSULTING_SITE_ROUTES.some(route =>
+    typeof route === "string" ? route === href : route.test(href)
+  );
+  return match ? "ok" : "unknown";
+}
+
 // --- Offer Card Preview ---
 
 const ICON_MAP: Record<string, LucideIcon> = {
@@ -918,10 +957,32 @@ export default function ServicesPage() {
                     </div>
                     <div>
                       <label className="block text-xs font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">Page Href</label>
-                      <input type="text" value={form.pageHref ?? ""}
+                      <input
+                        type="text"
+                        list="known-page-hrefs"
+                        value={form.pageHref ?? ""}
                         onChange={e => setField("pageHref", e.target.value || null)}
                         placeholder="e.g. /services/microsoft-365"
-                        className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4]" />
+                        className={`w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4] ${
+                          (() => {
+                            const v = validatePageHref(form.pageHref);
+                            return v === "no-slash" || v === "unknown" ? "border-amber-400 bg-amber-50" : "border-gray-300";
+                          })()
+                        }`}
+                      />
+                      <datalist id="known-page-hrefs">
+                        {KNOWN_PAGE_HREFS.map(path => <option key={path} value={path} />)}
+                      </datalist>
+                      {validatePageHref(form.pageHref) === "no-slash" && (
+                        <p className="mt-1.5 text-xs text-amber-600 flex items-center gap-1">
+                          <span>⚠</span> Page href must start with <code className="font-mono bg-amber-100 px-1 rounded">/</code> — this link will be broken.
+                        </p>
+                      )}
+                      {validatePageHref(form.pageHref) === "unknown" && (
+                        <p className="mt-1.5 text-xs text-amber-600 flex items-center gap-1">
+                          <span>⚠</span> Path not found on the consulting site — check for typos. Pick from the suggestions or leave empty if this card has no dedicated page.
+                        </p>
+                      )}
                     </div>
                     <div className="flex items-center gap-3">
                       <input type="checkbox" id="highlighted" checked={form.highlighted ?? false}
