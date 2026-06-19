@@ -3,10 +3,9 @@ import { Layout } from "@/components/Layout";
 import { CTAButton } from "@/components/CTAButton";
 import { Zap, CheckCircle, ArrowRight } from "lucide-react";
 import { ConsultationCTA } from "@/components/ConsultationCTA";
-import { useServicePrice } from "@/components/use-service-price";
-
 export default function PowerPlatform() {
-  const { price, loading } = useServicePrice("power-platform-consulting", "$1,500");
+  const price = "Contact for pricing";
+  const loading = false;
   return (
     <Layout>
       <SEOMeta

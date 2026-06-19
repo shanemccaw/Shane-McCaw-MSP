@@ -3,49 +3,32 @@ import { Link } from "wouter";
 import { Layout } from "@/components/Layout";
 import { CTAButton } from "@/components/CTAButton";
 import { ServiceCard } from "@/components/ServiceCard";
-import { Cloud, Bot, Layout as LayoutIcon, Zap, Shield, Server, ArrowRight } from "lucide-react";
+import { Cloud, Bot, Layout as LayoutIcon, Zap, Shield, Server, ArrowRight, type LucideIcon } from "lucide-react";
 import { ConsultationCTA } from "@/components/ConsultationCTA";
+import { useServices, type PublicService } from "@/hooks/useServices";
 
-const services = [
-  {
-    icon: Cloud,
-    title: "Microsoft 365 Setup & Optimization",
-    description: "Whether starting fresh or fixing a misconfigured tenant, I architect M365 environments that are secure, scalable, and built for your team.",
-    href: "/services/microsoft-365",
-  },
-  {
-    icon: Bot,
-    title: "Copilot AI Readiness & Deployment",
-    description: "I assess readiness, govern your data, configure your environment, and coach your team so your Copilot investment pays off from day one.",
-    href: "/services/copilot-ai",
-  },
-  {
-    icon: LayoutIcon,
-    title: "SharePoint Architecture & Intranets",
-    description: "Modern intranets employees actually use — built with expert information architecture, navigation, and taxonomy design.",
-    href: "/services/sharepoint",
-  },
-  {
-    icon: Zap,
-    title: "Power Platform & Automation",
-    description: "Replace manual processes with Power Automate workflows and custom Power Apps at a fraction of traditional development cost.",
-    href: "/services/power-platform",
-  },
-  {
-    icon: Shield,
-    title: "Governance, Compliance & Security",
-    description: "DLP policies, sensitivity labels, retention, Purview, and permissions built to NASA-grade standards.",
-    href: "/services/governance",
-  },
-  {
-    icon: Server,
-    title: "Cloud Migration Services",
-    description: "Exchange, SharePoint, and M365 migrations executed with zero-drama precision and zero data loss.",
-    href: "/services/cloud-migration",
-  },
+const ICON_MAP: Record<string, LucideIcon> = {
+  Cloud,
+  Bot,
+  Layout: LayoutIcon,
+  Zap,
+  Shield,
+  Server,
+};
+
+const FALLBACK_SERVICES: PublicService[] = [
+  { id: 0, slug: "service-area-m365", name: "Microsoft 365 Setup & Optimization", description: "Whether starting fresh or fixing a misconfigured tenant, I architect M365 environments that are secure, scalable, and built for your team.", iconName: "Cloud", pageHref: "/services/microsoft-365", serviceType: "service_area", billingType: "one_time", price: null, turnaround: null, category: null, deliverables: null, targetAudience: null, inclusions: null, features: null, badge: null, highlighted: false, hoursPerMonth: null, sortOrder: 0, tagline: null },
+  { id: 0, slug: "service-area-copilot-ai", name: "Copilot AI Readiness & Deployment", description: "I assess readiness, govern your data, configure your environment, and coach your team so your Copilot investment pays off from day one.", iconName: "Bot", pageHref: "/services/copilot-ai", serviceType: "service_area", billingType: "one_time", price: null, turnaround: null, category: null, deliverables: null, targetAudience: null, inclusions: null, features: null, badge: null, highlighted: false, hoursPerMonth: null, sortOrder: 1, tagline: null },
+  { id: 0, slug: "service-area-sharepoint", name: "SharePoint Architecture & Intranets", description: "Modern intranets employees actually use — built with expert information architecture, navigation, and taxonomy design.", iconName: "Layout", pageHref: "/services/sharepoint", serviceType: "service_area", billingType: "one_time", price: null, turnaround: null, category: null, deliverables: null, targetAudience: null, inclusions: null, features: null, badge: null, highlighted: false, hoursPerMonth: null, sortOrder: 2, tagline: null },
+  { id: 0, slug: "service-area-power-platform", name: "Power Platform & Automation", description: "Replace manual processes with Power Automate workflows and custom Power Apps at a fraction of traditional development cost.", iconName: "Zap", pageHref: "/services/power-platform", serviceType: "service_area", billingType: "one_time", price: null, turnaround: null, category: null, deliverables: null, targetAudience: null, inclusions: null, features: null, badge: null, highlighted: false, hoursPerMonth: null, sortOrder: 3, tagline: null },
+  { id: 0, slug: "service-area-governance", name: "Governance, Compliance & Security", description: "DLP policies, sensitivity labels, retention, Purview, and permissions built to NASA-grade standards.", iconName: "Shield", pageHref: "/services/governance", serviceType: "service_area", billingType: "one_time", price: null, turnaround: null, category: null, deliverables: null, targetAudience: null, inclusions: null, features: null, badge: null, highlighted: false, hoursPerMonth: null, sortOrder: 4, tagline: null },
+  { id: 0, slug: "service-area-cloud-migration", name: "Cloud Migration Services", description: "Exchange, SharePoint, and M365 migrations executed with zero-drama precision and zero data loss.", iconName: "Server", pageHref: "/services/cloud-migration", serviceType: "service_area", billingType: "one_time", price: null, turnaround: null, category: null, deliverables: null, targetAudience: null, inclusions: null, features: null, badge: null, highlighted: false, hoursPerMonth: null, sortOrder: 5, tagline: null },
 ];
 
 export default function Services() {
+  const { services: dbServices, loading } = useServices("service_area");
+  const services = dbServices.length > 0 ? dbServices : (loading ? [] : FALLBACK_SERVICES);
+
   return (
     <Layout>
       <SEOMeta
@@ -62,14 +45,10 @@ export default function Services() {
           "hasOfferCatalog": {
             "@type": "OfferCatalog",
             "name": "Microsoft 365 Consulting Services",
-            "itemListElement": [
-              { "@type": "Offer", "itemOffered": { "@type": "Service", "name": "Microsoft 365 Consulting", "url": "https://shanemccaw.com/services/microsoft-365" } },
-              { "@type": "Offer", "itemOffered": { "@type": "Service", "name": "Copilot AI Readiness & Deployment", "url": "https://shanemccaw.com/services/copilot-ai" } },
-              { "@type": "Offer", "itemOffered": { "@type": "Service", "name": "SharePoint Architecture & Intranet Design", "url": "https://shanemccaw.com/services/sharepoint" } },
-              { "@type": "Offer", "itemOffered": { "@type": "Service", "name": "Power Platform Development", "url": "https://shanemccaw.com/services/power-platform" } },
-              { "@type": "Offer", "itemOffered": { "@type": "Service", "name": "Governance, Risk & Compliance", "url": "https://shanemccaw.com/services/governance" } },
-              { "@type": "Offer", "itemOffered": { "@type": "Service", "name": "Cloud Migration", "url": "https://shanemccaw.com/services/cloud-migration" } }
-            ]
+            "itemListElement": services.map((s) => ({
+              "@type": "Offer",
+              "itemOffered": { "@type": "Service", "name": s.name, "url": `https://shanemccaw.com${s.pageHref ?? ""}` }
+            }))
           }
         }}
       />
@@ -87,11 +66,29 @@ export default function Services() {
 
       <section className="bg-[#F7F9FC] py-20">
         <div className="max-w-[1200px] mx-auto px-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {services.map((s, i) => (
-              <ServiceCard key={i} {...s} data-testid={`service-card-${i}`} />
-            ))}
-          </div>
+          {loading && services.length === 0 ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {[...Array(6)].map((_, i) => (
+                <div key={i} className="bg-white rounded-xl border border-border p-8 h-52 animate-pulse" />
+              ))}
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {services.map((s, i) => {
+                const Icon = (s.iconName ? ICON_MAP[s.iconName] : null) ?? Cloud;
+                return (
+                  <ServiceCard
+                    key={s.slug ?? i}
+                    icon={Icon}
+                    title={s.name}
+                    description={s.description ?? ""}
+                    href={s.pageHref ?? "/services"}
+                    data-testid={`service-card-${i}`}
+                  />
+                );
+              })}
+            </div>
+          )}
         </div>
       </section>
 

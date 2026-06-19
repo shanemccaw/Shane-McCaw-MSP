@@ -1,7 +1,7 @@
 import app from "./app";
 import { logger } from "./lib/logger";
 import { seedAdminUser } from "./routes/auth";
-import { seedPortalDemo, seedServiceTemplates } from "./lib/seed-portal";
+import { seedPortalDemo, seedServiceTemplates, seedMarketingServices } from "./lib/seed-portal";
 
 const rawPort = process.env["PORT"];
 
@@ -35,6 +35,12 @@ app.listen(port, (err) => {
     logger.info("Service workflow/project templates seeded (no-op if exists)");
   }).catch((seedErr) => {
     logger.warn({ err: seedErr }, "Could not seed service templates");
+  });
+
+  seedMarketingServices().then(() => {
+    logger.info("Marketing services seeded/updated");
+  }).catch((seedErr) => {
+    logger.warn({ err: seedErr }, "Could not seed marketing services");
   });
 
   if (process.env.NODE_ENV !== "production") {

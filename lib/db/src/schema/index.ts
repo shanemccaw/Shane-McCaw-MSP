@@ -65,6 +65,18 @@ export const servicesTable = pgTable("services", {
   billingType: text("billing_type", { enum: ["one_time", "recurring_monthly"] }).notNull().default("one_time"),
   isPublic: boolean("is_public").notNull().default(true),
   createdAt: timestamp("created_at").notNull().defaultNow(),
+  // Marketing content fields
+  serviceType: text("service_type"),
+  tagline: text("tagline"),
+  targetAudience: text("target_audience"),
+  inclusions: jsonb("inclusions").$type<string[]>(),
+  features: jsonb("features").$type<string[]>(),
+  badge: text("badge"),
+  highlighted: boolean("highlighted").notNull().default(false),
+  hoursPerMonth: text("hours_per_month"),
+  iconName: text("icon_name"),
+  pageHref: text("page_href"),
+  sortOrder: integer("sort_order").notNull().default(0),
 });
 
 export type InsertService = typeof servicesTable.$inferInsert;

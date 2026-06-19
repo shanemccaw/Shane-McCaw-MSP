@@ -4,116 +4,7 @@ import { Layout } from "@/components/Layout";
 import { CTAButton } from "@/components/CTAButton";
 import { ConsultationCTA } from "@/components/ConsultationCTA";
 import { CheckCircle, ChevronDown, Zap, FolderOpen, Calendar, ArrowRight } from "lucide-react";
-import { useServicePrice } from "@/components/use-service-price";
-
-const microOffers = [
-  {
-    slug: "m365-health-check",
-    name: "M365 Tenant Health Audit",
-    price: "$497",
-    turnaround: "2 business days",
-    desc: "A full audit of your M365 tenant configuration — permissions, sharing policies, licensing gaps, and security posture — with a prioritized remediation report.",
-    deliverable: "Written audit report + remediation priority list",
-  },
-  {
-    slug: "copilot-readiness",
-    name: "Copilot Readiness Assessment",
-    price: "$797",
-    turnaround: "5 business days",
-    desc: "A six-dimension readiness scorecard for Copilot deployment: licensing, identity, permissions, governance, sensitivity labeling, and oversharing risk.",
-    deliverable: "Readiness scorecard + deployment roadmap",
-    badge: "Most requested",
-  },
-  {
-    slug: "sharepoint-blueprint",
-    name: "SharePoint Intranet Blueprint",
-    price: "$997",
-    turnaround: "7 business days",
-    desc: "A complete information architecture and navigation blueprint for a SharePoint intranet — site structure, permission model, governance policy, and rollout sequence.",
-    deliverable: "IA document + governance policy + rollout plan",
-  },
-  {
-    slug: "power-automate",
-    name: "Power Automate Quick Win",
-    price: "$597",
-    turnaround: "5–7 business days",
-    desc: "Shane identifies, designs, and builds one high-impact Power Automate flow for your organization — documented and handed off with user instructions.",
-    deliverable: "Live flow + documentation + handoff walkthrough",
-  },
-  {
-    slug: "security-audit",
-    name: "M365 Security & Governance Audit",
-    price: "$897",
-    turnaround: "5 business days",
-    desc: "An in-depth review of your DLP policies, retention labels, conditional access rules, and Entra ID posture — with specific remediation steps for each gap found.",
-    deliverable: "Security audit report + DLP/retention gap analysis",
-  },
-  {
-    slug: "copilot-prompts",
-    name: "Copilot Prompt Library Build",
-    price: "$397",
-    turnaround: "5 business days",
-    desc: "A custom library of 25+ role-specific Copilot prompts built for your organization's departments — covering your actual workflows, not generic examples.",
-    deliverable: "Role-specific prompt library (Word + SharePoint-ready)",
-  },
-];
-
-const retainers = [
-  {
-    slug: "architect-essentials",
-    name: "Architect Essentials",
-    price: "$1,500",
-    period: "/month",
-    hours: "10 hours",
-    highlight: false,
-    tagline: "Right for organizations that need a senior M365 resource on call — without the overhead of a full-time hire.",
-    features: [
-      "10 hours of consulting per month",
-      "Email and Teams support",
-      "Monthly strategy call (60 min)",
-      "Standard response within 1 business day",
-      "Access to all M365 service areas",
-      "Monthly written summary",
-    ],
-  },
-  {
-    slug: "architect-growth",
-    name: "Architect Growth",
-    price: "$3,000",
-    period: "/month",
-    hours: "25 hours",
-    highlight: true,
-    tagline: "Right for organizations actively modernizing their M365 environment or planning a Copilot deployment.",
-    features: [
-      "25 hours of consulting per month",
-      "Priority email and Teams support",
-      "Two strategy calls per month (60 min each)",
-      "Priority response within 4 business hours",
-      "Access to all M365 service areas",
-      "Monthly written progress report",
-      "Proactive tenant health monitoring",
-    ],
-  },
-  {
-    slug: "architect-enterprise",
-    name: "Architect Enterprise",
-    price: "$5,500",
-    period: "/month",
-    hours: "50 hours",
-    highlight: false,
-    tagline: "Right for organizations that need a dedicated senior architect embedded in their operations every week.",
-    features: [
-      "50 hours of consulting per month",
-      "Dedicated Teams support channel",
-      "Weekly strategy calls (60 min)",
-      "Same-day emergency response",
-      "Access to all M365 service areas",
-      "Monthly written progress report",
-      "Custom technology roadmap",
-      "Quarterly strategic review",
-    ],
-  },
-];
+import { useServices, formatPrice, type PublicService } from "@/hooks/useServices";
 
 const faqs = [
   {
@@ -146,8 +37,8 @@ const faqs = [
   },
 ];
 
-function MicroOfferCard({ offer, index }: { offer: typeof microOffers[number]; index: number }) {
-  const { price, loading } = useServicePrice(offer.slug, offer.price);
+function MicroOfferCard({ offer, index }: { offer: PublicService; index: number }) {
+  const price = formatPrice(offer.price) ?? offer.price ?? "$?";
   return (
     <div
       className="bg-white rounded-xl border border-border p-6 flex flex-col hover:border-[#0078D4]/30 hover:shadow-sm transition-all duration-200 relative"
@@ -160,25 +51,25 @@ function MicroOfferCard({ offer, index }: { offer: typeof microOffers[number]; i
       )}
       <div className="flex items-start justify-between gap-3 mb-3">
         <h3 className="font-extrabold text-[#0A2540] text-base leading-snug">{offer.name}</h3>
-        {loading ? (
-          <span className="inline-block h-5 w-16 rounded bg-[#0078D4]/20 animate-pulse flex-shrink-0 align-middle" aria-hidden="true" />
-        ) : (
-          <span className="text-[#0078D4] font-extrabold text-lg flex-shrink-0">{price}</span>
+        <span className="text-[#0078D4] font-extrabold text-lg flex-shrink-0">{price}</span>
+      </div>
+      <p className="text-muted-foreground text-sm leading-relaxed flex-grow mb-4">{offer.description}</p>
+      <div className="border-t border-border pt-4 space-y-2">
+        {offer.deliverables && (
+          <div className="flex items-center gap-2 text-xs">
+            <CheckCircle className="w-3.5 h-3.5 text-[#0078D4] flex-shrink-0" />
+            <span className="text-foreground font-medium">{offer.deliverables}</span>
+          </div>
+        )}
+        {offer.turnaround && (
+          <div className="flex items-center gap-2 text-xs">
+            <span className="w-3.5 h-3.5 flex-shrink-0 text-center text-muted-foreground">⏱</span>
+            <span className="text-muted-foreground">Turnaround: {offer.turnaround}</span>
+          </div>
         )}
       </div>
-      <p className="text-muted-foreground text-sm leading-relaxed flex-grow mb-4">{offer.desc}</p>
-      <div className="border-t border-border pt-4 space-y-2">
-        <div className="flex items-center gap-2 text-xs">
-          <CheckCircle className="w-3.5 h-3.5 text-[#0078D4] flex-shrink-0" />
-          <span className="text-foreground font-medium">{offer.deliverable}</span>
-        </div>
-        <div className="flex items-center gap-2 text-xs">
-          <span className="w-3.5 h-3.5 flex-shrink-0 text-center text-muted-foreground">⏱</span>
-          <span className="text-muted-foreground">Turnaround: {offer.turnaround}</span>
-        </div>
-      </div>
       <a
-        href={`/crm/portal/onboarding/select?service=${offer.slug}`}
+        href={`/crm/portal/onboarding/select?service=${offer.slug ?? ""}`}
         className="mt-4 text-[#0078D4] text-sm font-semibold hover:underline flex items-center gap-1"
         data-testid={`micro-offer-cta-${index}`}
       >
@@ -188,39 +79,35 @@ function MicroOfferCard({ offer, index }: { offer: typeof microOffers[number]; i
   );
 }
 
-function RetainerCard({ plan, index }: { plan: typeof retainers[number]; index: number }) {
-  const { price, loading } = useServicePrice(plan.slug, plan.price);
+function RetainerCard({ plan, index }: { plan: PublicService; index: number }) {
+  const price = formatPrice(plan.price) ?? plan.price ?? "$?";
+  const features = plan.features ?? [];
   return (
     <div
-      className={`rounded-2xl p-8 border flex flex-col relative ${plan.highlight ? "bg-[#0A2540] border-[#0078D4]/60" : "bg-white border-border"}`}
+      className={`rounded-2xl p-8 border flex flex-col relative ${plan.highlighted ? "bg-[#0A2540] border-[#0078D4]/60" : "bg-white border-border"}`}
       data-testid={`retainer-${index}`}
     >
-      {plan.highlight && (
+      {plan.highlighted && (
         <div className="absolute -top-4 left-1/2 -translate-x-1/2 bg-[#0078D4] text-white text-xs font-bold px-5 py-1.5 rounded-full uppercase tracking-wide whitespace-nowrap">
           Most Popular
         </div>
       )}
       <div className="mb-2">
-        <h3 className={`text-lg font-extrabold mb-4 ${plan.highlight ? "text-white" : "text-[#0A2540]"}`}>{plan.name}</h3>
+        <h3 className={`text-lg font-extrabold mb-4 ${plan.highlighted ? "text-white" : "text-[#0A2540]"}`}>{plan.name}</h3>
         <div className="flex items-baseline gap-1 mb-1">
-          {loading ? (
-            <span
-              className={`inline-block h-10 w-28 rounded animate-pulse align-middle ${plan.highlight ? "bg-white/20" : "bg-[#0078D4]/20"}`}
-              aria-hidden="true"
-            />
-          ) : (
-            <span className="text-4xl font-extrabold text-[#0078D4]">{price}</span>
-          )}
-          <span className={`text-sm ${plan.highlight ? "text-white/50" : "text-muted-foreground"}`}>{plan.period}</span>
+          <span className="text-4xl font-extrabold text-[#0078D4]">{price}</span>
+          <span className={`text-sm ${plan.highlighted ? "text-white/50" : "text-muted-foreground"}`}>/month</span>
         </div>
-        <p className={`text-sm mb-4 ${plan.highlight ? "text-[#00B4D8]" : "text-[#0078D4]"}`}>{plan.hours}/month</p>
-        <p className={`text-xs leading-relaxed mb-6 ${plan.highlight ? "text-white/60" : "text-muted-foreground"}`}>{plan.tagline}</p>
+        {plan.hoursPerMonth && (
+          <p className={`text-sm mb-4 ${plan.highlighted ? "text-[#00B4D8]" : "text-[#0078D4]"}`}>{plan.hoursPerMonth}/month</p>
+        )}
+        <p className={`text-xs leading-relaxed mb-6 ${plan.highlighted ? "text-white/60" : "text-muted-foreground"}`}>{plan.tagline ?? plan.description}</p>
       </div>
       <ul className="space-y-3 flex-grow mb-8">
-        {plan.features.map((f, j) => (
+        {features.map((f, j) => (
           <li key={j} className="flex items-start gap-2.5" data-testid={`retainer-${index}-feature-${j}`}>
             <CheckCircle className="w-4 h-4 text-[#0078D4] flex-shrink-0 mt-0.5" />
-            <span className={`text-sm ${plan.highlight ? "text-white/80" : "text-foreground"}`}>{f}</span>
+            <span className={`text-sm ${plan.highlighted ? "text-white/80" : "text-foreground"}`}>{f}</span>
           </li>
         ))}
       </ul>
@@ -252,7 +139,26 @@ function FAQItem({ q, a, index }: { q: string; a: string; index: number }) {
   );
 }
 
+const FALLBACK_OFFERS: PublicService[] = [
+  { id: 0, slug: "m365-health-check", name: "M365 Tenant Health Audit", price: "497.00", turnaround: "2 business days", serviceType: "micro_offer", billingType: "one_time", description: "A full audit of your M365 tenant configuration — permissions, sharing policies, licensing gaps, and security posture — with a prioritized remediation report.", deliverables: "Written audit report + remediation priority list", targetAudience: null, inclusions: null, category: null, badge: null, highlighted: false, hoursPerMonth: null, iconName: null, pageHref: null, sortOrder: 0, features: null, tagline: null },
+  { id: 0, slug: "copilot-readiness", name: "Copilot Readiness Assessment", price: "797.00", turnaround: "5 business days", serviceType: "micro_offer", billingType: "one_time", description: "A six-dimension readiness scorecard for Copilot deployment: licensing, identity, permissions, governance, sensitivity labeling, and oversharing risk.", deliverables: "Readiness scorecard + deployment roadmap", targetAudience: null, inclusions: null, category: null, badge: "Most requested", highlighted: false, hoursPerMonth: null, iconName: null, pageHref: null, sortOrder: 1, features: null, tagline: null },
+  { id: 0, slug: "sharepoint-blueprint", name: "SharePoint Intranet Blueprint", price: "997.00", turnaround: "7 business days", serviceType: "micro_offer", billingType: "one_time", description: "A complete information architecture and navigation blueprint for a SharePoint intranet — site structure, permission model, governance policy, and rollout sequence.", deliverables: "IA document + governance policy + rollout plan", targetAudience: null, inclusions: null, category: null, badge: null, highlighted: false, hoursPerMonth: null, iconName: null, pageHref: null, sortOrder: 2, features: null, tagline: null },
+  { id: 0, slug: "power-automate", name: "Power Automate Quick Win", price: "597.00", turnaround: "5–7 business days", serviceType: "micro_offer", billingType: "one_time", description: "Shane identifies, designs, and builds one high-impact Power Automate flow for your organization — documented and handed off with user instructions.", deliverables: "Live flow + documentation + handoff walkthrough", targetAudience: null, inclusions: null, category: null, badge: null, highlighted: false, hoursPerMonth: null, iconName: null, pageHref: null, sortOrder: 3, features: null, tagline: null },
+  { id: 0, slug: "security-audit", name: "M365 Security & Governance Audit", price: "897.00", turnaround: "5 business days", serviceType: "micro_offer", billingType: "one_time", description: "An in-depth review of your DLP policies, retention labels, conditional access rules, and Entra ID posture — with specific remediation steps for each gap found.", deliverables: "Security audit report + DLP/retention gap analysis", targetAudience: null, inclusions: null, category: null, badge: null, highlighted: false, hoursPerMonth: null, iconName: null, pageHref: null, sortOrder: 4, features: null, tagline: null },
+  { id: 0, slug: "copilot-prompts", name: "Copilot Prompt Library Build", price: "397.00", turnaround: "5 business days", serviceType: "micro_offer", billingType: "one_time", description: "A custom library of 25+ role-specific Copilot prompts built for your organization's departments — covering your actual workflows, not generic examples.", deliverables: "Role-specific prompt library (Word + SharePoint-ready)", targetAudience: null, inclusions: null, category: null, badge: null, highlighted: false, hoursPerMonth: null, iconName: null, pageHref: null, sortOrder: 5, features: null, tagline: null },
+];
+
+const FALLBACK_RETAINERS: PublicService[] = [
+  { id: 0, slug: "architect-essentials", name: "Architect Essentials", price: "1500.00", turnaround: null, serviceType: "retainer", billingType: "recurring_monthly", description: null, deliverables: null, targetAudience: null, inclusions: null, category: null, badge: null, highlighted: false, hoursPerMonth: "10 hours", iconName: null, pageHref: null, sortOrder: 0, features: ["10 hours of consulting per month","Email and Teams support","Monthly strategy call (60 min)","Standard response within 1 business day","Access to all M365 service areas","Monthly written summary"], tagline: "Right for organizations that need a senior M365 resource on call — without the overhead of a full-time hire." },
+  { id: 0, slug: "architect-growth", name: "Architect Growth", price: "3000.00", turnaround: null, serviceType: "retainer", billingType: "recurring_monthly", description: null, deliverables: null, targetAudience: null, inclusions: null, category: null, badge: null, highlighted: true, hoursPerMonth: "25 hours", iconName: null, pageHref: null, sortOrder: 1, features: ["25 hours of consulting per month","Priority email and Teams support","Two strategy calls per month (60 min each)","Priority response within 4 business hours","Access to all M365 service areas","Monthly written progress report","Proactive tenant health monitoring"], tagline: "Right for organizations actively modernizing their M365 environment or planning a Copilot deployment." },
+  { id: 0, slug: "architect-enterprise", name: "Architect Enterprise", price: "5500.00", turnaround: null, serviceType: "retainer", billingType: "recurring_monthly", description: null, deliverables: null, targetAudience: null, inclusions: null, category: null, badge: null, highlighted: false, hoursPerMonth: "50 hours", iconName: null, pageHref: null, sortOrder: 2, features: ["50 hours of consulting per month","Dedicated Teams support channel","Weekly strategy calls (60 min)","Same-day emergency response","Access to all M365 service areas","Monthly written progress report","Custom technology roadmap","Quarterly strategic review"], tagline: "Right for organizations that need a dedicated senior architect embedded in their operations every week." },
+];
+
 export default function Pricing() {
+  const { services: fetchedOffers, loading: offersLoading } = useServices("micro_offer");
+  const { services: fetchedRetainers, loading: retainersLoading } = useServices("retainer");
+  const microOffers = fetchedOffers.length > 0 ? fetchedOffers : (offersLoading ? [] : FALLBACK_OFFERS);
+  const retainers = fetchedRetainers.length > 0 ? fetchedRetainers : (retainersLoading ? [] : FALLBACK_RETAINERS);
   return (
     <Layout>
       <SEOMeta

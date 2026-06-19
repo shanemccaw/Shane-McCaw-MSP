@@ -2,10 +2,9 @@ import { SEOMeta } from "@/components/SEOMeta";
 import { Layout } from "@/components/Layout";
 import { Shield, CheckCircle, ArrowRight } from "lucide-react";
 import { ConsultationCTA } from "@/components/ConsultationCTA";
-import { useServicePrice } from "@/components/use-service-price";
-
 export default function Governance() {
-  const { price, loading } = useServicePrice("governance-consulting", "$2,000");
+  const price = "Contact for pricing";
+  const loading = false;
   return (
     <Layout>
       <SEOMeta

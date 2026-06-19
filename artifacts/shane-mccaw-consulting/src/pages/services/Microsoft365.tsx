@@ -3,10 +3,9 @@ import { Layout } from "@/components/Layout";
 import { Cloud, CheckCircle, AlertCircle, ArrowRight } from "lucide-react";
 import { Link } from "wouter";
 import { ConsultationCTA } from "@/components/ConsultationCTA";
-import { useServicePrice } from "@/components/use-service-price";
-
 export default function Microsoft365() {
-  const { price, loading } = useServicePrice("m365-consulting", "$1,500");
+  const price = "Contact for pricing";
+  const loading = false;
   return (
     <Layout>
       <SEOMeta

@@ -2,10 +2,9 @@ import { SEOMeta } from "@/components/SEOMeta";
 import { Layout } from "@/components/Layout";
 import { Layout as LayoutIcon, CheckCircle, ArrowRight } from "lucide-react";
 import { ConsultationCTA } from "@/components/ConsultationCTA";
-import { useServicePrice } from "@/components/use-service-price";
-
 export default function SharePoint() {
-  const { price, loading } = useServicePrice("sharepoint-consulting", "$1,500");
+  const price = "Contact for pricing";
+  const loading = false;
   return (
     <Layout>
       <SEOMeta

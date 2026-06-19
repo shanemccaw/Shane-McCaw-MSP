@@ -2,100 +2,20 @@ import { SEOMeta } from "@/components/SEOMeta";
 import { Layout } from "@/components/Layout";
 import { CTAButton } from "@/components/CTAButton";
 import { CheckCircle, Clock } from "lucide-react";
-import { useServicePrice } from "@/components/use-service-price";
+import { useServices, formatPrice, type PublicService } from "@/hooks/useServices";
 
-const offers = [
-  {
-    slug: "m365-health-check",
-    title: "M365 Health Check",
-    price: "$497",
-    turnaround: "2 business days",
-    forWho: "Organizations unsure how well their M365 tenant is configured or who want a baseline before deeper work.",
-    inclusions: [
-      "90-minute live audit session via video call",
-      "Review of tenant settings, security configuration, and permissions",
-      "Assessment of Teams, SharePoint, OneDrive, and Exchange setup",
-      "Comprehensive written report with prioritized findings",
-      "30-minute debrief call to walk through recommendations",
-    ],
-  },
-  {
-    slug: "copilot-readiness",
-    title: "Copilot Readiness Assessment",
-    price: "$797",
-    turnaround: "5 business days",
-    forWho: "Organizations that have purchased or are considering Microsoft Copilot licenses and want to ensure safe, successful deployment.",
-    inclusions: [
-      "Full audit of data governance, sensitivity labels, and DLP policies",
-      "Review of SharePoint permissions and oversharing risks",
-      "Licensing review and optimization recommendations",
-      "Copilot deployment readiness score with findings report",
-      "Custom deployment roadmap and adoption strategy",
-      "45-minute debrief and Q&A session",
-    ],
-  },
-  {
-    slug: "sharepoint-blueprint",
-    title: "SharePoint Intranet Blueprint",
-    price: "$997",
-    turnaround: "7 business days",
-    forWho: "Organizations planning a new SharePoint intranet or needing to redesign an existing one that isn't working.",
-    inclusions: [
-      "Discovery session to understand organizational structure and needs",
-      "Information architecture design",
-      "Site map and navigation strategy",
-      "Taxonomy and metadata framework",
-      "Wireframe for key page types",
-      "Written blueprint document with implementation guidance",
-    ],
-  },
-  {
-    slug: "power-automate",
-    title: "Power Automate Quick Win",
-    price: "$597",
-    turnaround: "5–7 business days",
-    forWho: "Organizations with a specific manual process they want to automate using Power Automate.",
-    inclusions: [
-      "Discovery call to document the target process",
-      "Design and build of one Power Automate flow",
-      "Testing and error handling configuration",
-      "Documentation and knowledge transfer",
-      "30-day email support post-delivery",
-    ],
-  },
-  {
-    slug: "security-audit",
-    title: "M365 Security & Governance Audit",
-    price: "$897",
-    turnaround: "5 business days",
-    forWho: "Organizations in regulated industries or those who've experienced a security incident and need a compliance assessment.",
-    inclusions: [
-      "Full review of DLP policies, sensitivity labels, and retention",
-      "Conditional access policy audit",
-      "Admin role and permissions review",
-      "Guest access and external sharing assessment",
-      "Purview compliance posture review",
-      "Prioritized remediation report",
-    ],
-  },
-  {
-    slug: "copilot-prompts",
-    title: "Copilot Prompt Library Build",
-    price: "$397",
-    turnaround: "5 business days",
-    forWho: "Organizations that have deployed Copilot but are struggling with adoption because employees don't know how to use it effectively.",
-    inclusions: [
-      "Discovery call to understand your team's key use cases",
-      "Custom library of 25+ role-specific Copilot prompts",
-      "Prompts organized by department and task type",
-      "Formatted as a sharable, editable document",
-      "Tips for prompt refinement and iteration",
-    ],
-  },
+const FALLBACK_OFFERS: PublicService[] = [
+  { id: 0, slug: "m365-health-check", name: "M365 Health Check", price: "497.00", turnaround: "2 business days", serviceType: "micro_offer", billingType: "one_time", description: null, deliverables: "Written audit report + remediation priority list", targetAudience: "Organizations unsure how well their M365 tenant is configured or who want a baseline before deeper work.", inclusions: ["90-minute live audit session via video call","Review of tenant settings, security configuration, and permissions","Assessment of Teams, SharePoint, OneDrive, and Exchange setup","Comprehensive written report with prioritized findings","30-minute debrief call to walk through recommendations"], category: null, badge: null, highlighted: false, hoursPerMonth: null, iconName: null, pageHref: null, sortOrder: 0, features: null, tagline: null },
+  { id: 0, slug: "copilot-readiness", name: "Copilot Readiness Assessment", price: "797.00", turnaround: "5 business days", serviceType: "micro_offer", billingType: "one_time", description: null, deliverables: "Readiness scorecard + deployment roadmap", targetAudience: "Organizations that have purchased or are considering Microsoft Copilot licenses and want to ensure safe, successful deployment.", inclusions: ["Full audit of data governance, sensitivity labels, and DLP policies","Review of SharePoint permissions and oversharing risks","Licensing review and optimization recommendations","Copilot deployment readiness score with findings report","Custom deployment roadmap and adoption strategy","45-minute debrief and Q&A session"], category: null, badge: "Most requested", highlighted: false, hoursPerMonth: null, iconName: null, pageHref: null, sortOrder: 1, features: null, tagline: null },
+  { id: 0, slug: "sharepoint-blueprint", name: "SharePoint Intranet Blueprint", price: "997.00", turnaround: "7 business days", serviceType: "micro_offer", billingType: "one_time", description: null, deliverables: "IA document + governance policy + rollout plan", targetAudience: "Organizations planning a new SharePoint intranet or needing to redesign an existing one that isn't working.", inclusions: ["Discovery session to understand organizational structure and needs","Information architecture design","Site map and navigation strategy","Taxonomy and metadata framework","Wireframe for key page types","Written blueprint document with implementation guidance"], category: null, badge: null, highlighted: false, hoursPerMonth: null, iconName: null, pageHref: null, sortOrder: 2, features: null, tagline: null },
+  { id: 0, slug: "power-automate", name: "Power Automate Quick Win", price: "597.00", turnaround: "5–7 business days", serviceType: "micro_offer", billingType: "one_time", description: null, deliverables: "Live flow + documentation + handoff walkthrough", targetAudience: "Organizations with a specific manual process they want to automate using Power Automate.", inclusions: ["Discovery call to document the target process","Design and build of one Power Automate flow","Testing and error handling configuration","Documentation and knowledge transfer","30-day email support post-delivery"], category: null, badge: null, highlighted: false, hoursPerMonth: null, iconName: null, pageHref: null, sortOrder: 3, features: null, tagline: null },
+  { id: 0, slug: "security-audit", name: "M365 Security & Governance Audit", price: "897.00", turnaround: "5 business days", serviceType: "micro_offer", billingType: "one_time", description: null, deliverables: "Security audit report + DLP/retention gap analysis", targetAudience: "Organizations in regulated industries or those who've experienced a security incident and need a compliance assessment.", inclusions: ["Full review of DLP policies, sensitivity labels, and retention","Conditional access policy audit","Admin role and permissions review","Guest access and external sharing assessment","Purview compliance posture review","Prioritized remediation report"], category: null, badge: null, highlighted: false, hoursPerMonth: null, iconName: null, pageHref: null, sortOrder: 4, features: null, tagline: null },
+  { id: 0, slug: "copilot-prompts", name: "Copilot Prompt Library Build", price: "397.00", turnaround: "5 business days", serviceType: "micro_offer", billingType: "one_time", description: null, deliverables: "Role-specific prompt library (Word + SharePoint-ready)", targetAudience: "Organizations that have deployed Copilot but are struggling with adoption because employees don't know how to use it effectively.", inclusions: ["Discovery call to understand your team's key use cases","Custom library of 25+ role-specific Copilot prompts","Prompts organized by department and task type","Formatted as a sharable, editable document","Tips for prompt refinement and iteration"], category: null, badge: null, highlighted: false, hoursPerMonth: null, iconName: null, pageHref: null, sortOrder: 5, features: null, tagline: null },
 ];
 
-function OfferCard({ offer, index }: { offer: typeof offers[number]; index: number }) {
-  const { price, loading } = useServicePrice(offer.slug, offer.price);
+function OfferCard({ offer, index }: { offer: PublicService; index: number }) {
+  const price = formatPrice(offer.price) ?? offer.price ?? "$?";
+  const inclusions = offer.inclusions ?? [];
 
   return (
     <div
@@ -103,30 +23,25 @@ function OfferCard({ offer, index }: { offer: typeof offers[number]; index: numb
       data-testid={`offer-card-${index}`}
     >
       <div className="mb-6">
-        {loading ? (
-          <span
-            className="inline-block h-10 w-24 rounded bg-[#0078D4]/20 animate-pulse mb-1"
-            aria-hidden="true"
-          />
-        ) : (
-          <p className="text-[#0078D4] text-4xl font-extrabold mb-1">{price}</p>
-        )}
-        <h3 className="text-xl font-bold text-[#0A2540]">{offer.title}</h3>
+        <p className="text-[#0078D4] text-4xl font-extrabold mb-1">{price}</p>
+        <h3 className="text-xl font-bold text-[#0A2540]">{offer.name}</h3>
       </div>
 
       <div className="flex items-center gap-2 text-muted-foreground text-sm mb-4">
         <Clock className="w-4 h-4 text-[#0078D4]" />
-        <span>Turnaround: {offer.turnaround}</span>
+        <span>Turnaround: {offer.turnaround ?? "TBD"}</span>
       </div>
 
-      <p className="text-sm text-muted-foreground italic mb-4 leading-relaxed">
-        For: {offer.forWho}
-      </p>
+      {offer.targetAudience && (
+        <p className="text-sm text-muted-foreground italic mb-4 leading-relaxed">
+          For: {offer.targetAudience}
+        </p>
+      )}
 
       <div className="border-t border-border pt-4 mb-6 flex-grow">
         <p className="text-sm font-semibold text-[#0A2540] mb-3">What's Included:</p>
         <ul className="space-y-2">
-          {offer.inclusions.map((item, j) => (
+          {inclusions.map((item, j) => (
             <li key={j} className="flex items-start gap-2 text-sm text-foreground" data-testid={`offer-${index}-inclusion-${j}`}>
               <CheckCircle className="w-4 h-4 text-[#0078D4] flex-shrink-0 mt-0.5" />
               {item}
@@ -135,7 +50,7 @@ function OfferCard({ offer, index }: { offer: typeof offers[number]; index: numb
         </ul>
       </div>
 
-      <CTAButton href={`/crm/portal/onboarding/select?service=${offer.slug}`} className="w-full justify-center text-sm" data-testid={`offer-cta-${index}`}>
+      <CTAButton href={`/crm/portal/onboarding/select?service=${offer.slug ?? ""}`} className="w-full justify-center text-sm" data-testid={`offer-cta-${index}`}>
         Get Started
       </CTAButton>
     </div>
@@ -143,91 +58,32 @@ function OfferCard({ offer, index }: { offer: typeof offers[number]; index: numb
 }
 
 export default function MicroOffers() {
+  const { services, loading } = useServices("micro_offer");
+  const offers = services.length > 0 ? services : (loading ? [] : FALLBACK_OFFERS);
+
   return (
     <Layout>
       <SEOMeta
         title="Quick Win Packages — Fixed Price Microsoft 365 Services | Shane McCaw Consulting"
-        description="Fixed-price Microsoft 365 quick-win packages by Shane McCaw. Clear scope, flat fees, and senior-level delivery — starting at $1,500. No hourly billing surprises."
+        description="Fixed-price Microsoft 365 quick-win packages by Shane McCaw. Clear scope, flat fees, and senior-level delivery — starting at $397. No hourly billing surprises."
         jsonLd={{
           "@context": "https://schema.org",
           "@type": "ItemList",
           "name": "Fixed-Price Microsoft 365 Quick-Win Packages",
           "description": "Fixed-price Microsoft 365 consulting packages by Shane McCaw. Clear scope, defined deliverables, no hourly billing.",
           "url": "https://shanemccaw.com/micro-offers",
-          "itemListElement": [
-            {
-              "@type": "ListItem",
-              "position": 1,
-              "item": {
-                "@type": "Offer",
-                "name": "M365 Health Check",
-                "price": "497",
-                "priceCurrency": "USD",
-                "url": "https://shanemccawconsulting.com/micro-offers",
-                "seller": { "@type": "Person", "name": "Shane McCaw" }
-              }
-            },
-            {
-              "@type": "ListItem",
-              "position": 2,
-              "item": {
-                "@type": "Offer",
-                "name": "Copilot Readiness Assessment",
-                "price": "797",
-                "priceCurrency": "USD",
-                "url": "https://shanemccawconsulting.com/micro-offers",
-                "seller": { "@type": "Person", "name": "Shane McCaw" }
-              }
-            },
-            {
-              "@type": "ListItem",
-              "position": 3,
-              "item": {
-                "@type": "Offer",
-                "name": "SharePoint Intranet Blueprint",
-                "price": "997",
-                "priceCurrency": "USD",
-                "url": "https://shanemccawconsulting.com/micro-offers",
-                "seller": { "@type": "Person", "name": "Shane McCaw" }
-              }
-            },
-            {
-              "@type": "ListItem",
-              "position": 4,
-              "item": {
-                "@type": "Offer",
-                "name": "Power Automate Quick Win",
-                "price": "597",
-                "priceCurrency": "USD",
-                "url": "https://shanemccawconsulting.com/micro-offers",
-                "seller": { "@type": "Person", "name": "Shane McCaw" }
-              }
-            },
-            {
-              "@type": "ListItem",
-              "position": 5,
-              "item": {
-                "@type": "Offer",
-                "name": "M365 Security & Governance Audit",
-                "price": "897",
-                "priceCurrency": "USD",
-                "url": "https://shanemccawconsulting.com/micro-offers",
-                "seller": { "@type": "Person", "name": "Shane McCaw" }
-              }
-            },
-            {
-              "@type": "ListItem",
-              "position": 6,
-              "item": {
-                "@type": "Offer",
-                "name": "Copilot Prompt Library Build",
-                "price": "397",
-                "priceCurrency": "USD",
-                "url": "https://shanemccawconsulting.com/micro-offers",
-                "seller": { "@type": "Person", "name": "Shane McCaw" }
-              }
+          "itemListElement": offers.map((o, i) => ({
+            "@type": "ListItem",
+            "position": i + 1,
+            "item": {
+              "@type": "Offer",
+              "name": o.name,
+              "price": o.price ?? "",
+              "priceCurrency": "USD",
+              "url": "https://shanemccawconsulting.com/micro-offers",
+              "seller": { "@type": "Person", "name": "Shane McCaw" }
             }
-          ]
+          }))
         }}
       />
       <section className="bg-[#0A2540] pt-32 pb-20">
@@ -244,11 +100,19 @@ export default function MicroOffers() {
 
       <section className="bg-[#F7F9FC] py-20">
         <div className="max-w-[1200px] mx-auto px-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {offers.map((offer, i) => (
-              <OfferCard key={offer.slug} offer={offer} index={i} />
-            ))}
-          </div>
+          {loading && offers.length === 0 ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {[...Array(6)].map((_, i) => (
+                <div key={i} className="bg-white rounded-xl border border-border p-8 h-96 animate-pulse" />
+              ))}
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {offers.map((offer, i) => (
+                <OfferCard key={offer.slug ?? i} offer={offer} index={i} />
+              ))}
+            </div>
+          )}
         </div>
       </section>
 

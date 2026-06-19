@@ -7,7 +7,7 @@ const router: IRouter = Router();
 
 router.get("/admin/services", requireAdmin, async (_req: Request, res: Response) => {
   try {
-    const services = await db.select().from(servicesTable).orderBy(servicesTable.createdAt);
+    const services = await db.select().from(servicesTable).orderBy(servicesTable.sortOrder, servicesTable.createdAt);
     res.json(services);
   } catch {
     res.status(500).json({ error: "Failed to fetch services" });
@@ -30,22 +30,38 @@ router.put("/admin/services/:id", requireAdmin, async (req: Request, res: Respon
   try {
     const id = Number(req.params.id);
     if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
-    const { name, description, category, deliverables, price, durationDays, turnaround, billingType, isPublic, slug } =
-      req.body as Record<string, string | number | boolean | null>;
+    const body = req.body as Record<string, unknown>;
+    const {
+      name, description, category, deliverables, price, durationDays, turnaround,
+      billingType, isPublic, slug,
+      serviceType, tagline, targetAudience, inclusions, features, badge,
+      highlighted, hoursPerMonth, iconName, pageHref, sortOrder,
+    } = body;
     if (!name) { res.status(400).json({ error: "name is required" }); return; }
     const [updated] = await db
       .update(servicesTable)
       .set({
         name: name as string,
-        description: description as string | null ?? null,
-        category: category as string | null ?? null,
-        deliverables: deliverables as string | null ?? null,
+        description: (description as string | null) ?? null,
+        category: (category as string | null) ?? null,
+        deliverables: (deliverables as string | null) ?? null,
         price: price != null ? String(price) : null,
         durationDays: durationDays != null ? Number(durationDays) : null,
-        turnaround: turnaround as string | null ?? null,
-        billingType: (billingType as "one_time" | "recurring_monthly") ?? "one_time",
+        turnaround: (turnaround as string | null) ?? null,
+        billingType: ((billingType as string) ?? "one_time") as "one_time" | "recurring_monthly",
         isPublic: isPublic != null ? Boolean(isPublic) : true,
-        slug: slug as string | null ?? null,
+        slug: (slug as string | null) ?? null,
+        serviceType: (serviceType as string | null) ?? null,
+        tagline: (tagline as string | null) ?? null,
+        targetAudience: (targetAudience as string | null) ?? null,
+        inclusions: Array.isArray(inclusions) ? (inclusions as string[]) : null,
+        features: Array.isArray(features) ? (features as string[]) : null,
+        badge: (badge as string | null) ?? null,
+        highlighted: highlighted != null ? Boolean(highlighted) : false,
+        hoursPerMonth: (hoursPerMonth as string | null) ?? null,
+        iconName: (iconName as string | null) ?? null,
+        pageHref: (pageHref as string | null) ?? null,
+        sortOrder: sortOrder != null ? Number(sortOrder) : 0,
       })
       .where(eq(servicesTable.id, id))
       .returning();

@@ -10,6 +10,7 @@ import authRouter from "./auth";
 import leadsRouter from "./leads";
 import downloadsRouter from "./downloads";
 import portalRouter from "./portal";
+import publicServicesRouter from "./public-services";
 
 const router: IRouter = Router();
 
@@ -23,6 +24,7 @@ router.use(sharesRouter);
 router.use(authRouter);
 router.use(leadsRouter);
 router.use(downloadsRouter);
+router.use(publicServicesRouter);
 router.use(portalRouter);
 
 export default router;

@@ -15,6 +15,17 @@ interface Service {
   billingType: "one_time" | "recurring_monthly";
   isPublic: boolean;
   createdAt: string;
+  serviceType: string | null;
+  tagline: string | null;
+  targetAudience: string | null;
+  inclusions: string[] | null;
+  features: string[] | null;
+  badge: string | null;
+  highlighted: boolean;
+  hoursPerMonth: string | null;
+  iconName: string | null;
+  pageHref: string | null;
+  sortOrder: number;
 }
 
 export default function ServicesPage() {
@@ -44,7 +55,7 @@ export default function ServicesPage() {
     setForm({ ...s });
   }
 
-  function setField(key: keyof Service, value: string | boolean | number | null) {
+  function setField(key: keyof Service, value: string | boolean | number | string[] | null) {
     setForm(p => ({ ...p, [key]: value }));
   }
 
@@ -193,6 +204,92 @@ export default function ServicesPage() {
                   onChange={e => setField("isPublic", e.target.checked)}
                   className="rounded" />
                 <label htmlFor="isPublic" className="text-sm font-medium text-gray-700">Visible on public site</label>
+              </div>
+
+              <div className="pt-4 border-t border-gray-100">
+                <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-4">Marketing Fields</p>
+
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">Service Type</label>
+                    <select value={form.serviceType ?? ""}
+                      onChange={e => setField("serviceType", e.target.value || null)}
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4]">
+                      <option value="">— none —</option>
+                      <option value="micro_offer">micro_offer</option>
+                      <option value="retainer">retainer</option>
+                      <option value="service_area">service_area</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">Tagline</label>
+                    <input type="text" value={form.tagline ?? ""}
+                      onChange={e => setField("tagline", e.target.value || null)}
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4]" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">Target Audience</label>
+                    <textarea value={form.targetAudience ?? ""} rows={2}
+                      onChange={e => setField("targetAudience", e.target.value || null)}
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4] resize-none" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">Inclusions (one per line)</label>
+                    <textarea value={(form.inclusions ?? []).join("\n")} rows={5}
+                      onChange={e => setField("inclusions", e.target.value ? e.target.value.split("\n").filter(Boolean) : null)}
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-[#0078D4] resize-none" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">Features (one per line)</label>
+                    <textarea value={(form.features ?? []).join("\n")} rows={5}
+                      onChange={e => setField("features", e.target.value ? e.target.value.split("\n").filter(Boolean) : null)}
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-[#0078D4] resize-none" />
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">Badge</label>
+                      <input type="text" value={form.badge ?? ""}
+                        onChange={e => setField("badge", e.target.value || null)}
+                        placeholder="e.g. Most requested"
+                        className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4]" />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">Hours/Month</label>
+                      <input type="text" value={form.hoursPerMonth ?? ""}
+                        onChange={e => setField("hoursPerMonth", e.target.value || null)}
+                        placeholder="e.g. 10 hours"
+                        className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4]" />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">Icon Name</label>
+                      <input type="text" value={form.iconName ?? ""}
+                        onChange={e => setField("iconName", e.target.value || null)}
+                        placeholder="e.g. Cloud, Bot, Shield…"
+                        className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4]" />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">Sort Order</label>
+                      <input type="number" value={form.sortOrder ?? 0} min="0"
+                        onChange={e => setField("sortOrder", parseInt(e.target.value) || 0)}
+                        className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4]" />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">Page Href</label>
+                    <input type="text" value={form.pageHref ?? ""}
+                      onChange={e => setField("pageHref", e.target.value || null)}
+                      placeholder="e.g. /services/microsoft-365"
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4]" />
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <input type="checkbox" id="highlighted" checked={form.highlighted ?? false}
+                      onChange={e => setField("highlighted", e.target.checked)}
+                      className="rounded" />
+                    <label htmlFor="highlighted" className="text-sm font-medium text-gray-700">Highlighted (Most Popular)</label>
+                  </div>
+                </div>
               </div>
             </div>
           </form>
