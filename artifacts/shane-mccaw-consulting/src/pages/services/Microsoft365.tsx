@@ -11,6 +11,21 @@ export default function Microsoft365() {
         title="Microsoft 365 Setup & Optimization | Shane McCaw Consulting"
         description="Microsoft 365 setup, optimization, and tenant health audits by Shane McCaw. NASA-methodology reviews delivering clear, prioritized remediation roadmaps — not generic checklists."
         ogImage="/og-image-microsoft-365.png"
+        ogUrl="https://shanemccawconsulting.com/services/microsoft-365"
+        jsonLd={{
+          "@context": "https://schema.org",
+          "@type": "Service",
+          "name": "Microsoft 365 Setup & Optimization",
+          "description": "Microsoft 365 setup, optimization, and tenant health audits by Shane McCaw. NASA-methodology reviews delivering clear, prioritized remediation roadmaps — not generic checklists.",
+          "url": "https://shanemccawconsulting.com/services/microsoft-365",
+          "serviceType": "Microsoft 365 Consulting",
+          "provider": {
+            "@type": "Person",
+            "name": "Shane McCaw",
+            "jobTitle": "Lead Microsoft 365 Architect",
+            "url": "https://shanemccawconsulting.com"
+          }
+        }}
       />
       <section className="bg-[#0A2540] pt-32 pb-20">
         <div className="max-w-[1200px] mx-auto px-6">

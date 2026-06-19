@@ -10,6 +10,21 @@ export default function SharePoint() {
         title="SharePoint Architecture & Modern Intranets | Shane McCaw Consulting"
         description="SharePoint architecture and modern intranet design by Shane McCaw. 30 years of Microsoft expertise, delivering intranets that employees actually use and IT can govern."
         ogImage="/og-image-sharepoint.png"
+        ogUrl="https://shanemccawconsulting.com/services/sharepoint"
+        jsonLd={{
+          "@context": "https://schema.org",
+          "@type": "Service",
+          "name": "SharePoint Architecture & Modern Intranets",
+          "description": "SharePoint architecture and modern intranet design by Shane McCaw. 30 years of Microsoft expertise, delivering intranets that employees actually use and IT can govern.",
+          "url": "https://shanemccawconsulting.com/services/sharepoint",
+          "serviceType": "SharePoint Consulting",
+          "provider": {
+            "@type": "Person",
+            "name": "Shane McCaw",
+            "jobTitle": "Lead Microsoft 365 Architect",
+            "url": "https://shanemccawconsulting.com"
+          }
+        }}
       />
       <section className="bg-[#0A2540] pt-32 pb-20">
         <div className="max-w-[1200px] mx-auto px-6">

@@ -11,6 +11,21 @@ export default function PowerPlatform() {
         title="Power Platform & Automation Consulting | Shane McCaw Consulting"
         description="Power Platform and automation consulting by Shane McCaw. Build governed, scalable Power Apps and Power Automate solutions that deliver ROI without governance nightmares."
         ogImage="/og-image-power-platform.png"
+        ogUrl="https://shanemccawconsulting.com/services/power-platform"
+        jsonLd={{
+          "@context": "https://schema.org",
+          "@type": "Service",
+          "name": "Power Platform & Automation Consulting",
+          "description": "Power Platform and automation consulting by Shane McCaw. Build governed, scalable Power Apps and Power Automate solutions that deliver ROI without governance nightmares.",
+          "url": "https://shanemccawconsulting.com/services/power-platform",
+          "serviceType": "Power Platform Consulting",
+          "provider": {
+            "@type": "Person",
+            "name": "Shane McCaw",
+            "jobTitle": "Lead Microsoft 365 Architect",
+            "url": "https://shanemccawconsulting.com"
+          }
+        }}
       />
       <section className="bg-[#0A2540] pt-32 pb-20">
         <div className="max-w-[1200px] mx-auto px-6">

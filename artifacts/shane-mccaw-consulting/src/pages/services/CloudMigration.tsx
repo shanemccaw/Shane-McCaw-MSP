@@ -27,6 +27,21 @@ export default function CloudMigration() {
         title="Microsoft 365 Cloud Migration Services | Shane McCaw Consulting"
         description="Microsoft 365 cloud migration consulting by Shane McCaw. Structured, low-risk migrations with zero-surprise timelines and a NASA-proven methodology that protects your data."
         ogImage="/og-image-cloud-migration.png"
+        ogUrl="https://shanemccawconsulting.com/services/cloud-migration"
+        jsonLd={{
+          "@context": "https://schema.org",
+          "@type": "Service",
+          "name": "Microsoft 365 Cloud Migration Services",
+          "description": "Microsoft 365 cloud migration consulting by Shane McCaw. Structured, low-risk migrations with zero-surprise timelines and a NASA-proven methodology that protects your data.",
+          "url": "https://shanemccawconsulting.com/services/cloud-migration",
+          "serviceType": "Cloud Migration Consulting",
+          "provider": {
+            "@type": "Person",
+            "name": "Shane McCaw",
+            "jobTitle": "Lead Microsoft 365 Architect",
+            "url": "https://shanemccawconsulting.com"
+          }
+        }}
       />
       <section className="bg-[#0A2540] pt-32 pb-20">
         <div className="max-w-[1200px] mx-auto px-6">

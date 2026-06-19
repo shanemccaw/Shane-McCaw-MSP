@@ -117,6 +117,21 @@ export default function CopilotAI() {
         title="Microsoft Copilot Consulting — NASA's Copilot SME | Shane McCaw Consulting"
         description="Deploy Microsoft Copilot safely with Shane McCaw — NASA's Copilot SME. Readiness assessments, data governance checks, and AI deployment roadmaps that eliminate oversharing risk."
         ogImage="/og-image-copilot-ai.png"
+        ogUrl="https://shanemccawconsulting.com/services/copilot-ai"
+        jsonLd={{
+          "@context": "https://schema.org",
+          "@type": "Service",
+          "name": "Microsoft Copilot AI Consulting",
+          "description": "Deploy Microsoft Copilot safely with Shane McCaw — NASA's Copilot SME. Readiness assessments, data governance checks, and AI deployment roadmaps that eliminate oversharing risk.",
+          "url": "https://shanemccawconsulting.com/services/copilot-ai",
+          "serviceType": "Microsoft Copilot AI Consulting",
+          "provider": {
+            "@type": "Person",
+            "name": "Shane McCaw",
+            "jobTitle": "Lead Microsoft 365 Architect",
+            "url": "https://shanemccawconsulting.com"
+          }
+        }}
       />
       {/* Hero */}
       <section className="relative bg-[#0A2540] pt-32 pb-24 overflow-hidden">
