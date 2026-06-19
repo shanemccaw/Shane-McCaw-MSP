@@ -1,7 +1,7 @@
 import app from "./app";
 import { logger } from "./lib/logger";
 import { seedAdminUser } from "./routes/auth";
-import { seedPortalDemo } from "./lib/seed-portal";
+import { seedPortalDemo, seedServiceTemplates } from "./lib/seed-portal";
 
 const rawPort = process.env["PORT"];
 
@@ -29,6 +29,12 @@ app.listen(port, (err) => {
     logger.info("CRM admin user seeded (no-op if exists)");
   }).catch((seedErr) => {
     logger.warn({ err: seedErr }, "Could not seed admin user");
+  });
+
+  seedServiceTemplates().then(() => {
+    logger.info("Service workflow/project templates seeded (no-op if exists)");
+  }).catch((seedErr) => {
+    logger.warn({ err: seedErr }, "Could not seed service templates");
   });
 
   if (process.env.NODE_ENV !== "production") {

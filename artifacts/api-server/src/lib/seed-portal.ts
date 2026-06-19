@@ -1,9 +1,80 @@
 import bcrypt from "bcryptjs";
 import {
   db, usersTable, servicesTable, projectsTable, clientServicesTable,
-  workflowStepsTable, kanbanTasksTable, invoicesTable, notificationsTable, projectUpdatesTable
+  workflowStepsTable, kanbanTasksTable, invoicesTable, notificationsTable, projectUpdatesTable,
+  workflowTemplatesTable, workflowTemplateStepsTable, projectTemplatesTable, projectTemplateTasksTable,
 } from "@workspace/db";
 import { eq } from "drizzle-orm";
+
+/**
+ * Seeds the "M365 Onboarding Workflow" template and the "M365 Health Check Project"
+ * project template (linked to the M365 Health Check service).
+ *
+ * These templates power the auto-project generation hook in portal.ts:
+ * when an admin activates the M365 Health Check service for a client,
+ * a project is automatically created and 7 workflow steps are seeded
+ * from these template tasks.
+ *
+ * Idempotent — no-op if the workflow template already exists.
+ */
+export async function seedServiceTemplates(): Promise<void> {
+  const [existing] = await db
+    .select()
+    .from(workflowTemplatesTable)
+    .where(eq(workflowTemplatesTable.name, "M365 Onboarding Workflow"))
+    .limit(1);
+  if (existing) return;
+
+  // Look up the M365 Health Check service
+  const [m365Service] = await db
+    .select()
+    .from(servicesTable)
+    .where(eq(servicesTable.slug, "m365-health-check"))
+    .limit(1);
+
+  if (!m365Service) return;
+
+  // 1. Create the workflow template
+  const [wfTemplate] = await db
+    .insert(workflowTemplatesTable)
+    .values({
+      name: "M365 Onboarding Workflow",
+      description: "Standard onboarding workflow for Microsoft 365 consulting engagements",
+      serviceId: m365Service.id,
+    })
+    .returning();
+
+  // 2. Seed the workflow steps
+  await db.insert(workflowTemplateStepsTable).values([
+    { workflowTemplateId: wfTemplate.id, title: "Discovery & Kickoff Call", description: "Align on scope, goals, and success criteria. Gather access credentials and key stakeholder contacts.", order: 0 },
+    { workflowTemplateId: wfTemplate.id, title: "Environment Assessment", description: "Audit current M365 tenant configuration, license assignments, security posture, and usage patterns.", order: 1 },
+    { workflowTemplateId: wfTemplate.id, title: "Findings & Gap Analysis", description: "Document identified gaps, risks, and opportunities. Prepare a prioritised findings report.", order: 2 },
+    { workflowTemplateId: wfTemplate.id, title: "Recommendations Review", description: "Walk through findings with the client team. Agree on priority areas and implementation roadmap.", order: 3 },
+    { workflowTemplateId: wfTemplate.id, title: "Implementation & Delivery", description: "Execute agreed-upon changes and configurations in the M365 environment.", order: 4 },
+    { workflowTemplateId: wfTemplate.id, title: "Handoff & Documentation", description: "Deliver final documentation, admin guides, and training resources. Sign off on deliverables.", order: 5 },
+  ]);
+
+  // 3. Create the project template linked to the workflow template and service
+  const [projTemplate] = await db
+    .insert(projectTemplatesTable)
+    .values({
+      name: "M365 Health Check Project",
+      workflowTemplateId: wfTemplate.id,
+      serviceId: m365Service.id,
+    })
+    .returning();
+
+  // 4. Seed the project template tasks (these become workflow_steps when the service is activated)
+  await db.insert(projectTemplateTasksTable).values([
+    { projectTemplateId: projTemplate.id, title: "Discovery & Kickoff Call", description: "Align on scope, goals, and key contacts. Confirm access requirements and define success criteria.", order: 0 },
+    { projectTemplateId: projTemplate.id, title: "M365 Tenant Access & Setup", description: "Grant Shane read-only admin access. Configure audit logging and export settings for the review.", order: 1 },
+    { projectTemplateId: projTemplate.id, title: "Environment Assessment", description: "Review licence utilisation, security defaults, identity configuration, and service adoption.", order: 2 },
+    { projectTemplateId: projTemplate.id, title: "Findings & Gap Analysis Report", description: "Receive the detailed findings document covering risks, gaps, and optimisation opportunities.", order: 3 },
+    { projectTemplateId: projTemplate.id, title: "Recommendations Review Call", description: "Walk through the findings together. Prioritise action items and agree on next steps.", order: 4 },
+    { projectTemplateId: projTemplate.id, title: "Implementation Roadmap Delivered", description: "Receive the final 90-day roadmap with prioritised actions, effort estimates, and quick wins.", order: 5 },
+    { projectTemplateId: projTemplate.id, title: "Project Closeout", description: "Final sign-off, documentation handoff, and transition to ongoing support if applicable.", order: 6 },
+  ]);
+}
 
 export async function seedPortalDemo(): Promise<void> {
   // Check if demo client already exists
