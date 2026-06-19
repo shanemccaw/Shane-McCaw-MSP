@@ -2,9 +2,10 @@
 // 1. Open Microsoft 365 admin portal → Microsoft Bookings
 // 2. Create a booking page for "Discovery Call"
 // 3. Copy the booking page URL (looks like https://outlook.office365.com/book/shanemccaw@shanemccaw.com/...)
-// 4. Replace the BOOKINGS_URL constant below with that URL
+// 4. Set VITE_BOOKINGS_URL in Replit Secrets to that URL — no code changes needed
 
-const BOOKINGS_URL = "https://outlook.office365.com/book/YOUR-BOOKINGS-PAGE";
+const PLACEHOLDER_URL = "https://outlook.office365.com/book/YOUR-BOOKINGS-PAGE";
+const BOOKINGS_URL = import.meta.env.VITE_BOOKINGS_URL || PLACEHOLDER_URL;
 
 interface MicrosoftBookingsEmbedProps {
   bookingsUrl?: string;
@@ -15,7 +16,7 @@ export function MicrosoftBookingsEmbed({
   bookingsUrl = BOOKINGS_URL,
   minHeight = 700,
 }: MicrosoftBookingsEmbedProps) {
-  const isPlaceholder = bookingsUrl === BOOKINGS_URL;
+  const isPlaceholder = bookingsUrl === PLACEHOLDER_URL;
 
   if (isPlaceholder) {
     return (
@@ -38,8 +39,8 @@ export function MicrosoftBookingsEmbed({
         </div>
         <h3 className="text-xl font-bold text-[#0A2540] mb-3">Microsoft Bookings</h3>
         <p className="text-muted-foreground text-sm max-w-sm leading-relaxed">
-          Set up your Microsoft Bookings page in the M365 admin portal, then paste your booking URL
-          into <code className="bg-muted px-1.5 py-0.5 rounded text-xs font-mono">MicrosoftBookingsEmbed.tsx</code> to activate this calendar.
+          Set up your Microsoft Bookings page in the M365 admin portal, then add your booking URL
+          as <code className="bg-muted px-1.5 py-0.5 rounded text-xs font-mono">VITE_BOOKINGS_URL</code> in Replit Secrets to activate this calendar.
         </p>
       </div>
     );

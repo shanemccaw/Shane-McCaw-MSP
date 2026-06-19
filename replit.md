@@ -69,7 +69,7 @@ _Populate as you build — explicit user instructions worth remembering across s
 
 ## Gotchas
 
-- The booking calendar on `/book` and `/contact` uses `MicrosoftBookingsEmbed.tsx`. To activate: set up a Bookings page in the M365 admin portal, then replace `BOOKINGS_URL` in `artifacts/shane-mccaw-consulting/src/components/MicrosoftBookingsEmbed.tsx` with the real URL (format: `https://outlook.office365.com/book/...`). Until then, a branded placeholder card is shown.
+- The booking calendar on `/book` and `/contact` uses `MicrosoftBookingsEmbed.tsx`. To activate: set up a Bookings page in the M365 admin portal, then set `VITE_BOOKINGS_URL` in Replit Secrets to the booking page URL (format: `https://outlook.office365.com/book/...`). No code changes needed — the component reads the env var automatically. Until then, a branded placeholder card is shown.
 - Contact form uses react-hook-form + zod but has no backend submission — shows a toast on success
 - Header is transparent on `/` and solid Deep Navy on all other pages (via scroll + location detection)
 
