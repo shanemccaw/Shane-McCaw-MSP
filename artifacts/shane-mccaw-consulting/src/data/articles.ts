@@ -49,4 +49,5 @@ export const articles: Article[] = Object.values(rawFiles)
       content,
     };
   })
+  .filter((a) => a.slug && a.title && a.date)
   .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
