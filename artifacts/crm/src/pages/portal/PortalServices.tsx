@@ -523,7 +523,7 @@ export default function PortalServices() {
   const handleBuy = (offer: typeof MICRO_OFFERS[0]) => {
     // Route all purchases through the onboarding flow so wizard-enabled services
     // are intercepted and non-wizard services also go through the contract step.
-    setLocation(`/portal/onboarding/select?s=${encodeURIComponent(offer.slug)}`);
+    setLocation(`/portal/onboarding/select?service=${encodeURIComponent(offer.slug)}`);
   };
 
   return (

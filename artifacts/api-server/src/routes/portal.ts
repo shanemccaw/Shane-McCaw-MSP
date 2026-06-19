@@ -1877,9 +1877,12 @@ router.post("/portal/onboarding/contract", requireAuth, async (req: Request, res
     let computedFinalPrice: number | null = null;
     const svcSelections = wizardSelections?.[String(svc.id)] ?? [];
 
-    if (svc.orderWorkflow && svc.basePrice) {
+    const rawWorkflow = svc.orderWorkflow as Array<unknown> | null;
+    const hasWorkflow = Array.isArray(rawWorkflow) && rawWorkflow.length > 0 && svc.basePrice;
+
+    if (hasWorkflow) {
       // Service has a wizard — selections are REQUIRED and strictly validated
-      const workflow = svc.orderWorkflow as Array<{ id: string; title: string; options: Array<{ id: string; label: string; priceAdjustment: number }> }>;
+      const workflow = rawWorkflow as Array<{ id: string; title: string; options: Array<{ id: string; label: string; priceAdjustment: number }> }>;
 
       // (1) Exactly one selection per step required — no missing, no duplicates
       const coveredStepIds = new Set<string>();
@@ -1928,8 +1931,8 @@ router.post("/portal/onboarding/contract", requireAuth, async (req: Request, res
 
     // Build a plain-text summary of wizard selections for the contract body/PDF
     let selectionsSummary = "";
-    if (svcSelections.length > 0 && svc.orderWorkflow) {
-      const wf = svc.orderWorkflow as Array<{ id: string; title: string; options: Array<{ id: string; label: string; priceAdjustment: number }> }>;
+    if (svcSelections.length > 0 && hasWorkflow) {
+      const wf = rawWorkflow as Array<{ id: string; title: string; options: Array<{ id: string; label: string; priceAdjustment: number }> }>;
       const lines = svcSelections.map(sel => {
         const wStep = wf.find(s => s.id === sel.stepId);
         const wOpt = wStep?.options.find(o => o.id === sel.optionId);
