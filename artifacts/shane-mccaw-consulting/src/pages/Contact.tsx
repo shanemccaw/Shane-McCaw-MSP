@@ -84,8 +84,14 @@ export default function Contact() {
           <h1 className="text-4xl md:text-5xl lg:text-6xl font-extrabold text-white leading-tight max-w-3xl">
             Let's Talk Microsoft 365.
           </h1>
-          <p className="text-white/70 text-lg mt-6 max-w-xl leading-relaxed">
+          <p className="text-white/70 text-lg mt-6 max-w-2xl leading-relaxed">
+            You're contacting the former Lead M365 Architect at NASA — 30 years of Microsoft ecosystem experience, now available to mid&#8209;market and regulated&#8209;industry organizations.
+          </p>
+          <p className="text-white/70 text-lg mt-4 max-w-xl leading-relaxed">
             Tell me what you're dealing with and I'll give you a straight answer on whether and how I can help.
+          </p>
+          <p className="text-white/60 text-base mt-4 max-w-xl leading-relaxed">
+            I work with mid&#8209;market organizations (200–2,000 employees), regulated industries, government contractors, and startups scaling into compliance.
           </p>
         </div>
       </section>
@@ -228,6 +234,10 @@ export default function Contact() {
 
             {/* Sidebar */}
             <div className="space-y-6">
+              <p className="text-[#0A2540] text-sm font-medium border-l-4 border-[#0078D4] pl-4 py-1">
+                You'll speak directly with me — no account managers, no junior staff.
+              </p>
+
               <div className="bg-white rounded-xl border border-border p-6">
                 <div className="flex items-start gap-3 mb-4">
                   <Clock className="w-5 h-5 text-[#0078D4] mt-0.5 flex-shrink-0" />
@@ -236,6 +246,33 @@ export default function Contact() {
                     <p className="text-muted-foreground text-sm">I personally respond to every inquiry within 1 business day.</p>
                   </div>
                 </div>
+              </div>
+
+              <div className="bg-white rounded-xl border border-border p-6">
+                <h4 className="font-bold text-[#0A2540] mb-4">What Happens Next</h4>
+                <ol className="space-y-3">
+                  <li className="flex items-start gap-3">
+                    <span className="flex-shrink-0 w-6 h-6 rounded-full bg-[#0078D4] text-white text-xs font-bold flex items-center justify-center mt-0.5">1</span>
+                    <div>
+                      <p className="text-sm font-semibold text-[#0A2540]">Review</p>
+                      <p className="text-muted-foreground text-sm">I read every message within 1 business day.</p>
+                    </div>
+                  </li>
+                  <li className="flex items-start gap-3">
+                    <span className="flex-shrink-0 w-6 h-6 rounded-full bg-[#0078D4] text-white text-xs font-bold flex items-center justify-center mt-0.5">2</span>
+                    <div>
+                      <p className="text-sm font-semibold text-[#0A2540]">Clarity</p>
+                      <p className="text-muted-foreground text-sm">You get a direct recommendation or a clear next step — no fluff.</p>
+                    </div>
+                  </li>
+                  <li className="flex items-start gap-3">
+                    <span className="flex-shrink-0 w-6 h-6 rounded-full bg-[#0078D4] text-white text-xs font-bold flex items-center justify-center mt-0.5">3</span>
+                    <div>
+                      <p className="text-sm font-semibold text-[#0A2540]">Call</p>
+                      <p className="text-muted-foreground text-sm">If it's a fit, we schedule a free 30-minute discovery call.</p>
+                    </div>
+                  </li>
+                </ol>
               </div>
 
               <div className="bg-white rounded-xl border border-border p-6">
