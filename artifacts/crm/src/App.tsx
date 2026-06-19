@@ -12,6 +12,7 @@ import PortalReports from "@/pages/portal/PortalReports";
 import PortalBilling from "@/pages/portal/PortalBilling";
 import PortalMessages from "@/pages/portal/PortalMessages";
 import Dashboard2 from "@/pages/portal/Dashboard2";
+import ExecutiveDashboard from "@/pages/portal/ExecutiveDashboard";
 import OnboardingSelect from "@/pages/portal/OnboardingSelect";
 import OnboardingContract from "@/pages/portal/OnboardingContract";
 import OnboardingSuccess from "@/pages/portal/OnboardingSuccess";
@@ -84,6 +85,9 @@ function Router() {
       </Route>
       <Route path="/portal/dashboard2">
         <RequireAuth role="client"><Dashboard2 /></RequireAuth>
+      </Route>
+      <Route path="/portal/executive">
+        <RequireAuth role="client"><ExecutiveDashboard /></RequireAuth>
       </Route>
 
       {/* Public reset-password route — token validated server-side */}

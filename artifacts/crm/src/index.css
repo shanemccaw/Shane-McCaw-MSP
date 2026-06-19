@@ -228,3 +228,35 @@ html {
 .d2-custom-scrollbar::-webkit-scrollbar { width: 4px; height: 4px; }
 .d2-custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
 .d2-custom-scrollbar::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 10px; }
+
+/* Executive Precision design tokens — ep- prefix, scoped to .ep-root ─────── */
+/*
+ * Corporate Teal:  #0c9488  (primary accent)
+ * Surface 0:       #f8fafc  (page bg)
+ * Surface 1:       #ffffff  (card bg)
+ * Shadow L1:       0 2px 10px rgba(15,23,42,0.06)
+ * Shadow L2:       0 4px 16px rgba(15,23,42,0.10)
+ * Shadow L3:       0 10px 32px rgba(15,23,42,0.14)
+ * Radius:          12px (cards), 10px (task cards), 999px (badges)
+ * Typography:      Inter (inherited)
+ */
+.ep-root {
+  --ep-teal:      #0c9488;
+  --ep-teal-lt:   #f0fdfb;
+  --ep-surface-0: #f8fafc;
+  --ep-surface-1: #ffffff;
+  --ep-border:    #e2e8f0;
+  --ep-text-hi:   #0f172a;
+  --ep-text-lo:   #64748b;
+  --ep-shadow-1:  0 2px 10px rgba(15,23,42,0.06);
+  --ep-shadow-2:  0 4px 16px rgba(15,23,42,0.10);
+  --ep-shadow-3:  0 10px 32px rgba(15,23,42,0.14);
+}
+
+.ep-card {
+  box-shadow: var(--ep-shadow-1);
+  transition: box-shadow 0.2s ease, transform 0.2s ease;
+}
+.ep-card:hover {
+  box-shadow: var(--ep-shadow-2);
+}
