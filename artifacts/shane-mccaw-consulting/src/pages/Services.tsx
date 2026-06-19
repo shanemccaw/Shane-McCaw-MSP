@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { SEOMeta } from "@/components/SEOMeta";
 import { Link } from "wouter";
 import { Layout } from "@/components/Layout";
 import { CTAButton } from "@/components/CTAButton";
@@ -46,12 +46,12 @@ const services = [
 ];
 
 export default function Services() {
-  useEffect(() => {
-    document.title = "Microsoft 365 Consulting Services | Shane McCaw Consulting";
-  }, []);
-
   return (
     <Layout>
+      <SEOMeta
+        title="Microsoft 365 Consulting Services | Shane McCaw Consulting"
+        description="Explore Shane McCaw's Microsoft 365, Copilot AI, SharePoint, Power Platform, governance, and cloud migration consulting services. Senior-level expertise, delivered personally."
+      />
       <section className="bg-[#0A2540] pt-32 pb-20">
         <div className="max-w-[1200px] mx-auto px-6">
           <p className="text-[#0078D4] text-sm font-semibold uppercase tracking-[0.1em] mb-4">Services</p>

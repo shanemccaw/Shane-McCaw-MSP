@@ -1,6 +1,6 @@
-import { useEffect } from "react";
 import { Link } from "wouter";
 import { Layout } from "@/components/Layout";
+import { SEOMeta } from "@/components/SEOMeta";
 import { CTAButton } from "@/components/CTAButton";
 import { ServiceCard } from "@/components/ServiceCard";
 import {
@@ -97,12 +97,12 @@ const testimonials = [
 ];
 
 export default function Home() {
-  useEffect(() => {
-    document.title = "Enterprise Microsoft 365 & Copilot AI Consulting | Shane McCaw Consulting";
-  }, []);
-
   return (
     <Layout>
+      <SEOMeta
+        title="Enterprise Microsoft 365 & Copilot AI Consulting | Shane McCaw Consulting"
+        description="Shane McCaw is NASA's Lead Microsoft 365 Architect — 30 years of Microsoft expertise, delivering M365 tenant audits, Copilot AI readiness, SharePoint, and governance. Fixed-price packages, senior-level delivery."
+      />
       {/* HERO */}
       <section className="relative min-h-screen flex items-center justify-center bg-[#0A2540] overflow-hidden">
         {/* Grid overlay */}

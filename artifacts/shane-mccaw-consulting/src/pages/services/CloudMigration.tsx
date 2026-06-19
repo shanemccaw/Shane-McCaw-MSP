@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { SEOMeta } from "@/components/SEOMeta";
 import { Layout } from "@/components/Layout";
 import { Server, CheckCircle, ArrowRight } from "lucide-react";
 import { ConsultationCTA } from "@/components/ConsultationCTA";
@@ -21,12 +21,12 @@ const riskChecklist = [
 ];
 
 export default function CloudMigration() {
-  useEffect(() => {
-    document.title = "Microsoft 365 Cloud Migration Services | Shane McCaw Consulting";
-  }, []);
-
   return (
     <Layout>
+      <SEOMeta
+        title="Microsoft 365 Cloud Migration Services | Shane McCaw Consulting"
+        description="Microsoft 365 cloud migration consulting by Shane McCaw. Structured, low-risk migrations with zero-surprise timelines and a NASA-proven methodology that protects your data."
+      />
       <section className="bg-[#0A2540] pt-32 pb-20">
         <div className="max-w-[1200px] mx-auto px-6">
           <Server className="w-10 h-10 text-[#0078D4] mb-6" />

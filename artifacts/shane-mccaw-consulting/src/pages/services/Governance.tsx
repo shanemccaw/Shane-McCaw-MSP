@@ -1,15 +1,15 @@
-import { useEffect } from "react";
+import { SEOMeta } from "@/components/SEOMeta";
 import { Layout } from "@/components/Layout";
 import { Shield, CheckCircle } from "lucide-react";
 import { ConsultationCTA } from "@/components/ConsultationCTA";
 
 export default function Governance() {
-  useEffect(() => {
-    document.title = "Microsoft 365 Governance, Compliance & Security | Shane McCaw Consulting";
-  }, []);
-
   return (
     <Layout>
+      <SEOMeta
+        title="Microsoft 365 Governance, Compliance & Security | Shane McCaw Consulting"
+        description="Microsoft 365 governance, compliance, and security consulting by Shane McCaw. Frameworks that protect your data, pass audits, and hold up over time — built by NASA's M365 Architect."
+      />
       <section className="bg-[#0A2540] pt-32 pb-20">
         <div className="max-w-[1200px] mx-auto px-6">
           <Shield className="w-10 h-10 text-[#0078D4] mb-6" />

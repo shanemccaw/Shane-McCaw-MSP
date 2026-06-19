@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { SEOMeta } from "@/components/SEOMeta";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -22,10 +22,6 @@ const schema = z.object({
 type FormData = z.infer<typeof schema>;
 
 export default function Contact() {
-  useEffect(() => {
-    document.title = "Contact Shane McCaw | Microsoft 365 Consultant | Shane McCaw Consulting";
-  }, []);
-
   const { toast } = useToast();
   const {
     register,
@@ -45,6 +41,10 @@ export default function Contact() {
 
   return (
     <Layout>
+      <SEOMeta
+        title="Contact Shane McCaw | Microsoft 365 Consultant | Shane McCaw Consulting"
+        description="Contact Shane McCaw — NASA's Lead Microsoft 365 Architect. Get expert answers about M365, Copilot AI, SharePoint, and governance. Expect a personal response within 1 business day."
+      />
       <section className="bg-[#0A2540] pt-32 pb-20">
         <div className="max-w-[1200px] mx-auto px-6">
           <p className="text-[#0078D4] text-sm font-semibold uppercase tracking-[0.1em] mb-4">Get in Touch</p>

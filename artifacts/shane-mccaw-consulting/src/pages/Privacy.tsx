@@ -1,9 +1,14 @@
 import React from "react";
 import { Layout } from "@/components/Layout";
+import { SEOMeta } from "@/components/SEOMeta";
 
 export default function Privacy() {
   return (
     <Layout>
+      <SEOMeta
+        title="Privacy Policy | Shane McCaw Consulting"
+        description="Privacy Policy for Shane McCaw Consulting. Learn how we collect, use, and protect your personal data."
+      />
       <div className="bg-[#F7F9FC] min-h-screen py-16">
         <div className="max-w-[800px] mx-auto px-6">
           <h1 className="text-4xl font-bold text-[#0A2540] mb-3">Privacy Policy</h1>

@@ -1,16 +1,16 @@
-import { useEffect } from "react";
+import { SEOMeta } from "@/components/SEOMeta";
 import { Layout } from "@/components/Layout";
 import { Cloud, CheckCircle, AlertCircle, ArrowRight } from "lucide-react";
 import { Link } from "wouter";
 import { ConsultationCTA } from "@/components/ConsultationCTA";
 
 export default function Microsoft365() {
-  useEffect(() => {
-    document.title = "Microsoft 365 Setup & Optimization | Shane McCaw Consulting";
-  }, []);
-
   return (
     <Layout>
+      <SEOMeta
+        title="Microsoft 365 Setup & Optimization | Shane McCaw Consulting"
+        description="Microsoft 365 setup, optimization, and tenant health audits by Shane McCaw. NASA-methodology reviews delivering clear, prioritized remediation roadmaps — not generic checklists."
+      />
       <section className="bg-[#0A2540] pt-32 pb-20">
         <div className="max-w-[1200px] mx-auto px-6">
           <div className="flex items-center gap-3 mb-6">

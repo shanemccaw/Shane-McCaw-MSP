@@ -1,15 +1,15 @@
-import { useEffect } from "react";
+import { SEOMeta } from "@/components/SEOMeta";
 import { Layout } from "@/components/Layout";
 import { Layout as LayoutIcon, CheckCircle } from "lucide-react";
 import { ConsultationCTA } from "@/components/ConsultationCTA";
 
 export default function SharePoint() {
-  useEffect(() => {
-    document.title = "SharePoint Architecture & Modern Intranets | Shane McCaw Consulting";
-  }, []);
-
   return (
     <Layout>
+      <SEOMeta
+        title="SharePoint Architecture & Modern Intranets | Shane McCaw Consulting"
+        description="SharePoint architecture and modern intranet design by Shane McCaw. 30 years of Microsoft expertise, delivering intranets that employees actually use and IT can govern."
+      />
       <section className="bg-[#0A2540] pt-32 pb-20">
         <div className="max-w-[1200px] mx-auto px-6">
           <LayoutIcon className="w-10 h-10 text-[#0078D4] mb-6" />

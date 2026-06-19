@@ -1,15 +1,15 @@
-import { useEffect } from "react";
+import { SEOMeta } from "@/components/SEOMeta";
 import { Layout } from "@/components/Layout";
 import { CalendlyEmbed } from "@/components/CalendlyEmbed";
 import { CheckCircle } from "lucide-react";
 
 export default function Book() {
-  useEffect(() => {
-    document.title = "Book a Free Discovery Call | Shane McCaw Consulting";
-  }, []);
-
   return (
     <Layout>
+      <SEOMeta
+        title="Book a Free Discovery Call | Shane McCaw Consulting"
+        description="Book a free 30-minute discovery call with Shane McCaw — NASA's Lead Microsoft 365 Architect. Discuss your M365 challenges and get expert guidance. Limited spots available."
+      />
       <section className="bg-[#0A2540] pt-32 pb-20">
         <div className="max-w-[1200px] mx-auto px-6">
           <p className="text-[#0078D4] text-sm font-semibold uppercase tracking-[0.1em] mb-4">Book a Call</p>

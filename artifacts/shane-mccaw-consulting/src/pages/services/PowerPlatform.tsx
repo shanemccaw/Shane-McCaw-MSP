@@ -1,16 +1,16 @@
-import { useEffect } from "react";
+import { SEOMeta } from "@/components/SEOMeta";
 import { Layout } from "@/components/Layout";
 import { CTAButton } from "@/components/CTAButton";
 import { Zap, CheckCircle } from "lucide-react";
 import { ConsultationCTA } from "@/components/ConsultationCTA";
 
 export default function PowerPlatform() {
-  useEffect(() => {
-    document.title = "Power Platform & Automation Consulting | Shane McCaw Consulting";
-  }, []);
-
   return (
     <Layout>
+      <SEOMeta
+        title="Power Platform & Automation Consulting | Shane McCaw Consulting"
+        description="Power Platform and automation consulting by Shane McCaw. Build governed, scalable Power Apps and Power Automate solutions that deliver ROI without governance nightmares."
+      />
       <section className="bg-[#0A2540] pt-32 pb-20">
         <div className="max-w-[1200px] mx-auto px-6">
           <Zap className="w-10 h-10 text-[#0078D4] mb-6" />

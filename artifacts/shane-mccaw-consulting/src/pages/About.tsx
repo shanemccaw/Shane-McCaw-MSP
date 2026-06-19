@@ -1,5 +1,5 @@
-import { useEffect } from "react";
 import { Layout } from "@/components/Layout";
+import { SEOMeta } from "@/components/SEOMeta";
 import { ConsultationCTA } from "@/components/ConsultationCTA";
 import { CheckCircle, Award, Star, Briefcase, Shield, Bot } from "lucide-react";
 
@@ -93,12 +93,12 @@ const philosophy = [
 ];
 
 export default function About() {
-  useEffect(() => {
-    document.title = "About Shane McCaw | NASA's M365 Architect & Copilot SME | Shane McCaw Consulting";
-  }, []);
-
   return (
     <Layout>
+      <SEOMeta
+        title="About Shane McCaw | NASA's M365 Architect & Copilot SME | Shane McCaw Consulting"
+        description="Meet Shane McCaw — NASA's Lead Microsoft 365 Architect, 30-year Microsoft veteran, and Copilot SME. Learn why top organizations trust Shane to transform their M365 environments."
+      />
       {/* Hero */}
       <section className="relative bg-[#0A2540] pt-32 pb-24 overflow-hidden">
         <div

@@ -1,9 +1,14 @@
 import { Card, CardContent } from "@/components/ui/card";
 import { AlertCircle } from "lucide-react";
+import { SEOMeta } from "@/components/SEOMeta";
 
 export default function NotFound() {
   return (
     <div className="min-h-screen w-full flex items-center justify-center bg-gray-50">
+      <SEOMeta
+        title="Page Not Found | Shane McCaw Consulting"
+        description="The page you're looking for doesn't exist. Visit Shane McCaw Consulting for Microsoft 365, Copilot AI, and governance consulting services."
+      />
       <Card className="w-full max-w-md mx-4">
         <CardContent className="pt-6">
           <div className="flex mb-4 gap-2">

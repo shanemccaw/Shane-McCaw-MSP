@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { SEOMeta } from "@/components/SEOMeta";
 import { Layout } from "@/components/Layout";
 import { CTAButton } from "@/components/CTAButton";
 import { CheckCircle, Clock } from "lucide-react";
@@ -88,12 +88,12 @@ const offers = [
 ];
 
 export default function MicroOffers() {
-  useEffect(() => {
-    document.title = "Quick Win Packages — Fixed Price Microsoft 365 Services | Shane McCaw Consulting";
-  }, []);
-
   return (
     <Layout>
+      <SEOMeta
+        title="Quick Win Packages — Fixed Price Microsoft 365 Services | Shane McCaw Consulting"
+        description="Fixed-price Microsoft 365 quick-win packages by Shane McCaw. Clear scope, flat fees, and senior-level delivery — starting at $1,500. No hourly billing surprises."
+      />
       <section className="bg-[#0A2540] pt-32 pb-20">
         <div className="max-w-[1200px] mx-auto px-6">
           <p className="text-[#0078D4] text-sm font-semibold uppercase tracking-[0.1em] mb-4">Quick Wins</p>

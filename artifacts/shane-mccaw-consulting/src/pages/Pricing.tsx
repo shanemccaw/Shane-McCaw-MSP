@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import { SEOMeta } from "@/components/SEOMeta";
 import { Link } from "wouter";
 import { Layout } from "@/components/Layout";
 import { CTAButton } from "@/components/CTAButton";
@@ -158,12 +159,12 @@ function FAQItem({ q, a, index }: { q: string; a: string; index: number }) {
 }
 
 export default function Pricing() {
-  useEffect(() => {
-    document.title = "Pricing — Transparent Microsoft 365 Consulting | Shane McCaw Consulting";
-  }, []);
-
   return (
     <Layout>
+      <SEOMeta
+        title="Pricing — Transparent Microsoft 365 Consulting | Shane McCaw Consulting"
+        description="Transparent Microsoft 365 consulting pricing by Shane McCaw. Fixed-price micro-offer packages and retainer options — know your investment before you commit."
+      />
       {/* Hero */}
       <section className="relative bg-[#0A2540] pt-32 pb-24 overflow-hidden">
         <div

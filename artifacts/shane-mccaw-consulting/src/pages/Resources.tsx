@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import { SEOMeta } from "@/components/SEOMeta";
 import { Layout } from "@/components/Layout";
 import { CTAButton } from "@/components/CTAButton";
 import { ConsultationCTA } from "@/components/ConsultationCTA";
@@ -46,10 +47,6 @@ const posts = [
 ];
 
 export default function Resources() {
-  useEffect(() => {
-    document.title = "Microsoft 365 & Copilot AI Insights | Shane McCaw Consulting";
-  }, []);
-
   const [activeCategory, setActiveCategory] = useState("All");
   const [leadMagnetEmail, setLeadMagnetEmail] = useState("");
   const [leadMagnetName, setLeadMagnetName] = useState("");
@@ -64,6 +61,10 @@ export default function Resources() {
 
   return (
     <Layout>
+      <SEOMeta
+        title="Microsoft 365 & Copilot AI Insights | Shane McCaw Consulting"
+        description="Microsoft 365 and Copilot AI insights, guides, and articles by Shane McCaw — NASA's Lead M365 Architect. Practical, experience-backed advice for IT leaders and Microsoft admins."
+      />
       <section className="bg-[#0A2540] pt-32 pb-20">
         <div className="max-w-[1200px] mx-auto px-6">
           <p className="text-[#0078D4] text-sm font-semibold uppercase tracking-[0.1em] mb-4">Resources</p>
