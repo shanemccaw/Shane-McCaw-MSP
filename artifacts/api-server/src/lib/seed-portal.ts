@@ -82,7 +82,7 @@ export async function seedMarketingServices(): Promise<void> {
   // Fix stale records that were mis-categorised as "service_area" in an earlier seed
   // run but don't have dedicated /services/* sub-pages. Reclassify them as "retainer"
   // and point their pageHref at the pricing page where they actually live.
-  const staleSlugs = ["architect-essentials", "fractional-m365-architect-retainer"];
+  const staleSlugs = ["architect-essentials", "architect-growth", "architect-enterprise", "fractional-m365-architect-retainer"];
   await db
     .update(servicesTable)
     .set({ serviceType: "retainer", pageHref: "/pricing" })
