@@ -40,8 +40,11 @@ const testimonials = [
 ];
 
 export default function Home() {
-  const { services: dbServices, loading: servicesLoading } = useServices("service_area");
+  const { services: dbServiceAreas, loading: serviceAreasLoading } = useServices("service_area");
+  const { services: dbRetainers, loading: retainersLoading } = useServices("retainer");
   const { services: dbOffers, loading: offersLoading } = useServices("micro_offer");
+  const dbServices = [...dbServiceAreas, ...dbRetainers];
+  const servicesLoading = serviceAreasLoading || retainersLoading;
   return (
     <Layout>
       <SEOMeta
