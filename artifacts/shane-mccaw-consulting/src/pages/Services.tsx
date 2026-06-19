@@ -169,7 +169,7 @@ function ServiceDetailCard({ s, index }: { s: PublicService; index: number }) {
 }
 
 export default function Services() {
-  const { services, loading } = useServices("service_area");
+  const { services, loading } = useServices("retainer");
 
   return (
     <Layout>
