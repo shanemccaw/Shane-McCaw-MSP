@@ -407,17 +407,6 @@ export default function Home() {
         </div>
       </section>
 
-      {/* CASE STUDIES COMING SOON */}
-      <section className="bg-[#F7F9FC] py-20" data-testid="case-studies-section">
-        <div className="max-w-[1200px] mx-auto px-6 text-center">
-          <p className="text-[#0078D4] text-sm font-semibold uppercase tracking-[0.1em] mb-3">Results</p>
-          <h2 className="text-3xl md:text-4xl font-extrabold text-[#0A2540] mb-4">Case Studies Coming Soon</h2>
-          <p className="text-muted-foreground max-w-xl mx-auto leading-relaxed">
-            Real client outcomes — documented engagements with measurable results — will be published here. Check back soon.
-          </p>
-        </div>
-      </section>
-
       {/* CONSULTATION CTA SECTION */}
       <section className="relative bg-[#0A2540] py-28 overflow-hidden" data-testid="final-cta-section">
         {/* Radial glow overlay */}
