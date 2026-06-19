@@ -140,8 +140,11 @@ function FAQItem({ q, a, index }: { q: string; a: string; index: number }) {
 }
 
 export default function Pricing() {
-  const { services: microOffers, loading: offersLoading } = useServices("micro_offer");
-  const { services: retainers, loading: retainersLoading } = useServices("retainer");
+  const { services: allServices, loading } = useServices();
+  const microOffers = allServices.filter((s) => s.serviceType === "micro_offer");
+  const retainers = allServices.filter((s) => s.serviceType === "retainer");
+  const offersLoading = loading;
+  const retainersLoading = loading;
 
   const jsonLd = [
     {
