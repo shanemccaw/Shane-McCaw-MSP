@@ -79,6 +79,80 @@ export async function seedMicroOffers(): Promise<void> {
   ]);
 }
 
+export async function seedConsultingServices(): Promise<void> {
+  const [existing] = await db.select().from(servicesTable).where(eq(servicesTable.slug, "m365-consulting")).limit(1);
+  if (existing) return;
+
+  await db.insert(servicesTable).values([
+    {
+      slug: "m365-consulting",
+      name: "Microsoft 365 Setup & Optimization",
+      description: "Ongoing Microsoft 365 architecture consulting — tenant configuration, security hardening, workload adoption, and continuous optimization. Billed monthly, cancel any time.",
+      category: "Microsoft 365",
+      deliverables: "Monthly strategy call, tenant health monitoring, priority recommendations, written progress report",
+      price: "1500.00",
+      turnaround: null,
+      billingType: "recurring_monthly",
+      isPublic: true,
+    },
+    {
+      slug: "copilot-ai-consulting",
+      name: "Copilot AI Readiness & Deployment",
+      description: "Ongoing Copilot AI governance, deployment, and adoption support — from readiness assessment through rollout and user training. Billed monthly.",
+      category: "Copilot AI",
+      deliverables: "Monthly strategy call, copilot governance review, adoption metrics, written progress report",
+      price: "2000.00",
+      turnaround: null,
+      billingType: "recurring_monthly",
+      isPublic: true,
+    },
+    {
+      slug: "sharepoint-consulting",
+      name: "SharePoint Architecture & Intranets",
+      description: "Ongoing SharePoint architecture, intranet design, and governance consulting. Covers information architecture, navigation, taxonomy, and permissions. Billed monthly.",
+      category: "SharePoint",
+      deliverables: "Monthly strategy call, IA review, governance recommendations, written progress report",
+      price: "1500.00",
+      turnaround: null,
+      billingType: "recurring_monthly",
+      isPublic: true,
+    },
+    {
+      slug: "power-platform-consulting",
+      name: "Power Platform & Automation",
+      description: "Ongoing Power Automate and Power Apps consulting — automation design, build oversight, governance, and continuous improvement. Billed monthly.",
+      category: "Power Platform",
+      deliverables: "Monthly strategy call, automation review, flow builds and improvements, written progress report",
+      price: "1500.00",
+      turnaround: null,
+      billingType: "recurring_monthly",
+      isPublic: true,
+    },
+    {
+      slug: "governance-consulting",
+      name: "Governance, Compliance & Security",
+      description: "Ongoing Microsoft 365 security, compliance, and governance consulting — DLP, sensitivity labels, Purview, conditional access, and admin hygiene. Billed monthly.",
+      category: "Governance",
+      deliverables: "Monthly strategy call, security posture review, policy updates, written progress report",
+      price: "2000.00",
+      turnaround: null,
+      billingType: "recurring_monthly",
+      isPublic: true,
+    },
+    {
+      slug: "cloud-migration-consulting",
+      name: "Cloud Migration Services",
+      description: "Ongoing cloud migration planning, execution oversight, and post-migration support — Exchange, SharePoint, and full M365 migrations. Billed monthly.",
+      category: "Migration",
+      deliverables: "Monthly strategy call, migration planning, execution oversight, written progress report",
+      price: "2500.00",
+      turnaround: null,
+      billingType: "recurring_monthly",
+      isPublic: true,
+    },
+  ]);
+}
+
 export async function seedPortalDemo(): Promise<void> {
   // Check if demo client already exists
   const [existing] = await db.select().from(usersTable).where(eq(usersTable.email, "demo@shanemccaw.com")).limit(1);

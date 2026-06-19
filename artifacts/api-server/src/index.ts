@@ -1,7 +1,7 @@
 import app from "./app";
 import { logger } from "./lib/logger";
 import { seedAdminUser } from "./routes/auth";
-import { seedPortalDemo, seedMicroOffers } from "./lib/seed-portal";
+import { seedPortalDemo, seedMicroOffers, seedConsultingServices } from "./lib/seed-portal";
 
 const rawPort = process.env["PORT"];
 
@@ -35,6 +35,12 @@ app.listen(port, (err) => {
     logger.info("Micro-offer services seeded (no-op if exists)");
   }).catch((seedErr) => {
     logger.warn({ err: seedErr }, "Could not seed micro-offer services");
+  });
+
+  seedConsultingServices().then(() => {
+    logger.info("Consulting services seeded (no-op if exists)");
+  }).catch((seedErr) => {
+    logger.warn({ err: seedErr }, "Could not seed consulting services");
   });
 
   if (process.env.NODE_ENV !== "production") {

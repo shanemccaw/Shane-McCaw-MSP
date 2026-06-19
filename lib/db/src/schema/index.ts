@@ -46,6 +46,7 @@ export const servicesTable = pgTable("services", {
   price: numeric("price", { precision: 10, scale: 2 }),
   durationDays: integer("duration_days"),
   turnaround: text("turnaround"),
+  billingType: text("billing_type", { enum: ["one_time", "recurring_monthly"] }).notNull().default("one_time"),
   isPublic: boolean("is_public").notNull().default(true),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });

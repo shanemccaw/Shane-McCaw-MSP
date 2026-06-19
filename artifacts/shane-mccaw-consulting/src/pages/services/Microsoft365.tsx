@@ -142,6 +142,34 @@ export default function Microsoft365() {
         </div>
       </section>
 
+      {/* Get Started CTA */}
+      <section className="bg-white py-16">
+        <div className="max-w-[1200px] mx-auto px-6">
+          <div className="bg-[#0A2540] rounded-3xl p-10 md:p-14 flex flex-col md:flex-row items-start md:items-center justify-between gap-8">
+            <div className="flex-1">
+              <p className="text-[#0078D4] text-sm font-semibold uppercase tracking-wide mb-3">Monthly Retainer</p>
+              <h2 className="text-2xl md:text-3xl font-extrabold text-white mb-3">Ready to get started?</h2>
+              <p className="text-white/70 text-base max-w-md">
+                Start a monthly Microsoft 365 architecture retainer. Ongoing strategy calls, tenant health monitoring, and priority recommendations. Cancel any time.
+              </p>
+            </div>
+            <div className="flex flex-col items-start md:items-end gap-4">
+              <div>
+                <span className="text-3xl font-extrabold text-white">$1,500</span>
+                <span className="text-lg font-normal text-white/60">/mo</span>
+              </div>
+              <a
+                href="/crm/portal/onboarding/select?service=m365-consulting"
+                className="inline-flex items-center gap-2 bg-[#0078D4] text-white font-semibold px-6 py-3 rounded-xl hover:bg-[#0066B8] transition-colors"
+              >
+                Get Started <ArrowRight className="w-4 h-4" />
+              </a>
+              <p className="text-white/50 text-xs">No long-term commitment required.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
       <ConsultationCTA />
     </Layout>
   );

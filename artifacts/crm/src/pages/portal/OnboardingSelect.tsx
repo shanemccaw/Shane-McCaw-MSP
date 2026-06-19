@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
-import { useLocation, useSearch } from "wouter";
+import { useLocation, useSearch, Link } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
-import { CheckCircle, Clock, ArrowRight, Loader2, ShieldCheck, Calendar } from "lucide-react";
+import { CheckCircle, Clock, ArrowRight, Loader2, ShieldCheck, Calendar, Phone, ShoppingCart, RefreshCw } from "lucide-react";
 
 interface Service {
   id: number;
@@ -13,9 +13,10 @@ interface Service {
   price: string | null;
   durationDays: number | null;
   turnaround: string | null;
+  billingType: "one_time" | "recurring_monthly";
 }
 
-const SLUG_ORDER = [
+const MICRO_OFFER_SLUGS = [
   "m365-health-check",
   "copilot-readiness",
   "sharepoint-blueprint",
@@ -24,9 +25,24 @@ const SLUG_ORDER = [
   "copilot-prompts",
 ];
 
-function fmt(p: string | null) {
+const CONSULTING_SLUGS = [
+  "m365-consulting",
+  "copilot-ai-consulting",
+  "sharepoint-consulting",
+  "power-platform-consulting",
+  "governance-consulting",
+  "cloud-migration-consulting",
+];
+
+function fmt(p: string | null, billingType: "one_time" | "recurring_monthly") {
   if (!p) return "Contact for pricing";
-  return `$${parseFloat(p).toLocaleString("en-US", { minimumFractionDigits: 0 })}`;
+  const formatted = `$${parseFloat(p).toLocaleString("en-US", { minimumFractionDigits: 0 })}`;
+  return billingType === "recurring_monthly" ? `${formatted}/mo` : formatted;
+}
+
+function fmtNum(p: string | null) {
+  if (!p) return 0;
+  return parseFloat(p);
 }
 
 function todayIso() {
@@ -42,47 +58,70 @@ export default function OnboardingSelect() {
 
   const [services, setServices] = useState<Service[]>([]);
   const [loading, setLoading] = useState(true);
-  const [selectedId, setSelectedId] = useState<number | null>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [startDate, setStartDate] = useState<string>(todayIso());
 
   useEffect(() => {
     fetch("/api/portal/onboarding/services")
       .then(r => r.json() as Promise<Service[]>)
       .then(data => {
-        const sorted = [...data].sort((a, b) => {
-          const ai = SLUG_ORDER.indexOf(a.slug ?? "");
-          const bi = SLUG_ORDER.indexOf(b.slug ?? "");
+        const microOffers = data.filter(s => MICRO_OFFER_SLUGS.includes(s.slug ?? "")).sort((a, b) => {
+          const ai = MICRO_OFFER_SLUGS.indexOf(a.slug ?? "");
+          const bi = MICRO_OFFER_SLUGS.indexOf(b.slug ?? "");
           return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
         });
+        const consulting = data.filter(s => CONSULTING_SLUGS.includes(s.slug ?? "")).sort((a, b) => {
+          const ai = CONSULTING_SLUGS.indexOf(a.slug ?? "");
+          const bi = CONSULTING_SLUGS.indexOf(b.slug ?? "");
+          return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
+        });
+        const sorted = [...microOffers, ...consulting];
         setServices(sorted);
         if (preselectedSlug) {
           const match = sorted.find(s => s.slug === preselectedSlug);
-          if (match) setSelectedId(match.id);
+          if (match) setSelectedIds(new Set([match.id]));
         }
         setLoading(false);
       })
       .catch(() => setLoading(false));
   }, [preselectedSlug]);
 
+  const toggleService = (id: number) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
   const handleContinue = () => {
-    if (!selectedId) return;
+    if (selectedIds.size === 0) return;
     if (!user) {
       sessionStorage.setItem("onboardingReturnTo", `/portal/onboarding/select?service=${preselectedSlug || ""}`);
       setLocation("/");
       return;
     }
     const qs = new URLSearchParams({
-      serviceId: String(selectedId),
+      serviceIds: Array.from(selectedIds).join(","),
       startDate,
     });
     setLocation(`/portal/onboarding/contract?${qs.toString()}`);
   };
 
-  const selected = services.find(s => s.id === selectedId);
+  const selectedServices = services.filter(s => selectedIds.has(s.id));
+  const oneTimeTotal = selectedServices
+    .filter(s => s.billingType === "one_time")
+    .reduce((sum, s) => sum + fmtNum(s.price), 0);
+  const monthlyTotal = selectedServices
+    .filter(s => s.billingType === "recurring_monthly")
+    .reduce((sum, s) => sum + fmtNum(s.price), 0);
+
+  const microOffers = services.filter(s => s.billingType === "one_time");
+  const consultingServices = services.filter(s => s.billingType === "recurring_monthly");
 
   return (
     <div className="min-h-screen bg-[#F7F9FC]">
-      {/* Header */}
       <div className="bg-[#0A2540] border-b border-white/10">
         <div className="max-w-5xl mx-auto px-6 py-4 flex items-center justify-between">
           <div className="flex items-center gap-2.5">
@@ -92,7 +131,7 @@ export default function OnboardingSelect() {
             <span className="text-white font-bold text-sm">Shane McCaw Consulting</span>
           </div>
           <div className="hidden md:flex items-center gap-6 text-xs text-white/50">
-            <span className="text-white font-semibold">1. Choose service</span>
+            <span className="text-white font-semibold">1. Choose services</span>
             <span>→</span>
             <span>2. Sign agreement</span>
             <span>→</span>
@@ -104,10 +143,10 @@ export default function OnboardingSelect() {
       <div className="max-w-5xl mx-auto px-6 py-10">
         <div className="mb-8">
           <h1 className="text-2xl md:text-3xl font-extrabold text-[#0A2540] mb-2">
-            Choose your micro-offer
+            Choose your services
           </h1>
           <p className="text-muted-foreground text-sm max-w-xl">
-            Fixed-price, fast-turnaround engagements. Select one to review the deliverables, then sign a lightweight agreement before checkout.
+            Select one or more services. Quick-win packages are one-time fixed-price; consulting retainers bill monthly. You can mix both in a single order.
           </p>
         </div>
 
@@ -116,102 +155,203 @@ export default function OnboardingSelect() {
             <Loader2 className="w-8 h-8 animate-spin text-[#0078D4]" />
           </div>
         ) : (
-          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
-            {services.map(service => {
-              const isSelected = service.id === selectedId;
-              return (
-                <button
-                  key={service.id}
-                  onClick={() => setSelectedId(service.id)}
-                  className={`text-left rounded-2xl border-2 p-5 transition-all focus:outline-none ${
-                    isSelected
-                      ? "border-[#0078D4] bg-white shadow-md"
-                      : "border-border bg-white hover:border-[#0078D4]/40 hover:shadow-sm"
-                  }`}
-                >
-                  <div className="flex items-start justify-between gap-2 mb-3">
-                    <div>
-                      <span className="text-[10px] font-semibold uppercase tracking-wider text-[#0078D4] bg-[#0078D4]/10 px-2 py-0.5 rounded-full">
-                        {service.category ?? "Micro-offer"}
+          <div className="grid lg:grid-cols-3 gap-6">
+            <div className="lg:col-span-2 space-y-8">
+              {microOffers.length > 0 && (
+                <div>
+                  <div className="flex items-center gap-2 mb-3">
+                    <span className="text-xs font-bold uppercase tracking-wider text-[#0078D4]">Quick Win Packages</span>
+                    <span className="text-[10px] bg-[#0078D4]/10 text-[#0078D4] px-2 py-0.5 rounded-full font-semibold">One-time</span>
+                  </div>
+                  <div className="grid sm:grid-cols-2 gap-3">
+                    {microOffers.map(service => {
+                      const isSelected = selectedIds.has(service.id);
+                      return (
+                        <button
+                          key={service.id}
+                          onClick={() => toggleService(service.id)}
+                          className={`text-left rounded-2xl border-2 p-4 transition-all focus:outline-none ${
+                            isSelected
+                              ? "border-[#0078D4] bg-white shadow-md"
+                              : "border-border bg-white hover:border-[#0078D4]/40 hover:shadow-sm"
+                          }`}
+                        >
+                          <div className="flex items-start justify-between gap-2 mb-2">
+                            <span className="text-[10px] font-semibold uppercase tracking-wider text-[#0078D4] bg-[#0078D4]/10 px-2 py-0.5 rounded-full">
+                              {service.category ?? "Micro-offer"}
+                            </span>
+                            {isSelected && <CheckCircle className="w-4 h-4 text-[#0078D4] flex-shrink-0" />}
+                          </div>
+                          <h3 className="font-bold text-[#0A2540] text-sm mb-1">{service.name}</h3>
+                          <p className="text-xs text-muted-foreground leading-relaxed mb-3 line-clamp-2">
+                            {service.description}
+                          </p>
+                          <div className="flex items-center justify-between">
+                            <span className="text-base font-extrabold text-[#0A2540]">{fmt(service.price, service.billingType)}</span>
+                            {service.turnaround && (
+                              <div className="flex items-center gap-1 text-[10px] text-muted-foreground">
+                                <Clock className="w-3 h-3" />
+                                {service.turnaround}
+                              </div>
+                            )}
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {consultingServices.length > 0 && (
+                <div>
+                  <div className="flex items-center gap-2 mb-3">
+                    <span className="text-xs font-bold uppercase tracking-wider text-[#0078D4]">Consulting Retainers</span>
+                    <span className="text-[10px] bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-0.5 rounded-full font-semibold flex items-center gap-1">
+                      <RefreshCw className="w-2.5 h-2.5" />
+                      Monthly
+                    </span>
+                  </div>
+                  <div className="grid sm:grid-cols-2 gap-3">
+                    {consultingServices.map(service => {
+                      const isSelected = selectedIds.has(service.id);
+                      return (
+                        <button
+                          key={service.id}
+                          onClick={() => toggleService(service.id)}
+                          className={`text-left rounded-2xl border-2 p-4 transition-all focus:outline-none ${
+                            isSelected
+                              ? "border-emerald-500 bg-white shadow-md"
+                              : "border-border bg-white hover:border-emerald-400/60 hover:shadow-sm"
+                          }`}
+                        >
+                          <div className="flex items-start justify-between gap-2 mb-2">
+                            <span className="text-[10px] font-semibold uppercase tracking-wider text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">
+                              {service.category ?? "Consulting"}
+                            </span>
+                            {isSelected && <CheckCircle className="w-4 h-4 text-emerald-500 flex-shrink-0" />}
+                          </div>
+                          <h3 className="font-bold text-[#0A2540] text-sm mb-1">{service.name}</h3>
+                          <p className="text-xs text-muted-foreground leading-relaxed mb-3 line-clamp-2">
+                            {service.description}
+                          </p>
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <span className="text-base font-extrabold text-[#0A2540]">{fmt(service.price, service.billingType)}</span>
+                            </div>
+                            <div className="flex items-center gap-1 text-[10px] text-emerald-600 font-medium">
+                              <RefreshCw className="w-3 h-3" />
+                              billed monthly
+                            </div>
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              <div className="bg-white border border-border rounded-2xl p-5">
+                <div className="flex items-center gap-2 mb-3">
+                  <Calendar className="w-4 h-4 text-[#0078D4]" />
+                  <h3 className="font-semibold text-[#0A2540] text-sm">Preferred start date</h3>
+                </div>
+                <p className="text-xs text-muted-foreground mb-3">
+                  When would you like the engagement to begin? Shane will confirm availability after purchase.
+                </p>
+                <input
+                  type="date"
+                  value={startDate}
+                  min={todayIso()}
+                  onChange={e => setStartDate(e.target.value)}
+                  className="border border-border rounded-lg px-3 py-2 text-sm text-[#0A2540] focus:outline-none focus:ring-2 focus:ring-[#0078D4]/40 focus:border-[#0078D4]"
+                />
+              </div>
+            </div>
+
+            <div className="lg:col-span-1">
+              <div className="sticky top-6 space-y-4">
+                <div className="bg-white border border-border rounded-2xl overflow-hidden">
+                  <div className="px-4 py-3 bg-[#0A2540] flex items-center gap-2">
+                    <ShoppingCart className="w-4 h-4 text-white" />
+                    <span className="text-white text-sm font-semibold">Your cart</span>
+                    {selectedIds.size > 0 && (
+                      <span className="ml-auto text-xs bg-[#0078D4] text-white rounded-full px-2 py-0.5 font-semibold">
+                        {selectedIds.size}
                       </span>
-                    </div>
-                    {isSelected && (
-                      <CheckCircle className="w-4 h-4 text-[#0078D4] flex-shrink-0 mt-0.5" />
                     )}
                   </div>
 
-                  <h3 className="font-bold text-[#0A2540] text-sm mb-1">{service.name}</h3>
-                  <p className="text-xs text-muted-foreground leading-relaxed mb-4 line-clamp-3">
-                    {service.description}
-                  </p>
+                  <div className="p-4">
+                    {selectedIds.size === 0 ? (
+                      <p className="text-sm text-muted-foreground text-center py-4">
+                        Select services above to see your cart
+                      </p>
+                    ) : (
+                      <div className="space-y-2">
+                        {selectedServices.map(s => (
+                          <div key={s.id} className="flex items-start justify-between gap-2 text-sm">
+                            <div className="flex-1 min-w-0">
+                              <p className="text-[#0A2540] font-medium text-xs leading-snug line-clamp-2">{s.name}</p>
+                              <p className="text-[10px] text-muted-foreground mt-0.5">
+                                {s.billingType === "recurring_monthly" ? "monthly subscription" : "one-time"}
+                              </p>
+                            </div>
+                            <span className="font-semibold text-[#0A2540] text-xs whitespace-nowrap flex-shrink-0">
+                              {fmt(s.price, s.billingType)}
+                            </span>
+                          </div>
+                        ))}
 
-                  <div className="flex items-center justify-between">
-                    <span className="text-lg font-extrabold text-[#0A2540]">{fmt(service.price)}</span>
-                    {service.turnaround && (
-                      <div className="flex items-center gap-1 text-[11px] text-muted-foreground">
-                        <Clock className="w-3 h-3" />
-                        {service.turnaround}
+                        <div className="border-t border-border pt-2 mt-2 space-y-1">
+                          {oneTimeTotal > 0 && (
+                            <div className="flex items-center justify-between text-sm">
+                              <span className="text-muted-foreground text-xs">One-time total</span>
+                              <span className="font-bold text-[#0A2540] text-xs">${oneTimeTotal.toLocaleString("en-US")}</span>
+                            </div>
+                          )}
+                          {monthlyTotal > 0 && (
+                            <div className="flex items-center justify-between text-sm">
+                              <span className="text-muted-foreground text-xs">Monthly total</span>
+                              <span className="font-bold text-emerald-700 text-xs">${monthlyTotal.toLocaleString("en-US")}/mo</span>
+                            </div>
+                          )}
+                          {monthlyTotal > 0 && (
+                            <p className="text-[10px] text-muted-foreground leading-relaxed pt-1">
+                              Subscription items renew monthly. Cancel any time.
+                            </p>
+                          )}
+                        </div>
                       </div>
                     )}
                   </div>
+                </div>
+
+                <button
+                  onClick={handleContinue}
+                  disabled={selectedIds.size === 0}
+                  className="w-full flex items-center justify-center gap-2 bg-[#0078D4] text-white font-semibold px-5 py-3 rounded-xl hover:bg-[#005A9E] transition-colors disabled:opacity-40 disabled:cursor-not-allowed text-sm"
+                >
+                  Continue to Agreement
+                  <ArrowRight className="w-4 h-4" />
                 </button>
-              );
-            })}
-          </div>
-        )}
 
-        {/* Detail panel for selected service */}
-        {selected && (
-          <div className="bg-white border border-border rounded-2xl p-6 mb-6">
-            <h2 className="font-bold text-[#0A2540] mb-1">{selected.name} — What's included</h2>
-            <p className="text-sm text-muted-foreground mb-4">{selected.description}</p>
-            {selected.deliverables && (
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-wide text-[#0078D4] mb-2">Deliverables</p>
-                <ul className="space-y-1.5">
-                  {selected.deliverables.split(",").map(d => (
-                    <li key={d} className="flex items-center gap-2 text-sm text-[#0A2540]">
-                      <CheckCircle className="w-3.5 h-3.5 text-[#0078D4] flex-shrink-0" />
-                      {d.trim()}
-                    </li>
-                  ))}
-                </ul>
+                <div className="text-center">
+                  <Link
+                    href="/book"
+                    className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-[#0078D4] transition-colors font-medium"
+                  >
+                    <Phone className="w-3.5 h-3.5" />
+                    Prefer to talk first? Schedule a free discovery call →
+                  </Link>
+                </div>
+
+                <p className="text-xs text-muted-foreground text-center">
+                  You'll review and sign a short service agreement before checkout.
+                </p>
               </div>
-            )}
+            </div>
           </div>
         )}
-
-        {/* Preferred start date */}
-        <div className="bg-white border border-border rounded-2xl p-5 mb-6">
-          <div className="flex items-center gap-2 mb-3">
-            <Calendar className="w-4 h-4 text-[#0078D4]" />
-            <h3 className="font-semibold text-[#0A2540] text-sm">Preferred start date</h3>
-          </div>
-          <p className="text-xs text-muted-foreground mb-3">
-            When would you like the engagement to begin? Shane will confirm availability after purchase.
-          </p>
-          <input
-            type="date"
-            value={startDate}
-            min={todayIso()}
-            onChange={e => setStartDate(e.target.value)}
-            className="border border-border rounded-lg px-3 py-2 text-sm text-[#0A2540] focus:outline-none focus:ring-2 focus:ring-[#0078D4]/40 focus:border-[#0078D4]"
-          />
-        </div>
-
-        <div className="flex items-center gap-4">
-          <button
-            onClick={handleContinue}
-            disabled={!selectedId}
-            className="flex items-center gap-2 bg-[#0078D4] text-white font-semibold px-6 py-3 rounded-xl hover:bg-[#005A9E] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-          >
-            Continue to Agreement
-            <ArrowRight className="w-4 h-4" />
-          </button>
-          <p className="text-xs text-muted-foreground">
-            You'll review and sign a short service agreement before checkout.
-          </p>
-        </div>
       </div>
     </div>
   );

@@ -538,17 +538,32 @@ async function generateContractPdf(opts: ContractPdfOptions): Promise<string> {
 // ─── Onboarding provisioning helper ──────────────────────────────────────────
 // Extracted from the webhook so control flow is clean (no break/return fights).
 // Idempotent: checks for an existing invoice by stripeSessionId before acting.
+// Supports both legacy single serviceId and new comma-separated serviceIds format.
 async function provisionOnboardingProject(
   req: Request,
   session: import("stripe").Stripe.Checkout.Session,
 ): Promise<void> {
-  const { userId, serviceId, contractId } = session.metadata ?? {};
+  const { userId, serviceId, serviceIds: serviceIdsStr, contractId, contractIds: contractIdsStr } = session.metadata ?? {};
   const uid = parseInt(userId ?? "", 10);
-  const sid = parseInt(serviceId ?? "", 10);
-  const cid = parseInt(contractId ?? "", 10);
 
-  if (isNaN(uid) || isNaN(sid)) {
-    req.log.error({ userId, serviceId }, "provisionOnboardingProject: invalid metadata ids");
+  // Support both legacy (serviceId) and new (serviceIds) metadata formats
+  const sids = serviceIdsStr
+    ? serviceIdsStr.split(",").map(s => parseInt(s.trim(), 10)).filter(n => !isNaN(n))
+    : serviceId
+      ? [parseInt(serviceId, 10)].filter(n => !isNaN(n))
+      : [];
+  const cids = contractIdsStr
+    ? contractIdsStr.split(",").map(s => parseInt(s.trim(), 10)).filter(n => !isNaN(n))
+    : contractId
+      ? [parseInt(contractId, 10)].filter(n => !isNaN(n))
+      : [];
+
+  // Legacy single-value fallback for backwards compat
+  const sid = sids[0] ?? NaN;
+  const cid = cids[0] ?? NaN;
+
+  if (isNaN(uid) || sids.length === 0) {
+    req.log.error({ userId, serviceIds: serviceIdsStr ?? serviceId }, "provisionOnboardingProject: invalid metadata ids");
     return;
   }
 
@@ -562,26 +577,40 @@ async function provisionOnboardingProject(
     return;
   }
 
-  const [service] = await db.select().from(servicesTable).where(eq(servicesTable.id, sid));
+  // Fetch all services for this session (ordered by sids)
+  const fetchedServices = sids.length > 0
+    ? await db.select().from(servicesTable)
+        .where(sql`${servicesTable.id} = ANY(ARRAY[${sql.join(sids.map(id => sql`${id}`), sql`, `)}]::int[])`)
+    : [];
+  const serviceMap = new Map(fetchedServices.map(s => [s.id, s]));
+
   const [buyer] = await db.select().from(usersTable).where(eq(usersTable.id, uid));
-  if (!service || !buyer) {
-    req.log.error({ sid, uid }, "provisionOnboardingProject: service or buyer not found");
+  if (fetchedServices.length === 0 || !buyer) {
+    req.log.error({ sids, uid }, "provisionOnboardingProject: services or buyer not found");
     return;
   }
 
-  const amountDollars = service.price
-    ? parseFloat(String(service.price)).toFixed(2)
-    : "0.00";
+  // Ordered service list matching sids order
+  const orderedServices = sids.map(id => serviceMap.get(id)).filter(Boolean) as typeof fetchedServices;
+  const serviceNames = orderedServices.map(s => s.name);
+  const totalAmountDollars = orderedServices
+    .reduce((sum, s) => sum + (s.price ? parseFloat(String(s.price)) : 0), 0)
+    .toFixed(2);
 
   // Parse optional start date from checkout metadata; default to now
   const rawStart = session.metadata?.startDate;
   const parsedStart = rawStart ? new Date(rawStart) : new Date();
   const startDate = isNaN(parsedStart.getTime()) ? new Date() : parsedStart;
 
-  // ── Create project workspace ──────────────────────────────────────────────
+  const buyerLabel = buyer.name ?? buyer.company ?? buyer.email;
+
+  // ── Create one project workspace covering all services in this session ─────
+  const projectTitle = `${buyerLabel} — ${serviceNames.join(" + ")}`;
   const [project] = await db.insert(projectsTable).values({
-    title: `${buyer.name ?? buyer.company ?? buyer.email} — ${service.name}`,
-    description: service.description ?? null,
+    title: projectTitle,
+    description: orderedServices.length === 1
+      ? (orderedServices[0].description ?? null)
+      : `Engagement covering: ${serviceNames.join(", ")}`,
     status: "active",
     phase: "Kickoff",
     progress: 0,
@@ -589,7 +618,7 @@ async function provisionOnboardingProject(
     startDate,
   }).returning();
 
-  // ── Seed workflow steps from per-service templates ────────────────────────
+  // ── Seed workflow steps from primary service template ─────────────────────
   const stepTemplates: Record<string, Array<{ title: string; description: string }>> = {
     "m365-health-check": [
       { title: "Kickoff Call", description: "30-minute video call to confirm scope, access requirements, and expected deliverables." },
@@ -634,8 +663,9 @@ async function provisionOnboardingProject(
       { title: "Handover", description: "Library delivered with a short video walkthrough and guidance on prompt maintenance." },
     ],
   };
-  const steps = (service.slug && stepTemplates[service.slug])
-    ? stepTemplates[service.slug]
+  const primarySlug = orderedServices[0]?.slug ?? "";
+  const steps = (primarySlug && stepTemplates[primarySlug])
+    ? stepTemplates[primarySlug]
     : [
         { title: "Kickoff Call", description: "Initial call to align on scope and next steps." },
         { title: "Discovery", description: "Information gathering and requirements review." },
@@ -653,60 +683,66 @@ async function provisionOnboardingProject(
     }))
   );
 
-  // ── Assign service to client ──────────────────────────────────────────────
-  await db.insert(clientServicesTable).values({
-    clientUserId: uid,
-    serviceId: sid,
-    projectId: project.id,
-    status: "active",
-    progress: 0,
-    startDate,
-  });
+  // ── Loop over every service: assign clientService, link contract, create invoice ──
+  for (let i = 0; i < orderedServices.length; i++) {
+    const svc = orderedServices[i];
+    const cid = cids[i] ?? NaN;
+    const svcAmount = svc.price ? parseFloat(String(svc.price)).toFixed(2) : "0.00";
 
-  // ── Link contract → project and attach pre-generated PDF as document ──────
-  if (!isNaN(cid)) {
-    const contractRecord = await db.select().from(contractsTable)
-      .where(eq(contractsTable.id, cid))
-      .then(r => r[0]);
+    // Assign service to client
+    await db.insert(clientServicesTable).values({
+      clientUserId: uid,
+      serviceId: svc.id,
+      projectId: project.id,
+      status: "active",
+      progress: 0,
+      startDate,
+    });
 
-    await db.update(contractsTable)
-      .set({ projectId: project.id, stripeSessionId: session.id })
-      .where(eq(contractsTable.id, cid));
+    // Link contract → project and attach pre-generated PDF as document
+    if (!isNaN(cid)) {
+      const contractRecord = await db.select().from(contractsTable)
+        .where(eq(contractsTable.id, cid))
+        .then(r => r[0]);
 
-    // PDF was generated at signing time (POST /portal/onboarding/contract).
-    // If the pdfFilename is present, create the documents row now that we have a projectId.
-    const pdfFilename = contractRecord?.pdfFilename;
-    if (pdfFilename) {
-      await db.insert(documentsTable).values({
-        projectId: project.id,
-        name: `Signed Service Agreement — ${service.name}`,
-        filename: pdfFilename,
-        mimeType: "application/pdf",
-        uploadedBy: uid,
-      });
+      await db.update(contractsTable)
+        .set({ projectId: project.id, stripeSessionId: session.id })
+        .where(eq(contractsTable.id, cid));
+
+      const pdfFilename = contractRecord?.pdfFilename;
+      if (pdfFilename) {
+        await db.insert(documentsTable).values({
+          projectId: project.id,
+          name: `Signed Service Agreement — ${svc.name}`,
+          filename: pdfFilename,
+          mimeType: "application/pdf",
+          uploadedBy: uid,
+        });
+      }
     }
-  }
 
-  // ── Create paid invoice (written first so idempotency guard catches replays) ─
-  await db.insert(invoicesTable).values({
-    clientUserId: uid,
-    projectId: project.id,
-    invoiceNumber: `ONB-${Date.now()}`,
-    description: `${service.name} — self-service purchase`,
-    amount: amountDollars,
-    currency: "usd",
-    status: "paid",
-    paidAt: new Date(),
-    stripeSessionId: session.id,
-  });
+    // Create paid invoice for this service.
+    // Only the first invoice gets stripeSessionId (idempotency guard reads it).
+    await db.insert(invoicesTable).values({
+      clientUserId: uid,
+      projectId: project.id,
+      invoiceNumber: `ONB-${Date.now()}-${i}`,
+      description: `${svc.name} — self-service purchase${svc.billingType === "recurring_monthly" ? " (month 1)" : ""}`,
+      amount: svcAmount,
+      currency: "usd",
+      status: "paid",
+      paidAt: new Date(),
+      stripeSessionId: i === 0 ? session.id : null,
+    });
+  }
 
   // ── Notify admins ─────────────────────────────────────────────────────────
   const admins = await db.select().from(usersTable).where(eq(usersTable.role, "admin"));
   for (const admin of admins) {
     await db.insert(notificationsTable).values({
       userId: admin.id,
-      title: `New onboarding purchase: ${service.name}`,
-      body: `${buyer.name ?? buyer.email} purchased "${service.name}" ($${amountDollars}). Project #${project.id} auto-created.`,
+      title: `New onboarding purchase: ${serviceNames.join(", ")}`,
+      body: `${buyerLabel} purchased ${serviceNames.length > 1 ? serviceNames.join(" + ") : `"${serviceNames[0]}"`} ($${totalAmountDollars}). Project #${project.id} auto-created.`,
       type: "general",
       linkPath: `/dashboard`,
     });
@@ -715,7 +751,7 @@ async function provisionOnboardingProject(
   // ── Notify client ─────────────────────────────────────────────────────────
   await db.insert(notificationsTable).values({
     userId: uid,
-    title: `Your project is ready: ${service.name}`,
+    title: `Your project is ready: ${serviceNames.join(", ")}`,
     body: `Payment confirmed. Your project workspace has been created. Shane will be in touch within 1 business day to schedule your kickoff call.`,
     type: "project_update",
     linkPath: `/portal/projects/${project.id}`,
@@ -728,24 +764,28 @@ async function provisionOnboardingProject(
     .where(eq(usersTable.role, "admin"))
     .limit(1);
   if (adminUser) {
+    const serviceLabel = serviceNames.length === 1
+      ? serviceNames[0]
+      : serviceNames.join(" + ");
     await db.insert(messagesTable).values({
       clientUserId: uid,
       senderUserId: adminUser.id,
-      body: `Welcome to your ${service.name} project! 👋\n\nPayment confirmed and your project workspace is ready. I'll be in touch within 1 business day to schedule your kickoff call and confirm any access requirements.\n\nIf you have any questions in the meantime, feel free to message me here.\n\n— Shane`,
+      body: `Welcome! 👋\n\nPayment confirmed for: ${serviceLabel}. Your project workspace is ready. I'll be in touch within 1 business day to schedule your kickoff call and confirm any access requirements.\n\nIf you have any questions in the meantime, feel free to message me here.\n\n— Shane`,
       readByClient: false,
       readByAdmin: true,
     });
   }
 
   // ── Confirmation email to client (fire-and-forget) ────────────────────────
+  const primaryServiceName = serviceNames.join(", ");
   if (buyer.email) {
     sendEmail(
       buyer.email,
-      `Your ${service.name} project is ready — next steps inside`,
+      `Your ${primaryServiceName} project is ready — next steps inside`,
       onboardingConfirmationEmail({
         clientName: buyer.name ?? "",
-        serviceName: service.name,
-        amountDollars,
+        serviceName: primaryServiceName,
+        amountDollars: totalAmountDollars,
         projectId: project.id,
       }),
     ).catch(() => null);
@@ -756,12 +796,12 @@ async function provisionOnboardingProject(
   if (adminEmailAddr) {
     sendEmail(
       adminEmailAddr,
-      `New onboarding purchase: ${service.name} — $${amountDollars}`,
+      `New onboarding purchase: ${primaryServiceName} — $${totalAmountDollars}`,
       adminPurchaseAlertEmail({
         clientName: buyer.name ?? "",
         clientEmail: buyer.email,
-        serviceName: service.name,
-        amountDollars,
+        serviceName: primaryServiceName,
+        amountDollars: totalAmountDollars,
         type: "onboarding_purchase",
         projectId: project.id,
       }),
@@ -1482,19 +1522,25 @@ router.get("/portal/onboarding/services", async (_req: Request, res: Response) =
   res.json(services);
 });
 
-// ─── ONBOARDING: Sign a contract ─────────────────────────────────────────────
+// ─── ONBOARDING: Sign a contract (supports multi-service) ────────────────────
 router.post("/portal/onboarding/contract", requireAuth, async (req: Request, res: Response) => {
   const userId = req.user!.id;
-  const { serviceId, signatureData, signerName } = req.body as {
-    serviceId?: number; signatureData?: string; signerName?: string;
+  const { serviceId, serviceIds: rawServiceIds, signatureData, signerName } = req.body as {
+    serviceId?: number; serviceIds?: number[]; signatureData?: string; signerName?: string;
   };
 
-  if (!serviceId || !signerName?.trim()) {
-    res.status(400).json({ error: "serviceId and signerName are required" });
+  // Support both single serviceId (legacy) and serviceIds array (multi-service)
+  const resolvedServiceIds: number[] = rawServiceIds?.length
+    ? rawServiceIds
+    : serviceId
+      ? [serviceId]
+      : [];
+
+  if (resolvedServiceIds.length === 0 || !signerName?.trim()) {
+    res.status(400).json({ error: "serviceId(s) and signerName are required" });
     return;
   }
 
-  // ── Enforce that a real signature was drawn (not an empty/absent payload) ──
   if (!signatureData || signatureData.trim().length < 100) {
     res.status(400).json({ error: "A drawn signature is required to sign the agreement" });
     return;
@@ -1504,44 +1550,59 @@ router.post("/portal/onboarding/contract", requireAuth, async (req: Request, res
     return;
   }
 
-  const [service] = await db.select().from(servicesTable).where(eq(servicesTable.id, serviceId));
-  if (!service) { res.status(404).json({ error: "Service not found" }); return; }
+  const fetchedSvcs = await db.select().from(servicesTable)
+    .where(sql`${servicesTable.id} = ANY(ARRAY[${sql.join(resolvedServiceIds.map(id => sql`${id}`), sql`, `)}]::int[])`);
+  if (fetchedSvcs.length !== resolvedServiceIds.length) {
+    res.status(404).json({ error: "One or more services not found" });
+    return;
+  }
+  // Preserve exact input order so contractIds[i] always pairs with serviceIds[i]
+  const svcMap = new Map(fetchedSvcs.map(s => [s.id, s]));
+  const services = resolvedServiceIds.map(id => svcMap.get(id)!);
 
-  // Fetch buyer name for the PDF (best-effort)
-  const [buyer] = await db.select({ name: usersTable.name, email: usersTable.email })
-    .from(usersTable).where(eq(usersTable.id, userId));
+  const ipAddress = (req.headers["x-forwarded-for"] as string | undefined)?.split(",")[0]?.trim() ?? req.ip ?? null;
+  const userAgent = req.headers["user-agent"] ?? null;
 
-  const [contract] = await db.insert(contractsTable).values({
-    userId,
-    serviceId,
-    signatureData,
-    signerName: signerName.trim(),
-    ipAddress: (req.headers["x-forwarded-for"] as string | undefined)?.split(",")[0]?.trim() ?? req.ip ?? null,
-    userAgent: req.headers["user-agent"] ?? null,
-    contractVersion: "v1",
-  }).returning();
+  const createdContracts: typeof contractsTable.$inferSelect[] = [];
 
-  // ── Generate signed PDF immediately at signing time ──────────────────────
-  // PDF is created here so the document artifact exists before payment occurs.
-  // provisionOnboardingProject() reads pdfFilename to create the documents row.
-  try {
-    const pdfFilename = await generateContractPdf({
-      contractId: contract.id,
+  for (const svc of services) {
+    const [contract] = await db.insert(contractsTable).values({
+      userId,
+      serviceId: svc.id,
+      signatureData,
       signerName: signerName.trim(),
-      serviceName: service.name,
-      servicePrice: service.price ? `$${parseFloat(String(service.price)).toLocaleString("en-US")}` : "—",
-      serviceDeliverables: service.deliverables ?? "as described on the service page",
-      serviceTurnaround: service.turnaround ?? "see service details",
-      signedAt: contract.signedAt ?? new Date(),
-      signatureDataUrl: signatureData,
-    });
-    await db.update(contractsTable)
-      .set({ pdfFilename })
-      .where(eq(contractsTable.id, contract.id));
-    res.status(201).json({ ...contract, pdfFilename });
-  } catch (pdfErr) {
-    req.log.error({ err: pdfErr }, "contract signing: PDF generation failed (non-fatal)");
-    res.status(201).json(contract);
+      ipAddress,
+      userAgent,
+      contractVersion: "v1",
+    }).returning();
+
+    // ── Generate signed PDF immediately at signing time ──────────────────
+    try {
+      const pdfFilename = await generateContractPdf({
+        contractId: contract.id,
+        signerName: signerName.trim(),
+        serviceName: svc.name,
+        servicePrice: svc.price ? `$${parseFloat(String(svc.price)).toLocaleString("en-US")}` : "—",
+        serviceDeliverables: svc.deliverables ?? "as described on the service page",
+        serviceTurnaround: svc.turnaround ?? "see service details",
+        signedAt: contract.signedAt ?? new Date(),
+        signatureDataUrl: signatureData,
+      });
+      await db.update(contractsTable)
+        .set({ pdfFilename })
+        .where(eq(contractsTable.id, contract.id));
+      createdContracts.push({ ...contract, pdfFilename });
+    } catch (pdfErr) {
+      req.log.error({ err: pdfErr }, "contract signing: PDF generation failed (non-fatal)");
+      createdContracts.push(contract);
+    }
+  }
+
+  // Return both legacy single-contract and new multi-contract formats
+  if (createdContracts.length === 1) {
+    res.status(201).json({ ...createdContracts[0], contractIds: [createdContracts[0].id] });
+  } else {
+    res.status(201).json({ contractIds: createdContracts.map(c => c.id), contracts: createdContracts });
   }
 });
 
@@ -1572,45 +1633,75 @@ router.get("/portal/onboarding/session/:sessionId", requireAuth, async (req: Req
       res.status(403).json({ error: "Session not found or access denied" });
       return;
     }
-    res.json({ status: session.payment_status, metadata: session.metadata });
+    // For subscription sessions, retrieve next billing date from the subscription
+    let nextBillingDate: number | null = null;
+    if (session.mode === "subscription" && session.subscription) {
+      try {
+        const sub = await stripe.subscriptions.retrieve(String(session.subscription));
+        nextBillingDate = sub.current_period_end ?? null;
+      } catch {
+        // non-fatal — success page renders without it
+      }
+    }
+    res.json({ status: session.payment_status, metadata: session.metadata, mode: session.mode, nextBillingDate });
   } catch {
     res.status(404).json({ error: "Session not found" });
   }
 });
 
-// ─── ONBOARDING: Create Stripe checkout session ───────────────────────────────
+// ─── ONBOARDING: Create Stripe checkout session (multi-service, mixed-cart) ──
 router.post("/portal/checkout/create-session", requireAuth, async (req: Request, res: Response) => {
   const userId = req.user!.id;
-  const { serviceId, contractId, returnUrl, startDate } = req.body as {
-    serviceId?: number; contractId?: number; returnUrl?: string; startDate?: string;
+  const {
+    serviceId, serviceIds: rawServiceIds,
+    contractId, contractIds: rawContractIds,
+    returnUrl, startDate,
+  } = req.body as {
+    serviceId?: number; serviceIds?: number[];
+    contractId?: number; contractIds?: number[];
+    returnUrl?: string; startDate?: string;
   };
 
-  if (!serviceId || !contractId) {
-    res.status(400).json({ error: "serviceId and contractId are required" });
+  // Support legacy single-service and new multi-service formats
+  const resolvedServiceIds: number[] = rawServiceIds?.length ? rawServiceIds : serviceId ? [serviceId] : [];
+  const resolvedContractIds: number[] = rawContractIds?.length ? rawContractIds : contractId ? [contractId] : [];
+
+  if (resolvedServiceIds.length === 0 || resolvedContractIds.length === 0) {
+    res.status(400).json({ error: "serviceIds and contractIds are required" });
+    return;
+  }
+  if (resolvedServiceIds.length !== resolvedContractIds.length) {
+    res.status(400).json({ error: "serviceIds and contractIds must have the same length" });
     return;
   }
 
-  // ── Security: verify the contract belongs to this user (IDOR prevention) ──
-  const [contract] = await db.select().from(contractsTable)
-    .where(and(eq(contractsTable.id, contractId), eq(contractsTable.userId, userId)));
-  if (!contract) {
-    res.status(403).json({ error: "Contract not found or does not belong to this account" });
-    return;
-  }
-  // Also verify the contract is for the same service
-  if (contract.serviceId !== serviceId) {
-    res.status(403).json({ error: "Contract service mismatch" });
-    return;
-  }
-  // Prevent duplicate checkout sessions for the same contract
-  if (contract.stripeSessionId) {
-    res.status(409).json({ error: "A checkout session already exists for this contract" });
-    return;
+  // ── Security: verify all contracts belong to this user and match services ──
+  for (let i = 0; i < resolvedContractIds.length; i++) {
+    const [contract] = await db.select().from(contractsTable)
+      .where(and(eq(contractsTable.id, resolvedContractIds[i]), eq(contractsTable.userId, userId)));
+    if (!contract) {
+      res.status(403).json({ error: "Contract not found or does not belong to this account" });
+      return;
+    }
+    if (contract.serviceId !== resolvedServiceIds[i]) {
+      res.status(403).json({ error: "Contract service mismatch" });
+      return;
+    }
   }
 
-  const [service] = await db.select().from(servicesTable).where(eq(servicesTable.id, serviceId));
-  if (!service) { res.status(404).json({ error: "Service not found" }); return; }
-  if (!service.price) { res.status(400).json({ error: "Service has no price configured" }); return; }
+  // Fetch all services
+  const services = await db.select().from(servicesTable)
+    .where(sql`${servicesTable.id} = ANY(ARRAY[${sql.join(resolvedServiceIds.map(id => sql`${id}`), sql`, `)}]::int[])`);
+
+  const missingPrices = services.filter(s => !s.price);
+  if (missingPrices.length > 0) {
+    res.status(400).json({ error: `Service "${missingPrices[0].name}" has no price configured` });
+    return;
+  }
+  if (services.length !== resolvedServiceIds.length) {
+    res.status(404).json({ error: "One or more services not found" });
+    return;
+  }
 
   const stripeKey = process.env.STRIPE_SECRET_KEY;
   if (!stripeKey) {
@@ -1621,37 +1712,85 @@ router.post("/portal/checkout/create-session", requireAuth, async (req: Request,
   const { default: Stripe } = await import("stripe");
   const stripe = new Stripe(stripeKey);
 
-  const priceInCents = Math.round(parseFloat(String(service.price)) * 100);
   const baseUrl = returnUrl ?? `${req.protocol}://${req.hostname}`;
 
-  const session = await stripe.checkout.sessions.create({
-    payment_method_types: ["card"],
-    line_items: [{
-      price_data: {
-        currency: "usd",
-        product_data: {
-          name: service.name,
-          description: service.description ?? undefined,
-        },
-        unit_amount: priceInCents,
-      },
-      quantity: 1,
-    }],
-    mode: "payment",
-    automatic_tax: { enabled: true },
-    success_url: `${baseUrl}/portal/onboarding/success?session_id={CHECKOUT_SESSION_ID}`,
-    cancel_url: `${baseUrl}/portal/onboarding/contract?serviceId=${serviceId}&cancelled=1`,
-    metadata: {
-      type: "onboarding_purchase",
-      userId: String(userId),
-      serviceId: String(serviceId),
-      contractId: String(contractId),
-      serviceName: service.name,
-      startDate: startDate ?? new Date().toISOString(),
-    },
-  });
+  // Map serviceId → contractId for lookup
+  const serviceToContract = new Map<number, number>();
+  for (let i = 0; i < resolvedServiceIds.length; i++) {
+    serviceToContract.set(resolvedServiceIds[i], resolvedContractIds[i]);
+  }
 
-  res.json({ url: session.url });
+  // Group by billing type (preserve original ordering)
+  const oneTimeServices = services.filter(s => s.billingType === "one_time");
+  const recurringServices = services.filter(s => s.billingType === "recurring_monthly");
+
+  let oneTimeUrl: string | null = null;
+  let subscriptionUrl: string | null = null;
+  const startDateStr = startDate ?? new Date().toISOString();
+
+  // ── One-time Checkout Session (payment mode) ─────────────────────────────
+  if (oneTimeServices.length > 0) {
+    const otContractIds = oneTimeServices.map(s => serviceToContract.get(s.id)!);
+    const session = await stripe.checkout.sessions.create({
+      payment_method_types: ["card"],
+      line_items: oneTimeServices.map(s => ({
+        price_data: {
+          currency: "usd",
+          product_data: { name: s.name, description: s.description ?? undefined },
+          unit_amount: Math.round(parseFloat(String(s.price!)) * 100),
+        },
+        quantity: 1,
+      })),
+      mode: "payment",
+      automatic_tax: { enabled: true },
+      success_url: `${baseUrl}/portal/onboarding/success?session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${baseUrl}/portal/onboarding/contract?serviceIds=${oneTimeServices.map(s => s.id).join(",")}&cancelled=1`,
+      metadata: {
+        type: "onboarding_purchase",
+        userId: String(userId),
+        serviceIds: oneTimeServices.map(s => s.id).join(","),
+        contractIds: otContractIds.join(","),
+        serviceName: oneTimeServices.map(s => s.name).join(", "),
+        startDate: startDateStr,
+      },
+    });
+    oneTimeUrl = session.url;
+  }
+
+  // ── Subscription Checkout Session (subscription mode) ────────────────────
+  if (recurringServices.length > 0) {
+    const recContractIds = recurringServices.map(s => serviceToContract.get(s.id)!);
+    const session = await stripe.checkout.sessions.create({
+      payment_method_types: ["card"],
+      line_items: recurringServices.map(s => ({
+        price_data: {
+          currency: "usd",
+          product_data: { name: s.name, description: s.description ?? undefined },
+          unit_amount: Math.round(parseFloat(String(s.price!)) * 100),
+          recurring: { interval: "month" as const },
+        },
+        quantity: 1,
+      })),
+      mode: "subscription",
+      success_url: `${baseUrl}/portal/onboarding/success?session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${baseUrl}/portal/onboarding/contract?serviceIds=${recurringServices.map(s => s.id).join(",")}&cancelled=1`,
+      metadata: {
+        type: "onboarding_purchase",
+        userId: String(userId),
+        serviceIds: recurringServices.map(s => s.id).join(","),
+        contractIds: recContractIds.join(","),
+        serviceName: recurringServices.map(s => s.name).join(", "),
+        startDate: startDateStr,
+      },
+    });
+    subscriptionUrl = session.url;
+  }
+
+  // Primary URL is one-time first (if mixed cart, subscription comes after)
+  const primaryUrl = oneTimeUrl ?? subscriptionUrl;
+  const secondaryUrl = oneTimeUrl && subscriptionUrl ? subscriptionUrl : null;
+
+  res.json({ url: primaryUrl, oneTimeUrl, subscriptionUrl, secondaryUrl });
 });
 
 // ─── ADMIN: Contracts ─────────────────────────────────────────────────────────

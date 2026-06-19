@@ -101,13 +101,16 @@ export default function Services() {
             <div>
               <h3 className="text-xl font-bold text-[#0A2540] mb-2">Not sure where to start?</h3>
               <p className="text-foreground">
-                The M365 Health Check ($497) is the fastest way to get clarity. Or book a free discovery call and Shane will tell you exactly what your situation needs.
+                The M365 Health Check ($497) is the fastest way to get clarity. Or start a retainer directly — no sales calls required.
               </p>
             </div>
             <div className="flex flex-col sm:flex-row gap-3 flex-shrink-0">
-              <CTAButton href="/micro-offers" className="text-sm whitespace-nowrap" data-testid="services-micro-offers-link">
-                View Quick Wins
+              <CTAButton href="/crm/portal/onboarding/select" className="text-sm whitespace-nowrap" data-testid="services-get-started-link">
+                Get Started
               </CTAButton>
+              <Link href="/micro-offers" className="inline-flex items-center justify-center border border-[#0078D4] text-[#0078D4] font-semibold px-5 py-2.5 rounded hover:bg-[#0078D4] hover:text-white transition-colors text-sm whitespace-nowrap" data-testid="services-micro-offers-link">
+                View Quick Wins
+              </Link>
               <Link href="/book" className="inline-flex items-center justify-center border border-[#0078D4] text-[#0078D4] font-semibold px-5 py-2.5 rounded hover:bg-[#0078D4] hover:text-white transition-colors text-sm whitespace-nowrap" data-testid="services-book-link">
                 Book Free Call <ArrowRight className="ml-1 w-4 h-4" />
               </Link>
