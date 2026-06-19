@@ -77,7 +77,16 @@ export async function seedServiceTemplates(): Promise<void> {
 }
 
 export async function seedMarketingServices(): Promise<void> {
-  const { sql: sqlTag } = await import("drizzle-orm");
+  const { sql: sqlTag, inArray } = await import("drizzle-orm");
+
+  // Fix stale records that were mis-categorised as "service_area" in an earlier seed
+  // run but don't have dedicated /services/* sub-pages. Reclassify them as "retainer"
+  // and point their pageHref at the pricing page where they actually live.
+  const staleSlugs = ["architect-essentials", "fractional-m365-architect-retainer"];
+  await db
+    .update(servicesTable)
+    .set({ serviceType: "retainer", pageHref: "/pricing" })
+    .where(inArray(servicesTable.slug, staleSlugs));
   const microOffers = [
     {
       slug: "m365-health-check",
