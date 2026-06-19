@@ -3,7 +3,7 @@ import { Link } from "wouter";
 import { Layout } from "@/components/Layout";
 import { CTAButton } from "@/components/CTAButton";
 import { ServiceCard } from "@/components/ServiceCard";
-import { Cloud, Bot, Layout as LayoutIcon, Zap, Shield, Server, ArrowRight, type LucideIcon } from "lucide-react";
+import { Cloud, Bot, Layout as LayoutIcon, Zap, Shield, Server, Users, ArrowRight, type LucideIcon } from "lucide-react";
 import { ConsultationCTA } from "@/components/ConsultationCTA";
 import { useServices } from "@/hooks/useServices";
 
@@ -14,10 +14,12 @@ const ICON_MAP: Record<string, LucideIcon> = {
   Zap,
   Shield,
   Server,
+  Users,
 };
 
 export default function Services() {
-  const { services, loading } = useServices("service_area");
+  const { services: allServiceAreas, loading } = useServices("service_area");
+  const services = allServiceAreas.filter((s) => s.pageHref?.startsWith("/services/"));
 
   return (
     <Layout>
