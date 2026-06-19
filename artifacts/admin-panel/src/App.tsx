@@ -9,6 +9,16 @@ import ServicesPage from "@/pages/Services";
 import WorkflowsPage from "@/pages/Workflows";
 import ProjectTemplatesPage from "@/pages/ProjectTemplates";
 import ContractTemplatesPage from "@/pages/ContractTemplates";
+import LeadsPage from "@/pages/crm/Leads";
+import ClientsPage from "@/pages/crm/Clients";
+import ProjectsPage from "@/pages/crm/Projects";
+import CrmServicesPage from "@/pages/crm/CrmServices";
+import ReportsPage from "@/pages/crm/Reports";
+import InvoicesPage from "@/pages/crm/Invoices";
+import DocumentsPage from "@/pages/crm/Documents";
+import MessagesPage from "@/pages/crm/Messages";
+import PurchasesPage from "@/pages/crm/Purchases";
+import ContractsPage from "@/pages/crm/Contracts";
 import type { ReactNode } from "react";
 
 const queryClient = new QueryClient({
@@ -47,31 +57,56 @@ function Router() {
       <Route path="/">
         {user && user.role === "admin" ? <Redirect to="/articles" /> : <Redirect to="/login" />}
       </Route>
+
+      {/* Content */}
       <Route path="/articles">
-        <RequireAdmin>
-          <DashboardShell><ArticlesPage /></DashboardShell>
-        </RequireAdmin>
+        <RequireAdmin><DashboardShell><ArticlesPage /></DashboardShell></RequireAdmin>
       </Route>
       <Route path="/services">
-        <RequireAdmin>
-          <DashboardShell><ServicesPage /></DashboardShell>
-        </RequireAdmin>
+        <RequireAdmin><DashboardShell><ServicesPage /></DashboardShell></RequireAdmin>
       </Route>
       <Route path="/workflows">
-        <RequireAdmin>
-          <DashboardShell><WorkflowsPage /></DashboardShell>
-        </RequireAdmin>
+        <RequireAdmin><DashboardShell><WorkflowsPage /></DashboardShell></RequireAdmin>
       </Route>
       <Route path="/project-templates">
-        <RequireAdmin>
-          <DashboardShell><ProjectTemplatesPage /></DashboardShell>
-        </RequireAdmin>
+        <RequireAdmin><DashboardShell><ProjectTemplatesPage /></DashboardShell></RequireAdmin>
       </Route>
       <Route path="/contract-templates">
-        <RequireAdmin>
-          <DashboardShell><ContractTemplatesPage /></DashboardShell>
-        </RequireAdmin>
+        <RequireAdmin><DashboardShell><ContractTemplatesPage /></DashboardShell></RequireAdmin>
       </Route>
+
+      {/* CRM */}
+      <Route path="/crm/leads">
+        <RequireAdmin><DashboardShell><LeadsPage /></DashboardShell></RequireAdmin>
+      </Route>
+      <Route path="/crm/clients">
+        <RequireAdmin><DashboardShell><ClientsPage /></DashboardShell></RequireAdmin>
+      </Route>
+      <Route path="/crm/projects">
+        <RequireAdmin><DashboardShell><ProjectsPage /></DashboardShell></RequireAdmin>
+      </Route>
+      <Route path="/crm/services">
+        <RequireAdmin><DashboardShell><CrmServicesPage /></DashboardShell></RequireAdmin>
+      </Route>
+      <Route path="/crm/reports">
+        <RequireAdmin><DashboardShell><ReportsPage /></DashboardShell></RequireAdmin>
+      </Route>
+      <Route path="/crm/invoices">
+        <RequireAdmin><DashboardShell><InvoicesPage /></DashboardShell></RequireAdmin>
+      </Route>
+      <Route path="/crm/documents">
+        <RequireAdmin><DashboardShell><DocumentsPage /></DashboardShell></RequireAdmin>
+      </Route>
+      <Route path="/crm/messages">
+        <RequireAdmin><DashboardShell><MessagesPage /></DashboardShell></RequireAdmin>
+      </Route>
+      <Route path="/crm/purchases">
+        <RequireAdmin><DashboardShell><PurchasesPage /></DashboardShell></RequireAdmin>
+      </Route>
+      <Route path="/crm/contracts">
+        <RequireAdmin><DashboardShell><ContractsPage /></DashboardShell></RequireAdmin>
+      </Route>
+
       <Route>
         <Redirect to="/login" />
       </Route>

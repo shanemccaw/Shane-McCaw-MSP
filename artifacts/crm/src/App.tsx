@@ -35,7 +35,10 @@ function RequireAuth({ children, role }: { children: ReactNode; role?: "admin" |
     );
   }
   if (!user) return <Redirect to="/" />;
-  if (role && user.role !== role) return <Redirect to={user.role === "admin" ? "/dashboard" : "/portal"} />;
+  if (role && user.role !== role) {
+    if (user.role === "admin") { window.location.href = "/admin-panel/"; return null; }
+    return <Redirect to="/portal" />;
+  }
   return <>{children}</>;
 }
 
@@ -53,12 +56,16 @@ function Router() {
   return (
     <Switch>
       <Route path="/">
-        {user ? <Redirect to={user.role === "admin" ? "/dashboard" : "/portal"} /> : <LoginPage />}
+        {user ? (
+          user.role === "admin"
+            ? (() => { window.location.href = "/admin-panel/"; return null; })()
+            : <Redirect to="/portal" />
+        ) : <LoginPage />}
       </Route>
 
-      {/* Admin routes */}
+      {/* Admin dashboard moved to /admin-panel — redirect any direct hits */}
       <Route path="/dashboard">
-        <RequireAuth role="admin"><DashboardPage /></RequireAuth>
+        {() => { window.location.replace("/admin-panel/"); return null; }}
       </Route>
 
       {/* Client portal routes */}

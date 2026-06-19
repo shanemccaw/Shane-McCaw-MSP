@@ -1,0 +1,2 @@
+- [Admin Panel AuthContext fetchWithAuth](admin-panel-fetch-with-auth.md) — never set Content-Type unconditionally; FormData uploads need the browser to set it with the boundary
+- [CRM admin vs client routing](crm-admin-routing.md) — CRM artifact handles client portal; admin sections live in Admin Panel at /admin-panel/; admins hitting /crm are redirected via window.location
