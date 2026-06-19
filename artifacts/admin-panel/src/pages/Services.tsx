@@ -29,6 +29,7 @@ interface WizardOption {
 interface WizardStep {
   id: string;
   title: string;
+  description?: string;
   options: WizardOption[];
 }
 
@@ -309,6 +310,8 @@ function WorkflowBuilder({ service, onClose }: { service: Service; onClose: () =
   };
   const updateStepTitle = (idx: number, title: string) =>
     setSteps(s => s.map((st, i) => i === idx ? { ...st, title } : st));
+  const updateStepDescription = (idx: number, description: string) =>
+    setSteps(s => s.map((st, i) => i === idx ? { ...st, description } : st));
   const addOption = (stepIdx: number) =>
     setSteps(s => s.map((st, i) => i === stepIdx
       ? { ...st, options: [...st.options, { id: nanoid(), label: "", description: "", priceAdjustment: 0 }] }
@@ -377,6 +380,11 @@ function WorkflowBuilder({ service, onClose }: { service: Service; onClose: () =
                   <input type="text" placeholder="Step title" value={step.title} onChange={e => updateStepTitle(si, e.target.value)}
                     className="flex-1 border border-border rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4]" />
                   <button onClick={() => removeStep(si)} className="text-red-400 hover:text-red-600 transition-colors flex-shrink-0"><Trash2 className="w-4 h-4" /></button>
+                </div>
+                <div className="ml-12 mb-3">
+                  <textarea placeholder="Step description (optional)" value={step.description ?? ""} rows={2}
+                    onChange={e => updateStepDescription(si, e.target.value)}
+                    className="w-full border border-border rounded-lg px-3 py-1.5 text-xs text-muted-foreground focus:outline-none focus:ring-2 focus:ring-[#0078D4] resize-none" />
                 </div>
                 <div className="ml-12 space-y-2">
                   {step.options.length === 0 && <p className="text-xs text-muted-foreground italic">No options yet.</p>}
