@@ -1,10 +1,27 @@
 import { Router, type IRouter, type Request, type Response } from "express";
+import rateLimit from "express-rate-limit";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import { db, usersTable, passwordResetTokensTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import type { CookieOptions } from "express";
 import { sendEmail, passwordResetEmail } from "../lib/mailer";
+
+const registerLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  limit: 5,
+  standardHeaders: "draft-8",
+  legacyHeaders: false,
+  message: { error: "Too many registration attempts from this IP. Please try again in an hour." },
+});
+
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 10,
+  standardHeaders: "draft-8",
+  legacyHeaders: false,
+  message: { error: "Too many login attempts from this IP. Please try again in 15 minutes." },
+});
 
 const router: IRouter = Router();
 
@@ -28,7 +45,7 @@ function cookieOpts(): CookieOptions {
   };
 }
 
-router.post("/auth/login", async (req: Request, res: Response) => {
+router.post("/auth/login", loginLimiter, async (req: Request, res: Response) => {
   const { email, password } = req.body as { email?: string; password?: string };
 
   if (!email || !password) {
@@ -99,7 +116,7 @@ router.post("/auth/refresh", async (req: Request, res: Response) => {
   res.json({ accessToken, user: payload });
 });
 
-router.post("/auth/register", async (req: Request, res: Response) => {
+router.post("/auth/register", registerLimiter, async (req: Request, res: Response) => {
   const { email, password, name } = req.body as { email?: string; password?: string; name?: string };
 
   if (!email || !password) {
