@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import { Layout } from "@/components/Layout";
 import { CTAButton } from "@/components/CTAButton";
-import { Download, BookOpen, ArrowRight } from "lucide-react";
+import { ConsultationCTA } from "@/components/ConsultationCTA";
+import { Download, ArrowRight } from "lucide-react";
 
 const categories = ["All", "Copilot AI Tips", "M365 Best Practices", "Power Platform How-Tos", "Governance & Compliance", "Digital Transformation"];
 
@@ -165,16 +166,7 @@ export default function Resources() {
         </div>
       </section>
 
-      <section className="bg-[#0A2540] py-20">
-        <div className="max-w-[1200px] mx-auto px-6 text-center">
-          <BookOpen className="w-12 h-12 text-[#0078D4] mx-auto mb-4" />
-          <h2 className="text-3xl font-extrabold text-white mb-4">Ready to go from insight to action?</h2>
-          <p className="text-white/70 max-w-xl mx-auto mb-10">Book a free discovery call and let's talk about what your Microsoft 365 environment actually needs.</p>
-          <CTAButton href="/book" className="px-10 py-4 text-base" data-testid="resources-final-cta">
-            Book Your Free Discovery Call
-          </CTAButton>
-        </div>
-      </section>
+      <ConsultationCTA />
     </Layout>
   );
 }

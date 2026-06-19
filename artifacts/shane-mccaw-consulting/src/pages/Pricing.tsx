@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link } from "wouter";
 import { Layout } from "@/components/Layout";
 import { CTAButton } from "@/components/CTAButton";
+import { ConsultationCTA } from "@/components/ConsultationCTA";
 import { CheckCircle, ChevronDown, Zap, FolderOpen, Calendar, ArrowRight } from "lucide-react";
 
 const microOffers = [
@@ -481,20 +482,7 @@ export default function Pricing() {
         </div>
       </section>
 
-      {/* Final CTA */}
-      <section className="bg-[#0A2540] py-20">
-        <div className="max-w-[1200px] mx-auto px-6 text-center">
-          <h2 className="text-3xl md:text-4xl font-extrabold text-white mb-4">
-            Not Sure Which Track is Right for You?
-          </h2>
-          <p className="text-white/70 text-lg max-w-xl mx-auto mb-10 leading-relaxed">
-            Book a free 30-minute call. Shane will recommend the right engagement model for your situation — no sales pressure, no commitment required.
-          </p>
-          <CTAButton href="/book" className="px-10 py-4 text-base" data-testid="pricing-final-cta">
-            Book a Free Discovery Call
-          </CTAButton>
-        </div>
-      </section>
+      <ConsultationCTA />
     </Layout>
   );
 }

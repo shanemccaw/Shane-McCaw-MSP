@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 import { Layout } from "@/components/Layout";
-import { CTAButton } from "@/components/CTAButton";
+import { ConsultationCTA } from "@/components/ConsultationCTA";
 import { CheckCircle, Award, Star, Briefcase, Shield, Bot } from "lucide-react";
 
 const timeline = [
@@ -337,20 +337,7 @@ export default function About() {
         </div>
       </section>
 
-      {/* CTA */}
-      <section className="bg-[#0A2540] py-20">
-        <div className="max-w-[1200px] mx-auto px-6 text-center">
-          <h2 className="text-3xl md:text-4xl font-extrabold text-white mb-4">
-            Ready to Bring This Level of Expertise to Your Organization?
-          </h2>
-          <p className="text-white/70 text-lg max-w-2xl mx-auto mb-10 leading-relaxed">
-            Book a free 30-minute discovery call. No sales pitch — just an honest conversation about where your M365 environment stands and what it would take to get it where it needs to be.
-          </p>
-          <CTAButton href="/book" className="px-10 py-4 text-base" data-testid="about-cta-button">
-            Book Your Free Discovery Call
-          </CTAButton>
-        </div>
-      </section>
+      <ConsultationCTA />
     </Layout>
   );
 }
