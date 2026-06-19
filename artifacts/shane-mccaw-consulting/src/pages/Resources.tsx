@@ -1,50 +1,13 @@
 import { useState } from "react";
+import { Link } from "wouter";
 import { SEOMeta } from "@/components/SEOMeta";
 import { Layout } from "@/components/Layout";
 import { CTAButton } from "@/components/CTAButton";
 import { ConsultationCTA } from "@/components/ConsultationCTA";
 import { Download, ArrowRight } from "lucide-react";
+import { articles } from "@/data/articles";
 
 const categories = ["All", "Copilot AI Tips", "M365 Best Practices", "Power Platform How-Tos", "Governance & Compliance", "Digital Transformation"];
-
-const posts = [
-  {
-    category: "Copilot AI Tips",
-    title: "5 Reasons Your Copilot Rollout Is Failing (And How to Fix It)",
-    summary: "Most Copilot deployments underperform not because of the AI, but because of data governance gaps and lack of adoption strategy. Here are the five most common failure points and exactly how to address each one.",
-    date: "June 5, 2025",
-  },
-  {
-    category: "M365 Best Practices",
-    title: "The M365 Tenant Health Check: What We Look For at NASA Scale",
-    summary: "After years of managing Microsoft 365 for one of the world's most security-sensitive organizations, I've developed a systematic audit methodology. This is what we check — and why each item matters.",
-    date: "May 22, 2025",
-  },
-  {
-    category: "M365 Best Practices",
-    title: "SharePoint Intranet Architecture: The Blueprint That Actually Works",
-    summary: "Most SharePoint intranets fail because they were built without a coherent information architecture. Here's the planning framework I use for every modern intranet engagement — from hub structure to taxonomy design.",
-    date: "May 8, 2025",
-  },
-  {
-    category: "Power Platform How-Tos",
-    title: "Power Automate Approval Workflows: Build Once, Scale Forever",
-    summary: "Approval workflows are one of the highest-ROI automations in Power Automate. Learn the design patterns that keep workflows maintainable as your organization's processes evolve.",
-    date: "April 24, 2025",
-  },
-  {
-    category: "Governance & Compliance",
-    title: "DLP and Sensitivity Labels: The Governance Stack Every Organization Needs",
-    summary: "Data loss prevention and sensitivity labeling are the foundation of a secure Microsoft 365 environment — especially with Copilot in the picture. Here's how to build and govern them correctly.",
-    date: "April 10, 2025",
-  },
-  {
-    category: "Digital Transformation",
-    title: "Microsoft 365 Migration Checklist: 30 Things to Do Before You Move",
-    summary: "M365 migrations fail when teams skip the discovery and planning phase. This checklist covers every critical item — from license mapping to identity readiness — that you should verify before migrating a single mailbox.",
-    date: "March 27, 2025",
-  },
-];
 
 export default function Resources() {
   const [activeCategory, setActiveCategory] = useState("All");
@@ -52,7 +15,7 @@ export default function Resources() {
   const [leadMagnetName, setLeadMagnetName] = useState("");
   const [submitted, setSubmitted] = useState(false);
 
-  const filtered = activeCategory === "All" ? posts : posts.filter(p => p.category === activeCategory);
+  const filtered = activeCategory === "All" ? articles : articles.filter(p => p.category === activeCategory);
 
   const handleLeadMagnet = (e: React.FormEvent) => {
     e.preventDefault();
@@ -156,9 +119,13 @@ export default function Resources() {
                   <p className="text-muted-foreground text-sm leading-relaxed mb-6">{post.summary}</p>
                   <div className="flex items-center justify-between">
                     <p className="text-muted-foreground text-xs">{post.date}</p>
-                    <button className="text-[#0078D4] text-sm font-semibold hover:underline flex items-center gap-1" data-testid={`read-more-${i}`}>
+                    <Link
+                      href={`/resources/${post.slug}`}
+                      className="text-[#0078D4] text-sm font-semibold hover:underline flex items-center gap-1"
+                      data-testid={`read-more-${i}`}
+                    >
                       Read More <ArrowRight className="w-3 h-3" />
-                    </button>
+                    </Link>
                   </div>
                 </div>
               </article>

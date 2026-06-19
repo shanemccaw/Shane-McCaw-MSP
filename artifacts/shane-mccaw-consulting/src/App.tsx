@@ -19,6 +19,7 @@ import PowerPlatform from "@/pages/services/PowerPlatform";
 import Governance from "@/pages/services/Governance";
 import CloudMigration from "@/pages/services/CloudMigration";
 import Privacy from "@/pages/Privacy";
+import ArticlePage from "@/pages/ArticlePage";
 
 const queryClient = new QueryClient();
 
@@ -47,6 +48,7 @@ function Router() {
       <Route path="/micro-offers" component={MicroOffers} />
       <Route path="/pricing" component={Pricing} />
       <Route path="/resources" component={Resources} />
+      <Route path="/resources/:slug" component={ArticlePage} />
       <Route path="/contact" component={Contact} />
       <Route path="/book" component={Book} />
       <Route path="/privacy" component={Privacy} />
