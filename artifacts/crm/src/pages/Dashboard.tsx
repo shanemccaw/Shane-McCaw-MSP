@@ -1,6 +1,13 @@
 import { useState, useCallback, useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useLocation } from "wouter";
+import AdminClients from "@/pages/admin/AdminClients";
+import AdminProjects from "@/pages/admin/AdminProjects";
+import AdminServices from "@/pages/admin/AdminServices";
+import AdminReports from "@/pages/admin/AdminReports";
+import AdminInvoices from "@/pages/admin/AdminInvoices";
+import AdminMessages from "@/pages/admin/AdminMessages";
+import AdminDocuments from "@/pages/admin/AdminDocuments";
 
 type LeadStatus = "new" | "contacted" | "qualified" | "converted" | "archived";
 type LeadSource = "contact_form" | "lead_magnet";
@@ -176,11 +183,9 @@ function SlideOver({ lead, onClose, onStatusChange }: {
   );
 }
 
-export default function DashboardPage() {
-  const { user, logout, fetchWithAuth } = useAuth();
-  const [, setLocation] = useLocation();
+function LeadsPanel() {
+  const { fetchWithAuth } = useAuth();
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
-
   const [stats, setStats] = useState<LeadStats | null>(null);
   const [leads, setLeads] = useState<Lead[]>([]);
   const [total, setTotal] = useState(0);
@@ -232,11 +237,6 @@ export default function DashboardPage() {
     void fetchLeads(1, statusFilter, newSource);
   };
 
-  const handleLogout = async () => {
-    await logout();
-    setLocation("/");
-  };
-
   const totalPages = Math.ceil(total / LIMIT);
 
   const STATUS_TABS = [
@@ -249,6 +249,149 @@ export default function DashboardPage() {
   ];
 
   return (
+    <>
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+        <StatCard label="Total Leads" value={stats?.total ?? 0}
+          icon={<svg viewBox="0 0 24 24" fill="none" className="w-5 h-5 text-[#0078D4]" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 018.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0111.964-3.07M12 6.375a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zm8.25 2.25a2.625 2.625 0 11-5.25 0 2.625 2.625 0 015.25 0z" /></svg>}
+        />
+        <StatCard label="New This Week" value={stats?.newThisWeek ?? 0}
+          icon={<svg viewBox="0 0 24 24" fill="none" className="w-5 h-5 text-[#0078D4]" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>}
+        />
+        <StatCard label="From Contact Form" value={stats?.fromContactForm ?? 0}
+          icon={<svg viewBox="0 0 24 24" fill="none" className="w-5 h-5 text-[#0078D4]" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M21.75 6.75v10.5a2.25 2.25 0 01-2.25 2.25h-15a2.25 2.25 0 01-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25m19.5 0v.243a2.25 2.25 0 01-1.07 1.916l-7.5 4.615a2.25 2.25 0 01-2.36 0L3.32 8.91a2.25 2.25 0 01-1.07-1.916V6.75" /></svg>}
+        />
+        <StatCard label="From Lead Magnet" value={stats?.fromLeadMagnet ?? 0}
+          icon={<svg viewBox="0 0 24 24" fill="none" className="w-5 h-5 text-[#0078D4]" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" /></svg>}
+        />
+      </div>
+
+      <div className="bg-white border border-border rounded-xl overflow-hidden">
+        <div className="px-5 pt-5 pb-4 border-b border-border">
+          <div className="flex flex-col sm:flex-row sm:items-center gap-4">
+            <div className="flex flex-wrap gap-1.5">
+              {STATUS_TABS.map(tab => (
+                <button key={tab.key} onClick={() => handleFilterChange(tab.key)}
+                  className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-colors ${statusFilter === tab.key ? "bg-[#0078D4] text-white" : "bg-[#F7F9FC] text-muted-foreground hover:bg-[#0078D4]/10 hover:text-[#0078D4]"}`}
+                  data-testid={`status-tab-${tab.key}`}>
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+            <div className="sm:ml-auto">
+              <select value={sourceFilter} onChange={e => handleSourceChange(e.target.value)}
+                className="border border-border rounded-lg px-3 py-1.5 text-xs font-medium bg-white focus:outline-none focus:ring-2 focus:ring-[#0078D4]">
+                <option value="all">All Sources</option>
+                <option value="contact_form">Contact Form</option>
+                <option value="lead_magnet">Lead Magnet</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        {loading ? (
+          <div className="flex items-center justify-center py-20">
+            <div className="w-8 h-8 border-4 border-[#0078D4] border-t-transparent rounded-full animate-spin" />
+          </div>
+        ) : leads.length === 0 ? (
+          <div className="text-center py-20 text-muted-foreground">
+            <svg viewBox="0 0 24 24" fill="none" className="w-12 h-12 mx-auto mb-3 text-muted-foreground/40" stroke="currentColor" strokeWidth={1.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 018.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0111.964-3.07M12 6.375a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zm8.25 2.25a2.625 2.625 0 11-5.25 0 2.625 2.625 0 015.25 0z" />
+            </svg>
+            <p className="text-sm">No leads match your current filters.</p>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm" data-testid="leads-table">
+              <thead>
+                <tr className="border-b border-border bg-[#F7F9FC]">
+                  <th className="text-left px-5 py-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Name</th>
+                  <th className="text-left px-5 py-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground hidden sm:table-cell">Email</th>
+                  <th className="text-left px-5 py-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground hidden md:table-cell">Company</th>
+                  <th className="text-left px-5 py-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Source</th>
+                  <th className="text-left px-5 py-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Status</th>
+                  <th className="text-left px-5 py-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground hidden lg:table-cell">Date</th>
+                </tr>
+              </thead>
+              <tbody>
+                {leads.map(lead => (
+                  <tr key={lead.id} onClick={() => setSelectedLead(lead)}
+                    className="border-b border-border last:border-0 hover:bg-[#F7F9FC] cursor-pointer transition-colors"
+                    data-testid={`lead-row-${lead.id}`}>
+                    <td className="px-5 py-3.5 font-semibold text-[#0A2540]">{lead.name}</td>
+                    <td className="px-5 py-3.5 text-muted-foreground hidden sm:table-cell">{lead.email}</td>
+                    <td className="px-5 py-3.5 text-muted-foreground hidden md:table-cell">{lead.company ?? "—"}</td>
+                    <td className="px-5 py-3.5">
+                      <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${SOURCE_COLORS[lead.source]}`}>
+                        {lead.source === "contact_form" ? "Contact Form" : "Lead Magnet"}
+                      </span>
+                    </td>
+                    <td className="px-5 py-3.5">
+                      <span className={`text-xs font-semibold px-2.5 py-1 rounded-full capitalize ${STATUS_COLORS[lead.status]}`}>
+                        {lead.status}
+                      </span>
+                    </td>
+                    <td className="px-5 py-3.5 text-muted-foreground text-xs hidden lg:table-cell">
+                      {new Date(lead.createdAt).toLocaleDateString()}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {totalPages > 1 && (
+          <div className="flex items-center justify-between px-5 py-4 border-t border-border">
+            <p className="text-xs text-muted-foreground">
+              Showing {(page - 1) * LIMIT + 1}–{Math.min(page * LIMIT, total)} of {total}
+            </p>
+            <div className="flex gap-2">
+              <button disabled={page <= 1}
+                onClick={() => { const p = page - 1; setPage(p); void fetchLeads(p, statusFilter, sourceFilter); }}
+                className="px-3 py-1.5 border border-border rounded-lg text-xs font-medium disabled:opacity-40 hover:bg-[#F7F9FC] transition-colors">
+                Prev
+              </button>
+              <button disabled={page >= totalPages}
+                onClick={() => { const p = page + 1; setPage(p); void fetchLeads(p, statusFilter, sourceFilter); }}
+                className="px-3 py-1.5 border border-border rounded-lg text-xs font-medium disabled:opacity-40 hover:bg-[#F7F9FC] transition-colors">
+                Next
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {selectedLead && (
+        <SlideOver lead={selectedLead} onClose={() => setSelectedLead(null)} onStatusChange={handleStatusChange} />
+      )}
+    </>
+  );
+}
+
+type AdminTab = "leads" | "clients" | "projects" | "services" | "reports" | "documents" | "invoices" | "messages";
+
+const ADMIN_TABS: { key: AdminTab; label: string; icon: React.ReactNode }[] = [
+  { key: "leads", label: "Leads", icon: <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" /></svg> },
+  { key: "clients", label: "Clients", icon: <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg> },
+  { key: "projects", label: "Projects", icon: <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" /></svg> },
+  { key: "services", label: "Services", icon: <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" /></svg> },
+  { key: "reports", label: "Reports", icon: <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg> },
+  { key: "documents", label: "Documents", icon: <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" /></svg> },
+  { key: "invoices", label: "Invoices", icon: <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" /></svg> },
+  { key: "messages", label: "Messages", icon: <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" /></svg> },
+];
+
+export default function DashboardPage() {
+  const { user, logout } = useAuth();
+  const [, setLocation] = useLocation();
+  const [activeTab, setActiveTab] = useState<AdminTab>("leads");
+
+  const handleLogout = async () => {
+    await logout();
+    setLocation("/");
+  };
+
+  return (
     <div className="min-h-screen bg-[#F7F9FC] flex flex-col">
       <header className="bg-[#0A2540] px-6 py-4 flex items-center justify-between sticky top-0 z-10">
         <div className="flex items-center gap-3">
@@ -258,7 +401,7 @@ export default function DashboardPage() {
             </svg>
           </div>
           <div>
-            <span className="text-white font-bold text-sm">CRM Dashboard</span>
+            <span className="text-white font-bold text-sm">Admin Dashboard</span>
             <span className="text-white/40 text-xs ml-2 hidden sm:inline">Shane McCaw Consulting</span>
           </div>
         </div>
@@ -273,151 +416,36 @@ export default function DashboardPage() {
         </div>
       </header>
 
-      <div className="flex-1 max-w-[1280px] mx-auto w-full px-4 sm:px-6 py-8">
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-          <StatCard
-            label="Total Leads"
-            value={stats?.total ?? 0}
-            icon={<svg viewBox="0 0 24 24" fill="none" className="w-5 h-5 text-[#0078D4]" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 018.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0111.964-3.07M12 6.375a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zm8.25 2.25a2.625 2.625 0 11-5.25 0 2.625 2.625 0 015.25 0z" /></svg>}
-          />
-          <StatCard
-            label="New This Week"
-            value={stats?.newThisWeek ?? 0}
-            icon={<svg viewBox="0 0 24 24" fill="none" className="w-5 h-5 text-[#0078D4]" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>}
-          />
-          <StatCard
-            label="From Contact Form"
-            value={stats?.fromContactForm ?? 0}
-            icon={<svg viewBox="0 0 24 24" fill="none" className="w-5 h-5 text-[#0078D4]" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M21.75 6.75v10.5a2.25 2.25 0 01-2.25 2.25h-15a2.25 2.25 0 01-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25m19.5 0v.243a2.25 2.25 0 01-1.07 1.916l-7.5 4.615a2.25 2.25 0 01-2.36 0L3.32 8.91a2.25 2.25 0 01-1.07-1.916V6.75" /></svg>}
-          />
-          <StatCard
-            label="From Lead Magnet"
-            value={stats?.fromLeadMagnet ?? 0}
-            icon={<svg viewBox="0 0 24 24" fill="none" className="w-5 h-5 text-[#0078D4]" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" /></svg>}
-          />
+      <div className="flex-1 max-w-[1400px] mx-auto w-full px-4 sm:px-6 py-8">
+        {/* Admin Tab Bar */}
+        <div className="flex flex-wrap gap-1.5 mb-8 border-b border-border pb-4">
+          {ADMIN_TABS.map(tab => (
+            <button
+              key={tab.key}
+              onClick={() => setActiveTab(tab.key)}
+              className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-semibold transition-all ${
+                activeTab === tab.key
+                  ? "bg-[#0078D4] text-white shadow-md shadow-[#0078D4]/20"
+                  : "bg-white text-[#0A2540] border border-border hover:border-[#0078D4]/40 hover:text-[#0078D4]"
+              }`}
+              data-testid={`admin-tab-${tab.key}`}
+            >
+              {tab.icon}
+              {tab.label}
+            </button>
+          ))}
         </div>
 
-        <div className="bg-white border border-border rounded-xl overflow-hidden">
-          <div className="px-5 pt-5 pb-4 border-b border-border">
-            <div className="flex flex-col sm:flex-row sm:items-center gap-4">
-              <div className="flex flex-wrap gap-1.5">
-                {STATUS_TABS.map(tab => (
-                  <button
-                    key={tab.key}
-                    onClick={() => handleFilterChange(tab.key)}
-                    className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-colors ${
-                      statusFilter === tab.key
-                        ? "bg-[#0078D4] text-white"
-                        : "bg-[#F7F9FC] text-muted-foreground hover:bg-[#0078D4]/10 hover:text-[#0078D4]"
-                    }`}
-                    data-testid={`status-tab-${tab.key}`}
-                  >
-                    {tab.label}
-                  </button>
-                ))}
-              </div>
-              <div className="sm:ml-auto">
-                <select
-                  value={sourceFilter}
-                  onChange={e => handleSourceChange(e.target.value)}
-                  className="border border-border rounded-lg px-3 py-1.5 text-xs font-medium bg-white focus:outline-none focus:ring-2 focus:ring-[#0078D4]"
-                >
-                  <option value="all">All Sources</option>
-                  <option value="contact_form">Contact Form</option>
-                  <option value="lead_magnet">Lead Magnet</option>
-                </select>
-              </div>
-            </div>
-          </div>
-
-          {loading ? (
-            <div className="flex items-center justify-center py-20">
-              <div className="w-8 h-8 border-4 border-[#0078D4] border-t-transparent rounded-full animate-spin" />
-            </div>
-          ) : leads.length === 0 ? (
-            <div className="text-center py-20 text-muted-foreground">
-              <svg viewBox="0 0 24 24" fill="none" className="w-12 h-12 mx-auto mb-3 text-muted-foreground/40" stroke="currentColor" strokeWidth={1.5}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 018.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0111.964-3.07M12 6.375a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zm8.25 2.25a2.625 2.625 0 11-5.25 0 2.625 2.625 0 015.25 0z" />
-              </svg>
-              <p className="text-sm">No leads match your current filters.</p>
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm" data-testid="leads-table">
-                <thead>
-                  <tr className="border-b border-border bg-[#F7F9FC]">
-                    <th className="text-left px-5 py-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Name</th>
-                    <th className="text-left px-5 py-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground hidden sm:table-cell">Email</th>
-                    <th className="text-left px-5 py-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground hidden md:table-cell">Company</th>
-                    <th className="text-left px-5 py-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Source</th>
-                    <th className="text-left px-5 py-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Status</th>
-                    <th className="text-left px-5 py-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground hidden lg:table-cell">Date</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {leads.map(lead => (
-                    <tr
-                      key={lead.id}
-                      onClick={() => setSelectedLead(lead)}
-                      className="border-b border-border last:border-0 hover:bg-[#F7F9FC] cursor-pointer transition-colors"
-                      data-testid={`lead-row-${lead.id}`}
-                    >
-                      <td className="px-5 py-3.5 font-semibold text-[#0A2540]">{lead.name}</td>
-                      <td className="px-5 py-3.5 text-muted-foreground hidden sm:table-cell">{lead.email}</td>
-                      <td className="px-5 py-3.5 text-muted-foreground hidden md:table-cell">{lead.company ?? "—"}</td>
-                      <td className="px-5 py-3.5">
-                        <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${SOURCE_COLORS[lead.source]}`}>
-                          {lead.source === "contact_form" ? "Contact Form" : "Lead Magnet"}
-                        </span>
-                      </td>
-                      <td className="px-5 py-3.5">
-                        <span className={`text-xs font-semibold px-2.5 py-1 rounded-full capitalize ${STATUS_COLORS[lead.status]}`}>
-                          {lead.status}
-                        </span>
-                      </td>
-                      <td className="px-5 py-3.5 text-muted-foreground text-xs hidden lg:table-cell">
-                        {new Date(lead.createdAt).toLocaleDateString()}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-
-          {totalPages > 1 && (
-            <div className="flex items-center justify-between px-5 py-4 border-t border-border">
-              <p className="text-xs text-muted-foreground">
-                Showing {(page - 1) * LIMIT + 1}–{Math.min(page * LIMIT, total)} of {total}
-              </p>
-              <div className="flex gap-2">
-                <button
-                  disabled={page <= 1}
-                  onClick={() => { const p = page - 1; setPage(p); void fetchLeads(p, statusFilter, sourceFilter); }}
-                  className="px-3 py-1.5 border border-border rounded-lg text-xs font-medium disabled:opacity-40 hover:bg-[#F7F9FC] transition-colors"
-                >
-                  Prev
-                </button>
-                <button
-                  disabled={page >= totalPages}
-                  onClick={() => { const p = page + 1; setPage(p); void fetchLeads(p, statusFilter, sourceFilter); }}
-                  className="px-3 py-1.5 border border-border rounded-lg text-xs font-medium disabled:opacity-40 hover:bg-[#F7F9FC] transition-colors"
-                >
-                  Next
-                </button>
-              </div>
-            </div>
-          )}
-        </div>
+        {/* Tab content */}
+        {activeTab === "leads" && <LeadsPanel />}
+        {activeTab === "clients" && <AdminClients />}
+        {activeTab === "projects" && <AdminProjects />}
+        {activeTab === "services" && <AdminServices />}
+        {activeTab === "reports" && <AdminReports />}
+        {activeTab === "documents" && <AdminDocuments />}
+        {activeTab === "invoices" && <AdminInvoices />}
+        {activeTab === "messages" && <AdminMessages />}
       </div>
-
-      {selectedLead && (
-        <SlideOver
-          lead={selectedLead}
-          onClose={() => setSelectedLead(null)}
-          onStatusChange={handleStatusChange}
-        />
-      )}
     </div>
   );
 }

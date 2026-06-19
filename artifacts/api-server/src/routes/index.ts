@@ -5,6 +5,7 @@ import sharesRouter from "./shares";
 import authRouter from "./auth";
 import leadsRouter from "./leads";
 import downloadsRouter from "./downloads";
+import portalRouter from "./portal";
 
 const router: IRouter = Router();
 
@@ -14,5 +15,6 @@ router.use(sharesRouter);
 router.use(authRouter);
 router.use(leadsRouter);
 router.use(downloadsRouter);
+router.use(portalRouter);
 
 export default router;

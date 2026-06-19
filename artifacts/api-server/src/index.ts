@@ -1,6 +1,7 @@
 import app from "./app";
 import { logger } from "./lib/logger";
 import { seedAdminUser } from "./routes/auth";
+import { seedPortalDemo } from "./lib/seed-portal";
 
 const rawPort = process.env["PORT"];
 
@@ -29,4 +30,12 @@ app.listen(port, (err) => {
   }).catch((seedErr) => {
     logger.warn({ err: seedErr }, "Could not seed admin user");
   });
+
+  if (process.env.NODE_ENV !== "production") {
+    seedPortalDemo().then(() => {
+      logger.info("Portal demo data seeded (no-op if exists)");
+    }).catch((seedErr) => {
+      logger.warn({ err: seedErr }, "Could not seed portal demo data");
+    });
+  }
 });

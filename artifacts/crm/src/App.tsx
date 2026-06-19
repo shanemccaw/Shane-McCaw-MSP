@@ -4,7 +4,13 @@ import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import { Toaster } from "@/components/ui/toaster";
 import LoginPage from "@/pages/Login";
 import DashboardPage from "@/pages/Dashboard";
-import PortalPage from "@/pages/Portal";
+import PortalDashboard from "@/pages/portal/PortalDashboard";
+import PortalProjects from "@/pages/portal/PortalProjects";
+import PortalProjectDetail from "@/pages/portal/PortalProjectDetail";
+import PortalServices from "@/pages/portal/PortalServices";
+import PortalReports from "@/pages/portal/PortalReports";
+import PortalBilling from "@/pages/portal/PortalBilling";
+import PortalMessages from "@/pages/portal/PortalMessages";
 import type { ReactNode } from "react";
 
 const queryClient = new QueryClient({
@@ -43,12 +49,35 @@ function Router() {
       <Route path="/">
         {user ? <Redirect to={user.role === "admin" ? "/dashboard" : "/portal"} /> : <LoginPage />}
       </Route>
+
+      {/* Admin routes */}
       <Route path="/dashboard">
         <RequireAuth role="admin"><DashboardPage /></RequireAuth>
       </Route>
+
+      {/* Client portal routes */}
       <Route path="/portal">
-        <RequireAuth role="client"><PortalPage /></RequireAuth>
+        <RequireAuth role="client"><PortalDashboard /></RequireAuth>
       </Route>
+      <Route path="/portal/projects">
+        <RequireAuth role="client"><PortalProjects /></RequireAuth>
+      </Route>
+      <Route path="/portal/projects/:id">
+        <RequireAuth role="client"><PortalProjectDetail /></RequireAuth>
+      </Route>
+      <Route path="/portal/services">
+        <RequireAuth role="client"><PortalServices /></RequireAuth>
+      </Route>
+      <Route path="/portal/reports">
+        <RequireAuth role="client"><PortalReports /></RequireAuth>
+      </Route>
+      <Route path="/portal/billing">
+        <RequireAuth role="client"><PortalBilling /></RequireAuth>
+      </Route>
+      <Route path="/portal/messages">
+        <RequireAuth role="client"><PortalMessages /></RequireAuth>
+      </Route>
+
       <Route>
         <Redirect to="/" />
       </Route>

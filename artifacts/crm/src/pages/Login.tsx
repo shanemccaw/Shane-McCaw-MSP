@@ -171,8 +171,8 @@ export default function LoginPage() {
     setError("");
     setLoading(true);
     try {
-      await login(email, password);
-      setLocation("/dashboard");
+      const loggedInUser = await login(email, password);
+      setLocation(loggedInUser?.role === "client" ? "/portal" : "/dashboard");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Login failed");
     } finally {

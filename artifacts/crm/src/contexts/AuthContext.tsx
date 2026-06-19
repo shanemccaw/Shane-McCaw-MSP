@@ -13,7 +13,7 @@ interface AuthState {
 }
 
 interface AuthContextValue extends AuthState {
-  login: (email: string, password: string) => Promise<void>;
+  login: (email: string, password: string) => Promise<AuthUser>;
   logout: () => Promise<void>;
   getAuthHeader: () => Record<string, string>;
   fetchWithAuth: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
@@ -70,7 +70,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     });
   }, [refresh]);
 
-  const login = async (email: string, password: string) => {
+  const login = async (email: string, password: string): Promise<AuthUser> => {
     const res = await fetch("/api/auth/login", {
       method: "POST",
       credentials: "include",
@@ -84,6 +84,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const data = await res.json() as { accessToken: string; user: AuthUser };
     setState({ user: data.user, accessToken: data.accessToken, isLoading: false });
     accessTokenRef.current = data.accessToken;
+    return data.user;
   };
 
   const logout = async () => {
