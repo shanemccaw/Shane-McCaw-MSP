@@ -4,7 +4,7 @@ import { SEOMeta } from "@/components/SEOMeta";
 import { Layout } from "@/components/Layout";
 import { CTAButton } from "@/components/CTAButton";
 import { ConsultationCTA } from "@/components/ConsultationCTA";
-import { Download, ArrowRight, Share2 } from "lucide-react";
+import { Download, ArrowRight, Share2, Loader2 } from "lucide-react";
 import { FaLinkedin, FaXTwitter } from "react-icons/fa6";
 import { articles } from "@/data/articles";
 import { pdf } from "@react-pdf/renderer";
@@ -17,6 +17,7 @@ export default function Resources() {
   const [leadMagnetEmail, setLeadMagnetEmail] = useState("");
   const [leadMagnetName, setLeadMagnetName] = useState("");
   const [submitted, setSubmitted] = useState(false);
+  const [pdfGenerating, setPdfGenerating] = useState(false);
   const [shareCounts, setShareCounts] = useState<Record<string, number>>({});
 
   useEffect(() => {
@@ -37,6 +38,7 @@ export default function Resources() {
 
   const handleLeadMagnet = async (e: React.FormEvent) => {
     e.preventDefault();
+    setPdfGenerating(true);
     try {
       await fetch("/api/leads", {
         method: "POST",
@@ -65,6 +67,7 @@ export default function Resources() {
       // PDF generation failed silently — success state still shown
     }
 
+    setPdfGenerating(false);
     setSubmitted(true);
   };
 
@@ -114,8 +117,20 @@ export default function Resources() {
                     className="flex-1 border border-border rounded px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4]"
                     data-testid="lead-magnet-email"
                   />
-                  <CTAButton type="submit" className="text-sm whitespace-nowrap" data-testid="lead-magnet-submit">
-                    Download Free Checklist
+                  <CTAButton
+                    type="submit"
+                    className="text-sm whitespace-nowrap"
+                    data-testid="lead-magnet-submit"
+                    disabled={pdfGenerating}
+                  >
+                    {pdfGenerating ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin mr-2 inline-block" />
+                        Preparing your checklist…
+                      </>
+                    ) : (
+                      "Download Free Checklist"
+                    )}
                   </CTAButton>
                 </form>
               ) : (
