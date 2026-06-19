@@ -119,7 +119,11 @@ export default function Resources() {
                   <h3 className="text-lg font-bold text-[#0A2540] mb-3 leading-snug">{post.title}</h3>
                   <p className="text-muted-foreground text-sm leading-relaxed mb-6">{post.summary}</p>
                   <div className="flex items-center justify-between">
-                    <p className="text-muted-foreground text-xs">{post.date}</p>
+                    <div className="flex items-center gap-3">
+                      <p className="text-muted-foreground text-xs">{post.date}</p>
+                      <span className="text-muted-foreground text-xs">·</span>
+                      <p className="text-muted-foreground text-xs">{post.readingTime}</p>
+                    </div>
                     <div className="flex items-center gap-3">
                       <a
                         href={`https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(`${window.location.origin}/resources/${post.slug}`)}`}

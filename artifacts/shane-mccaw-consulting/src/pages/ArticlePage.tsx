@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useParams, Link } from "wouter";
-import { ArrowLeft, Calendar, Tag, Link2, Check } from "lucide-react";
+import { ArrowLeft, Calendar, Tag, Link2, Check, Clock } from "lucide-react";
 import { FaLinkedin } from "react-icons/fa";
 import { FaXTwitter } from "react-icons/fa6";
 import ReactMarkdown from "react-markdown";
@@ -136,6 +136,10 @@ export default function ArticlePage() {
             <span className="inline-flex items-center gap-1.5 text-white/50 text-xs">
               <Calendar className="w-3 h-3" />
               {article.date}
+            </span>
+            <span className="inline-flex items-center gap-1.5 text-white/50 text-xs">
+              <Clock className="w-3 h-3" />
+              {article.readingTime}
             </span>
           </div>
 

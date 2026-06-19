@@ -5,6 +5,14 @@ export interface Article {
   summary: string;
   date: string;
   content: string;
+  readingTime: string;
+}
+
+function estimateReadingTime(markdown: string): string {
+  const text = markdown.replace(/```[\s\S]*?```/g, "").replace(/`[^`]*`/g, "").replace(/[#*_~>\[\]()!]/g, "").trim();
+  const wordCount = text.split(/\s+/).filter(Boolean).length;
+  const minutes = Math.max(1, Math.ceil(wordCount / 200));
+  return `${minutes} min read`;
 }
 
 function parseFrontmatter(raw: string): { data: Record<string, string>; content: string } {
@@ -47,6 +55,7 @@ export const articles: Article[] = Object.values(rawFiles)
       summary: data.summary ?? "",
       date: data.date ?? "",
       content,
+      readingTime: estimateReadingTime(content),
     };
   })
   .filter((a) => a.slug && a.title && a.date)
