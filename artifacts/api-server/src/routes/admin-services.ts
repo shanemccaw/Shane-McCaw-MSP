@@ -1,5 +1,5 @@
 import { Router, type IRouter, type Request, type Response } from "express";
-import { db, servicesTable } from "@workspace/db";
+import { db, servicesTable, clientServicesTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/requireAuth";
 
@@ -69,6 +69,34 @@ router.put("/admin/services/:id", requireAdmin, async (req: Request, res: Respon
     res.json(updated);
   } catch {
     res.status(500).json({ error: "Failed to update service" });
+  }
+});
+
+router.delete("/admin/services/:id", requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const id = Number(req.params.id);
+    if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
+
+    const linked = await db
+      .select({ id: clientServicesTable.id })
+      .from(clientServicesTable)
+      .where(eq(clientServicesTable.serviceId, id))
+      .limit(1);
+
+    if (linked.length > 0) {
+      res.status(409).json({ error: "This service is assigned to one or more clients and cannot be deleted." });
+      return;
+    }
+
+    const [deleted] = await db
+      .delete(servicesTable)
+      .where(eq(servicesTable.id, id))
+      .returning({ id: servicesTable.id });
+
+    if (!deleted) { res.status(404).json({ error: "Service not found" }); return; }
+    res.status(204).end();
+  } catch {
+    res.status(500).json({ error: "Failed to delete service" });
   }
 });
 
