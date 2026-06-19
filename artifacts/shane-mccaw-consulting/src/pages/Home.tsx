@@ -86,7 +86,7 @@ export default function Home() {
           "description": "Enterprise Microsoft 365 and Copilot AI consulting by Shane McCaw — NASA's Lead M365 Architect with 30 years of Microsoft expertise.",
           "founder": { "@type": "Person", "name": "Shane McCaw" },
           "areaServed": "US",
-          "priceRange": "$397 – $25,000+",
+          "priceRange": "$3,000 – $35,000+",
           "hasOfferCatalog": {
             "@type": "OfferCatalog",
             "name": "Microsoft 365 Consulting Services",

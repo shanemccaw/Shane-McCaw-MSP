@@ -51,7 +51,7 @@ const faqs = [
   },
   {
     q: "How are project-based engagements scoped and priced?",
-    a: "After the free discovery call, Shane provides a fixed-fee proposal with defined deliverables, a timeline, and a single project price. No hourly billing, no scope creep without a signed change order. Project pricing typically ranges from $2,500 to $25,000+ depending on complexity.",
+    a: "After the free discovery call, Shane provides a fixed-fee proposal with defined deliverables, a timeline, and a single project price. No hourly billing, no scope creep without a signed change order. Project pricing typically ranges from $7,500 to $35,000+ depending on complexity.",
   },
   {
     q: "Can I start with a micro-offer and move to a retainer?",
@@ -462,7 +462,7 @@ export default function Pricing() {
                 label: "Track 01",
                 tier: "Entry",
                 title: "Fixed-Price Micro-Offers",
-                range: "$397 \u2013 $997",
+                range: "$3,000 \u2013 $18,000",
                 desc: "Scoped deliverables with a defined price, a defined output, and a defined turnaround. No discovery call required to start \u2014 pick the package that matches your need and get in the queue.",
                 bestFor: "Mid-market organizations (200–2,000 employees), regulated industries, and government contractors that need a fast, low-risk diagnostic before committing to a larger engagement.",
                 anchor: "#micro-offers",
@@ -472,7 +472,7 @@ export default function Pricing() {
                 label: "Track 02",
                 tier: "Core",
                 title: "Project-Based Engagements",
-                range: "$2,500 \u2013 $25,000+",
+                range: "$7,500 \u2013 $35,000+",
                 desc: "For larger, multi-phase work \u2014 tenant migrations, full governance overhauls, Copilot deployment programs, intranet builds. Priced as a fixed project after a free scoping call.",
                 bestFor: "Organizations with a defined initiative — preparing for Copilot, remediating governance gaps, or executing a migration — that need structured delivery and committed outcomes.",
                 anchor: "#project-based",
@@ -571,7 +571,7 @@ export default function Pricing() {
               Each package has a fixed price, a specific deliverable, and a committed turnaround time. No discovery call required — the scope is defined in advance so you know what you're getting.
             </p>
             <p className="text-muted-foreground max-w-2xl leading-relaxed text-sm bg-[#F7F9FC] border border-border rounded-lg px-4 py-3">
-              <span className="font-semibold text-[#0A2540]">Two tiers within Track 01:</span> The lower-priced packages ($397–$997) are tactical quick wins — fast-turnaround deliverables scoped around a single, well-defined need. The higher-priced packages ($3,500–$18,000) are strategic assessments — deeper engagements that produce a comprehensive diagnostic, prioritized remediation roadmap, and executive briefing. Both serve different purposes and different moments in an organization's M365 journey.
+              <span className="font-semibold text-[#0A2540]">Two tiers within Track 01:</span> The lower-priced packages ($3,000–$5,000) are tactical quick wins — fast-turnaround deliverables scoped around a single, well-defined need. The higher-priced packages ($8,000–$18,000) are strategic assessments — deeper engagements that produce a comprehensive diagnostic, prioritized remediation roadmap, and executive briefing. Both serve different purposes and different moments in an organization's M365 journey.
             </p>
           </div>
           {offersLoading && microOffers.length === 0 ? (
@@ -613,7 +613,7 @@ export default function Pricing() {
               <div className="flex-shrink-0">
                 <div className="bg-[#F7F9FC] rounded-xl border border-border p-5 mb-4 text-center lg:text-right">
                   <p className="text-xs font-bold text-[#0A2540] uppercase tracking-wider mb-1">Typical project range</p>
-                  <p className="text-2xl font-extrabold text-[#0078D4]">$2,500 – $25,000+</p>
+                  <p className="text-2xl font-extrabold text-[#0078D4]">$7,500 – $35,000+</p>
                   <p className="text-muted-foreground text-xs mt-1">Scoped after a free discovery call.</p>
                 </div>
                 <CTAButton href="/book" className="text-sm w-full justify-center" data-testid="project-cta">
