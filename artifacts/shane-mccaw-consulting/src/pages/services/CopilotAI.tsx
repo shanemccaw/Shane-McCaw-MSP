@@ -111,7 +111,7 @@ const riskSignals = [
 ];
 
 export default function CopilotAI() {
-  const price = "Contact for pricing";
+  const price = "$2,000";
   const loading = false;
   return (
     <Layout>

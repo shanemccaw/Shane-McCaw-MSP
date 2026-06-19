@@ -4,7 +4,7 @@ import { CTAButton } from "@/components/CTAButton";
 import { Zap, CheckCircle, ArrowRight } from "lucide-react";
 import { ConsultationCTA } from "@/components/ConsultationCTA";
 export default function PowerPlatform() {
-  const price = "Contact for pricing";
+  const price = "$1,500";
   const loading = false;
   return (
     <Layout>

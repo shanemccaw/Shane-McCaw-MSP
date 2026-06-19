@@ -2,74 +2,19 @@ import { Link } from "wouter";
 import { Layout } from "@/components/Layout";
 import { SEOMeta } from "@/components/SEOMeta";
 import { CTAButton } from "@/components/CTAButton";
-import { ServiceCard } from "@/components/ServiceCard";
 import {
   Cloud, Bot, Shield, Zap, Server, Users,
-  CheckCircle, ArrowRight, Star, Quote
+  CheckCircle, ArrowRight, Star, Quote, type LucideIcon
 } from "lucide-react";
+import { useServices, formatPrice } from "@/hooks/useServices";
 
-const services = [
-  {
-    icon: Cloud,
-    title: "M365 Tenant Health Audit",
-    tagline: "Know exactly where you stand.",
-    description: "A systematic, NASA-methodology review of your Microsoft 365 tenant — security posture, licensing efficiency, workload adoption, and governance gaps. You receive a prioritized remediation report with clear next steps, not a generic checklist.",
-    href: "/services/microsoft-365",
-    badge: "Most popular starting point",
-  },
-  {
-    icon: Bot,
-    title: "Copilot for M365 Readiness Assessment",
-    tagline: "Deploy AI safely. Realize the ROI.",
-    description: "Before enabling Copilot, your data governance, permissions, and sensitivity labels must be right. Shane audits your environment against the same readiness criteria used at NASA, then hands you a deployment roadmap that eliminates oversharing risk and maximizes adoption.",
-    href: "/services/copilot-ai",
-    badge: "High demand",
-  },
-  {
-    icon: Shield,
-    title: "Governance Foundations Package",
-    tagline: "Mission-critical compliance discipline.",
-    description: "DLP policies, sensitivity labels, retention schedules, conditional access, and Purview configuration — built to the same standard Shane applies at NASA. Designed for regulated industries and government contractors who cannot afford a compliance gap.",
-    href: "/services/governance",
-    badge: null,
-  },
-  {
-    icon: Zap,
-    title: "Power Platform Quick-Start",
-    tagline: "Automate one process. Prove the model.",
-    description: "A fully built, tested Power Automate flow or Power App delivered in under two weeks. Shane scopes the right process, builds it correctly from the start — with error handling, monitoring, and documentation — so it scales as your needs grow.",
-    href: "/services/power-platform",
-    badge: null,
-  },
-  {
-    icon: Server,
-    title: "Migration Readiness Assessment",
-    tagline: "Migrate with confidence, not guesswork.",
-    description: "Exchange, SharePoint, or cross-tenant M365 migrations carry real risk when rushed. Shane's pre-migration assessment surfaces every complexity — hybrid dependencies, permission structures, retention obligations — before a single mailbox moves.",
-    href: "/services/cloud-migration",
-    badge: null,
-  },
-  {
-    icon: Users,
-    title: "Fractional M365 Architect Retainer",
-    tagline: "Senior architecture. On your schedule.",
-    description: "Ongoing access to Shane as your organization's dedicated Microsoft 365 architect — without the cost of a full-time hire. Strategic roadmap, hands-on implementation, governance oversight, and direct escalation support. The same expertise NASA relies on, available to your team monthly.",
-    href: "/pricing",
-    badge: "Enterprise favorite",
-  },
-];
+const ICON_MAP: Record<string, LucideIcon> = { Cloud, Bot, Shield, Zap, Server, Users };
 
 const whyPoints = [
   "NASA-grade thinking from 6+ years as Lead M365 Architect — mission-critical standards applied to your business.",
   "30 years of Microsoft ecosystem expertise — from code to cloud, across every major platform evolution.",
   "Direct access to Shane always — no junior consultants, no offshore teams, no handoffs.",
   "Forum of Innovation Award winner, 20+ former Microsoft certifications, ex-Microsoft engineer, founder of McCawSoft.",
-];
-
-const microOffers = [
-  { title: "M365 Health Check", price: "$497", desc: "90-min audit + comprehensive written report with prioritized recommendations.", href: "/book" },
-  { title: "Copilot Readiness Assessment", price: "$797", desc: "Full readiness review + tailored deployment plan with governance framework.", href: "/book" },
-  { title: "SharePoint Intranet Blueprint", price: "$997", desc: "Architecture plan, sitemap, taxonomy design, and wireframe deliverable.", href: "/book" },
 ];
 
 const testimonials = [
@@ -97,6 +42,8 @@ const testimonials = [
 ];
 
 export default function Home() {
+  const { services: dbServices, loading: servicesLoading } = useServices("service_area");
+  const { services: dbOffers, loading: offersLoading } = useServices("micro_offer");
   return (
     <Layout>
       <SEOMeta
@@ -212,37 +159,43 @@ export default function Home() {
               Every engagement is scoped and delivered personally by Shane. No project managers between you and the architect. No junior consultants doing the work.
             </p>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {services.map((s, i) => {
-              const Icon = s.icon;
-              return (
-                <div
-                  key={i}
-                  className="group relative bg-white border border-border rounded-xl p-7 flex flex-col hover:-translate-y-1 hover:shadow-xl hover:border-[#0078D4]/30 transition-all duration-300"
-                  data-testid={`service-card-${i}`}
-                >
-                  {s.badge && (
-                    <span className="absolute top-4 right-4 bg-[#0078D4]/10 text-[#0078D4] text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full">
-                      {s.badge}
-                    </span>
-                  )}
-                  <div className="w-11 h-11 rounded-lg bg-[#0078D4]/10 flex items-center justify-center mb-5 flex-shrink-0">
-                    <Icon className="w-5 h-5 text-[#0078D4]" />
-                  </div>
-                  <p className="text-[#0078D4] text-xs font-semibold uppercase tracking-[0.08em] mb-1.5">{s.tagline}</p>
-                  <h3 className="text-[1.1rem] font-bold text-[#0A2540] leading-snug mb-3">{s.title}</h3>
-                  <p className="text-muted-foreground text-sm leading-relaxed flex-grow mb-6">{s.description}</p>
-                  <Link
-                    href={s.href}
-                    className="inline-flex items-center gap-1.5 text-[#0078D4] text-sm font-semibold hover:gap-2.5 transition-all"
-                    data-testid={`service-link-${i}`}
+          {servicesLoading && dbServices.length === 0 ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {[...Array(6)].map((_, i) => <div key={i} className="h-52 rounded-xl border border-border bg-gray-100 animate-pulse" />)}
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {dbServices.map((s, i) => {
+                const Icon = (s.iconName ? ICON_MAP[s.iconName] : null) ?? Cloud;
+                return (
+                  <div
+                    key={s.slug ?? i}
+                    className="group relative bg-white border border-border rounded-xl p-7 flex flex-col hover:-translate-y-1 hover:shadow-xl hover:border-[#0078D4]/30 transition-all duration-300"
+                    data-testid={`service-card-${i}`}
                   >
-                    Learn More <ArrowRight className="w-3.5 h-3.5" />
-                  </Link>
-                </div>
-              );
-            })}
-          </div>
+                    {s.badge && (
+                      <span className="absolute top-4 right-4 bg-[#0078D4]/10 text-[#0078D4] text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full">
+                        {s.badge}
+                      </span>
+                    )}
+                    <div className="w-11 h-11 rounded-lg bg-[#0078D4]/10 flex items-center justify-center mb-5 flex-shrink-0">
+                      <Icon className="w-5 h-5 text-[#0078D4]" />
+                    </div>
+                    {s.tagline && <p className="text-[#0078D4] text-xs font-semibold uppercase tracking-[0.08em] mb-1.5">{s.tagline}</p>}
+                    <h3 className="text-[1.1rem] font-bold text-[#0A2540] leading-snug mb-3">{s.name}</h3>
+                    <p className="text-muted-foreground text-sm leading-relaxed flex-grow mb-6">{s.description}</p>
+                    <Link
+                      href={s.pageHref ?? "/services"}
+                      className="inline-flex items-center gap-1.5 text-[#0078D4] text-sm font-semibold hover:gap-2.5 transition-all"
+                      data-testid={`service-link-${i}`}
+                    >
+                      Learn More <ArrowRight className="w-3.5 h-3.5" />
+                    </Link>
+                  </div>
+                );
+              })}
+            </div>
+          )}
           <div className="text-center mt-10">
             <Link href="/micro-offers" className="inline-flex items-center gap-1.5 text-muted-foreground text-sm hover:text-[#0078D4] transition-colors" data-testid="view-all-services">
               View all fixed-price packages and retainer options <ArrowRight className="w-3.5 h-3.5" />
@@ -307,18 +260,24 @@ export default function Home() {
             <h2 className="text-3xl md:text-4xl font-extrabold text-[#0A2540]">Start Small. Win Big.</h2>
             <p className="text-muted-foreground mt-4 max-w-xl mx-auto">Fixed-price packages with clear deliverables. Get results fast without a long commitment.</p>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-10">
-            {microOffers.map((offer, i) => (
-              <div key={i} className="bg-white p-8 rounded-lg border border-border hover:shadow-lg hover:-translate-y-1 transition-all duration-300" data-testid={`micro-offer-${i}`}>
-                <p className="text-[#0078D4] text-3xl font-extrabold mb-2">{offer.price}</p>
-                <h3 className="text-lg font-bold text-[#0A2540] mb-3">{offer.title}</h3>
-                <p className="text-muted-foreground text-sm mb-6 leading-relaxed">{offer.desc}</p>
-                <CTAButton href={offer.href} className="w-full justify-center text-sm" data-testid={`micro-offer-cta-${i}`}>
-                  Get Started
-                </CTAButton>
-              </div>
-            ))}
-          </div>
+          {offersLoading && dbOffers.length === 0 ? (
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-10">
+              {[...Array(3)].map((_, i) => <div key={i} className="h-48 rounded-lg border border-border bg-gray-100 animate-pulse" />)}
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-10">
+              {dbOffers.slice(0, 3).map((offer, i) => (
+                <div key={offer.slug ?? i} className="bg-white p-8 rounded-lg border border-border hover:shadow-lg hover:-translate-y-1 transition-all duration-300" data-testid={`micro-offer-${i}`}>
+                  <p className="text-[#0078D4] text-3xl font-extrabold mb-2">{formatPrice(offer.price) ?? offer.price}</p>
+                  <h3 className="text-lg font-bold text-[#0A2540] mb-3">{offer.name}</h3>
+                  <p className="text-muted-foreground text-sm mb-6 leading-relaxed">{offer.description}</p>
+                  <CTAButton href="/book" className="w-full justify-center text-sm" data-testid={`micro-offer-cta-${i}`}>
+                    Get Started
+                  </CTAButton>
+                </div>
+              ))}
+            </div>
+          )}
           <div className="text-center">
             <Link href="/micro-offers" className="text-[#0078D4] font-semibold hover:underline flex items-center justify-center gap-1" data-testid="view-all-offers">
               View All 6 Quick Win Packages <ArrowRight className="w-4 h-4" />

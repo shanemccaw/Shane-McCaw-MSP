@@ -21,7 +21,7 @@ const riskChecklist = [
 ];
 
 export default function CloudMigration() {
-  const price = "Contact for pricing";
+  const price = "$2,500";
   const loading = false;
   return (
     <Layout>

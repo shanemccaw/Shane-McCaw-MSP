@@ -9,15 +9,15 @@ import { useServices, formatPrice, type PublicService } from "@/hooks/useService
 const faqs = [
   {
     q: "How quickly can an engagement start?",
-    a: "Fixed-price micro-offer packages typically begin within 3–5 business days of payment. Retainer engagements and project work usually start within 1–2 weeks of signing. If you have a time-sensitive situation, mention it on the discovery call — Shane can often accelerate.",
+    a: "Fixed-price micro-offer packages typically begin within 3\u20135 business days of payment. Retainer engagements and project work usually start within 1\u20132 weeks of signing. If you have a time-sensitive situation, mention it on the discovery call \u2014 Shane can often accelerate.",
   },
   {
     q: "Do you work with small businesses or only enterprises?",
-    a: "Both. The same Microsoft 365 governance and architecture challenges that affect NASA-scale environments appear at 50-seat organizations — often with less margin for error, not more. Shane calibrates scope and pricing to your actual size and complexity.",
+    a: "Both. The same Microsoft 365 governance and architecture challenges that affect NASA-scale environments appear at 50-seat organizations \u2014 often with less margin for error, not more. Shane calibrates scope and pricing to your actual size and complexity.",
   },
   {
     q: "Is everything done remotely?",
-    a: "Yes, 100% remote. Shane is based in Vero Beach, FL, and serves clients nationally. Microsoft 365 consulting is entirely remote-capable — screen sharing, Teams calls, and delegated admin access are all that's needed.",
+    a: "Yes, 100% remote. Shane is based in Vero Beach, FL, and serves clients nationally. Microsoft 365 consulting is entirely remote-capable \u2014 screen sharing, Teams calls, and delegated admin access are all that\u2019s needed.",
   },
   {
     q: "How are project-based engagements scoped and priced?",
@@ -25,15 +25,15 @@ const faqs = [
   },
   {
     q: "Can I start with a micro-offer and move to a retainer?",
-    a: "That's the most common path. Most clients start with a fixed-price assessment to establish baseline and build confidence, then move into a retainer once they know the working relationship. Any micro-offer investment can be credited toward the first month of a retainer if you decide to continue.",
+    a: "That\u2019s the most common path. Most clients start with a fixed-price assessment to establish baseline and build confidence, then move into a retainer once they know the working relationship. Any micro-offer investment can be credited toward the first month of a retainer if you decide to continue.",
   },
   {
     q: "What does a retainer actually look like month to month?",
-    a: "Retainer hours are used however the engagement requires — attending architecture reviews, reviewing configurations, answering time-sensitive questions, or designing a new workload. At the end of each month you receive a written summary of work completed and hours used. Hours do not roll over.",
+    a: "Retainer hours are used however the engagement requires \u2014 attending architecture reviews, reviewing configurations, answering time-sensitive questions, or designing a new workload. At the end of each month you receive a written summary of work completed and hours used. Hours do not roll over.",
   },
   {
     q: "What M365 licenses are required for Copilot?",
-    a: "Microsoft 365 Copilot requires an M365 E3 or E5 base license plus the Copilot add-on ($30/user/month). However, licensing is only the starting point — data governance, sensitivity labeling, and permissions hygiene must be in place first. The Copilot Readiness Assessment covers all of this.",
+    a: "Microsoft 365 Copilot requires an M365 E3 or E5 base license plus the Copilot add-on ($30/user/month). However, licensing is only the starting point \u2014 data governance, sensitivity labeling, and permissions hygiene must be in place first. The Copilot Readiness Assessment covers all of this.",
   },
 ];
 
@@ -63,7 +63,7 @@ function MicroOfferCard({ offer, index }: { offer: PublicService; index: number 
         )}
         {offer.turnaround && (
           <div className="flex items-center gap-2 text-xs">
-            <span className="w-3.5 h-3.5 flex-shrink-0 text-center text-muted-foreground">⏱</span>
+            <span className="w-3.5 h-3.5 flex-shrink-0 text-center text-muted-foreground">{"\u23f1"}</span>
             <span className="text-muted-foreground">Turnaround: {offer.turnaround}</span>
           </div>
         )}
@@ -139,177 +139,69 @@ function FAQItem({ q, a, index }: { q: string; a: string; index: number }) {
   );
 }
 
-const FALLBACK_OFFERS: PublicService[] = [
-  { id: 0, slug: "m365-health-check", name: "M365 Tenant Health Audit", price: "497.00", turnaround: "2 business days", serviceType: "micro_offer", billingType: "one_time", description: "A full audit of your M365 tenant configuration — permissions, sharing policies, licensing gaps, and security posture — with a prioritized remediation report.", deliverables: "Written audit report + remediation priority list", targetAudience: null, inclusions: null, category: null, badge: null, highlighted: false, hoursPerMonth: null, iconName: null, pageHref: null, sortOrder: 0, features: null, tagline: null },
-  { id: 0, slug: "copilot-readiness", name: "Copilot Readiness Assessment", price: "797.00", turnaround: "5 business days", serviceType: "micro_offer", billingType: "one_time", description: "A six-dimension readiness scorecard for Copilot deployment: licensing, identity, permissions, governance, sensitivity labeling, and oversharing risk.", deliverables: "Readiness scorecard + deployment roadmap", targetAudience: null, inclusions: null, category: null, badge: "Most requested", highlighted: false, hoursPerMonth: null, iconName: null, pageHref: null, sortOrder: 1, features: null, tagline: null },
-  { id: 0, slug: "sharepoint-blueprint", name: "SharePoint Intranet Blueprint", price: "997.00", turnaround: "7 business days", serviceType: "micro_offer", billingType: "one_time", description: "A complete information architecture and navigation blueprint for a SharePoint intranet — site structure, permission model, governance policy, and rollout sequence.", deliverables: "IA document + governance policy + rollout plan", targetAudience: null, inclusions: null, category: null, badge: null, highlighted: false, hoursPerMonth: null, iconName: null, pageHref: null, sortOrder: 2, features: null, tagline: null },
-  { id: 0, slug: "power-automate", name: "Power Automate Quick Win", price: "597.00", turnaround: "5–7 business days", serviceType: "micro_offer", billingType: "one_time", description: "Shane identifies, designs, and builds one high-impact Power Automate flow for your organization — documented and handed off with user instructions.", deliverables: "Live flow + documentation + handoff walkthrough", targetAudience: null, inclusions: null, category: null, badge: null, highlighted: false, hoursPerMonth: null, iconName: null, pageHref: null, sortOrder: 3, features: null, tagline: null },
-  { id: 0, slug: "security-audit", name: "M365 Security & Governance Audit", price: "897.00", turnaround: "5 business days", serviceType: "micro_offer", billingType: "one_time", description: "An in-depth review of your DLP policies, retention labels, conditional access rules, and Entra ID posture — with specific remediation steps for each gap found.", deliverables: "Security audit report + DLP/retention gap analysis", targetAudience: null, inclusions: null, category: null, badge: null, highlighted: false, hoursPerMonth: null, iconName: null, pageHref: null, sortOrder: 4, features: null, tagline: null },
-  { id: 0, slug: "copilot-prompts", name: "Copilot Prompt Library Build", price: "397.00", turnaround: "5 business days", serviceType: "micro_offer", billingType: "one_time", description: "A custom library of 25+ role-specific Copilot prompts built for your organization's departments — covering your actual workflows, not generic examples.", deliverables: "Role-specific prompt library (Word + SharePoint-ready)", targetAudience: null, inclusions: null, category: null, badge: null, highlighted: false, hoursPerMonth: null, iconName: null, pageHref: null, sortOrder: 5, features: null, tagline: null },
-];
-
-const FALLBACK_RETAINERS: PublicService[] = [
-  { id: 0, slug: "architect-essentials", name: "Architect Essentials", price: "1500.00", turnaround: null, serviceType: "retainer", billingType: "recurring_monthly", description: null, deliverables: null, targetAudience: null, inclusions: null, category: null, badge: null, highlighted: false, hoursPerMonth: "10 hours", iconName: null, pageHref: null, sortOrder: 0, features: ["10 hours of consulting per month","Email and Teams support","Monthly strategy call (60 min)","Standard response within 1 business day","Access to all M365 service areas","Monthly written summary"], tagline: "Right for organizations that need a senior M365 resource on call — without the overhead of a full-time hire." },
-  { id: 0, slug: "architect-growth", name: "Architect Growth", price: "3000.00", turnaround: null, serviceType: "retainer", billingType: "recurring_monthly", description: null, deliverables: null, targetAudience: null, inclusions: null, category: null, badge: null, highlighted: true, hoursPerMonth: "25 hours", iconName: null, pageHref: null, sortOrder: 1, features: ["25 hours of consulting per month","Priority email and Teams support","Two strategy calls per month (60 min each)","Priority response within 4 business hours","Access to all M365 service areas","Monthly written progress report","Proactive tenant health monitoring"], tagline: "Right for organizations actively modernizing their M365 environment or planning a Copilot deployment." },
-  { id: 0, slug: "architect-enterprise", name: "Architect Enterprise", price: "5500.00", turnaround: null, serviceType: "retainer", billingType: "recurring_monthly", description: null, deliverables: null, targetAudience: null, inclusions: null, category: null, badge: null, highlighted: false, hoursPerMonth: "50 hours", iconName: null, pageHref: null, sortOrder: 2, features: ["50 hours of consulting per month","Dedicated Teams support channel","Weekly strategy calls (60 min)","Same-day emergency response","Access to all M365 service areas","Monthly written progress report","Custom technology roadmap","Quarterly strategic review"], tagline: "Right for organizations that need a dedicated senior architect embedded in their operations every week." },
-];
-
 export default function Pricing() {
-  const { services: fetchedOffers, loading: offersLoading } = useServices("micro_offer");
-  const { services: fetchedRetainers, loading: retainersLoading } = useServices("retainer");
-  const microOffers = fetchedOffers.length > 0 ? fetchedOffers : (offersLoading ? [] : FALLBACK_OFFERS);
-  const retainers = fetchedRetainers.length > 0 ? fetchedRetainers : (retainersLoading ? [] : FALLBACK_RETAINERS);
+  const { services: microOffers, loading: offersLoading } = useServices("micro_offer");
+  const { services: retainers, loading: retainersLoading } = useServices("retainer");
+
+  const jsonLd = [
+    {
+      "@context": "https://schema.org",
+      "@type": "ItemList",
+      "name": "Microsoft 365 Consulting Pricing",
+      "description": "Transparent pricing for Shane McCaw's Microsoft 365 consulting retainers and fixed-price packages.",
+      "url": "https://shanemccaw.com/pricing",
+      "itemListElement": [
+        ...retainers.map((r, i) => ({
+          "@type": "ListItem",
+          "position": i + 1,
+          "item": {
+            "@type": "Offer",
+            "name": r.name,
+            "description": r.tagline ?? r.description ?? "",
+            "price": r.price ?? "",
+            "priceCurrency": "USD",
+            "priceSpecification": {
+              "@type": "UnitPriceSpecification",
+              "price": r.price ?? "",
+              "priceCurrency": "USD",
+              "unitText": "month",
+            },
+            "seller": { "@type": "Person", "name": "Shane McCaw" },
+          },
+        })),
+        ...microOffers.map((o, i) => ({
+          "@type": "ListItem",
+          "position": retainers.length + i + 1,
+          "item": {
+            "@type": "Offer",
+            "name": o.name,
+            "description": o.description ?? "",
+            "price": o.price ?? "",
+            "priceCurrency": "USD",
+            "priceSpecification": { "@type": "PriceSpecification", "price": o.price ?? "", "priceCurrency": "USD" },
+            ...(o.turnaround ? { "deliveryLeadTime": { "@type": "QuantitativeValue", "description": o.turnaround } } : {}),
+            "seller": { "@type": "Person", "name": "Shane McCaw" },
+          },
+        })),
+      ],
+    },
+    {
+      "@context": "https://schema.org",
+      "@type": "FAQPage",
+      "mainEntity": faqs.map(({ q, a }) => ({
+        "@type": "Question",
+        "name": q,
+        "acceptedAnswer": { "@type": "Answer", "text": a },
+      })),
+    },
+  ];
+
   return (
     <Layout>
       <SEOMeta
         title="Pricing — Transparent Microsoft 365 Consulting | Shane McCaw Consulting"
         description="Transparent Microsoft 365 consulting pricing by Shane McCaw. Fixed-price micro-offer packages and retainer options — know your investment before you commit."
-        jsonLd={[
-          {
-            "@context": "https://schema.org",
-            "@type": "ItemList",
-            "name": "Microsoft 365 Consulting Pricing",
-            "description": "Transparent pricing for Shane McCaw's Microsoft 365 consulting retainers and fixed-price packages.",
-            "url": "https://shanemccaw.com/pricing",
-            "itemListElement": [
-              {
-                "@type": "ListItem",
-                "position": 1,
-                "item": {
-                  "@type": "Offer",
-                  "name": "Starter Retainer",
-                  "description": "Ongoing strategic M365 guidance — ideal for SMBs maintaining their environment.",
-                  "price": "1500",
-                  "priceCurrency": "USD",
-                  "priceSpecification": { "@type": "UnitPriceSpecification", "price": "1500", "priceCurrency": "USD", "unitText": "month" },
-                  "seller": { "@type": "Person", "name": "Shane McCaw" }
-                }
-              },
-              {
-                "@type": "ListItem",
-                "position": 2,
-                "item": {
-                  "@type": "Offer",
-                  "name": "Growth Retainer",
-                  "description": "Active improvement and project delivery for teams scaling M365 adoption.",
-                  "price": "3000",
-                  "priceCurrency": "USD",
-                  "priceSpecification": { "@type": "UnitPriceSpecification", "price": "3000", "priceCurrency": "USD", "unitText": "month" },
-                  "seller": { "@type": "Person", "name": "Shane McCaw" }
-                }
-              },
-              {
-                "@type": "ListItem",
-                "position": 3,
-                "item": {
-                  "@type": "Offer",
-                  "name": "Enterprise Retainer",
-                  "description": "Embedded senior M365 architect capacity for large-scale transformation programs.",
-                  "price": "5500",
-                  "priceCurrency": "USD",
-                  "priceSpecification": { "@type": "UnitPriceSpecification", "price": "5500", "priceCurrency": "USD", "unitText": "month" },
-                  "seller": { "@type": "Person", "name": "Shane McCaw" }
-                }
-              },
-              {
-                "@type": "ListItem",
-                "position": 4,
-                "item": {
-                  "@type": "Offer",
-                  "name": "M365 Tenant Health Audit",
-                  "description": "A full audit of your M365 tenant configuration — permissions, sharing policies, licensing gaps, and security posture — with a prioritized remediation report.",
-                  "price": "497",
-                  "priceCurrency": "USD",
-                  "priceSpecification": { "@type": "PriceSpecification", "price": "497", "priceCurrency": "USD" },
-                  "deliveryLeadTime": { "@type": "QuantitativeValue", "value": "2", "unitText": "business days" },
-                  "seller": { "@type": "Person", "name": "Shane McCaw" }
-                }
-              },
-              {
-                "@type": "ListItem",
-                "position": 5,
-                "item": {
-                  "@type": "Offer",
-                  "name": "Copilot Readiness Assessment",
-                  "description": "A six-dimension readiness scorecard for Copilot deployment: licensing, identity, permissions, governance, sensitivity labeling, and oversharing risk.",
-                  "price": "797",
-                  "priceCurrency": "USD",
-                  "priceSpecification": { "@type": "PriceSpecification", "price": "797", "priceCurrency": "USD" },
-                  "deliveryLeadTime": { "@type": "QuantitativeValue", "value": "5", "unitText": "business days" },
-                  "seller": { "@type": "Person", "name": "Shane McCaw" }
-                }
-              },
-              {
-                "@type": "ListItem",
-                "position": 6,
-                "item": {
-                  "@type": "Offer",
-                  "name": "SharePoint Intranet Blueprint",
-                  "description": "A complete information architecture and navigation blueprint for a SharePoint intranet — site structure, permission model, governance policy, and rollout sequence.",
-                  "price": "997",
-                  "priceCurrency": "USD",
-                  "priceSpecification": { "@type": "PriceSpecification", "price": "997", "priceCurrency": "USD" },
-                  "deliveryLeadTime": { "@type": "QuantitativeValue", "value": "7", "unitText": "business days" },
-                  "seller": { "@type": "Person", "name": "Shane McCaw" }
-                }
-              },
-              {
-                "@type": "ListItem",
-                "position": 7,
-                "item": {
-                  "@type": "Offer",
-                  "name": "Power Automate Quick Win",
-                  "description": "Shane identifies, designs, and builds one high-impact Power Automate flow for your organization — documented and handed off with user instructions.",
-                  "price": "597",
-                  "priceCurrency": "USD",
-                  "priceSpecification": { "@type": "PriceSpecification", "price": "597", "priceCurrency": "USD" },
-                  "deliveryLeadTime": { "@type": "QuantitativeValue", "minValue": "5", "maxValue": "7", "unitText": "business days" },
-                  "seller": { "@type": "Person", "name": "Shane McCaw" }
-                }
-              },
-              {
-                "@type": "ListItem",
-                "position": 8,
-                "item": {
-                  "@type": "Offer",
-                  "name": "M365 Security & Governance Audit",
-                  "description": "An in-depth review of your DLP policies, retention labels, conditional access rules, and Entra ID posture — with specific remediation steps for each gap found.",
-                  "price": "897",
-                  "priceCurrency": "USD",
-                  "priceSpecification": { "@type": "PriceSpecification", "price": "897", "priceCurrency": "USD" },
-                  "deliveryLeadTime": { "@type": "QuantitativeValue", "value": "5", "unitText": "business days" },
-                  "seller": { "@type": "Person", "name": "Shane McCaw" }
-                }
-              },
-              {
-                "@type": "ListItem",
-                "position": 9,
-                "item": {
-                  "@type": "Offer",
-                  "name": "Copilot Prompt Library Build",
-                  "description": "A custom library of 25+ role-specific Copilot prompts built for your organization's departments — covering your actual workflows, not generic examples.",
-                  "price": "397",
-                  "priceCurrency": "USD",
-                  "priceSpecification": { "@type": "PriceSpecification", "price": "397", "priceCurrency": "USD" },
-                  "deliveryLeadTime": { "@type": "QuantitativeValue", "value": "5", "unitText": "business days" },
-                  "seller": { "@type": "Person", "name": "Shane McCaw" }
-                }
-              }
-            ]
-          },
-          {
-            "@context": "https://schema.org",
-            "@type": "FAQPage",
-            "mainEntity": faqs.map(({ q, a }) => ({
-              "@type": "Question",
-              "name": q,
-              "acceptedAnswer": {
-                "@type": "Answer",
-                "text": a,
-              },
-            })),
-          },
-        ]}
+        jsonLd={jsonLd}
       />
       {/* Hero */}
       <section className="relative bg-[#0A2540] pt-32 pb-24 overflow-hidden">
@@ -357,8 +249,8 @@ export default function Pricing() {
                 icon: Zap,
                 label: "Track 01",
                 title: "Fixed-Price Micro-Offers",
-                range: "$397 – $997",
-                desc: "Scoped deliverables with a defined price, a defined output, and a defined turnaround. No discovery call required to start — pick the package that matches your need and get in the queue.",
+                range: "$397 \u2013 $997",
+                desc: "Scoped deliverables with a defined price, a defined output, and a defined turnaround. No discovery call required to start \u2014 pick the package that matches your need and get in the queue.",
                 bestFor: "Organizations that know what they need and want to move quickly.",
                 anchor: "#micro-offers",
               },
@@ -366,8 +258,8 @@ export default function Pricing() {
                 icon: FolderOpen,
                 label: "Track 02",
                 title: "Project-Based Engagements",
-                range: "$2,500 – $25,000+",
-                desc: "For larger, multi-phase work — tenant migrations, full governance overhauls, Copilot deployment programs, intranet builds. Priced as a fixed project after a free scoping call.",
+                range: "$2,500 \u2013 $25,000+",
+                desc: "For larger, multi-phase work \u2014 tenant migrations, full governance overhauls, Copilot deployment programs, intranet builds. Priced as a fixed project after a free scoping call.",
                 bestFor: "Organizations with a defined initiative that needs a structured plan and committed delivery.",
                 anchor: "#project-based",
               },
@@ -375,8 +267,8 @@ export default function Pricing() {
                 icon: Calendar,
                 label: "Track 03",
                 title: "Monthly Fractional Retainer",
-                range: "$1,500 – $5,500/mo",
-                desc: "Consistent, predictable access to Shane's expertise every month — for architecture reviews, ongoing governance, strategic planning, or Copilot rollout support. Cancel with 30 days' notice.",
+                range: "$1,500 \u2013 $5,500/mo",
+                desc: "Consistent, predictable access to Shane\u2019s expertise every month \u2014 for architecture reviews, ongoing governance, strategic planning, or Copilot rollout support. Cancel with 30 days\u2019 notice.",
                 bestFor: "Organizations that need a senior M365 architect available on a sustained basis.",
                 anchor: "#retainers",
               },
@@ -427,11 +319,17 @@ export default function Pricing() {
               Each package has a fixed price, a specific deliverable, and a committed turnaround time. No discovery call required — the scope is defined in advance so you know what you're getting.
             </p>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-            {microOffers.map((offer, i) => (
-              <MicroOfferCard key={offer.slug} offer={offer} index={i} />
-            ))}
-          </div>
+          {offersLoading && microOffers.length === 0 ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+              {[...Array(6)].map((_, i) => <div key={i} className="h-52 rounded-xl border border-border bg-gray-100 animate-pulse" />)}
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+              {microOffers.map((offer, i) => (
+                <MicroOfferCard key={offer.slug} offer={offer} index={i} />
+              ))}
+            </div>
+          )}
         </div>
       </section>
 
@@ -503,11 +401,17 @@ export default function Pricing() {
               Consistent, predictable access to a NASA-caliber M365 architect every month — without the cost of a full-time hire. Cancel with 30 days' notice. No long-term commitment required.
             </p>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {retainers.map((plan, i) => (
-              <RetainerCard key={plan.slug} plan={plan} index={i} />
-            ))}
-          </div>
+          {retainersLoading && retainers.length === 0 ? (
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              {[...Array(3)].map((_, i) => <div key={i} className="h-96 rounded-2xl border border-border bg-gray-100 animate-pulse" />)}
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              {retainers.map((plan, i) => (
+                <RetainerCard key={plan.slug} plan={plan} index={i} />
+              ))}
+            </div>
+          )}
           <p className="text-center text-muted-foreground text-sm mt-8">
             All retainer tiers include access to all service areas. Hours are used as the engagement requires and do not roll over.
           </p>

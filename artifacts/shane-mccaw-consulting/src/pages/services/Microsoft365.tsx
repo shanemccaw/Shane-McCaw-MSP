@@ -4,7 +4,7 @@ import { Cloud, CheckCircle, AlertCircle, ArrowRight } from "lucide-react";
 import { Link } from "wouter";
 import { ConsultationCTA } from "@/components/ConsultationCTA";
 export default function Microsoft365() {
-  const price = "Contact for pricing";
+  const price = "$1,500";
   const loading = false;
   return (
     <Layout>

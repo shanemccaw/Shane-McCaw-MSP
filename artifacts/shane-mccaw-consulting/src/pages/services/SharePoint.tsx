@@ -3,7 +3,7 @@ import { Layout } from "@/components/Layout";
 import { Layout as LayoutIcon, CheckCircle, ArrowRight } from "lucide-react";
 import { ConsultationCTA } from "@/components/ConsultationCTA";
 export default function SharePoint() {
-  const price = "Contact for pricing";
+  const price = "$1,500";
   const loading = false;
   return (
     <Layout>

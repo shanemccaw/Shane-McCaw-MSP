@@ -3,7 +3,7 @@ import { Layout } from "@/components/Layout";
 import { Shield, CheckCircle, ArrowRight } from "lucide-react";
 import { ConsultationCTA } from "@/components/ConsultationCTA";
 export default function Governance() {
-  const price = "Contact for pricing";
+  const price = "$2,000";
   const loading = false;
   return (
     <Layout>
