@@ -210,6 +210,90 @@ export default function Pricing() {
                   "priceSpecification": { "@type": "UnitPriceSpecification", "price": "5500", "priceCurrency": "USD", "unitText": "month" },
                   "seller": { "@type": "Person", "name": "Shane McCaw" }
                 }
+              },
+              {
+                "@type": "ListItem",
+                "position": 4,
+                "item": {
+                  "@type": "Offer",
+                  "name": "M365 Tenant Health Audit",
+                  "description": "A full audit of your M365 tenant configuration — permissions, sharing policies, licensing gaps, and security posture — with a prioritized remediation report.",
+                  "price": "497",
+                  "priceCurrency": "USD",
+                  "priceSpecification": { "@type": "PriceSpecification", "price": "497", "priceCurrency": "USD" },
+                  "deliveryLeadTime": { "@type": "QuantitativeValue", "value": "2", "unitText": "business days" },
+                  "seller": { "@type": "Person", "name": "Shane McCaw" }
+                }
+              },
+              {
+                "@type": "ListItem",
+                "position": 5,
+                "item": {
+                  "@type": "Offer",
+                  "name": "Copilot Readiness Assessment",
+                  "description": "A six-dimension readiness scorecard for Copilot deployment: licensing, identity, permissions, governance, sensitivity labeling, and oversharing risk.",
+                  "price": "797",
+                  "priceCurrency": "USD",
+                  "priceSpecification": { "@type": "PriceSpecification", "price": "797", "priceCurrency": "USD" },
+                  "deliveryLeadTime": { "@type": "QuantitativeValue", "value": "5", "unitText": "business days" },
+                  "seller": { "@type": "Person", "name": "Shane McCaw" }
+                }
+              },
+              {
+                "@type": "ListItem",
+                "position": 6,
+                "item": {
+                  "@type": "Offer",
+                  "name": "SharePoint Intranet Blueprint",
+                  "description": "A complete information architecture and navigation blueprint for a SharePoint intranet — site structure, permission model, governance policy, and rollout sequence.",
+                  "price": "997",
+                  "priceCurrency": "USD",
+                  "priceSpecification": { "@type": "PriceSpecification", "price": "997", "priceCurrency": "USD" },
+                  "deliveryLeadTime": { "@type": "QuantitativeValue", "value": "7", "unitText": "business days" },
+                  "seller": { "@type": "Person", "name": "Shane McCaw" }
+                }
+              },
+              {
+                "@type": "ListItem",
+                "position": 7,
+                "item": {
+                  "@type": "Offer",
+                  "name": "Power Automate Quick Win",
+                  "description": "Shane identifies, designs, and builds one high-impact Power Automate flow for your organization — documented and handed off with user instructions.",
+                  "price": "597",
+                  "priceCurrency": "USD",
+                  "priceSpecification": { "@type": "PriceSpecification", "price": "597", "priceCurrency": "USD" },
+                  "deliveryLeadTime": { "@type": "QuantitativeValue", "minValue": "5", "maxValue": "7", "unitText": "business days" },
+                  "seller": { "@type": "Person", "name": "Shane McCaw" }
+                }
+              },
+              {
+                "@type": "ListItem",
+                "position": 8,
+                "item": {
+                  "@type": "Offer",
+                  "name": "M365 Security & Governance Audit",
+                  "description": "An in-depth review of your DLP policies, retention labels, conditional access rules, and Entra ID posture — with specific remediation steps for each gap found.",
+                  "price": "897",
+                  "priceCurrency": "USD",
+                  "priceSpecification": { "@type": "PriceSpecification", "price": "897", "priceCurrency": "USD" },
+                  "deliveryLeadTime": { "@type": "QuantitativeValue", "value": "5", "unitText": "business days" },
+                  "seller": { "@type": "Person", "name": "Shane McCaw" }
+                }
+              },
+              {
+                "@type": "ListItem",
+                "position": 9,
+                "item": {
+                  "@type": "Offer",
+                  "name": "Copilot Prompt Library Build",
+                  "description": "A custom library of 25+ role-specific Copilot prompts built for your organization's departments — covering your actual workflows, not generic examples.",
+                  "price": "397",
+                  "priceCurrency": "USD",
+                  "priceSpecification": { "@type": "PriceSpecification", "price": "397", "priceCurrency": "USD" },
+                  "deliveryLeadTime": { "@type": "QuantitativeValue", "value": "5", "unitText": "business days" },
+                  "seller": { "@type": "Person", "name": "Shane McCaw" }
+                }
               }
             ]
           },
