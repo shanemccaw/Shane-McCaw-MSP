@@ -14,3 +14,13 @@ if [ -n "$STRIPE_SECRET_KEY" ] && [ -n "$REPLIT_DOMAINS" ]; then
 else
   echo "Skipping Stripe webhook check (STRIPE_SECRET_KEY or REPLIT_DOMAINS not set)."
 fi
+
+# Sync the services catalogue from dev to production database.
+# Skipped silently when PROD_DATABASE_URL is not set (safe to run locally).
+if [ -n "$PROD_DATABASE_URL" ]; then
+  echo "Syncing services catalogue to production database…"
+  pnpm --filter @workspace/scripts run sync-services || \
+    echo "WARNING: Services sync failed — see output above. Run manually: pnpm --filter @workspace/scripts run sync-services"
+else
+  echo "Skipping services sync (PROD_DATABASE_URL not set)."
+fi

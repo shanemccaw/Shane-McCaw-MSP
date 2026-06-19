@@ -7,10 +7,17 @@
     "hello": "tsx ./src/hello.ts",
     "generate:og": "node ../scripts/generate-og-image.mjs",
     "sync-webhooks": "tsx ./src/sync-stripe-webhooks.ts",
+    "sync-services": "tsx ./src/sync-services-to-prod.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@workspace/db": "workspace:*",
+    "drizzle-orm": "catalog:",
+    "pg": "^8.20.0"
   },
   "devDependencies": {
     "@types/node": "catalog:",
+    "@types/pg": "^8.20.0",
     "stripe": "catalog:",
     "tsx": "catalog:"
   }
