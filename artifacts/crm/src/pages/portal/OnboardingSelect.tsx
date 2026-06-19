@@ -20,23 +20,6 @@ interface Service {
   orderWorkflow: WizardStep[] | null;
 }
 
-const MICRO_OFFER_SLUGS = [
-  "m365-health-check",
-  "copilot-readiness",
-  "sharepoint-blueprint",
-  "power-automate",
-  "security-audit",
-  "copilot-prompts",
-];
-
-const CONSULTING_SLUGS = [
-  "m365-consulting",
-  "copilot-ai-consulting",
-  "sharepoint-consulting",
-  "power-platform-consulting",
-  "governance-consulting",
-  "cloud-migration-consulting",
-];
 
 function fmtService(s: Service) {
   if (s.orderWorkflow?.length && s.basePrice) {
@@ -79,17 +62,9 @@ export default function OnboardingSelect() {
     fetch("/api/portal/onboarding/services")
       .then(r => r.json() as Promise<Service[]>)
       .then(data => {
-        const microOffers = data.filter(s => MICRO_OFFER_SLUGS.includes(s.slug ?? "")).sort((a, b) => {
-          const ai = MICRO_OFFER_SLUGS.indexOf(a.slug ?? "");
-          const bi = MICRO_OFFER_SLUGS.indexOf(b.slug ?? "");
-          return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
-        });
-        const consulting = data.filter(s => CONSULTING_SLUGS.includes(s.slug ?? "")).sort((a, b) => {
-          const ai = CONSULTING_SLUGS.indexOf(a.slug ?? "");
-          const bi = CONSULTING_SLUGS.indexOf(b.slug ?? "");
-          return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
-        });
-        const sorted = [...microOffers, ...consulting];
+        const oneTime = data.filter(s => s.billingType === "one_time");
+        const monthly = data.filter(s => s.billingType === "recurring_monthly");
+        const sorted = [...oneTime, ...monthly];
         setServices(sorted);
         if (preselectedSlug) {
           const match = sorted.find(s => s.slug === preselectedSlug);
