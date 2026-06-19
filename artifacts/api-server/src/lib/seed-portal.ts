@@ -97,7 +97,7 @@ export async function seedMarketingServices(): Promise<void> {
       turnaround: "2 business days",
       description: "A full audit of your M365 tenant configuration — permissions, sharing policies, licensing gaps, and security posture — with a prioritized remediation report.",
       deliverables: "Written audit report + remediation priority list",
-      targetAudience: "Organizations unsure how well their M365 tenant is configured or who want a baseline before deeper work.",
+      targetAudience: "Mid-market orgs (200–2,000 employees), regulated industries, and government contractors preparing for audits.",
       inclusions: [
         "90-minute live audit session via video call",
         "Review of tenant settings, security configuration, and permissions",
@@ -119,7 +119,7 @@ export async function seedMarketingServices(): Promise<void> {
       turnaround: "5 business days",
       description: "A six-dimension readiness scorecard for Copilot deployment: licensing, identity, permissions, governance, sensitivity labeling, and oversharing risk.",
       deliverables: "Readiness scorecard + deployment roadmap",
-      targetAudience: "Organizations that have purchased or are considering Microsoft Copilot licenses and want to ensure safe, successful deployment.",
+      targetAudience: "Organizations that have purchased or are evaluating Microsoft Copilot licenses and want to ensure safe, governance-compliant deployment.",
       inclusions: [
         "Full audit of data governance, sensitivity labels, and DLP policies",
         "Review of SharePoint permissions and oversharing risks",
@@ -142,7 +142,7 @@ export async function seedMarketingServices(): Promise<void> {
       turnaround: "7 business days",
       description: "A complete information architecture and navigation blueprint for a SharePoint intranet — site structure, permission model, governance policy, and rollout sequence.",
       deliverables: "IA document + governance policy + rollout plan",
-      targetAudience: "Organizations planning a new SharePoint intranet or needing to redesign an existing one that isn't working.",
+      targetAudience: "Mid-market orgs and startups scaling into compliance who need a structured intranet foundation.",
       inclusions: [
         "Discovery session to understand organizational structure and needs",
         "Information architecture design",
@@ -165,7 +165,7 @@ export async function seedMarketingServices(): Promise<void> {
       turnaround: "5–7 business days",
       description: "Shane identifies, designs, and builds one high-impact Power Automate flow for your organization — documented and handed off with user instructions.",
       deliverables: "Live flow + documentation + handoff walkthrough",
-      targetAudience: "Organizations with a specific manual process they want to automate using Power Automate.",
+      targetAudience: "Teams with unused Power Platform licensing who want to automate a high-friction manual process.",
       inclusions: [
         "Discovery call to document the target process",
         "Design and build of one Power Automate flow",
@@ -187,7 +187,7 @@ export async function seedMarketingServices(): Promise<void> {
       turnaround: "5 business days",
       description: "An in-depth review of your DLP policies, retention labels, conditional access rules, and Entra ID posture — with specific remediation steps for each gap found.",
       deliverables: "Security audit report + DLP/retention gap analysis",
-      targetAudience: "Organizations in regulated industries or those who've experienced a security incident and need a compliance assessment.",
+      targetAudience: "Regulated industries (healthcare, legal, financial services) and orgs preparing for audits or responding to a security incident.",
       inclusions: [
         "Full review of DLP policies, sensitivity labels, and retention",
         "Conditional access policy audit",
@@ -210,7 +210,7 @@ export async function seedMarketingServices(): Promise<void> {
       turnaround: "5 business days",
       description: "A custom library of 25+ role-specific Copilot prompts built for your organization's departments — covering your actual workflows, not generic examples.",
       deliverables: "Role-specific prompt library (Word + SharePoint-ready)",
-      targetAudience: "Organizations that have deployed Copilot but are struggling with adoption because employees don't know how to use it effectively.",
+      targetAudience: "Organizations evaluating or deploying Copilot who want to accelerate adoption with role-specific, workflow-ready prompts.",
       inclusions: [
         "Discovery call to understand your team's key use cases",
         "Custom library of 25+ role-specific Copilot prompts",
