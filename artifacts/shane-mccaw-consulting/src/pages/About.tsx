@@ -147,6 +147,14 @@ export default function About() {
                 <p>
                   In 2010, Shane founded McCawSoft — a consulting practice built on the belief that enterprise Microsoft technology deserves genuine enterprise expertise. McCawSoft served clients across healthcare, financial services, manufacturing, and government: building SharePoint environments that didn't collapse under their own permissions sprawl, migrating organizations to Exchange Online without losing data, and designing governance frameworks that still hold up years later.
                 </p>
+                <div className="rounded-xl bg-[#0A2540] border border-[#0078D4]/30 p-7 mt-2">
+                  <h3 className="text-lg font-extrabold text-white mb-3">
+                    The Architect Who Built at NASA Scale — Available to You
+                  </h3>
+                  <p className="text-white/75 leading-relaxed text-[1rem]">
+                    The governance discipline, security-first architecture, and Copilot deployment experience Shane has developed running NASA's M365 environment do not stay at NASA. Every private engagement draws directly from what he is solving in production today — at a scale and compliance level most enterprise consultants have never operated at. You are not getting a consultant who studied NASA. You are getting the architect who works there.
+                  </p>
+                </div>
                 <p>
                   Today, Shane's primary role is Lead Microsoft 365 Architect and Copilot Subject Matter Expert at NASA. That is not a credential or a title from a past position. It is what he does every day — managing the governance, compliance, and platform architecture of one of the most security-constrained Microsoft 365 environments in the federal government. He consults on the side, which means every engagement benefits directly from what he is working on in production right now.
                 </p>
@@ -204,6 +212,9 @@ export default function About() {
               </p>
               <p className="text-foreground leading-relaxed mb-4">
                 Working inside that environment since 2018 has fundamentally shaped how Shane thinks about architecture, governance, and deployment risk. He is not applying theoretical best practices. He is applying what he learned yesterday, in production, under real stakes.
+              </p>
+              <p className="text-foreground leading-relaxed mb-4">
+                Most consultants talk about best practices learned from whitepapers and conference sessions. Shane applies what he validated last week in one of the most scrutinized M365 environments on earth. That is not a marginal difference — it is the difference between repeating advice and delivering tested judgment.
               </p>
               <p className="text-foreground leading-relaxed">
                 For your organization, that means access to a level of governance discipline and platform depth that even most large consulting firms cannot offer — delivered directly, without layers of overhead.
@@ -275,6 +286,30 @@ export default function About() {
         </div>
       </section>
 
+      {/* Elevator Pitch */}
+      <section className="bg-[#0A2540] py-20">
+        <div className="max-w-[860px] mx-auto px-6">
+          <p className="text-[#00B4D8] text-sm font-semibold uppercase tracking-[0.1em] mb-6 text-center">Elevator Pitch</p>
+          <div className="relative rounded-2xl border border-[#0078D4]/30 bg-[#0078D4]/5 p-10">
+            <div className="absolute -top-4 left-10 text-[#0078D4] text-6xl font-serif leading-none select-none">"</div>
+            <p className="text-white text-lg md:text-xl leading-relaxed mb-6">
+              I'm Shane McCaw. I've spent thirty years inside the Microsoft ecosystem — writing code, building enterprise architecture, and for the past six years running M365 governance and Copilot deployment strategy at NASA. That's my day job. I also consult with organizations that need someone who has actually operated at that level.
+            </p>
+            <p className="text-white/80 text-lg md:text-xl leading-relaxed mb-6">
+              Most Microsoft consultants will give you best practices from a playbook. I give you what I tested last week in one of the most security-constrained, compliance-heavy Microsoft environments in the federal government. If your organization is serious about getting M365 right — governance, Copilot readiness, SharePoint, security architecture — I can help you do it the way it's done when there's no margin for error.
+            </p>
+            <p className="text-white/80 text-lg md:text-xl leading-relaxed">
+              Engagements are direct. You work with me, not a team I oversee. Everything I deliver is designed to leave your organization more capable, not more dependent on a retainer.
+            </p>
+            <div className="absolute -bottom-4 right-10 text-[#0078D4] text-6xl font-serif leading-none select-none rotate-180">"</div>
+          </div>
+          <div className="mt-8 text-center">
+            <p className="font-bold text-white text-base">Shane McCaw</p>
+            <p className="text-white/50 text-sm mt-1">Lead M365 Architect & Copilot SME, NASA · Founder, McCawSoft</p>
+          </div>
+        </div>
+      </section>
+
       {/* Philosophy */}
       <section className="bg-white py-20">
         <div className="max-w-[1200px] mx-auto px-6">
@@ -332,6 +367,59 @@ export default function About() {
               >
                 {comp}
               </span>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* How Organizations Engage */}
+      <section className="bg-[#F7F9FC] py-20">
+        <div className="max-w-[1200px] mx-auto px-6">
+          <div className="text-center mb-12">
+            <p className="text-[#0078D4] text-sm font-semibold uppercase tracking-[0.1em] mb-3">Working Together</p>
+            <h2 className="text-3xl md:text-4xl font-extrabold text-[#0A2540]">How Organizations Engage With Shane</h2>
+            <p className="text-muted-foreground mt-4 max-w-2xl mx-auto leading-relaxed">
+              Every engagement is scoped and priced clearly — no open-ended retainers you didn't agree to, no surprise expansions. Six ways to work together, matched to where you are.
+            </p>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
+            {[
+              {
+                name: "M365 Tenant Health Check",
+                desc: "A structured audit of your Microsoft 365 environment — governance gaps, security posture, permissions sprawl, and configuration risk — with a prioritized remediation roadmap.",
+              },
+              {
+                name: "Copilot Readiness Assessment",
+                desc: "A pre-deployment evaluation of your tenant's governance, sensitivity labeling, and data hygiene. Tells you exactly what to fix before Copilot goes live — not after.",
+              },
+              {
+                name: "SharePoint Architecture Review",
+                desc: "An expert assessment of your SharePoint Online information architecture: site structure, permissions model, navigation, and long-term scalability. Delivered with specific recommendations.",
+              },
+              {
+                name: "Governance Framework Design",
+                desc: "A complete M365 governance framework tailored to your organization — covering data classification, access controls, retention, DLP policy, and Copilot guardrails.",
+              },
+              {
+                name: "Power Platform Quick Start",
+                desc: "Structured guidance to deploy Power Automate or Power Apps in a governed, secure way — including environment strategy, DLP policy, and a working proof-of-concept.",
+              },
+              {
+                name: "Cloud Migration Strategy Session",
+                desc: "A focused planning engagement to map your path from on-premises or legacy environments to M365 — sequencing, risk mitigation, and a clear migration architecture.",
+              },
+            ].map((offer, i) => (
+              <div
+                key={i}
+                className="bg-white rounded-xl border border-border p-7 hover:border-[#0078D4]/40 hover:shadow-sm transition-all"
+                data-testid={`engagement-offer-${i}`}
+              >
+                <div className="w-8 h-8 rounded-lg bg-[#0078D4]/10 flex items-center justify-center mb-4">
+                  <span className="text-[#0078D4] font-extrabold text-sm">{String(i + 1).padStart(2, "0")}</span>
+                </div>
+                <h3 className="font-extrabold text-[#0A2540] mb-3 text-base leading-snug">{offer.name}</h3>
+                <p className="text-muted-foreground text-sm leading-relaxed">{offer.desc}</p>
+              </div>
             ))}
           </div>
         </div>
