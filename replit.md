@@ -1,36 +1,56 @@
-# [Project name]
+# Shane McCaw Consulting
 
-_Replace the heading above with the project's name, and this line with one sentence describing what this app does for users._
+A professional multi-page consulting website for Shane McCaw — Lead Microsoft 365 Architect at NASA and 30-year Microsoft ecosystem veteran.
 
 ## Run & Operate
 
-- `pnpm --filter @workspace/api-server run dev` — run the API server (port 5000)
+- `pnpm --filter @workspace/shane-mccaw-consulting run dev` — run the web app (port 20446)
 - `pnpm run typecheck` — full typecheck across all packages
-- `pnpm run build` — typecheck + build all packages
-- `pnpm --filter @workspace/api-spec run codegen` — regenerate API hooks and Zod schemas from the OpenAPI spec
-- `pnpm --filter @workspace/db run push` — push DB schema changes (dev only)
-- Required env: `DATABASE_URL` — Postgres connection string
 
 ## Stack
 
 - pnpm workspaces, Node.js 24, TypeScript 5.9
-- API: Express 5
-- DB: PostgreSQL + Drizzle ORM
-- Validation: Zod (`zod/v4`), `drizzle-zod`
-- API codegen: Orval (from OpenAPI spec)
-- Build: esbuild (CJS bundle)
+- Frontend: React + Vite + Wouter (routing) + Tailwind CSS v4
+- UI: shadcn/ui components + Lucide React icons + react-icons/fa
+- Forms: react-hook-form + zod + @hookform/resolvers
+- No backend — purely presentational static site
 
 ## Where things live
 
-_Populate as you build — short repo map plus pointers to the source-of-truth file for DB schema, API contracts, theme files, etc._
+- `artifacts/shane-mccaw-consulting/src/App.tsx` — router with all 15 routes registered
+- `artifacts/shane-mccaw-consulting/src/index.css` — theme (Inter font, Deep Navy/Electric Blue palette)
+- `artifacts/shane-mccaw-consulting/src/components/` — Header, Footer, Layout, CTAButton, ServiceCard
+- `artifacts/shane-mccaw-consulting/src/pages/` — all page files
 
-## Architecture decisions
+## Pages
 
-_Populate as you build — non-obvious choices a reader couldn't infer from the code (3-5 bullets)._
+| Route | Component |
+|-------|-----------|
+| `/` | Home |
+| `/about` | About |
+| `/services` | Services (parent) |
+| `/services/microsoft-365` | Microsoft365 |
+| `/services/copilot-ai` | CopilotAI |
+| `/services/sharepoint` | SharePoint |
+| `/services/power-platform` | PowerPlatform |
+| `/services/governance` | Governance |
+| `/services/cloud-migration` | CloudMigration |
+| `/micro-offers` | MicroOffers |
+| `/pricing` | Pricing |
+| `/resources` | Resources |
+| `/contact` | Contact |
+| `/book` | Book |
+
+## Brand Colors
+
+- Deep Navy: `#0A2540` (CSS: `bg-[#0A2540]` or `bg-sidebar`)
+- Electric Blue: `#0078D4` (CSS: `text-primary` / `bg-primary`)
+- Bright Teal: `#00B4D8`
+- Off-White: `#F7F9FC`
 
 ## Product
 
-_Describe the high-level user-facing capabilities of this app once they exist._
+A marketing website for Shane McCaw Consulting positioning Shane as the premier Microsoft 365 and Copilot AI consultant. Includes full service pages, fixed-price micro-offer packages, retainer pricing, resource/blog section, contact form with validation, and a Calendly booking placeholder.
 
 ## User preferences
 
@@ -38,7 +58,9 @@ _Populate as you build — explicit user instructions worth remembering across s
 
 ## Gotchas
 
-_Populate as you build — sharp edges, "always run X before Y" rules._
+- The Calendly widget is a placeholder — replace the styled box on `/book` and `/contact` with an actual inline Calendly embed using `https://calendly.com/shanemccawconsulting/discovery`
+- Contact form uses react-hook-form + zod but has no backend submission — shows a toast on success
+- Header is transparent on `/` and solid Deep Navy on all other pages (via scroll + location detection)
 
 ## Pointers
 

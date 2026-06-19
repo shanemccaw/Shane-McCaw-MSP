@@ -1,0 +1,82 @@
+import { useEffect } from "react";
+import { Layout } from "@/components/Layout";
+import { CTAButton } from "@/components/CTAButton";
+import { Layout as LayoutIcon, CheckCircle } from "lucide-react";
+
+export default function SharePoint() {
+  useEffect(() => {
+    document.title = "SharePoint Architecture & Modern Intranets | Shane McCaw Consulting";
+  }, []);
+
+  return (
+    <Layout>
+      <section className="bg-[#0A2540] pt-32 pb-20">
+        <div className="max-w-[1200px] mx-auto px-6">
+          <LayoutIcon className="w-10 h-10 text-[#0078D4] mb-6" />
+          <p className="text-[#0078D4] text-sm font-semibold uppercase tracking-[0.1em] mb-4">Service</p>
+          <h1 className="text-4xl md:text-5xl lg:text-6xl font-extrabold text-white leading-tight max-w-4xl">
+            SharePoint Architecture & Modern Intranets
+          </h1>
+          <p className="text-white/70 text-lg mt-6 max-w-2xl">
+            Most SharePoint intranets fail because they were built without a coherent architecture. Shane designs and builds intranets that employees actually use.
+          </p>
+        </div>
+      </section>
+
+      <section className="bg-white py-20">
+        <div className="max-w-[1200px] mx-auto px-6">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-12">
+            <div>
+              <p className="text-[#0078D4] text-sm font-semibold uppercase tracking-[0.1em] mb-4">Scope</p>
+              <h2 className="text-3xl font-extrabold text-[#0A2540] mb-8">What's Included</h2>
+              <ul className="space-y-4">
+                {[
+                  "Modern intranet design using SharePoint hub architecture",
+                  "Information architecture planning and documentation",
+                  "Taxonomy and metadata framework design",
+                  "Global and local navigation strategy",
+                  "Search configuration and relevance tuning",
+                  "Permissions governance model",
+                  "Legacy SharePoint migration planning and execution",
+                  "Department and team site templates",
+                  "Home page and key page design",
+                  "User training and adoption plan",
+                ].map((item, i) => (
+                  <li key={i} className="flex items-start gap-3">
+                    <CheckCircle className="w-5 h-5 text-[#0078D4] flex-shrink-0 mt-0.5" />
+                    <span className="text-foreground">{item}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+            <div className="space-y-6">
+              <div className="bg-[#F7F9FC] rounded-xl border border-border p-6">
+                <h3 className="font-bold text-[#0A2540] text-lg mb-3">The Architecture-First Approach</h3>
+                <p className="text-muted-foreground leading-relaxed">Most SharePoint implementations jump straight to building without a clear information architecture. The result is a site that looks fine at launch and becomes unusable within six months. Shane starts with IA — understanding your organization's structure, content types, and user journeys — before writing a single line of configuration.</p>
+              </div>
+              <div className="bg-[#F7F9FC] rounded-xl border border-border p-6">
+                <h3 className="font-bold text-[#0A2540] text-lg mb-3">Intranets Employees Actually Use</h3>
+                <p className="text-muted-foreground leading-relaxed">The measure of a successful intranet isn't launch day traffic — it's whether employees use it six months later. Shane designs for real usage patterns: fast search, logical navigation, and content that's actually findable.</p>
+              </div>
+              <div className="bg-[#0078D4]/10 border border-[#0078D4]/30 rounded-xl p-6">
+                <p className="text-[#0078D4] text-sm font-semibold uppercase tracking-wide mb-2">Quick Win</p>
+                <h4 className="font-bold text-[#0A2540] mb-1">SharePoint Intranet Blueprint — $997</h4>
+                <p className="text-muted-foreground text-sm">Architecture plan, sitemap, taxonomy, and wireframe. The blueprint for your intranet in 7 business days.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section className="bg-[#0A2540] py-20">
+        <div className="max-w-[1200px] mx-auto px-6 text-center">
+          <h2 className="text-3xl font-extrabold text-white mb-4">Book a SharePoint Strategy Call</h2>
+          <p className="text-white/70 max-w-xl mx-auto mb-10">Free 30-minute call to discuss your intranet goals and get Shane's initial assessment.</p>
+          <CTAButton href="/book" className="px-10 py-4 text-base" data-testid="sharepoint-cta">
+            Book a SharePoint Strategy Call
+          </CTAButton>
+        </div>
+      </section>
+    </Layout>
+  );
+}
