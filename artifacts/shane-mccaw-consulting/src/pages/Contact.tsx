@@ -90,9 +90,6 @@ export default function Contact() {
           <p className="text-white/70 text-lg mt-4 max-w-xl leading-relaxed">
             Tell me what you're dealing with and I'll give you a straight answer on whether and how I can help.
           </p>
-          <p className="text-white/60 text-base mt-4 max-w-xl leading-relaxed">
-            I work with mid&#8209;market organizations (200–2,000 employees), regulated industries, government contractors, and startups scaling into compliance.
-          </p>
         </div>
       </section>
 
@@ -101,6 +98,9 @@ export default function Contact() {
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-12">
             {/* Form */}
             <div className="lg:col-span-2">
+              <p className="text-[#0A2540] text-sm font-medium mb-5">
+                I work with mid&#8209;market organizations (200–2,000 employees), regulated industries, government contractors, and startups scaling into compliance.
+              </p>
               <div className="bg-white rounded-xl border border-border p-8 md:p-10">
                 <h2 className="text-2xl font-extrabold text-[#0A2540] mb-8">Send a Message</h2>
                 <form onSubmit={handleSubmit(onSubmit)} className="space-y-6" data-testid="contact-form">
@@ -225,30 +225,8 @@ export default function Contact() {
                 </form>
               </div>
 
-              {/* Microsoft Bookings Inline Embed */}
-              <div className="mt-10" data-testid="bookings-embed-contact">
-                <h3 className="text-xl font-bold text-[#0A2540] mb-4">Or Book Directly on My Calendar</h3>
-                <MicrosoftBookingsEmbed minHeight={630} />
-              </div>
-            </div>
-
-            {/* Sidebar */}
-            <div className="space-y-6">
-              <p className="text-[#0A2540] text-sm font-medium border-l-4 border-[#0078D4] pl-4 py-1">
-                You'll speak directly with me — no account managers, no junior staff.
-              </p>
-
-              <div className="bg-white rounded-xl border border-border p-6">
-                <div className="flex items-start gap-3 mb-4">
-                  <Clock className="w-5 h-5 text-[#0078D4] mt-0.5 flex-shrink-0" />
-                  <div>
-                    <h4 className="font-bold text-[#0A2540] mb-1">Personal Response</h4>
-                    <p className="text-muted-foreground text-sm">I personally respond to every inquiry within 1 business day.</p>
-                  </div>
-                </div>
-              </div>
-
-              <div className="bg-white rounded-xl border border-border p-6">
+              {/* What Happens Next */}
+              <div className="bg-white rounded-xl border border-border p-6 mt-6">
                 <h4 className="font-bold text-[#0A2540] mb-4">What Happens Next</h4>
                 <ol className="space-y-3">
                   <li className="flex items-start gap-3">
@@ -273,6 +251,31 @@ export default function Contact() {
                     </div>
                   </li>
                 </ol>
+              </div>
+
+              {/* Microsoft Bookings Inline Embed — only shown when configured */}
+              {import.meta.env.VITE_BOOKINGS_URL && (
+                <div className="mt-10" data-testid="bookings-embed-contact">
+                  <h3 className="text-xl font-bold text-[#0A2540] mb-4">Or Book Directly on My Calendar</h3>
+                  <MicrosoftBookingsEmbed minHeight={630} />
+                </div>
+              )}
+            </div>
+
+            {/* Sidebar */}
+            <div className="space-y-6">
+              <p className="text-[#0A2540] text-sm font-medium border-l-4 border-[#0078D4] pl-4 py-1">
+                You'll speak directly with me — no account managers, no junior staff.
+              </p>
+
+              <div className="bg-white rounded-xl border border-border p-6">
+                <div className="flex items-start gap-3 mb-4">
+                  <Clock className="w-5 h-5 text-[#0078D4] mt-0.5 flex-shrink-0" />
+                  <div>
+                    <h4 className="font-bold text-[#0A2540] mb-1">Personal Response</h4>
+                    <p className="text-muted-foreground text-sm">I personally respond to every inquiry within 1 business day.</p>
+                  </div>
+                </div>
               </div>
 
               <div className="bg-white rounded-xl border border-border p-6">
