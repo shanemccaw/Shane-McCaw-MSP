@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useLocation } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
 import PortalLayout from "@/components/PortalLayout";
@@ -16,6 +16,25 @@ interface Invoice {
   createdAt: string;
 }
 
+interface Subscription {
+  id: number;
+  serviceId: number;
+  serviceName: string;
+  serviceSlug: string | null;
+  status: string;
+  startDate: string | null;
+  purchasedAt: string;
+  stripeSubscriptionId: string | null;
+  stripe: {
+    status: string;
+    cancelAtPeriodEnd: boolean;
+    cancelAt: number | null;
+    billingCycleAnchor: number | null;
+    amount: number | null;
+    currency: string | null;
+  } | null;
+}
+
 const STATUS_CONFIG: Record<string, { label: string; classes: string }> = {
   paid: { label: "Paid", classes: "bg-green-100 text-green-700 border-green-200" },
   due: { label: "Due", classes: "bg-yellow-100 text-yellow-700 border-yellow-200" },
@@ -23,16 +42,173 @@ const STATUS_CONFIG: Record<string, { label: string; classes: string }> = {
   draft: { label: "Draft", classes: "bg-gray-100 text-gray-500 border-gray-200" },
 };
 
-function formatCurrency(amount: string, currency: string): string {
-  return new Intl.NumberFormat("en-US", { style: "currency", currency: currency.toUpperCase() }).format(parseFloat(amount));
+function formatCurrency(amount: string | number, currency: string): string {
+  const num = typeof amount === "string" ? parseFloat(amount) : amount;
+  return new Intl.NumberFormat("en-US", { style: "currency", currency: currency.toUpperCase() }).format(num);
+}
+
+function formatDate(ts: number): string {
+  return new Date(ts * 1000).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
+}
+
+function nextBillingFromAnchor(anchor: number | null): string | null {
+  if (!anchor) return null;
+  const anchorDate = new Date(anchor * 1000);
+  const dayOfMonth = anchorDate.getUTCDate();
+  const now = new Date();
+  const candidate = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), dayOfMonth));
+  if (candidate <= now) candidate.setUTCMonth(candidate.getUTCMonth() + 1);
+  return candidate.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
+}
+
+function SubscriptionCard({
+  sub,
+  onCancel,
+  cancelling,
+}: {
+  sub: Subscription;
+  onCancel: (sub: Subscription) => void;
+  cancelling: boolean;
+}) {
+  const stripe = sub.stripe;
+  const isCancelPending = stripe?.cancelAtPeriodEnd === true;
+  const isActive = stripe ? (stripe.status === "active" || stripe.status === "trialing") : sub.status === "active";
+  const cancelAt = stripe?.cancelAt ?? null;
+  const amount = stripe?.amount;
+  const currency = stripe?.currency ?? "usd";
+  const nextBilling = nextBillingFromAnchor(stripe?.billingCycleAnchor ?? null);
+
+  return (
+    <div className="px-5 py-5 flex items-start gap-4 flex-wrap sm:flex-nowrap">
+      <div className="w-10 h-10 rounded-xl bg-[#00B4D8]/10 flex items-center justify-center flex-shrink-0 mt-0.5">
+        <svg className="w-5 h-5 text-[#00B4D8]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+        </svg>
+      </div>
+
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2 flex-wrap mb-1">
+          <p className="text-sm font-bold text-[#0A2540]">{sub.serviceName}</p>
+          {isCancelPending ? (
+            <span className="text-xs font-semibold px-2 py-0.5 rounded-full border bg-orange-100 text-orange-700 border-orange-200">
+              Cancels {cancelAt ? formatDate(cancelAt) : "at period end"}
+            </span>
+          ) : isActive ? (
+            <span className="text-xs font-semibold px-2 py-0.5 rounded-full border bg-green-100 text-green-700 border-green-200">
+              Active
+            </span>
+          ) : (
+            <span className="text-xs font-semibold px-2 py-0.5 rounded-full border bg-gray-100 text-gray-500 border-gray-200">
+              {stripe?.status ?? sub.status}
+            </span>
+          )}
+        </div>
+
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
+          {amount !== null && amount !== undefined && (
+            <span className="font-medium text-[#0A2540]">
+              {formatCurrency(amount / 100, currency)}/month
+            </span>
+          )}
+          {!isCancelPending && nextBilling && isActive && (
+            <span>Next billing: {nextBilling}</span>
+          )}
+          {sub.startDate && (
+            <span>
+              Started {new Date(sub.startDate).toLocaleDateString("en-US", { month: "short", year: "numeric" })}
+            </span>
+          )}
+          {!sub.stripeSubscriptionId && (
+            <span className="italic">Manually assigned — contact support to manage</span>
+          )}
+        </div>
+      </div>
+
+      {!isCancelPending && isActive && sub.stripeSubscriptionId && (
+        <div className="flex-shrink-0 ml-auto self-center">
+          <button
+            onClick={() => onCancel(sub)}
+            disabled={cancelling}
+            className="text-xs font-semibold text-red-600 hover:text-red-700 border border-red-200 hover:border-red-300 px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50"
+          >
+            Cancel subscription
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function CancelDialog({
+  sub,
+  onConfirm,
+  onClose,
+  loading,
+}: {
+  sub: Subscription;
+  onConfirm: () => void;
+  onClose: () => void;
+  loading: boolean;
+}) {
+  const periodEnd = sub.stripe?.cancelAt;
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 z-10">
+        <div className="w-12 h-12 rounded-full bg-red-100 flex items-center justify-center mb-4">
+          <svg className="w-6 h-6 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+          </svg>
+        </div>
+
+        <h2 className="text-lg font-bold text-[#0A2540] mb-2">Cancel subscription?</h2>
+        <p className="text-sm text-muted-foreground mb-2">
+          You're about to cancel your <strong>{sub.serviceName}</strong> retainer.
+        </p>
+        {periodEnd ? (
+          <p className="text-sm text-muted-foreground mb-6">
+            You'll retain access until <strong>{formatDate(periodEnd)}</strong>, then the subscription won't renew. No further charges will be made.
+          </p>
+        ) : (
+          <p className="text-sm text-muted-foreground mb-6">
+            Your access will continue through the end of the current billing period. No further charges will be made.
+          </p>
+        )}
+
+        <div className="flex gap-3">
+          <button
+            onClick={onClose}
+            disabled={loading}
+            className="flex-1 border border-border text-sm font-semibold px-4 py-2.5 rounded-xl hover:bg-gray-50 transition-colors disabled:opacity-50"
+          >
+            Keep subscription
+          </button>
+          <button
+            onClick={onConfirm}
+            disabled={loading}
+            className="flex-1 bg-red-600 text-white text-sm font-semibold px-4 py-2.5 rounded-xl hover:bg-red-700 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+          >
+            {loading ? (
+              <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+            ) : null}
+            Yes, cancel
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 export default function PortalBilling() {
   const { fetchWithAuth } = useAuth();
   const [location] = useLocation();
   const [invoices, setInvoices] = useState<Invoice[]>([]);
+  const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
   const [loading, setLoading] = useState(true);
+  const [subLoading, setSubLoading] = useState(true);
   const [paying, setPayingId] = useState<number | null>(null);
+  const [cancelTarget, setCancelTarget] = useState<Subscription | null>(null);
+  const [cancelling, setCancelling] = useState(false);
   const [alert, setAlert] = useState<{ type: "success" | "error"; message: string } | null>(null);
 
   useEffect(() => {
@@ -50,6 +226,14 @@ export default function PortalBilling() {
       .then(d => setInvoices(d as Invoice[]))
       .catch(() => null)
       .finally(() => setLoading(false));
+  }, [fetchWithAuth]);
+
+  useEffect(() => {
+    fetchWithAuth("/api/portal/billing/subscriptions")
+      .then(r => r.json())
+      .then(d => setSubscriptions(d as Subscription[]))
+      .catch(() => null)
+      .finally(() => setSubLoading(false));
   }, [fetchWithAuth]);
 
   const handlePay = async (invoice: Invoice) => {
@@ -74,17 +258,54 @@ export default function PortalBilling() {
     }
   };
 
+  const handleCancelConfirm = useCallback(async () => {
+    if (!cancelTarget) return;
+    setCancelling(true);
+    try {
+      const res = await fetchWithAuth(`/api/portal/billing/subscriptions/${cancelTarget.id}/cancel`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
+      if (res.ok) {
+        const data = await res.json() as { cancelAtPeriodEnd: boolean; cancelAt: number | null; billingCycleAnchor: number | null };
+        setSubscriptions(prev => prev.map(s =>
+          s.id === cancelTarget.id
+            ? {
+                ...s,
+                stripe: s.stripe
+                  ? { ...s.stripe, cancelAtPeriodEnd: data.cancelAtPeriodEnd, cancelAt: data.cancelAt, billingCycleAnchor: data.billingCycleAnchor }
+                  : null,
+              }
+            : s
+        ));
+        setCancelTarget(null);
+        setAlert({ type: "success", message: `Your ${cancelTarget.serviceName} retainer will not renew after the current billing period.` });
+      } else {
+        const err = await res.json() as { error: string };
+        setAlert({ type: "error", message: err.error ?? "Could not cancel subscription. Please contact support." });
+      }
+    } catch {
+      setAlert({ type: "error", message: "Network error. Please try again or contact support." });
+    } finally {
+      setCancelling(false);
+    }
+  }, [cancelTarget, fetchWithAuth]);
+
   const totalDue = invoices.filter(i => i.status === "due" || i.status === "overdue")
     .reduce((sum, i) => sum + parseFloat(i.amount), 0);
   const totalPaid = invoices.filter(i => i.status === "paid")
     .reduce((sum, i) => sum + parseFloat(i.amount), 0);
+
+  const activeSubscriptions = subscriptions.filter(s =>
+    s.stripe ? (s.stripe.status === "active" || s.stripe.status === "trialing") : s.status === "active"
+  );
 
   return (
     <PortalLayout>
       <div className="px-6 py-8 max-w-4xl mx-auto">
         <div className="mb-8">
           <h1 className="text-2xl font-extrabold text-[#0A2540]">Billing & Invoices</h1>
-          <p className="text-muted-foreground text-sm mt-1">View and pay your invoices securely online.</p>
+          <p className="text-muted-foreground text-sm mt-1">Manage your retainer subscriptions and view invoices.</p>
         </div>
 
         {alert && (
@@ -101,7 +322,33 @@ export default function PortalBilling() {
           </div>
         )}
 
-        {/* Summary cards */}
+        {/* ── Monthly Retainers ────────────────────────────────────────── */}
+        {(subLoading || subscriptions.length > 0) && (
+          <div className="mb-8">
+            <h2 className="text-base font-bold text-[#0A2540] mb-3">Monthly Retainers</h2>
+            {subLoading ? (
+              <div className="bg-white border border-border rounded-xl p-6 flex items-center gap-3 text-muted-foreground text-sm">
+                <div className="w-5 h-5 border-2 border-[#0078D4] border-t-transparent rounded-full animate-spin flex-shrink-0" />
+                Loading subscriptions…
+              </div>
+            ) : activeSubscriptions.length === 0 && subscriptions.length === 0 ? null : (
+              <div className="bg-white border border-border rounded-xl overflow-hidden">
+                <div className="divide-y divide-border">
+                  {subscriptions.map(sub => (
+                    <SubscriptionCard
+                      key={sub.id}
+                      sub={sub}
+                      onCancel={setCancelTarget}
+                      cancelling={cancelling && cancelTarget?.id === sub.id}
+                    />
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ── Invoice summary cards ─────────────────────────────────────── */}
         {!loading && invoices.length > 0 && (
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 mb-8">
             <div className="bg-white border border-border rounded-xl p-4">
@@ -122,6 +369,9 @@ export default function PortalBilling() {
             </div>
           </div>
         )}
+
+        {/* ── Invoice list ──────────────────────────────────────────────── */}
+        <h2 className="text-base font-bold text-[#0A2540] mb-3">Invoice History</h2>
 
         {loading ? (
           <div className="flex items-center justify-center py-20">
@@ -222,6 +472,15 @@ export default function PortalBilling() {
           <p className="text-xs text-muted-foreground">Payments are processed securely via Stripe. Your card details are never stored on our servers.</p>
         </div>
       </div>
+
+      {cancelTarget && (
+        <CancelDialog
+          sub={cancelTarget}
+          onConfirm={() => void handleCancelConfirm()}
+          onClose={() => setCancelTarget(null)}
+          loading={cancelling}
+        />
+      )}
     </PortalLayout>
   );
 }

@@ -84,6 +84,7 @@ export const clientServicesTable = pgTable("client_services", {
   nextMilestone: text("next_milestone"),
   nextMilestoneDate: timestamp("next_milestone_date"),
   purchasedAt: timestamp("purchased_at").notNull().defaultNow(),
+  stripeSubscriptionId: text("stripe_subscription_id"),
 });
 
 export type InsertClientService = typeof clientServicesTable.$inferInsert;

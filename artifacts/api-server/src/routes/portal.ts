@@ -367,6 +367,104 @@ router.get("/portal/invoices/:id/download", requireAuth, async (req: Request, re
   res.download(filePath, invoice.pdfFilename);
 });
 
+// ─── CLIENT: Subscriptions ────────────────────────────────────────────────────
+router.get("/portal/billing/subscriptions", requireAuth, async (req: Request, res: Response) => {
+  const userId = req.user!.id;
+
+  const rows = await db.select({
+    cs: clientServicesTable,
+    svc: servicesTable,
+  })
+    .from(clientServicesTable)
+    .innerJoin(servicesTable, eq(clientServicesTable.serviceId, servicesTable.id))
+    .where(
+      and(
+        eq(clientServicesTable.clientUserId, userId),
+        eq(servicesTable.billingType, "recurring_monthly"),
+      )
+    )
+    .orderBy(desc(clientServicesTable.purchasedAt));
+
+  const stripeKey = process.env.STRIPE_SECRET_KEY;
+
+  const results = await Promise.all(rows.map(async ({ cs, svc }) => {
+    let stripeData: {
+      status: string;
+      cancelAtPeriodEnd: boolean;
+      cancelAt: number | null;
+      billingCycleAnchor: number | null;
+      amount: number | null;
+      currency: string | null;
+    } | null = null;
+
+    if (cs.stripeSubscriptionId && stripeKey) {
+      try {
+        const { default: Stripe } = await import("stripe");
+        const stripe = new Stripe(stripeKey);
+        const sub = await stripe.subscriptions.retrieve(cs.stripeSubscriptionId);
+        const item = sub.items.data[0];
+        stripeData = {
+          status: sub.status,
+          cancelAtPeriodEnd: sub.cancel_at_period_end,
+          cancelAt: sub.cancel_at ?? null,
+          billingCycleAnchor: sub.billing_cycle_anchor ?? null,
+          amount: item?.price?.unit_amount ?? null,
+          currency: item?.price?.currency ?? null,
+        };
+      } catch {
+        // Stripe unreachable — return record without live data
+      }
+    }
+
+    return {
+      id: cs.id,
+      serviceId: svc.id,
+      serviceName: svc.name,
+      serviceSlug: svc.slug,
+      status: cs.status,
+      startDate: cs.startDate,
+      purchasedAt: cs.purchasedAt,
+      stripeSubscriptionId: cs.stripeSubscriptionId,
+      stripe: stripeData,
+    };
+  }));
+
+  res.json(results);
+});
+
+router.post("/portal/billing/subscriptions/:id/cancel", requireAuth, async (req: Request, res: Response) => {
+  const userId = req.user!.id;
+  const id = parseInt(String(req.params.id ?? ""), 10);
+  if (isNaN(id)) { res.status(400).json({ error: "Invalid ID" }); return; }
+
+  const [cs] = await db.select().from(clientServicesTable)
+    .where(and(eq(clientServicesTable.id, id), eq(clientServicesTable.clientUserId, userId)));
+  if (!cs) { res.status(404).json({ error: "Subscription not found" }); return; }
+  if (!cs.stripeSubscriptionId) {
+    res.status(400).json({ error: "No Stripe subscription linked to this service. Please contact support." });
+    return;
+  }
+
+  const stripeKey = process.env.STRIPE_SECRET_KEY;
+  if (!stripeKey) { res.status(503).json({ error: "Stripe not configured." }); return; }
+
+  const { default: Stripe } = await import("stripe");
+  const stripe = new Stripe(stripeKey);
+
+  const sub = await stripe.subscriptions.update(cs.stripeSubscriptionId, {
+    cancel_at_period_end: true,
+  });
+
+  req.log.info({ clientServiceId: cs.id, subscriptionId: cs.stripeSubscriptionId }, "subscription: cancel_at_period_end set");
+
+  res.json({
+    ok: true,
+    cancelAtPeriodEnd: sub.cancel_at_period_end,
+    cancelAt: sub.cancel_at ?? null,
+    billingCycleAnchor: sub.billing_cycle_anchor ?? null,
+  });
+});
+
 // ─── Contract PDF generator ───────────────────────────────────────────────────
 interface ContractPdfOptions {
   contractId: number;
@@ -542,6 +640,7 @@ async function generateContractPdf(opts: ContractPdfOptions): Promise<string> {
 async function provisionOnboardingProject(
   req: Request,
   session: import("stripe").Stripe.Checkout.Session,
+  stripeSubscriptionId?: string | null,
 ): Promise<void> {
   const { userId, serviceId, serviceIds: serviceIdsStr, contractId, contractIds: contractIdsStr } = session.metadata ?? {};
   const uid = parseInt(userId ?? "", 10);
@@ -697,6 +796,7 @@ async function provisionOnboardingProject(
       status: "active",
       progress: 0,
       startDate,
+      stripeSubscriptionId: svc.billingType === "recurring_monthly" ? (stripeSubscriptionId ?? null) : null,
     });
 
     // Link contract → project and attach pre-generated PDF as document
@@ -950,7 +1050,10 @@ async function processStripeEvent(req: Request, event: import("stripe").Stripe.E
 
     // Onboarding purchase — auto-provision project + workflow steps
     if (session.metadata?.type === "onboarding_purchase" && session.payment_status === "paid") {
-      await provisionOnboardingProject(req, session);
+      const subId = typeof session.subscription === "string"
+        ? session.subscription
+        : (session.subscription as { id?: string } | null)?.id ?? null;
+      await provisionOnboardingProject(req, session, subId);
     }
   }
 }
@@ -1638,7 +1741,7 @@ router.get("/portal/onboarding/session/:sessionId", requireAuth, async (req: Req
     if (session.mode === "subscription" && session.subscription) {
       try {
         const sub = await stripe.subscriptions.retrieve(String(session.subscription));
-        nextBillingDate = sub.current_period_end ?? null;
+        nextBillingDate = sub.billing_cycle_anchor ?? null;
       } catch {
         // non-fatal — success page renders without it
       }
