@@ -93,9 +93,17 @@ function OfferCard({ offer, index }: { offer: PublicService; index: number }) {
 
       {/* 9. Deliverables */}
       {offer.deliverables && (
-        <p className="text-sm text-muted-foreground mb-4">
-          <span className="font-semibold text-[#0A2540]">Deliverables:</span> {offer.deliverables}
-        </p>
+        <div className="mb-4">
+          <p className="text-sm font-semibold text-[#0A2540] mb-1.5">Deliverables:</p>
+          <ul className="space-y-1">
+            {offer.deliverables.split("\n").filter(line => line.trim()).map((line, i) => (
+              <li key={i} className="flex items-start gap-2 text-sm text-muted-foreground">
+                <span className="mt-1.5 w-1.5 h-1.5 rounded-full bg-[#0078D4] flex-shrink-0" />
+                {line.trim()}
+              </li>
+            ))}
+          </ul>
+        </div>
       )}
 
       {/* 10. What's included (inclusions checklist) */}
