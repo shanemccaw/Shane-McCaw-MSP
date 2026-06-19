@@ -771,20 +771,39 @@ async function provisionOnboardingProject(
 
 // Stripe webhook to mark invoice paid
 // NOTE: app.ts registers express.raw() for this path before express.json(), so req.body is a raw Buffer here.
+// Supports two signing secrets simultaneously:
+//   STRIPE_WEBHOOK_SECRET     — dev endpoint (*.replit.dev)
+//   STRIPE_WEBHOOK_SECRET_PROD — prod endpoint (shanemccaw.com)
+// The handler tries each configured secret and accepts the event if any one verifies.
 router.post("/portal/stripe/webhook", async (req: Request, res: Response) => {
   const stripeKey = process.env.STRIPE_SECRET_KEY;
-  const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
   if (!stripeKey) { res.status(503).send("Stripe not configured. Set STRIPE_SECRET_KEY."); return; }
-  if (!webhookSecret) { res.status(503).send("Stripe webhook not configured. Set STRIPE_WEBHOOK_SECRET."); return; }
+
+  const secrets = [
+    process.env.STRIPE_WEBHOOK_SECRET,
+    process.env.STRIPE_WEBHOOK_SECRET_PROD,
+  ].filter(Boolean) as string[];
+
+  if (secrets.length === 0) {
+    res.status(503).send("Stripe webhook not configured. Set STRIPE_WEBHOOK_SECRET or STRIPE_WEBHOOK_SECRET_PROD.");
+    return;
+  }
 
   const { default: Stripe } = await import("stripe");
   const stripe = new Stripe(stripeKey);
 
-  let event: import("stripe").Stripe.Event;
-  try {
-    const sig = req.headers["stripe-signature"] as string;
-    event = stripe.webhooks.constructEvent(req.body as Buffer, sig, webhookSecret);
-  } catch {
+  let event: import("stripe").Stripe.Event | null = null;
+  const sig = req.headers["stripe-signature"] as string;
+  for (const secret of secrets) {
+    try {
+      event = stripe.webhooks.constructEvent(req.body as Buffer, sig, secret);
+      break;
+    } catch {
+      // try next secret
+    }
+  }
+
+  if (!event) {
     res.status(400).send("Webhook signature verification failed");
     return;
   }
