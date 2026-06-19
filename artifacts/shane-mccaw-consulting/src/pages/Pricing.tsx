@@ -3,7 +3,11 @@ import { SEOMeta } from "@/components/SEOMeta";
 import { Layout } from "@/components/Layout";
 import { CTAButton } from "@/components/CTAButton";
 import { ConsultationCTA } from "@/components/ConsultationCTA";
-import { CheckCircle, ChevronDown, Zap, FolderOpen, Calendar, ArrowRight } from "lucide-react";
+import { Link } from "wouter";
+import {
+  CheckCircle, ChevronDown, Zap, FolderOpen, Calendar, ArrowRight,
+  Shield, Users, AlertTriangle, DollarSign, Layers, Lightbulb,
+} from "lucide-react";
 import { useServices, formatPriceDisplay, type PublicService } from "@/hooks/useServices";
 
 const faqs = [
@@ -275,6 +279,7 @@ export default function Pricing() {
         description="Transparent Microsoft 365 consulting pricing by Shane McCaw. Fixed-price micro-offer packages and retainer options — know your investment before you commit."
         jsonLd={jsonLd}
       />
+
       {/* Hero */}
       <section className="relative bg-[#0A2540] pt-32 pb-24 overflow-hidden">
         <div
@@ -305,14 +310,71 @@ export default function Pricing() {
         </div>
       </section>
 
-      {/* Engagement model overview */}
+      {/* NASA-Scale Positioning */}
+      <section className="bg-white py-14 border-b border-border">
+        <div className="max-w-[1200px] mx-auto px-6">
+          <div className="grid grid-cols-1 lg:grid-cols-[1fr_auto] gap-10 items-center">
+            <div>
+              <p className="text-[#0078D4] text-sm font-semibold uppercase tracking-[0.1em] mb-3">Built on NASA-Scale Architecture Standards</p>
+              <h2 className="text-2xl md:text-3xl font-extrabold text-[#0A2540] mb-4 leading-snug">
+                The Architect Behind Every Engagement
+              </h2>
+              <p className="text-foreground leading-relaxed mb-3">
+                Shane McCaw is NASA's Lead Microsoft 365 Architect and Copilot SME — responsible for M365 governance and architecture in a FISMA High, FedRAMP-authorized environment operating under ITAR and GCC/GCC High requirements. His 30-year Microsoft ecosystem career spans production architecture at every scale, from small business to federal agency.
+              </p>
+              <p className="text-muted-foreground leading-relaxed">
+                For mid-market organizations and regulated industries — healthcare, financial services, government contractors, and defense — this matters because the same architecture principles that work under federal compliance requirements are exactly what your organization needs to build on. Every engagement is delivered directly by Shane, drawing from what he's solving in production today.
+              </p>
+            </div>
+            <div className="flex flex-wrap lg:flex-col gap-3 lg:w-52 flex-shrink-0">
+              {["FedRAMP Authorized", "FISMA High", "ITAR Compliance", "GCC / GCC High", "30 Years Microsoft", "NASA Lead Architect"].map((tag, i) => (
+                <span key={i} className="inline-flex items-center gap-2 bg-[#0078D4]/8 border border-[#0078D4]/20 text-[#0078D4] text-xs font-semibold px-3 py-1.5 rounded-full whitespace-nowrap">
+                  <Shield className="w-3 h-3 flex-shrink-0" />{tag}
+                </span>
+              ))}
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Why Fixed Pricing — elevated summary */}
+      <section className="bg-[#F7F9FC] py-10 border-b border-border">
+        <div className="max-w-[1200px] mx-auto px-6">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+            {[
+              {
+                heading: "You budget for an outcome, not a clock.",
+                body: "Fixed pricing forces accurate scoping and efficient delivery. No hourly billing, no misaligned incentives.",
+              },
+              {
+                heading: "No scope creep without a conversation.",
+                body: "Changes become change order discussions — not line-item surprises on an invoice. You're never in the dark.",
+              },
+              {
+                heading: "Enterprise value at a fraction of the cost.",
+                body: "A full-time senior M365 architect costs $150k–$220k/year. A fractional retainer delivers the same expertise at 10–20% of that.",
+              },
+            ].map((item, i) => (
+              <div key={i} className="flex items-start gap-3 bg-white rounded-xl border border-border p-5">
+                <CheckCircle className="w-5 h-5 text-[#0078D4] flex-shrink-0 mt-0.5" />
+                <div>
+                  <p className="font-semibold text-[#0A2540] text-sm mb-1">{item.heading}</p>
+                  <p className="text-muted-foreground text-sm leading-relaxed">{item.body}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* Engagement model overview — Entry / Core / Strategic */}
       <section className="bg-white py-20 border-b border-border">
         <div className="max-w-[1200px] mx-auto px-6">
           <div className="text-center mb-14">
             <p className="text-[#0078D4] text-sm font-semibold uppercase tracking-[0.1em] mb-3">How Engagements Work</p>
             <h2 className="text-3xl md:text-4xl font-extrabold text-[#0A2540]">Three Ways to Engage</h2>
             <p className="text-muted-foreground mt-4 max-w-2xl mx-auto leading-relaxed">
-              The right engagement structure depends on what you need — a specific deliverable, a defined project, or ongoing architectural leadership. All three options are structured around fixed, predictable pricing.
+              Most organizations move through the tiers over time — starting with a fast, low-risk Entry package to get clarity, then a Core project to fix what's broken, then Strategic fractional architecture for ongoing governance and growth.
             </p>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -320,28 +382,31 @@ export default function Pricing() {
               {
                 icon: Zap,
                 label: "Track 01",
+                tier: "Entry",
                 title: "Fixed-Price Micro-Offers",
                 range: "$397 \u2013 $997",
                 desc: "Scoped deliverables with a defined price, a defined output, and a defined turnaround. No discovery call required to start \u2014 pick the package that matches your need and get in the queue.",
-                bestFor: "Organizations that know what they need and want to move quickly.",
+                bestFor: "Mid-market organizations (200–2,000 employees), regulated industries, and government contractors that need a fast, low-risk diagnostic before committing to a larger engagement.",
                 anchor: "#micro-offers",
               },
               {
                 icon: FolderOpen,
                 label: "Track 02",
+                tier: "Core",
                 title: "Project-Based Engagements",
                 range: "$2,500 \u2013 $25,000+",
                 desc: "For larger, multi-phase work \u2014 tenant migrations, full governance overhauls, Copilot deployment programs, intranet builds. Priced as a fixed project after a free scoping call.",
-                bestFor: "Organizations with a defined initiative that needs a structured plan and committed delivery.",
+                bestFor: "Organizations with a defined initiative — preparing for Copilot, remediating governance gaps, or executing a migration — that need structured delivery and committed outcomes.",
                 anchor: "#project-based",
               },
               {
                 icon: Calendar,
                 label: "Track 03",
+                tier: "Strategic",
                 title: "Monthly Fractional Retainer",
                 range: "$1,500 \u2013 $5,500/mo",
                 desc: "Consistent, predictable access to Shane\u2019s expertise every month \u2014 for architecture reviews, ongoing governance, strategic planning, or Copilot rollout support. Cancel with 30 days\u2019 notice.",
-                bestFor: "Organizations that need a senior M365 architect available on a sustained basis.",
+                bestFor: "Organizations in regulated industries, government contractors, or startups scaling into compliance that need a senior M365 architect available on a sustained basis — without full-time overhead.",
                 anchor: "#retainers",
               },
             ].map((track, i) => {
@@ -357,7 +422,10 @@ export default function Pricing() {
                     <div className="w-11 h-11 rounded-xl bg-[#0078D4]/10 flex items-center justify-center">
                       <Icon className="w-5 h-5 text-[#0078D4]" />
                     </div>
-                    <span className="text-[#0078D4]/50 text-xs font-bold uppercase tracking-wider">{track.label}</span>
+                    <div>
+                      <span className="text-[#0078D4]/50 text-xs font-bold uppercase tracking-wider block">{track.label}</span>
+                      <span className="text-[#0A2540] text-xs font-bold uppercase tracking-wider">{track.tier} Tier</span>
+                    </div>
                   </div>
                   <h3 className="text-lg font-extrabold text-[#0A2540] mb-1">{track.title}</h3>
                   <p className="text-2xl font-extrabold text-[#0078D4] mb-4">{track.range}</p>
@@ -376,19 +444,56 @@ export default function Pricing() {
         </div>
       </section>
 
-      {/* Micro-Offers */}
+      {/* NASA-Grade Methodology Callout */}
+      <section className="bg-[#0A2540] py-10">
+        <div className="max-w-[1200px] mx-auto px-6">
+          <div className="flex items-start gap-5">
+            <div className="w-10 h-10 rounded-lg bg-[#0078D4]/20 flex items-center justify-center flex-shrink-0 mt-0.5">
+              <Shield className="w-5 h-5 text-[#00B4D8]" />
+            </div>
+            <div>
+              <p className="text-white font-semibold mb-1">NASA-Grade Methodology, Adapted for Your Environment</p>
+              <p className="text-white/60 text-sm leading-relaxed max-w-3xl">
+                All assessments, governance frameworks, and deliverables are built using the same architecture principles Shane applies at NASA — adapted for mid-market and regulated-industry environments. The rigor is real; the scope is calibrated to what you actually need.
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Quick Win CTA Callout */}
+      <section className="bg-white py-8 border-b border-border">
+        <div className="max-w-[1200px] mx-auto px-6">
+          <div className="bg-[#0078D4]/8 border border-[#0078D4]/25 rounded-xl p-6 flex items-start gap-4">
+            <div className="w-9 h-9 rounded-lg bg-[#0078D4]/15 flex items-center justify-center flex-shrink-0 mt-0.5">
+              <Lightbulb className="w-4 h-4 text-[#0078D4]" />
+            </div>
+            <div>
+              <p className="font-semibold text-[#0A2540] mb-1">Not sure where to start?</p>
+              <p className="text-muted-foreground text-sm leading-relaxed">
+                Most clients begin with the <Link href="/micro-offers" className="text-[#0078D4] font-medium hover:underline">M365 Tenant Health Audit</Link> or the <Link href="/micro-offers" className="text-[#0078D4] font-medium hover:underline">Migration Readiness Assessment</Link> — fast, low-risk engagements that surface the real issues and give you the clarity to decide what comes next.
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Track 01 — Micro-Offers */}
       <section id="micro-offers" className="bg-[#F7F9FC] py-20 scroll-mt-24">
         <div className="max-w-[1200px] mx-auto px-6">
-          <div className="mb-12">
+          <div className="mb-10">
             <div className="flex items-center gap-3 mb-4">
               <div className="w-9 h-9 rounded-lg bg-[#0078D4]/10 flex items-center justify-center">
                 <Zap className="w-4 h-4 text-[#0078D4]" />
               </div>
-              <span className="text-[#0078D4] text-xs font-bold uppercase tracking-wider">Track 01</span>
+              <span className="text-[#0078D4] text-xs font-bold uppercase tracking-wider">Track 01 — Entry Tier</span>
             </div>
             <h2 className="text-3xl md:text-4xl font-extrabold text-[#0A2540] mb-3">Fixed-Price Micro-Offers</h2>
-            <p className="text-muted-foreground max-w-2xl leading-relaxed">
+            <p className="text-muted-foreground max-w-2xl leading-relaxed mb-4">
               Each package has a fixed price, a specific deliverable, and a committed turnaround time. No discovery call required — the scope is defined in advance so you know what you're getting.
+            </p>
+            <p className="text-muted-foreground max-w-2xl leading-relaxed text-sm bg-[#F7F9FC] border border-border rounded-lg px-4 py-3">
+              <span className="font-semibold text-[#0A2540]">Two tiers within Track 01:</span> The lower-priced packages ($397–$997) are tactical quick wins — fast-turnaround deliverables scoped around a single, well-defined need. The higher-priced packages ($3,500–$18,000) are strategic assessments — deeper engagements that produce a comprehensive diagnostic, prioritized remediation roadmap, and executive briefing. Both serve different purposes and different moments in an organization's M365 journey.
             </p>
           </div>
           {offersLoading && microOffers.length === 0 ? (
@@ -405,7 +510,7 @@ export default function Pricing() {
         </div>
       </section>
 
-      {/* Project-Based */}
+      {/* Track 02 — Project-Based */}
       <section id="project-based" className="bg-white py-20 scroll-mt-24">
         <div className="max-w-[1200px] mx-auto px-6">
           <div className="grid grid-cols-1 lg:grid-cols-[1.1fr_1fr] gap-12 items-start">
@@ -414,7 +519,7 @@ export default function Pricing() {
                 <div className="w-9 h-9 rounded-lg bg-[#0078D4]/10 flex items-center justify-center">
                   <FolderOpen className="w-4 h-4 text-[#0078D4]" />
                 </div>
-                <span className="text-[#0078D4] text-xs font-bold uppercase tracking-wider">Track 02</span>
+                <span className="text-[#0078D4] text-xs font-bold uppercase tracking-wider">Track 02 — Core Tier</span>
               </div>
               <h2 className="text-3xl md:text-4xl font-extrabold text-[#0A2540] mb-4 leading-tight">
                 Project-Based Engagements
@@ -458,7 +563,7 @@ export default function Pricing() {
         </div>
       </section>
 
-      {/* Retainers */}
+      {/* Track 03 — Retainers */}
       <section id="retainers" className="bg-[#F7F9FC] py-20 scroll-mt-24">
         <div className="max-w-[1200px] mx-auto px-6">
           <div className="text-center mb-14">
@@ -466,7 +571,7 @@ export default function Pricing() {
               <div className="w-9 h-9 rounded-lg bg-[#0078D4]/10 flex items-center justify-center">
                 <Calendar className="w-4 h-4 text-[#0078D4]" />
               </div>
-              <span className="text-[#0078D4] text-xs font-bold uppercase tracking-wider">Track 03</span>
+              <span className="text-[#0078D4] text-xs font-bold uppercase tracking-wider">Track 03 — Strategic Tier</span>
             </div>
             <h2 className="text-3xl md:text-4xl font-extrabold text-[#0A2540] mb-4">Monthly Fractional Architect Retainer</h2>
             <p className="text-muted-foreground max-w-2xl mx-auto leading-relaxed">
@@ -487,6 +592,100 @@ export default function Pricing() {
           <p className="text-center text-muted-foreground text-sm mt-8">
             All retainer tiers include access to all service areas. Hours are used as the engagement requires and do not roll over.
           </p>
+        </div>
+      </section>
+
+      {/* Why Fractional Beats Full-Time */}
+      <section className="bg-white py-20 border-b border-border">
+        <div className="max-w-[1200px] mx-auto px-6">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-14 items-start">
+            <div>
+              <p className="text-[#0078D4] text-sm font-semibold uppercase tracking-[0.1em] mb-4">The Business Case</p>
+              <h2 className="text-3xl md:text-4xl font-extrabold text-[#0A2540] mb-6 leading-tight">Why Fractional Beats Full-Time</h2>
+              <p className="text-muted-foreground leading-relaxed mb-8">
+                Most mid-market organizations can't justify a $150k–$220k full-time architect salary — but they absolutely need that level of expertise for the decisions they're making. Fractional architecture resolves that tension.
+              </p>
+              <div className="space-y-4">
+                {[
+                  { label: "Full-time senior M365 architect", value: "$150k–$220k salary + benefits + recruiting overhead", dark: false },
+                  { label: "Fractional retainer with Shane", value: "10–20% of full-time cost. No benefits. No recruiting. Immediate start.", dark: true },
+                ].map((item, i) => (
+                  <div key={i} className={`flex items-start gap-4 rounded-xl border p-5 ${item.dark ? "bg-[#0A2540] border-[#0078D4]/40" : "bg-[#F7F9FC] border-border"}`}>
+                    <div className={`w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 ${item.dark ? "bg-white/10" : "bg-[#0078D4]/10"}`}>
+                      <DollarSign className={`w-4 h-4 ${item.dark ? "text-[#00B4D8]" : "text-[#0078D4]"}`} />
+                    </div>
+                    <div>
+                      <p className={`text-sm font-semibold mb-0.5 ${item.dark ? "text-white" : "text-[#0A2540]"}`}>{item.label}</p>
+                      <p className={`text-sm ${item.dark ? "text-[#00B4D8]" : "text-muted-foreground"}`}>{item.value}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div>
+              <p className="text-[#0078D4] text-sm font-semibold uppercase tracking-[0.1em] mb-6">What you get instead</p>
+              <ul className="space-y-5">
+                {[
+                  { label: "Immediate start", desc: "No recruiting cycle, no onboarding delay. Engagements typically begin within one to two weeks of signing." },
+                  { label: "No long-term commitment", desc: "Month-to-month with 30 days' notice. Scale up, scale down, or stop — on your timeline." },
+                  { label: "No juniors, no handoffs", desc: "Shane does the work. Every deliverable, every review, every recommendation. No team he manages in the background." },
+                  { label: "Direct access to Shane", desc: "Direct access via email and Teams throughout. No account managers between you and the architect." },
+                  { label: "Current production knowledge", desc: "Every recommendation comes from what Shane is solving at NASA today — not from a playbook written two years ago." },
+                ].map((item, i) => (
+                  <li key={i} className="flex items-start gap-3" data-testid={`fractional-benefit-${i}`}>
+                    <CheckCircle className="w-5 h-5 text-[#0078D4] flex-shrink-0 mt-0.5" />
+                    <div>
+                      <p className="font-semibold text-[#0A2540] text-sm mb-0.5">{item.label}</p>
+                      <p className="text-muted-foreground text-sm leading-relaxed">{item.desc}</p>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Why IT Leaders Bring Me In */}
+      <section className="bg-[#F7F9FC] py-20">
+        <div className="max-w-[1200px] mx-auto px-6">
+          <div className="text-center mb-12">
+            <p className="text-[#0078D4] text-sm font-semibold uppercase tracking-[0.1em] mb-3">Engagement Triggers</p>
+            <h2 className="text-3xl md:text-4xl font-extrabold text-[#0A2540]">Why IT Leaders Bring Me In</h2>
+            <p className="text-muted-foreground mt-4 max-w-2xl mx-auto leading-relaxed">
+              There's almost always a specific moment — a trigger — when the cost of not having a senior architect is higher than the cost of bringing one in.
+            </p>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5 mb-10">
+            {[
+              { icon: AlertTriangle, title: "Audit or compliance deadline", desc: "An upcoming FedRAMP assessment, CMMC review, HIPAA audit, or SOC 2 certification — and the M365 environment isn't in the right shape." },
+              { icon: Shield, title: "Copilot readiness concerns", desc: "The organization has or is evaluating M365 Copilot licenses and needs to know whether the tenant is safe and ready to deploy into." },
+              { icon: AlertTriangle, title: "Failed or stalled migration", desc: "An on-premises to M365 migration, or an M365 reconfiguration project, that has stalled or gone wrong and needs a senior architect to restart." },
+              { icon: Shield, title: "Security incident or near-miss", desc: "An oversharing exposure, sensitivity labeling failure, or Conditional Access misconfiguration — caught before or after it became a real problem." },
+              { icon: Users, title: "Departed IT leader / leadership gap", desc: "The senior M365 person left, and no one remaining has the architecture depth to make the decisions in the queue." },
+              { icon: Layers, title: "Teams and SharePoint chaos", desc: "Permissions sprawl, abandoned sites, no governance model, users working around the system — and no clear path to remediation." },
+            ].map((item, i) => {
+              const Icon = item.icon;
+              return (
+                <div key={i} className="bg-white rounded-xl border border-border p-6 hover:border-[#0078D4]/30 hover:shadow-sm transition-all" data-testid={`trigger-card-${i}`}>
+                  <div className="w-9 h-9 rounded-lg bg-[#0078D4]/10 flex items-center justify-center mb-4">
+                    <Icon className="w-4 h-4 text-[#0078D4]" />
+                  </div>
+                  <h3 className="font-bold text-[#0A2540] mb-2 text-sm">{item.title}</h3>
+                  <p className="text-muted-foreground text-sm leading-relaxed">{item.desc}</p>
+                </div>
+              );
+            })}
+          </div>
+          <div className="bg-[#0A2540] rounded-xl border border-[#0078D4]/30 p-7 max-w-3xl mx-auto text-center">
+            <p className="text-white font-semibold mb-2">If any of these sound familiar</p>
+            <p className="text-white/70 text-sm leading-relaxed mb-5">
+              Book a free discovery call. 30 minutes — no pitch, no obligation. Shane will tell you exactly what the situation needs and whether it's something he can help with.
+            </p>
+            <CTAButton href="/book" className="text-sm mx-auto" data-testid="trigger-cta">
+              Book a Free Call <ArrowRight className="ml-1 w-4 h-4" />
+            </CTAButton>
+          </div>
         </div>
       </section>
 
