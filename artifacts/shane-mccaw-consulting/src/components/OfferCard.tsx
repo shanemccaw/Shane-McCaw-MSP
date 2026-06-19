@@ -1,7 +1,9 @@
 import { CheckCircle, Clock, Sparkles, Cloud, Bot, Shield, Zap, Server, Users,
   Layout as LayoutIcon, ShieldCheck, Lock, Globe, Settings, FileText,
   BarChart2, Award, Briefcase, Target, Code, Database, Monitor, Cpu,
-  BookOpen, MessageSquare, Calendar, Star, type LucideIcon } from "lucide-react";
+  BookOpen, MessageSquare, Calendar, Star,
+  Gavel, ArrowRightLeft, Compass, Layers, Building, GraduationCap, Hammer,
+  type LucideIcon } from "lucide-react";
 import { CTAButton } from "@/components/CTAButton";
 import { type PublicService, formatPriceDisplay } from "@/hooks/useServices";
 
@@ -10,6 +12,7 @@ const ICON_MAP: Record<string, LucideIcon> = {
   ShieldCheck, Lock, Globe, Settings, FileText, BarChart2, Award,
   Briefcase, Target, Code, Database, Monitor, Cpu, BookOpen,
   MessageSquare, Calendar, Star, CheckCircle, Clock,
+  Gavel, ArrowRightLeft, Compass, Layers, Building, GraduationCap, Hammer,
 };
 
 export function resolveIcon(name: string | null, fallback: LucideIcon = Sparkles): LucideIcon {
