@@ -4,11 +4,12 @@ import { SEOMeta } from "@/components/SEOMeta";
 import { CTAButton } from "@/components/CTAButton";
 import {
   Cloud, Bot, Shield, Zap, Server, Users,
+  Layout as LayoutIcon,
   CheckCircle, ArrowRight, Star, Quote, type LucideIcon
 } from "lucide-react";
 import { useServices, formatPrice } from "@/hooks/useServices";
 
-const ICON_MAP: Record<string, LucideIcon> = { Cloud, Bot, Shield, Zap, Server, Users };
+const ICON_MAP: Record<string, LucideIcon> = { Cloud, Bot, Shield, Zap, Server, Users, Layout: LayoutIcon };
 
 const whyPoints = [
   "NASA-grade thinking from 6+ years as Lead M365 Architect — mission-critical standards applied to your business.",
@@ -165,7 +166,7 @@ export default function Home() {
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {dbServices.map((s, i) => {
+              {dbServices.slice(0, 6).map((s, i) => {
                 const Icon = (s.iconName ? ICON_MAP[s.iconName] : null) ?? Cloud;
                 return (
                   <div
