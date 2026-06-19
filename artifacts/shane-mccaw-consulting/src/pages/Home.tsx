@@ -4,12 +4,23 @@ import { SEOMeta } from "@/components/SEOMeta";
 import { CTAButton } from "@/components/CTAButton";
 import {
   Cloud, Bot, Shield, Zap, Server, Users,
-  Layout as LayoutIcon,
+  Layout as LayoutIcon, Sparkles,
   CheckCircle, ArrowRight, Star, Quote, type LucideIcon
 } from "lucide-react";
-import { useServices, formatPrice } from "@/hooks/useServices";
+import { useServices, formatPriceDisplay, type PublicService } from "@/hooks/useServices";
 
-const ICON_MAP: Record<string, LucideIcon> = { Cloud, Bot, Shield, Zap, Server, Users, Layout: LayoutIcon };
+const ICON_MAP: Record<string, LucideIcon> = { Cloud, Bot, Shield, Zap, Server, Users, Layout: LayoutIcon, Sparkles };
+
+const BADGE_COLORS: Record<string, string> = {
+  Popular: "bg-[#0078D4]/10 text-[#0078D4]",
+  New: "bg-emerald-100 text-emerald-700",
+  "Best Value": "bg-amber-100 text-amber-700",
+  Featured: "bg-purple-100 text-purple-700",
+};
+
+function badgeClass(badge: string): string {
+  return BADGE_COLORS[badge] ?? "bg-[#0078D4]/10 text-[#0078D4]";
+}
 
 const whyPoints = [
   "NASA-grade thinking from 6+ years as Lead M365 Architect — mission-critical standards applied to your business.",
@@ -267,16 +278,29 @@ export default function Home() {
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-10">
-              {dbOffers.slice(0, 3).map((offer, i) => (
-                <div key={offer.slug ?? i} className="bg-white p-8 rounded-lg border border-border hover:shadow-lg hover:-translate-y-1 transition-all duration-300" data-testid={`micro-offer-${i}`}>
-                  <p className="text-[#0078D4] text-3xl font-extrabold mb-2">{formatPrice(offer.price) ?? offer.price}</p>
-                  <h3 className="text-lg font-bold text-[#0A2540] mb-3">{offer.name}</h3>
-                  <p className="text-muted-foreground text-sm mb-6 leading-relaxed">{offer.description}</p>
-                  <CTAButton href="/book" className="w-full justify-center text-sm" data-testid={`micro-offer-cta-${i}`}>
-                    Get Started
-                  </CTAButton>
-                </div>
-              ))}
+              {dbOffers.slice(0, 3).map((offer: PublicService, i) => {
+                const Icon = (offer.iconName ? ICON_MAP[offer.iconName] : null) ?? Sparkles;
+                return (
+                  <div key={offer.slug ?? i} className="bg-white p-8 rounded-lg border border-border hover:shadow-lg hover:-translate-y-1 transition-all duration-300" data-testid={`micro-offer-${i}`}>
+                    <div className="flex items-start justify-between mb-4">
+                      <div className="w-11 h-11 rounded-lg bg-[#0078D4]/10 flex items-center justify-center flex-shrink-0">
+                        <Icon className="w-5 h-5 text-[#0078D4]" />
+                      </div>
+                      {offer.badge && (
+                        <span className={`text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full ${badgeClass(offer.badge)}`}>
+                          {offer.badge}
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-[#0078D4] text-3xl font-extrabold mb-2">{formatPriceDisplay(offer)}</p>
+                    <h3 className="text-lg font-bold text-[#0A2540] mb-3">{offer.name}</h3>
+                    <p className="text-muted-foreground text-sm mb-6 leading-relaxed">{offer.description}</p>
+                    <CTAButton href="/book" className="w-full justify-center text-sm" data-testid={`micro-offer-cta-${i}`}>
+                      Get Started
+                    </CTAButton>
+                  </div>
+                );
+              })}
             </div>
           )}
           <div className="text-center">
