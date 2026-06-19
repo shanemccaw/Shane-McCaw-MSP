@@ -8,6 +8,7 @@ import { CheckCircle, ChevronDown, Zap, FolderOpen, Calendar, ArrowRight } from 
 
 const microOffers = [
   {
+    slug: "m365-health-check",
     name: "M365 Tenant Health Audit",
     price: "$497",
     turnaround: "2 business days",
@@ -15,6 +16,7 @@ const microOffers = [
     deliverable: "Written audit report + remediation priority list",
   },
   {
+    slug: "copilot-readiness",
     name: "Copilot Readiness Assessment",
     price: "$797",
     turnaround: "5 business days",
@@ -23,6 +25,7 @@ const microOffers = [
     badge: "Most requested",
   },
   {
+    slug: "sharepoint-blueprint",
     name: "SharePoint Intranet Blueprint",
     price: "$997",
     turnaround: "7 business days",
@@ -30,6 +33,7 @@ const microOffers = [
     deliverable: "IA document + governance policy + rollout plan",
   },
   {
+    slug: "power-automate",
     name: "Power Automate Quick Win",
     price: "$597",
     turnaround: "5–7 business days",
@@ -37,6 +41,7 @@ const microOffers = [
     deliverable: "Live flow + documentation + handoff walkthrough",
   },
   {
+    slug: "security-audit",
     name: "M365 Security & Governance Audit",
     price: "$897",
     turnaround: "5 business days",
@@ -44,6 +49,7 @@ const microOffers = [
     deliverable: "Security audit report + DLP/retention gap analysis",
   },
   {
+    slug: "copilot-prompts",
     name: "Copilot Prompt Library Build",
     price: "$397",
     turnaround: "5 business days",
@@ -454,13 +460,13 @@ export default function Pricing() {
                     <span className="text-muted-foreground">Turnaround: {offer.turnaround}</span>
                   </div>
                 </div>
-                <Link
-                  href="/book"
+                <a
+                  href={`/crm/portal/onboarding/select?service=${offer.slug}`}
                   className="mt-4 text-[#0078D4] text-sm font-semibold hover:underline flex items-center gap-1"
                   data-testid={`micro-offer-cta-${i}`}
                 >
                   Get started <ArrowRight className="w-3.5 h-3.5" />
-                </Link>
+                </a>
               </div>
             ))}
           </div>

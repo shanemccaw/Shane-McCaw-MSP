@@ -368,7 +368,169 @@ function LeadsPanel() {
   );
 }
 
-type AdminTab = "leads" | "clients" | "projects" | "services" | "reports" | "documents" | "invoices" | "messages";
+// ─── Admin: Purchases panel ───────────────────────────────────────────────────
+interface Purchase {
+  id: number;
+  invoiceNumber: string;
+  description: string | null;
+  amount: string;
+  currency: string;
+  status: string;
+  paidAt: string | null;
+  stripeSessionId: string | null;
+  createdAt: string;
+  clientEmail: string | null;
+  clientName: string | null;
+  clientCompany: string | null;
+}
+
+function AdminPurchases() {
+  const { fetchWithAuth } = useAuth();
+  const [purchases, setPurchases] = useState<Purchase[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetchWithAuth("/api/admin/purchases")
+      .then(r => r.json() as Promise<Purchase[]>)
+      .then(data => { setPurchases(data); setLoading(false); })
+      .catch(() => setLoading(false));
+  }, [fetchWithAuth]);
+
+  if (loading) return <div className="flex justify-center py-20"><div className="w-8 h-8 border-4 border-[#0078D4] border-t-transparent rounded-full animate-spin" /></div>;
+
+  return (
+    <div>
+      <div className="mb-4 flex items-center justify-between">
+        <h2 className="text-lg font-bold text-[#0A2540]">Self-Service Purchases</h2>
+        <span className="text-sm text-muted-foreground">{purchases.length} total</span>
+      </div>
+      {purchases.length === 0 ? (
+        <div className="bg-white border border-border rounded-xl py-20 text-center text-muted-foreground text-sm">
+          No self-service purchases yet. Purchases appear here once clients complete checkout.
+        </div>
+      ) : (
+        <div className="bg-white border border-border rounded-xl overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-border bg-[#F7F9FC]">
+                  <th className="text-left px-5 py-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Client</th>
+                  <th className="text-left px-5 py-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground hidden md:table-cell">Service</th>
+                  <th className="text-left px-5 py-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Amount</th>
+                  <th className="text-left px-5 py-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Status</th>
+                  <th className="text-left px-5 py-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground hidden lg:table-cell">Date</th>
+                </tr>
+              </thead>
+              <tbody>
+                {purchases.map(p => (
+                  <tr key={p.id} className="border-b border-border last:border-0 hover:bg-[#F7F9FC] transition-colors">
+                    <td className="px-5 py-3.5">
+                      <p className="font-semibold text-[#0A2540]">{p.clientName ?? p.clientEmail ?? "—"}</p>
+                      <p className="text-xs text-muted-foreground">{p.clientEmail}</p>
+                    </td>
+                    <td className="px-5 py-3.5 text-muted-foreground hidden md:table-cell">{p.description ?? p.invoiceNumber}</td>
+                    <td className="px-5 py-3.5 font-bold text-[#0A2540]">${parseFloat(p.amount).toFixed(2)}</td>
+                    <td className="px-5 py-3.5">
+                      <span className={`text-xs font-semibold px-2.5 py-1 rounded-full capitalize ${p.status === "paid" ? "bg-green-100 text-green-700" : "bg-yellow-100 text-yellow-700"}`}>
+                        {p.status}
+                      </span>
+                    </td>
+                    <td className="px-5 py-3.5 text-muted-foreground text-xs hidden lg:table-cell">{new Date(p.createdAt).toLocaleDateString()}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Admin: Contracts panel ───────────────────────────────────────────────────
+interface Contract {
+  id: number;
+  serviceId: number;
+  userId: number;
+  signerName: string | null;
+  signedAt: string;
+  contractVersion: string;
+  projectId: number | null;
+  stripeSessionId: string | null;
+  serviceName: string | null;
+  serviceSlug: string | null;
+  clientEmail: string | null;
+  clientCompany: string | null;
+}
+
+function AdminContracts() {
+  const { fetchWithAuth } = useAuth();
+  const [contracts, setContracts] = useState<Contract[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetchWithAuth("/api/admin/contracts")
+      .then(r => r.json() as Promise<Contract[]>)
+      .then(data => { setContracts(data); setLoading(false); })
+      .catch(() => setLoading(false));
+  }, [fetchWithAuth]);
+
+  if (loading) return <div className="flex justify-center py-20"><div className="w-8 h-8 border-4 border-[#0078D4] border-t-transparent rounded-full animate-spin" /></div>;
+
+  return (
+    <div>
+      <div className="mb-4 flex items-center justify-between">
+        <h2 className="text-lg font-bold text-[#0A2540]">Signed Contracts</h2>
+        <span className="text-sm text-muted-foreground">{contracts.length} total</span>
+      </div>
+      {contracts.length === 0 ? (
+        <div className="bg-white border border-border rounded-xl py-20 text-center text-muted-foreground text-sm">
+          No signed contracts yet. Contracts appear here after clients complete the onboarding agreement step.
+        </div>
+      ) : (
+        <div className="bg-white border border-border rounded-xl overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-border bg-[#F7F9FC]">
+                  <th className="text-left px-5 py-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Signer</th>
+                  <th className="text-left px-5 py-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground hidden md:table-cell">Service</th>
+                  <th className="text-left px-5 py-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Version</th>
+                  <th className="text-left px-5 py-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground hidden md:table-cell">Project</th>
+                  <th className="text-left px-5 py-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground hidden lg:table-cell">Signed</th>
+                </tr>
+              </thead>
+              <tbody>
+                {contracts.map(c => (
+                  <tr key={c.id} className="border-b border-border last:border-0 hover:bg-[#F7F9FC] transition-colors">
+                    <td className="px-5 py-3.5">
+                      <p className="font-semibold text-[#0A2540]">{c.signerName ?? "—"}</p>
+                      <p className="text-xs text-muted-foreground">{c.clientEmail}</p>
+                    </td>
+                    <td className="px-5 py-3.5 text-muted-foreground hidden md:table-cell">{c.serviceName ?? c.serviceSlug ?? "—"}</td>
+                    <td className="px-5 py-3.5">
+                      <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-[#0078D4]/10 text-[#0078D4]">{c.contractVersion}</span>
+                    </td>
+                    <td className="px-5 py-3.5 hidden md:table-cell">
+                      {c.projectId ? (
+                        <span className="text-xs bg-green-100 text-green-700 font-semibold px-2.5 py-1 rounded-full">Project #{c.projectId}</span>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">Pending payment</span>
+                      )}
+                    </td>
+                    <td className="px-5 py-3.5 text-muted-foreground text-xs hidden lg:table-cell">{new Date(c.signedAt).toLocaleDateString()}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+type AdminTab = "leads" | "clients" | "projects" | "services" | "reports" | "documents" | "invoices" | "messages" | "purchases" | "contracts";
 
 const ADMIN_TABS: { key: AdminTab; label: string; icon: React.ReactNode }[] = [
   { key: "leads", label: "Leads", icon: <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" /></svg> },
@@ -379,6 +541,8 @@ const ADMIN_TABS: { key: AdminTab; label: string; icon: React.ReactNode }[] = [
   { key: "documents", label: "Documents", icon: <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" /></svg> },
   { key: "invoices", label: "Invoices", icon: <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" /></svg> },
   { key: "messages", label: "Messages", icon: <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" /></svg> },
+  { key: "purchases", label: "Purchases", icon: <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M2.25 8.25h19.5M2.25 9h19.5m-16.5 5.25h6m-6 2.25h3m-3.75 3h15a2.25 2.25 0 002.25-2.25V6.75A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25v10.5A2.25 2.25 0 006.75 19.5z" /></svg> },
+  { key: "contracts", label: "Contracts", icon: <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 12h3.75M9 15h3.75M9 18h3.75m3 .75H18a2.25 2.25 0 002.25-2.25V6.108c0-1.135-.845-2.098-1.976-2.192a48.424 48.424 0 00-1.123-.08m-5.801 0c-.065.21-.1.433-.1.664 0 .414.336.75.75.75h4.5a.75.75 0 00.75-.75 2.25 2.25 0 00-.1-.664m-5.8 0A2.251 2.251 0 0113.5 2.25H15c1.012 0 1.867.668 2.15 1.586m-5.8 0c-.376.023-.75.05-1.124.08C9.095 4.01 8.25 4.973 8.25 6.108V8.25m0 0H4.875c-.621 0-1.125.504-1.125 1.125v11.25c0 .621.504 1.125 1.125 1.125h9.75c.621 0 1.125-.504 1.125-1.125V9.375c0-.621-.504-1.125-1.125-1.125H8.25zM6.75 12h.008v.008H6.75V12zm0 3h.008v.008H6.75V15zm0 3h.008v.008H6.75V18z" /></svg> },
 ];
 
 export default function DashboardPage() {
@@ -445,6 +609,8 @@ export default function DashboardPage() {
         {activeTab === "documents" && <AdminDocuments />}
         {activeTab === "invoices" && <AdminInvoices />}
         {activeTab === "messages" && <AdminMessages />}
+        {activeTab === "purchases" && <AdminPurchases />}
+        {activeTab === "contracts" && <AdminContracts />}
       </div>
     </div>
   );

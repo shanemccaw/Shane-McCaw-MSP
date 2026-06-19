@@ -11,6 +11,9 @@ import PortalServices from "@/pages/portal/PortalServices";
 import PortalReports from "@/pages/portal/PortalReports";
 import PortalBilling from "@/pages/portal/PortalBilling";
 import PortalMessages from "@/pages/portal/PortalMessages";
+import OnboardingSelect from "@/pages/portal/OnboardingSelect";
+import OnboardingContract from "@/pages/portal/OnboardingContract";
+import OnboardingSuccess from "@/pages/portal/OnboardingSuccess";
 import type { ReactNode } from "react";
 
 const queryClient = new QueryClient({
@@ -76,6 +79,17 @@ function Router() {
       </Route>
       <Route path="/portal/messages">
         <RequireAuth role="client"><PortalMessages /></RequireAuth>
+      </Route>
+
+      {/* Onboarding routes — accessible to anyone (redirect to login inside if not authed) */}
+      <Route path="/portal/onboarding/select">
+        <OnboardingSelect />
+      </Route>
+      <Route path="/portal/onboarding/contract">
+        <OnboardingContract />
+      </Route>
+      <Route path="/portal/onboarding/success">
+        <RequireAuth role="client"><OnboardingSuccess /></RequireAuth>
       </Route>
 
       <Route>

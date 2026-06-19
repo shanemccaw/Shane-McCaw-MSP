@@ -38,12 +38,15 @@ export type Lead = typeof leadsTable.$inferSelect;
 // Services / Micro-Offers (templates)
 export const servicesTable = pgTable("services", {
   id: serial("id").primaryKey(),
+  slug: text("slug").unique(),
   name: text("name").notNull(),
   description: text("description"),
   category: text("category"),
   deliverables: text("deliverables"),
   price: numeric("price", { precision: 10, scale: 2 }),
   durationDays: integer("duration_days"),
+  turnaround: text("turnaround"),
+  isPublic: boolean("is_public").notNull().default(true),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
@@ -213,6 +216,26 @@ export const projectUpdatesTable = pgTable("project_updates", {
 
 export type InsertProjectUpdate = typeof projectUpdatesTable.$inferInsert;
 export type ProjectUpdate = typeof projectUpdatesTable.$inferSelect;
+
+// Signed contracts
+export const contractsTable = pgTable("contracts", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").notNull().references(() => usersTable.id),
+  serviceId: integer("service_id").notNull().references(() => servicesTable.id),
+  signedAt: timestamp("signed_at").notNull().defaultNow(),
+  signatureData: text("signature_data"),
+  signerName: text("signer_name"),
+  ipAddress: text("ip_address"),
+  userAgent: text("user_agent"),
+  contractVersion: text("contract_version").notNull().default("v1"),
+  stripeSessionId: text("stripe_session_id"),
+  projectId: integer("project_id").references(() => projectsTable.id),
+  pdfFilename: text("pdf_filename"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export type InsertContract = typeof contractsTable.$inferInsert;
+export type Contract = typeof contractsTable.$inferSelect;
 
 export const shareEventsTable = pgTable("share_events", {
   id: serial("id").primaryKey(),

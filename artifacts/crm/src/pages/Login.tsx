@@ -172,7 +172,17 @@ export default function LoginPage() {
     setLoading(true);
     try {
       const loggedInUser = await login(email, password);
-      setLocation(loggedInUser?.role === "client" ? "/portal" : "/dashboard");
+      if (loggedInUser?.role === "client") {
+        const returnTo = sessionStorage.getItem("onboardingReturnTo");
+        if (returnTo) {
+          sessionStorage.removeItem("onboardingReturnTo");
+          setLocation(returnTo);
+        } else {
+          setLocation("/portal");
+        }
+      } else {
+        setLocation("/dashboard");
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Login failed");
     } finally {

@@ -5,6 +5,7 @@ import { CheckCircle, Clock } from "lucide-react";
 
 const offers = [
   {
+    slug: "m365-health-check",
     title: "M365 Health Check",
     price: "$497",
     turnaround: "2 business days",
@@ -18,6 +19,7 @@ const offers = [
     ],
   },
   {
+    slug: "copilot-readiness",
     title: "Copilot Readiness Assessment",
     price: "$797",
     turnaround: "5 business days",
@@ -32,6 +34,7 @@ const offers = [
     ],
   },
   {
+    slug: "sharepoint-blueprint",
     title: "SharePoint Intranet Blueprint",
     price: "$997",
     turnaround: "7 business days",
@@ -46,6 +49,7 @@ const offers = [
     ],
   },
   {
+    slug: "power-automate",
     title: "Power Automate Quick Win",
     price: "$597",
     turnaround: "5–7 business days",
@@ -59,6 +63,7 @@ const offers = [
     ],
   },
   {
+    slug: "security-audit",
     title: "M365 Security & Governance Audit",
     price: "$897",
     turnaround: "5 business days",
@@ -73,6 +78,7 @@ const offers = [
     ],
   },
   {
+    slug: "copilot-prompts",
     title: "Copilot Prompt Library Build",
     price: "$397",
     turnaround: "5 business days",
@@ -218,7 +224,7 @@ export default function MicroOffers() {
                   </ul>
                 </div>
 
-                <CTAButton href="/book" className="w-full justify-center text-sm" data-testid={`offer-cta-${i}`}>
+                <CTAButton href={`/crm/portal/onboarding/select?service=${offer.slug}`} className="w-full justify-center text-sm" data-testid={`offer-cta-${i}`}>
                   Get Started
                 </CTAButton>
               </div>

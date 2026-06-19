@@ -5,6 +5,80 @@ import {
 } from "@workspace/db";
 import { eq } from "drizzle-orm";
 
+export async function seedMicroOffers(): Promise<void> {
+  const [existing] = await db.select().from(servicesTable).where(eq(servicesTable.slug, "m365-health-check")).limit(1);
+  if (existing) return;
+
+  await db.insert(servicesTable).values([
+    {
+      slug: "m365-health-check",
+      name: "M365 Health Check",
+      description: "A comprehensive audit of your Microsoft 365 environment — covering security posture, licensing efficiency, adoption gaps, and configuration hygiene — delivered as an actionable report in 5 business days.",
+      category: "Microsoft 365",
+      deliverables: "Executive Health Check Report, Risk Register, Prioritised Remediation Roadmap",
+      price: "497.00",
+      durationDays: 5,
+      turnaround: "5 business days",
+      isPublic: true,
+    },
+    {
+      slug: "copilot-readiness",
+      name: "Copilot Readiness Assessment",
+      description: "Find out if your Microsoft 365 tenant is ready for Copilot — covering licensing, data governance, sensitivity labels, and user adoption posture. Delivered as a scored readiness report with a 90-day activation roadmap.",
+      category: "Copilot AI",
+      deliverables: "Copilot Readiness Score Report, Gap Analysis, 90-Day Activation Roadmap",
+      price: "797.00",
+      durationDays: 7,
+      turnaround: "7 business days",
+      isPublic: true,
+    },
+    {
+      slug: "sharepoint-blueprint",
+      name: "SharePoint Intranet Blueprint",
+      description: "A detailed information architecture and design blueprint for a modern SharePoint intranet — including site map, navigation design, page type wireframes, and governance recommendations. Ready to hand to any build team.",
+      category: "SharePoint",
+      deliverables: "Information Architecture Document, Navigation Design, Page Wireframes, Governance Recommendations",
+      price: "997.00",
+      durationDays: 10,
+      turnaround: "10 business days",
+      isPublic: true,
+    },
+    {
+      slug: "power-automate",
+      name: "Power Automate Quick Win",
+      description: "Pick one manual process and we'll automate it end-to-end using Power Automate — scoping, build, test, and handover all included. Delivered in one week.",
+      category: "Power Platform",
+      deliverables: "Working Power Automate Flow, Process Documentation, 30-Day Support Window",
+      price: "597.00",
+      durationDays: 5,
+      turnaround: "5 business days",
+      isPublic: true,
+    },
+    {
+      slug: "security-audit",
+      name: "M365 Security & Governance Audit",
+      description: "A deep-dive security and governance audit of your Microsoft 365 tenant — covering identity, data protection, device compliance, threat policies, and admin hygiene — with a prioritised remediation plan.",
+      category: "Governance",
+      deliverables: "Security Audit Report, Risk Matrix, Prioritised Remediation Plan, Optional Debrief Call",
+      price: "897.00",
+      durationDays: 7,
+      turnaround: "7 business days",
+      isPublic: true,
+    },
+    {
+      slug: "copilot-prompts",
+      name: "Copilot Prompt Library Build",
+      description: "A ready-to-use, role-organised Microsoft 365 Copilot prompt library built for your team — covering Word, Excel, Teams, Outlook, and Loop — delivered as an editable SharePoint page or Word document.",
+      category: "Copilot AI",
+      deliverables: "Role-Organised Prompt Library, Short Video Walkthrough, Prompt Maintenance Guide",
+      price: "397.00",
+      durationDays: 5,
+      turnaround: "5 business days",
+      isPublic: true,
+    },
+  ]);
+}
+
 export async function seedPortalDemo(): Promise<void> {
   // Check if demo client already exists
   const [existing] = await db.select().from(usersTable).where(eq(usersTable.email, "demo@shanemccaw.com")).limit(1);
