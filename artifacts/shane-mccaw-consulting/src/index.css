@@ -98,12 +98,41 @@ html {
   --radius-xl: calc(var(--radius) + 4px);
 }
 
+/*
+ * Shared design system — Shane McCaw Consulting and CRM sites
+ * ---------------------------------------------------------
+ * Both apps share these tokens so they feel like one product:
+ *   Font:        Inter (400–800) via Google Fonts
+ *   Radius:      --radius 0.5rem  (cards, inputs, badges)
+ *   Brand navy:  #0A2540  (Deep Navy)
+ *   Brand blue:  #0078D4  (Electric Blue / primary)
+ *   Brand teal:  #00B4D8  (Bright Teal / chart-2)
+ *   Off-white:   #F7F9FC  (surface/muted)
+ *   Shadows:     hsl(211 91% 10% / 0.08) family
+ * Any change to core palette values must be replicated in
+ * artifacts/crm/src/index.css as well.
+ *
+ * Article Admin panel (/admin) — distinct Slate/Charcoal theme:
+ *   --admin-bg:           #2D3748  (Slate/Charcoal header/sidebar)
+ *   --admin-accent:       #4A90A4  (Steel Blue buttons/links/badges)
+ *   --admin-accent-hover: #3B7A8C  (Steel Blue hover state)
+ *   --admin-accent-muted: #9FBFC9  (Muted Steel Blue secondary text)
+ *   Used directly as Tailwind arbitrary values in Admin.tsx;
+ *   listed here for discoverability and cross-page consistency.
+ */
+
 :root {
   --button-outline: rgba(0,0,0, .10);
   --badge-outline: rgba(0,0,0, .05);
   --opaque-button-border-intensity: -8;
   --elevate-1: rgba(0,0,0, .03);
   --elevate-2: rgba(0,0,0, .08);
+
+  /* Article Admin panel theme tokens */
+  --admin-bg: #2D3748;
+  --admin-accent: #4A90A4;
+  --admin-accent-hover: #3B7A8C;
+  --admin-accent-muted: #9FBFC9;
 
   --background: 210 33% 99%;
   --foreground: 210 29% 24%;

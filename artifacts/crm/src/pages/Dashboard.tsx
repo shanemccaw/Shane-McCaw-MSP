@@ -98,7 +98,7 @@ function SlideOver({ lead, onClose, onStatusChange }: {
   return (
     <div className="fixed inset-0 z-50 flex">
       <div className="flex-1 bg-black/40" onClick={onClose} />
-      <div className="w-full max-w-md bg-white shadow-2xl overflow-y-auto flex flex-col">
+      <div className="w-full sm:max-w-md bg-white shadow-2xl overflow-y-auto flex flex-col">
         <div className="flex items-center justify-between px-6 py-4 border-b border-border bg-[#0A2540]">
           <h2 className="text-white font-bold">Lead Details</h2>
           <button onClick={onClose} className="text-white/60 hover:text-white transition-colors text-xl leading-none">×</button>
@@ -300,44 +300,74 @@ function LeadsPanel() {
             <p className="text-sm">No leads match your current filters.</p>
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm" data-testid="leads-table">
-              <thead>
-                <tr className="border-b border-border bg-[#F7F9FC]">
-                  <th className="text-left px-5 py-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Name</th>
-                  <th className="text-left px-5 py-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground hidden sm:table-cell">Email</th>
-                  <th className="text-left px-5 py-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground hidden md:table-cell">Company</th>
-                  <th className="text-left px-5 py-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Source</th>
-                  <th className="text-left px-5 py-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Status</th>
-                  <th className="text-left px-5 py-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground hidden lg:table-cell">Date</th>
-                </tr>
-              </thead>
-              <tbody>
-                {leads.map(lead => (
-                  <tr key={lead.id} onClick={() => setSelectedLead(lead)}
-                    className="border-b border-border last:border-0 hover:bg-[#F7F9FC] cursor-pointer transition-colors"
-                    data-testid={`lead-row-${lead.id}`}>
-                    <td className="px-5 py-3.5 font-semibold text-[#0A2540]">{lead.name}</td>
-                    <td className="px-5 py-3.5 text-muted-foreground hidden sm:table-cell">{lead.email}</td>
-                    <td className="px-5 py-3.5 text-muted-foreground hidden md:table-cell">{lead.company ?? "—"}</td>
-                    <td className="px-5 py-3.5">
-                      <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${SOURCE_COLORS[lead.source]}`}>
-                        {lead.source === "contact_form" ? "Contact Form" : "Lead Magnet"}
-                      </span>
-                    </td>
-                    <td className="px-5 py-3.5">
-                      <span className={`text-xs font-semibold px-2.5 py-1 rounded-full capitalize ${STATUS_COLORS[lead.status]}`}>
-                        {lead.status}
-                      </span>
-                    </td>
-                    <td className="px-5 py-3.5 text-muted-foreground text-xs hidden lg:table-cell">
-                      {new Date(lead.createdAt).toLocaleDateString()}
-                    </td>
+          <>
+            {/* Mobile card list — shown below sm breakpoint */}
+            <div className="sm:hidden divide-y divide-border" data-testid="leads-table">
+              {leads.map(lead => (
+                <div
+                  key={lead.id}
+                  onClick={() => setSelectedLead(lead)}
+                  className="px-4 py-3 flex items-center gap-3 cursor-pointer hover:bg-[#F7F9FC] transition-colors"
+                  data-testid={`lead-row-${lead.id}`}
+                >
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-semibold text-[#0A2540] truncate">{lead.name}</p>
+                    <p className="text-xs text-muted-foreground truncate">{lead.email}</p>
+                  </div>
+                  <div className="flex flex-col items-end gap-1 flex-shrink-0">
+                    <span className={`text-xs font-semibold px-2 py-0.5 rounded-full capitalize ${STATUS_COLORS[lead.status]}`}>
+                      {lead.status}
+                    </span>
+                    <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${SOURCE_COLORS[lead.source]}`}>
+                      {lead.source === "contact_form" ? "Form" : "Magnet"}
+                    </span>
+                  </div>
+                  <svg className="w-4 h-4 text-muted-foreground/40 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+                  </svg>
+                </div>
+              ))}
+            </div>
+            {/* Desktop table — shown at sm+ */}
+            <div className="hidden sm:block overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-border bg-[#F7F9FC]">
+                    <th className="text-left px-5 py-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Name</th>
+                    <th className="text-left px-5 py-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Email</th>
+                    <th className="text-left px-5 py-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground hidden md:table-cell">Company</th>
+                    <th className="text-left px-5 py-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Source</th>
+                    <th className="text-left px-5 py-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Status</th>
+                    <th className="text-left px-5 py-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground hidden lg:table-cell">Date</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody>
+                  {leads.map(lead => (
+                    <tr key={lead.id} onClick={() => setSelectedLead(lead)}
+                      className="border-b border-border last:border-0 hover:bg-[#F7F9FC] cursor-pointer transition-colors"
+                      data-testid={`lead-row-${lead.id}`}>
+                      <td className="px-5 py-3.5 font-semibold text-[#0A2540]">{lead.name}</td>
+                      <td className="px-5 py-3.5 text-muted-foreground">{lead.email}</td>
+                      <td className="px-5 py-3.5 text-muted-foreground hidden md:table-cell">{lead.company ?? "—"}</td>
+                      <td className="px-5 py-3.5">
+                        <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${SOURCE_COLORS[lead.source]}`}>
+                          {lead.source === "contact_form" ? "Contact Form" : "Lead Magnet"}
+                        </span>
+                      </td>
+                      <td className="px-5 py-3.5">
+                        <span className={`text-xs font-semibold px-2.5 py-1 rounded-full capitalize ${STATUS_COLORS[lead.status]}`}>
+                          {lead.status}
+                        </span>
+                      </td>
+                      <td className="px-5 py-3.5 text-muted-foreground text-xs hidden lg:table-cell">
+                        {new Date(lead.createdAt).toLocaleDateString()}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
         )}
 
         {totalPages > 1 && (
