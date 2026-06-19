@@ -1,6 +1,7 @@
-import { Router, type IRouter, type Request, type Response, type NextFunction } from "express";
+import { Router, type IRouter, type Request, type Response } from "express";
 import fs from "fs";
 import path from "path";
+import { requireAdmin } from "../middlewares/requireAuth";
 
 const router: IRouter = Router();
 
@@ -19,20 +20,6 @@ function safeFilePath(slug: string): string | null {
   const resolved = path.resolve(path.join(ARTICLES_DIR, `${slug}.md`));
   if (!resolved.startsWith(ARTICLES_DIR + path.sep) && resolved !== ARTICLES_DIR) return null;
   return resolved;
-}
-
-function authMiddleware(req: Request, res: Response, next: NextFunction): void {
-  const adminPassword = process.env.ADMIN_PASSWORD;
-  if (!adminPassword) {
-    res.status(500).json({ error: "ADMIN_PASSWORD not configured" });
-    return;
-  }
-  const authHeader = req.headers.authorization;
-  if (!authHeader || authHeader !== `Bearer ${adminPassword}`) {
-    res.status(401).json({ error: "Unauthorized" });
-    return;
-  }
-  next();
 }
 
 function parseFrontmatter(raw: string): { data: Record<string, string>; content: string } {
@@ -71,7 +58,7 @@ function buildMarkdown(article: {
   return `---\nslug: ${article.slug}\ncategory: ${article.category}\ntitle: "${article.title.replace(/"/g, '\\"')}"\nsummary: "${article.summary.replace(/"/g, '\\"')}"\ndate: ${article.date}\n---\n\n${article.content}`;
 }
 
-router.get("/admin/articles", authMiddleware, (_req, res) => {
+router.get("/admin/articles", requireAdmin, (_req: Request, res: Response) => {
   try {
     const files = fs.readdirSync(ARTICLES_DIR).filter((f) => f.endsWith(".md") && f !== "README.md");
     const articles = files.map((file) => {
@@ -95,7 +82,7 @@ router.get("/admin/articles", authMiddleware, (_req, res) => {
   }
 });
 
-router.get("/admin/articles/:slug", authMiddleware, (req, res) => {
+router.get("/admin/articles/:slug", requireAdmin, (req: Request, res: Response) => {
   try {
     const slug = req.params.slug as string;
     if (!isValidSlug(slug)) {
@@ -122,7 +109,7 @@ router.get("/admin/articles/:slug", authMiddleware, (req, res) => {
   }
 });
 
-router.post("/admin/articles", authMiddleware, (req, res) => {
+router.post("/admin/articles", requireAdmin, (req: Request, res: Response) => {
   try {
     const { slug, category, title, summary, date, content } = req.body as Record<string, string>;
     if (!slug || !title || !date) {
@@ -146,7 +133,7 @@ router.post("/admin/articles", authMiddleware, (req, res) => {
   }
 });
 
-router.put("/admin/articles/:slug", authMiddleware, (req, res) => {
+router.put("/admin/articles/:slug", requireAdmin, (req: Request, res: Response) => {
   try {
     const oldSlug = req.params.slug as string;
     const { slug, category, title, summary, date, content } = req.body as Record<string, string>;
@@ -198,7 +185,7 @@ router.put("/admin/articles/:slug", authMiddleware, (req, res) => {
   }
 });
 
-router.delete("/admin/articles/:slug", authMiddleware, (req, res) => {
+router.delete("/admin/articles/:slug", requireAdmin, (req: Request, res: Response) => {
   try {
     const slug = req.params.slug as string;
     if (!isValidSlug(slug)) {

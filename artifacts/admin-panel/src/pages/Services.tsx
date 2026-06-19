@@ -1,0 +1,203 @@
+import { useState, useEffect, useCallback } from "react";
+import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/contexts/AuthContext";
+
+interface Service {
+  id: number;
+  slug: string | null;
+  name: string;
+  description: string | null;
+  category: string | null;
+  deliverables: string | null;
+  price: string | null;
+  durationDays: number | null;
+  turnaround: string | null;
+  billingType: "one_time" | "recurring_monthly";
+  isPublic: boolean;
+  createdAt: string;
+}
+
+export default function ServicesPage() {
+  const { fetchWithAuth } = useAuth();
+  const { toast } = useToast();
+  const [services, setServices] = useState<Service[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [selected, setSelected] = useState<Service | null>(null);
+  const [form, setForm] = useState<Partial<Service>>({});
+  const [saving, setSaving] = useState(false);
+
+  const fetchServices = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await fetchWithAuth("/api/admin/services");
+      if (!res.ok) { toast({ title: "Failed to load services", variant: "destructive" }); return; }
+      const data = await res.json() as Service[];
+      setServices(data);
+    } catch { toast({ title: "Could not reach API server", variant: "destructive" }); }
+    finally { setLoading(false); }
+  }, [fetchWithAuth, toast]);
+
+  useEffect(() => { void fetchServices(); }, [fetchServices]);
+
+  function selectService(s: Service) {
+    setSelected(s);
+    setForm({ ...s });
+  }
+
+  function setField(key: keyof Service, value: string | boolean | number | null) {
+    setForm(p => ({ ...p, [key]: value }));
+  }
+
+  async function handleSave(e: React.FormEvent) {
+    e.preventDefault();
+    if (!selected) return;
+    setSaving(true);
+    try {
+      const res = await fetchWithAuth(`/api/admin/services/${selected.id}`, {
+        method: "PUT",
+        body: JSON.stringify(form),
+      });
+      const body = await res.json() as Service & { error?: string };
+      if (!res.ok) { toast({ title: (body as { error?: string }).error ?? "Save failed", variant: "destructive" }); return; }
+      toast({ title: "Service saved" });
+      setSelected(body);
+      setForm({ ...body });
+      await fetchServices();
+    } finally { setSaving(false); }
+  }
+
+  return (
+    <div className="flex h-full">
+      {/* Service list */}
+      <div className="w-72 flex-shrink-0 border-r border-gray-200 bg-white overflow-y-auto">
+        <div className="p-4 border-b border-gray-100">
+          <h2 className="font-semibold text-[#0A2540] text-sm">Service Offerings</h2>
+          <p className="text-xs text-gray-500 mt-0.5">{services.length} services</p>
+        </div>
+        {loading ? (
+          <div className="p-8 text-center text-sm text-gray-400">Loading…</div>
+        ) : (
+          <div className="divide-y divide-gray-100">
+            {services.map(s => (
+              <button key={s.id} onClick={() => selectService(s)}
+                className={`w-full text-left px-4 py-3.5 hover:bg-gray-50 transition-colors ${selected?.id === s.id ? "bg-blue-50 border-l-2 border-[#0078D4]" : ""}`}>
+                <p className="font-medium text-sm text-[#0A2540] leading-snug truncate">{s.name}</p>
+                <div className="flex items-center gap-2 mt-1">
+                  <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${s.billingType === "recurring_monthly" ? "bg-purple-100 text-purple-700" : "bg-green-100 text-green-700"}`}>
+                    {s.billingType === "recurring_monthly" ? "Monthly retainer" : "One-time charge"}
+                  </span>
+                  {s.price && <span className="text-xs text-gray-500">${parseFloat(s.price).toLocaleString()}</span>}
+                </div>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Detail / edit panel */}
+      <div className="flex-1 overflow-y-auto">
+        {!selected ? (
+          <div className="flex items-center justify-center h-full">
+            <div className="text-center text-gray-400">
+              <svg className="w-12 h-12 mx-auto mb-3 opacity-30" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2 2v2m4 6h.01M5 20h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+              </svg>
+              <p className="text-sm">Select a service to edit</p>
+            </div>
+          </div>
+        ) : (
+          <form onSubmit={handleSave} className="p-6 max-w-2xl">
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-xl font-bold text-[#0A2540]">Edit Service</h2>
+              <button type="submit" disabled={saving}
+                className="bg-[#0078D4] text-white rounded-lg px-5 py-2 text-sm font-medium hover:bg-[#006CBE] transition-colors disabled:opacity-60">
+                {saving ? "Saving…" : "Save Changes"}
+              </button>
+            </div>
+
+            <div className="bg-white rounded-xl border border-gray-200 p-6 space-y-5">
+              <div>
+                <label className="block text-xs font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">Name <span className="text-red-500">*</span></label>
+                <input type="text" value={form.name ?? ""} required
+                  onChange={e => setField("name", e.target.value)}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4]" />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">Slug</label>
+                <input type="text" value={form.slug ?? ""}
+                  onChange={e => setField("slug", e.target.value.toLowerCase().replace(/\s+/g, "-") || null)}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-[#0078D4]"
+                  placeholder="url-friendly-slug" />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">Category</label>
+                <input type="text" value={form.category ?? ""}
+                  onChange={e => setField("category", e.target.value || null)}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4]" />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">Description</label>
+                <textarea value={form.description ?? ""} rows={3}
+                  onChange={e => setField("description", e.target.value || null)}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4] resize-none" />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">Deliverables</label>
+                <textarea value={form.deliverables ?? ""} rows={3}
+                  onChange={e => setField("deliverables", e.target.value || null)}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4] resize-none"
+                  placeholder="One per line or comma-separated…" />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">Price ($)</label>
+                  <input type="number" value={form.price ?? ""} min="0" step="0.01"
+                    onChange={e => setField("price", e.target.value || null)}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4]" />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">Duration (days)</label>
+                  <input type="number" value={form.durationDays ?? ""} min="1"
+                    onChange={e => setField("durationDays", e.target.value ? parseInt(e.target.value) : null)}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4]" />
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">Turnaround</label>
+                <input type="text" value={form.turnaround ?? ""}
+                  onChange={e => setField("turnaround", e.target.value || null)}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4]"
+                  placeholder="e.g. 5 business days" />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-gray-600 mb-2 uppercase tracking-wide">Billing Type</label>
+                <div className="flex gap-3">
+                  {[
+                    { value: "one_time", label: "One-time charge" },
+                    { value: "recurring_monthly", label: "Monthly retainer" },
+                  ].map(opt => (
+                    <label key={opt.value} className={`flex items-center gap-2.5 flex-1 border rounded-xl p-3 cursor-pointer transition-all ${form.billingType === opt.value ? "border-[#0078D4] bg-blue-50" : "border-gray-200 hover:border-gray-300"}`}>
+                      <input type="radio" name="billingType" value={opt.value}
+                        checked={form.billingType === opt.value}
+                        onChange={() => setField("billingType", opt.value)}
+                        className="text-[#0078D4]" />
+                      <div>
+                        <p className="text-sm font-medium text-[#0A2540]">{opt.label}</p>
+                      </div>
+                    </label>
+                  ))}
+                </div>
+              </div>
+              <div className="flex items-center gap-3">
+                <input type="checkbox" id="isPublic" checked={form.isPublic ?? true}
+                  onChange={e => setField("isPublic", e.target.checked)}
+                  className="rounded" />
+                <label htmlFor="isPublic" className="text-sm font-medium text-gray-700">Visible on public site</label>
+              </div>
+            </div>
+          </form>
+        )}
+      </div>
+    </div>
+  );
+}

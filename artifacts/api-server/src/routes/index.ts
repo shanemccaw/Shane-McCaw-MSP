@@ -1,6 +1,10 @@
 import { Router, type IRouter } from "express";
 import healthRouter from "./health";
 import adminArticlesRouter from "./admin-articles";
+import adminServicesRouter from "./admin-services";
+import adminWorkflowTemplatesRouter from "./admin-workflow-templates";
+import adminProjectTemplatesRouter from "./admin-project-templates";
+import adminContractTemplatesRouter from "./admin-contract-templates";
 import sharesRouter from "./shares";
 import authRouter from "./auth";
 import leadsRouter from "./leads";
@@ -11,6 +15,10 @@ const router: IRouter = Router();
 
 router.use(healthRouter);
 router.use(adminArticlesRouter);
+router.use(adminServicesRouter);
+router.use(adminWorkflowTemplatesRouter);
+router.use(adminProjectTemplatesRouter);
+router.use(adminContractTemplatesRouter);
 router.use(sharesRouter);
 router.use(authRouter);
 router.use(leadsRouter);

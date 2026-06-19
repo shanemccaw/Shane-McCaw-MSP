@@ -1,5 +1,5 @@
 import { Router, type IRouter, type Request, type Response } from "express";
-import { db, projectsTable, clientServicesTable, servicesTable, workflowStepsTable, kanbanTasksTable, documentsTable, reportsTable, invoicesTable, messagesTable, notificationsTable, projectUpdatesTable, usersTable, contractsTable } from "@workspace/db";
+import { db, projectsTable, clientServicesTable, servicesTable, workflowStepsTable, kanbanTasksTable, documentsTable, reportsTable, invoicesTable, messagesTable, notificationsTable, projectUpdatesTable, usersTable, contractsTable, projectTemplatesTable, projectTemplateTasksTable, workflowTemplateStepsTable, contractTemplatesTable } from "@workspace/db";
 import { eq, and, desc, asc, count, sql } from "drizzle-orm";
 import { requireAuth, requireAdmin } from "../middlewares/requireAuth";
 import { sendEmail, purchaseConfirmationEmail, onboardingConfirmationEmail, adminPurchaseAlertEmail } from "../lib/mailer";
@@ -475,10 +475,11 @@ interface ContractPdfOptions {
   serviceTurnaround: string;
   signedAt: Date;
   signatureDataUrl?: string;
+  contractTemplateBody?: string; // When provided, replaces hardcoded sections with admin-authored content
 }
 
 async function generateContractPdf(opts: ContractPdfOptions): Promise<string> {
-  const { contractId, signerName, serviceName, servicePrice, serviceDeliverables, serviceTurnaround, signedAt, signatureDataUrl } = opts;
+  const { contractId, signerName, serviceName, servicePrice, serviceDeliverables, serviceTurnaround, signedAt, signatureDataUrl, contractTemplateBody } = opts;
 
   const pdfDoc = await PDFDocument.create();
   const helveticaBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
@@ -536,38 +537,71 @@ async function generateContractPdf(opts: ContractPdfOptions): Promise<string> {
   page1.drawLine({ start: { x: margin, y }, end: { x: 535, y }, thickness: 0.5, color: rgb(0.85, 0.85, 0.85) });
   y -= 18;
 
-  const sections = [
-    ["1. Services", `Consultant agrees to deliver the "${serviceName}" micro-offer package to Client. Deliverables include: ${serviceDeliverables}.`],
-    ["2. Fees & Payment", `The fixed fee for this engagement is ${servicePrice} USD, payable in full at checkout before work commences. No additional charges will be incurred for the standard deliverables listed above.`],
-    ["3. Scope", "This agreement covers only the deliverables specified in Section 1. Any additional work beyond this scope must be agreed in writing and may be subject to additional fees."],
-    ["4. Delivery", `Consultant will deliver the agreed outputs within the stated turnaround period (${serviceTurnaround}) after receipt of payment and any required access or information from Client. Work will not commence until payment is confirmed.`],
-    ["5. Revisions", "One round of revisions is included. Additional revisions are available at Consultant's standard hourly rate."],
-    ["6. Confidentiality", "Each party agrees to keep the other party's confidential information confidential and not to disclose it to any third party without prior written consent."],
-    ["7. Intellectual Property", "Upon receipt of full payment, all deliverables produced by Consultant for Client become the sole property of Client."],
-    ["8. Limitation of Liability", "Consultant's total liability under this agreement shall not exceed the fees paid. Consultant is not liable for any indirect, incidental, or consequential damages."],
-    ["9. Governing Law", "This agreement is governed by the laws of the State of Virginia, United States."],
-    ["10. Entire Agreement", "This document constitutes the entire agreement between the parties with respect to this engagement and supersedes all prior discussions."],
-  ];
-
-  for (const [heading, body] of sections) {
-    if (y < 80) { /* overflow guard — not expected for 10 short sections */ break; }
-    drawText(page1, heading, margin, y, { font: helveticaBold, size: 10, color: blue });
-    y -= 14;
-    // Word-wrap body at ~75 chars
-    const words = body.split(" ");
-    let line = "";
-    for (const word of words) {
-      const candidate = line ? `${line} ${word}` : word;
-      if (candidate.length > 90) {
-        drawText(page1, line, margin + 10, y, { size: 9.5, color: navy });
-        y -= 13;
-        line = word;
+  if (contractTemplateBody) {
+    // Render admin-authored contract body (variable substitution already applied by caller)
+    const bodyLines = contractTemplateBody.split("\n");
+    for (const rawLine of bodyLines) {
+      if (y < 80) break;
+      const trimmed = rawLine.trimEnd();
+      if (trimmed.startsWith("# ")) {
+        drawText(page1, trimmed.slice(2), margin, y, { font: helveticaBold, size: 12, color: navy });
+        y -= 18;
+      } else if (trimmed.startsWith("## ")) {
+        drawText(page1, trimmed.slice(3), margin, y, { font: helveticaBold, size: 10, color: blue });
+        y -= 16;
+      } else if (trimmed === "") {
+        y -= 8;
       } else {
-        line = candidate;
+        // Word-wrap plain text lines at ~90 chars
+        const words = trimmed.split(" ");
+        let line = "";
+        for (const word of words) {
+          const candidate = line ? `${line} ${word}` : word;
+          if (candidate.length > 90) {
+            if (y < 80) break;
+            drawText(page1, line, margin + 4, y, { size: 9.5, color: navy });
+            y -= 13;
+            line = word;
+          } else {
+            line = candidate;
+          }
+        }
+        if (line && y >= 80) { drawText(page1, line, margin + 4, y, { size: 9.5, color: navy }); y -= 13; }
       }
     }
-    if (line) { drawText(page1, line, margin + 10, y, { size: 9.5, color: navy }); y -= 13; }
-    y -= 8;
+  } else {
+    const sections = [
+      ["1. Services", `Consultant agrees to deliver the "${serviceName}" micro-offer package to Client. Deliverables include: ${serviceDeliverables}.`],
+      ["2. Fees & Payment", `The fixed fee for this engagement is ${servicePrice} USD, payable in full at checkout before work commences. No additional charges will be incurred for the standard deliverables listed above.`],
+      ["3. Scope", "This agreement covers only the deliverables specified in Section 1. Any additional work beyond this scope must be agreed in writing and may be subject to additional fees."],
+      ["4. Delivery", `Consultant will deliver the agreed outputs within the stated turnaround period (${serviceTurnaround}) after receipt of payment and any required access or information from Client. Work will not commence until payment is confirmed.`],
+      ["5. Revisions", "One round of revisions is included. Additional revisions are available at Consultant's standard hourly rate."],
+      ["6. Confidentiality", "Each party agrees to keep the other party's confidential information confidential and not to disclose it to any third party without prior written consent."],
+      ["7. Intellectual Property", "Upon receipt of full payment, all deliverables produced by Consultant for Client become the sole property of Client."],
+      ["8. Limitation of Liability", "Consultant's total liability under this agreement shall not exceed the fees paid. Consultant is not liable for any indirect, incidental, or consequential damages."],
+      ["9. Governing Law", "This agreement is governed by the laws of the State of Virginia, United States."],
+      ["10. Entire Agreement", "This document constitutes the entire agreement between the parties with respect to this engagement and supersedes all prior discussions."],
+    ];
+
+    for (const [heading, body] of sections) {
+      if (y < 80) break;
+      drawText(page1, heading, margin, y, { font: helveticaBold, size: 10, color: blue });
+      y -= 14;
+      const words = body.split(" ");
+      let line = "";
+      for (const word of words) {
+        const candidate = line ? `${line} ${word}` : word;
+        if (candidate.length > 90) {
+          drawText(page1, line, margin + 10, y, { size: 9.5, color: navy });
+          y -= 13;
+          line = word;
+        } else {
+          line = candidate;
+        }
+      }
+      if (line) { drawText(page1, line, margin + 10, y, { size: 9.5, color: navy }); y -= 13; }
+      y -= 8;
+    }
   }
 
   // ── Page 2: Signature page ──────────────────────────────────────────────────
@@ -717,60 +751,83 @@ async function provisionOnboardingProject(
     startDate,
   }).returning();
 
-  // ── Seed workflow steps from primary service template ─────────────────────
-  const stepTemplates: Record<string, Array<{ title: string; description: string }>> = {
-    "m365-health-check": [
-      { title: "Kickoff Call", description: "30-minute video call to confirm scope, access requirements, and expected deliverables." },
-      { title: "Tenant Access Setup", description: "Client provisions read-only admin access or provides required tenant data exports." },
-      { title: "Assessment Scan", description: "Shane runs automated and manual checks across your M365 environment." },
-      { title: "Findings Report Draft", description: "Draft Health Check Report shared for review — client provides any corrections." },
-      { title: "Final Report Delivery", description: "Signed-off Health Check Report delivered with prioritised remediation roadmap." },
-    ],
-    "copilot-readiness": [
-      { title: "Kickoff Call", description: "30-minute video call to confirm scope, users in scope, and key use cases." },
-      { title: "Readiness Questionnaire", description: "Client completes structured questionnaire covering licensing, data governance, and training readiness." },
-      { title: "Environment Review", description: "Shane reviews M365 tenant configuration, licensing posture, and data sensitivity." },
-      { title: "Gap Analysis", description: "Gaps between current state and Copilot-ready state documented with effort estimates." },
-      { title: "Readiness Report Delivery", description: "Final Copilot Readiness Assessment Report with 90-day activation roadmap delivered." },
-    ],
-    "sharepoint-blueprint": [
-      { title: "Kickoff Call", description: "60-minute discovery call to capture requirements, stakeholders, and success criteria." },
-      { title: "Requirements Workshop", description: "Structured workshop to capture navigation needs, content types, audience segments, and governance rules." },
-      { title: "IA & Navigation Design", description: "Information architecture, site map, and global navigation design produced and shared for feedback." },
-      { title: "Wireframe Review", description: "Low-fidelity wireframes for key page types reviewed with the client." },
-      { title: "Blueprint Delivery", description: "Full SharePoint Intranet Blueprint document delivered — ready to hand to any implementation team." },
-    ],
-    "power-automate": [
-      { title: "Kickoff Call", description: "30-minute call to identify the highest-value process to automate." },
-      { title: "Process Discovery", description: "Shane maps the current manual process end-to-end and identifies automation touchpoints." },
-      { title: "Flow Build & Test", description: "Power Automate flow built and tested in a staging environment." },
-      { title: "Refinement", description: "Flow adjusted based on client feedback; edge cases and error handling added." },
-      { title: "Handover & Training", description: "Live walkthrough of the finished flow, documentation, and 30-day support window." },
-    ],
-    "security-audit": [
-      { title: "Kickoff Call", description: "30-minute call to confirm scope, tenant access requirements, and risk appetite." },
-      { title: "Tenant Access & Scan", description: "Read-only admin access granted; automated and manual security scans run across the tenant." },
-      { title: "Risk Assessment", description: "Findings categorised by severity (Critical / High / Medium / Low) with NIST alignment." },
-      { title: "Audit Report Draft", description: "Draft M365 Security & Governance Audit Report shared for review." },
-      { title: "Final Audit Report", description: "Final report delivered with a prioritised remediation plan and optional 60-minute debrief call." },
-    ],
-    "copilot-prompts": [
-      { title: "Kickoff Call", description: "30-minute call to understand your team roles, workflows, and top productivity pain points." },
-      { title: "Use-Case Discovery", description: "Client provides sample tasks and documents; Shane identifies the highest-value Copilot scenarios." },
-      { title: "Prompt Engineering", description: "Shane writes, tests, and refines prompts across Word, Excel, Teams, Outlook, and Loop." },
-      { title: "Prompt Library Build", description: "Structured prompt library built as a SharePoint page or Word document — role-organised and searchable." },
-      { title: "Handover", description: "Library delivered with a short video walkthrough and guidance on prompt maintenance." },
-    ],
-  };
-  const primarySlug = orderedServices[0]?.slug ?? "";
-  const steps = (primarySlug && stepTemplates[primarySlug])
-    ? stepTemplates[primarySlug]
-    : [
-        { title: "Kickoff Call", description: "Initial call to align on scope and next steps." },
-        { title: "Discovery", description: "Information gathering and requirements review." },
-        { title: "Delivery", description: "Core deliverable produced and shared for review." },
-        { title: "Sign-off", description: "Final approval and handover." },
-      ];
+  // ── Seed workflow steps: prefer project template tasks, fall back to hardcoded ──
+  // Check if the primary purchased service has an admin-authored project template
+  const primaryServiceId = orderedServices[0]?.id;
+  const [projTemplate] = primaryServiceId
+    ? await db.select().from(projectTemplatesTable)
+        .where(eq(projectTemplatesTable.serviceId, primaryServiceId))
+        .limit(1)
+    : [undefined];
+
+  let steps: Array<{ title: string; description: string }>;
+
+  if (projTemplate) {
+    // Use tasks from the admin-configured project template
+    const templateTasks = await db
+      .select()
+      .from(projectTemplateTasksTable)
+      .where(eq(projectTemplateTasksTable.projectTemplateId, projTemplate.id))
+      .orderBy(asc(projectTemplateTasksTable.order));
+    steps = templateTasks.map(t => ({ title: t.title, description: t.description ?? "" }));
+  }
+
+  if (!steps! || steps.length === 0) {
+    // Fall back to hardcoded slug-based steps (legacy behaviour)
+    const stepTemplates: Record<string, Array<{ title: string; description: string }>> = {
+      "m365-health-check": [
+        { title: "Kickoff Call", description: "30-minute video call to confirm scope, access requirements, and expected deliverables." },
+        { title: "Tenant Access Setup", description: "Client provisions read-only admin access or provides required tenant data exports." },
+        { title: "Assessment Scan", description: "Shane runs automated and manual checks across your M365 environment." },
+        { title: "Findings Report Draft", description: "Draft Health Check Report shared for review — client provides any corrections." },
+        { title: "Final Report Delivery", description: "Signed-off Health Check Report delivered with prioritised remediation roadmap." },
+      ],
+      "copilot-readiness": [
+        { title: "Kickoff Call", description: "30-minute video call to confirm scope, users in scope, and key use cases." },
+        { title: "Readiness Questionnaire", description: "Client completes structured questionnaire covering licensing, data governance, and training readiness." },
+        { title: "Environment Review", description: "Shane reviews M365 tenant configuration, licensing posture, and data sensitivity." },
+        { title: "Gap Analysis", description: "Gaps between current state and Copilot-ready state documented with effort estimates." },
+        { title: "Readiness Report Delivery", description: "Final Copilot Readiness Assessment Report with 90-day activation roadmap delivered." },
+      ],
+      "sharepoint-blueprint": [
+        { title: "Kickoff Call", description: "60-minute discovery call to capture requirements, stakeholders, and success criteria." },
+        { title: "Requirements Workshop", description: "Structured workshop to capture navigation needs, content types, audience segments, and governance rules." },
+        { title: "IA & Navigation Design", description: "Information architecture, site map, and global navigation design produced and shared for feedback." },
+        { title: "Wireframe Review", description: "Low-fidelity wireframes for key page types reviewed with the client." },
+        { title: "Blueprint Delivery", description: "Full SharePoint Intranet Blueprint document delivered — ready to hand to any implementation team." },
+      ],
+      "power-automate": [
+        { title: "Kickoff Call", description: "30-minute call to identify the highest-value process to automate." },
+        { title: "Process Discovery", description: "Shane maps the current manual process end-to-end and identifies automation touchpoints." },
+        { title: "Flow Build & Test", description: "Power Automate flow built and tested in a staging environment." },
+        { title: "Refinement", description: "Flow adjusted based on client feedback; edge cases and error handling added." },
+        { title: "Handover & Training", description: "Live walkthrough of the finished flow, documentation, and 30-day support window." },
+      ],
+      "security-audit": [
+        { title: "Kickoff Call", description: "30-minute call to confirm scope, tenant access requirements, and risk appetite." },
+        { title: "Tenant Access & Scan", description: "Read-only admin access granted; automated and manual security scans run across the tenant." },
+        { title: "Risk Assessment", description: "Findings categorised by severity (Critical / High / Medium / Low) with NIST alignment." },
+        { title: "Audit Report Draft", description: "Draft M365 Security & Governance Audit Report shared for review." },
+        { title: "Final Audit Report", description: "Final report delivered with a prioritised remediation plan and optional 60-minute debrief call." },
+      ],
+      "copilot-prompts": [
+        { title: "Kickoff Call", description: "30-minute call to understand your team roles, workflows, and top productivity pain points." },
+        { title: "Use-Case Discovery", description: "Client provides sample tasks and documents; Shane identifies the highest-value Copilot scenarios." },
+        { title: "Prompt Engineering", description: "Shane writes, tests, and refines prompts across Word, Excel, Teams, Outlook, and Loop." },
+        { title: "Prompt Library Build", description: "Structured prompt library built as a SharePoint page or Word document — role-organised and searchable." },
+        { title: "Handover", description: "Library delivered with a short video walkthrough and guidance on prompt maintenance." },
+      ],
+    };
+    const primarySlug = orderedServices[0]?.slug ?? "";
+    steps = (primarySlug && stepTemplates[primarySlug])
+      ? stepTemplates[primarySlug]
+      : [
+          { title: "Kickoff Call", description: "Initial call to align on scope and next steps." },
+          { title: "Discovery", description: "Information gathering and requirements review." },
+          { title: "Delivery", description: "Core deliverable produced and shared for review." },
+          { title: "Sign-off", description: "Final approval and handover." },
+        ];
+  }
 
   await db.insert(workflowStepsTable).values(
     steps.map((s, i) => ({
@@ -1586,6 +1643,58 @@ router.post("/admin/client-services", requireAdmin, async (req: Request, res: Re
       title: `Service activated: ${service.name}`,
       body: null, type: "general", linkPath: "/portal/services",
     });
+
+    // Auto-generate project from linked project template (if any)
+    const [projTemplate] = await db
+      .select()
+      .from(projectTemplatesTable)
+      .where(eq(projectTemplatesTable.serviceId, serviceId))
+      .limit(1);
+
+    if (projTemplate) {
+      const [autoProject] = await db.insert(projectsTable).values({
+        title: projTemplate.name,
+        description: `Auto-generated from service: ${service.name}`,
+        status: "active",
+        clientUserId,
+        progress: 0,
+        startDate: new Date(),
+      }).returning();
+
+      // Link the client service to this project
+      await db.update(clientServicesTable)
+        .set({ projectId: autoProject.id })
+        .where(eq(clientServicesTable.id, cs.id));
+
+      // Create workflow_steps from project template tasks (the deliverable task list)
+      const templateTasks = await db
+        .select()
+        .from(projectTemplateTasksTable)
+        .where(eq(projectTemplateTasksTable.projectTemplateId, projTemplate.id))
+        .orderBy(asc(projectTemplateTasksTable.order));
+
+      if (templateTasks.length > 0) {
+        await db.insert(workflowStepsTable).values(
+          templateTasks.map((t, idx) => ({
+            clientServiceId: cs.id,
+            projectId: autoProject.id,
+            title: t.title,
+            description: t.description,
+            status: "pending" as const,
+            order: idx,
+          }))
+        );
+      }
+
+      // Notify client about the new project
+      await db.insert(notificationsTable).values({
+        userId: clientUserId,
+        title: `Your project is ready: ${autoProject.title}`,
+        body: null,
+        type: "project_update",
+        linkPath: `/portal/projects/${autoProject.id}`,
+      });
+    }
   }
 
   res.status(201).json(cs);
@@ -1669,6 +1778,23 @@ router.post("/portal/onboarding/contract", requireAuth, async (req: Request, res
   const createdContracts: typeof contractsTable.$inferSelect[] = [];
 
   for (const svc of services) {
+    // Fetch admin-authored contract template for this service (if any)
+    const [contractTemplate] = await db
+      .select()
+      .from(contractTemplatesTable)
+      .where(eq(contractTemplatesTable.serviceId, svc.id))
+      .limit(1);
+
+    // Substitute template variables into the body
+    const signedDate = new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
+    const templateBody = contractTemplate?.body?.trim()
+      ? contractTemplate.body
+          .replace(/\{\{client_name\}\}/g, signerName.trim())
+          .replace(/\{\{service_name\}\}/g, svc.name)
+          .replace(/\{\{price\}\}/g, svc.price ? `$${parseFloat(String(svc.price)).toLocaleString("en-US")}` : "—")
+          .replace(/\{\{date\}\}/g, signedDate)
+      : undefined;
+
     const [contract] = await db.insert(contractsTable).values({
       userId,
       serviceId: svc.id,
@@ -1676,7 +1802,7 @@ router.post("/portal/onboarding/contract", requireAuth, async (req: Request, res
       signerName: signerName.trim(),
       ipAddress,
       userAgent,
-      contractVersion: "v1",
+      contractVersion: contractTemplate?.version ?? "v1",
     }).returning();
 
     // ── Generate signed PDF immediately at signing time ──────────────────
@@ -1690,6 +1816,7 @@ router.post("/portal/onboarding/contract", requireAuth, async (req: Request, res
         serviceTurnaround: svc.turnaround ?? "see service details",
         signedAt: contract.signedAt ?? new Date(),
         signatureDataUrl: signatureData,
+        contractTemplateBody: templateBody,
       });
       await db.update(contractsTable)
         .set({ pdfFilename })

@@ -269,3 +269,65 @@ export const checklistDownloadsTable = pgTable("checklist_downloads", {
 
 export type InsertChecklistDownload = typeof checklistDownloadsTable.$inferInsert;
 export type ChecklistDownload = typeof checklistDownloadsTable.$inferSelect;
+
+// Workflow Templates
+export const workflowTemplatesTable = pgTable("workflow_templates", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  description: text("description"),
+  serviceId: integer("service_id").references(() => servicesTable.id),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export type InsertWorkflowTemplate = typeof workflowTemplatesTable.$inferInsert;
+export type WorkflowTemplate = typeof workflowTemplatesTable.$inferSelect;
+
+export const workflowTemplateStepsTable = pgTable("workflow_template_steps", {
+  id: serial("id").primaryKey(),
+  workflowTemplateId: integer("workflow_template_id").notNull().references(() => workflowTemplatesTable.id, { onDelete: "cascade" }),
+  title: text("title").notNull(),
+  description: text("description"),
+  order: integer("order").notNull().default(0),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export type InsertWorkflowTemplateStep = typeof workflowTemplateStepsTable.$inferInsert;
+export type WorkflowTemplateStep = typeof workflowTemplateStepsTable.$inferSelect;
+
+// Project Templates
+export const projectTemplatesTable = pgTable("project_templates", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  workflowTemplateId: integer("workflow_template_id").references(() => workflowTemplatesTable.id),
+  serviceId: integer("service_id").references(() => servicesTable.id),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export type InsertProjectTemplate = typeof projectTemplatesTable.$inferInsert;
+export type ProjectTemplate = typeof projectTemplatesTable.$inferSelect;
+
+export const projectTemplateTasksTable = pgTable("project_template_tasks", {
+  id: serial("id").primaryKey(),
+  projectTemplateId: integer("project_template_id").notNull().references(() => projectTemplatesTable.id, { onDelete: "cascade" }),
+  title: text("title").notNull(),
+  description: text("description"),
+  order: integer("order").notNull().default(0),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export type InsertProjectTemplateTask = typeof projectTemplateTasksTable.$inferInsert;
+export type ProjectTemplateTask = typeof projectTemplateTasksTable.$inferSelect;
+
+// Contract Templates
+export const contractTemplatesTable = pgTable("contract_templates", {
+  id: serial("id").primaryKey(),
+  serviceId: integer("service_id").notNull().unique().references(() => servicesTable.id),
+  body: text("body").notNull().default(""),
+  version: text("version").notNull().default("v1"),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export type InsertContractTemplate = typeof contractTemplatesTable.$inferInsert;
+export type ContractTemplate = typeof contractTemplatesTable.$inferSelect;
