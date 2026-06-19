@@ -4,7 +4,7 @@ import { SEOMeta } from "@/components/SEOMeta";
 import { Layout } from "@/components/Layout";
 import { CTAButton } from "@/components/CTAButton";
 import { ConsultationCTA } from "@/components/ConsultationCTA";
-import { Download, ArrowRight, Share2, Loader2 } from "lucide-react";
+import { Download, ArrowRight, Share2, Loader2, Shield } from "lucide-react";
 import { FaLinkedin, FaXTwitter } from "react-icons/fa6";
 import { articles } from "@/data/articles";
 import { pdf } from "@react-pdf/renderer";
@@ -100,6 +100,19 @@ export default function Resources() {
         </div>
       </section>
 
+      {/* Why These Resources Exist */}
+      <section className="bg-white py-12 border-b border-border">
+        <div className="max-w-[1200px] mx-auto px-6">
+          <h2 className="text-2xl md:text-3xl font-extrabold text-[#0A2540] mb-4">Why These Resources Exist</h2>
+          <p className="text-foreground leading-relaxed max-w-3xl mb-4">
+            These insights come directly from Shane's 30-year career in the Microsoft ecosystem and his active role as Lead M365 Architect at NASA. They're designed to help mid-market organizations and regulated industries avoid the costly Microsoft 365 mistakes that are entirely preventable — if you know what to look for before they happen. Every piece is built around the real decisions IT leaders face when preparing for Copilot, designing governance frameworks, executing migrations, and meeting compliance requirements. They translate the architecture principles Shane applies under federal accountability into practical, actionable guidance any IT leader can use.
+          </p>
+          <p className="text-muted-foreground text-sm font-medium">
+            These resources are written for mid-market organizations, regulated industries, and government contractors navigating Microsoft 365 at scale.
+          </p>
+        </div>
+      </section>
+
       {/* Lead Magnet */}
       <section className="bg-[#F7F9FC] py-16">
         <div className="max-w-[1200px] mx-auto px-6">
@@ -176,6 +189,14 @@ export default function Resources() {
                 {cat}
               </button>
             ))}
+          </div>
+
+          {/* NASA-Grade Methodology Callout */}
+          <div className="mb-8 border-l-4 border-[#0078D4] bg-[#0078D4]/6 rounded-r-xl px-5 py-4 flex items-start gap-3" data-testid="nasa-methodology-callout">
+            <Shield className="w-4 h-4 text-[#0078D4] flex-shrink-0 mt-0.5" />
+            <p className="text-sm text-[#0A2540] leading-relaxed italic">
+              Every article is based on the same architecture principles Shane applied at NASA — adapted for real-world mid-market and compliance-driven environments.
+            </p>
           </div>
 
           {/* Posts Grid */}
