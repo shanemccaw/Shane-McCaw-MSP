@@ -4,7 +4,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { Layout } from "@/components/Layout";
 import { CTAButton } from "@/components/CTAButton";
-import { CalendlyEmbed } from "@/components/CalendlyEmbed";
+import { MicrosoftBookingsEmbed } from "@/components/MicrosoftBookingsEmbed";
 import { Mail, MapPin, Clock } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
@@ -186,10 +186,10 @@ export default function Contact() {
                 </form>
               </div>
 
-              {/* Calendly Inline Embed */}
-              <div className="mt-10" data-testid="calendly-embed-contact">
+              {/* Microsoft Bookings Inline Embed */}
+              <div className="mt-10" data-testid="bookings-embed-contact">
                 <h3 className="text-xl font-bold text-[#0A2540] mb-4">Or Book Directly on My Calendar</h3>
-                <CalendlyEmbed minHeight={630} />
+                <MicrosoftBookingsEmbed minHeight={630} />
               </div>
             </div>
 

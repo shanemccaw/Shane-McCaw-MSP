@@ -58,7 +58,7 @@ _Populate as you build — explicit user instructions worth remembering across s
 
 ## Gotchas
 
-- The Calendly widget is a placeholder — replace the styled box on `/book` and `/contact` with an actual inline Calendly embed using `https://calendly.com/shanemccaw/discovery`
+- The booking calendar on `/book` and `/contact` uses `MicrosoftBookingsEmbed.tsx`. To activate: set up a Bookings page in the M365 admin portal, then replace `BOOKINGS_URL` in `artifacts/shane-mccaw-consulting/src/components/MicrosoftBookingsEmbed.tsx` with the real URL (format: `https://outlook.office365.com/book/...`). Until then, a branded placeholder card is shown.
 - Contact form uses react-hook-form + zod but has no backend submission — shows a toast on success
 - Header is transparent on `/` and solid Deep Navy on all other pages (via scroll + location detection)
 

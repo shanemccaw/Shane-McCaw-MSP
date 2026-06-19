@@ -1,6 +1,6 @@
 import { SEOMeta } from "@/components/SEOMeta";
 import { Layout } from "@/components/Layout";
-import { CalendlyEmbed } from "@/components/CalendlyEmbed";
+import { MicrosoftBookingsEmbed } from "@/components/MicrosoftBookingsEmbed";
 import { CheckCircle } from "lucide-react";
 
 export default function Book() {
@@ -48,8 +48,8 @@ export default function Book() {
               </div>
             </div>
 
-            <div className="lg:col-span-2" data-testid="calendly-embed">
-              <CalendlyEmbed minHeight={700} />
+            <div className="lg:col-span-2" data-testid="bookings-embed">
+              <MicrosoftBookingsEmbed minHeight={700} />
             </div>
           </div>
         </div>

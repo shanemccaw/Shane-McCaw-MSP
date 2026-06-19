@@ -37,7 +37,7 @@ export default function Privacy() {
                 </li>
                 <li>
                   <strong>Scheduling information</strong> — when you book a consultation through
-                  Calendly, Calendly's own privacy policy governs the data collected at that step.
+                  Microsoft Bookings, Microsoft's own privacy policy governs the data collected at that step.
                 </li>
                 <li>
                   <strong>Usage data</strong> — standard server logs and analytics (pages visited,
@@ -64,7 +64,7 @@ export default function Privacy() {
             <section>
               <h2 className="text-xl font-semibold text-[#0A2540] mb-3">4. Third-Party Services</h2>
               <p>
-                This website may use third-party tools such as Calendly for scheduling. Each
+                This website may use third-party tools such as Microsoft Bookings for scheduling. Each
                 third-party service is governed by its own privacy policy. We encourage you to review
                 those policies before providing your information to those services.
               </p>
