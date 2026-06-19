@@ -58,6 +58,12 @@ export function Header() {
               </li>
             ))}
           </ul>
+          <a
+            href="/crm/"
+            className="text-sm font-semibold px-5 py-2 rounded border border-white/30 text-white/90 hover:text-white hover:border-white/60 transition-colors"
+          >
+            Client Login
+          </a>
           <CTAButton href="/book" className="text-sm px-5 py-2">Book a Call</CTAButton>
         </nav>
 
@@ -86,7 +92,14 @@ export function Header() {
               </li>
             ))}
           </ul>
-          <div className="pt-4 border-t border-white/10">
+          <div className="pt-4 border-t border-white/10 flex flex-col gap-3">
+            <a
+              href="/crm/"
+              className="w-full text-center font-semibold py-3 px-6 rounded border border-white/30 text-white/90 hover:text-white hover:border-white/60 transition-colors"
+              onClick={() => setMobileMenuOpen(false)}
+            >
+              Client Login
+            </a>
             <CTAButton href="/book" className="w-full justify-center">Book a Call</CTAButton>
           </div>
         </div>
