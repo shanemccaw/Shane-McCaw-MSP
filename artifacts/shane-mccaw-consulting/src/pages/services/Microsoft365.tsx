@@ -6,7 +6,7 @@ import { ConsultationCTA } from "@/components/ConsultationCTA";
 import { useServicePrice } from "@/components/use-service-price";
 
 export default function Microsoft365() {
-  const price = useServicePrice("m365-consulting", "$1,500");
+  const { price, loading } = useServicePrice("m365-consulting", "$1,500");
   return (
     <Layout>
       <SEOMeta
@@ -157,7 +157,13 @@ export default function Microsoft365() {
             </div>
             <div className="flex flex-col items-start md:items-end gap-4">
               <div>
-                <span className="text-3xl font-extrabold text-white">{price}</span>
+                <span className="text-3xl font-extrabold text-white">
+                  {loading ? (
+                    <span className="inline-block h-9 w-24 rounded bg-white/20 animate-pulse align-middle" aria-hidden="true" />
+                  ) : (
+                    price
+                  )}
+                </span>
                 <span className="text-lg font-normal text-white/60">/mo</span>
               </div>
               <a

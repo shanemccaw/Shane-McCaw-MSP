@@ -38,10 +38,29 @@ function fetchServices(): Promise<ServiceRecord[]> {
   return _promise;
 }
 
-export function useServicePrice(slug: string, fallback: string): string {
+export interface ServicePriceResult {
+  price: string;
+  loading: boolean;
+}
+
+export function useServicePrice(
+  slug: string,
+  fallback: string,
+): ServicePriceResult {
   const [price, setPrice] = useState<string>(fallback);
+  const [loading, setLoading] = useState<boolean>(!_cache);
 
   useEffect(() => {
+    if (_cache) {
+      const svc = _cache.find((s) => s.slug === slug);
+      if (svc?.price) {
+        const formatted = formatPrice(svc.price);
+        if (formatted) setPrice(formatted);
+      }
+      setLoading(false);
+      return;
+    }
+
     let cancelled = false;
     fetchServices()
       .then((services) => {
@@ -54,11 +73,14 @@ export function useServicePrice(slug: string, fallback: string): string {
       })
       .catch(() => {
         // Keep fallback on error — no-op
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
       });
     return () => {
       cancelled = true;
     };
   }, [slug]);
 
-  return price;
+  return { price, loading };
 }
