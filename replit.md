@@ -58,7 +58,7 @@ _Populate as you build — explicit user instructions worth remembering across s
 
 ## Gotchas
 
-- The Calendly widget is a placeholder — replace the styled box on `/book` and `/contact` with an actual inline Calendly embed using `https://calendly.com/shanemccawconsulting/discovery`
+- The Calendly widget is a placeholder — replace the styled box on `/book` and `/contact` with an actual inline Calendly embed using `https://calendly.com/shanemccaw/discovery`
 - Contact form uses react-hook-form + zod but has no backend submission — shows a toast on success
 - Header is transparent on `/` and solid Deep Navy on all other pages (via scroll + location detection)
 

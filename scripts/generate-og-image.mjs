@@ -90,7 +90,7 @@ const svg = `<?xml version="1.0" encoding="UTF-8"?>
   </g>
 
   <!-- Website URL bottom -->
-  <text x="72" y="570" font-family="Arial, sans-serif" font-size="20" font-weight="400" fill="#5B8DB8" letter-spacing="1">shanemccawconsulting.com</text>
+  <text x="72" y="570" font-family="Arial, sans-serif" font-size="20" font-weight="400" fill="#5B8DB8" letter-spacing="1">shanemccaw.com</text>
 
   <!-- Bottom accent bar -->
   <rect x="0" y="${H - 4}" width="${W}" height="4" fill="url(#accent)"/>
