@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 import { Layout } from "@/components/Layout";
-import { CTAButton } from "@/components/CTAButton";
 import { Layout as LayoutIcon, CheckCircle } from "lucide-react";
+import { ConsultationCTA } from "@/components/ConsultationCTA";
 
 export default function SharePoint() {
   useEffect(() => {
@@ -68,15 +68,7 @@ export default function SharePoint() {
         </div>
       </section>
 
-      <section className="bg-[#0A2540] py-20">
-        <div className="max-w-[1200px] mx-auto px-6 text-center">
-          <h2 className="text-3xl font-extrabold text-white mb-4">Book a SharePoint Strategy Call</h2>
-          <p className="text-white/70 max-w-xl mx-auto mb-10">Free 30-minute call to discuss your intranet goals and get Shane's initial assessment.</p>
-          <CTAButton href="/book" className="px-10 py-4 text-base" data-testid="sharepoint-cta">
-            Book a SharePoint Strategy Call
-          </CTAButton>
-        </div>
-      </section>
+      <ConsultationCTA />
     </Layout>
   );
 }

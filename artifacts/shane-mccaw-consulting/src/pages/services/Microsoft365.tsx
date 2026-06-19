@@ -1,8 +1,8 @@
 import { useEffect } from "react";
 import { Layout } from "@/components/Layout";
-import { CTAButton } from "@/components/CTAButton";
 import { Cloud, CheckCircle, AlertCircle, ArrowRight } from "lucide-react";
 import { Link } from "wouter";
+import { ConsultationCTA } from "@/components/ConsultationCTA";
 
 export default function Microsoft365() {
   useEffect(() => {
@@ -109,15 +109,7 @@ export default function Microsoft365() {
         </div>
       </section>
 
-      <section className="bg-[#0A2540] py-20">
-        <div className="max-w-[1200px] mx-auto px-6 text-center">
-          <h2 className="text-3xl font-extrabold text-white mb-4">Schedule a Free M365 Assessment Call</h2>
-          <p className="text-white/70 max-w-xl mx-auto mb-10">30 minutes. No cost. Walk away knowing exactly what your M365 environment needs.</p>
-          <CTAButton href="/book" className="px-10 py-4 text-base" data-testid="m365-cta">
-            Schedule a Free M365 Assessment Call
-          </CTAButton>
-        </div>
-      </section>
+      <ConsultationCTA />
     </Layout>
   );
 }

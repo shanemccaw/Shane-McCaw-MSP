@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 import { Layout } from "@/components/Layout";
-import { CTAButton } from "@/components/CTAButton";
 import { Server, CheckCircle, ArrowRight } from "lucide-react";
+import { ConsultationCTA } from "@/components/ConsultationCTA";
 
 const migrationSteps = [
   { step: "01", title: "Discovery", desc: "Inventory all source systems, data volumes, user counts, and dependencies. Identify risks before they become problems." },
@@ -126,15 +126,7 @@ export default function CloudMigration() {
         </div>
       </section>
 
-      <section className="bg-[#0A2540] py-20">
-        <div className="max-w-[1200px] mx-auto px-6 text-center">
-          <h2 className="text-3xl font-extrabold text-white mb-4">Plan My Migration — Book a Free Call</h2>
-          <p className="text-white/70 max-w-xl mx-auto mb-10">Let's talk about your migration. Shane will give you an honest assessment of scope, timeline, and what your migration will actually take.</p>
-          <CTAButton href="/book" className="px-10 py-4 text-base" data-testid="migration-cta">
-            Plan My Migration — Book a Free Call
-          </CTAButton>
-        </div>
-      </section>
+      <ConsultationCTA />
     </Layout>
   );
 }

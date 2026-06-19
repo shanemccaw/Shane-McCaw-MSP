@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import { Link } from "wouter";
 import { Layout } from "@/components/Layout";
 import { CTAButton } from "@/components/CTAButton";
+import { ConsultationCTA } from "@/components/ConsultationCTA";
 import {
   Bot, Shield, Tag, Rocket, Users, TrendingUp,
   CheckCircle, ArrowRight, AlertTriangle, Star
@@ -330,26 +331,7 @@ export default function CopilotAI() {
         </div>
       </section>
 
-      {/* Final CTA */}
-      <section className="bg-[#0A2540] py-20">
-        <div className="max-w-[1200px] mx-auto px-6 text-center">
-          <Bot className="w-12 h-12 text-[#0078D4] mx-auto mb-6" />
-          <h2 className="text-3xl md:text-4xl font-extrabold text-white mb-4">
-            Ready to Deploy Copilot the Right Way?
-          </h2>
-          <p className="text-white/70 text-lg max-w-2xl mx-auto mb-10 leading-relaxed">
-            Book a free 30-minute call with NASA's Copilot SME. Walk away knowing exactly where your environment stands and what your deployment needs.
-          </p>
-          <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-            <CTAButton href="/book" className="text-base px-10 py-4" data-testid="copilot-final-cta">
-              Book a Copilot Assessment Call
-            </CTAButton>
-            <Link href="/micro-offers" className="text-white/70 hover:text-white text-sm font-medium flex items-center gap-1.5 transition-colors" data-testid="copilot-micro-offers-link">
-              View the $797 Readiness Package <ArrowRight className="w-4 h-4" />
-            </Link>
-          </div>
-        </div>
-      </section>
+      <ConsultationCTA />
     </Layout>
   );
 }

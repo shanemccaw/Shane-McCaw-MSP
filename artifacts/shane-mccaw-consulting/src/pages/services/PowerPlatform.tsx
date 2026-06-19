@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import { Layout } from "@/components/Layout";
 import { CTAButton } from "@/components/CTAButton";
 import { Zap, CheckCircle } from "lucide-react";
+import { ConsultationCTA } from "@/components/ConsultationCTA";
 
 export default function PowerPlatform() {
   useEffect(() => {
@@ -80,15 +81,7 @@ export default function PowerPlatform() {
         </div>
       </section>
 
-      <section className="bg-[#0A2540] py-20">
-        <div className="max-w-[1200px] mx-auto px-6 text-center">
-          <h2 className="text-3xl font-extrabold text-white mb-4">Tell Me About Your Process Challenge</h2>
-          <p className="text-white/70 max-w-xl mx-auto mb-10">Book a free call and describe the process you want to automate. Shane will tell you what's possible and what it would take.</p>
-          <CTAButton href="/book" className="px-10 py-4 text-base" data-testid="power-platform-cta">
-            Tell Me About Your Process Challenge
-          </CTAButton>
-        </div>
-      </section>
+      <ConsultationCTA />
     </Layout>
   );
 }

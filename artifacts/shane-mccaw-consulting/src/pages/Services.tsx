@@ -4,6 +4,7 @@ import { Layout } from "@/components/Layout";
 import { CTAButton } from "@/components/CTAButton";
 import { ServiceCard } from "@/components/ServiceCard";
 import { Cloud, Bot, Layout as LayoutIcon, Zap, Shield, Server, ArrowRight } from "lucide-react";
+import { ConsultationCTA } from "@/components/ConsultationCTA";
 
 const services = [
   {
@@ -93,6 +94,7 @@ export default function Services() {
           </div>
         </div>
       </section>
+      <ConsultationCTA />
     </Layout>
   );
 }
