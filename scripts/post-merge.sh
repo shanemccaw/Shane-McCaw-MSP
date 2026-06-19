@@ -16,11 +16,12 @@ else
 fi
 
 # Sync the services catalogue from dev to production database.
-# Skipped silently when PROD_DATABASE_URL is not set (safe to run locally).
-if [ -n "$PROD_DATABASE_URL" ]; then
+# Runs when either PROD_DATABASE_URL or DATABASE_URL_PROD is set.
+# Skipped silently when neither is set (safe to run locally).
+if [ -n "$PROD_DATABASE_URL" ] || [ -n "$DATABASE_URL_PROD" ]; then
   echo "Syncing services catalogue to production database…"
   pnpm --filter @workspace/scripts run sync-services || \
     echo "WARNING: Services sync failed — see output above. Run manually: pnpm --filter @workspace/scripts run sync-services"
 else
-  echo "Skipping services sync (PROD_DATABASE_URL not set)."
+  echo "Skipping services sync (PROD_DATABASE_URL and DATABASE_URL_PROD are not set)."
 fi

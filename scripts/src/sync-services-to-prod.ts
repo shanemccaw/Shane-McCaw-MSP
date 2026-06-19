@@ -58,11 +58,26 @@ async function main(): Promise<void> {
     return;
   }
 
-  const devSlugs = devServices.map((s) => s.slug).filter((slug): slug is string => slug !== null);
+  // Only sync services that have a slug — null-slug rows have no stable conflict
+  // key, so upserting them is not idempotent and can create duplicates in production.
+  const sluggedServices = devServices.filter((s): s is typeof s & { slug: string } => s.slug !== null);
+  const devSlugs = sluggedServices.map((s) => s.slug);
+
+  const nullSlugCount = devServices.length - sluggedServices.length;
+  if (nullSlugCount > 0) {
+    console.warn(`WARNING: ${nullSlugCount} service(s) have no slug and will be skipped. Add slugs in the admin panel.`);
+  }
+
+  if (sluggedServices.length === 0) {
+    console.log("No slug-bearing services to sync.");
+    await devPool.end();
+    await prodPool.end();
+    return;
+  }
 
   // Upsert dev services into production
-  console.log(`Upserting ${devServices.length} service(s) into production…`);
-  for (const svc of devServices) {
+  console.log(`Upserting ${sluggedServices.length} service(s) into production…`);
+  for (const svc of sluggedServices) {
     const { id: _id, ...rest } = svc;
     await prodDb
       .insert(servicesTable)
@@ -71,7 +86,7 @@ async function main(): Promise<void> {
         target: servicesTable.slug,
         set: rest,
       });
-    console.log(`  synced: ${svc.slug ?? "(no slug)"} — ${svc.name}`);
+    console.log(`  synced: ${svc.slug} — ${svc.name}`);
   }
 
   // Delete production services whose slugs are absent from dev
