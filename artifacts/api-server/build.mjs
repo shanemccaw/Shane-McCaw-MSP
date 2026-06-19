@@ -50,6 +50,8 @@ async function buildAll() {
       "oracledb",
       "mongodb-client-encryption",
       "nodemailer",
+      "resend",
+      "pdf-lib",
       "handlebars",
       "knex",
       "typeorm",

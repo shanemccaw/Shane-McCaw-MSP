@@ -2,7 +2,7 @@ import { Router, type IRouter, type Request, type Response } from "express";
 import { db, projectsTable, clientServicesTable, servicesTable, workflowStepsTable, kanbanTasksTable, documentsTable, reportsTable, invoicesTable, messagesTable, notificationsTable, projectUpdatesTable, usersTable, contractsTable } from "@workspace/db";
 import { eq, and, desc, asc, count, sql } from "drizzle-orm";
 import { requireAuth, requireAdmin } from "../middlewares/requireAuth";
-import { sendEmail } from "../lib/mailer";
+import { sendEmail, purchaseConfirmationEmail, onboardingConfirmationEmail, adminPurchaseAlertEmail } from "../lib/mailer";
 import multer from "multer";
 import path from "path";
 import fs from "fs";
@@ -737,12 +737,34 @@ async function provisionOnboardingProject(
     });
   }
 
-  // ── Confirmation email (fire-and-forget) ──────────────────────────────────
+  // ── Confirmation email to client (fire-and-forget) ────────────────────────
   if (buyer.email) {
     sendEmail(
       buyer.email,
-      `Your ${service.name} project is confirmed — next steps inside`,
-      `<p>Hi ${buyer.name ?? ""},</p><p>Payment confirmed. Your <strong>${service.name}</strong> project has been set up in your client portal.</p><p>Shane will reach out within 1 business day to schedule your kickoff call.</p><p><a href="https://shanemccaw.consulting/crm/portal/projects/${project.id}">View your project →</a></p><p>— Shane McCaw Consulting</p>`,
+      `Your ${service.name} project is ready — next steps inside`,
+      onboardingConfirmationEmail({
+        clientName: buyer.name ?? "",
+        serviceName: service.name,
+        amountDollars,
+        projectId: project.id,
+      }),
+    ).catch(() => null);
+  }
+
+  // ── Admin notification email (fire-and-forget) ─────────────────────────────
+  const adminEmailAddr = process.env.ADMIN_EMAIL ?? process.env.CRM_ADMIN_EMAIL;
+  if (adminEmailAddr) {
+    sendEmail(
+      adminEmailAddr,
+      `New onboarding purchase: ${service.name} — $${amountDollars}`,
+      adminPurchaseAlertEmail({
+        clientName: buyer.name ?? "",
+        clientEmail: buyer.email,
+        serviceName: service.name,
+        amountDollars,
+        type: "onboarding_purchase",
+        projectId: project.id,
+      }),
     ).catch(() => null);
   }
 }
@@ -821,12 +843,32 @@ async function processStripeEvent(req: Request, event: import("stripe").Stripe.E
         });
       }
 
-      // Send confirmation email to buyer (fire-and-forget)
+      // Send branded confirmation email to buyer (fire-and-forget)
       if (buyer?.email) {
         sendEmail(
           buyer.email,
           `Your purchase of "${serviceName}" is confirmed`,
-          `<p>Hi${buyer.name ? ` ${buyer.name}` : ""},</p><p>Thank you for purchasing <strong>${serviceName}</strong>. Shane will be in touch within 1–2 business days to kick things off.</p><p>You can track your services in your <a href="https://shanemccaw.consulting/crm/portal">Client Portal</a>.</p><p>— Shane McCaw Consulting</p>`,
+          purchaseConfirmationEmail({
+            clientName: buyer.name ?? "",
+            serviceName,
+            amountDollars,
+          }),
+        ).catch(() => null);
+      }
+
+      // Send admin notification email (fire-and-forget)
+      const adminEmail = process.env.ADMIN_EMAIL ?? process.env.CRM_ADMIN_EMAIL;
+      if (adminEmail) {
+        sendEmail(
+          adminEmail,
+          `New purchase: ${serviceName} — $${amountDollars}`,
+          adminPurchaseAlertEmail({
+            clientName: buyer?.name ?? "",
+            clientEmail: buyer?.email ?? "",
+            serviceName,
+            amountDollars,
+            type: "service_purchase",
+          }),
         ).catch(() => null);
       }
     }
