@@ -294,6 +294,24 @@ export const impersonationTokensTable = pgTable("impersonation_tokens", {
 export type InsertImpersonationToken = typeof impersonationTokensTable.$inferInsert;
 export type ImpersonationToken = typeof impersonationTokensTable.$inferSelect;
 
+// Engagement Project Types (shown on Pricing page Track 02, used for SOW generation)
+export const engagementProjectsTable = pgTable("engagement_projects", {
+  id: serial("id").primaryKey(),
+  title: text("title").notNull(),
+  priceRange: text("price_range").notNull(),
+  description: text("description"),
+  triggeredBy: jsonb("triggered_by").$type<string[]>().notNull().default([]),
+  sowItems: jsonb("sow_items").$type<string[]>().notNull().default([]),
+  sortOrder: integer("sort_order").notNull().default(0),
+  isVisible: boolean("is_visible").notNull().default(true),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const insertEngagementProjectSchema = createInsertSchema(engagementProjectsTable).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertEngagementProject = typeof engagementProjectsTable.$inferInsert;
+export type EngagementProject = typeof engagementProjectsTable.$inferSelect;
+
 export const shareEventsTable = pgTable("share_events", {
   id: serial("id").primaryKey(),
   slug: text("slug").notNull(),

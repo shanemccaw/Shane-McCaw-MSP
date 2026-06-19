@@ -9,6 +9,7 @@ import ServicesPage from "@/pages/Services";
 import WorkflowsPage from "@/pages/Workflows";
 import ProjectTemplatesPage from "@/pages/ProjectTemplates";
 import ContractTemplatesPage from "@/pages/ContractTemplates";
+import EngagementProjectsPage from "@/pages/EngagementProjects";
 import LeadsPage from "@/pages/crm/Leads";
 import ClientsPage from "@/pages/crm/Clients";
 import ProjectsPage from "@/pages/crm/Projects";
@@ -72,6 +73,9 @@ function Router() {
       </Route>
       <Route path="/contract-templates">
         <RequireAdmin><DashboardShell><ContractTemplatesPage /></DashboardShell></RequireAdmin>
+      </Route>
+      <Route path="/engagement-projects">
+        <RequireAdmin><DashboardShell><EngagementProjectsPage /></DashboardShell></RequireAdmin>
       </Route>
 
       {/* CRM */}

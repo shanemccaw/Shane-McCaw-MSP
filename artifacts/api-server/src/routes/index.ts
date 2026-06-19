@@ -11,6 +11,8 @@ import leadsRouter from "./leads";
 import downloadsRouter from "./downloads";
 import portalRouter from "./portal";
 import publicServicesRouter from "./public-services";
+import publicEngagementProjectsRouter from "./public-engagement-projects";
+import adminEngagementProjectsRouter from "./admin-engagement-projects";
 
 const router: IRouter = Router();
 
@@ -20,11 +22,13 @@ router.use(adminServicesRouter);
 router.use(adminWorkflowTemplatesRouter);
 router.use(adminProjectTemplatesRouter);
 router.use(adminContractTemplatesRouter);
+router.use(adminEngagementProjectsRouter);
 router.use(sharesRouter);
 router.use(authRouter);
 router.use(leadsRouter);
 router.use(downloadsRouter);
 router.use(publicServicesRouter);
+router.use(publicEngagementProjectsRouter);
 router.use(portalRouter);
 
 export default router;

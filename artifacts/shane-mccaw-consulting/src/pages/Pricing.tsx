@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { SEOMeta } from "@/components/SEOMeta";
 import { Layout } from "@/components/Layout";
 import { CTAButton } from "@/components/CTAButton";
@@ -9,6 +9,32 @@ import {
   Shield, Users, AlertTriangle, DollarSign, Layers, Lightbulb,
 } from "lucide-react";
 import { useServices, formatPriceDisplay, type PublicService } from "@/hooks/useServices";
+
+interface EngagementProject {
+  id: number;
+  title: string;
+  priceRange: string;
+  description: string | null;
+  triggeredBy: string[];
+  sowItems: string[];
+  sortOrder: number;
+  isVisible: boolean;
+}
+
+function useEngagementProjects() {
+  const [projects, setProjects] = useState<EngagementProject[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetch("/api/public/engagement-projects")
+      .then(r => r.ok ? r.json() as Promise<EngagementProject[]> : Promise.resolve([]))
+      .then(data => setProjects(data))
+      .catch(() => setProjects([]))
+      .finally(() => setLoading(false));
+  }, []);
+
+  return { projects, loading };
+}
 
 const faqs = [
   {
@@ -214,6 +240,7 @@ function FAQItem({ q, a, index }: { q: string; a: string; index: number }) {
 
 export default function Pricing() {
   const { services: allServices, loading } = useServices();
+  const { projects: engagementProjects, loading: projectsLoading } = useEngagementProjects();
   const microOffers = allServices.filter((s) => s.serviceType === "micro_offer");
   const retainers = allServices.filter((s) => s.serviceType === "retainer");
   const offersLoading = loading;
@@ -541,23 +568,29 @@ export default function Pricing() {
             </div>
             <div className="space-y-4">
               <p className="text-sm font-bold text-[#0A2540] uppercase tracking-wider mb-4">Common project engagements</p>
-              {[
-                { name: "M365 Tenant Migration", range: "$5,000 – $15,000", desc: "Full tenant-to-tenant migration including data migration, governance setup, and user transition." },
-                { name: "Copilot Deployment Program", range: "$7,500 – $20,000", desc: "End-to-end six-pillar Copilot deployment: governance, labeling, rollout, pilot, and adoption." },
-                { name: "SharePoint Intranet Build", range: "$4,000 – $12,000", desc: "Full intranet design and build — IA, governance, content migration, and launch support." },
-                { name: "Governance Overhaul", range: "$3,500 – $10,000", desc: "Comprehensive M365 governance: DLP, retention, sensitivity labels, permissions remediation." },
-                { name: "Power Platform Implementation", range: "$2,500 – $8,000", desc: "Power Apps or Power Automate solution design, build, testing, and documentation." },
-              ].map((project, i) => (
-                <div key={i} className="bg-[#F7F9FC] rounded-xl border border-border p-5" data-testid={`project-type-${i}`}>
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <p className="font-bold text-[#0A2540] text-sm mb-1">{project.name}</p>
-                      <p className="text-muted-foreground text-xs leading-relaxed">{project.desc}</p>
+              {projectsLoading ? (
+                <>
+                  {[...Array(4)].map((_, i) => (
+                    <div key={i} className="bg-[#F7F9FC] rounded-xl border border-border p-5 h-16 animate-pulse" />
+                  ))}
+                </>
+              ) : engagementProjects.length === 0 ? (
+                <p className="text-sm text-muted-foreground italic">No project types configured yet.</p>
+              ) : (
+                engagementProjects.map((project, i) => (
+                  <div key={project.id} className="bg-[#F7F9FC] rounded-xl border border-border p-5" data-testid={`project-type-${i}`}>
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="font-bold text-[#0A2540] text-sm mb-1">{project.title}</p>
+                        {project.description && (
+                          <p className="text-muted-foreground text-xs leading-relaxed">{project.description}</p>
+                        )}
+                      </div>
+                      <span className="text-[#0078D4] font-bold text-xs text-right flex-shrink-0 whitespace-nowrap">{project.priceRange}</span>
                     </div>
-                    <span className="text-[#0078D4] font-bold text-xs text-right flex-shrink-0 whitespace-nowrap">{project.range}</span>
                   </div>
-                </div>
-              ))}
+                ))
+              )}
             </div>
           </div>
         </div>
