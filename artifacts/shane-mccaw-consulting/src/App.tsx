@@ -17,6 +17,7 @@ import SharePoint from "@/pages/services/SharePoint";
 import PowerPlatform from "@/pages/services/PowerPlatform";
 import Governance from "@/pages/services/Governance";
 import CloudMigration from "@/pages/services/CloudMigration";
+import Privacy from "@/pages/Privacy";
 
 const queryClient = new QueryClient();
 
@@ -37,6 +38,7 @@ function Router() {
       <Route path="/resources" component={Resources} />
       <Route path="/contact" component={Contact} />
       <Route path="/book" component={Book} />
+      <Route path="/privacy" component={Privacy} />
       <Route component={NotFound} />
     </Switch>
   );

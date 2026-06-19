@@ -24,7 +24,13 @@ export function Footer() {
         </div>
 
         <div className="mt-8 pt-6 border-t border-white/10 text-center text-white/40 text-xs">
-          <p>© {new Date().getFullYear()} Shane McCaw Consulting. All rights reserved.</p>
+          <p>
+            © {new Date().getFullYear()} Shane McCaw Consulting. All rights reserved.
+            {" · "}
+            <Link href="/privacy" className="hover:text-white/70 transition-colors underline underline-offset-2">
+              Privacy Policy
+            </Link>
+          </p>
         </div>
       </div>
     </footer>
