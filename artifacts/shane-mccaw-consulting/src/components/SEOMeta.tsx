@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 
-const DEFAULT_OG_IMAGE = "/opengraph.jpg";
+const DEFAULT_OG_IMAGE = "/og-image.png";
 const SITE_NAME = "Shane McCaw Consulting";
 
 interface SEOMetaProps {
