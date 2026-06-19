@@ -145,6 +145,62 @@ router.get("/portal/services", requireAuth, async (req: Request, res: Response) 
   res.json(result);
 });
 
+// ─── CLIENT: Service checkout ─────────────────────────────────────────────────
+router.post("/portal/services/checkout", requireAuth, async (req: Request, res: Response) => {
+  const userId = req.user!.id;
+  const { name, priceInCents, description, category, returnUrl } = req.body as {
+    name?: string;
+    priceInCents?: number;
+    description?: string;
+    category?: string;
+    returnUrl?: string;
+  };
+
+  if (!name || !priceInCents) {
+    res.status(400).json({ error: "name and priceInCents are required" });
+    return;
+  }
+
+  const stripeKey = process.env.STRIPE_SECRET_KEY;
+  if (!stripeKey) {
+    res.status(503).json({ error: "Online purchasing is not yet configured. Please contact us at info@shanemccaw.com to purchase this service." });
+    return;
+  }
+
+  const { default: Stripe } = await import("stripe");
+  const stripe = new Stripe(stripeKey);
+
+  const baseUrl = returnUrl ?? `${req.protocol}://${req.hostname}`;
+  const encodedName = encodeURIComponent(name);
+
+  const session = await stripe.checkout.sessions.create({
+    payment_method_types: ["card"],
+    line_items: [{
+      price_data: {
+        currency: "usd",
+        product_data: {
+          name,
+          description: description ?? undefined,
+        },
+        unit_amount: priceInCents,
+      },
+      quantity: 1,
+    }],
+    mode: "payment",
+    success_url: `${baseUrl}/portal/services?purchase=success&service=${encodedName}`,
+    cancel_url: `${baseUrl}/portal/services?purchase=cancelled`,
+    metadata: {
+      type: "service_purchase",
+      userId: String(userId),
+      serviceName: name,
+      serviceCategory: category ?? "",
+      servicePriceInCents: String(priceInCents),
+    },
+  });
+
+  res.json({ url: session.url });
+});
+
 // ─── CLIENT: Reports ─────────────────────────────────────────────────────────
 router.get("/portal/reports", requireAuth, async (req: Request, res: Response) => {
   const userId = req.user!.id;
@@ -332,11 +388,54 @@ router.post("/portal/stripe/webhook", async (req: Request, res: Response) => {
 
   if (event.type === "checkout.session.completed") {
     const session = event.data.object as import("stripe").Stripe.Checkout.Session;
+
+    // Invoice payment
     const invoiceId = session.metadata?.invoiceId;
     if (invoiceId && session.payment_status === "paid") {
       await db.update(invoicesTable)
         .set({ status: "paid", paidAt: new Date(), updatedAt: new Date() })
         .where(eq(invoicesTable.id, parseInt(invoiceId, 10)));
+    }
+
+    // Service purchase — notify admin, create invoice record
+    if (session.metadata?.type === "service_purchase" && session.payment_status === "paid") {
+      const { userId, serviceName, serviceCategory, servicePriceInCents } = session.metadata;
+      const uid = parseInt(userId, 10);
+      const amountDollars = (parseInt(servicePriceInCents, 10) / 100).toFixed(2);
+
+      // Create a paid invoice so it shows in billing history
+      await db.insert(invoicesTable).values({
+        clientUserId: uid,
+        invoiceNumber: `SVC-${Date.now()}`,
+        description: `${serviceName} — purchased via portal`,
+        amount: amountDollars,
+        currency: "usd",
+        status: "paid",
+        paidAt: new Date(),
+        stripeSessionId: session.id,
+      });
+
+      // Notify the admin user(s)
+      const admins = await db.select().from(usersTable).where(eq(usersTable.role, "admin"));
+      const [buyer] = await db.select().from(usersTable).where(eq(usersTable.id, uid));
+      for (const admin of admins) {
+        await db.insert(notificationsTable).values({
+          userId: admin.id,
+          title: `New service purchase: ${serviceName}`,
+          body: `${buyer?.email ?? "A client"} purchased "${serviceName}" ($${amountDollars}). Please activate the service in their portal.`,
+          type: "general",
+          linkPath: "/portal/services",
+        });
+      }
+
+      // Send confirmation email to buyer (fire-and-forget)
+      if (buyer?.email) {
+        sendEmail({
+          to: buyer.email,
+          subject: `Your purchase of "${serviceName}" is confirmed`,
+          html: `<p>Hi${buyer.name ? ` ${buyer.name}` : ""},</p><p>Thank you for purchasing <strong>${serviceName}</strong>. Shane will be in touch within 1–2 business days to kick things off.</p><p>You can track your services in your <a href="${session.success_url?.split("?")[0] ?? "https://shanemccaw.com"}">Client Portal</a>.</p><p>— Shane McCaw Consulting</p>`,
+        }).catch(() => null);
+      }
     }
   }
 
