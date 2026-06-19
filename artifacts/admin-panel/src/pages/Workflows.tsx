@@ -262,9 +262,6 @@ export default function WorkflowsPage() {
                         <input type="text" value={editingStepForm.title} placeholder="Step title"
                           onChange={e => setEditingStepForm(p => ({ ...p, title: e.target.value }))}
                           className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4]" />
-                        <textarea value={editingStepForm.description} rows={2} placeholder="Description (optional)"
-                          onChange={e => setEditingStepForm(p => ({ ...p, description: e.target.value }))}
-                          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4] resize-none" />
                         <div className="flex gap-2">
                           <button onClick={saveStep} className="text-xs bg-[#0078D4] text-white px-3 py-1.5 rounded-lg font-medium hover:bg-[#006CBE]">Save</button>
                           <button onClick={() => setEditingStep(null)} className="text-xs text-gray-500 hover:text-gray-700 px-3 py-1.5">Cancel</button>
@@ -277,7 +274,6 @@ export default function WorkflowsPage() {
                         </div>
                         <div className="flex-1 min-w-0">
                           <p className="text-sm font-medium text-[#0A2540]">{step.title}</p>
-                          {step.description && <p className="text-xs text-gray-500 mt-0.5">{step.description}</p>}
                         </div>
                         <div className="flex items-center gap-1 flex-shrink-0">
                           <button onClick={() => void moveStep(step, "up")} disabled={idx === 0}
@@ -315,9 +311,6 @@ export default function WorkflowsPage() {
                     <input type="text" value={newStep.title} placeholder="Step title" autoFocus
                       onChange={e => setNewStep(p => p ? { ...p, title: e.target.value } : p)}
                       className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4]" />
-                    <textarea value={newStep.description} rows={2} placeholder="Description (optional)"
-                      onChange={e => setNewStep(p => p ? { ...p, description: e.target.value } : p)}
-                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4] resize-none" />
                     <div className="flex gap-2">
                       <button onClick={() => void addStep()} className="text-xs bg-[#0078D4] text-white px-3 py-1.5 rounded-lg font-medium hover:bg-[#006CBE]">Add Step</button>
                       <button onClick={() => setNewStep(null)} className="text-xs text-gray-500 hover:text-gray-700 px-3 py-1.5">Cancel</button>
