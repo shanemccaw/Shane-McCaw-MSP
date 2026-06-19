@@ -1877,15 +1877,43 @@ router.post("/portal/onboarding/contract", requireAuth, async (req: Request, res
     let computedFinalPrice: number | null = null;
     const svcSelections = wizardSelections?.[String(svc.id)] ?? [];
 
-    if (svcSelections.length > 0 && svc.orderWorkflow && svc.basePrice) {
+    if (svc.orderWorkflow && svc.basePrice) {
+      // Service has a wizard — selections are REQUIRED and strictly validated
       const workflow = svc.orderWorkflow as Array<{ id: string; title: string; options: Array<{ id: string; label: string; priceAdjustment: number }> }>;
+
+      // (1) Exactly one selection per step required — no missing, no duplicates
+      const coveredStepIds = new Set<string>();
+      for (const sel of svcSelections) {
+        if (coveredStepIds.has(sel.stepId)) {
+          res.status(400).json({ error: `Duplicate selection for step "${sel.stepId}" in service ${svc.id}` });
+          return;
+        }
+        coveredStepIds.add(sel.stepId);
+      }
+      for (const wfStep of workflow) {
+        if (!coveredStepIds.has(wfStep.id)) {
+          res.status(400).json({ error: `Missing selection for required step "${wfStep.id}" (${wfStep.title}) in service ${svc.id}` });
+          return;
+        }
+      }
+
+      // (2) All step/option IDs must exist in the stored workflow
       let total = parseFloat(String(svc.basePrice));
       for (const sel of svcSelections) {
         const wStep = workflow.find(s => s.id === sel.stepId);
-        const wOpt = wStep?.options.find(o => o.id === sel.optionId);
-        if (wOpt) total += wOpt.priceAdjustment;
+        if (!wStep) {
+          res.status(400).json({ error: `Unknown step id "${sel.stepId}" for service ${svc.id}` });
+          return;
+        }
+        const wOpt = wStep.options.find(o => o.id === sel.optionId);
+        if (!wOpt) {
+          res.status(400).json({ error: `Unknown option id "${sel.optionId}" for step "${sel.stepId}" in service ${svc.id}` });
+          return;
+        }
+        total += wOpt.priceAdjustment;
       }
-      // Clamp to maxPrice ceiling if set
+
+      // (3) Clamp to maxPrice ceiling if set
       if (svc.maxPrice) {
         const max = parseFloat(String(svc.maxPrice));
         total = Math.min(total, max);
