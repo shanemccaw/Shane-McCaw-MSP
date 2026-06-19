@@ -7,6 +7,7 @@
     "hello": "tsx ./src/hello.ts",
     "generate:og": "node ../scripts/generate-og-image.mjs",
     "sync-webhooks": "tsx ./src/sync-stripe-webhooks.ts",
+    "migrate-prod": "tsx ./src/migrate-prod.ts",
     "sync-services": "tsx ./src/sync-services-to-prod.ts",
     "remove-default-services": "tsx ./src/remove-default-services.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit"

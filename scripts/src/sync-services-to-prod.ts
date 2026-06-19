@@ -21,8 +21,8 @@
 
 import pg from "pg";
 import { drizzle } from "drizzle-orm/node-postgres";
-import { servicesTable } from "@workspace/db/schema";
-import { notInArray } from "drizzle-orm";
+import { servicesTable, clientServicesTable } from "@workspace/db/schema";
+import { notInArray, inArray } from "drizzle-orm";
 
 const { Pool } = pg;
 
@@ -89,16 +89,44 @@ async function main(): Promise<void> {
     console.log(`  synced: ${svc.slug} — ${svc.name}`);
   }
 
-  // Delete production services whose slugs are absent from dev
+  // Delete production services whose slugs are absent from dev,
+  // but skip any that are still referenced by client_services (FK-protected).
   if (devSlugs.length > 0) {
-    const deleted = await prodDb
-      .delete(servicesTable)
-      .where(notInArray(servicesTable.slug, devSlugs))
-      .returning({ slug: servicesTable.slug, name: servicesTable.name });
-    if (deleted.length > 0) {
-      console.log(`\nRemoved ${deleted.length} stale service(s) from production:`);
-      for (const row of deleted) {
-        console.log(`  removed: ${row.slug ?? "(no slug)"} — ${row.name}`);
+    // Find stale candidate services first
+    const staleServices = await prodDb
+      .select({ id: servicesTable.id, slug: servicesTable.slug, name: servicesTable.name })
+      .from(servicesTable)
+      .where(notInArray(servicesTable.slug, devSlugs));
+
+    if (staleServices.length > 0) {
+      const staleIds = staleServices.map((s) => s.id);
+
+      // Find which of those IDs are still referenced by client_services
+      const referencedRows = await prodDb
+        .select({ serviceId: clientServicesTable.serviceId })
+        .from(clientServicesTable)
+        .where(inArray(clientServicesTable.serviceId, staleIds));
+      const referencedIds = new Set(referencedRows.map((r) => r.serviceId));
+
+      const deletableIds = staleIds.filter((id) => !referencedIds.has(id));
+      const skippedServices = staleServices.filter((s) => referencedIds.has(s.id));
+
+      if (skippedServices.length > 0) {
+        console.log(`\nSkipped ${skippedServices.length} stale service(s) still in use by clients:`);
+        for (const row of skippedServices) {
+          console.log(`  skipped (in use): ${row.slug ?? "(no slug)"} — ${row.name}`);
+        }
+      }
+
+      if (deletableIds.length > 0) {
+        const deleted = await prodDb
+          .delete(servicesTable)
+          .where(inArray(servicesTable.id, deletableIds))
+          .returning({ slug: servicesTable.slug, name: servicesTable.name });
+        console.log(`\nRemoved ${deleted.length} stale service(s) from production:`);
+        for (const row of deleted) {
+          console.log(`  removed: ${row.slug ?? "(no slug)"} — ${row.name}`);
+        }
       }
     }
   }
