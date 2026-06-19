@@ -54,6 +54,7 @@ function WorkflowBuilder({ service, onClose }: { service: Service; onClose: () =
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [savedMsg, setSavedMsg] = useState(false);
+  const [saveError, setSaveError] = useState("");
 
   useEffect(() => {
     fetchWithAuth(`/api/admin/services/${service.id}/workflow`)
@@ -98,13 +99,23 @@ function WorkflowBuilder({ service, onClose }: { service: Service; onClose: () =
   const handleSave = async () => {
     setSaving(true);
     try {
-      await fetchWithAuth(`/api/admin/services/${service.id}/workflow`, {
+      const res = await fetchWithAuth(`/api/admin/services/${service.id}/workflow`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ workflow: steps }),
       });
-      setSavedMsg(true);
-      setTimeout(() => setSavedMsg(false), 2500);
+      if (!res.ok) {
+        const err = await res.json() as { error?: string };
+        setSaveError(err.error ?? "Failed to save workflow");
+        setTimeout(() => setSaveError(""), 4000);
+      } else {
+        setSavedMsg(true);
+        setSaveError("");
+        setTimeout(() => setSavedMsg(false), 2500);
+      }
+    } catch {
+      setSaveError("Network error — workflow not saved");
+      setTimeout(() => setSaveError(""), 4000);
     } finally {
       setSaving(false);
     }
@@ -226,6 +237,7 @@ function WorkflowBuilder({ service, onClose }: { service: Service; onClose: () =
               {saving ? "Saving…" : "Save Workflow"}
             </button>
             {savedMsg && <span className="text-xs text-green-600 font-semibold">✓ Saved</span>}
+            {saveError && <span className="text-xs text-red-600 font-semibold">{saveError}</span>}
           </div>
         </>
       )}
