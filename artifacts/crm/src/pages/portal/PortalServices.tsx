@@ -486,10 +486,18 @@ function RetainerCard({ plan }: { plan: typeof RETAINERS[0] }) {
 
 type AlertState = { type: "success" | "error"; message: string } | null;
 
+interface CatalogService {
+  id: number;
+  slug: string | null;
+  orderWorkflow: Array<unknown> | null;
+  basePrice: string | null;
+}
+
 export default function PortalServices() {
   const { fetchWithAuth } = useAuth();
   const [location, setLocation] = useLocation();
   const [purchasedServices, setPurchasedServices] = useState<ClientService[]>([]);
+  const [catalogServices, setCatalogServices] = useState<CatalogService[]>([]);
   const [loading, setLoading] = useState(true);
   const [alert, setAlert] = useState<AlertState>(null);
   const [buyingOffer, setBuyingOffer] = useState<string | null>(null);
@@ -508,22 +516,61 @@ export default function PortalServices() {
     }
   }, [location]);
 
-  // Load purchased services
+  // Load purchased services and service catalog (to check for configured workflows)
   useEffect(() => {
-    fetchWithAuth("/api/portal/services")
-      .then(r => r.json())
-      .then(d => setPurchasedServices(d as ClientService[]))
-      .catch(() => null)
-      .finally(() => setLoading(false));
+    Promise.all([
+      fetchWithAuth("/api/portal/services").then(r => r.json() as Promise<ClientService[]>),
+      fetch("/api/portal/onboarding/services").then(r => r.json() as Promise<CatalogService[]>),
+    ]).then(([purchased, catalog]) => {
+      setPurchasedServices(purchased);
+      setCatalogServices(catalog);
+    }).catch(() => null).finally(() => setLoading(false));
   }, [fetchWithAuth]);
 
   const active = purchasedServices.filter(s => s.status === "active");
   const completed = purchasedServices.filter(s => s.status === "completed");
 
-  const handleBuy = (offer: typeof MICRO_OFFERS[0]) => {
-    // Route all purchases through the onboarding flow so wizard-enabled services
-    // are intercepted and non-wizard services also go through the contract step.
-    setLocation(`/portal/onboarding/select?service=${encodeURIComponent(offer.slug)}`);
+  const handleBuy = async (offer: typeof MICRO_OFFERS[0]) => {
+    // If this service has a configured wizard (non-empty orderWorkflow + basePrice),
+    // route through the onboarding flow so the wizard captures selections.
+    // Otherwise use the direct checkout path unchanged.
+    const catalogSvc = catalogServices.find(s => s.slug === offer.slug);
+    const hasWizard = catalogSvc
+      && Array.isArray(catalogSvc.orderWorkflow)
+      && catalogSvc.orderWorkflow.length > 0
+      && catalogSvc.basePrice;
+
+    if (hasWizard) {
+      setLocation(`/portal/onboarding/select?service=${encodeURIComponent(offer.slug)}`);
+      return;
+    }
+
+    // Direct checkout path (no wizard configured)
+    setBuyingOffer(offer.title);
+    try {
+      const res = await fetchWithAuth("/api/portal/services/checkout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: offer.title,
+          priceInCents: offer.priceInCents,
+          description: offer.deliverable,
+          category: "Quick-Win Package",
+          returnUrl: window.location.origin + import.meta.env.BASE_URL.replace(/\/$/, "") + "/portal/services",
+        }),
+      });
+      if (res.ok) {
+        const data = await res.json() as { url: string };
+        window.location.href = data.url;
+      } else {
+        const err = await res.json() as { error: string };
+        setAlert({ type: "error", message: err.error ?? "Could not start checkout. Please try again." });
+      }
+    } catch {
+      setAlert({ type: "error", message: "Network error. Please try again." });
+    } finally {
+      setBuyingOffer(null);
+    }
   };
 
   return (
