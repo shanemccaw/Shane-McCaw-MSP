@@ -1,10 +1,10 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link } from "wouter";
 import { SEOMeta } from "@/components/SEOMeta";
 import { Layout } from "@/components/Layout";
 import { CTAButton } from "@/components/CTAButton";
 import { ConsultationCTA } from "@/components/ConsultationCTA";
-import { Download, ArrowRight } from "lucide-react";
+import { Download, ArrowRight, Share2 } from "lucide-react";
 import { FaLinkedin, FaXTwitter } from "react-icons/fa6";
 import { articles } from "@/data/articles";
 
@@ -15,6 +15,21 @@ export default function Resources() {
   const [leadMagnetEmail, setLeadMagnetEmail] = useState("");
   const [leadMagnetName, setLeadMagnetName] = useState("");
   const [submitted, setSubmitted] = useState(false);
+  const [shareCounts, setShareCounts] = useState<Record<string, number>>({});
+
+  useEffect(() => {
+    fetch("/api/shares")
+      .then(r => r.ok ? r.json() : null)
+      .then((data: { counts: Record<string, { total: number }> } | null) => {
+        if (!data?.counts) return;
+        const totals: Record<string, number> = {};
+        for (const [slug, v] of Object.entries(data.counts)) {
+          totals[slug] = v.total;
+        }
+        setShareCounts(totals);
+      })
+      .catch(() => {});
+  }, []);
 
   const filtered = activeCategory === "All" ? articles : articles.filter(p => p.category === activeCategory);
 
@@ -136,6 +151,12 @@ export default function Resources() {
                       <p className="text-muted-foreground text-xs">{post.date}</p>
                       <span className="text-muted-foreground text-xs">·</span>
                       <p className="text-muted-foreground text-xs">{post.readingTime}</p>
+                      {shareCounts[post.slug] > 0 && (
+                        <span className="flex items-center gap-1 text-muted-foreground text-xs" data-testid={`share-count-${i}`}>
+                          <Share2 className="w-3 h-3" />
+                          {shareCounts[post.slug]} {shareCounts[post.slug] === 1 ? "share" : "shares"}
+                        </span>
+                      )}
                     </div>
                     <div className="flex items-center gap-3">
                       <a

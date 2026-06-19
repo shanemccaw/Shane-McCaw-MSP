@@ -41,7 +41,7 @@ router.post("/shares", async (req: Request, res: Response) => {
   }
 });
 
-router.get("/shares", authMiddleware, async (_req: Request, res: Response) => {
+router.get("/shares", async (_req: Request, res: Response) => {
   try {
     const rows = await db
       .select({
