@@ -4,46 +4,58 @@ import { Layout } from "@/components/Layout";
 import { CTAButton } from "@/components/CTAButton";
 import { ServiceCard } from "@/components/ServiceCard";
 import {
-  Cloud, Bot, Layout as LayoutIcon, Zap, Shield, Server,
+  Cloud, Bot, Shield, Zap, Server, Users,
   CheckCircle, ArrowRight, Star, Quote
 } from "lucide-react";
 
 const services = [
   {
     icon: Cloud,
-    title: "Microsoft 365 Transformation",
-    description: "Whether starting fresh or fixing a misconfigured tenant, I architect M365 environments that are secure, scalable, and built for your team.",
+    title: "M365 Tenant Health Audit",
+    tagline: "Know exactly where you stand.",
+    description: "A systematic, NASA-methodology review of your Microsoft 365 tenant — security posture, licensing efficiency, workload adoption, and governance gaps. You receive a prioritized remediation report with clear next steps, not a generic checklist.",
     href: "/services/microsoft-365",
+    badge: "Most popular starting point",
   },
   {
     icon: Bot,
-    title: "Copilot AI Readiness",
-    description: "I assess readiness, govern your data, configure your environment, and coach your team so your Copilot investment pays off from day one.",
+    title: "Copilot for M365 Readiness Assessment",
+    tagline: "Deploy AI safely. Realize the ROI.",
+    description: "Before enabling Copilot, your data governance, permissions, and sensitivity labels must be right. Shane audits your environment against the same readiness criteria used at NASA, then hands you a deployment roadmap that eliminates oversharing risk and maximizes adoption.",
     href: "/services/copilot-ai",
-  },
-  {
-    icon: LayoutIcon,
-    title: "SharePoint Intranets",
-    description: "Modern intranets employees actually use — built with expert information architecture, navigation, and taxonomy design.",
-    href: "/services/sharepoint",
-  },
-  {
-    icon: Zap,
-    title: "Power Platform & Automation",
-    description: "Replace manual processes with Power Automate workflows and custom Power Apps at a fraction of traditional development cost.",
-    href: "/services/power-platform",
+    badge: "High demand",
   },
   {
     icon: Shield,
-    title: "Governance & Compliance",
-    description: "DLP policies, sensitivity labels, retention, Purview, and permissions built to NASA-grade standards.",
+    title: "Governance Foundations Package",
+    tagline: "Mission-critical compliance discipline.",
+    description: "DLP policies, sensitivity labels, retention schedules, conditional access, and Purview configuration — built to the same standard Shane applies at NASA. Designed for regulated industries and government contractors who cannot afford a compliance gap.",
     href: "/services/governance",
+    badge: null,
+  },
+  {
+    icon: Zap,
+    title: "Power Platform Quick-Start",
+    tagline: "Automate one process. Prove the model.",
+    description: "A fully built, tested Power Automate flow or Power App delivered in under two weeks. Shane scopes the right process, builds it correctly from the start — with error handling, monitoring, and documentation — so it scales as your needs grow.",
+    href: "/services/power-platform",
+    badge: null,
   },
   {
     icon: Server,
-    title: "Cloud Migration",
-    description: "Exchange, SharePoint, and M365 migrations executed with zero-drama precision and zero data loss.",
+    title: "Migration Readiness Assessment",
+    tagline: "Migrate with confidence, not guesswork.",
+    description: "Exchange, SharePoint, or cross-tenant M365 migrations carry real risk when rushed. Shane's pre-migration assessment surfaces every complexity — hybrid dependencies, permission structures, retention obligations — before a single mailbox moves.",
     href: "/services/cloud-migration",
+    badge: null,
+  },
+  {
+    icon: Users,
+    title: "Fractional M365 Architect Retainer",
+    tagline: "Senior architecture. On your schedule.",
+    description: "Ongoing access to Shane as your organization's dedicated Microsoft 365 architect — without the cost of a full-time hire. Strategic roadmap, hands-on implementation, governance oversight, and direct escalation support. The same expertise NASA relies on, available to your team monthly.",
+    href: "/pricing",
+    badge: "Enterprise favorite",
   },
 ];
 
@@ -172,13 +184,47 @@ export default function Home() {
       <section className="bg-white py-20" data-testid="services-section">
         <div className="max-w-[1200px] mx-auto px-6">
           <div className="text-center mb-14">
-            <p className="text-[#0078D4] text-sm font-semibold uppercase tracking-[0.1em] mb-3">Services</p>
-            <h2 className="text-3xl md:text-4xl font-extrabold text-[#0A2540]">Complete Microsoft 365 & AI Expertise — Under One Roof</h2>
+            <p className="text-[#0078D4] text-sm font-semibold uppercase tracking-[0.1em] mb-3">Services & Engagements</p>
+            <h2 className="text-3xl md:text-4xl font-extrabold text-[#0A2540]">Six Ways to Engage — All Backed by NASA-Level Expertise</h2>
+            <p className="text-muted-foreground mt-4 max-w-2xl mx-auto leading-relaxed">
+              Every engagement is scoped and delivered personally by Shane. No project managers between you and the architect. No junior consultants doing the work.
+            </p>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {services.map((s, i) => (
-              <ServiceCard key={i} {...s} data-testid={`service-card-${i}`} />
-            ))}
+            {services.map((s, i) => {
+              const Icon = s.icon;
+              return (
+                <div
+                  key={i}
+                  className="group relative bg-white border border-border rounded-xl p-7 flex flex-col hover:-translate-y-1 hover:shadow-xl hover:border-[#0078D4]/30 transition-all duration-300"
+                  data-testid={`service-card-${i}`}
+                >
+                  {s.badge && (
+                    <span className="absolute top-4 right-4 bg-[#0078D4]/10 text-[#0078D4] text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full">
+                      {s.badge}
+                    </span>
+                  )}
+                  <div className="w-11 h-11 rounded-lg bg-[#0078D4]/10 flex items-center justify-center mb-5 flex-shrink-0">
+                    <Icon className="w-5 h-5 text-[#0078D4]" />
+                  </div>
+                  <p className="text-[#0078D4] text-xs font-semibold uppercase tracking-[0.08em] mb-1.5">{s.tagline}</p>
+                  <h3 className="text-[1.1rem] font-bold text-[#0A2540] leading-snug mb-3">{s.title}</h3>
+                  <p className="text-muted-foreground text-sm leading-relaxed flex-grow mb-6">{s.description}</p>
+                  <Link
+                    href={s.href}
+                    className="inline-flex items-center gap-1.5 text-[#0078D4] text-sm font-semibold hover:gap-2.5 transition-all"
+                    data-testid={`service-link-${i}`}
+                  >
+                    Learn More <ArrowRight className="w-3.5 h-3.5" />
+                  </Link>
+                </div>
+              );
+            })}
+          </div>
+          <div className="text-center mt-10">
+            <Link href="/micro-offers" className="inline-flex items-center gap-1.5 text-muted-foreground text-sm hover:text-[#0078D4] transition-colors" data-testid="view-all-services">
+              View all fixed-price packages and retainer options <ArrowRight className="w-3.5 h-3.5" />
+            </Link>
           </div>
         </div>
       </section>
