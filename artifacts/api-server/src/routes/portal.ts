@@ -1,5 +1,5 @@
 import { Router, type IRouter, type Request, type Response } from "express";
-import { db, projectsTable, clientServicesTable, servicesTable, workflowStepsTable, kanbanTasksTable, documentsTable, reportsTable, invoicesTable, messagesTable, notificationsTable, projectUpdatesTable, usersTable, contractsTable, passwordResetTokensTable, projectTemplatesTable, projectTemplateTasksTable, workflowTemplateStepsTable, contractTemplatesTable } from "@workspace/db";
+import { db, projectsTable, clientServicesTable, servicesTable, workflowStepsTable, kanbanTasksTable, documentsTable, reportsTable, invoicesTable, messagesTable, notificationsTable, projectUpdatesTable, usersTable, contractsTable, passwordResetTokensTable, projectTemplatesTable, projectTemplateTasksTable, workflowTemplateStepsTable, contractTemplatesTable, impersonationTokensTable } from "@workspace/db";
 import { eq, and, desc, asc, count, sql, inArray } from "drizzle-orm";
 import { requireAuth, requireAdmin } from "../middlewares/requireAuth";
 import { sendEmail, purchaseConfirmationEmail, onboardingConfirmationEmail, adminPurchaseAlertEmail } from "../lib/mailer";
@@ -1400,6 +1400,31 @@ router.delete("/admin/clients/:id", requireAdmin, async (req: Request, res: Resp
   } catch {
     res.status(500).json({ error: "Failed to delete client" });
   }
+});
+
+// ─── ADMIN: Impersonation ────────────────────────────────────────────────────
+router.post("/admin/impersonate/:userId", requireAdmin, async (req: Request, res: Response) => {
+  const userId = parseInt(String(req.params.userId ?? ""), 10);
+  if (isNaN(userId)) { res.status(400).json({ error: "Invalid user ID" }); return; }
+
+  const [client] = await db.select().from(usersTable)
+    .where(and(eq(usersTable.id, userId), eq(usersTable.role, "client")))
+    .limit(1);
+  if (!client) { res.status(404).json({ error: "Client not found" }); return; }
+
+  const adminId = req.user!.id;
+  const { randomBytes } = await import("crypto");
+  const token = randomBytes(32).toString("hex");
+  const expiresAt = new Date(Date.now() + 30 * 60 * 1000);
+
+  await db.insert(impersonationTokensTable).values({
+    token,
+    clientUserId: client.id,
+    adminUserId: adminId,
+    expiresAt,
+  });
+
+  res.json({ token, client: { id: client.id, email: client.email, name: client.name } });
 });
 
 // ─── ADMIN: Projects ─────────────────────────────────────────────────────────

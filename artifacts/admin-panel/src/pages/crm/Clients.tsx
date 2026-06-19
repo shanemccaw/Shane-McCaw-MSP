@@ -21,6 +21,11 @@ interface Client {
   createdAt: string;
 }
 
+const CRM_PORTAL_BASE = (() => {
+  const url = new URL(window.location.href);
+  return `${url.protocol}//${url.host}/crm`;
+})();
+
 interface FormState {
   email: string;
   name: string;
@@ -43,6 +48,7 @@ export default function ClientsPage() {
   const [error, setError] = useState("");
   const [deleteTarget, setDeleteTarget] = useState<Client | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [search, setSearch] = useState("");
 
   const load = async () => {
     const res = await fetchWithAuth("/api/admin/clients");
@@ -85,6 +91,25 @@ export default function ClientsPage() {
     }
   };
 
+  const [viewAsLoading, setViewAsLoading] = useState<number | null>(null);
+
+  const handleViewAs = async (c: Client) => {
+    setViewAsLoading(c.id);
+    try {
+      const res = await fetchWithAuth(`/api/admin/impersonate/${c.id}`, { method: "POST" });
+      if (!res.ok) {
+        const err = await res.json() as { error: string };
+        alert(err.error ?? "Could not start impersonation session");
+        return;
+      }
+      const data = await res.json() as { token: string };
+      const url = `${CRM_PORTAL_BASE}/portal?impersonation_token=${encodeURIComponent(data.token)}`;
+      window.open(url, "_blank", "noopener");
+    } finally {
+      setViewAsLoading(null);
+    }
+  };
+
   const handleEdit = (c: Client) => {
     setEditingId(c.id);
     setForm({ email: c.email, name: c.name ?? "", company: c.company ?? "", phone: c.phone ?? "", password: "" });
@@ -109,12 +134,21 @@ export default function ClientsPage() {
     }
   };
 
+  const filteredClients = clients.filter(c => {
+    const q = search.toLowerCase();
+    return (
+      c.email.toLowerCase().includes(q) ||
+      (c.name ?? "").toLowerCase().includes(q) ||
+      (c.company ?? "").toLowerCase().includes(q)
+    );
+  });
+
   return (
     <div className="p-6 max-w-[1200px]">
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex items-center justify-between mb-4">
         <div>
           <h1 className="text-xl font-bold text-[#0A2540]">Client Accounts</h1>
-          <p className="text-sm text-muted-foreground mt-0.5">Manage portal access for consulting clients.</p>
+          <p className="text-sm text-muted-foreground mt-0.5">Manage portal access for consulting clients. Use "View as Client" to preview the portal as any client.</p>
         </div>
         <button
           onClick={() => { setShowForm(true); setEditingId(null); setForm(EMPTY_FORM); setError(""); }}
@@ -125,6 +159,19 @@ export default function ClientsPage() {
           </svg>
           Add Client
         </button>
+      </div>
+
+      <div className="mb-4 relative max-w-sm">
+        <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-4.35-4.35M17 11A6 6 0 115 11a6 6 0 0112 0z" />
+        </svg>
+        <input
+          type="search"
+          placeholder="Search by name, email or company…"
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          className="w-full pl-9 pr-3 py-2 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4] bg-white"
+        />
       </div>
 
       {showForm && (
@@ -193,7 +240,9 @@ export default function ClientsPage() {
               </tr>
             </thead>
             <tbody>
-              {clients.map(c => (
+              {filteredClients.length === 0 ? (
+                <tr><td colSpan={5} className="px-5 py-8 text-center text-muted-foreground text-sm">No clients match your search.</td></tr>
+              ) : filteredClients.map(c => (
                 <tr key={c.id} className="border-b border-border last:border-0 hover:bg-[#F7F9FC] transition-colors">
                   <td className="px-5 py-3.5">
                     <p className="font-semibold text-[#0A2540]">{c.name ?? "—"}</p>
@@ -205,6 +254,22 @@ export default function ClientsPage() {
                   <td className="px-5 py-3.5">
                     <div className="flex items-center gap-3">
                       <button onClick={() => handleEdit(c)} className="text-xs font-semibold text-[#0078D4] hover:underline">Edit</button>
+                      <button
+                        onClick={() => handleViewAs(c)}
+                        disabled={viewAsLoading === c.id}
+                        className="flex items-center gap-1 text-xs font-semibold text-amber-600 hover:text-amber-700 hover:underline disabled:opacity-50 transition-colors"
+                        title="Open the client portal as this client (read-only, 30 min session)"
+                      >
+                        {viewAsLoading === c.id ? (
+                          <span className="w-3 h-3 border-2 border-amber-500 border-t-transparent rounded-full animate-spin inline-block" />
+                        ) : (
+                          <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                          </svg>
+                        )}
+                        View as Client
+                      </button>
                       <button onClick={() => setDeleteTarget(c)} className="text-xs font-semibold text-red-500 hover:text-red-700">Delete</button>
                     </div>
                   </td>

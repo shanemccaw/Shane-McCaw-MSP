@@ -4,6 +4,7 @@ export interface AuthUser {
   id: number;
   email: string;
   role: "admin" | "client";
+  impersonatedBy?: number;
 }
 
 interface AuthState {
@@ -62,6 +63,34 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [doRefresh]);
 
   useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const impersonationToken = params.get("impersonation_token");
+
+    if (impersonationToken) {
+      fetch("/api/auth/impersonate-exchange", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token: impersonationToken }),
+      })
+        .then(async (res) => {
+          if (res.ok) {
+            const data = await res.json() as { accessToken: string; user: AuthUser };
+            setState({ user: data.user, accessToken: data.accessToken, isLoading: false });
+            accessTokenRef.current = data.accessToken;
+            const url = new URL(window.location.href);
+            url.searchParams.delete("impersonation_token");
+            window.history.replaceState({}, "", url.toString());
+          } else {
+            // Invalid/expired token — fall back to normal session
+            setState(s => ({ ...s, isLoading: false }));
+          }
+        })
+        .catch(() => {
+          setState(s => ({ ...s, isLoading: false }));
+        });
+      return;
+    }
+
     refresh().then((token) => {
       if (!token) {
         setState(s => ({ ...s, isLoading: false }));

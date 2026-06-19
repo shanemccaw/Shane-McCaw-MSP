@@ -2,7 +2,7 @@ import { Router, type IRouter, type Request, type Response } from "express";
 import rateLimit from "express-rate-limit";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
-import { db, usersTable, passwordResetTokensTable } from "@workspace/db";
+import { db, usersTable, passwordResetTokensTable, impersonationTokensTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import type { CookieOptions } from "express";
 import { sendEmail, passwordResetEmail } from "../lib/mailer";
@@ -232,6 +232,63 @@ router.post("/auth/reset-password", async (req: Request, res: Response) => {
     .where(eq(passwordResetTokensTable.id, record.id));
 
   res.json({ ok: true });
+});
+
+// ─── Impersonation token exchange ─────────────────────────────────────────────
+// Called by the CRM portal to bootstrap a one-time impersonation session.
+// The URL token is a random hex string stored in the DB — consumed on first use.
+// Returns a fresh short-lived JWT so the original URL token is never reused.
+router.post("/auth/impersonate-exchange", async (req: Request, res: Response) => {
+  const { token } = req.body as { token?: string };
+  if (!token) {
+    res.status(400).json({ error: "token is required" });
+    return;
+  }
+
+  const secret = process.env.JWT_SECRET;
+  if (!secret) {
+    res.status(500).json({ error: "Server misconfiguration" });
+    return;
+  }
+
+  const [record] = await db.select().from(impersonationTokensTable)
+    .where(eq(impersonationTokensTable.token, token))
+    .limit(1);
+
+  const now = new Date();
+
+  if (!record || record.usedAt || record.expiresAt < now) {
+    res.status(401).json({ error: "Invalid, expired, or already-used impersonation token" });
+    return;
+  }
+
+  await db.update(impersonationTokensTable)
+    .set({ usedAt: now })
+    .where(eq(impersonationTokensTable.id, record.id));
+
+  const [client] = await db.select().from(usersTable)
+    .where(eq(usersTable.id, record.clientUserId))
+    .limit(1);
+  if (!client || client.role !== "client") {
+    res.status(404).json({ error: "Client not found" });
+    return;
+  }
+
+  const sessionToken = jwt.sign(
+    { id: client.id, email: client.email, role: "client" as const, impersonatedBy: record.adminUserId },
+    secret,
+    { expiresIn: "30m" },
+  );
+
+  res.json({
+    accessToken: sessionToken,
+    user: {
+      id: client.id,
+      email: client.email,
+      role: "client" as const,
+      impersonatedBy: record.adminUserId,
+    },
+  });
 });
 
 export async function seedAdminUser(): Promise<void> {

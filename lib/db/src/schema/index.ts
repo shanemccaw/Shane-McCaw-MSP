@@ -281,6 +281,19 @@ export const passwordResetTokensTable = pgTable("password_reset_tokens", {
 export type InsertPasswordResetToken = typeof passwordResetTokensTable.$inferInsert;
 export type PasswordResetToken = typeof passwordResetTokensTable.$inferSelect;
 
+export const impersonationTokensTable = pgTable("impersonation_tokens", {
+  id: serial("id").primaryKey(),
+  token: text("token").notNull().unique(),
+  clientUserId: integer("client_user_id").notNull().references(() => usersTable.id),
+  adminUserId: integer("admin_user_id").notNull().references(() => usersTable.id),
+  expiresAt: timestamp("expires_at").notNull(),
+  usedAt: timestamp("used_at"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export type InsertImpersonationToken = typeof impersonationTokensTable.$inferInsert;
+export type ImpersonationToken = typeof impersonationTokensTable.$inferSelect;
+
 export const shareEventsTable = pgTable("share_events", {
   id: serial("id").primaryKey(),
   slug: text("slug").notNull(),
