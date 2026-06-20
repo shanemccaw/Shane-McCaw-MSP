@@ -1,6 +1,6 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { db, projectsTable, clientServicesTable, servicesTable, workflowStepsTable, kanbanTasksTable, documentsTable, reportsTable, invoicesTable, messagesTable, notificationsTable, projectUpdatesTable, usersTable, contractsTable, passwordResetTokensTable, workflowTemplateStepsTable, workflowTemplateStepTasksTable, contractTemplatesTable, impersonationTokensTable, statusReportsTable, deviceTokensTable, projectClosuresTable, auditLogsTable } from "@workspace/db";
-import { eq, and, desc, asc, count, sql, inArray, gte } from "drizzle-orm";
+import { eq, and, desc, asc, count, sql, inArray, gte, isNotNull } from "drizzle-orm";
 import { requireAuth, requireAdmin } from "../middlewares/requireAuth";
 import { sendEmail, purchaseConfirmationEmail, onboardingConfirmationEmail, adminPurchaseAlertEmail, closureRequestEmail, statusReportReplyEmail, clientThreadReplyEmail, adminThreadReplyEmail } from "../lib/mailer";
 import { sendAdminSms } from "../lib/sms";
@@ -1201,6 +1201,7 @@ router.get("/portal/billing/subscriptions", requireAuth, async (req: Request, re
       cancelAtPeriodEnd: boolean;
       cancelAt: number | null;
       billingCycleAnchor: number | null;
+      currentPeriodEnd: number | null;
       amount: number | null;
       currency: string | null;
     } | null = null;
@@ -1216,6 +1217,7 @@ router.get("/portal/billing/subscriptions", requireAuth, async (req: Request, re
           cancelAtPeriodEnd: sub.cancel_at_period_end,
           cancelAt: sub.cancel_at ?? null,
           billingCycleAnchor: sub.billing_cycle_anchor ?? null,
+          currentPeriodEnd: item?.current_period_end ?? null,
           amount: item?.price?.unit_amount ?? null,
           currency: item?.price?.currency ?? null,
         };
@@ -1282,6 +1284,112 @@ router.post("/portal/billing/subscriptions/:id/cancel", requireAuth, async (req:
     cancelAt: sub.cancel_at ?? null,
     billingCycleAnchor: sub.billing_cycle_anchor ?? null,
   });
+});
+
+// ─── CLIENT: Billing portal (manage payment method) ──────────────────────────
+router.post("/portal/billing/customer-portal", requireAuth, async (req: Request, res: Response) => {
+  const userId = req.user!.id;
+
+  const stripeKey = process.env.STRIPE_SECRET_KEY;
+  if (!stripeKey) { res.status(503).json({ error: "Stripe not configured." }); return; }
+
+  // Find any active Stripe subscription for this client to resolve the customer
+  const [cs] = await db.select().from(clientServicesTable)
+    .innerJoin(servicesTable, eq(clientServicesTable.serviceId, servicesTable.id))
+    .where(
+      and(
+        eq(clientServicesTable.clientUserId, userId),
+        eq(servicesTable.billingType, "recurring_monthly"),
+        isNotNull(clientServicesTable.stripeSubscriptionId),
+      )
+    )
+    .orderBy(desc(clientServicesTable.purchasedAt))
+    .limit(1);
+
+  if (!cs || !cs.client_services.stripeSubscriptionId) {
+    res.status(404).json({ error: "No active subscription found." });
+    return;
+  }
+
+  const { default: Stripe } = await import("stripe");
+  const stripe = new Stripe(stripeKey);
+
+  const sub = await stripe.subscriptions.retrieve(cs.client_services.stripeSubscriptionId, {
+    expand: ["customer"],
+  });
+
+  const customer = sub.customer;
+  if (!customer || typeof customer === "string" || customer.deleted) {
+    res.status(404).json({ error: "Stripe customer not found." });
+    return;
+  }
+
+  const baseUrl = req.headers.origin ?? `${req.protocol}://${req.hostname}`;
+  const session = await stripe.billingPortal.sessions.create({
+    customer: customer.id,
+    return_url: `${baseUrl}/crm/portal/billing`,
+  });
+
+  req.log.info({ userId, customerId: customer.id }, "billing-portal: session created");
+  res.json({ url: session.url });
+});
+
+// ─── CLIENT: Re-subscribe (new checkout for a canceled subscription) ──────────
+router.post("/portal/billing/subscriptions/:id/resubscribe", requireAuth, async (req: Request, res: Response) => {
+  const userId = req.user!.id;
+  const id = parseInt(String(req.params.id ?? ""), 10);
+  if (isNaN(id)) { res.status(400).json({ error: "Invalid ID" }); return; }
+
+  const [row] = await db.select({ cs: clientServicesTable, svc: servicesTable })
+    .from(clientServicesTable)
+    .innerJoin(servicesTable, eq(clientServicesTable.serviceId, servicesTable.id))
+    .where(and(eq(clientServicesTable.id, id), eq(clientServicesTable.clientUserId, userId)));
+
+  if (!row) { res.status(404).json({ error: "Subscription not found" }); return; }
+
+  if (!row.svc.price) {
+    res.status(400).json({ error: "Service has no price configured. Please contact support." });
+    return;
+  }
+
+  const stripeKey = process.env.STRIPE_SECRET_KEY;
+  if (!stripeKey) {
+    res.status(503).json({ error: "Online purchasing is not yet configured. Please contact us at info@shanemccaw.com." });
+    return;
+  }
+
+  const { default: Stripe } = await import("stripe");
+  const stripe = new Stripe(stripeKey);
+
+  const baseUrl = (req.body as { returnUrl?: string }).returnUrl ?? req.headers.origin ?? `${req.protocol}://${req.hostname}`;
+
+  const session = await stripe.checkout.sessions.create({
+    payment_method_types: ["card"],
+    line_items: [{
+      price_data: {
+        currency: "usd",
+        product_data: { name: row.svc.name, description: row.svc.description ?? undefined },
+        unit_amount: Math.round(parseFloat(String(row.svc.price)) * 100),
+        recurring: { interval: "month" as const },
+      },
+      quantity: 1,
+    }],
+    mode: "subscription",
+    success_url: `${baseUrl}/crm/portal/billing?payment=success`,
+    cancel_url: `${baseUrl}/crm/portal/billing?payment=cancelled`,
+    metadata: {
+      type: "onboarding_purchase",
+      userId: String(userId),
+      serviceIds: String(row.svc.id),
+      contractIds: "",
+      serviceName: row.svc.name,
+      startDate: new Date().toISOString(),
+      servicePrices: parseFloat(String(row.svc.price)).toFixed(2),
+    },
+  });
+
+  req.log.info({ userId, clientServiceId: id, serviceId: row.svc.id }, "resubscribe: checkout session created");
+  res.json({ url: session.url });
 });
 
 // ─── Contract PDF generator ───────────────────────────────────────────────────

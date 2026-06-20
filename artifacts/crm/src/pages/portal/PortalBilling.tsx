@@ -30,6 +30,7 @@ interface Subscription {
     cancelAtPeriodEnd: boolean;
     cancelAt: number | null;
     billingCycleAnchor: number | null;
+    currentPeriodEnd: number | null;
     amount: number | null;
     currency: string | null;
   } | null;
@@ -65,18 +66,75 @@ function SubscriptionCard({
   sub,
   onCancel,
   cancelling,
+  fetchWithAuth,
+  onAlert,
 }: {
   sub: Subscription;
   onCancel: (sub: Subscription) => void;
   cancelling: boolean;
+  fetchWithAuth: (url: string, opts?: RequestInit) => Promise<Response>;
+  onAlert: (a: { type: "success" | "error"; message: string }) => void;
 }) {
+  const [portalLoading, setPortalLoading] = useState(false);
+  const [resubLoading, setResubLoading] = useState(false);
+
   const stripe = sub.stripe;
-  const isCancelPending = stripe?.cancelAtPeriodEnd === true;
-  const isActive = stripe ? (stripe.status === "active" || stripe.status === "trialing") : sub.status === "active";
+  const isCanceled = stripe?.status === "canceled";
+  const isCancelPending = stripe?.cancelAtPeriodEnd === true && !isCanceled;
+  const isActive = stripe
+    ? (stripe.status === "active" || stripe.status === "trialing")
+    : sub.status === "active";
   const cancelAt = stripe?.cancelAt ?? null;
   const amount = stripe?.amount;
   const currency = stripe?.currency ?? "usd";
-  const nextBilling = nextBillingFromAnchor(stripe?.billingCycleAnchor ?? null);
+
+  // Use exact current_period_end when available; fall back to anchor estimate
+  const nextBilling = stripe?.currentPeriodEnd
+    ? formatDate(stripe.currentPeriodEnd)
+    : nextBillingFromAnchor(stripe?.billingCycleAnchor ?? null);
+
+  const handleManagePayment = async () => {
+    setPortalLoading(true);
+    try {
+      const res = await fetchWithAuth("/api/portal/billing/customer-portal", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
+      if (res.ok) {
+        const data = await res.json() as { url: string };
+        window.location.href = data.url;
+      } else {
+        const err = await res.json() as { error: string };
+        onAlert({ type: "error", message: err.error ?? "Could not open payment portal. Please try again." });
+      }
+    } catch {
+      onAlert({ type: "error", message: "Network error. Please try again." });
+    } finally {
+      setPortalLoading(false);
+    }
+  };
+
+  const handleResubscribe = async () => {
+    setResubLoading(true);
+    try {
+      const res = await fetchWithAuth(`/api/portal/billing/subscriptions/${sub.id}/resubscribe`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ returnUrl: window.location.origin }),
+      });
+      if (res.ok) {
+        const data = await res.json() as { url: string };
+        window.location.href = data.url;
+      } else {
+        const err = await res.json() as { error: string };
+        onAlert({ type: "error", message: err.error ?? "Could not start checkout. Please try again." });
+      }
+    } catch {
+      onAlert({ type: "error", message: "Network error. Please try again." });
+    } finally {
+      setResubLoading(false);
+    }
+  };
 
   return (
     <div className="px-5 py-5 flex items-start gap-4 flex-wrap sm:flex-nowrap">
@@ -89,7 +147,11 @@ function SubscriptionCard({
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 flex-wrap mb-1">
           <p className="text-sm font-bold text-[#0A2540]">{sub.serviceName}</p>
-          {isCancelPending ? (
+          {isCanceled ? (
+            <span className="text-xs font-semibold px-2 py-0.5 rounded-full border bg-gray-100 text-gray-500 border-gray-200">
+              Canceled
+            </span>
+          ) : isCancelPending ? (
             <span className="text-xs font-semibold px-2 py-0.5 rounded-full border bg-orange-100 text-orange-700 border-orange-200">
               Cancels {cancelAt ? formatDate(cancelAt) : "at period end"}
             </span>
@@ -110,7 +172,7 @@ function SubscriptionCard({
               {formatCurrency(amount / 100, currency)}/month
             </span>
           )}
-          {!isCancelPending && nextBilling && isActive && (
+          {!isCancelPending && !isCanceled && nextBilling && isActive && (
             <span>Next billing: {nextBilling}</span>
           )}
           {sub.startDate && (
@@ -124,17 +186,42 @@ function SubscriptionCard({
         </div>
       </div>
 
-      {!isCancelPending && isActive && sub.stripeSubscriptionId && (
-        <div className="flex-shrink-0 ml-auto self-center">
+      <div className="flex-shrink-0 ml-auto self-center flex flex-col gap-2 items-end">
+        {isCanceled && sub.stripeSubscriptionId && (
           <button
-            onClick={() => onCancel(sub)}
-            disabled={cancelling}
-            className="text-xs font-semibold text-red-600 hover:text-red-700 border border-red-200 hover:border-red-300 px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50"
+            onClick={() => void handleResubscribe()}
+            disabled={resubLoading}
+            className="flex items-center gap-1.5 text-xs font-semibold bg-[#0078D4] text-white px-3 py-1.5 rounded-lg hover:bg-[#0078D4]/90 transition-colors disabled:opacity-50"
           >
-            Cancel subscription
+            {resubLoading ? (
+              <span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+            ) : null}
+            Re-purchase
           </button>
-        </div>
-      )}
+        )}
+
+        {!isCancelPending && !isCanceled && isActive && sub.stripeSubscriptionId && (
+          <>
+            <button
+              onClick={() => void handleManagePayment()}
+              disabled={portalLoading}
+              className="flex items-center gap-1.5 text-xs font-semibold text-[#0078D4] hover:text-[#0078D4]/80 border border-[#0078D4]/30 hover:border-[#0078D4]/60 px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50"
+            >
+              {portalLoading ? (
+                <span className="w-3.5 h-3.5 border-2 border-[#0078D4] border-t-transparent rounded-full animate-spin" />
+              ) : null}
+              Manage payment method
+            </button>
+            <button
+              onClick={() => onCancel(sub)}
+              disabled={cancelling}
+              className="text-xs font-semibold text-red-600 hover:text-red-700 border border-red-200 hover:border-red-300 px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50"
+            >
+              Cancel subscription
+            </button>
+          </>
+        )}
+      </div>
     </div>
   );
 }
@@ -340,6 +427,8 @@ export default function PortalBilling() {
                       sub={sub}
                       onCancel={setCancelTarget}
                       cancelling={cancelling && cancelTarget?.id === sub.id}
+                      fetchWithAuth={fetchWithAuth}
+                      onAlert={setAlert}
                     />
                   ))}
                 </div>
