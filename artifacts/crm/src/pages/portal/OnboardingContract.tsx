@@ -251,11 +251,17 @@ export default function OnboardingContract() {
       const canvas = canvasRef.current;
       const signatureData = canvas?.toDataURL("image/png") ?? null;
 
-      // Derive { stepId, optionId }[] per service from stored display selections
-      const wizardSelectionsInput: Record<string, { stepId: string; optionId: string }[]> = {};
+      // Persist full selection shape so the contract detail page can display human-readable labels
+      const wizardSelectionsInput: Record<string, { stepId: string; stepTitle: string; optionId: string; optionLabel: string; priceAdjustment: number }[]> = {};
       for (const [svcIdStr, sels] of Object.entries(wizardSelectionsData)) {
         if (sels.length > 0) {
-          wizardSelectionsInput[svcIdStr] = sels.map(s => ({ stepId: s.stepId, optionId: s.optionId }));
+          wizardSelectionsInput[svcIdStr] = sels.map(s => ({
+            stepId: s.stepId,
+            stepTitle: s.stepTitle,
+            optionId: s.optionId,
+            optionLabel: s.optionLabel,
+            priceAdjustment: s.priceAdjustment,
+          }));
         }
       }
 

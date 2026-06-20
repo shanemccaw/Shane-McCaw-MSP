@@ -15,7 +15,7 @@ interface ContractDetail {
   projectId: number | null;
   pdfFilename: string | null;
   finalPrice: string | null;
-  wizardSelections: Record<string, unknown> | null;
+  wizardSelections: Array<{ stepId: string; stepTitle?: string; optionId: string; optionLabel?: string; priceAdjustment?: number }> | null;
   agreementBody: string | null;
   createdAt: string;
 }
@@ -93,9 +93,7 @@ export default function PortalContractDetail() {
     );
   }
 
-  const wizardEntries = data?.wizardSelections
-    ? Object.entries(data.wizardSelections).filter(([, v]) => v !== null && v !== undefined && v !== "")
-    : [];
+  const wizardItems = Array.isArray(data?.wizardSelections) ? data.wizardSelections : [];
 
   return (
     <PortalLayout>
@@ -186,7 +184,7 @@ export default function PortalContractDetail() {
         </div>
 
         {/* Wizard selections */}
-        {(loading || wizardEntries.length > 0) && (
+        {(loading || wizardItems.length > 0) && (
           <div className="bg-white border border-border rounded-2xl p-6 mb-5 shadow-sm">
             <h2 className="text-sm font-bold text-[#0A2540] mb-4">Selected Options</h2>
             {loading ? (
@@ -200,15 +198,13 @@ export default function PortalContractDetail() {
               </div>
             ) : (
               <div className="divide-y divide-border rounded-xl border border-border overflow-hidden">
-                {wizardEntries.map(([key, value]) => (
-                  <div key={key} className="flex items-start justify-between gap-4 px-4 py-3">
-                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">{formatKey(key)}</p>
+                {wizardItems.map((sel) => (
+                  <div key={sel.stepId} className="flex items-start justify-between gap-4 px-4 py-3">
+                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                      {sel.stepTitle ?? formatKey(sel.stepId)}
+                    </p>
                     <p className="text-sm text-[#0A2540] font-medium text-right max-w-[60%]">
-                      {Array.isArray(value)
-                        ? value.join(", ")
-                        : typeof value === "object" && value !== null
-                          ? JSON.stringify(value)
-                          : String(value)}
+                      {sel.optionLabel ?? sel.optionId}
                     </p>
                   </div>
                 ))}

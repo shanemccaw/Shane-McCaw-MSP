@@ -2873,7 +2873,7 @@ router.post("/portal/onboarding/contract", requireAuth, async (req: Request, res
   const userId = req.user!.id;
   const { serviceId, serviceIds: rawServiceIds, signatureData, signerName, wizardSelections } = req.body as {
     serviceId?: number; serviceIds?: number[]; signatureData?: string; signerName?: string;
-    wizardSelections?: Record<string, { stepId: string; optionId: string }[]>;
+    wizardSelections?: Record<string, { stepId: string; stepTitle?: string; optionId: string; optionLabel?: string; priceAdjustment?: number }[]>;
   };
 
   // Support both single serviceId (legacy) and serviceIds array (multi-service)
