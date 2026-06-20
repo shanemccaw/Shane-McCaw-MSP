@@ -177,10 +177,16 @@ router.post("/admin/workflow-templates/:id/steps/:stepId/tasks", requireAdmin, a
     const { title, description, groupName, order } = req.body as { title?: string; description?: string; groupName?: string; order?: number };
     if (!title) { res.status(400).json({ error: "title is required" }); return; }
 
-    const [projTemplate] = await db.select().from(projectTemplatesTable)
+    let [projTemplate] = await db.select().from(projectTemplatesTable)
       .where(eq(projectTemplatesTable.workflowTemplateId, templateId))
       .limit(1);
-    if (!projTemplate) { res.status(400).json({ error: "No project template linked to this workflow template" }); return; }
+    if (!projTemplate) {
+      const [wt] = await db.select().from(workflowTemplatesTable).where(eq(workflowTemplatesTable.id, templateId)).limit(1);
+      if (!wt) { res.status(404).json({ error: "Workflow template not found" }); return; }
+      [projTemplate] = await db.insert(projectTemplatesTable)
+        .values({ name: wt.name, workflowTemplateId: templateId, serviceId: wt.serviceId ?? null })
+        .returning();
+    }
 
     const [task] = await db.insert(projectTemplateTasksTable)
       .values({
