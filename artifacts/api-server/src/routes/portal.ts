@@ -241,6 +241,23 @@ router.get("/portal/projects/:id/audit-pdf", requireAuth, async (req: Request, r
     .where(eq(projectUpdatesTable.projectId, id))
     .orderBy(desc(projectUpdatesTable.createdAt));
 
+  // Sent status reports for this project
+  const sentReports = await db.select().from(statusReportsTable)
+    .where(and(eq(statusReportsTable.projectId, id), eq(statusReportsTable.reportStatus, "sent")))
+    .orderBy(desc(statusReportsTable.reportDate));
+
+  // Documents with uploader names
+  const docs = await db.select({
+    id: documentsTable.id,
+    name: documentsTable.name,
+    sizeBytes: documentsTable.sizeBytes,
+    createdAt: documentsTable.createdAt,
+    uploaderName: usersTable.name,
+  }).from(documentsTable)
+    .leftJoin(usersTable, eq(documentsTable.uploadedBy, usersTable.id))
+    .where(eq(documentsTable.projectId, id))
+    .orderBy(asc(documentsTable.createdAt));
+
   // ── Build PDF ──────────────────────────────────────────────────────────────
   const pdfDoc = await PDFDocument.create();
   const bold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
@@ -443,65 +460,75 @@ router.get("/portal/projects/:id/audit-pdf", requireAuth, async (req: Request, r
     text(`${tasks.length} total task${tasks.length !== 1 ? "s" : ""}`, margin, y, { size: 8.5, color: grey });
     y -= 18;
 
-    // ── Per-step breakdown (tasks grouped by workflowStepId) ─────────────────
-    const stepsWithTasks = steps.filter(s =>
-      tasks.some(t => (t as { workflowStepId?: number | null }).workflowStepId === s.id)
-    );
+    // ── Full card listing grouped by column ──────────────────────────────────
+    const kanbanColumns: Array<{ key: string; label: string; color: ReturnType<typeof rgb> }> = [
+      { key: "backlog",             label: "Backlog",             color: grey },
+      { key: "in_progress",         label: "In Progress",         color: blue },
+      { key: "waiting_on_customer", label: "Waiting on Customer", color: rgb(0.761, 0.490, 0) },
+      { key: "completed",           label: "Completed",           color: green },
+    ];
+    const priorityLabel: Record<string, string> = { low: "Low", medium: "Medium", high: "High", urgent: "Urgent" };
+    const priorityColor: Record<string, ReturnType<typeof rgb>> = {
+      low: grey, medium: blue, high: rgb(0.8, 0.4, 0), urgent: red,
+    };
 
-    if (stepsWithTasks.length > 0) {
-      for (const step of stepsWithTasks) {
-        const stepTasks = tasks.filter(
-          t => (t as { workflowStepId?: number | null }).workflowStepId === step.id
-        );
-        if (stepTasks.length === 0) continue;
+    for (const col of kanbanColumns) {
+      const colTasks = tasks.filter(t => t.column === col.key);
+      if (colTasks.length === 0) continue;
 
-        ensureSpace(30);
-        // Step label
-        const stepIdx = steps.indexOf(step) + 1;
-        text(`${stepIdx}. ${step.title}`, margin, y, { font: bold, size: 9, color: navy });
-        const stepDoneCount = stepTasks.filter(t => t.column === "completed").length;
-        text(`${stepDoneCount}/${stepTasks.length} done`, pageW - margin - 60, y, { size: 8.5, color: grey });
-        y -= 14;
+      ensureSpace(30);
+      page.drawRectangle({ x: margin - 4, y: y - 3, width: barW + 8, height: 18, color: rgb(0.95, 0.96, 0.98) });
+      text(col.label, margin + 4, y, { font: bold, size: 9.5, color: col.color });
+      text(`${colTasks.length} card${colTasks.length !== 1 ? "s" : ""}`, pageW - margin - 50, y, { size: 8.5, color: grey });
+      y -= 22;
 
-        for (const task of stepTasks) {
-          ensureSpace(14);
-          const colColor =
-            task.column === "completed"           ? green :
-            task.column === "in_progress"         ? blue  :
-            task.column === "waiting_on_customer" ? rgb(0.761, 0.490, 0) :
-            grey;
-          const colSymbol =
-            task.column === "completed"           ? "[x]" :
-            task.column === "in_progress"         ? "[>]" :
-            task.column === "waiting_on_customer" ? "[?]" :
-            "[ ]";
-          text(colSymbol, margin + 8, y, { size: 8, color: colColor });
-          const titleLines = wrap(task.title, 80);
-          text(titleLines[0] ?? task.title, margin + 20, y, { size: 8.5, color: navy });
-          y -= 12;
+      for (const task of colTasks) {
+        ensureSpace(22);
+        const colSymbol = col.key === "completed" ? "[x]" : col.key === "in_progress" ? "[>]" : col.key === "waiting_on_customer" ? "[?]" : "[ ]";
+        text(colSymbol, margin + 8, y, { size: 8, color: col.color });
+        const titleLines = wrap(task.title, 74);
+        text(titleLines[0] ?? task.title, margin + 24, y, { font: bold, size: 8.5, color: navy });
 
-          const t = task as typeof task & { completionStatus?: string | null; completionNotes?: string | null; waitingReason?: string | null };
-          if (task.column === "completed" && t.completionStatus) {
+        // Priority + due date aligned right
+        const pri = task.priority ?? "medium";
+        const metaParts: string[] = [];
+        if (pri !== "medium") metaParts.push(priorityLabel[pri] ?? pri);
+        if (task.dueDate) metaParts.push(`Due ${new Date(task.dueDate).toLocaleDateString("en-US", { month: "short", day: "numeric" })}`);
+        if (metaParts.length > 0) {
+          text(metaParts.join("  ·  "), pageW - margin - 100, y, { size: 7.5, color: priorityColor[pri] ?? grey });
+        }
+        y -= 12;
+
+        // Description
+        if (task.description && task.description.trim()) {
+          const dLines = wrap(task.description.trim(), 80);
+          for (const line of dLines.slice(0, 2)) {
             ensureSpace(12);
-            text(`  Status: ${t.completionStatus}`, margin + 20, y, { size: 8, color: green });
-            y -= 11;
-          }
-          if (task.column === "completed" && t.completionNotes) {
-            const noteLines = wrap(t.completionNotes, 78);
-            for (const line of noteLines.slice(0, 3)) {
-              ensureSpace(11);
-              text(`  ${line}`, margin + 20, y, { size: 7.5, color: rgb(0.45, 0.45, 0.45) });
-              y -= 10;
-            }
-          }
-          if (task.column === "waiting_on_customer" && t.waitingReason) {
-            ensureSpace(11);
-            text(`  Waiting for: ${t.waitingReason}`, margin + 20, y, { size: 8, color: rgb(0.761, 0.490, 0) });
+            text(line, margin + 24, y, { size: 7.5, color: rgb(0.5, 0.5, 0.5) });
             y -= 11;
           }
         }
+
+        // Waiting reason
+        if (task.waitingReason) {
+          ensureSpace(11);
+          text(`Waiting: ${task.waitingReason}`, margin + 24, y, { size: 7.5, color: rgb(0.761, 0.490, 0) });
+          y -= 10;
+        }
+
+        // Completion notes
+        if (task.completionNotes) {
+          const nLines = wrap(task.completionNotes, 80);
+          for (const line of nLines.slice(0, 2)) {
+            ensureSpace(11);
+            text(line, margin + 24, y, { size: 7.5, color: rgb(0.45, 0.45, 0.45) });
+            y -= 10;
+          }
+        }
+
         y -= 4;
       }
+      y -= 4;
     }
 
     y -= 4;
@@ -530,6 +557,159 @@ router.get("/portal/projects/:id/audit-pdf", requireAuth, async (req: Request, r
         y -= 12;
       }
       y -= 6;
+    }
+  }
+
+  // ── Status Reports ──────────────────────────────────────────────────────────
+  if (sentReports.length > 0) {
+    ensureSpace(40);
+    y -= 4;
+    text("Status Reports", margin, y, { font: bold, size: 13, color: navy });
+    y -= 6;
+    page.drawLine({ start: { x: margin, y }, end: { x: pageW - margin, y }, thickness: 1, color: teal });
+    y -= 16;
+
+    const periodLabels: Record<string, string> = { weekly: "Weekly", monthly: "Monthly", executive_summary: "Executive Summary", other: "Other" };
+
+    for (const sr of sentReports) {
+      ensureSpace(40);
+
+      // Report header
+      const periodStr = periodLabels[sr.period] ?? sr.period;
+      const rdStr = sr.reportDate ? new Date(sr.reportDate).toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" }) : "";
+      text(`${periodStr}${rdStr ? `  —  ${rdStr}` : ""}`, margin, y, { font: bold, size: 10, color: navy });
+      y -= 13;
+      text(sr.title, margin, y, { size: 9, color: grey });
+      y -= 18;
+
+      // Executive summary
+      if (sr.executiveSummary) {
+        ensureSpace(20);
+        text("Executive Summary", margin, y, { font: bold, size: 8.5, color: blue });
+        y -= 12;
+        const esLines = wrap(sr.executiveSummary, 90);
+        for (const line of esLines.slice(0, 6)) {
+          ensureSpace(12);
+          text(line, margin + 4, y, { size: 8.5, color: navy });
+          y -= 11;
+        }
+        y -= 4;
+      }
+
+      // Completed activities
+      type SRActivity = { title: string; description: string };
+      const activities = (sr.completedActivities ?? []) as SRActivity[];
+      if (activities.length > 0) {
+        ensureSpace(20);
+        text("Completed Activities", margin, y, { font: bold, size: 8.5, color: blue });
+        y -= 12;
+        for (const act of activities) {
+          ensureSpace(12);
+          text(`• ${act.title}`, margin + 4, y, { size: 8.5, color: navy });
+          y -= 11;
+          if (act.description) {
+            const aLines = wrap(act.description, 85);
+            for (const line of aLines.slice(0, 2)) {
+              ensureSpace(11);
+              text(`  ${line}`, margin + 10, y, { size: 7.5, color: grey });
+              y -= 10;
+            }
+          }
+        }
+        y -= 4;
+      }
+
+      // Key outcomes
+      if (sr.keyOutcomes) {
+        ensureSpace(20);
+        text("Key Outcomes", margin, y, { font: bold, size: 8.5, color: blue });
+        y -= 12;
+        const koLines = wrap(sr.keyOutcomes, 90);
+        for (const line of koLines.slice(0, 4)) {
+          ensureSpace(11);
+          text(line, margin + 4, y, { size: 8.5, color: navy });
+          y -= 11;
+        }
+        y -= 4;
+      }
+
+      // Next steps
+      type SRNextStep = { label: string; title: string; description: string };
+      const srNextSteps = (sr.nextSteps ?? []) as SRNextStep[];
+      if (srNextSteps.length > 0) {
+        ensureSpace(20);
+        text("Next Steps", margin, y, { font: bold, size: 8.5, color: blue });
+        y -= 12;
+        for (const ns of srNextSteps) {
+          ensureSpace(12);
+          text(`• ${ns.title || ns.label}`, margin + 4, y, { size: 8.5, color: navy });
+          y -= 11;
+        }
+        y -= 4;
+      }
+
+      // Client question + admin reply
+      if (sr.clientQuestion) {
+        ensureSpace(20);
+        text("Client Question:", margin + 4, y, { font: bold, size: 8, color: rgb(0.5, 0.3, 0) });
+        y -= 11;
+        const qLines = wrap(sr.clientQuestion, 86);
+        for (const line of qLines.slice(0, 3)) {
+          ensureSpace(11);
+          text(line, margin + 10, y, { size: 8, color: navy });
+          y -= 10;
+        }
+        if (sr.adminReply) {
+          y -= 2;
+          text("Response:", margin + 4, y, { font: bold, size: 8, color: blue });
+          y -= 11;
+          const rLines = wrap(sr.adminReply, 86);
+          for (const line of rLines.slice(0, 3)) {
+            ensureSpace(11);
+            text(line, margin + 10, y, { size: 8, color: navy });
+            y -= 10;
+          }
+        }
+        y -= 4;
+      }
+
+      // Divider between reports
+      y -= 6;
+      ensureSpace(4);
+      page.drawLine({ start: { x: margin, y }, end: { x: pageW - margin, y }, thickness: 0.3, color: rgb(0.88, 0.88, 0.88) });
+      y -= 12;
+    }
+  }
+
+  // ── Documents ───────────────────────────────────────────────────────────────
+  {
+    ensureSpace(40);
+    y -= 4;
+    text("Project Documents", margin, y, { font: bold, size: 13, color: navy });
+    y -= 6;
+    page.drawLine({ start: { x: margin, y }, end: { x: pageW - margin, y }, thickness: 1, color: teal });
+    y -= 16;
+
+    if (docs.length === 0) {
+      text("No documents uploaded", margin, y, { size: 9, color: grey });
+      y -= 16;
+    } else {
+      const fmtSize = (bytes: number | null) => {
+        if (!bytes) return "";
+        if (bytes < 1024) return `${bytes} B`;
+        if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
+        return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+      };
+      for (const doc of docs) {
+        ensureSpace(16);
+        const docDate = new Date(doc.createdAt).toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" });
+        const sizeStr = fmtSize(doc.sizeBytes);
+        const uploaderStr = doc.uploaderName ?? "Unknown";
+        const docMeta = [sizeStr, uploaderStr, docDate].filter(Boolean).join("  ·  ");
+        text(`• ${doc.name}`, margin, y, { font: bold, size: 8.5, color: navy });
+        text(docMeta, pageW - margin - 170, y, { size: 8, color: grey });
+        y -= 14;
+      }
     }
   }
 
