@@ -1,4 +1,5 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
+import SignatureCanvas from "react-signature-canvas";
 import { useParams, Link } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
 import PortalLayout from "@/components/PortalLayout";
@@ -97,6 +98,16 @@ interface StatusReport {
   clientStatus: "pending" | "accepted" | "has_questions";
   clientQuestion: string | null;
   adminReply: string | null;
+}
+
+interface ClosureRecord {
+  id: number;
+  projectId: number;
+  requestedAt: string;
+  feedback: string | null;
+  permissionGranted: boolean;
+  signatureDataUrl: string | null;
+  signedAt: string | null;
 }
 
 interface ContractRef {
@@ -430,6 +441,14 @@ export default function PortalProjectDetail() {
   const [questionDialogReportId, setQuestionDialogReportId] = useState<number | null>(null);
   const [expandedReportId, setExpandedReportId] = useState<number | null>(null);
 
+  // Closure sign-off state
+  const [closure, setClosure] = useState<ClosureRecord | null>(null);
+  const [signModalOpen, setSignModalOpen] = useState(false);
+  const [closureFeedback, setClosureFeedback] = useState("");
+  const [closurePermission, setClosurePermission] = useState(true);
+  const [closureSigning, setClosureSigning] = useState(false);
+  const sigCanvasRef = useRef<SignatureCanvas>(null);
+
   const handleCardClick = useCallback((task: KanbanTask, stepTitle?: string | null) => {
     setSelectedTask(task);
     setSelectedStepTitle(stepTitle ?? null);
@@ -450,6 +469,38 @@ export default function PortalProjectDetail() {
       .catch(() => null)
       .finally(() => setLoading(false));
   }, [fetchWithAuth, params.id]);
+
+  const loadClosure = useCallback(() => {
+    if (!params.id) return;
+    fetchWithAuth(`/api/portal/projects/${params.id}/closure`)
+      .then(r => r.ok ? r.json() : null)
+      .then(d => setClosure(d as ClosureRecord | null))
+      .catch(() => null);
+  }, [fetchWithAuth, params.id]);
+
+  useEffect(() => { loadClosure(); }, [loadClosure]);
+
+  const handleSignClosure = async () => {
+    if (!params.id || closureSigning) return;
+    const sigEmpty = sigCanvasRef.current?.isEmpty() !== false;
+    if (sigEmpty) { alert("Please draw your signature before submitting."); return; }
+    const signatureDataUrl = sigCanvasRef.current!.toDataURL("image/png");
+    setClosureSigning(true);
+    try {
+      const r = await fetchWithAuth(`/api/portal/projects/${params.id}/closure/sign`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ feedback: closureFeedback.trim() || null, permissionGranted: closurePermission, signatureDataUrl }),
+      });
+      if (r.ok) {
+        const updated = await r.json() as ClosureRecord;
+        setClosure(updated);
+        setSignModalOpen(false);
+      }
+    } finally {
+      setClosureSigning(false);
+    }
+  };
 
   const handleExportAudit = async () => {
     if (!params.id || exportingAudit) return;
@@ -653,6 +704,48 @@ export default function PortalProjectDetail() {
         {/* ── Workflow Explorer (default view) ── */}
         {secondaryTab === null && (
           <div className="space-y-6">
+            {/* Closure Sign-Off Banner */}
+            {closure && !closure.signedAt && (
+              <div className="bg-[#0A2540] border border-[#0078D4]/30 rounded-xl p-4 flex flex-col sm:flex-row sm:items-center gap-4">
+                <div className="flex items-start gap-3 flex-1 min-w-0">
+                  <div className="w-8 h-8 rounded-full bg-[#0078D4]/20 flex items-center justify-center flex-shrink-0 mt-0.5">
+                    <svg className="w-4 h-4 text-[#00B4D8]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-sm font-bold text-white">Project Closure — Sign-Off Requested</p>
+                    <p className="text-xs text-white/60 mt-0.5">
+                      Shane has completed your project. Please review and sign off to confirm delivery.
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setSignModalOpen(true)}
+                  className="flex items-center gap-2 text-sm font-bold px-4 py-2 rounded-lg bg-[#0078D4] text-white hover:bg-[#0078D4]/90 transition-colors flex-shrink-0 whitespace-nowrap"
+                >
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                  </svg>
+                  Review &amp; Sign Off
+                </button>
+              </div>
+            )}
+
+            {closure?.signedAt && (
+              <div className="bg-green-50 border border-green-200 rounded-xl p-4 flex items-center gap-3">
+                <div className="w-8 h-8 rounded-full bg-green-100 flex items-center justify-center flex-shrink-0">
+                  <svg className="w-4 h-4 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
+                </div>
+                <div>
+                  <p className="text-sm font-bold text-green-800">Project signed off</p>
+                  <p className="text-xs text-green-600 mt-0.5">
+                    Thank you — closure confirmed on {new Date(closure.signedAt).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}.
+                  </p>
+                </div>
+              </div>
+            )}
+
             {/* Pending Status Report Banner */}
             {pendingStatusReport && (
               <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex flex-col sm:flex-row sm:items-center gap-4">
@@ -1325,6 +1418,100 @@ export default function PortalProjectDetail() {
         onClose={() => setSelectedTask(null)}
         mode="client"
       />
+
+      {/* ── Closure Sign-Off Modal ─────────────────────────────────────────── */}
+      {signModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden">
+            {/* Header */}
+            <div className="bg-[#0A2540] px-6 py-5">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h2 className="text-lg font-extrabold text-white">Project Sign-Off</h2>
+                  <p className="text-white/50 text-xs mt-0.5">Confirm project delivery and leave your feedback</p>
+                </div>
+                <button onClick={() => setSignModalOpen(false)} className="text-white/40 hover:text-white/80 transition-colors">
+                  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+                </button>
+              </div>
+            </div>
+
+            <div className="px-6 py-5 space-y-5">
+              {/* Feedback */}
+              <div>
+                <label className="block text-xs font-bold text-[#0A2540] mb-1.5">
+                  Your Feedback <span className="text-muted-foreground font-normal">(optional)</span>
+                </label>
+                <textarea
+                  rows={4}
+                  value={closureFeedback}
+                  onChange={e => setClosureFeedback(e.target.value)}
+                  placeholder="How was working with Shane? What impact did this project have on your team?…"
+                  className="w-full border border-border rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4] resize-none"
+                />
+              </div>
+
+              {/* Permission checkbox */}
+              <label className="flex items-start gap-3 cursor-pointer group">
+                <input
+                  type="checkbox"
+                  checked={closurePermission}
+                  onChange={e => setClosurePermission(e.target.checked)}
+                  className="mt-0.5 accent-[#0078D4] w-4 h-4 flex-shrink-0"
+                />
+                <span className="text-xs text-[#0A2540] leading-relaxed group-hover:text-[#0078D4] transition-colors">
+                  I give permission for my feedback to be published as a testimonial on the Shane McCaw Consulting website. I understand I can request removal at any time.
+                </span>
+              </label>
+
+              {/* Signature canvas */}
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="text-xs font-bold text-[#0A2540]">Your Signature <span className="text-red-500">*</span></label>
+                  <button
+                    type="button"
+                    onClick={() => sigCanvasRef.current?.clear()}
+                    className="text-[10px] text-muted-foreground hover:text-[#0078D4] transition-colors"
+                  >
+                    Clear
+                  </button>
+                </div>
+                <div className="border-2 border-dashed border-border rounded-xl overflow-hidden bg-gray-50 touch-none">
+                  <SignatureCanvas
+                    ref={sigCanvasRef}
+                    canvasProps={{ className: "w-full", height: 140, style: { display: "block" } }}
+                    backgroundColor="transparent"
+                    penColor="#0A2540"
+                  />
+                </div>
+                <p className="text-[10px] text-muted-foreground mt-1">Draw your signature above using your mouse or finger</p>
+              </div>
+
+              {/* Actions */}
+              <div className="flex gap-3 pt-1">
+                <button
+                  onClick={() => setSignModalOpen(false)}
+                  className="flex-1 border border-border text-sm font-semibold py-2.5 rounded-xl hover:bg-[#F7F9FC] transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={() => void handleSignClosure()}
+                  disabled={closureSigning}
+                  className="flex-1 bg-[#0078D4] text-white text-sm font-bold py-2.5 rounded-xl hover:bg-[#0078D4]/90 disabled:opacity-50 transition-colors flex items-center justify-center gap-2"
+                >
+                  {closureSigning ? (
+                    <div className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+                  ) : (
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
+                  )}
+                  {closureSigning ? "Signing…" : "Sign Off"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </PortalLayout>
   );
 }

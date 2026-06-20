@@ -78,6 +78,13 @@
       "when": 1750896000000,
       "tag": "0010_add_admin_reply_and_status_report_link",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1750982400000,
+      "tag": "0011_add_project_closures",
+      "breakpoints": true
     }
   ]
 }

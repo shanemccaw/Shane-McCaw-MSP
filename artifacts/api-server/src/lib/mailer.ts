@@ -262,6 +262,29 @@ export function contactInquiryNotificationEmail(opts: {
   `;
 }
 
+export function closureRequestEmail(opts: {
+  clientName: string;
+  projectTitle: string;
+  projectId: number;
+  portalUrl?: string;
+}): string {
+  const url = `${opts.portalUrl ?? "https://shanemccaw.consulting/crm/portal"}/projects/${opts.projectId}`;
+  return `
+    <p>Hi ${opts.clientName || "there"},</p>
+    <p>Congratulations — your project <strong>${opts.projectTitle}</strong> has reached completion!</p>
+    <p>Shane would like to officially close out this engagement. As part of the closure process, we'd love to hear your feedback and, if you're willing, capture a brief testimonial to share with other clients.</p>
+    <p>Please visit your portal to review the project, provide your feedback, and sign off on the closure. It only takes a moment.</p>
+    <table cellpadding="0" cellspacing="0" style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:16px 20px;margin:16px 0;width:100%;">
+      <tr><td style="padding:4px 0;color:#64748b;font-size:13px;width:140px;">Project</td><td style="padding:4px 0;font-weight:600;">${opts.projectTitle}</td></tr>
+    </table>
+    <p style="margin-top:8px;font-size:13px;color:#64748b;">Your feedback is entirely optional, but it's genuinely valued — it helps us serve the next client better.</p>
+    <p style="margin-top:8px;font-size:13px;color:#64748b;">By signing off you confirm that the deliverables were received and you grant permission to publish your feedback as a testimonial (you can opt out at any time).</p>
+    <a href="${url}" style="display:inline-block;background:#0078D4;color:#ffffff;text-decoration:none;font-weight:600;font-size:14px;padding:12px 24px;border-radius:6px;margin-top:20px;">Review &amp; Sign Off →</a>
+    <p style="margin-top:24px;">Thank you for working with Shane — it's been a pleasure.</p>
+    <p>— Shane McCaw Consulting</p>
+  `;
+}
+
 export function adminPurchaseAlertEmail(opts: {
   clientName: string;
   clientEmail: string;

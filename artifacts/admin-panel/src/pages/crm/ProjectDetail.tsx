@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { useRoute, useLocation } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
@@ -648,6 +648,131 @@ function KanbanBoard({
   );
 }
 
+interface ClosureRecord {
+  id: number;
+  projectId: number;
+  requestedAt: string;
+  feedback: string | null;
+  permissionGranted: boolean;
+  signatureDataUrl: string | null;
+  signedAt: string | null;
+}
+
+function ClosureCard({ projectId, fetchWithAuth, toast }: {
+  projectId: number | null;
+  fetchWithAuth: (url: string, opts?: RequestInit) => Promise<Response>;
+  toast: (opts: { title: string; description?: string }) => void;
+}) {
+  const [closure, setClosure] = useState<ClosureRecord | null | undefined>(undefined);
+  const [requesting, setRequesting] = useState(false);
+
+  useEffect(() => {
+    if (!projectId) return;
+    fetchWithAuth(`/api/admin/projects/${projectId}/closure`)
+      .then(r => r.ok ? r.json() : null)
+      .then(d => setClosure(d as ClosureRecord | null))
+      .catch(() => setClosure(null));
+  }, [projectId, fetchWithAuth]);
+
+  if (!projectId || closure === undefined) return null;
+
+  async function handleRequest() {
+    if (!projectId) return;
+    setRequesting(true);
+    try {
+      const r = await fetchWithAuth(`/api/admin/projects/${projectId}/closure-request`, { method: "POST" });
+      type ClosureResponse = ClosureRecord & { error?: string; closure?: ClosureRecord };
+      const d = await r.json() as ClosureResponse;
+      if (!r.ok) {
+        toast({ title: d.error ?? "Failed to request sign-off" });
+        if (r.status === 409 && d.closure) setClosure(d.closure);
+        return;
+      }
+      setClosure(d);
+      toast({ title: "Closure sign-off requested", description: "An email has been sent to the client." });
+    } finally {
+      setRequesting(false);
+    }
+  }
+
+  return (
+    <section>
+      <div className="flex items-center justify-between mb-4">
+        <h2 className="text-sm font-bold uppercase tracking-wider text-[#0A2540]">Project Closure &amp; Sign-Off</h2>
+      </div>
+      {!closure ? (
+        <div className="bg-white border border-border rounded-xl p-5 flex flex-col sm:flex-row sm:items-center gap-4">
+          <div className="flex items-start gap-3 flex-1 min-w-0">
+            <div className="w-9 h-9 rounded-full bg-[#0078D4]/10 flex items-center justify-center flex-shrink-0">
+              <svg className="w-4.5 h-4.5 text-[#0078D4]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            </div>
+            <div>
+              <p className="text-sm font-semibold text-[#0A2540]">No closure requested yet</p>
+              <p className="text-xs text-muted-foreground mt-0.5">Request a sign-off to collect client feedback and a testimonial.</p>
+            </div>
+          </div>
+          <button
+            onClick={() => void handleRequest()}
+            disabled={requesting}
+            className="flex items-center gap-2 text-sm font-semibold px-4 py-2 rounded-lg bg-[#0078D4] text-white hover:bg-[#0078D4]/90 disabled:opacity-50 flex-shrink-0"
+          >
+            {requesting ? (
+              <div className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+            ) : (
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+              </svg>
+            )}
+            {requesting ? "Requesting…" : "Request Sign-Off"}
+          </button>
+        </div>
+      ) : closure.signedAt ? (
+        <div className="bg-white border border-green-200 rounded-xl p-5 space-y-3">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-full bg-green-100 flex items-center justify-center flex-shrink-0">
+              <svg className="w-4.5 h-4.5 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
+            </div>
+            <div>
+              <p className="text-sm font-bold text-green-800">Project signed off</p>
+              <p className="text-xs text-muted-foreground">
+                {new Date(closure.signedAt).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}
+                {closure.permissionGranted ? " · Testimonial permission granted" : " · No testimonial permission"}
+              </p>
+            </div>
+          </div>
+          {closure.feedback && (
+            <blockquote className="border-l-4 border-[#0078D4] pl-4 text-sm text-[#0A2540]/80 italic leading-relaxed">
+              "{closure.feedback}"
+            </blockquote>
+          )}
+          {closure.signatureDataUrl && (
+            <div className="mt-2">
+              <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1">Client Signature</p>
+              <img src={closure.signatureDataUrl} alt="Client signature" className="max-h-16 border border-border rounded bg-white" />
+            </div>
+          )}
+        </div>
+      ) : (
+        <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-center gap-3">
+          <div className="w-8 h-8 rounded-full bg-amber-100 flex items-center justify-center flex-shrink-0">
+            <svg className="w-4 h-4 text-amber-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+          </div>
+          <div>
+            <p className="text-sm font-semibold text-amber-900">Sign-off requested</p>
+            <p className="text-xs text-amber-700 mt-0.5">
+              Requested {new Date(closure.requestedAt).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })} · Awaiting client signature
+            </p>
+          </div>
+        </div>
+      )}
+    </section>
+  );
+}
+
 export default function ProjectDetailPage() {
   const [, params] = useRoute("/crm/projects/:id");
   const [, navigate] = useLocation();
@@ -1277,6 +1402,9 @@ export default function ProjectDetailPage() {
           </div>
         )}
       </section>
+
+      {/* ── Closure Sign-Off ────────────────────────────────────────────────── */}
+      <ClosureCard projectId={projectId} fetchWithAuth={fetchWithAuth} toast={toast} />
 
       {/* Status Report slide-over */}
       <Dialog open={statusReportOpen} onOpenChange={open => { if (!open) setStatusReportOpen(false); }}>

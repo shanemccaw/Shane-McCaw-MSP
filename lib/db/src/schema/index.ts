@@ -463,6 +463,21 @@ export const emailDomainRulesTable = pgTable("email_domain_rules", {
 export type InsertEmailDomainRule = typeof emailDomainRulesTable.$inferInsert;
 export type EmailDomainRule = typeof emailDomainRulesTable.$inferSelect;
 
+// Project Closures — sign-off & testimonial capture
+export const projectClosuresTable = pgTable("project_closures", {
+  id: serial("id").primaryKey(),
+  projectId: integer("project_id").notNull().unique().references(() => projectsTable.id, { onDelete: "cascade" }),
+  requestedAt: timestamp("requested_at").notNull().defaultNow(),
+  feedback: text("feedback"),
+  permissionGranted: boolean("permission_granted").notNull().default(false),
+  signatureDataUrl: text("signature_data_url"),
+  signedAt: timestamp("signed_at"),
+  signerUserId: integer("signer_user_id").references(() => usersTable.id, { onDelete: "set null" }),
+});
+
+export type InsertProjectClosure = typeof projectClosuresTable.$inferInsert;
+export type ProjectClosure = typeof projectClosuresTable.$inferSelect;
+
 // Microsoft Graph webhook subscription tracking
 export const graphSubscriptionsTable = pgTable("graph_subscriptions", {
   id: serial("id").primaryKey(),

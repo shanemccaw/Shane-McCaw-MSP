@@ -1,8 +1,8 @@
 import { Router, type IRouter, type Request, type Response } from "express";
-import { db, projectsTable, clientServicesTable, servicesTable, workflowStepsTable, kanbanTasksTable, documentsTable, reportsTable, invoicesTable, messagesTable, notificationsTable, projectUpdatesTable, usersTable, contractsTable, passwordResetTokensTable, workflowTemplateStepsTable, workflowTemplateStepTasksTable, contractTemplatesTable, impersonationTokensTable, statusReportsTable, deviceTokensTable } from "@workspace/db";
+import { db, projectsTable, clientServicesTable, servicesTable, workflowStepsTable, kanbanTasksTable, documentsTable, reportsTable, invoicesTable, messagesTable, notificationsTable, projectUpdatesTable, usersTable, contractsTable, passwordResetTokensTable, workflowTemplateStepsTable, workflowTemplateStepTasksTable, contractTemplatesTable, impersonationTokensTable, statusReportsTable, deviceTokensTable, projectClosuresTable } from "@workspace/db";
 import { eq, and, desc, asc, count, sql, inArray, gte } from "drizzle-orm";
 import { requireAuth, requireAdmin } from "../middlewares/requireAuth";
-import { sendEmail, purchaseConfirmationEmail, onboardingConfirmationEmail, adminPurchaseAlertEmail } from "../lib/mailer";
+import { sendEmail, purchaseConfirmationEmail, onboardingConfirmationEmail, adminPurchaseAlertEmail, closureRequestEmail } from "../lib/mailer";
 import { sendAdminSms } from "../lib/sms";
 import { sendPushNotifications } from "../lib/push";
 import multer from "multer";
@@ -3758,6 +3758,154 @@ router.get("/admin/purchases/:id", requireAdmin, async (req: Request, res: Respo
       orderWorkflow: c.orderWorkflow ?? null,
     })),
   });
+});
+
+// ─── PUBLIC: Testimonials ────────────────────────────────────────────────────
+router.get("/public/testimonials", async (_req: Request, res: Response) => {
+  const rows = await db
+    .select({
+      id: projectClosuresTable.id,
+      feedback: projectClosuresTable.feedback,
+      signedAt: projectClosuresTable.signedAt,
+      projectType: projectsTable.projectType,
+      clientName: usersTable.name,
+    })
+    .from(projectClosuresTable)
+    .innerJoin(projectsTable, eq(projectClosuresTable.projectId, projectsTable.id))
+    .leftJoin(usersTable, eq(projectClosuresTable.signerUserId, usersTable.id))
+    .where(
+      and(
+        eq(projectClosuresTable.permissionGranted, true),
+        sql`${projectClosuresTable.signedAt} IS NOT NULL`,
+        sql`${projectClosuresTable.feedback} IS NOT NULL AND trim(${projectClosuresTable.feedback}) <> ''`,
+      )
+    )
+    .orderBy(desc(projectClosuresTable.signedAt));
+
+  const out = rows.map(r => ({
+    id: r.id,
+    feedback: r.feedback,
+    signedAt: r.signedAt,
+    projectType: r.projectType,
+    clientFirstName: r.clientName ? r.clientName.trim().split(/\s+/)[0] : null,
+  }));
+  res.json(out);
+});
+
+// ─── ADMIN: Request closure sign-off for a project ───────────────────────────
+router.post("/admin/projects/:id/closure-request", requireAdmin, async (req: Request, res: Response) => {
+  const projectId = parseInt(String(req.params.id ?? ""), 10);
+  if (isNaN(projectId)) { res.status(400).json({ error: "Invalid project ID" }); return; }
+
+  const [project] = await db.select().from(projectsTable).where(eq(projectsTable.id, projectId));
+  if (!project) { res.status(404).json({ error: "Project not found" }); return; }
+
+  const existing = await db.select().from(projectClosuresTable).where(eq(projectClosuresTable.projectId, projectId));
+  if (existing.length > 0) {
+    res.status(409).json({ error: "Closure already requested for this project", closure: existing[0] });
+    return;
+  }
+
+  const [closure] = await db.insert(projectClosuresTable).values({ projectId }).returning();
+
+  // Send email to client if project has a clientUserId
+  if (project.clientUserId) {
+    const [client] = await db.select().from(usersTable).where(eq(usersTable.id, project.clientUserId));
+    if (client) {
+      await sendEmail(
+        client.email,
+        `Project Sign-Off: ${project.title}`,
+        closureRequestEmail({ clientName: client.name ?? "", projectTitle: project.title, projectId }),
+      );
+    }
+  }
+
+  res.json(closure);
+});
+
+// ─── ADMIN: Get closure for a project ────────────────────────────────────────
+router.get("/admin/projects/:id/closure", requireAdmin, async (req: Request, res: Response) => {
+  const projectId = parseInt(String(req.params.id ?? ""), 10);
+  if (isNaN(projectId)) { res.status(400).json({ error: "Invalid project ID" }); return; }
+
+  const [closure] = await db.select().from(projectClosuresTable).where(eq(projectClosuresTable.projectId, projectId));
+  if (!closure) { res.status(404).json({ error: "No closure record found" }); return; }
+  res.json(closure);
+});
+
+// ─── ADMIN: List all approved (signed) closures ───────────────────────────────
+router.get("/admin/closures/approved", requireAdmin, async (_req: Request, res: Response) => {
+  const rows = await db
+    .select({
+      id: projectClosuresTable.id,
+      projectId: projectClosuresTable.projectId,
+      projectTitle: projectsTable.title,
+      projectType: projectsTable.projectType,
+      feedback: projectClosuresTable.feedback,
+      permissionGranted: projectClosuresTable.permissionGranted,
+      signedAt: projectClosuresTable.signedAt,
+      requestedAt: projectClosuresTable.requestedAt,
+      clientName: usersTable.name,
+      clientEmail: usersTable.email,
+    })
+    .from(projectClosuresTable)
+    .innerJoin(projectsTable, eq(projectClosuresTable.projectId, projectsTable.id))
+    .leftJoin(usersTable, eq(projectClosuresTable.signerUserId, usersTable.id))
+    .where(sql`${projectClosuresTable.signedAt} IS NOT NULL`)
+    .orderBy(desc(projectClosuresTable.signedAt));
+  res.json(rows);
+});
+
+// ─── PORTAL: Get closure for client's project ────────────────────────────────
+router.get("/portal/projects/:id/closure", requireAuth, async (req: Request, res: Response) => {
+  const projectId = parseInt(String(req.params.id ?? ""), 10);
+  const userId = req.user!.id;
+  if (isNaN(projectId)) { res.status(400).json({ error: "Invalid project ID" }); return; }
+
+  // Verify the project belongs to this user
+  const [project] = await db.select().from(projectsTable).where(
+    and(eq(projectsTable.id, projectId), eq(projectsTable.clientUserId, userId))
+  );
+  if (!project) { res.status(404).json({ error: "Project not found" }); return; }
+
+  const [closure] = await db.select().from(projectClosuresTable).where(eq(projectClosuresTable.projectId, projectId));
+  if (!closure) { res.status(404).json({ error: "No closure record" }); return; }
+  res.json(closure);
+});
+
+// ─── PORTAL: Sign closure ─────────────────────────────────────────────────────
+router.post("/portal/projects/:id/closure/sign", requireAuth, async (req: Request, res: Response) => {
+  const projectId = parseInt(String(req.params.id ?? ""), 10);
+  const userId = req.user!.id;
+  if (isNaN(projectId)) { res.status(400).json({ error: "Invalid project ID" }); return; }
+
+  const [project] = await db.select().from(projectsTable).where(
+    and(eq(projectsTable.id, projectId), eq(projectsTable.clientUserId, userId))
+  );
+  if (!project) { res.status(404).json({ error: "Project not found" }); return; }
+
+  const [existing] = await db.select().from(projectClosuresTable).where(eq(projectClosuresTable.projectId, projectId));
+  if (!existing) { res.status(404).json({ error: "Closure not requested yet" }); return; }
+  if (existing.signedAt) { res.json(existing); return; }
+
+  const { feedback, permissionGranted, signatureDataUrl } = req.body as {
+    feedback?: string;
+    permissionGranted?: boolean;
+    signatureDataUrl?: string;
+  };
+
+  const [updated] = await db.update(projectClosuresTable)
+    .set({
+      feedback: feedback?.trim() ?? null,
+      permissionGranted: permissionGranted === true,
+      signatureDataUrl: signatureDataUrl ?? null,
+      signedAt: new Date(),
+      signerUserId: userId,
+    })
+    .where(eq(projectClosuresTable.id, existing.id))
+    .returning();
+
+  res.json(updated);
 });
 
 // ─── ADMIN: Admin messages (all clients) ────────────────────────────────────

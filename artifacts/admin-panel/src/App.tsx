@@ -21,6 +21,7 @@ import PurchasesPage from "@/pages/crm/Purchases";
 import PurchaseDetailPage from "@/pages/crm/PurchaseDetail";
 import ContractsPage from "@/pages/crm/Contracts";
 import StatusReportsPage from "@/pages/crm/StatusReports";
+import TestimonialsPage from "@/pages/crm/Testimonials";
 import OverviewPage from "@/pages/Overview";
 import EmailActivityPage from "@/pages/EmailActivity";
 import type { ReactNode } from "react";
@@ -120,6 +121,9 @@ function Router() {
       </Route>
       <Route path="/crm/status-reports">
         <RequireAdmin><DashboardShell><StatusReportsPage /></DashboardShell></RequireAdmin>
+      </Route>
+      <Route path="/crm/testimonials">
+        <RequireAdmin><DashboardShell><TestimonialsPage /></DashboardShell></RequireAdmin>
       </Route>
 
       {/* Email Activity */}
