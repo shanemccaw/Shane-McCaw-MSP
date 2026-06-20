@@ -380,6 +380,11 @@ export default function WorkflowsPage() {
   const [jsonImportText, setJsonImportText] = useState("");
   const [jsonImporting, setJsonImporting] = useState(false);
 
+  // Engineer-fields import state
+  const [engImportOpen, setEngImportOpen] = useState(false);
+  const [engImportText, setEngImportText] = useState("");
+  const [engImporting, setEngImporting] = useState(false);
+
   // Task state
   const [newTask, setNewTask] = useState<{ stepId: number; title: string; groupName: string; description: string } | null>(null);
   const [editingTask, setEditingTask] = useState<StepTask | null>(null);
@@ -421,6 +426,8 @@ export default function WorkflowsPage() {
       setNewStep(null);
       setJsonImportOpen(false);
       setJsonImportText("");
+      setEngImportOpen(false);
+      setEngImportText("");
     } catch { /* ignore */ }
   }, [fetchWithAuth]);
 
@@ -553,6 +560,76 @@ export default function WorkflowsPage() {
       toast({ title: "Import complete", description: `${parsed.length} step${parsed.length !== 1 ? "s" : ""}${taskNote} added.` });
     } finally {
       setJsonImporting(false);
+    }
+  }
+
+  // ── Engineer-fields-only import ────────────────────────────────────────────
+  type EngImportItem = { title: string; instructions?: string[]; checklist?: ChecklistItem[]; artifactsProduced?: string[]; clientDeliverables?: string[] };
+
+  function parseEngineerFields(text: string): { parsed: EngImportItem[] | null; error: string | null } {
+    if (!text.trim()) return { parsed: null, error: null };
+    try {
+      const raw: unknown = JSON.parse(text);
+      if (!Array.isArray(raw)) return { parsed: null, error: "JSON must be an array [ … ]" };
+      if (raw.length === 0) return { parsed: null, error: "Array is empty" };
+      const items = raw as Array<Record<string, unknown>>;
+      const badIdx = items.findIndex(x => !x.title || typeof x.title !== "string" || !(x.title as string).trim());
+      if (badIdx !== -1) return { parsed: null, error: `Item at index ${badIdx} is missing a "title"` };
+      return { parsed: items as EngImportItem[], error: null };
+    } catch (e) {
+      return { parsed: null, error: (e as SyntaxError).message };
+    }
+  }
+
+  async function importEngineerFields() {
+    if (!selected) return;
+    const { parsed, error } = parseEngineerFields(engImportText);
+    if (error || !parsed) return;
+    setEngImporting(true);
+    try {
+      // Build a flat lookup: normalised title → all matching tasks
+      const allTasks: StepTask[] = (selected.steps ?? []).flatMap(s => s.tasks ?? []);
+      const byTitle = new Map<string, StepTask[]>();
+      for (const t of allTasks) {
+        const key = t.title.trim().toLowerCase();
+        if (!byTitle.has(key)) byTitle.set(key, []);
+        byTitle.get(key)!.push(t);
+      }
+
+      let updated = 0;
+      let skipped = 0;
+      for (const item of parsed) {
+        const key = item.title.trim().toLowerCase();
+        const matches = byTitle.get(key) ?? [];
+        if (matches.length === 0) { skipped++; continue; }
+        for (const task of matches) {
+          const res = await fetchWithAuth(
+            `/api/admin/workflow-templates/${selected.id}/steps/${task.workflowTemplateStepId}/tasks/${task.id}`,
+            {
+              method: "PUT",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                title: task.title,
+                description: task.description ?? null,
+                groupName: task.groupName ?? null,
+                order: task.order,
+                instructions: item.instructions?.filter(Boolean).length ? item.instructions!.filter(Boolean) : (task.instructions ?? null),
+                checklist: item.checklist?.filter(c => c.label.trim()).length ? item.checklist!.filter(c => c.label.trim()) : (task.checklist ?? null),
+                artifactsProduced: item.artifactsProduced?.filter(Boolean).length ? item.artifactsProduced!.filter(Boolean) : (task.artifactsProduced ?? null),
+                clientDeliverables: item.clientDeliverables?.filter(Boolean).length ? item.clientDeliverables!.filter(Boolean) : (task.clientDeliverables ?? null),
+              }),
+            }
+          );
+          if (res.ok) updated++;
+        }
+      }
+      await refreshSelected();
+      setEngImportOpen(false);
+      setEngImportText("");
+      const skipNote = skipped > 0 ? ` (${skipped} title${skipped !== 1 ? "s" : ""} not matched)` : "";
+      toast({ title: "Engineer fields imported", description: `${updated} task${updated !== 1 ? "s" : ""} updated${skipNote}.` });
+    } finally {
+      setEngImporting(false);
     }
   }
 
@@ -790,14 +867,22 @@ export default function WorkflowsPage() {
                     Export JSON
                   </button>
                   <button
-                    onClick={() => { setJsonImportOpen(v => !v); setJsonImportText(""); setNewStep(null); }}
+                    onClick={() => { setEngImportOpen(v => !v); setEngImportText(""); setJsonImportOpen(false); setNewStep(null); }}
+                    className="flex items-center gap-1 text-xs text-purple-600 hover:underline font-medium">
+                    <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
+                    </svg>
+                    Import Engineer Fields
+                  </button>
+                  <button
+                    onClick={() => { setJsonImportOpen(v => !v); setJsonImportText(""); setEngImportOpen(false); setNewStep(null); }}
                     className="flex items-center gap-1 text-xs text-[#00B4D8] hover:underline font-medium">
                     <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
                       <path strokeLinecap="round" strokeLinejoin="round" d="M17 16v2a2 2 0 01-2 2H5a2 2 0 01-2-2v-2M9 12l3 3 3-3M12 3v12" />
                     </svg>
                     Import from JSON
                   </button>
-                  <button onClick={() => { setNewStep({ title: "", description: "" }); setJsonImportOpen(false); }}
+                  <button onClick={() => { setNewStep({ title: "", description: "" }); setJsonImportOpen(false); setEngImportOpen(false); }}
                     className="text-xs text-[#0078D4] hover:underline font-medium">
                     + Add step
                   </button>
@@ -886,8 +971,82 @@ export default function WorkflowsPage() {
                 );
               })()}
 
+              {engImportOpen && (() => {
+                const { parsed, error } = parseEngineerFields(engImportText);
+                const allTasks: StepTask[] = (selected.steps ?? []).flatMap(s => s.tasks ?? []);
+                const byTitle = new Map<string, StepTask[]>();
+                for (const t of allTasks) {
+                  const key = t.title.trim().toLowerCase();
+                  if (!byTitle.has(key)) byTitle.set(key, []);
+                  byTitle.get(key)!.push(t);
+                }
+                const matchCount = parsed ? parsed.filter(item => (byTitle.get(item.title.trim().toLowerCase()) ?? []).length > 0).length : 0;
+                const skipCount = parsed ? parsed.length - matchCount : 0;
+                return (
+                  <div className="px-5 py-4 border-b border-gray-100 space-y-3 bg-purple-50/60">
+                    <div>
+                      <p className="text-xs font-bold text-purple-700 uppercase tracking-wide mb-0.5">Import Engineer Fields Only</p>
+                      <p className="text-[10px] text-purple-500 mb-2">Paste an array of tasks by title. Only the 4 engineer fields are updated — title, description, group, and order are left unchanged.</p>
+                      <textarea
+                        autoFocus
+                        rows={10}
+                        value={engImportText}
+                        onChange={e => setEngImportText(e.target.value)}
+                        placeholder={`[\n  {\n    "title": "Review tenant configuration",\n    "instructions": ["Log into M365 admin center", "Navigate to Settings > Org settings"],\n    "checklist": [{ "id": "c1", "label": "License check complete" }, { "id": "c2", "label": "Admin roles reviewed" }],\n    "artifactsProduced": ["Tenant audit report"],\n    "clientDeliverables": ["Gap analysis summary"]\n  }\n]`}
+                        className="w-full border border-purple-200 rounded-lg px-3 py-2 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-purple-400 resize-y bg-white"
+                      />
+                    </div>
+                    {engImportText.trim() && error && (
+                      <p className="text-xs text-red-600 bg-red-50 border border-red-100 rounded px-2 py-1.5 font-mono">{error}</p>
+                    )}
+                    {parsed && parsed.length > 0 && (
+                      <div className="bg-white border border-purple-100 rounded-lg p-3 space-y-2">
+                        <p className="text-[10px] font-bold uppercase tracking-wider text-purple-500">
+                          {matchCount} task{matchCount !== 1 ? "s" : ""} will be updated
+                          {skipCount > 0 && <span className="text-amber-500 ml-1">· {skipCount} not found in this template</span>}
+                        </p>
+                        {parsed.map((item, i) => {
+                          const matched = (byTitle.get(item.title.trim().toLowerCase()) ?? []).length > 0;
+                          return (
+                            <div key={i} className={`flex items-start gap-2 rounded px-2 py-1.5 ${matched ? "bg-purple-50" : "bg-amber-50"}`}>
+                              <span className={`mt-0.5 flex-shrink-0 w-3.5 h-3.5 rounded-full flex items-center justify-center text-[9px] font-bold ${matched ? "bg-purple-500 text-white" : "bg-amber-400 text-white"}`}>
+                                {matched ? "✓" : "?"}
+                              </span>
+                              <div className="min-w-0">
+                                <p className={`text-[11px] font-semibold leading-snug ${matched ? "text-[#0A2540]" : "text-amber-700"}`}>{item.title}</p>
+                                <div className="flex flex-wrap gap-2 mt-0.5">
+                                  {item.instructions?.length ? <span className="text-[9px] text-purple-500">{item.instructions.length} instruction{item.instructions.length !== 1 ? "s" : ""}</span> : null}
+                                  {item.checklist?.length ? <span className="text-[9px] text-blue-500">{item.checklist.length} checklist item{item.checklist.length !== 1 ? "s" : ""}</span> : null}
+                                  {item.artifactsProduced?.length ? <span className="text-[9px] text-teal-500">{item.artifactsProduced.length} artifact{item.artifactsProduced.length !== 1 ? "s" : ""}</span> : null}
+                                  {item.clientDeliverables?.length ? <span className="text-[9px] text-green-600">{item.clientDeliverables.length} deliverable{item.clientDeliverables.length !== 1 ? "s" : ""}</span> : null}
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                    <div className="flex gap-2">
+                      <button
+                        disabled={!parsed || matchCount === 0 || engImporting}
+                        onClick={() => void importEngineerFields()}
+                        className="bg-purple-600 text-white text-xs font-semibold px-4 py-1.5 rounded-lg hover:bg-purple-700 disabled:opacity-40 flex items-center gap-1.5 whitespace-nowrap"
+                      >
+                        {engImporting
+                          ? <><div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" /> Importing…</>
+                          : `Update ${matchCount} Task${matchCount !== 1 ? "s" : ""}`}
+                      </button>
+                      <button type="button" onClick={() => { setEngImportOpen(false); setEngImportText(""); }}
+                        className="border border-gray-200 text-xs font-medium px-3 py-1.5 rounded-lg hover:bg-gray-100 text-gray-600">
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                );
+              })()}
+
               <div>
-                {steps.length === 0 && !newStep && !jsonImportOpen && (
+                {steps.length === 0 && !newStep && !jsonImportOpen && !engImportOpen && (
                   <div className="px-5 py-8 text-center text-sm text-gray-400">
                     No steps yet. Add the first step to define this workflow.
                   </div>
