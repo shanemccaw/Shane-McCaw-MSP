@@ -62,6 +62,9 @@ const legacyMigrations = [
     name: "0001_services_workflow_template_id",
     sql: `
       ALTER TABLE "services" ADD COLUMN IF NOT EXISTS "workflow_template_id" integer;
+      UPDATE "services" SET "workflow_template_id" = NULL
+        WHERE "workflow_template_id" IS NOT NULL
+          AND "workflow_template_id" NOT IN (SELECT "id" FROM "workflow_templates");
       ALTER TABLE "services"
         DROP CONSTRAINT IF EXISTS "services_workflow_template_id_fk",
         ADD CONSTRAINT "services_workflow_template_id_fk"
@@ -137,20 +140,28 @@ const legacyMigrations = [
   {
     name: "0005_emails_linked_project_and_lead",
     sql: `
-      ALTER TABLE "emails" ADD COLUMN IF NOT EXISTS "linked_project_id" integer;
-      ALTER TABLE "emails" ADD COLUMN IF NOT EXISTS "linked_lead_id" integer;
-      ALTER TABLE "emails"
-        DROP CONSTRAINT IF EXISTS "emails_linked_project_id_fk",
-        ADD CONSTRAINT "emails_linked_project_id_fk"
-          FOREIGN KEY ("linked_project_id")
-          REFERENCES "projects"("id")
-          ON DELETE SET NULL;
-      ALTER TABLE "emails"
-        DROP CONSTRAINT IF EXISTS "emails_linked_lead_id_fk",
-        ADD CONSTRAINT "emails_linked_lead_id_fk"
-          FOREIGN KEY ("linked_lead_id")
-          REFERENCES "leads"("id")
-          ON DELETE SET NULL;
+      DO $$
+      BEGIN
+        IF EXISTS (
+          SELECT FROM information_schema.tables
+          WHERE table_schema = 'public' AND table_name = 'emails'
+        ) THEN
+          ALTER TABLE "emails" ADD COLUMN IF NOT EXISTS "linked_project_id" integer;
+          ALTER TABLE "emails" ADD COLUMN IF NOT EXISTS "linked_lead_id" integer;
+          ALTER TABLE "emails"
+            DROP CONSTRAINT IF EXISTS "emails_linked_project_id_fk",
+            ADD CONSTRAINT "emails_linked_project_id_fk"
+              FOREIGN KEY ("linked_project_id")
+              REFERENCES "projects"("id")
+              ON DELETE SET NULL;
+          ALTER TABLE "emails"
+            DROP CONSTRAINT IF EXISTS "emails_linked_lead_id_fk",
+            ADD CONSTRAINT "emails_linked_lead_id_fk"
+              FOREIGN KEY ("linked_lead_id")
+              REFERENCES "leads"("id")
+              ON DELETE SET NULL;
+        END IF;
+      END $$;
     `,
   },
 ];
@@ -185,6 +196,29 @@ async function applyDrizzleMigrations(client: PoolClient): Promise<void> {
   const journal: Journal = JSON.parse(fs.readFileSync(journalPath, "utf-8"));
   const entries = journal.entries ?? [];
 
+  // Backfill: detect migrations that were applied to production before tracking
+  // was set up, and record them so the apply loop skips re-running their SQL.
+  const schemaBackfill: Array<{ tag: string; check: string }> = [
+    {
+      tag: "0002_add_workflow_step_due_date",
+      check: `SELECT 1 FROM information_schema.columns WHERE table_name='workflow_steps' AND column_name='due_date'`,
+    },
+    {
+      tag: "0003_add_project_type",
+      check: `SELECT 1 FROM information_schema.columns WHERE table_name='projects' AND column_name='project_type'`,
+    },
+  ];
+  for (const { tag, check } of schemaBackfill) {
+    const { rowCount } = await client.query(check);
+    if ((rowCount ?? 0) > 0) {
+      await client.query(
+        "INSERT INTO __drizzle_migrations (tag) VALUES ($1) ON CONFLICT DO NOTHING",
+        [tag]
+      );
+      console.log(`[drizzle] backfilled ${tag} (already applied, now tracked).`);
+    }
+  }
+
   const { rows } = await client.query<{ tag: string }>(
     "SELECT tag FROM __drizzle_migrations ORDER BY tag"
   );
@@ -208,7 +242,34 @@ async function applyDrizzleMigrations(client: PoolClient): Promise<void> {
     const rawSql = fs.readFileSync(sqlPath, "utf-8");
     const sql = rawSql.replace(/--> statement-breakpoint/g, "");
 
+    // These specific migrations target tables that are absent from the production
+    // schema (status_reports was never created there). The ALTER TABLE statements
+    // are moot — the columns will be included if the table is ever created via
+    // a fresh push. We skip them explicitly rather than catching all 42P01 errors
+    // globally to avoid masking genuine migration failures.
+    const KNOWN_MISSING_TABLE_TAGS = new Set([
+      "0004_add_status_report_client_status",
+      "0010_add_admin_reply_and_status_report_link",
+      "0013_add_status_report_reply_thread",
+    ]);
+
     console.log(`[drizzle] Applying ${entry.tag}…`);
+    if (KNOWN_MISSING_TABLE_TAGS.has(entry.tag)) {
+      // Verify the target table actually doesn't exist before skipping.
+      const { rowCount } = await client.query(
+        `SELECT 1 FROM information_schema.tables WHERE table_schema='public' AND table_name='status_reports'`
+      );
+      if ((rowCount ?? 0) === 0) {
+        console.warn(`[drizzle]   WARNING: skipped ${entry.tag} — status_reports table does not exist in production (will apply if table is created).`);
+        await client.query(
+          "INSERT INTO __drizzle_migrations (tag) VALUES ($1) ON CONFLICT DO NOTHING",
+          [entry.tag]
+        );
+        console.log(`[drizzle]   done (skipped).`);
+        appliedCount++;
+        continue;
+      }
+    }
     await client.query(sql);
     await client.query(
       "INSERT INTO __drizzle_migrations (tag) VALUES ($1) ON CONFLICT DO NOTHING",
