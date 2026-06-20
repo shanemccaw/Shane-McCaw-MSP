@@ -302,6 +302,7 @@ export default function PortalProjectDetail() {
   const [expandedStepId, setExpandedStepId] = useState<number | null>(null);
   const [showAllPhases, setShowAllPhases] = useState(false);
   const [activeTask, setActiveTask] = useState<KanbanTask | null>(null);
+  const [exportingAudit, setExportingAudit] = useState(false);
 
   const loadProject = useCallback(() => {
     if (!params.id) return;
@@ -318,6 +319,32 @@ export default function PortalProjectDetail() {
       .catch(() => null)
       .finally(() => setLoading(false));
   }, [fetchWithAuth, params.id]);
+
+  const handleExportAudit = async () => {
+    if (!params.id || exportingAudit) return;
+    setExportingAudit(true);
+    try {
+      const res = await fetchWithAuth(`/api/portal/projects/${params.id}/audit-pdf`);
+      if (!res.ok) {
+        const err = await res.json() as { error?: string };
+        alert(err.error ?? "Failed to generate audit PDF. Please try again.");
+        return;
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const year = new Date().getFullYear();
+      const refNum = `SMC-${year}-${String(params.id).padStart(3, "0")}`;
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `audit-${refNum}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } finally {
+      setExportingAudit(false);
+    }
+  };
 
   useEffect(() => { loadProject(); }, [loadProject]);
 
@@ -406,11 +433,19 @@ export default function PortalProjectDetail() {
               )}
             </div>
             <div className="flex items-center gap-2.5 flex-shrink-0 sm:pt-1">
-              <button className="flex items-center gap-2 text-sm font-semibold px-4 py-2 rounded-lg border border-[#0A2540] text-[#0A2540] hover:bg-[#0A2540]/5 transition-colors">
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                </svg>
-                Export Audit
+              <button
+                onClick={() => void handleExportAudit()}
+                disabled={exportingAudit}
+                className="flex items-center gap-2 text-sm font-semibold px-4 py-2 rounded-lg border border-[#0A2540] text-[#0A2540] hover:bg-[#0A2540]/5 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                {exportingAudit ? (
+                  <div className="w-4 h-4 border-2 border-[#0A2540] border-t-transparent rounded-full animate-spin" />
+                ) : (
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                  </svg>
+                )}
+                {exportingAudit ? "Exporting…" : "Export Audit"}
               </button>
               <button className="flex items-center gap-2 text-sm font-semibold px-4 py-2 rounded-lg bg-[#0A2540] text-white hover:bg-[#0A2540]/90 transition-colors">
                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>

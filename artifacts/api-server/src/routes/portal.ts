@@ -125,6 +125,233 @@ router.get("/portal/projects/:id", requireAuth, async (req: Request, res: Respon
   res.json({ project, steps, tasks, documents, updates });
 });
 
+// ─── CLIENT: Project Audit PDF ───────────────────────────────────────────────
+router.get("/portal/projects/:id/audit-pdf", requireAuth, async (req: Request, res: Response) => {
+  const userId = req.user!.id;
+  const id = parseInt(String(req.params.id ?? ""), 10);
+  if (isNaN(id)) { res.status(400).json({ error: "Invalid project ID" }); return; }
+
+  const isAdmin = req.user!.role === "admin";
+  const [project] = await db.select().from(projectsTable)
+    .where(isAdmin ? eq(projectsTable.id, id) : and(eq(projectsTable.id, id), eq(projectsTable.clientUserId, userId)));
+  if (!project) { res.status(404).json({ error: "Project not found" }); return; }
+
+  const steps = await db.select().from(workflowStepsTable)
+    .where(eq(workflowStepsTable.projectId, id))
+    .orderBy(asc(workflowStepsTable.order));
+
+  const updates = await db.select().from(projectUpdatesTable)
+    .where(eq(projectUpdatesTable.projectId, id))
+    .orderBy(desc(projectUpdatesTable.createdAt));
+
+  // ── Build PDF ──────────────────────────────────────────────────────────────
+  const pdfDoc = await PDFDocument.create();
+  const bold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+  const regular = await pdfDoc.embedFont(StandardFonts.Helvetica);
+
+  const margin = 55;
+  const pageW = 595;
+  const navy  = rgb(0.039, 0.145, 0.251);  // #0A2540
+  const blue  = rgb(0,     0.471, 0.831);  // #0078D4
+  const teal  = rgb(0,     0.706, 0.847);  // #00B4D8
+  const grey  = rgb(0.45,  0.45,  0.45);
+  const white = rgb(1, 1, 1);
+  const green = rgb(0.086, 0.627, 0.220);  // success green
+  const red   = rgb(0.753, 0.110, 0.157);
+
+  let page = pdfDoc.addPage([pageW, 842]);
+  let y = 800;
+
+  const newPage = () => {
+    page = pdfDoc.addPage([pageW, 842]);
+    y = 800;
+    // running header on continuation pages
+    page.drawRectangle({ x: 0, y: 820, width: pageW, height: 22, color: navy });
+    page.drawText("Shane McCaw Consulting  —  Project Audit Report", {
+      x: margin, y: 826, font: bold, size: 9, color: white,
+    });
+  };
+
+  const text = (str: string, x: number, yy: number, opts: { font?: typeof bold; size?: number; color?: ReturnType<typeof rgb> } = {}) => {
+    page.drawText(str, { x, y: yy, font: opts.font ?? regular, size: opts.size ?? 10, color: opts.color ?? navy });
+  };
+
+  const ensureSpace = (needed: number) => {
+    if (y - needed < 60) newPage();
+  };
+
+  // Wrap text to width, return lines
+  const wrap = (str: string, maxChars: number): string[] => {
+    const words = str.split(" ");
+    const lines: string[] = [];
+    let line = "";
+    for (const w of words) {
+      const candidate = line ? `${line} ${w}` : w;
+      if (candidate.length > maxChars) { if (line) lines.push(line); line = w; }
+      else line = candidate;
+    }
+    if (line) lines.push(line);
+    return lines.length ? lines : [""];
+  };
+
+  // ── Page 1 header bar ──────────────────────────────────────────────────────
+  page.drawRectangle({ x: 0, y: 820, width: pageW, height: 22, color: navy });
+  text("Shane McCaw Consulting  —  Project Audit Report", margin, 826, { font: bold, size: 9, color: white });
+
+  // ── Title block ────────────────────────────────────────────────────────────
+  y = 775;
+  text("Project Audit Report", margin, y, { font: bold, size: 20, color: navy });
+  y -= 6;
+  page.drawLine({ start: { x: margin, y }, end: { x: pageW - margin, y }, thickness: 1.5, color: blue });
+  y -= 18;
+
+  const year = new Date().getFullYear();
+  const refNum = `SMC-${year}-${String(project.id).padStart(3, "0")}`;
+  const statusLabel: Record<string, string> = { active: "In Progress", on_hold: "On Hold", completed: "Completed", cancelled: "Cancelled" };
+  const generatedOn = new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
+
+  const completedSteps = steps.filter(s => s.status === "completed").length;
+  const overallPct = steps.length > 0 ? Math.round((completedSteps / steps.length) * 100) : project.progress;
+
+  const meta: [string, string][] = [
+    ["Project:", project.title],
+    ["Reference:", refNum],
+    ["Status:", statusLabel[project.status] ?? project.status],
+    ["Overall Progress:", `${overallPct}% complete (${completedSteps} of ${steps.length} phases)`],
+    ["Generated:", generatedOn],
+  ];
+  if (project.startDate) meta.push(["Start Date:", new Date(project.startDate).toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" })]);
+  if (project.endDate)   meta.push(["Target Date:", new Date(project.endDate).toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" })]);
+
+  for (const [label, value] of meta) {
+    text(label, margin, y, { font: bold, size: 10, color: grey });
+    text(value,  margin + 110, y, { size: 10 });
+    y -= 16;
+  }
+  y -= 6;
+  page.drawLine({ start: { x: margin, y }, end: { x: pageW - margin, y }, thickness: 0.5, color: rgb(0.85, 0.85, 0.85) });
+  y -= 18;
+
+  // ── Progress bar ────────────────────────────────────────────────────────────
+  ensureSpace(30);
+  text("Overall Completion", margin, y, { font: bold, size: 10, color: navy });
+  y -= 14;
+  const barW = pageW - margin * 2;
+  page.drawRectangle({ x: margin, y, width: barW, height: 8, color: rgb(0.92, 0.93, 0.95) });
+  const fillW = Math.round(barW * overallPct / 100);
+  if (fillW > 0) page.drawRectangle({ x: margin, y, width: fillW, height: 8, color: blue });
+  text(`${overallPct}%`, margin + barW + 6, y, { size: 9, color: grey });
+  y -= 22;
+
+  // ── Phase breakdown ─────────────────────────────────────────────────────────
+  ensureSpace(24);
+  text("Phase Breakdown", margin, y, { font: bold, size: 13, color: navy });
+  y -= 6;
+  page.drawLine({ start: { x: margin, y }, end: { x: pageW - margin, y }, thickness: 1, color: teal });
+  y -= 16;
+
+  const stepColor = (status: string) => {
+    if (status === "completed") return green;
+    if (status === "in_progress") return blue;
+    if (status === "blocked") return red;
+    return grey;
+  };
+  const stepLabel = (status: string) => {
+    const m: Record<string, string> = { completed: "Completed", in_progress: "In Progress", pending: "Pending", blocked: "Blocked" };
+    return m[status] ?? status;
+  };
+
+  for (const step of steps) {
+    ensureSpace(52);
+
+    // Step row background
+    const rowBg = step.status === "in_progress" ? rgb(0.94, 0.97, 1) : rgb(0.98, 0.98, 0.99);
+    page.drawRectangle({ x: margin - 4, y: y - 2, width: barW + 8, height: 16, color: rowBg });
+
+    // Step number + title
+    const stepNum = `${step.order ?? steps.indexOf(step) + 1}.`;
+    text(stepNum, margin, y, { font: bold, size: 9.5, color: grey });
+    text(step.title, margin + 18, y, { font: bold, size: 9.5, color: navy });
+
+    // Status badge aligned right
+    const statusStr = stepLabel(step.status);
+    text(statusStr, pageW - margin - 70, y, { size: 9, color: stepColor(step.status) });
+    y -= 16;
+
+    // Completion date
+    if (step.completedAt) {
+      const dateStr = new Date(step.completedAt).toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" });
+      text(`Completed: ${dateStr}`, margin + 18, y, { size: 8.5, color: grey });
+      y -= 13;
+    }
+
+    // Notes
+    if (step.notes && step.notes.trim()) {
+      const noteLines = wrap(step.notes.trim(), 88);
+      for (const line of noteLines) {
+        ensureSpace(14);
+        text(line, margin + 18, y, { size: 8.5, color: grey });
+        y -= 12;
+      }
+    }
+
+    // Description (short, if available)
+    if (step.description && step.description.trim()) {
+      const descLines = wrap(step.description.trim(), 88);
+      for (const line of descLines.slice(0, 2)) {
+        ensureSpace(14);
+        text(line, margin + 18, y, { size: 8, color: rgb(0.55, 0.55, 0.55) });
+        y -= 11;
+      }
+    }
+
+    y -= 6;
+  }
+
+  // ── Consultant Updates ──────────────────────────────────────────────────────
+  if (updates.length > 0) {
+    ensureSpace(40);
+    y -= 4;
+    text("Consultant Updates", margin, y, { font: bold, size: 13, color: navy });
+    y -= 6;
+    page.drawLine({ start: { x: margin, y }, end: { x: pageW - margin, y }, thickness: 1, color: teal });
+    y -= 16;
+
+    for (const upd of updates.slice(0, 10)) {
+      ensureSpace(30);
+      const dateStr = new Date(upd.createdAt).toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" });
+      const typeLabel = upd.type === "milestone" ? "Milestone" : upd.type === "file" ? "Document" : "Update";
+      text(`${dateStr}  ·  ${typeLabel}`, margin, y, { font: bold, size: 8.5, color: blue });
+      y -= 13;
+
+      const lines = wrap(upd.content, 92);
+      for (const line of lines.slice(0, 4)) {
+        ensureSpace(13);
+        text(line, margin + 4, y, { size: 9, color: navy });
+        y -= 12;
+      }
+      y -= 6;
+    }
+  }
+
+  // ── Footer on last page ─────────────────────────────────────────────────────
+  ensureSpace(30);
+  y = 45;
+  page.drawLine({ start: { x: margin, y: y + 12 }, end: { x: pageW - margin, y: y + 12 }, thickness: 0.5, color: rgb(0.85, 0.85, 0.85) });
+  text("Shane McCaw Consulting LLC  —  Confidential", margin, y, { size: 8, color: grey });
+  text(`Generated ${generatedOn}`, pageW - margin - 100, y, { size: 8, color: grey });
+
+  // ── Return PDF ─────────────────────────────────────────────────────────────
+  const pdfBytes = await pdfDoc.save();
+  const filename = `audit-${refNum}.pdf`;
+  res.set({
+    "Content-Type": "application/pdf",
+    "Content-Disposition": `attachment; filename="${filename}"`,
+    "Content-Length": String(pdfBytes.length),
+  });
+  res.end(Buffer.from(pdfBytes));
+});
+
 // ─── CLIENT: Services ────────────────────────────────────────────────────────
 router.get("/portal/services", requireAuth, async (req: Request, res: Response) => {
   const userId = req.user!.id;
