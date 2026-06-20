@@ -348,7 +348,7 @@ function TrackSection({
           No {track.label.toLowerCase()} yet
         </div>
       ) : (
-        <div className={`grid gap-4 ${isRetainer ? "grid-cols-[repeat(auto-fill,minmax(320px,1fr))]" : "grid-cols-[repeat(auto-fill,minmax(280px,1fr))]"}`}>
+        <div className={`grid gap-4 ${isRetainer ? "grid-cols-[repeat(auto-fit,minmax(320px,1fr))]" : "grid-cols-[repeat(auto-fit,minmax(280px,1fr))]"}`}>
           {projects.map(p => {
             const projectSteps = steps[p.id] ?? [];
             return isRetainer ? (
