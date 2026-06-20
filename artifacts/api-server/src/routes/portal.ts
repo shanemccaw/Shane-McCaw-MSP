@@ -658,6 +658,21 @@ router.post("/portal/projects/:projectId/documents", requireAuth, uploadDoc.sing
   res.status(201).json(doc);
 });
 
+// ─── Helper: recompute and persist project progress from kanban completion ────
+async function syncProjectProgress(projectId: number): Promise<void> {
+  const [result] = await db
+    .select({
+      total: count(),
+      completed: count(sql`case when ${kanbanTasksTable.column} = 'completed' then 1 end`),
+    })
+    .from(kanbanTasksTable)
+    .where(eq(kanbanTasksTable.projectId, projectId));
+  const total = result?.total ?? 0;
+  const completed = Number(result?.completed ?? 0);
+  const progress = total === 0 ? 0 : Math.round((completed / total) * 100);
+  await db.update(projectsTable).set({ progress }).where(eq(projectsTable.id, projectId));
+}
+
 // ─── CLIENT: Kanban Tasks (client can move cards on their own project boards) ─
 router.patch("/portal/kanban-tasks/:id", requireAuth, async (req: Request, res: Response) => {
   const userId = req.user!.id;
@@ -680,6 +695,7 @@ router.patch("/portal/kanban-tasks/:id", requireAuth, async (req: Request, res: 
   if (column !== undefined) updates.column = column as "backlog" | "in_progress" | "waiting_on_customer" | "completed";
 
   const [updated] = await db.update(kanbanTasksTable).set(updates).where(eq(kanbanTasksTable.id, id)).returning();
+  if (updated?.projectId) await syncProjectProgress(updated.projectId);
   res.json(updated);
 });
 
@@ -2166,6 +2182,7 @@ router.post("/admin/kanban-tasks", requireAdmin, async (req: Request, res: Respo
     dueDate: dueDate ? new Date(dueDate) : null,
     priority: priority ?? null,
   }).returning();
+  await syncProjectProgress(projectId);
   res.status(201).json(task);
 });
 
@@ -2240,13 +2257,16 @@ router.patch("/admin/kanban-tasks/:id", requireAdmin, async (req: Request, res: 
     }
   }
 
+  await syncProjectProgress(updated.projectId);
   res.json(updated);
 });
 
 router.delete("/admin/kanban-tasks/:id", requireAdmin, async (req: Request, res: Response) => {
   const id = parseInt(String(req.params.id ?? ""), 10);
   if (isNaN(id)) { res.status(400).json({ error: "Invalid ID" }); return; }
+  const [existing] = await db.select({ projectId: kanbanTasksTable.projectId }).from(kanbanTasksTable).where(eq(kanbanTasksTable.id, id));
   await db.delete(kanbanTasksTable).where(eq(kanbanTasksTable.id, id));
+  if (existing?.projectId) await syncProjectProgress(existing.projectId);
   res.json({ deleted: id });
 });
 
