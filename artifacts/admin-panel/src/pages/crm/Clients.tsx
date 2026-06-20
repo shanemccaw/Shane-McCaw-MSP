@@ -1,6 +1,7 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
+import { useAssignEmail } from "@/hooks/useAssignEmail";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -21,6 +22,22 @@ interface Client {
   createdAt: string;
 }
 
+interface EmailRow {
+  email: {
+    id: number;
+    messageId: string;
+    subject: string | null;
+    senderAddress: string;
+    senderDomain: string;
+    bodyPreview: string | null;
+    receivedAt: string;
+    rawFrom: string | null;
+    linkedUserId: number | null;
+  };
+  clientName: string | null;
+  clientEmail: string | null;
+}
+
 const CRM_PORTAL_BASE = (() => {
   const url = new URL(window.location.href);
   return `${url.protocol}//${url.host}/crm`;
@@ -36,6 +53,216 @@ interface FormState {
 
 const EMPTY_FORM: FormState = { email: "", name: "", company: "", phone: "", password: "" };
 
+function timeAgo(ts: string) {
+  const diff = Date.now() - new Date(ts).getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  if (days < 7) return `${days}d ago`;
+  return new Date(ts).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+}
+
+// ─── ClientEmailPanel ─────────────────────────────────────────────────────────
+interface ClientEmailPanelProps {
+  client: Client;
+  onClose: () => void;
+}
+
+function ClientEmailPanel({ client, onClose }: ClientEmailPanelProps) {
+  const { fetchWithAuth } = useAuth();
+  const { assignEmail, assigningId } = useAssignEmail();
+  const [emails, setEmails] = useState<EmailRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const clientDomain = client.email.split("@")[1] ?? "";
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      // Fetch all emails from this client's domain (linked + unlinked)
+      const res = await fetchWithAuth(
+        `/api/admin/emails?domain=${encodeURIComponent(clientDomain)}&limit=50`
+      );
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json() as { emails: EmailRow[] };
+      setEmails(data.emails);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to load emails");
+    } finally {
+      setLoading(false);
+    }
+  }, [fetchWithAuth, clientDomain]);
+
+  useEffect(() => { void load(); }, [load]);
+
+  async function handleLink(emailId: number) {
+    try {
+      await assignEmail(emailId, client.id);
+      await load();
+    } catch {
+      alert("Failed to link email");
+    }
+  }
+
+  async function handleUnlink(emailId: number) {
+    try {
+      await assignEmail(emailId, null);
+      await load();
+    } catch {
+      alert("Failed to unlink email");
+    }
+  }
+
+  const linkedToThis = emails.filter(r => r.email.linkedUserId === client.id);
+  const unlinked = emails.filter(r => r.email.linkedUserId === null);
+  const linkedToOther = emails.filter(r => r.email.linkedUserId !== null && r.email.linkedUserId !== client.id);
+
+  const hasAny = emails.length > 0;
+
+  return (
+    <tr>
+      <td colSpan={5} className="px-0 py-0 bg-blue-50/40 border-b border-blue-100">
+        <div className="px-5 py-4">
+          {/* Header */}
+          <div className="flex items-center justify-between mb-3">
+            <div>
+              <span className="text-xs font-bold text-[#0078D4] uppercase tracking-widest">
+                Email Activity
+              </span>
+              {clientDomain && (
+                <span className="ml-2 text-xs text-gray-400 font-mono">@{clientDomain}</span>
+              )}
+            </div>
+            <button
+              onClick={onClose}
+              className="text-gray-400 hover:text-gray-600 transition-colors"
+              aria-label="Close"
+            >
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+
+          {loading ? (
+            <div className="flex items-center gap-2 py-4 text-sm text-gray-400">
+              <div className="w-4 h-4 border-2 border-[#0078D4] border-t-transparent rounded-full animate-spin" />
+              Loading emails…
+            </div>
+          ) : error ? (
+            <p className="text-sm text-red-600">{error}</p>
+          ) : !hasAny ? (
+            <p className="text-sm text-gray-400 py-2">
+              No emails found from <span className="font-mono">@{clientDomain}</span>.
+              {" "}Emails appear here as soon as they are ingested from the M365 mailbox.
+            </p>
+          ) : (
+            <div className="space-y-4">
+              {/* Unlinked emails from this domain */}
+              {unlinked.length > 0 && (
+                <div>
+                  <p className="text-[10px] font-bold text-amber-600 uppercase tracking-widest mb-2">
+                    Unlinked · {unlinked.length}
+                  </p>
+                  <div className="space-y-1.5">
+                    {unlinked.map(row => (
+                      <div
+                        key={row.email.id}
+                        className="flex items-center gap-3 bg-white border border-amber-100 rounded-lg px-3 py-2.5"
+                      >
+                        <div className="flex-1 min-w-0">
+                          <p className="text-xs font-medium text-[#0A2540] truncate">
+                            {row.email.subject ?? "(no subject)"}
+                          </p>
+                          <p className="text-[10px] text-gray-400 truncate">
+                            {row.email.senderAddress} · {timeAgo(row.email.receivedAt)}
+                          </p>
+                        </div>
+                        <button
+                          disabled={assigningId === row.email.id}
+                          onClick={() => void handleLink(row.email.id)}
+                          className="shrink-0 px-2.5 py-1 text-[11px] font-semibold bg-[#0078D4] text-white rounded-md hover:bg-[#005fa3] disabled:opacity-50 transition-colors whitespace-nowrap"
+                        >
+                          {assigningId === row.email.id ? "Linking…" : `Link to ${client.name ?? client.email}`}
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Emails already linked to this client */}
+              {linkedToThis.length > 0 && (
+                <div>
+                  <p className="text-[10px] font-bold text-emerald-600 uppercase tracking-widest mb-2">
+                    Linked to this client · {linkedToThis.length}
+                  </p>
+                  <div className="space-y-1.5">
+                    {linkedToThis.map(row => (
+                      <div
+                        key={row.email.id}
+                        className="flex items-center gap-3 bg-white border border-emerald-100 rounded-lg px-3 py-2.5"
+                      >
+                        <div className="flex-1 min-w-0">
+                          <p className="text-xs font-medium text-[#0A2540] truncate">
+                            {row.email.subject ?? "(no subject)"}
+                          </p>
+                          <p className="text-[10px] text-gray-400 truncate">
+                            {row.email.senderAddress} · {timeAgo(row.email.receivedAt)}
+                          </p>
+                        </div>
+                        <button
+                          disabled={assigningId === row.email.id}
+                          onClick={() => void handleUnlink(row.email.id)}
+                          className="shrink-0 px-2.5 py-1 text-[11px] font-semibold border border-gray-200 text-gray-500 rounded-md hover:bg-gray-50 hover:text-red-600 hover:border-red-200 disabled:opacity-50 transition-colors"
+                        >
+                          {assigningId === row.email.id ? "Unlinking…" : "Unlink"}
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Emails linked to a different client — visible but not actionable */}
+              {linkedToOther.length > 0 && (
+                <div>
+                  <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">
+                    Linked to another client · {linkedToOther.length}
+                  </p>
+                  <div className="space-y-1.5">
+                    {linkedToOther.map(row => (
+                      <div
+                        key={row.email.id}
+                        className="flex items-center gap-3 bg-white border border-gray-100 rounded-lg px-3 py-2.5 opacity-60"
+                      >
+                        <div className="flex-1 min-w-0">
+                          <p className="text-xs font-medium text-[#0A2540] truncate">
+                            {row.email.subject ?? "(no subject)"}
+                          </p>
+                          <p className="text-[10px] text-gray-400 truncate">
+                            {row.email.senderAddress} · linked to {row.clientName ?? row.clientEmail} · {timeAgo(row.email.receivedAt)}
+                          </p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </td>
+    </tr>
+  );
+}
+
+// ─── Main page ────────────────────────────────────────────────────────────────
 export default function ClientsPage() {
   const { fetchWithAuth } = useAuth();
   const { toast } = useToast();
@@ -49,6 +276,7 @@ export default function ClientsPage() {
   const [deleteTarget, setDeleteTarget] = useState<Client | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [search, setSearch] = useState("");
+  const [expandedClientId, setExpandedClientId] = useState<number | null>(null);
 
   const load = async () => {
     const res = await fetchWithAuth("/api/admin/clients");
@@ -142,6 +370,10 @@ export default function ClientsPage() {
       (c.company ?? "").toLowerCase().includes(q)
     );
   });
+
+  function toggleEmails(clientId: number) {
+    setExpandedClientId(prev => prev === clientId ? null : clientId);
+  }
 
   return (
     <div className="p-6 max-w-[1200px]">
@@ -243,37 +475,60 @@ export default function ClientsPage() {
               {filteredClients.length === 0 ? (
                 <tr><td colSpan={5} className="px-5 py-8 text-center text-muted-foreground text-sm">No clients match your search.</td></tr>
               ) : filteredClients.map(c => (
-                <tr key={c.id} className="border-b border-border last:border-0 hover:bg-[#F7F9FC] transition-colors">
-                  <td className="px-5 py-3.5">
-                    <p className="font-semibold text-[#0A2540]">{c.name ?? "—"}</p>
-                    <p className="text-xs text-muted-foreground">{c.email}</p>
-                  </td>
-                  <td className="px-5 py-3.5 text-muted-foreground hidden sm:table-cell">{c.company ?? "—"}</td>
-                  <td className="px-5 py-3.5 text-muted-foreground hidden md:table-cell">{c.phone ?? "—"}</td>
-                  <td className="px-5 py-3.5 text-xs text-muted-foreground hidden lg:table-cell">{new Date(c.createdAt).toLocaleDateString()}</td>
-                  <td className="px-5 py-3.5">
-                    <div className="flex items-center gap-3">
-                      <button onClick={() => handleEdit(c)} className="text-xs font-semibold text-[#0078D4] hover:underline">Edit</button>
-                      <button
-                        onClick={() => handleViewAs(c)}
-                        disabled={viewAsLoading === c.id}
-                        className="flex items-center gap-1 text-xs font-semibold text-amber-600 hover:text-amber-700 hover:underline disabled:opacity-50 transition-colors"
-                        title="Open the client portal as this client (read-only, 30 min session)"
-                      >
-                        {viewAsLoading === c.id ? (
-                          <span className="w-3 h-3 border-2 border-amber-500 border-t-transparent rounded-full animate-spin inline-block" />
-                        ) : (
+                <>
+                  <tr key={c.id} className={`border-b border-border last:border-0 hover:bg-[#F7F9FC] transition-colors ${expandedClientId === c.id ? "bg-blue-50/30" : ""}`}>
+                    <td className="px-5 py-3.5">
+                      <p className="font-semibold text-[#0A2540]">{c.name ?? "—"}</p>
+                      <p className="text-xs text-muted-foreground">{c.email}</p>
+                    </td>
+                    <td className="px-5 py-3.5 text-muted-foreground hidden sm:table-cell">{c.company ?? "—"}</td>
+                    <td className="px-5 py-3.5 text-muted-foreground hidden md:table-cell">{c.phone ?? "—"}</td>
+                    <td className="px-5 py-3.5 text-xs text-muted-foreground hidden lg:table-cell">{new Date(c.createdAt).toLocaleDateString()}</td>
+                    <td className="px-5 py-3.5">
+                      <div className="flex items-center gap-3 flex-wrap justify-end">
+                        <button
+                          onClick={() => toggleEmails(c.id)}
+                          className={`flex items-center gap-1 text-xs font-semibold transition-colors ${
+                            expandedClientId === c.id
+                              ? "text-[#0078D4]"
+                              : "text-gray-500 hover:text-[#0078D4]"
+                          }`}
+                          title="View emails from this client's domain"
+                        >
                           <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M21.75 6.75v10.5a2.25 2.25 0 01-2.25 2.25h-15a2.25 2.25 0 01-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25m19.5 0v.243a2.25 2.25 0 01-1.07 1.916l-7.5 4.615a2.25 2.25 0 01-2.36 0L3.32 8.91a2.25 2.25 0 01-1.07-1.916V6.75" />
                           </svg>
-                        )}
-                        View as Client
-                      </button>
-                      <button onClick={() => setDeleteTarget(c)} className="text-xs font-semibold text-red-500 hover:text-red-700">Delete</button>
-                    </div>
-                  </td>
-                </tr>
+                          Emails
+                        </button>
+                        <button onClick={() => handleEdit(c)} className="text-xs font-semibold text-[#0078D4] hover:underline">Edit</button>
+                        <button
+                          onClick={() => handleViewAs(c)}
+                          disabled={viewAsLoading === c.id}
+                          className="flex items-center gap-1 text-xs font-semibold text-amber-600 hover:text-amber-700 hover:underline disabled:opacity-50 transition-colors"
+                          title="Open the client portal as this client (read-only, 30 min session)"
+                        >
+                          {viewAsLoading === c.id ? (
+                            <span className="w-3 h-3 border-2 border-amber-500 border-t-transparent rounded-full animate-spin inline-block" />
+                          ) : (
+                            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                            </svg>
+                          )}
+                          View as Client
+                        </button>
+                        <button onClick={() => setDeleteTarget(c)} className="text-xs font-semibold text-red-500 hover:text-red-700">Delete</button>
+                      </div>
+                    </td>
+                  </tr>
+                  {expandedClientId === c.id && (
+                    <ClientEmailPanel
+                      key={`email-panel-${c.id}`}
+                      client={c}
+                      onClose={() => setExpandedClientId(null)}
+                    />
+                  )}
+                </>
               ))}
             </tbody>
           </table>

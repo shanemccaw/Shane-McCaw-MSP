@@ -40,6 +40,7 @@ router.get("/admin/emails", requireAdmin, async (req: Request, res: Response) =>
   const userIdParam = req.query["userId"];
   const unlinked = req.query["unlinked"] === "true";
   const linked = req.query["linked"] === "true";
+  const domainParam = req.query["domain"];
 
   type WhereCondition = ReturnType<typeof eq> | ReturnType<typeof isNull> | ReturnType<typeof isNotNull>;
   const conditions: WhereCondition[] = [];
@@ -50,6 +51,10 @@ router.get("/admin/emails", requireAdmin, async (req: Request, res: Response) =>
     conditions.push(isNull(emailsTable.linkedUserId));
   } else if (linked) {
     conditions.push(isNotNull(emailsTable.linkedUserId));
+  }
+
+  if (domainParam && typeof domainParam === "string") {
+    conditions.push(eq(emailsTable.senderDomain, domainParam.toLowerCase().trim()));
   }
 
   const baseQuery = conditions.length > 0
