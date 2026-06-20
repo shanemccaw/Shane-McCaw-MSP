@@ -2,7 +2,7 @@ import { Router, type IRouter, type Request, type Response } from "express";
 import { db, projectsTable, clientServicesTable, servicesTable, workflowStepsTable, kanbanTasksTable, documentsTable, reportsTable, invoicesTable, messagesTable, notificationsTable, projectUpdatesTable, usersTable, contractsTable, passwordResetTokensTable, workflowTemplateStepsTable, workflowTemplateStepTasksTable, contractTemplatesTable, impersonationTokensTable, statusReportsTable, deviceTokensTable, projectClosuresTable } from "@workspace/db";
 import { eq, and, desc, asc, count, sql, inArray, gte } from "drizzle-orm";
 import { requireAuth, requireAdmin } from "../middlewares/requireAuth";
-import { sendEmail, purchaseConfirmationEmail, onboardingConfirmationEmail, adminPurchaseAlertEmail, closureRequestEmail, statusReportReplyEmail } from "../lib/mailer";
+import { sendEmail, purchaseConfirmationEmail, onboardingConfirmationEmail, adminPurchaseAlertEmail, closureRequestEmail, statusReportReplyEmail, clientThreadReplyEmail, adminThreadReplyEmail } from "../lib/mailer";
 import { sendAdminSms } from "../lib/sms";
 import { sendPushNotifications } from "../lib/push";
 import multer from "multer";
@@ -2802,6 +2802,57 @@ router.post("/portal/status-reports/:id/resolve", requireAuth, async (req: Reque
   res.json(updated);
 });
 
+// ─── PORTAL: Client follow-up reply to a thread ──────────────────────────────
+
+router.post("/portal/status-reports/:id/thread", requireAuth, async (req: Request, res: Response) => {
+  const userId = req.user!.id;
+  const id = parseInt(String(req.params.id ?? ""), 10);
+  if (isNaN(id)) { res.status(400).json({ error: "Invalid ID" }); return; }
+
+  const { content } = req.body as { content?: string };
+  if (!content?.trim()) { res.status(400).json({ error: "content is required" }); return; }
+
+  const [report] = await db.select().from(statusReportsTable)
+    .where(and(
+      eq(statusReportsTable.id, id),
+      eq(statusReportsTable.clientUserId, userId),
+      eq(statusReportsTable.reportStatus, "sent"),
+    ));
+  if (!report) { res.status(404).json({ error: "Not found" }); return; }
+  if (report.clientStatus !== "has_questions") {
+    res.status(409).json({ error: "Report is not awaiting questions" }); return;
+  }
+  if (!report.adminReply) {
+    res.status(409).json({ error: "Cannot follow up until the consultant has replied" }); return;
+  }
+
+  const newMessage = { sender: "client" as const, content: content.trim(), timestamp: new Date().toISOString() };
+  const updatedThread = [...(report.replyThread ?? []), newMessage];
+
+  const [updated] = await db.update(statusReportsTable)
+    .set({ replyThread: updatedThread, updatedAt: new Date() })
+    .where(eq(statusReportsTable.id, id))
+    .returning();
+
+  // Notify Shane by email (fire-and-forget)
+  const adminEmailAddr = process.env.ADMIN_EMAIL ?? process.env.CRM_ADMIN_EMAIL;
+  if (adminEmailAddr) {
+    const [client] = await db.select({ name: usersTable.name }).from(usersTable).where(eq(usersTable.id, userId));
+    void sendEmail(
+      adminEmailAddr,
+      `Client follow-up on status report: ${report.title}`,
+      clientThreadReplyEmail({
+        clientName: client?.name ?? "",
+        reportTitle: report.title,
+        replyContent: content.trim(),
+        projectId: report.projectId,
+      }),
+    );
+  }
+
+  res.json(updated);
+});
+
 // ─── ADMIN: Status Report Reply ──────────────────────────────────────────────
 
 router.post("/admin/status-reports/:id/reply", requireAdmin, async (req: Request, res: Response) => {
@@ -2852,6 +2903,61 @@ router.post("/admin/status-reports/:id/reply", requireAdmin, async (req: Request
           clientName: client.name ?? "",
           reportTitle: report.title,
           adminReply: reply.trim(),
+          projectId: report.projectId,
+        }),
+      );
+    }
+  }
+
+  res.json(updated);
+});
+
+// ─── ADMIN: Thread reply to client follow-up ─────────────────────────────────
+
+router.post("/admin/status-reports/:id/thread", requireAdmin, async (req: Request, res: Response) => {
+  const id = parseInt(String(req.params.id ?? ""), 10);
+  if (isNaN(id)) { res.status(400).json({ error: "Invalid ID" }); return; }
+
+  const { content } = req.body as { content?: string };
+  if (!content?.trim()) { res.status(400).json({ error: "content is required" }); return; }
+
+  const [report] = await db.select().from(statusReportsTable).where(eq(statusReportsTable.id, id));
+  if (!report) { res.status(404).json({ error: "Not found" }); return; }
+  if (report.clientStatus !== "has_questions") {
+    res.status(409).json({ error: "This report has no active client question" }); return;
+  }
+
+  const newMessage = { sender: "admin" as const, content: content.trim(), timestamp: new Date().toISOString() };
+  const updatedThread = [...(report.replyThread ?? []), newMessage];
+
+  const [updated] = await db.update(statusReportsTable)
+    .set({ replyThread: updatedThread, updatedAt: new Date() })
+    .where(eq(statusReportsTable.id, id))
+    .returning();
+
+  // Notify client via in-app notification + email (fire-and-forget)
+  if (report.clientUserId) {
+    const linkPath = report.projectId
+      ? `/portal/projects/${report.projectId}`
+      : "/portal/projects";
+    void db.insert(notificationsTable).values({
+      userId: report.clientUserId,
+      title: `New reply on: ${report.title}`,
+      body: "Shane has replied to your follow-up message on a status report.",
+      type: "project_update",
+      linkPath,
+    });
+    const [client] = await db.select({ email: usersTable.email, name: usersTable.name })
+      .from(usersTable)
+      .where(eq(usersTable.id, report.clientUserId));
+    if (client?.email) {
+      void sendEmail(
+        client.email,
+        `Reply to your follow-up on: ${report.title}`,
+        adminThreadReplyEmail({
+          clientName: client.name ?? "",
+          reportTitle: report.title,
+          replyContent: content.trim(),
           projectId: report.projectId,
         }),
       );

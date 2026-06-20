@@ -4,6 +4,12 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import StatusReportForm, { type StatusReport as SRType } from "@/components/StatusReportForm";
 
+interface ThreadMessage {
+  sender: "client" | "admin";
+  content: string;
+  timestamp: string;
+}
+
 interface StatusReport {
   id: number;
   projectId: number | null;
@@ -17,6 +23,10 @@ interface StatusReport {
   nextSteps: unknown[];
   reportDate: string | null;
   sentAt: string | null;
+  clientStatus?: "pending" | "accepted" | "has_questions";
+  clientQuestion?: string | null;
+  adminReply?: string | null;
+  replyThread?: ThreadMessage[];
   createdAt: string;
   updatedAt: string;
 }

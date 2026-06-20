@@ -428,6 +428,7 @@ export const statusReportsTable = pgTable("status_reports", {
   clientStatus: text("client_status", { enum: ["pending", "accepted", "has_questions"] }).notNull().default("pending"),
   clientQuestion: text("client_question"),
   adminReply: text("admin_reply"),
+  replyThread: jsonb("reply_thread").$type<Array<{ sender: "client" | "admin"; content: string; timestamp: string }>>().notNull().default([]),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });

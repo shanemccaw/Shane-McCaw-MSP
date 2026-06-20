@@ -4,6 +4,12 @@ import { useAuth } from "@/contexts/AuthContext";
 interface Activity { title: string; description: string; completionStatus?: string | null; completionNotes?: string | null; }
 interface NextStep { label: string; title: string; description: string; kanbanTaskId?: number | null; }
 
+export interface ThreadMessage {
+  sender: "client" | "admin";
+  content: string;
+  timestamp: string;
+}
+
 export interface StatusReport {
   id: number;
   projectId: number | null;
@@ -17,6 +23,10 @@ export interface StatusReport {
   nextSteps: NextStep[];
   reportDate: string | null;
   sentAt: string | null;
+  clientStatus?: "pending" | "accepted" | "has_questions";
+  clientQuestion?: string | null;
+  adminReply?: string | null;
+  replyThread?: ThreadMessage[];
   createdAt: string;
   updatedAt: string;
 }
@@ -127,6 +137,9 @@ export default function StatusReportForm({
   const [savedReport, setSavedReport] = useState<StatusReport | null>(initialReport ?? null);
   const [pushLoading, setPushLoading] = useState<Record<number, boolean>>({});
   const [pushAllLoading, setPushAllLoading] = useState(false);
+  const [threadDraft, setThreadDraft] = useState("");
+  const [threadSending, setThreadSending] = useState(false);
+  const [liveReport, setLiveReport] = useState<StatusReport | null>(initialReport ?? null);
 
   const loadProjects = useCallback(async () => {
     if (lockedProjectId) return;
@@ -367,6 +380,25 @@ export default function StatusReportForm({
       setAiError("AI generation failed. Check your connection and try again.");
     } finally {
       setAiLoading(null);
+    }
+  };
+
+  const handleThreadReply = async () => {
+    if (!currentReportId || !threadDraft.trim()) return;
+    setThreadSending(true);
+    try {
+      const res = await fetchWithAuth(`/api/admin/status-reports/${currentReportId}/thread`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content: threadDraft.trim() }),
+      });
+      if (res.ok) {
+        const updated = await res.json() as StatusReport;
+        setLiveReport(updated);
+        setThreadDraft("");
+      }
+    } finally {
+      setThreadSending(false);
     }
   };
 
@@ -931,6 +963,100 @@ export default function StatusReportForm({
                 </div>
               )}
             </section>
+
+            {/* Client Conversation Thread — shown when client has a question or follow-ups */}
+            {(() => {
+              const report = liveReport ?? savedReport ?? initialReport;
+              if (!report?.clientQuestion && !(report?.replyThread ?? []).length) return null;
+              const thread = report?.replyThread ?? [];
+              return (
+                <section className="bg-white p-6 rounded-xl shadow-sm border border-amber-200">
+                  <div className="flex items-center gap-2 mb-4">
+                    <div className="w-7 h-7 rounded-lg bg-amber-100 flex items-center justify-center flex-shrink-0">
+                      <svg className="w-4 h-4 text-amber-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
+                      </svg>
+                    </div>
+                    <h3 className="text-base font-bold text-[#0A2540]">Client Conversation</h3>
+                    <span className={`ml-auto text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full border ${report?.clientStatus === "has_questions" ? "bg-amber-50 text-amber-700 border-amber-200" : report?.clientStatus === "accepted" ? "bg-emerald-50 text-emerald-700 border-emerald-200" : "bg-gray-100 text-gray-500 border-gray-200"}`}>
+                      {report?.clientStatus === "has_questions" ? "Awaiting resolution" : report?.clientStatus === "accepted" ? "Resolved" : report?.clientStatus ?? ""}
+                    </span>
+                  </div>
+
+                  <div className="space-y-3">
+                    {/* Initial client question */}
+                    {report?.clientQuestion && (
+                      <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3">
+                        <div className="flex items-center gap-1.5 mb-1">
+                          <div className="w-4 h-4 rounded-full bg-amber-400 flex items-center justify-center flex-shrink-0">
+                            <span className="text-white text-[7px] font-bold">C</span>
+                          </div>
+                          <p className="text-[10px] font-semibold text-amber-700 uppercase tracking-wide">Client Question</p>
+                        </div>
+                        <p className="text-sm text-[#0A2540] leading-relaxed">{report.clientQuestion}</p>
+                      </div>
+                    )}
+
+                    {/* Initial admin reply */}
+                    {report?.adminReply && (
+                      <div className="border-l-4 border-[#0078D4] pl-4 bg-blue-50/40 rounded-r-lg py-3 pr-3">
+                        <div className="flex items-center gap-1.5 mb-1">
+                          <div className="w-4 h-4 rounded-full bg-[#0078D4] flex items-center justify-center flex-shrink-0">
+                            <span className="text-white text-[7px] font-bold">SM</span>
+                          </div>
+                          <p className="text-[10px] font-semibold text-[#0078D4] uppercase tracking-wide">Your Initial Reply</p>
+                        </div>
+                        <p className="text-sm text-[#0A2540] leading-relaxed">{report.adminReply}</p>
+                      </div>
+                    )}
+
+                    {/* Thread follow-up messages */}
+                    {thread.length > 0 && (
+                      <div className="space-y-2 pl-2">
+                        {thread.map((msg, i) => (
+                          <div key={i} className={`rounded-lg px-4 py-3 ${msg.sender === "client" ? "bg-amber-50 border border-amber-200 ml-4" : "bg-white border border-[#0078D4]/30"}`}>
+                            <div className="flex items-center gap-1.5 mb-1">
+                              <div className={`w-4 h-4 rounded-full flex items-center justify-center flex-shrink-0 ${msg.sender === "client" ? "bg-amber-400" : "bg-[#0078D4]"}`}>
+                                <span className="text-white text-[7px] font-bold">{msg.sender === "client" ? "C" : "SM"}</span>
+                              </div>
+                              <p className="text-[10px] font-semibold text-gray-500">
+                                {msg.sender === "client" ? "Client" : "You"} · {new Date(msg.timestamp).toLocaleDateString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
+                              </p>
+                            </div>
+                            <p className="text-sm text-[#0A2540] leading-relaxed">{msg.content}</p>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Reply box — only when still in has_questions state */}
+                    {report?.clientStatus === "has_questions" && report?.adminReply && (
+                      <div className="space-y-2 pt-1">
+                        <textarea
+                          value={threadDraft}
+                          onChange={e => setThreadDraft(e.target.value)}
+                          placeholder="Reply to client follow-up…"
+                          rows={3}
+                          className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2.5 resize-none focus:outline-none focus:ring-2 focus:ring-[#0078D4] bg-white"
+                        />
+                        <button
+                          onClick={() => void handleThreadReply()}
+                          disabled={!threadDraft.trim() || threadSending}
+                          className="flex items-center gap-2 text-sm font-semibold text-white bg-[#0078D4] hover:bg-[#0078D4]/90 px-4 py-2 rounded-lg transition-colors disabled:opacity-50"
+                        >
+                          {threadSending ? (
+                            <div className="w-3.5 h-3.5 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+                          ) : (
+                            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" /></svg>
+                          )}
+                          Send Reply
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </section>
+              );
+            })()}
           </div>
         </div>
     </div>
