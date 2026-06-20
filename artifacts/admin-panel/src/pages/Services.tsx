@@ -33,6 +33,11 @@ interface WizardStep {
   options: WizardOption[];
 }
 
+interface WorkflowTemplateMeta {
+  id: number;
+  name: string;
+}
+
 interface Service {
   id: number;
   slug: string | null;
@@ -60,6 +65,7 @@ interface Service {
   pageHref: string | null;
   sortOrder: number;
   orderWorkflow: WizardStep[] | null;
+  workflowTemplateId: number | null;
 }
 
 interface Client {
@@ -501,6 +507,7 @@ export default function ServicesPage() {
   const { toast } = useToast();
   const [services, setServices] = useState<Service[]>([]);
   const [clients, setClients] = useState<Client[]>([]);
+  const [workflowTemplates, setWorkflowTemplates] = useState<WorkflowTemplateMeta[]>([]);
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<Service | null>(null);
   const [form, setForm] = useState<Partial<Service>>({});
@@ -524,13 +531,15 @@ export default function ServicesPage() {
   const fetchAll = useCallback(async () => {
     setLoading(true);
     try {
-      const [svcRes, clientRes] = await Promise.all([
+      const [svcRes, clientRes, wfRes] = await Promise.all([
         fetchWithAuth("/api/admin/services"),
         fetchWithAuth("/api/admin/clients"),
+        fetchWithAuth("/api/admin/workflow-templates"),
       ]);
       if (svcRes.ok) setServices(await svcRes.json() as Service[]);
       else toast({ title: "Failed to load services", variant: "destructive" });
       if (clientRes.ok) setClients(await clientRes.json() as Client[]);
+      if (wfRes.ok) setWorkflowTemplates(await wfRes.json() as WorkflowTemplateMeta[]);
     } catch { toast({ title: "Could not reach API server", variant: "destructive" }); }
     finally { setLoading(false); }
   }, [fetchWithAuth, toast]);
@@ -962,6 +971,21 @@ export default function ServicesPage() {
                     onChange={e => setField("isPublic", e.target.checked)}
                     className="rounded" />
                   <label htmlFor="isPublic" className="text-sm font-medium text-gray-700">Visible on public site</label>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">Linked Workflow Template</label>
+                  <select
+                    value={form.workflowTemplateId ?? ""}
+                    onChange={e => setField("workflowTemplateId", e.target.value ? Number(e.target.value) : null)}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4]"
+                  >
+                    <option value="">— None —</option>
+                    {workflowTemplates.map(wf => (
+                      <option key={wf.id} value={wf.id}>{wf.name}</option>
+                    ))}
+                  </select>
+                  <p className="mt-1 text-xs text-gray-400">When a client activates this service, these workflow steps are seeded automatically.</p>
                 </div>
 
                 <div className="pt-4 border-t border-gray-100">

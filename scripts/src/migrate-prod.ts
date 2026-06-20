@@ -32,6 +32,25 @@ const migrations = [
       ALTER TABLE "contracts" ADD COLUMN IF NOT EXISTS "wizard_selections" jsonb;
     `,
   },
+  {
+    name: "0001_services_workflow_template_id",
+    sql: `
+      ALTER TABLE "services" ADD COLUMN IF NOT EXISTS "workflow_template_id" integer;
+      ALTER TABLE "services"
+        DROP CONSTRAINT IF EXISTS "services_workflow_template_id_fk",
+        ADD CONSTRAINT "services_workflow_template_id_fk"
+          FOREIGN KEY ("workflow_template_id")
+          REFERENCES "workflow_templates"("id")
+          ON DELETE SET NULL
+          DEFERRABLE INITIALLY DEFERRED;
+      UPDATE "services" s
+        SET "workflow_template_id" = pt."workflow_template_id"
+        FROM "project_templates" pt
+        WHERE pt."service_id" = s."id"
+          AND pt."workflow_template_id" IS NOT NULL
+          AND s."workflow_template_id" IS NULL;
+    `,
+  },
 ];
 
 async function main(): Promise<void> {

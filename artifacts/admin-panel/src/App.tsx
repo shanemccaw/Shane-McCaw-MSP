@@ -7,7 +7,6 @@ import DashboardShell from "@/components/DashboardShell";
 import ArticlesPage from "@/pages/Articles";
 import ServicesPage from "@/pages/Services";
 import WorkflowsPage from "@/pages/Workflows";
-import ProjectTemplatesPage from "@/pages/ProjectTemplates";
 import ContractTemplatesPage from "@/pages/ContractTemplates";
 import EngagementProjectsPage from "@/pages/EngagementProjects";
 import LeadsPage from "@/pages/crm/Leads";
@@ -67,9 +66,6 @@ function Router() {
       </Route>
       <Route path="/workflows">
         <RequireAdmin><DashboardShell><WorkflowsPage /></DashboardShell></RequireAdmin>
-      </Route>
-      <Route path="/project-templates">
-        <RequireAdmin><DashboardShell><ProjectTemplatesPage /></DashboardShell></RequireAdmin>
       </Route>
       <Route path="/contract-templates">
         <RequireAdmin><DashboardShell><ContractTemplatesPage /></DashboardShell></RequireAdmin>

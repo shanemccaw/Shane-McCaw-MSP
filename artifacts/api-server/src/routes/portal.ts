@@ -1089,33 +1089,22 @@ async function provisionOnboardingProject(
     startDate,
   }).returning();
 
-  // ── Look up project template for the primary service (used in step seeding below) ──
-  const primaryServiceId = orderedServices[0]?.id;
-  const [projTemplate] = primaryServiceId
-    ? await db.select().from(projectTemplatesTable)
-        .where(eq(projectTemplatesTable.serviceId, primaryServiceId))
-        .limit(1)
-    : [undefined];
+  // ── Look up workflow template steps for the primary service directly ──────
+  const primaryService = orderedServices[0];
+  const resolvedWorkflowTemplateId = primaryService?.workflowTemplateId ?? null;
 
-  // New: workflow template steps (each step owns its task templates)
+  // Workflow template steps (each step owns its task templates)
   let workflowTemplateSteps: Array<{ id: number; title: string; description: string | null; order: number }> = [];
-  if (projTemplate?.workflowTemplateId) {
+  if (resolvedWorkflowTemplateId) {
     workflowTemplateSteps = await db
       .select()
       .from(workflowTemplateStepsTable)
-      .where(eq(workflowTemplateStepsTable.workflowTemplateId, projTemplate.workflowTemplateId))
+      .where(eq(workflowTemplateStepsTable.workflowTemplateId, resolvedWorkflowTemplateId))
       .orderBy(asc(workflowTemplateStepsTable.order));
   }
 
-  // Legacy fallback: old-style flat task list (no step association)
-  let legacyTemplateTasks: Array<{ title: string; description: string | null }> = [];
-  if (projTemplate && workflowTemplateSteps.length === 0) {
-    legacyTemplateTasks = await db
-      .select()
-      .from(projectTemplateTasksTable)
-      .where(eq(projectTemplateTasksTable.projectTemplateId, projTemplate.id))
-      .orderBy(asc(projectTemplateTasksTable.order));
-  }
+  // Legacy fallback not needed — no more project_templates lookups
+  const legacyTemplateTasks: Array<{ title: string; description: string | null }> = [];
 
   // ── Loop over every service: assign clientService, link contract, create invoice ──
   for (let i = 0; i < orderedServices.length; i++) {
@@ -2371,20 +2360,28 @@ router.post("/admin/client-services", requireAdmin, async (req: Request, res: Re
       body: null, type: "general", linkPath: "/portal/services",
     });
 
-    // Auto-generate project from linked project template (if any)
-    const [projTemplate] = await db
-      .select()
-      .from(projectTemplatesTable)
-      .where(eq(projectTemplatesTable.serviceId, serviceId))
-      .limit(1);
+    // Auto-generate project from the service's directly linked workflow template (if any)
+    const resolvedWorkflowTemplateId = service.workflowTemplateId ?? null;
+    let templateWorkflowSteps: Array<{ id: number; title: string; description: string | null; order: number }> = [];
+    if (resolvedWorkflowTemplateId) {
+      templateWorkflowSteps = await db
+        .select()
+        .from(workflowTemplateStepsTable)
+        .where(eq(workflowTemplateStepsTable.workflowTemplateId, resolvedWorkflowTemplateId))
+        .orderBy(asc(workflowTemplateStepsTable.order));
+    }
 
     let resolvedProjectId: number | null = projectId ?? null;
     let templateStepsSeeded = false;
 
-    if (projTemplate) {
+    if (templateWorkflowSteps.length > 0) {
+      const [client] = await db.select({ name: usersTable.name, company: usersTable.company, email: usersTable.email })
+        .from(usersTable).where(eq(usersTable.id, clientUserId));
+      const clientLabel = client?.name ?? client?.company ?? client?.email ?? String(clientUserId);
+
       const [autoProject] = await db.insert(projectsTable).values({
-        title: projTemplate.name,
-        description: `Auto-generated from service: ${service.name}`,
+        title: `${clientLabel} — ${service.name}`,
+        description: service.description ?? `Auto-generated from service: ${service.name}`,
         status: "active",
         clientUserId,
         progress: 0,
@@ -2398,26 +2395,43 @@ router.post("/admin/client-services", requireAdmin, async (req: Request, res: Re
         .set({ projectId: autoProject.id })
         .where(eq(clientServicesTable.id, cs.id));
 
-      // Create workflow_steps from project template tasks (the deliverable task list)
-      const templateTasks = await db
-        .select()
-        .from(projectTemplateTasksTable)
-        .where(eq(projectTemplateTasksTable.projectTemplateId, projTemplate.id))
-        .orderBy(asc(projectTemplateTasksTable.order));
+      // Seed workflow steps from the workflow template; first step auto-starts
+      const createdSteps = await db.insert(workflowStepsTable).values(
+        templateWorkflowSteps.map((s, idx) => ({
+          clientServiceId: cs.id,
+          projectId: autoProject.id,
+          title: s.title,
+          description: s.description ?? "",
+          status: idx === 0 ? ("in_progress" as const) : ("pending" as const),
+          order: idx + 1,
+          workflowTemplateStepId: s.id,
+        }))
+      ).returning();
 
-      if (templateTasks.length > 0) {
-        await db.insert(workflowStepsTable).values(
-          templateTasks.map((t, idx) => ({
-            clientServiceId: cs.id,
-            projectId: autoProject.id,
-            title: t.title,
-            description: t.description,
-            status: "pending" as const,
-            order: idx,
-          }))
-        );
-        templateStepsSeeded = true;
+      // Seed kanban tasks for the first step from project_template_tasks (via workflowTemplateStepId)
+      const firstStep = createdSteps[0];
+      if (firstStep?.workflowTemplateStepId) {
+        const step1Tasks = await db
+          .select()
+          .from(projectTemplateTasksTable)
+          .where(eq(projectTemplateTasksTable.workflowTemplateStepId, firstStep.workflowTemplateStepId))
+          .orderBy(asc(projectTemplateTasksTable.order));
+        if (step1Tasks.length > 0) {
+          await db.insert(kanbanTasksTable).values(
+            step1Tasks.map((t, idx) => ({
+              projectId: autoProject.id,
+              workflowStepId: firstStep.id,
+              groupName: t.groupName ?? null,
+              title: t.title,
+              description: t.description ?? null,
+              column: "backlog" as const,
+              order: idx,
+            }))
+          );
+        }
       }
+
+      templateStepsSeeded = true;
 
       // Notify client about the new project
       await db.insert(notificationsTable).values({
