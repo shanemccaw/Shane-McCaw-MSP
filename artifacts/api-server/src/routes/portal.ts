@@ -2,7 +2,7 @@ import { Router, type IRouter, type Request, type Response } from "express";
 import { db, projectsTable, clientServicesTable, servicesTable, workflowStepsTable, kanbanTasksTable, documentsTable, reportsTable, invoicesTable, messagesTable, notificationsTable, projectUpdatesTable, usersTable, contractsTable, passwordResetTokensTable, workflowTemplateStepsTable, workflowTemplateStepTasksTable, contractTemplatesTable, impersonationTokensTable, statusReportsTable, deviceTokensTable, projectClosuresTable } from "@workspace/db";
 import { eq, and, desc, asc, count, sql, inArray, gte } from "drizzle-orm";
 import { requireAuth, requireAdmin } from "../middlewares/requireAuth";
-import { sendEmail, purchaseConfirmationEmail, onboardingConfirmationEmail, adminPurchaseAlertEmail, closureRequestEmail } from "../lib/mailer";
+import { sendEmail, purchaseConfirmationEmail, onboardingConfirmationEmail, adminPurchaseAlertEmail, closureRequestEmail, statusReportReplyEmail } from "../lib/mailer";
 import { sendAdminSms } from "../lib/sms";
 import { sendPushNotifications } from "../lib/push";
 import multer from "multer";
@@ -2842,6 +2842,22 @@ router.post("/admin/status-reports/:id/reply", requireAdmin, async (req: Request
       type: "project_update",
       linkPath,
     });
+
+    const [client] = await db.select({ email: usersTable.email, name: usersTable.name })
+      .from(usersTable)
+      .where(eq(usersTable.id, report.clientUserId));
+    if (client?.email) {
+      await sendEmail(
+        client.email,
+        `Reply to your question on: ${report.title}`,
+        statusReportReplyEmail({
+          clientName: client.name ?? "",
+          reportTitle: report.title,
+          adminReply: reply.trim(),
+          projectId: report.projectId,
+        }),
+      );
+    }
   }
 
   res.json(updated);
