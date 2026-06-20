@@ -814,6 +814,16 @@ async function provisionOnboardingProject(
           order: idx + 1,
         }))
       );
+      // ── Seed kanban tasks for the project board (one-time, primary service) ─
+      await db.insert(kanbanTasksTable).values(
+        primaryTemplateTasks.map((t, idx) => ({
+          projectId: project.id,
+          title: t.title,
+          description: t.description ?? "",
+          column: "backlog" as const,
+          order: idx,
+        }))
+      );
     } else {
       await seedDefaultWorkflowSteps(newCs.id, project.id, svc.slug ?? "");
     }
