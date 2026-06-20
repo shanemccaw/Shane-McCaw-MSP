@@ -20,6 +20,16 @@ import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 
 SplashScreen.preventAutoHideAsync();
 
+// Register the "MESSAGE" category so iOS shows a Reply text-input action on
+// client-message notifications. Must be called before any notification arrives.
+Notifications.setNotificationCategoryAsync("MESSAGE", [
+  {
+    identifier: "REPLY",
+    buttonTitle: "Reply",
+    textInput: { submitButtonTitle: "Send", placeholder: "Message…" },
+  },
+]).catch(() => null);
+
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
     shouldShowBanner: true,
@@ -49,6 +59,18 @@ function PushSetup() {
       }
     }
 
+    async function handleReply(clientId: string, text: string) {
+      try {
+        await fetchWithAuth("/api/portal/messages", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ body: text, clientId: parseInt(clientId, 10) }),
+        });
+      } catch {
+        // Reply failure is silent — user can open the app to retry
+      }
+    }
+
     // Cold-start: launched by tapping a push notification while app was terminated.
     // We persist the last-handled notification identifier so that normal relaunches
     // (force-quit then reopen) don't re-navigate to a stale notification.
@@ -61,18 +83,26 @@ function PushSetup() {
         if (lastHandled === notifId) return;
         await AsyncStorage.setItem(LAST_HANDLED_KEY, notifId).catch(() => null);
         const data = response.notification.request.content.data as Record<string, string | undefined>;
-        handleNotificationData(data);
+        if (response.actionIdentifier === "REPLY" && response.userText && data.clientId) {
+          await handleReply(data.clientId, response.userText);
+        } else {
+          handleNotificationData(data);
+        }
       })
       .catch(() => null);
 
-    // Foreground / background tap routing
-    const tapSub = Notifications.addNotificationResponseReceivedListener((response) => {
+    // Foreground / background tap routing and inline reply handling
+    const tapSub = Notifications.addNotificationResponseReceivedListener(async (response) => {
       const data = response.notification.request.content.data as Record<string, string | undefined>;
-      handleNotificationData(data);
+      if (response.actionIdentifier === "REPLY" && response.userText && data.clientId) {
+        await handleReply(data.clientId, response.userText);
+      } else {
+        handleNotificationData(data);
+      }
     });
 
     return () => tapSub.remove();
-  }, [user, router]);
+  }, [user, router, fetchWithAuth]);
 
   useEffect(() => {
     if (!user || registered.current) return;

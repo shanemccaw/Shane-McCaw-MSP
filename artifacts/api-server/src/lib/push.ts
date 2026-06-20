@@ -7,6 +7,7 @@ interface ExpoPushMessage {
   body?: string;
   data?: Record<string, unknown>;
   badge?: number;
+  categoryIdentifier?: string;
 }
 
 export async function sendPushNotifications(
@@ -14,6 +15,7 @@ export async function sendPushNotifications(
   title: string,
   body: string,
   data?: Record<string, unknown>,
+  categoryIdentifier?: string,
 ): Promise<void> {
   if (!tokens.length) return;
 
@@ -23,6 +25,7 @@ export async function sendPushNotifications(
     title,
     body,
     data: data ?? {},
+    ...(categoryIdentifier ? { categoryIdentifier } : {}),
   }));
 
   try {

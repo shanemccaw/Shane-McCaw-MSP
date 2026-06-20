@@ -1920,6 +1920,7 @@ router.post("/portal/messages", requireAuth, async (req: Request, res: Response)
             "New Client Message",
             `${clientName}: ${body.trim().slice(0, 80)}`,
             { screen: "conversation", clientId: String(senderId) },
+            "MESSAGE",
           );
         })
         .catch(() => null);
