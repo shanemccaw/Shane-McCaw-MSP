@@ -28,11 +28,31 @@ function useUnreadCount() {
   return data?.reduce((sum, c) => sum + (c.unreadCount || 0), 0) ?? 0;
 }
 
+interface UnreadEmailCountResponse {
+  count: number;
+}
+
+function useUnreadEmailCount() {
+  const { fetchWithAuth } = useAuth();
+  const { data } = useQuery<UnreadEmailCountResponse>({
+    queryKey: ["admin-emails-unread-count"],
+    queryFn: async () => {
+      const res = await fetchWithAuth("/api/admin/emails/unread-count");
+      if (!res.ok) return { count: 0 };
+      return res.json() as Promise<UnreadEmailCountResponse>;
+    },
+    refetchInterval: 30000,
+    staleTime: 10000,
+  });
+  return data?.count ?? 0;
+}
+
 export default function TabLayout() {
   const colors = useColors();
   const isIOS = Platform.OS === "ios";
   const isWeb = Platform.OS === "web";
   const unread = useUnreadCount();
+  const unreadEmails = useUnreadEmailCount();
 
   return (
     <Tabs
@@ -93,6 +113,7 @@ export default function TabLayout() {
         name="email"
         options={{
           title: "Email",
+          tabBarBadge: unreadEmails > 0 ? unreadEmails : undefined,
           tabBarIcon: ({ color }) =>
             isIOS ? (
               <SymbolView name="envelope" tintColor={color} size={24} />
