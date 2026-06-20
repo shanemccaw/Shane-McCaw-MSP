@@ -3,7 +3,6 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import { Toaster } from "@/components/ui/toaster";
 import LoginPage from "@/pages/Login";
-import DashboardPage from "@/pages/Dashboard";
 import PortalProjects from "@/pages/portal/PortalProjects";
 import PortalProjectDetail from "@/pages/portal/PortalProjectDetail";
 import PortalServices from "@/pages/portal/PortalServices";

@@ -274,8 +274,8 @@ export default function Dashboard2() {
   const activeService = services?.[activeIdx] ?? null;
   const activeConfig = activeService ? getVisualConfig(activeService.service) : DEFAULT_VISUAL;
 
-  const activeReports = activeService?.projectId != null
-    ? reports.filter(r => r.projectId === activeService.projectId)
+  const activeReports = activeService
+    ? reports.filter(r => r.projectId == null || r.projectId === activeService.projectId)
     : [];
 
   const activeDocuments = activeService?.projectId != null
