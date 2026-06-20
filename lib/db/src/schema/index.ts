@@ -431,3 +431,44 @@ export const statusReportsTable = pgTable("status_reports", {
 
 export type InsertStatusReport = typeof statusReportsTable.$inferInsert;
 export type StatusReport = typeof statusReportsTable.$inferSelect;
+
+// Ingested emails (from Microsoft Graph / Exchange)
+export const emailsTable = pgTable("emails", {
+  id: serial("id").primaryKey(),
+  messageId: text("message_id").notNull().unique(),
+  subject: text("subject"),
+  senderAddress: text("sender_address").notNull(),
+  senderDomain: text("sender_domain").notNull(),
+  bodyPreview: text("body_preview"),
+  receivedAt: timestamp("received_at").notNull(),
+  rawFrom: text("raw_from"),
+  linkedUserId: integer("linked_user_id").references(() => usersTable.id),
+  ingestedAt: timestamp("ingested_at").notNull().defaultNow(),
+});
+
+export type InsertEmail = typeof emailsTable.$inferInsert;
+export type Email = typeof emailsTable.$inferSelect;
+
+// Domain → client mapping rules for email auto-assignment
+export const emailDomainRulesTable = pgTable("email_domain_rules", {
+  id: serial("id").primaryKey(),
+  domain: text("domain").notNull().unique(),
+  linkedUserId: integer("linked_user_id").notNull().references(() => usersTable.id),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export type InsertEmailDomainRule = typeof emailDomainRulesTable.$inferInsert;
+export type EmailDomainRule = typeof emailDomainRulesTable.$inferSelect;
+
+// Microsoft Graph webhook subscription tracking
+export const graphSubscriptionsTable = pgTable("graph_subscriptions", {
+  id: serial("id").primaryKey(),
+  subscriptionId: text("subscription_id").notNull().unique(),
+  resource: text("resource").notNull(),
+  expirationDateTime: timestamp("expiration_date_time").notNull(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export type InsertGraphSubscription = typeof graphSubscriptionsTable.$inferInsert;
+export type GraphSubscription = typeof graphSubscriptionsTable.$inferSelect;

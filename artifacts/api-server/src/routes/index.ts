@@ -16,6 +16,8 @@ import adminEngagementProjectsRouter from "./admin-engagement-projects";
 import adminAiDraftRouter from "./admin-ai-draft";
 import adminOverviewRouter from "./admin-overview";
 import adminMobileRouter from "./admin-mobile";
+import adminEmailsRouter from "./admin-emails";
+import graphWebhookRouter from "./graph-webhook";
 
 const router: IRouter = Router();
 
@@ -29,6 +31,8 @@ router.use(adminEngagementProjectsRouter);
 router.use(adminAiDraftRouter);
 router.use(adminOverviewRouter);
 router.use(adminMobileRouter);
+router.use(adminEmailsRouter);
+router.use(graphWebhookRouter);
 router.use(sharesRouter);
 router.use(authRouter);
 router.use(leadsRouter);

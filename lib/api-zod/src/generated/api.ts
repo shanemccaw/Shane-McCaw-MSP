@@ -148,3 +148,121 @@ export const UpdateLeadResponse = zod.object({
 })
 
 
+/**
+ * @summary List ingested emails (admin only)
+ */
+export const ListAdminEmailsQueryParams = zod.object({
+  "page": zod.coerce.number().optional(),
+  "limit": zod.coerce.number().optional(),
+  "userId": zod.coerce.number().optional(),
+  "linked": zod.coerce.boolean().optional(),
+  "unlinked": zod.coerce.boolean().optional()
+})
+
+export const ListAdminEmailsResponse = zod.object({
+  "emails": zod.array(zod.object({
+  "email": zod.object({
+  "id": zod.number(),
+  "messageId": zod.string(),
+  "subject": zod.string().nullish(),
+  "senderAddress": zod.string(),
+  "senderDomain": zod.string(),
+  "bodyPreview": zod.string().nullish(),
+  "receivedAt": zod.coerce.date(),
+  "rawFrom": zod.string().nullish(),
+  "linkedUserId": zod.number().nullish(),
+  "ingestedAt": zod.coerce.date()
+}),
+  "clientName": zod.string().nullish(),
+  "clientEmail": zod.string().nullish(),
+  "clientCompany": zod.string().nullish()
+})),
+  "total": zod.number(),
+  "page": zod.number(),
+  "limit": zod.number()
+})
+
+
+/**
+ * @summary Manually assign an email to a client (admin only)
+ */
+export const AssignAdminEmailParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const AssignAdminEmailBody = zod.object({
+  "userId": zod.number().nullish()
+})
+
+export const AssignAdminEmailResponse = zod.object({
+  "id": zod.number(),
+  "messageId": zod.string(),
+  "subject": zod.string().nullish(),
+  "senderAddress": zod.string(),
+  "senderDomain": zod.string(),
+  "bodyPreview": zod.string().nullish(),
+  "receivedAt": zod.coerce.date(),
+  "rawFrom": zod.string().nullish(),
+  "linkedUserId": zod.number().nullish(),
+  "ingestedAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Re-run domain matching for a single email (admin only)
+ */
+export const RematchAdminEmailParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const RematchAdminEmailResponse = zod.object({
+  "id": zod.number(),
+  "messageId": zod.string(),
+  "subject": zod.string().nullish(),
+  "senderAddress": zod.string(),
+  "senderDomain": zod.string(),
+  "bodyPreview": zod.string().nullish(),
+  "receivedAt": zod.coerce.date(),
+  "rawFrom": zod.string().nullish(),
+  "linkedUserId": zod.number().nullish(),
+  "ingestedAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary List domain→client mapping rules (admin only)
+ */
+export const ListEmailDomainRulesResponseItem = zod.object({
+  "rule": zod.object({
+  "id": zod.number(),
+  "domain": zod.string(),
+  "linkedUserId": zod.number(),
+  "createdAt": zod.coerce.date()
+}),
+  "clientName": zod.string().nullish(),
+  "clientEmail": zod.string().nullish()
+})
+export const ListEmailDomainRulesResponse = zod.array(ListEmailDomainRulesResponseItem)
+
+
+/**
+ * @summary Create a domain→client mapping rule (admin only)
+ */
+export const CreateEmailDomainRuleBody = zod.object({
+  "domain": zod.string(),
+  "userId": zod.number()
+})
+
+
+/**
+ * @summary Delete a domain→client mapping rule (admin only)
+ */
+export const DeleteEmailDomainRuleParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const DeleteEmailDomainRuleResponse = zod.object({
+  "success": zod.boolean()
+})
+
+

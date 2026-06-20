@@ -201,6 +201,171 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /admin/emails:
+    get:
+      operationId: listAdminEmails
+      tags: [admin]
+      summary: List ingested emails (admin only)
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+        - name: limit
+          in: query
+          schema:
+            type: integer
+        - name: userId
+          in: query
+          schema:
+            type: integer
+        - name: linked
+          in: query
+          schema:
+            type: boolean
+        - name: unlinked
+          in: query
+          schema:
+            type: boolean
+      responses:
+        "200":
+          description: Paginated email list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IngestedEmailList"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /admin/emails/{id}:
+    patch:
+      operationId: assignAdminEmail
+      tags: [admin]
+      summary: Manually assign an email to a client (admin only)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AssignEmailInput"
+      responses:
+        "200":
+          description: Email updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IngestedEmail"
+        "404":
+          description: Email not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /admin/emails/{id}/rematch:
+    post:
+      operationId: rematchAdminEmail
+      tags: [admin]
+      summary: Re-run domain matching for a single email (admin only)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Email re-matched
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IngestedEmail"
+        "404":
+          description: Email not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /admin/email-domain-rules:
+    get:
+      operationId: listEmailDomainRules
+      tags: [admin]
+      summary: List domain→client mapping rules (admin only)
+      responses:
+        "200":
+          description: List of domain rules
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/EmailDomainRuleRow"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    post:
+      operationId: createEmailDomainRule
+      tags: [admin]
+      summary: Create a domain→client mapping rule (admin only)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateDomainRuleInput"
+      responses:
+        "201":
+          description: Rule created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EmailDomainRule"
+        "409":
+          description: Domain rule already exists
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /admin/email-domain-rules/{id}:
+    delete:
+      operationId: deleteEmailDomainRule
+      tags: [admin]
+      summary: Delete a domain→client mapping rule (admin only)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Rule deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessResponse"
+        "404":
+          description: Rule not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
 components:
   schemas:
     HealthStatus:
@@ -348,4 +513,99 @@ components:
         fromContactForm:
           type: integer
         fromLeadMagnet:
+          type: integer
+
+    IngestedEmail:
+      type: object
+      required: [id, messageId, senderAddress, senderDomain, receivedAt, ingestedAt]
+      properties:
+        id:
+          type: integer
+        messageId:
+          type: string
+        subject:
+          type: ["string", "null"]
+        senderAddress:
+          type: string
+        senderDomain:
+          type: string
+        bodyPreview:
+          type: ["string", "null"]
+        receivedAt:
+          type: string
+          format: date-time
+        rawFrom:
+          type: ["string", "null"]
+        linkedUserId:
+          type: ["integer", "null"]
+        ingestedAt:
+          type: string
+          format: date-time
+
+    IngestedEmailRow:
+      type: object
+      required: [email]
+      properties:
+        email:
+          $ref: "#/components/schemas/IngestedEmail"
+        clientName:
+          type: ["string", "null"]
+        clientEmail:
+          type: ["string", "null"]
+        clientCompany:
+          type: ["string", "null"]
+
+    IngestedEmailList:
+      type: object
+      required: [emails, total, page, limit]
+      properties:
+        emails:
+          type: array
+          items:
+            $ref: "#/components/schemas/IngestedEmailRow"
+        total:
+          type: integer
+        page:
+          type: integer
+        limit:
+          type: integer
+
+    EmailDomainRule:
+      type: object
+      required: [id, domain, linkedUserId, createdAt]
+      properties:
+        id:
+          type: integer
+        domain:
+          type: string
+        linkedUserId:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+
+    EmailDomainRuleRow:
+      type: object
+      required: [rule]
+      properties:
+        rule:
+          $ref: "#/components/schemas/EmailDomainRule"
+        clientName:
+          type: ["string", "null"]
+        clientEmail:
+          type: ["string", "null"]
+
+    AssignEmailInput:
+      type: object
+      properties:
+        userId:
+          type: ["integer", "null"]
+
+    CreateDomainRuleInput:
+      type: object
+      required: [domain, userId]
+      properties:
+        domain:
+          type: string
+        userId:
           type: integer

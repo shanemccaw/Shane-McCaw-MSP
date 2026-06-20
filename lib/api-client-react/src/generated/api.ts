@@ -20,14 +20,21 @@ import type {
 } from '@tanstack/react-query';
 
 import type {
+  AssignEmailInput,
   AuthResponse,
+  CreateDomainRuleInput,
+  EmailDomainRule,
+  EmailDomainRuleRow,
   ErrorResponse,
   HealthStatus,
+  IngestedEmail,
+  IngestedEmailList,
   Lead,
   LeadInput,
   LeadList,
   LeadStats,
   LeadUpdate,
+  ListAdminEmailsParams,
   ListLeadsParams,
   LoginInput,
   SuccessResponse
@@ -636,5 +643,449 @@ export const useUpdateLead = <TError = ErrorType<ErrorResponse>,
         TContext
       > => {
       return useMutation(getUpdateLeadMutationOptions(options));
+    }
+
+export const getListAdminEmailsUrl = (params?: ListAdminEmailsParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : value.toString())
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/admin/emails?${stringifiedParams}` : `/api/admin/emails`
+}
+
+/**
+ * @summary List ingested emails (admin only)
+ */
+export const listAdminEmails = async (params?: ListAdminEmailsParams, options?: RequestInit): Promise<IngestedEmailList> => {
+
+  return customFetch<IngestedEmailList>(getListAdminEmailsUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListAdminEmailsQueryKey = (params?: ListAdminEmailsParams,) => {
+    return [
+    `/api/admin/emails`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getListAdminEmailsQueryOptions = <TData = Awaited<ReturnType<typeof listAdminEmails>>, TError = ErrorType<ErrorResponse>>(params?: ListAdminEmailsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listAdminEmails>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListAdminEmailsQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listAdminEmails>>> = ({ signal }) => listAdminEmails(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listAdminEmails>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListAdminEmailsQueryResult = NonNullable<Awaited<ReturnType<typeof listAdminEmails>>>
+export type ListAdminEmailsQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary List ingested emails (admin only)
+ */
+
+export function useListAdminEmails<TData = Awaited<ReturnType<typeof listAdminEmails>>, TError = ErrorType<ErrorResponse>>(
+ params?: ListAdminEmailsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listAdminEmails>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListAdminEmailsQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getAssignAdminEmailUrl = (id: number,) => {
+
+
+
+
+  return `/api/admin/emails/${id}`
+}
+
+/**
+ * @summary Manually assign an email to a client (admin only)
+ */
+export const assignAdminEmail = async (id: number,
+    assignEmailInput: AssignEmailInput, options?: RequestInit): Promise<IngestedEmail> => {
+
+  return customFetch<IngestedEmail>(getAssignAdminEmailUrl(id),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      assignEmailInput,)
+  }
+);}
+
+
+
+
+export const getAssignAdminEmailMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof assignAdminEmail>>, TError,{id: number;data: BodyType<AssignEmailInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof assignAdminEmail>>, TError,{id: number;data: BodyType<AssignEmailInput>}, TContext> => {
+
+const mutationKey = ['assignAdminEmail'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof assignAdminEmail>>, {id: number;data: BodyType<AssignEmailInput>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  assignAdminEmail(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type AssignAdminEmailMutationResult = NonNullable<Awaited<ReturnType<typeof assignAdminEmail>>>
+    export type AssignAdminEmailMutationBody = BodyType<AssignEmailInput>
+    export type AssignAdminEmailMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Manually assign an email to a client (admin only)
+ */
+export const useAssignAdminEmail = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof assignAdminEmail>>, TError,{id: number;data: BodyType<AssignEmailInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof assignAdminEmail>>,
+        TError,
+        {id: number;data: BodyType<AssignEmailInput>},
+        TContext
+      > => {
+      return useMutation(getAssignAdminEmailMutationOptions(options));
+    }
+
+export const getRematchAdminEmailUrl = (id: number,) => {
+
+
+
+
+  return `/api/admin/emails/${id}/rematch`
+}
+
+/**
+ * @summary Re-run domain matching for a single email (admin only)
+ */
+export const rematchAdminEmail = async (id: number, options?: RequestInit): Promise<IngestedEmail> => {
+
+  return customFetch<IngestedEmail>(getRematchAdminEmailUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+export const getRematchAdminEmailMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof rematchAdminEmail>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof rematchAdminEmail>>, TError,{id: number}, TContext> => {
+
+const mutationKey = ['rematchAdminEmail'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof rematchAdminEmail>>, {id: number}> = (props) => {
+          const {id} = props ?? {};
+
+          return  rematchAdminEmail(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type RematchAdminEmailMutationResult = NonNullable<Awaited<ReturnType<typeof rematchAdminEmail>>>
+
+    export type RematchAdminEmailMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Re-run domain matching for a single email (admin only)
+ */
+export const useRematchAdminEmail = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof rematchAdminEmail>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof rematchAdminEmail>>,
+        TError,
+        {id: number},
+        TContext
+      > => {
+      return useMutation(getRematchAdminEmailMutationOptions(options));
+    }
+
+export const getListEmailDomainRulesUrl = () => {
+
+
+
+
+  return `/api/admin/email-domain-rules`
+}
+
+/**
+ * @summary List domain→client mapping rules (admin only)
+ */
+export const listEmailDomainRules = async ( options?: RequestInit): Promise<EmailDomainRuleRow[]> => {
+
+  return customFetch<EmailDomainRuleRow[]>(getListEmailDomainRulesUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListEmailDomainRulesQueryKey = () => {
+    return [
+    `/api/admin/email-domain-rules`
+    ] as const;
+    }
+
+
+export const getListEmailDomainRulesQueryOptions = <TData = Awaited<ReturnType<typeof listEmailDomainRules>>, TError = ErrorType<ErrorResponse>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listEmailDomainRules>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListEmailDomainRulesQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listEmailDomainRules>>> = ({ signal }) => listEmailDomainRules({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listEmailDomainRules>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListEmailDomainRulesQueryResult = NonNullable<Awaited<ReturnType<typeof listEmailDomainRules>>>
+export type ListEmailDomainRulesQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary List domain→client mapping rules (admin only)
+ */
+
+export function useListEmailDomainRules<TData = Awaited<ReturnType<typeof listEmailDomainRules>>, TError = ErrorType<ErrorResponse>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listEmailDomainRules>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListEmailDomainRulesQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getCreateEmailDomainRuleUrl = () => {
+
+
+
+
+  return `/api/admin/email-domain-rules`
+}
+
+/**
+ * @summary Create a domain→client mapping rule (admin only)
+ */
+export const createEmailDomainRule = async (createDomainRuleInput: CreateDomainRuleInput, options?: RequestInit): Promise<EmailDomainRule> => {
+
+  return customFetch<EmailDomainRule>(getCreateEmailDomainRuleUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      createDomainRuleInput,)
+  }
+);}
+
+
+
+
+export const getCreateEmailDomainRuleMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createEmailDomainRule>>, TError,{data: BodyType<CreateDomainRuleInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createEmailDomainRule>>, TError,{data: BodyType<CreateDomainRuleInput>}, TContext> => {
+
+const mutationKey = ['createEmailDomainRule'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createEmailDomainRule>>, {data: BodyType<CreateDomainRuleInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  createEmailDomainRule(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateEmailDomainRuleMutationResult = NonNullable<Awaited<ReturnType<typeof createEmailDomainRule>>>
+    export type CreateEmailDomainRuleMutationBody = BodyType<CreateDomainRuleInput>
+    export type CreateEmailDomainRuleMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Create a domain→client mapping rule (admin only)
+ */
+export const useCreateEmailDomainRule = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createEmailDomainRule>>, TError,{data: BodyType<CreateDomainRuleInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createEmailDomainRule>>,
+        TError,
+        {data: BodyType<CreateDomainRuleInput>},
+        TContext
+      > => {
+      return useMutation(getCreateEmailDomainRuleMutationOptions(options));
+    }
+
+export const getDeleteEmailDomainRuleUrl = (id: number,) => {
+
+
+
+
+  return `/api/admin/email-domain-rules/${id}`
+}
+
+/**
+ * @summary Delete a domain→client mapping rule (admin only)
+ */
+export const deleteEmailDomainRule = async (id: number, options?: RequestInit): Promise<SuccessResponse> => {
+
+  return customFetch<SuccessResponse>(getDeleteEmailDomainRuleUrl(id),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+export const getDeleteEmailDomainRuleMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteEmailDomainRule>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteEmailDomainRule>>, TError,{id: number}, TContext> => {
+
+const mutationKey = ['deleteEmailDomainRule'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteEmailDomainRule>>, {id: number}> = (props) => {
+          const {id} = props ?? {};
+
+          return  deleteEmailDomainRule(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeleteEmailDomainRuleMutationResult = NonNullable<Awaited<ReturnType<typeof deleteEmailDomainRule>>>
+
+    export type DeleteEmailDomainRuleMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Delete a domain→client mapping rule (admin only)
+ */
+export const useDeleteEmailDomainRule = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteEmailDomainRule>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof deleteEmailDomainRule>>,
+        TError,
+        {id: number},
+        TContext
+      > => {
+      return useMutation(getDeleteEmailDomainRuleMutationOptions(options));
     }
 

@@ -112,10 +112,77 @@ export interface LeadStats {
   fromLeadMagnet: number;
 }
 
+export interface IngestedEmail {
+  id: number;
+  messageId: string;
+  /** @nullable */
+  subject?: string | null;
+  senderAddress: string;
+  senderDomain: string;
+  /** @nullable */
+  bodyPreview?: string | null;
+  receivedAt: string;
+  /** @nullable */
+  rawFrom?: string | null;
+  /** @nullable */
+  linkedUserId?: number | null;
+  ingestedAt: string;
+}
+
+export interface IngestedEmailRow {
+  email: IngestedEmail;
+  /** @nullable */
+  clientName?: string | null;
+  /** @nullable */
+  clientEmail?: string | null;
+  /** @nullable */
+  clientCompany?: string | null;
+}
+
+export interface IngestedEmailList {
+  emails: IngestedEmailRow[];
+  total: number;
+  page: number;
+  limit: number;
+}
+
+export interface EmailDomainRule {
+  id: number;
+  domain: string;
+  linkedUserId: number;
+  createdAt: string;
+}
+
+export interface EmailDomainRuleRow {
+  rule: EmailDomainRule;
+  /** @nullable */
+  clientName?: string | null;
+  /** @nullable */
+  clientEmail?: string | null;
+}
+
+export interface AssignEmailInput {
+  /** @nullable */
+  userId?: number | null;
+}
+
+export interface CreateDomainRuleInput {
+  domain: string;
+  userId: number;
+}
+
 export type ListLeadsParams = {
 status?: string;
 source?: string;
 page?: number;
 limit?: number;
+};
+
+export type ListAdminEmailsParams = {
+page?: number;
+limit?: number;
+userId?: number;
+linked?: boolean;
+unlinked?: boolean;
 };
 

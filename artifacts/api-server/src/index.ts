@@ -2,6 +2,7 @@ import app from "./app";
 import { logger } from "./lib/logger";
 import { seedAdminUser } from "./routes/auth";
 import { seedPortalDemo, seedServiceTemplates } from "./lib/seed-portal";
+import { initGraphSubscription } from "./lib/graph-subscription";
 
 const rawPort = process.env["PORT"];
 
@@ -44,4 +45,8 @@ app.listen(port, (err) => {
       logger.warn({ err: seedErr }, "Could not seed portal demo data");
     });
   }
+
+  initGraphSubscription().catch((err) => {
+    logger.warn({ err }, "Graph subscription init failed (non-fatal)");
+  });
 });

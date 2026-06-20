@@ -50,6 +50,13 @@
       "when": 1750636800000,
       "tag": "0006_add_contract_agreement_body",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1750723200000,
+      "tag": "0007_add_email_tables",
+      "breakpoints": true
     }
   ]
 }
