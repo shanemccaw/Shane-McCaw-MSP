@@ -378,10 +378,10 @@ router.get("/portal/projects/:id/audit-pdf", requireAuth, async (req: Request, r
             task.column === "waiting_on_customer" ? rgb(0.761, 0.490, 0) :
             grey;
           const colSymbol =
-            task.column === "completed"           ? "✓" :
-            task.column === "in_progress"         ? "▶" :
-            task.column === "waiting_on_customer" ? "⏳" :
-            "○";
+            task.column === "completed"           ? "[x]" :
+            task.column === "in_progress"         ? "[>]" :
+            task.column === "waiting_on_customer" ? "[?]" :
+            "[ ]";
           text(colSymbol, margin + 8, y, { size: 8, color: colColor });
           const titleLines = wrap(task.title, 80);
           text(titleLines[0] ?? task.title, margin + 20, y, { size: 8.5, color: navy });
