@@ -2,13 +2,29 @@
  * migrate-prod.ts
  *
  * Applies pending DDL migrations to the production database (PROD_DATABASE_URL).
- * Safe to re-run — all statements use IF NOT EXISTS.
+ *
+ * TWO-PHASE approach (both phases are idempotent and safe to re-run):
+ *
+ *   Phase 1 — Hand-crafted entries (legacy)
+ *     A static array of named SQL blocks, all using IF NOT EXISTS / DROP IF EXISTS.
+ *     These cover complex multi-step changes (data migrations, FK constraints, table
+ *     renames) that cannot be expressed as a plain Drizzle-generated SQL file.
+ *
+ *   Phase 2 — Drizzle-generated SQL files (automatic)
+ *     Reads lib/db/drizzle/meta/_journal.json and applies every entry whose SQL file
+ *     has not yet been recorded in the __drizzle_migrations tracking table.
+ *     New entries produced by `pnpm --filter @workspace/db run generate` are picked
+ *     up automatically on the next migrate-prod run — no manual update needed.
  *
  * Run:
  *   pnpm --filter @workspace/scripts run migrate-prod
  */
 
+import fs from "fs";
+import path from "path";
+import { fileURLToPath } from "url";
 import pg from "pg";
+import type { PoolClient } from "pg";
 
 const { Pool } = pg;
 
@@ -21,7 +37,17 @@ if (!prodUrl) {
 
 const pool = new Pool({ connectionString: prodUrl });
 
-const migrations = [
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+const DRIZZLE_DIR = path.resolve(__dirname, "../../lib/db/drizzle");
+
+// ---------------------------------------------------------------------------
+// Phase 1: Hand-crafted legacy migrations
+// These cover complex changes (data migrations, FK rewiring, table drops) that
+// cannot be expressed as a simple Drizzle-generated ALTER TABLE.
+// ---------------------------------------------------------------------------
+const legacyMigrations = [
   {
     name: "0000_add_wizard_and_pricing_fields",
     sql: `
@@ -110,14 +136,93 @@ const migrations = [
   },
 ];
 
+// ---------------------------------------------------------------------------
+// Phase 2: Auto-apply Drizzle-generated SQL files
+// ---------------------------------------------------------------------------
+
+interface JournalEntry {
+  idx: number;
+  tag: string;
+}
+
+interface Journal {
+  entries: JournalEntry[];
+}
+
+async function applyDrizzleMigrations(client: PoolClient): Promise<void> {
+  await client.query(`
+    CREATE TABLE IF NOT EXISTS "__drizzle_migrations" (
+      "tag"        text        PRIMARY KEY,
+      "applied_at" timestamptz NOT NULL DEFAULT now()
+    )
+  `);
+
+  const journalPath = path.join(DRIZZLE_DIR, "meta/_journal.json");
+  if (!fs.existsSync(journalPath)) {
+    console.log("[drizzle] No journal found at lib/db/drizzle/meta/_journal.json — skipping auto-apply.");
+    return;
+  }
+
+  const journal: Journal = JSON.parse(fs.readFileSync(journalPath, "utf-8"));
+  const entries = journal.entries ?? [];
+
+  const { rows } = await client.query<{ tag: string }>(
+    "SELECT tag FROM __drizzle_migrations ORDER BY tag"
+  );
+  const appliedTags = new Set(rows.map((r) => r.tag));
+
+  let appliedCount = 0;
+  for (const entry of entries) {
+    if (appliedTags.has(entry.tag)) {
+      console.log(`[drizzle] ${entry.tag} — already applied.`);
+      continue;
+    }
+
+    const sqlPath = path.join(DRIZZLE_DIR, `${entry.tag}.sql`);
+    if (!fs.existsSync(sqlPath)) {
+      throw new Error(
+        `[drizzle] SQL file missing for journal entry "${entry.tag}": ${sqlPath}\n` +
+        `  Run: pnpm --filter @workspace/db run generate`
+      );
+    }
+
+    const rawSql = fs.readFileSync(sqlPath, "utf-8");
+    const sql = rawSql.replace(/--> statement-breakpoint/g, "");
+
+    console.log(`[drizzle] Applying ${entry.tag}…`);
+    await client.query(sql);
+    await client.query(
+      "INSERT INTO __drizzle_migrations (tag) VALUES ($1) ON CONFLICT DO NOTHING",
+      [entry.tag]
+    );
+    console.log(`[drizzle]   done.`);
+    appliedCount++;
+  }
+
+  if (appliedCount === 0) {
+    console.log("[drizzle] All Drizzle SQL migrations are already applied.");
+  } else {
+    console.log(`[drizzle] Applied ${appliedCount} new Drizzle migration(s).`);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Main
+// ---------------------------------------------------------------------------
+
 async function main(): Promise<void> {
   const client = await pool.connect();
   try {
-    for (const migration of migrations) {
-      console.log(`Applying migration: ${migration.name}…`);
+    console.log("=== Phase 1: Legacy hand-crafted migrations ===");
+    for (const migration of legacyMigrations) {
+      console.log(`Applying: ${migration.name}…`);
       await client.query(migration.sql);
       console.log(`  done.`);
     }
+
+    console.log("\n=== Phase 2: Drizzle-generated SQL migrations ===");
+    await applyDrizzleMigrations(client);
+
     console.log("\nAll migrations applied to production successfully.");
   } finally {
     client.release();
