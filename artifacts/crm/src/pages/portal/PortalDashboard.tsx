@@ -215,9 +215,6 @@ export default function PortalDashboard() {
               <section>
                 <div className="flex items-center justify-between mb-4">
                   <h2 className="text-base font-bold text-[#0A2540]">Recent Reports</h2>
-                  <Link href="/portal/reports">
-                    <span className="text-sm text-[#0078D4] font-semibold hover:underline cursor-pointer">View all →</span>
-                  </Link>
                 </div>
                 <div className="bg-white border border-border rounded-xl divide-y divide-border">
                   {(data?.reports?.length ?? 0) === 0 ? (

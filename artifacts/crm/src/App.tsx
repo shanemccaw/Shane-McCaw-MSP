@@ -6,7 +6,6 @@ import LoginPage from "@/pages/Login";
 import PortalProjects from "@/pages/portal/PortalProjects";
 import PortalProjectDetail from "@/pages/portal/PortalProjectDetail";
 import PortalServices from "@/pages/portal/PortalServices";
-import PortalReports from "@/pages/portal/PortalReports";
 import PortalBilling from "@/pages/portal/PortalBilling";
 import PortalInvoiceDetail from "@/pages/portal/PortalInvoiceDetail";
 import PortalContractDetail from "@/pages/portal/PortalContractDetail";
@@ -79,9 +78,6 @@ function Router() {
       </Route>
       <Route path="/portal/services">
         <RequireAuth role="client"><PortalServices /></RequireAuth>
-      </Route>
-      <Route path="/portal/reports">
-        <RequireAuth role="client"><PortalReports /></RequireAuth>
       </Route>
       <Route path="/portal/billing">
         <RequireAuth role="client"><PortalBilling /></RequireAuth>
