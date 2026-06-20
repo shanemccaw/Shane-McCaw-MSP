@@ -1,6 +1,6 @@
 import { Router, type Request, type Response } from "express";
 import { db, usersTable, leadsTable, projectsTable, invoicesTable, clientServicesTable, servicesTable, projectUpdatesTable, messagesTable } from "@workspace/db";
-import { eq, desc, count } from "drizzle-orm";
+import { eq, desc, count, ne } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/requireAuth";
 
 const router = Router();
@@ -11,6 +11,8 @@ router.get("/admin/overview", requireAdmin, async (_req: Request, res: Response)
   const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
   const quarterStart = new Date(now.getFullYear(), Math.floor(now.getMonth() / 3) * 3, 1);
   const prevQuarterStart = new Date(quarterStart.getFullYear(), quarterStart.getMonth() - 3, 1);
+  const threeMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 3, 1);
+  const oneMonthAgo = new Date(now.getFullYear(), now.getMonth() - 1, 1);
 
   const [
     clientRows,
@@ -19,6 +21,7 @@ router.get("/admin/overview", requireAdmin, async (_req: Request, res: Response)
     allInvoices,
     allClientServices,
     activeProjects,
+    clientsWithActiveProjectsRows,
     recentLeads,
     recentUpdates,
     recentMessages,
@@ -30,12 +33,17 @@ router.get("/admin/overview", requireAdmin, async (_req: Request, res: Response)
     db.select({ cs: clientServicesTable, service: servicesTable })
       .from(clientServicesTable)
       .innerJoin(servicesTable, eq(clientServicesTable.serviceId, servicesTable.id)),
+    // Limit 10 only for display purposes in "Projects at a glance"
     db.select({ p: projectsTable, u: usersTable })
       .from(projectsTable)
       .leftJoin(usersTable, eq(projectsTable.clientUserId, usersTable.id))
       .where(eq(projectsTable.status, "active"))
       .orderBy(desc(projectsTable.updatedAt))
       .limit(10),
+    // Full distinct list for the clientsWithoutProjects count (no limit)
+    db.selectDistinct({ clientUserId: projectsTable.clientUserId })
+      .from(projectsTable)
+      .where(eq(projectsTable.status, "active")),
     db.select().from(leadsTable).orderBy(desc(leadsTable.createdAt)).limit(5),
     db.select({ pu: projectUpdatesTable, p: projectsTable })
       .from(projectUpdatesTable)
@@ -50,30 +58,57 @@ router.get("/admin/overview", requireAdmin, async (_req: Request, res: Response)
       .limit(3),
   ]);
 
-  const clientCount = clientRows[0]?.cnt ?? 0;
-  const activeProjectCount = activeProjectCountRows[0]?.cnt ?? 0;
+  const clientCount = Number(clientRows[0]?.cnt ?? 0);
+  const activeProjectCount = Number(activeProjectCountRows[0]?.cnt ?? 0);
 
-  // Stale leads: new or contacted, older than 14 days
-  const staleLeads = allLeads.filter(l =>
-    new Date(l.createdAt) < fourteenDaysAgo && ["new", "contacted"].includes(l.status)
-  );
+  // Open leads = not won/lost
+  const openLeads = allLeads.filter(l => !["won", "lost"].includes(l.status));
+
+  // Stale leads: open, created more than 14 days ago
+  const staleLeads = openLeads.filter(l => new Date(l.createdAt) < fourteenDaysAgo);
+
+  // Lead age buckets (open leads only)
+  const leadAgeBuckets = {
+    fresh: openLeads.filter(l => new Date(l.createdAt) >= fourteenDaysAgo).length,
+    stale: staleLeads.length,
+    total: openLeads.length,
+  };
 
   // Invoice calculations
   const paidInvoices = allInvoices.filter(i => i.status === "paid");
   const overdueInvoices = allInvoices.filter(i => i.status === "overdue");
   const unpaidInvoices = allInvoices.filter(i => ["due", "overdue"].includes(i.status));
 
-  const totalRevenuePaid = paidInvoices.reduce((s, i) => s + parseFloat(i.amount), 0);
+  // Revenue from paid invoices
+  const invoicePaidRevenue = paidInvoices.reduce((s, i) => s + parseFloat(i.amount), 0);
+
+  // Revenue from purchases (client services = Stripe purchases)
+  const purchaseRevenue = allClientServices.reduce((s, r) => {
+    const price = parseFloat(r.service.basePrice ?? r.service.price ?? "0");
+    return s + price;
+  }, 0);
+
+  // Total revenue = paid invoices + all purchase revenue
+  const totalRevenuePaid = invoicePaidRevenue + purchaseRevenue;
   const totalRevenueOutstanding = unpaidInvoices.reduce((s, i) => s + parseFloat(i.amount), 0);
   const overdueValue = overdueInvoices.reduce((s, i) => s + parseFloat(i.amount), 0);
 
-  // MRR: active recurring services
+  // MRR: active recurring client services
   const recurringServices = allClientServices.filter(r =>
     r.cs.status === "active" && r.service.billingType === "recurring_monthly"
   );
   const mrr = recurringServices.reduce((s, r) =>
     s + parseFloat(r.service.basePrice ?? r.service.price ?? "0"), 0
   );
+
+  // MRR 3 months ago (recurring services active before 3 months ago)
+  const mrrThreeMonthsAgo = allClientServices
+    .filter(r =>
+      r.cs.status === "active" &&
+      r.service.billingType === "recurring_monthly" &&
+      new Date(r.cs.purchasedAt) <= threeMonthsAgo
+    )
+    .reduce((s, r) => s + parseFloat(r.service.basePrice ?? r.service.price ?? "0"), 0);
 
   // Revenue by month (trailing 12) — from paid invoices + purchases
   const months: Array<{ month: string; oneTime: number; recurring: number }> = [];
@@ -110,11 +145,17 @@ router.get("/admin/overview", requireAdmin, async (_req: Request, res: Response)
     }
   }
 
-  // Clients without active projects
-  const clientsWithActiveProjects = new Set(
-    activeProjects.map(r => r.p.clientUserId).filter((id): id is number => id !== null)
+  // Compute month-over-month revenue trend (current month vs previous month)
+  const currentMonthRevenue = (months[11]?.oneTime ?? 0) + (months[11]?.recurring ?? 0);
+  const prevMonthRevenue = (months[10]?.oneTime ?? 0) + (months[10]?.recurring ?? 0);
+
+  // Clients without active projects: correct count from full distinct query (no limit)
+  const clientsWithActiveProjectSet = new Set(
+    clientsWithActiveProjectsRows
+      .map(r => r.clientUserId)
+      .filter((id): id is number => id !== null)
   );
-  const clientsWithoutProjectsCount = Math.max(0, Number(clientCount) - clientsWithActiveProjects.size);
+  const clientsWithoutProjectsCount = Math.max(0, clientCount - clientsWithActiveProjectSet.size);
 
   // Top service by purchase volume
   const serviceRevenue: Record<number, { name: string; revenue: number }> = {};
@@ -134,12 +175,6 @@ router.get("/admin/overview", requireAdmin, async (_req: Request, res: Response)
   );
   const avgDeal = (deals: typeof paidInvoices) =>
     deals.length > 0 ? deals.reduce((s, i) => s + parseFloat(i.amount), 0) / deals.length : 0;
-
-  // MRR trend: compare now vs 3 months ago (services purchased before 3 months ago)
-  const threeMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 3, 1);
-  const mrrThreeMonthsAgo = allClientServices
-    .filter(r => r.cs.status === "active" && r.service.billingType === "recurring_monthly" && new Date(r.cs.purchasedAt) <= threeMonthsAgo)
-    .reduce((s, r) => s + parseFloat(r.service.basePrice ?? r.service.price ?? "0"), 0);
 
   // Recent activity feed
   const activity: Array<{ type: string; title: string; timestamp: string; linkPath?: string }> = [];
@@ -187,18 +222,26 @@ router.get("/admin/overview", requireAdmin, async (_req: Request, res: Response)
   activity.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
 
   res.json({
-    clientCount: Number(clientCount),
+    clientCount,
     leadCount: allLeads.length,
+    openLeadCount: openLeads.length,
     staleLeadCount: staleLeads.length,
-    activeProjectCount: Number(activeProjectCount),
+    leadAgeBuckets,
+    activeProjectCount,
     mrr: Math.round(mrr * 100) / 100,
     arr: Math.round(mrr * 12 * 100) / 100,
     totalRevenuePaid: Math.round(totalRevenuePaid * 100) / 100,
+    invoicePaidRevenue: Math.round(invoicePaidRevenue * 100) / 100,
+    purchaseRevenue: Math.round(purchaseRevenue * 100) / 100,
     totalRevenueOutstanding: Math.round(totalRevenueOutstanding * 100) / 100,
     overdueInvoiceCount: overdueInvoices.length,
     overdueInvoiceValue: Math.round(overdueValue * 100) / 100,
     clientsWithoutProjectsCount,
     revenueByMonth: months,
+    revenueTrend: {
+      currentMonth: Math.round(currentMonthRevenue * 100) / 100,
+      prevMonth: Math.round(prevMonthRevenue * 100) / 100,
+    },
     recentActivity: activity.slice(0, 8),
     activeProjects: activeProjects.map(r => ({
       id: r.p.id,
@@ -213,9 +256,9 @@ router.get("/admin/overview", requireAdmin, async (_req: Request, res: Response)
     currQuarterAvgDeal: Math.round(avgDeal(currQuarterDeals) * 100) / 100,
     prevQuarterAvgDeal: Math.round(avgDeal(prevQuarterDeals) * 100) / 100,
     leadFunnel: {
-      leads: allLeads.length,
-      clients: Number(clientCount),
-      activeProjects: Number(activeProjectCount),
+      leads: openLeads.length,
+      clients: clientCount,
+      activeProjects: activeProjectCount,
     },
     mrrTrend: {
       current: Math.round(mrr * 100) / 100,
