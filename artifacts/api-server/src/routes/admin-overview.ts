@@ -61,10 +61,10 @@ router.get("/admin/overview", requireAdmin, async (_req: Request, res: Response)
   const clientCount = Number(clientRows[0]?.cnt ?? 0);
   const activeProjectCount = Number(activeProjectCountRows[0]?.cnt ?? 0);
 
-  // Open leads = not won/lost
-  const openLeads = allLeads.filter(l => !["won", "lost"].includes(l.status));
+  // Open leads = active pipeline statuses (not converted or archived)
+  const openLeads = allLeads.filter(l => !["converted", "archived"].includes(l.status));
 
-  // Stale leads: open, created more than 14 days ago
+  // Stale leads: open pipeline leads, created more than 14 days ago
   const staleLeads = openLeads.filter(l => new Date(l.createdAt) < fourteenDaysAgo);
 
   // Lead age buckets (open leads only)
@@ -77,6 +77,7 @@ router.get("/admin/overview", requireAdmin, async (_req: Request, res: Response)
   // Invoice calculations
   const paidInvoices = allInvoices.filter(i => i.status === "paid");
   const overdueInvoices = allInvoices.filter(i => i.status === "overdue");
+  const dueInvoices = allInvoices.filter(i => i.status === "due");
   const unpaidInvoices = allInvoices.filter(i => ["due", "overdue"].includes(i.status));
 
   // Revenue from paid invoices
@@ -234,6 +235,9 @@ router.get("/admin/overview", requireAdmin, async (_req: Request, res: Response)
     invoicePaidRevenue: Math.round(invoicePaidRevenue * 100) / 100,
     purchaseRevenue: Math.round(purchaseRevenue * 100) / 100,
     totalRevenueOutstanding: Math.round(totalRevenueOutstanding * 100) / 100,
+    unpaidInvoiceCount: unpaidInvoices.length,
+    unpaidInvoiceValue: Math.round(totalRevenueOutstanding * 100) / 100,
+    dueInvoiceCount: dueInvoices.length,
     overdueInvoiceCount: overdueInvoices.length,
     overdueInvoiceValue: Math.round(overdueValue * 100) / 100,
     clientsWithoutProjectsCount,
