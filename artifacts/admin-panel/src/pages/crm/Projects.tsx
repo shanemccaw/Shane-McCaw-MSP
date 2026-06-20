@@ -50,6 +50,7 @@ interface WorkflowStep {
   order: number;
   description: string | null;
   dueDate: string | null;
+  notes: string | null;
 }
 
 interface KanbanTask {
@@ -699,6 +700,27 @@ export default function ProjectsPage() {
                           <div className="flex items-center justify-between mb-3">
                             <h4 className="text-xs font-bold uppercase tracking-wider text-[#0A2540]">Workflow Steps</h4>
                             <div className="flex items-center gap-3">
+                              <button
+                                onClick={() => {
+                                  const exportData = (detail?.steps ?? []).map(s => ({
+                                    title: s.title,
+                                    ...(s.description ? { description: s.description } : {}),
+                                    status: s.status,
+                                    ...(s.dueDate ? { dueDate: s.dueDate } : {}),
+                                    ...(s.notes ? { notes: s.notes } : {}),
+                                  }));
+                                  const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: "application/json" });
+                                  const url = URL.createObjectURL(blob);
+                                  const a = document.createElement("a");
+                                  a.href = url;
+                                  a.download = `steps-${p.title.replace(/[^a-z0-9]+/gi, "-").toLowerCase()}.json`;
+                                  a.click();
+                                  URL.revokeObjectURL(url);
+                                }}
+                                className="flex items-center gap-1 text-xs font-semibold text-[#0A2540]/60 hover:text-[#0A2540] hover:underline">
+                                <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M7 16v2a2 2 0 002 2h6a2 2 0 002-2v-2M9 12l3-3 3 3M12 21V9" /></svg>
+                                Export JSON
+                              </button>
                               <button
                                 onClick={() => {
                                   setJsonImportProjectId(jsonImportProjectId === p.id ? null : p.id);
