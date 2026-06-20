@@ -130,6 +130,7 @@ export const workflowStepsTable = pgTable("workflow_steps", {
   notes: text("notes"),
   completedAt: timestamp("completed_at"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
+  workflowTemplateStepId: integer("workflow_template_step_id"),
 });
 
 export type InsertWorkflowStep = typeof workflowStepsTable.$inferInsert;
@@ -147,6 +148,8 @@ export const kanbanTasksTable = pgTable("kanban_tasks", {
   dueDate: timestamp("due_date"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  workflowStepId: integer("workflow_step_id"),
+  groupName: text("group_name"),
 });
 
 export type InsertKanbanTask = typeof kanbanTasksTable.$inferInsert;
@@ -376,6 +379,8 @@ export const projectTemplateTasksTable = pgTable("project_template_tasks", {
   description: text("description"),
   order: integer("order").notNull().default(0),
   createdAt: timestamp("created_at").notNull().defaultNow(),
+  workflowTemplateStepId: integer("workflow_template_step_id"),
+  groupName: text("group_name"),
 });
 
 export type InsertProjectTemplateTask = typeof projectTemplateTasksTable.$inferInsert;

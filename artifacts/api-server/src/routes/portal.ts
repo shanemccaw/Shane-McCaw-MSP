@@ -784,9 +784,20 @@ async function provisionOnboardingProject(
         .limit(1)
     : [undefined];
 
-  let primaryTemplateTasks: Array<{ title: string; description: string | null }> = [];
-  if (projTemplate) {
-    primaryTemplateTasks = await db
+  // New: workflow template steps (each step owns its task templates)
+  let workflowTemplateSteps: Array<{ id: number; title: string; description: string | null; order: number }> = [];
+  if (projTemplate?.workflowTemplateId) {
+    workflowTemplateSteps = await db
+      .select()
+      .from(workflowTemplateStepsTable)
+      .where(eq(workflowTemplateStepsTable.workflowTemplateId, projTemplate.workflowTemplateId))
+      .orderBy(asc(workflowTemplateStepsTable.order));
+  }
+
+  // Legacy fallback: old-style flat task list (no step association)
+  let legacyTemplateTasks: Array<{ title: string; description: string | null }> = [];
+  if (projTemplate && workflowTemplateSteps.length === 0) {
+    legacyTemplateTasks = await db
       .select()
       .from(projectTemplateTasksTable)
       .where(eq(projectTemplateTasksTable.projectTemplateId, projTemplate.id))
@@ -817,11 +828,46 @@ async function provisionOnboardingProject(
     }).returning();
 
     // ── Seed workflow steps for this client service ────────────────────────
-    // Primary service: prefer admin-authored template tasks, then slug-based defaults.
-    // Secondary services: always use slug-based defaults.
-    if (i === 0 && primaryTemplateTasks.length > 0) {
+    if (i === 0 && workflowTemplateSteps.length > 0) {
+      // New: steps come from workflow template; first step auto-starts in_progress
+      const createdSteps = await db.insert(workflowStepsTable).values(
+        workflowTemplateSteps.map((s, idx) => ({
+          clientServiceId: newCs.id,
+          projectId: project.id,
+          title: s.title,
+          description: s.description ?? "",
+          status: idx === 0 ? ("in_progress" as const) : ("pending" as const),
+          order: idx + 1,
+          workflowTemplateStepId: s.id,
+        }))
+      ).returning();
+
+      // Seed kanban tasks for the first step only
+      const firstStep = createdSteps[0];
+      if (firstStep?.workflowTemplateStepId) {
+        const step1Tasks = await db
+          .select()
+          .from(projectTemplateTasksTable)
+          .where(eq(projectTemplateTasksTable.workflowTemplateStepId, firstStep.workflowTemplateStepId))
+          .orderBy(asc(projectTemplateTasksTable.order));
+        if (step1Tasks.length > 0) {
+          await db.insert(kanbanTasksTable).values(
+            step1Tasks.map((t, idx) => ({
+              projectId: project.id,
+              workflowStepId: firstStep.id,
+              groupName: t.groupName ?? null,
+              title: t.title,
+              description: t.description ?? null,
+              column: "backlog" as const,
+              order: idx,
+            }))
+          );
+        }
+      }
+    } else if (i === 0 && legacyTemplateTasks.length > 0) {
+      // Legacy: old-style flat task list with no step association
       await db.insert(workflowStepsTable).values(
-        primaryTemplateTasks.map((t, idx) => ({
+        legacyTemplateTasks.map((t, idx) => ({
           clientServiceId: newCs.id,
           projectId: project.id,
           title: t.title,
@@ -830,9 +876,8 @@ async function provisionOnboardingProject(
           order: idx + 1,
         }))
       );
-      // ── Seed kanban tasks for the project board (one-time, primary service) ─
       await db.insert(kanbanTasksTable).values(
-        primaryTemplateTasks.map((t, idx) => ({
+        legacyTemplateTasks.map((t, idx) => ({
           projectId: project.id,
           title: t.title,
           description: t.description ?? "",
@@ -1640,6 +1685,54 @@ router.patch("/admin/kanban-tasks/:id", requireAdmin, async (req: Request, res: 
 
   const [updated] = await db.update(kanbanTasksTable).set(updates).where(eq(kanbanTasksTable.id, id)).returning();
   if (!updated) { res.status(404).json({ error: "Task not found" }); return; }
+
+  // Auto-progression: when a task is completed, check if its workflow step is done
+  if (updates.column === "completed" && updated.workflowStepId) {
+    const allStepTasks = await db.select().from(kanbanTasksTable)
+      .where(eq(kanbanTasksTable.workflowStepId, updated.workflowStepId));
+    const allDone = allStepTasks.length > 0 && allStepTasks.every(t => t.column === "completed");
+    if (allDone) {
+      const [completedStep] = await db.update(workflowStepsTable)
+        .set({ status: "completed", completedAt: new Date() })
+        .where(eq(workflowStepsTable.id, updated.workflowStepId))
+        .returning();
+
+      if (completedStep?.projectId) {
+        const allProjectSteps = await db.select().from(workflowStepsTable)
+          .where(eq(workflowStepsTable.projectId, completedStep.projectId))
+          .orderBy(asc(workflowStepsTable.order));
+        const currentIdx = allProjectSteps.findIndex(s => s.id === updated.workflowStepId);
+        const nextStep = allProjectSteps[currentIdx + 1];
+
+        if (nextStep && nextStep.status !== "completed") {
+          const [activatedStep] = await db.update(workflowStepsTable)
+            .set({ status: "in_progress" })
+            .where(eq(workflowStepsTable.id, nextStep.id))
+            .returning();
+
+          if (activatedStep?.workflowTemplateStepId && activatedStep.projectId) {
+            const templateTasks = await db.select().from(projectTemplateTasksTable)
+              .where(eq(projectTemplateTasksTable.workflowTemplateStepId, activatedStep.workflowTemplateStepId))
+              .orderBy(asc(projectTemplateTasksTable.order));
+            if (templateTasks.length > 0) {
+              await db.insert(kanbanTasksTable).values(
+                templateTasks.map((t, idx) => ({
+                  projectId: activatedStep.projectId!,
+                  workflowStepId: activatedStep.id,
+                  groupName: t.groupName ?? null,
+                  title: t.title,
+                  description: t.description ?? null,
+                  column: "backlog" as const,
+                  order: idx,
+                }))
+              );
+            }
+          }
+        }
+      }
+    }
+  }
+
   res.json(updated);
 });
 

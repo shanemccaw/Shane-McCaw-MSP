@@ -1,6 +1,6 @@
 import { Router, type IRouter, type Request, type Response } from "express";
-import { db, workflowTemplatesTable, workflowTemplateStepsTable } from "@workspace/db";
-import { eq, asc } from "drizzle-orm";
+import { db, workflowTemplatesTable, workflowTemplateStepsTable, projectTemplateTasksTable, projectTemplatesTable } from "@workspace/db";
+import { eq, asc, inArray } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/requireAuth";
 
 const router: IRouter = Router();
@@ -39,7 +39,20 @@ router.get("/admin/workflow-templates/:id", requireAdmin, async (req: Request, r
       .from(workflowTemplateStepsTable)
       .where(eq(workflowTemplateStepsTable.workflowTemplateId, id))
       .orderBy(asc(workflowTemplateStepsTable.order));
-    res.json({ ...template, steps });
+
+    const stepIds = steps.map(s => s.id);
+    const allTasks = stepIds.length > 0
+      ? await db.select().from(projectTemplateTasksTable)
+          .where(inArray(projectTemplateTasksTable.workflowTemplateStepId, stepIds))
+          .orderBy(asc(projectTemplateTasksTable.groupName), asc(projectTemplateTasksTable.order))
+      : [];
+
+    const stepsWithTasks = steps.map(s => ({
+      ...s,
+      tasks: allTasks.filter(t => t.workflowTemplateStepId === s.id),
+    }));
+
+    res.json({ ...template, steps: stepsWithTasks });
   } catch {
     res.status(500).json({ error: "Failed to fetch workflow template" });
   }
@@ -138,6 +151,78 @@ router.patch("/admin/workflow-templates/:id/steps/reorder", requireAdmin, async 
     res.json(updated);
   } catch {
     res.status(500).json({ error: "Failed to reorder steps" });
+  }
+});
+
+// ─── Step Task CRUD ───────────────────────────────────────────────────────────
+
+router.get("/admin/workflow-templates/:id/steps/:stepId/tasks", requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const stepId = Number(req.params.stepId);
+    if (isNaN(stepId)) { res.status(400).json({ error: "Invalid stepId" }); return; }
+    const tasks = await db.select().from(projectTemplateTasksTable)
+      .where(eq(projectTemplateTasksTable.workflowTemplateStepId, stepId))
+      .orderBy(asc(projectTemplateTasksTable.groupName), asc(projectTemplateTasksTable.order));
+    res.json(tasks);
+  } catch {
+    res.status(500).json({ error: "Failed to fetch step tasks" });
+  }
+});
+
+router.post("/admin/workflow-templates/:id/steps/:stepId/tasks", requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const templateId = Number(req.params.id);
+    const stepId = Number(req.params.stepId);
+    if (isNaN(stepId) || isNaN(templateId)) { res.status(400).json({ error: "Invalid id" }); return; }
+    const { title, description, groupName, order } = req.body as { title?: string; description?: string; groupName?: string; order?: number };
+    if (!title) { res.status(400).json({ error: "title is required" }); return; }
+
+    const [projTemplate] = await db.select().from(projectTemplatesTable)
+      .where(eq(projectTemplatesTable.workflowTemplateId, templateId))
+      .limit(1);
+    if (!projTemplate) { res.status(400).json({ error: "No project template linked to this workflow template" }); return; }
+
+    const [task] = await db.insert(projectTemplateTasksTable)
+      .values({
+        projectTemplateId: projTemplate.id,
+        workflowTemplateStepId: stepId,
+        title,
+        description: description ?? null,
+        groupName: groupName ?? null,
+        order: order ?? 0,
+      })
+      .returning();
+    res.status(201).json(task);
+  } catch {
+    res.status(500).json({ error: "Failed to create step task" });
+  }
+});
+
+router.put("/admin/workflow-templates/:id/steps/:stepId/tasks/:taskId", requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const taskId = Number(req.params.taskId);
+    if (isNaN(taskId)) { res.status(400).json({ error: "Invalid taskId" }); return; }
+    const { title, description, groupName, order } = req.body as { title?: string; description?: string; groupName?: string; order?: number };
+    if (!title) { res.status(400).json({ error: "title is required" }); return; }
+    const [updated] = await db.update(projectTemplateTasksTable)
+      .set({ title, description: description ?? null, groupName: groupName ?? null, order: order ?? 0 })
+      .where(eq(projectTemplateTasksTable.id, taskId))
+      .returning();
+    if (!updated) { res.status(404).json({ error: "Task not found" }); return; }
+    res.json(updated);
+  } catch {
+    res.status(500).json({ error: "Failed to update step task" });
+  }
+});
+
+router.delete("/admin/workflow-templates/:id/steps/:stepId/tasks/:taskId", requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const taskId = Number(req.params.taskId);
+    if (isNaN(taskId)) { res.status(400).json({ error: "Invalid taskId" }); return; }
+    await db.delete(projectTemplateTasksTable).where(eq(projectTemplateTasksTable.id, taskId));
+    res.json({ deleted: taskId });
+  } catch {
+    res.status(500).json({ error: "Failed to delete step task" });
   }
 });
 
