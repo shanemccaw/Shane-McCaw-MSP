@@ -63,6 +63,8 @@ export function formatAuditEntry(entry: AuditLogEntry): string {
       return `${date} ${actorName} deactivated service '${label}'`;
     case "retainer_cancelled":
       return `${date} ${actorName} cancelled retainer '${label}'`;
+    case "retainer_resumed":
+      return `${date} ${actorName} resumed retainer '${label}'`;
     case "contract_created": {
       const client = meta.clientName ? ` for ${meta.clientName}` : "";
       return `${date} ${actorName} created contract${client}`;

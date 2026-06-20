@@ -1286,6 +1286,51 @@ router.post("/portal/billing/subscriptions/:id/cancel", requireAuth, async (req:
   });
 });
 
+// ─── CLIENT: Resume a cancel-at-period-end subscription ──────────────────────
+router.post("/portal/billing/subscriptions/:id/resume", requireAuth, async (req: Request, res: Response) => {
+  const userId = req.user!.id;
+  const id = parseInt(String(req.params.id ?? ""), 10);
+  if (isNaN(id)) { res.status(400).json({ error: "Invalid ID" }); return; }
+
+  const [cs] = await db.select().from(clientServicesTable)
+    .where(and(eq(clientServicesTable.id, id), eq(clientServicesTable.clientUserId, userId)));
+  if (!cs) { res.status(404).json({ error: "Subscription not found" }); return; }
+  if (!cs.stripeSubscriptionId) {
+    res.status(400).json({ error: "No Stripe subscription linked to this service. Please contact support." });
+    return;
+  }
+
+  const stripeKey = process.env.STRIPE_SECRET_KEY;
+  if (!stripeKey) { res.status(503).json({ error: "Stripe not configured." }); return; }
+
+  const { default: Stripe } = await import("stripe");
+  const stripe = new Stripe(stripeKey);
+
+  const sub = await stripe.subscriptions.update(cs.stripeSubscriptionId, {
+    cancel_at_period_end: false,
+  });
+
+  req.log.info({ clientServiceId: cs.id, subscriptionId: cs.stripeSubscriptionId }, "subscription: cancel_at_period_end cleared (resumed)");
+
+  void createAuditLog({
+    actorUserId: userId,
+    actorName: req.user!.name ?? req.user!.email,
+    actorRole: "client",
+    actionType: "retainer_resumed",
+    entityType: "service",
+    entityId: cs.id,
+    entityLabel: String(cs.serviceId),
+    clientId: userId,
+  });
+
+  res.json({
+    ok: true,
+    cancelAtPeriodEnd: sub.cancel_at_period_end,
+    cancelAt: sub.cancel_at ?? null,
+    currentPeriodEnd: sub.items.data[0]?.current_period_end ?? null,
+  });
+});
+
 // ─── CLIENT: Billing portal (manage payment method) ──────────────────────────
 router.post("/portal/billing/customer-portal", requireAuth, async (req: Request, res: Response) => {
   const userId = req.user!.id;

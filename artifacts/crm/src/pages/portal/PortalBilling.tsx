@@ -68,15 +68,18 @@ function SubscriptionCard({
   cancelling,
   fetchWithAuth,
   onAlert,
+  onUpdate,
 }: {
   sub: Subscription;
   onCancel: (sub: Subscription) => void;
   cancelling: boolean;
   fetchWithAuth: (url: string, opts?: RequestInit) => Promise<Response>;
   onAlert: (a: { type: "success" | "error"; message: string }) => void;
+  onUpdate: (id: number, patch: { cancelAtPeriodEnd: boolean; cancelAt: number | null; currentPeriodEnd: number | null }) => void;
 }) {
   const [portalLoading, setPortalLoading] = useState(false);
   const [resubLoading, setResubLoading] = useState(false);
+  const [resumeLoading, setResumeLoading] = useState(false);
 
   const stripe = sub.stripe;
   const isCanceled = stripe?.status === "canceled";
@@ -111,6 +114,28 @@ function SubscriptionCard({
       onAlert({ type: "error", message: "Network error. Please try again." });
     } finally {
       setPortalLoading(false);
+    }
+  };
+
+  const handleResume = async () => {
+    setResumeLoading(true);
+    try {
+      const res = await fetchWithAuth(`/api/portal/billing/subscriptions/${sub.id}/resume`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
+      if (res.ok) {
+        const data = await res.json() as { cancelAtPeriodEnd: boolean; cancelAt: number | null; currentPeriodEnd: number | null };
+        onAlert({ type: "success", message: `Your ${sub.serviceName} retainer has been resumed and will continue renewing.` });
+        onUpdate(sub.id, { cancelAtPeriodEnd: data.cancelAtPeriodEnd, cancelAt: data.cancelAt, currentPeriodEnd: data.currentPeriodEnd });
+      } else {
+        const err = await res.json() as { error: string };
+        onAlert({ type: "error", message: err.error ?? "Could not resume subscription. Please try again." });
+      }
+    } catch {
+      onAlert({ type: "error", message: "Network error. Please try again." });
+    } finally {
+      setResumeLoading(false);
     }
   };
 
@@ -197,6 +222,19 @@ function SubscriptionCard({
               <span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
             ) : null}
             Re-purchase
+          </button>
+        )}
+
+        {isCancelPending && sub.stripeSubscriptionId && (
+          <button
+            onClick={() => void handleResume()}
+            disabled={resumeLoading}
+            className="flex items-center gap-1.5 text-xs font-semibold bg-green-600 text-white px-3 py-1.5 rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50"
+          >
+            {resumeLoading ? (
+              <span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+            ) : null}
+            Resume subscription
           </button>
         )}
 
@@ -429,6 +467,11 @@ export default function PortalBilling() {
                       cancelling={cancelling && cancelTarget?.id === sub.id}
                       fetchWithAuth={fetchWithAuth}
                       onAlert={setAlert}
+                      onUpdate={(id, patch) => setSubscriptions(prev => prev.map(s =>
+                        s.id === id
+                          ? { ...s, stripe: s.stripe ? { ...s.stripe, cancelAtPeriodEnd: patch.cancelAtPeriodEnd, cancelAt: patch.cancelAt, currentPeriodEnd: patch.currentPeriodEnd } : null }
+                          : s
+                      ))}
                     />
                   ))}
                 </div>
