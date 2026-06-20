@@ -1774,6 +1774,7 @@ router.delete("/admin/clients/:id", requireAdmin, async (req: Request, res: Resp
     await db.delete(invoicesTable).where(eq(invoicesTable.clientUserId, id));
     await db.delete(messagesTable).where(eq(messagesTable.clientUserId, id));
     await db.delete(notificationsTable).where(eq(notificationsTable.userId, id));
+    await db.delete(impersonationTokensTable).where(eq(impersonationTokensTable.clientUserId, id));
     await db.delete(passwordResetTokensTable).where(eq(passwordResetTokensTable.userId, id));
     if (projectIds.length > 0) {
       await db.delete(projectsTable).where(inArray(projectsTable.id, projectIds));
