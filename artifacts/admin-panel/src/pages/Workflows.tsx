@@ -216,7 +216,10 @@ export default function WorkflowsPage() {
     toast({ title: "Template deleted" });
   }
 
-  function parseTemplateSteps(text: string): { parsed: Array<{ title: string; description?: string }> | null; error: string | null } {
+  type ImportTask = { title: string; groupName?: string; description?: string };
+  type ImportStep = { title: string; description?: string; tasks?: ImportTask[] };
+
+  function parseTemplateSteps(text: string): { parsed: ImportStep[] | null; error: string | null } {
     if (!text.trim()) return { parsed: null, error: null };
     try {
       const raw: unknown = JSON.parse(text);
@@ -224,8 +227,16 @@ export default function WorkflowsPage() {
       if (raw.length === 0) return { parsed: null, error: "Array is empty" };
       const items = raw as Array<Record<string, unknown>>;
       const missingTitle = items.findIndex(s => !s.title || typeof s.title !== "string" || !(s.title as string).trim());
-      if (missingTitle !== -1) return { parsed: null, error: `Item at index ${missingTitle} is missing a "title"` };
-      return { parsed: items as Array<{ title: string; description?: string }>, error: null };
+      if (missingTitle !== -1) return { parsed: null, error: `Step at index ${missingTitle} is missing a "title"` };
+      for (let i = 0; i < items.length; i++) {
+        const tasks = items[i].tasks;
+        if (tasks !== undefined && !Array.isArray(tasks)) return { parsed: null, error: `Step at index ${i}: "tasks" must be an array` };
+        if (Array.isArray(tasks)) {
+          const badTask = (tasks as Array<Record<string, unknown>>).findIndex(t => !t.title || typeof t.title !== "string" || !(t.title as string).trim());
+          if (badTask !== -1) return { parsed: null, error: `Step ${i + 1}, task at index ${badTask} is missing a "title"` };
+        }
+      }
+      return { parsed: items as ImportStep[], error: null };
     } catch (e) {
       return { parsed: null, error: (e as SyntaxError).message };
     }
@@ -238,23 +249,43 @@ export default function WorkflowsPage() {
     setJsonImporting(true);
     try {
       const maxOrder = (selected.steps ?? []).reduce((m, s) => Math.max(m, s.order), -1);
+      let totalTasks = 0;
       for (let i = 0; i < parsed.length; i++) {
         const s = parsed[i];
-        const res = await fetchWithAuth(`/api/admin/workflow-templates/${selected.id}/steps`, {
+        const stepRes = await fetchWithAuth(`/api/admin/workflow-templates/${selected.id}/steps`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ title: s.title.trim(), description: s.description?.trim() || null, order: maxOrder + 1 + i }),
         });
-        if (!res.ok) {
+        if (!stepRes.ok) {
           toast({ title: `Failed at step ${i + 1}`, variant: "destructive" });
           await refreshSelected();
           return;
+        }
+        const createdStep = await stepRes.json() as { id: number };
+        for (let j = 0; j < (s.tasks ?? []).length; j++) {
+          const t = s.tasks![j];
+          const taskRes = await fetchWithAuth(
+            `/api/admin/workflow-templates/${selected.id}/steps/${createdStep.id}/tasks`,
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ title: t.title.trim(), description: t.description?.trim() || null, groupName: t.groupName?.trim() || null, order: j }),
+            }
+          );
+          if (!taskRes.ok) {
+            toast({ title: `Failed at step ${i + 1} task ${j + 1}`, variant: "destructive" });
+            await refreshSelected();
+            return;
+          }
+          totalTasks++;
         }
       }
       setJsonImportOpen(false);
       setJsonImportText("");
       await refreshSelected();
-      toast({ title: "Steps imported", description: `${parsed.length} step${parsed.length !== 1 ? "s" : ""} added successfully.` });
+      const taskNote = totalTasks > 0 ? ` and ${totalTasks} task${totalTasks !== 1 ? "s" : ""}` : "";
+      toast({ title: "Import complete", description: `${parsed.length} step${parsed.length !== 1 ? "s" : ""}${taskNote} added.` });
     } finally {
       setJsonImporting(false);
     }
@@ -474,10 +505,10 @@ export default function WorkflowsPage() {
                       <label className="block text-xs font-semibold text-gray-600 mb-1 uppercase tracking-wide">Paste JSON array of steps</label>
                       <textarea
                         autoFocus
-                        rows={6}
+                        rows={10}
                         value={jsonImportText}
                         onChange={e => setJsonImportText(e.target.value)}
-                        placeholder={`[\n  {\n    "title": "Discovery & Assessment",\n    "description": "Review current M365 environment"\n  },\n  { "title": "Architecture Design" }\n]`}
+                        placeholder={`[\n  {\n    "title": "Discovery & Assessment",\n    "description": "Review current M365 environment",\n    "tasks": [\n      { "title": "Review tenant configuration", "groupName": "Engineer Tasks" },\n      { "title": "Health Assessment Report", "groupName": "Artifacts Produced" },\n      { "title": "Gap Analysis Document", "groupName": "Client Deliverables" }\n    ]\n  },\n  {\n    "title": "Architecture Design",\n    "tasks": [\n      { "title": "Design target state", "groupName": "Engineer Tasks" }\n    ]\n  }\n]`}
                         className="w-full border border-gray-300 rounded-lg px-3 py-2 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-[#00B4D8] resize-y bg-white"
                       />
                     </div>
@@ -485,17 +516,45 @@ export default function WorkflowsPage() {
                       <p className="text-xs text-red-600 bg-red-50 border border-red-100 rounded px-2 py-1.5 font-mono">{error}</p>
                     )}
                     {parsed && parsed.length > 0 && (
-                      <div className="bg-white border border-gray-200 rounded-lg p-3 space-y-1.5">
-                        <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-2">{parsed.length} step{parsed.length !== 1 ? "s" : ""} to add</p>
-                        {parsed.map((s, i) => (
-                          <div key={i} className="flex items-start gap-2 text-xs">
-                            <span className="w-5 h-5 rounded-full bg-[#0078D4]/10 text-[#0078D4] text-[10px] font-bold flex items-center justify-center flex-shrink-0 mt-0.5">{i + 1}</span>
-                            <div className="min-w-0">
-                              <p className="font-semibold text-[#0A2540] leading-snug">{s.title}</p>
-                              {s.description && <p className="text-gray-400 mt-0.5 leading-snug">{s.description}</p>}
+                      <div className="bg-white border border-gray-200 rounded-lg p-3 space-y-3">
+                        <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400">
+                          {parsed.length} step{parsed.length !== 1 ? "s" : ""}
+                          {parsed.reduce((n, s) => n + (s.tasks?.length ?? 0), 0) > 0 && (
+                            <> · {parsed.reduce((n, s) => n + (s.tasks?.length ?? 0), 0)} task{parsed.reduce((n, s) => n + (s.tasks?.length ?? 0), 0) !== 1 ? "s" : ""}</>
+                          )}
+                        </p>
+                        {parsed.map((s, i) => {
+                          const groupedTasks = (s.tasks ?? []).reduce<Record<string, typeof s.tasks>>((acc, t) => {
+                            const g = t.groupName ?? "Tasks";
+                            acc[g] = [...(acc[g] ?? []), t];
+                            return acc;
+                          }, {});
+                          return (
+                            <div key={i} className="border border-gray-100 rounded-lg overflow-hidden">
+                              <div className="flex items-center gap-2 px-3 py-2 bg-gray-50">
+                                <span className="w-5 h-5 rounded-full bg-[#0078D4]/10 text-[#0078D4] text-[10px] font-bold flex items-center justify-center flex-shrink-0">{i + 1}</span>
+                                <div className="min-w-0">
+                                  <p className="text-xs font-semibold text-[#0A2540] leading-snug">{s.title}</p>
+                                  {s.description && <p className="text-[10px] text-gray-400 leading-snug">{s.description}</p>}
+                                </div>
+                              </div>
+                              {Object.entries(groupedTasks).map(([group, tasks]) => (
+                                <div key={group} className="border-t border-gray-100">
+                                  <p className="px-3 pt-1.5 pb-0.5 text-[9px] font-bold uppercase tracking-wider text-[#00B4D8]">{group}</p>
+                                  {tasks!.map((t, j) => (
+                                    <div key={j} className="flex items-start gap-2 px-3 py-1">
+                                      <span className="mt-1.5 w-1 h-1 rounded-full bg-gray-300 flex-shrink-0" />
+                                      <div className="min-w-0">
+                                        <p className="text-[11px] text-gray-700 leading-snug">{t.title}</p>
+                                        {t.description && <p className="text-[10px] text-gray-400 leading-snug">{t.description}</p>}
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              ))}
                             </div>
-                          </div>
-                        ))}
+                          );
+                        })}
                       </div>
                     )}
                     <div className="flex gap-2">
