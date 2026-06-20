@@ -5,6 +5,11 @@ import { useAuth } from "@/contexts/AuthContext";
 const GROUP_OPTIONS = ["Engineer Tasks", "Artifacts Produced", "Client Deliverables"] as const;
 type GroupOption = typeof GROUP_OPTIONS[number];
 
+interface ChecklistItem {
+  id: string;
+  label: string;
+}
+
 interface StepTask {
   id: number;
   title: string;
@@ -12,6 +17,10 @@ interface StepTask {
   groupName: string | null;
   order: number;
   workflowTemplateStepId: number | null;
+  instructions: string[] | null;
+  checklist: ChecklistItem[] | null;
+  artifactsProduced: string[] | null;
+  clientDeliverables: string[] | null;
 }
 
 interface WorkflowStep {
@@ -33,6 +42,166 @@ interface WorkflowTemplate {
 
 interface Service { id: number; name: string; }
 
+function StringListEditor({
+  label,
+  items,
+  onChange,
+  placeholder,
+}: {
+  label: string;
+  items: string[];
+  onChange: (items: string[]) => void;
+  placeholder?: string;
+}) {
+  const addItem = () => onChange([...items, ""]);
+  const removeItem = (i: number) => onChange(items.filter((_, idx) => idx !== i));
+  const updateItem = (i: number, val: string) => onChange(items.map((v, idx) => idx === i ? val : v));
+  const moveUp = (i: number) => {
+    if (i === 0) return;
+    const next = [...items];
+    [next[i - 1], next[i]] = [next[i], next[i - 1]];
+    onChange(next);
+  };
+  const moveDown = (i: number) => {
+    if (i === items.length - 1) return;
+    const next = [...items];
+    [next[i], next[i + 1]] = [next[i + 1], next[i]];
+    onChange(next);
+  };
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-1.5">
+        <span className="text-[10px] font-bold uppercase tracking-wider text-gray-500">{label}</span>
+        <button
+          type="button"
+          onClick={addItem}
+          className="text-[9px] font-semibold text-[#0078D4] hover:underline"
+        >
+          + Add
+        </button>
+      </div>
+      <div className="space-y-1">
+        {items.map((item, i) => (
+          <div key={i} className="flex items-center gap-1">
+            <div className="flex flex-col gap-0.5 flex-shrink-0">
+              <button type="button" onClick={() => moveUp(i)} disabled={i === 0}
+                className="p-0.5 text-gray-300 hover:text-gray-500 disabled:opacity-20 leading-none">
+                <svg className="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 15l7-7 7 7" />
+                </svg>
+              </button>
+              <button type="button" onClick={() => moveDown(i)} disabled={i === items.length - 1}
+                className="p-0.5 text-gray-300 hover:text-gray-500 disabled:opacity-20 leading-none">
+                <svg className="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M19 9l-7 7-7-7" />
+                </svg>
+              </button>
+            </div>
+            <input
+              value={item}
+              placeholder={placeholder ?? "Enter item…"}
+              onChange={e => updateItem(i, e.target.value)}
+              className="flex-1 border border-gray-200 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-[#0078D4]"
+            />
+            <button type="button" onClick={() => removeItem(i)}
+              className="flex-shrink-0 p-1 text-gray-300 hover:text-red-400">
+              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+        ))}
+        {items.length === 0 && (
+          <p className="text-[10px] text-gray-400 italic">No items yet.</p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function ChecklistEditor({
+  items,
+  onChange,
+}: {
+  items: ChecklistItem[];
+  onChange: (items: ChecklistItem[]) => void;
+}) {
+  const addItem = () => onChange([...items, { id: `item-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, label: "" }]);
+  const removeItem = (id: string) => onChange(items.filter(it => it.id !== id));
+  const updateLabel = (id: string, label: string) => onChange(items.map(it => it.id === id ? { ...it, label } : it));
+  const moveUp = (i: number) => {
+    if (i === 0) return;
+    const next = [...items];
+    [next[i - 1], next[i]] = [next[i], next[i - 1]];
+    onChange(next);
+  };
+  const moveDown = (i: number) => {
+    if (i === items.length - 1) return;
+    const next = [...items];
+    [next[i], next[i + 1]] = [next[i + 1], next[i]];
+    onChange(next);
+  };
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-1.5">
+        <span className="text-[10px] font-bold uppercase tracking-wider text-gray-500">Checklist</span>
+        <button type="button" onClick={addItem}
+          className="text-[9px] font-semibold text-[#0078D4] hover:underline">
+          + Add item
+        </button>
+      </div>
+      <div className="space-y-1">
+        {items.map((item, i) => (
+          <div key={item.id} className="flex items-center gap-1">
+            <div className="flex flex-col gap-0.5 flex-shrink-0">
+              <button type="button" onClick={() => moveUp(i)} disabled={i === 0}
+                className="p-0.5 text-gray-300 hover:text-gray-500 disabled:opacity-20 leading-none">
+                <svg className="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 15l7-7 7 7" />
+                </svg>
+              </button>
+              <button type="button" onClick={() => moveDown(i)} disabled={i === items.length - 1}
+                className="p-0.5 text-gray-300 hover:text-gray-500 disabled:opacity-20 leading-none">
+                <svg className="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M19 9l-7 7-7-7" />
+                </svg>
+              </button>
+            </div>
+            <span className="flex-shrink-0 w-3.5 h-3.5 rounded border border-gray-300 bg-white" />
+            <input
+              value={item.label}
+              placeholder="Checklist item…"
+              onChange={e => updateLabel(item.id, e.target.value)}
+              className="flex-1 border border-gray-200 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-[#0078D4]"
+            />
+            <button type="button" onClick={() => removeItem(item.id)}
+              className="flex-shrink-0 p-1 text-gray-300 hover:text-red-400">
+              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+        ))}
+        {items.length === 0 && (
+          <p className="text-[10px] text-gray-400 italic">No checklist items yet.</p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+interface EditingTaskForm {
+  title: string;
+  groupName: string;
+  description: string;
+  instructions: string[];
+  checklist: ChecklistItem[];
+  artifactsProduced: string[];
+  clientDeliverables: string[];
+}
+
 function TaskCard({
   task,
   templateId,
@@ -49,44 +218,121 @@ function TaskCard({
   onEdit: (t: StepTask) => void;
   onDelete: (t: StepTask) => void;
   editingTask: StepTask | null;
-  editingTaskForm: { title: string; groupName: string; description: string };
-  setEditingTaskForm: React.Dispatch<React.SetStateAction<{ title: string; groupName: string; description: string }>>;
+  editingTaskForm: EditingTaskForm;
+  setEditingTaskForm: React.Dispatch<React.SetStateAction<EditingTaskForm>>;
   onSaveTask: () => void;
   onCancelEdit: () => void;
 }) {
+  const [engineerOpen, setEngineerOpen] = useState(false);
+
   if (editingTask?.id === task.id) {
     return (
-      <div className="bg-white rounded-lg border border-[#0078D4] p-3 space-y-2">
-        <input
-          type="text"
-          value={editingTaskForm.title}
-          placeholder="Task title"
-          autoFocus
-          onChange={e => setEditingTaskForm(p => ({ ...p, title: e.target.value }))}
-          onKeyDown={e => { if (e.key === "Enter") onSaveTask(); if (e.key === "Escape") onCancelEdit(); }}
-          className="w-full border border-gray-300 rounded px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4]"
-        />
-        <select
-          value={editingTaskForm.groupName}
-          onChange={e => setEditingTaskForm(p => ({ ...p, groupName: e.target.value }))}
-          className="w-full border border-gray-300 rounded px-2.5 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-[#0078D4]"
+      <div className="bg-white rounded-lg border border-[#0078D4] p-3 space-y-3">
+        <div className="space-y-2">
+          <input
+            type="text"
+            value={editingTaskForm.title}
+            placeholder="Task title"
+            autoFocus
+            onChange={e => setEditingTaskForm(p => ({ ...p, title: e.target.value }))}
+            onKeyDown={e => { if (e.key === "Escape") onCancelEdit(); }}
+            className="w-full border border-gray-300 rounded px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4]"
+          />
+          <select
+            value={editingTaskForm.groupName}
+            onChange={e => setEditingTaskForm(p => ({ ...p, groupName: e.target.value }))}
+            className="w-full border border-gray-300 rounded px-2.5 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-[#0078D4]"
+          >
+            <option value="">No group</option>
+            {GROUP_OPTIONS.map(o => <option key={o} value={o}>{o}</option>)}
+          </select>
+        </div>
+
+        {/* Engineer detail sections */}
+        <button
+          type="button"
+          onClick={() => setEngineerOpen(v => !v)}
+          className="w-full flex items-center justify-between text-[10px] font-semibold text-[#0078D4] hover:text-[#006CBE] py-1 border-t border-gray-100"
         >
-          <option value="">No group</option>
-          {GROUP_OPTIONS.map(o => <option key={o} value={o}>{o}</option>)}
-        </select>
-        <div className="flex gap-2">
+          <span>Engineer Detail Fields</span>
+          <svg className={`w-3 h-3 transition-transform ${engineerOpen ? "rotate-180" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+          </svg>
+        </button>
+
+        {engineerOpen && (
+          <div className="space-y-4 bg-gray-50 rounded-lg p-3 border border-gray-200">
+            <StringListEditor
+              label="Instructions"
+              items={editingTaskForm.instructions}
+              onChange={items => setEditingTaskForm(p => ({ ...p, instructions: items }))}
+              placeholder="Step-by-step instruction…"
+            />
+            <ChecklistEditor
+              items={editingTaskForm.checklist}
+              onChange={items => setEditingTaskForm(p => ({ ...p, checklist: items }))}
+            />
+            <StringListEditor
+              label="Artifacts Produced"
+              items={editingTaskForm.artifactsProduced}
+              onChange={items => setEditingTaskForm(p => ({ ...p, artifactsProduced: items }))}
+              placeholder="E.g. Gap Analysis Report"
+            />
+            <StringListEditor
+              label="Client Deliverables"
+              items={editingTaskForm.clientDeliverables}
+              onChange={items => setEditingTaskForm(p => ({ ...p, clientDeliverables: items }))}
+              placeholder="E.g. Executive Roadmap"
+            />
+          </div>
+        )}
+
+        <div className="flex gap-2 pt-1">
           <button onClick={onSaveTask} className="text-xs bg-[#0078D4] text-white px-3 py-1.5 rounded font-medium hover:bg-[#006CBE]">Save</button>
           <button onClick={onCancelEdit} className="text-xs text-gray-500 px-3 py-1.5">Cancel</button>
         </div>
       </div>
     );
   }
+
+  const hasEngineerDetail =
+    (task.instructions && task.instructions.length > 0) ||
+    (task.checklist && task.checklist.length > 0) ||
+    (task.artifactsProduced && task.artifactsProduced.length > 0) ||
+    (task.clientDeliverables && task.clientDeliverables.length > 0);
+
   return (
-    <div className="flex items-center gap-2 bg-white rounded-lg border border-gray-200 px-3 py-2 group/task">
-      <svg className="w-3.5 h-3.5 text-gray-300 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <div className="flex items-start gap-2 bg-white rounded-lg border border-gray-200 px-3 py-2 group/task">
+      <svg className="w-3.5 h-3.5 text-gray-300 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
       </svg>
-      <span className="text-sm text-[#0A2540] flex-1 leading-snug">{task.title}</span>
+      <div className="flex-1 min-w-0">
+        <span className="text-sm text-[#0A2540] leading-snug">{task.title}</span>
+        {hasEngineerDetail && (
+          <div className="flex flex-wrap gap-1 mt-1">
+            {task.checklist && task.checklist.length > 0 && (
+              <span className="text-[9px] bg-blue-50 text-blue-600 border border-blue-100 px-1.5 py-0.5 rounded font-semibold">
+                {task.checklist.length} checklist item{task.checklist.length !== 1 ? "s" : ""}
+              </span>
+            )}
+            {task.instructions && task.instructions.length > 0 && (
+              <span className="text-[9px] bg-purple-50 text-purple-600 border border-purple-100 px-1.5 py-0.5 rounded font-semibold">
+                {task.instructions.length} instruction{task.instructions.length !== 1 ? "s" : ""}
+              </span>
+            )}
+            {task.artifactsProduced && task.artifactsProduced.length > 0 && (
+              <span className="text-[9px] bg-amber-50 text-amber-600 border border-amber-100 px-1.5 py-0.5 rounded font-semibold">
+                {task.artifactsProduced.length} artifact{task.artifactsProduced.length !== 1 ? "s" : ""}
+              </span>
+            )}
+            {task.clientDeliverables && task.clientDeliverables.length > 0 && (
+              <span className="text-[9px] bg-green-50 text-green-600 border border-green-100 px-1.5 py-0.5 rounded font-semibold">
+                {task.clientDeliverables.length} deliverable{task.clientDeliverables.length !== 1 ? "s" : ""}
+              </span>
+            )}
+          </div>
+        )}
+      </div>
       <div className="hidden group-hover/task:flex items-center gap-1 flex-shrink-0">
         <button onClick={() => onEdit(task)} className="p-1 text-gray-400 hover:text-[#0078D4]">
           <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -102,6 +348,16 @@ function TaskCard({
     </div>
   );
 }
+
+const EMPTY_TASK_FORM: EditingTaskForm = {
+  title: "",
+  groupName: "",
+  description: "",
+  instructions: [],
+  checklist: [],
+  artifactsProduced: [],
+  clientDeliverables: [],
+};
 
 export default function WorkflowsPage() {
   const { fetchWithAuth } = useAuth();
@@ -127,7 +383,7 @@ export default function WorkflowsPage() {
   // Task state
   const [newTask, setNewTask] = useState<{ stepId: number; title: string; groupName: string; description: string } | null>(null);
   const [editingTask, setEditingTask] = useState<StepTask | null>(null);
-  const [editingTaskForm, setEditingTaskForm] = useState({ title: "", groupName: "", description: "" });
+  const [editingTaskForm, setEditingTaskForm] = useState<EditingTaskForm>(EMPTY_TASK_FORM);
 
   const fetchTemplates = useCallback(async () => {
     setLoading(true);
@@ -216,7 +472,7 @@ export default function WorkflowsPage() {
     toast({ title: "Template deleted" });
   }
 
-  type ImportTask = { title: string; groupName?: string; description?: string };
+  type ImportTask = { title: string; groupName?: string; description?: string; instructions?: string[]; checklist?: ChecklistItem[]; artifactsProduced?: string[]; clientDeliverables?: string[] };
   type ImportStep = { title: string; description?: string; tasks?: ImportTask[] };
 
   function parseTemplateSteps(text: string): { parsed: ImportStep[] | null; error: string | null } {
@@ -270,7 +526,16 @@ export default function WorkflowsPage() {
             {
               method: "POST",
               headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ title: t.title.trim(), description: t.description?.trim() || null, groupName: t.groupName?.trim() || null, order: j }),
+              body: JSON.stringify({
+                title: t.title.trim(),
+                description: t.description?.trim() || null,
+                groupName: t.groupName?.trim() || null,
+                order: j,
+                instructions: t.instructions ?? null,
+                checklist: t.checklist ?? null,
+                artifactsProduced: t.artifactsProduced ?? null,
+                clientDeliverables: t.clientDeliverables ?? null,
+              }),
             }
           );
           if (!taskRes.ok) {
@@ -367,7 +632,16 @@ export default function WorkflowsPage() {
       `/api/admin/workflow-templates/${selected.id}/steps/${editingTask.workflowTemplateStepId}/tasks/${editingTask.id}`,
       {
         method: "PUT",
-        body: JSON.stringify({ title: editingTaskForm.title, description: editingTaskForm.description || null, groupName: editingTaskForm.groupName || null, order: editingTask.order }),
+        body: JSON.stringify({
+          title: editingTaskForm.title,
+          description: editingTaskForm.description || null,
+          groupName: editingTaskForm.groupName || null,
+          order: editingTask.order,
+          instructions: editingTaskForm.instructions.filter(Boolean).length > 0 ? editingTaskForm.instructions.filter(Boolean) : null,
+          checklist: editingTaskForm.checklist.filter(c => c.label.trim()).length > 0 ? editingTaskForm.checklist.filter(c => c.label.trim()) : null,
+          artifactsProduced: editingTaskForm.artifactsProduced.filter(Boolean).length > 0 ? editingTaskForm.artifactsProduced.filter(Boolean) : null,
+          clientDeliverables: editingTaskForm.clientDeliverables.filter(Boolean).length > 0 ? editingTaskForm.clientDeliverables.filter(Boolean) : null,
+        }),
       }
     );
     if (!res.ok) { toast({ title: "Failed to save task", variant: "destructive" }); return; }
@@ -394,6 +668,10 @@ export default function WorkflowsPage() {
         title: t.title,
         ...(t.groupName ? { groupName: t.groupName } : {}),
         ...(t.description ? { description: t.description } : {}),
+        ...(t.instructions?.length ? { instructions: t.instructions } : {}),
+        ...(t.checklist?.length ? { checklist: t.checklist } : {}),
+        ...(t.artifactsProduced?.length ? { artifactsProduced: t.artifactsProduced } : {}),
+        ...(t.clientDeliverables?.length ? { clientDeliverables: t.clientDeliverables } : {}),
       })),
     }));
     const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
@@ -537,7 +815,7 @@ export default function WorkflowsPage() {
                         rows={10}
                         value={jsonImportText}
                         onChange={e => setJsonImportText(e.target.value)}
-                        placeholder={`[\n  {\n    "title": "Discovery & Assessment",\n    "description": "Review current M365 environment",\n    "tasks": [\n      { "title": "Review tenant configuration", "groupName": "Engineer Tasks" },\n      { "title": "Health Assessment Report", "groupName": "Artifacts Produced" },\n      { "title": "Gap Analysis Document", "groupName": "Client Deliverables" }\n    ]\n  },\n  {\n    "title": "Architecture Design",\n    "tasks": [\n      { "title": "Design target state", "groupName": "Engineer Tasks" }\n    ]\n  }\n]`}
+                        placeholder={`[\n  {\n    "title": "Discovery & Assessment",\n    "description": "Review current M365 environment",\n    "tasks": [\n      { "title": "Review tenant configuration", "groupName": "Engineer Tasks", "instructions": ["Log in to M365 admin", "Check license usage"] },\n      { "title": "Health Assessment Report", "groupName": "Artifacts Produced" },\n      { "title": "Gap Analysis Document", "groupName": "Client Deliverables" }\n    ]\n  }\n]`}
                         className="w-full border border-gray-300 rounded-lg px-3 py-2 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-[#00B4D8] resize-y bg-white"
                       />
                     </div>
@@ -576,6 +854,9 @@ export default function WorkflowsPage() {
                                       <div className="min-w-0">
                                         <p className="text-[11px] text-gray-700 leading-snug">{t.title}</p>
                                         {t.description && <p className="text-[10px] text-gray-400 leading-snug">{t.description}</p>}
+                                        {t.checklist && t.checklist.length > 0 && (
+                                          <p className="text-[9px] text-blue-500">{t.checklist.length} checklist item{t.checklist.length !== 1 ? "s" : ""}</p>
+                                        )}
                                       </div>
                                     </div>
                                   ))}
@@ -713,7 +994,18 @@ export default function WorkflowsPage() {
                                         key={task.id}
                                         task={task}
                                         templateId={selected.id}
-                                        onEdit={t => { setEditingTask(t); setEditingTaskForm({ title: t.title, groupName: t.groupName ?? "", description: t.description ?? "" }); }}
+                                        onEdit={t => {
+                                          setEditingTask(t);
+                                          setEditingTaskForm({
+                                            title: t.title,
+                                            groupName: t.groupName ?? "",
+                                            description: t.description ?? "",
+                                            instructions: t.instructions ?? [],
+                                            checklist: t.checklist ?? [],
+                                            artifactsProduced: t.artifactsProduced ?? [],
+                                            clientDeliverables: t.clientDeliverables ?? [],
+                                          });
+                                        }}
                                         onDelete={t => void deleteTask(t)}
                                         editingTask={editingTask}
                                         editingTaskForm={editingTaskForm}
@@ -746,6 +1038,7 @@ export default function WorkflowsPage() {
                                     <option value="">No group</option>
                                     {GROUP_OPTIONS.map(o => <option key={o} value={o}>{o}</option>)}
                                   </select>
+                                  <p className="text-[10px] text-gray-400 italic">Save, then click Edit to add instructions, checklist, and deliverables.</p>
                                   <div className="flex gap-2">
                                     <button onClick={() => void addTask()} className="text-xs bg-[#0078D4] text-white px-3 py-1.5 rounded font-medium hover:bg-[#006CBE]">Add Task</button>
                                     <button onClick={() => setNewTask(null)} className="text-xs text-gray-500 px-3 py-1.5">Cancel</button>

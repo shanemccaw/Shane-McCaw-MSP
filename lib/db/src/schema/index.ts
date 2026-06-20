@@ -398,6 +398,10 @@ export const workflowTemplateStepTasksTable = pgTable("workflow_template_step_ta
   groupName: text("group_name"),
   order: integer("order").notNull().default(0),
   createdAt: timestamp("created_at").notNull().defaultNow(),
+  instructions: jsonb("instructions").$type<string[]>(),
+  checklist: jsonb("checklist").$type<Array<{ id: string; label: string }>>(),
+  artifactsProduced: jsonb("artifacts_produced").$type<string[]>(),
+  clientDeliverables: jsonb("client_deliverables").$type<string[]>(),
 });
 
 export type InsertWorkflowTemplateStepTask = typeof workflowTemplateStepTasksTable.$inferInsert;

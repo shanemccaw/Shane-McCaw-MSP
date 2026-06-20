@@ -238,6 +238,23 @@ function DraggableCard({
               {task.title}
             </p>
 
+            {(() => {
+              const meta = (task.taskMetadata ?? {}) as Record<string, unknown>;
+              const checklist = (meta.checklist ?? []) as Array<{ id: string }>;
+              const checklistState = (meta.checklistState ?? {}) as Record<string, boolean>;
+              if (checklist.length === 0) return null;
+              const checkedCount = checklist.filter(item => checklistState[item.id]).length;
+              const allDone = checkedCount === checklist.length;
+              return (
+                <span className={`inline-flex items-center gap-0.5 text-[9px] font-semibold mt-0.5 px-1.5 py-0.5 rounded ${allDone ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500"}`}>
+                  <svg className="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+                  </svg>
+                  {checkedCount}/{checklist.length} done
+                </span>
+              );
+            })()}
+
             {task.description && (
               <p className="text-[10px] text-muted-foreground mt-0.5 leading-snug line-clamp-2">
                 {task.description}

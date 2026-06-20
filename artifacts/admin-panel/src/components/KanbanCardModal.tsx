@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
   Dialog,
   DialogContent,
@@ -58,11 +58,219 @@ interface EditForm {
   dueDate: string;
 }
 
+interface ChecklistItem {
+  id: string;
+  label: string;
+}
+
+function EngineerDetailSection({
+  task,
+  fetchWithAuth,
+  onMetadataUpdate,
+}: {
+  task: KanbanCardModalTask;
+  fetchWithAuth: (url: string, options?: RequestInit) => Promise<Response>;
+  onMetadataUpdate: (meta: Record<string, unknown>) => void;
+}) {
+  const meta = (task.taskMetadata ?? {}) as Record<string, unknown>;
+  const instructions = (meta.instructions ?? []) as string[];
+  const checklist = (meta.checklist ?? []) as ChecklistItem[];
+  const artifactsProduced = (meta.artifactsProduced ?? []) as string[];
+  const clientDeliverables = (meta.clientDeliverables ?? []) as string[];
+  const checklistState = (meta.checklistState ?? {}) as Record<string, boolean>;
+  const uploadedArtifacts = (meta.uploadedArtifacts ?? []) as string[];
+
+  const [toggling, setToggling] = useState<string | null>(null);
+  const [uploadedLocal, setUploadedLocal] = useState<string[]>(uploadedArtifacts);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const checkedCount = checklist.filter(item => checklistState[item.id]).length;
+
+  const toggleItem = async (itemId: string, checked: boolean) => {
+    setToggling(itemId);
+    try {
+      const res = await fetchWithAuth(`/api/admin/kanban-tasks/${task.id}/checklist/${itemId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ checked }),
+      });
+      if (res.ok) {
+        const data = await res.json() as { taskMetadata: Record<string, unknown> };
+        onMetadataUpdate(data.taskMetadata);
+      }
+    } finally {
+      setToggling(null);
+    }
+  };
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    // TODO: Replace this stub with a real SharePoint write call once the
+    // SharePoint site ↔ project association task is complete. For now, we
+    // store the filename locally in uploadedArtifacts inside taskMetadata.
+    const newUploaded = [...uploadedLocal, file.name];
+    setUploadedLocal(newUploaded);
+    const updatedMeta = { ...meta, uploadedArtifacts: newUploaded };
+    void fetchWithAuth(`/api/admin/kanban-tasks/${task.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ taskMetadata: updatedMeta }),
+    }).then(async res => {
+      if (res.ok) {
+        const updated = await res.json() as { taskMetadata: Record<string, unknown> };
+        onMetadataUpdate(updated.taskMetadata);
+      }
+    });
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  };
+
+  const hasAny = instructions.length > 0 || checklist.length > 0 || artifactsProduced.length > 0 || clientDeliverables.length > 0;
+
+  if (!hasAny && uploadedLocal.length === 0) {
+    return (
+      <div className="bg-[#F7F9FC] border border-border rounded-lg p-4">
+        <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1">Engineer Detail</p>
+        <p className="text-xs text-muted-foreground italic">No engineer detail has been added to this task's template yet.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="bg-[#F7F9FC] border border-border rounded-lg p-4 space-y-4">
+      <p className="text-[10px] font-bold uppercase tracking-wider text-[#0A2540]">Engineer Detail</p>
+
+      {/* Instructions */}
+      {instructions.length > 0 && (
+        <div>
+          <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-2">Instructions</p>
+          <ol className="space-y-1.5">
+            {instructions.map((inst, i) => (
+              <li key={i} className="flex items-start gap-2">
+                <span className="flex-shrink-0 w-4 h-4 rounded-full bg-[#0078D4]/10 text-[#0078D4] text-[9px] font-bold flex items-center justify-center mt-0.5">
+                  {i + 1}
+                </span>
+                <span className="text-xs text-[#0A2540] leading-relaxed">{inst}</span>
+              </li>
+            ))}
+          </ol>
+        </div>
+      )}
+
+      {/* Checklist */}
+      {checklist.length > 0 && (
+        <div>
+          <div className="flex items-center justify-between mb-2">
+            <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Checklist</p>
+            <span className="text-[9px] font-semibold text-muted-foreground bg-white border border-border rounded-full px-2 py-0.5">
+              {checkedCount}/{checklist.length} done
+            </span>
+          </div>
+          <div className="space-y-1.5">
+            {checklist.map(item => {
+              const isChecked = !!checklistState[item.id];
+              const isToggling = toggling === item.id;
+              return (
+                <label
+                  key={item.id}
+                  className={`flex items-center gap-2.5 cursor-pointer group rounded-lg px-2 py-1.5 transition-colors ${isChecked ? "bg-green-50" : "bg-white hover:bg-gray-50"} border ${isChecked ? "border-green-200" : "border-border"}`}
+                >
+                  <div className="relative flex-shrink-0">
+                    <input
+                      type="checkbox"
+                      checked={isChecked}
+                      disabled={isToggling}
+                      onChange={e => void toggleItem(item.id, e.target.checked)}
+                      className="sr-only"
+                    />
+                    <div className={`w-4 h-4 rounded border-2 flex items-center justify-center transition-colors ${isChecked ? "bg-green-500 border-green-500" : "border-gray-300 bg-white group-hover:border-[#0078D4]"}`}>
+                      {isToggling ? (
+                        <div className="w-2 h-2 border border-white/60 border-t-white rounded-full animate-spin" />
+                      ) : isChecked ? (
+                        <svg className="w-2.5 h-2.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                        </svg>
+                      ) : null}
+                    </div>
+                  </div>
+                  <span className={`text-xs leading-snug transition-colors ${isChecked ? "line-through text-muted-foreground" : "text-[#0A2540]"}`}>
+                    {item.label}
+                  </span>
+                </label>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Artifacts Produced */}
+      {(artifactsProduced.length > 0 || uploadedLocal.length > 0) && (
+        <div>
+          <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-2">Artifacts Produced</p>
+          <div className="flex flex-wrap gap-1.5 mb-2">
+            {artifactsProduced.map((artifact, i) => (
+              <span key={i} className="inline-flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200">
+                <svg className="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+                {artifact}
+              </span>
+            ))}
+          </div>
+          {/* Uploaded files */}
+          {uploadedLocal.length > 0 && (
+            <div className="flex flex-wrap gap-1.5 mb-2">
+              {uploadedLocal.map((fname, i) => (
+                <span key={i} className="inline-flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 rounded-full bg-green-50 text-green-700 border border-green-200">
+                  <svg className="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                  </svg>
+                  {fname}
+                </span>
+              ))}
+            </div>
+          )}
+          {/* Upload button stub */}
+          <input ref={fileInputRef} type="file" className="sr-only" onChange={handleFileUpload} />
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            className="inline-flex items-center gap-1.5 text-xs font-semibold text-[#0078D4] border border-[#0078D4]/30 hover:border-[#0078D4] hover:bg-blue-50 rounded-lg px-3 py-1.5 transition-colors"
+          >
+            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+            </svg>
+            Upload artifact
+          </button>
+        </div>
+      )}
+
+      {/* Client Deliverables */}
+      {clientDeliverables.length > 0 && (
+        <div>
+          <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-2">Client Deliverables</p>
+          <div className="flex flex-wrap gap-1.5">
+            {clientDeliverables.map((deliverable, i) => (
+              <span key={i} className="inline-flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200">
+                <svg className="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
+                </svg>
+                {deliverable}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function KanbanCardModal({ task, stepTitle, open, onClose, mode = "client", fetchWithAuth, onUpdate }: Props) {
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState<EditForm>({ title: "", description: "", priority: "", assignedTo: "", dueDate: "" });
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [localTask, setLocalTask] = useState<KanbanCardModalTask | null>(null);
 
   useEffect(() => {
     if (task) {
@@ -73,15 +281,16 @@ export function KanbanCardModal({ task, stepTitle, open, onClose, mode = "client
         assignedTo: task.assignedTo ?? "",
         dueDate: task.dueDate ? task.dueDate.slice(0, 10) : "",
       });
+      setLocalTask(task);
     }
     setEditing(false);
     setSaveError(null);
   }, [task]);
 
-  if (!task) return null;
+  if (!task || !localTask) return null;
 
-  const colCfg = COLUMN_CONFIG[task.column] ?? { label: task.column, cls: "bg-gray-100 text-gray-600 border border-gray-200" };
-  const priorityCfg = task.priority ? PRIORITY_CONFIG[task.priority] : null;
+  const colCfg = COLUMN_CONFIG[localTask.column] ?? { label: localTask.column, cls: "bg-gray-100 text-gray-600 border border-gray-200" };
+  const priorityCfg = localTask.priority ? PRIORITY_CONFIG[localTask.priority] : null;
 
   const handleSave = async () => {
     if (!fetchWithAuth || !onUpdate) return;
@@ -96,7 +305,7 @@ export function KanbanCardModal({ task, stepTitle, open, onClose, mode = "client
         assignedTo: form.assignedTo.trim() || null,
         dueDate: form.dueDate || null,
       };
-      const res = await fetchWithAuth(`/api/admin/kanban-tasks/${task.id}`, {
+      const res = await fetchWithAuth(`/api/admin/kanban-tasks/${localTask.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
@@ -107,7 +316,9 @@ export function KanbanCardModal({ task, stepTitle, open, onClose, mode = "client
         return;
       }
       const updated = await res.json() as KanbanCardModalTask;
-      onUpdate({ ...task, ...updated });
+      const merged = { ...localTask, ...updated };
+      setLocalTask(merged);
+      onUpdate(merged);
       setEditing(false);
     } catch {
       setSaveError("Network error — please try again");
@@ -116,18 +327,29 @@ export function KanbanCardModal({ task, stepTitle, open, onClose, mode = "client
     }
   };
 
+  const handleMetadataUpdate = (meta: Record<string, unknown>) => {
+    const merged = { ...localTask, taskMetadata: meta };
+    setLocalTask(merged);
+    onUpdate?.(merged);
+  };
+
   const inputCls = "w-full border border-border rounded-lg px-3 py-2 text-sm text-[#0A2540] focus:outline-none focus:ring-2 focus:ring-[#0078D4]/40 bg-white";
   const labelCls = "block text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1";
 
+  const meta = (localTask.taskMetadata ?? {}) as Record<string, unknown>;
+  const checklist = (meta.checklist ?? []) as Array<{ id: string; label: string }>;
+  const checklistState = (meta.checklistState ?? {}) as Record<string, boolean>;
+  const checkedCount = checklist.filter(item => checklistState[item.id]).length;
+
   return (
     <Dialog open={open} onOpenChange={o => { if (!o) { setEditing(false); onClose(); } }}>
-      <DialogContent className="max-w-lg">
+      <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <div className="flex items-start gap-3 pr-2">
             <div className="flex-1 min-w-0">
-              {task.groupName && (
+              {localTask.groupName && (
                 <span className="inline-block text-[10px] font-semibold px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 mb-2">
-                  {task.groupName}
+                  {localTask.groupName}
                 </span>
               )}
               {editing ? (
@@ -140,7 +362,7 @@ export function KanbanCardModal({ task, stepTitle, open, onClose, mode = "client
                 />
               ) : (
                 <DialogTitle className="text-base font-bold text-[#0A2540] leading-snug">
-                  {task.title}
+                  {localTask.title}
                 </DialogTitle>
               )}
             </div>
@@ -247,36 +469,44 @@ export function KanbanCardModal({ task, stepTitle, open, onClose, mode = "client
                     {priorityCfg.label}
                   </span>
                 )}
+                {checklist.length > 0 && (
+                  <span className={`inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-full ${checkedCount === checklist.length ? "bg-green-100 text-green-700 border border-green-200" : "bg-gray-100 text-gray-600 border border-gray-200"}`}>
+                    <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+                    </svg>
+                    {checkedCount}/{checklist.length} done
+                  </span>
+                )}
               </div>
 
-              {task.description && (
+              {localTask.description && (
                 <div>
                   <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1">Description</p>
-                  <p className="text-sm text-[#0A2540] leading-relaxed">{task.description}</p>
+                  <p className="text-sm text-[#0A2540] leading-relaxed">{localTask.description}</p>
                 </div>
               )}
 
               <TypedCardContent
-                taskType={task.taskType}
-                metadata={task.taskMetadata}
+                taskType={localTask.taskType}
+                metadata={localTask.taskMetadata}
               />
 
-              {(task.assignedTo || task.dueDate || stepTitle) && (
+              {(localTask.assignedTo || localTask.dueDate || stepTitle) && (
                 <div className="flex flex-wrap gap-4 text-xs text-muted-foreground">
-                  {task.assignedTo && (
+                  {localTask.assignedTo && (
                     <div className="flex items-center gap-1.5">
                       <svg className="w-3.5 h-3.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                         <path strokeLinecap="round" strokeLinejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
                       </svg>
-                      <span>{task.assignedTo}</span>
+                      <span>{localTask.assignedTo}</span>
                     </div>
                   )}
-                  {task.dueDate && (
+                  {localTask.dueDate && (
                     <div className="flex items-center gap-1.5">
                       <svg className="w-3.5 h-3.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                         <path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
                       </svg>
-                      <span>Due {new Date(task.dueDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</span>
+                      <span>Due {new Date(localTask.dueDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</span>
                     </div>
                   )}
                   {stepTitle && (
@@ -290,41 +520,50 @@ export function KanbanCardModal({ task, stepTitle, open, onClose, mode = "client
                 </div>
               )}
 
-              {task.column === "waiting_on_customer" && task.waitingReason && (
+              {localTask.column === "waiting_on_customer" && localTask.waitingReason && (
                 <div className="bg-amber-50 border border-amber-200 rounded-lg p-3.5">
                   <p className="text-[10px] font-bold uppercase tracking-wider text-amber-600 mb-1.5">Waiting for</p>
-                  <p className="text-sm text-amber-800 leading-relaxed whitespace-pre-wrap">{task.waitingReason}</p>
+                  <p className="text-sm text-amber-800 leading-relaxed whitespace-pre-wrap">{localTask.waitingReason}</p>
                 </div>
               )}
 
-              {task.column === "completed" && (task.completionStatus || task.completionNotes) && (
+              {localTask.column === "completed" && (localTask.completionStatus || localTask.completionNotes) && (
                 <div className="space-y-3">
-                  {task.completionStatus && (
+                  {localTask.completionStatus && (
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Result:</span>
                       <span className="text-xs font-semibold text-green-700 bg-green-50 border border-green-200 rounded-full px-2.5 py-0.5">
-                        ✓ {task.completionStatus}
+                        ✓ {localTask.completionStatus}
                       </span>
                     </div>
                   )}
-                  {task.completionNotes && (
+                  {localTask.completionNotes && (
                     <div>
                       <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1.5">Output / Notes</p>
                       <pre className="text-xs text-[#0A2540] bg-[#F7F9FC] border border-border rounded-lg px-3 py-2.5 whitespace-pre-wrap font-mono leading-relaxed max-h-52 overflow-y-auto">
-                        {task.completionNotes}
+                        {localTask.completionNotes}
                       </pre>
                     </div>
                   )}
                 </div>
               )}
 
-              {(task.createdAt || task.updatedAt) && (
+              {/* Engineer Detail Section — admin only */}
+              {mode === "admin" && fetchWithAuth && (
+                <EngineerDetailSection
+                  task={localTask}
+                  fetchWithAuth={fetchWithAuth}
+                  onMetadataUpdate={handleMetadataUpdate}
+                />
+              )}
+
+              {(localTask.createdAt || localTask.updatedAt) && (
                 <div className="flex flex-wrap gap-4 text-[10px] text-muted-foreground pt-2 border-t border-border">
-                  {task.createdAt && (
-                    <span>Created {new Date(task.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</span>
+                  {localTask.createdAt && (
+                    <span>Created {new Date(localTask.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</span>
                   )}
-                  {task.updatedAt && task.updatedAt !== task.createdAt && (
-                    <span>Updated {new Date(task.updatedAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</span>
+                  {localTask.updatedAt && localTask.updatedAt !== localTask.createdAt && (
+                    <span>Updated {new Date(localTask.updatedAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</span>
                   )}
                 </div>
               )}

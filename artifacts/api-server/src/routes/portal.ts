@@ -3023,6 +3023,14 @@ router.patch("/admin/kanban-tasks/:id", requireAdmin, async (req: Request, res: 
                   description: t.description ?? null,
                   column: "backlog" as const,
                   order: idx,
+                  taskMetadata: {
+                    instructions: t.instructions ?? [],
+                    checklist: t.checklist ?? [],
+                    artifactsProduced: t.artifactsProduced ?? [],
+                    clientDeliverables: t.clientDeliverables ?? [],
+                    checklistState: {},
+                    uploadedArtifacts: [],
+                  },
                 }))
               );
             }
@@ -3067,6 +3075,40 @@ router.patch("/admin/kanban-tasks/:id", requireAdmin, async (req: Request, res: 
   }
 
   res.json(updated);
+});
+
+// ─── ADMIN: Kanban Task Checklist Toggle ──────────────────────────────────────
+router.patch("/admin/kanban-tasks/:id/checklist/:itemId", requireAdmin, async (req: Request, res: Response) => {
+  const id = parseInt(String(req.params.id ?? ""), 10);
+  const itemId = String(req.params.itemId ?? "");
+  if (isNaN(id)) { res.status(400).json({ error: "Invalid task ID" }); return; }
+  if (!itemId) { res.status(400).json({ error: "Invalid item ID" }); return; }
+
+  const { checked } = req.body as { checked?: boolean };
+  if (typeof checked !== "boolean") { res.status(400).json({ error: "checked (boolean) is required" }); return; }
+
+  const [existingTask] = await db.select().from(kanbanTasksTable).where(eq(kanbanTasksTable.id, id));
+  if (!existingTask) { res.status(404).json({ error: "Task not found" }); return; }
+
+  const currentMeta = (existingTask.taskMetadata ?? {}) as Record<string, unknown>;
+  const currentState = (currentMeta.checklistState ?? {}) as Record<string, boolean>;
+
+  const updatedMeta = {
+    ...currentMeta,
+    checklistState: {
+      ...currentState,
+      [itemId]: checked,
+    },
+  };
+
+  const [updated] = await db
+    .update(kanbanTasksTable)
+    .set({ taskMetadata: updatedMeta, updatedAt: new Date() })
+    .where(eq(kanbanTasksTable.id, id))
+    .returning();
+
+  if (!updated) { res.status(404).json({ error: "Task not found" }); return; }
+  res.json({ taskMetadata: updated.taskMetadata });
 });
 
 router.delete("/admin/kanban-tasks/:id", requireAdmin, async (req: Request, res: Response) => {
@@ -4042,6 +4084,14 @@ router.post("/admin/client-services", requireAdmin, async (req: Request, res: Re
               description: t.description ?? null,
               column: "backlog" as const,
               order: idx,
+              taskMetadata: {
+                instructions: t.instructions ?? [],
+                checklist: t.checklist ?? [],
+                artifactsProduced: t.artifactsProduced ?? [],
+                clientDeliverables: t.clientDeliverables ?? [],
+                checklistState: {},
+                uploadedArtifacts: [],
+              },
             }))
           );
         }
