@@ -484,12 +484,14 @@ export default function ProjectsPage() {
       });
       if (!res.ok) {
         const err = await res.json() as { error: string };
-        alert(`Import failed: ${err.error}`);
+        toast({ title: "Import failed", description: err.error, variant: "destructive" });
         return;
       }
+      const created = await res.json() as { id: number }[];
       setJsonImportProjectId(null);
       setJsonImportText("");
       await reloadDetails(projectId);
+      toast({ title: "Steps imported", description: `${created.length} step${created.length !== 1 ? "s" : ""} created successfully.` });
     } finally {
       setJsonImporting(false);
     }
@@ -705,7 +707,7 @@ export default function ProjectsPage() {
                                 }}
                                 className="flex items-center gap-1 text-xs font-semibold text-[#00B4D8] hover:underline">
                                 <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M17 16v2a2 2 0 01-2 2H5a2 2 0 01-2-2v-2M9 12l3 3 3-3M12 3v12" /></svg>
-                                Import JSON
+                                Import from JSON
                               </button>
                               <button onClick={() => { setAddStepProjectId(addStepProjectId === p.id ? null : p.id); setStepForm({ title: "", status: "pending", dueDate: "" }); setJsonImportProjectId(null); }}
                                 className="flex items-center gap-1 text-xs font-semibold text-[#0078D4] hover:underline">
