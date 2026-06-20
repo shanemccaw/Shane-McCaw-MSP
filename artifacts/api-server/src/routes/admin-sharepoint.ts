@@ -243,6 +243,14 @@ export async function provisionClientSite(
     return;
   }
 
+  // Idempotency guard: skip if the client already has a linked SharePoint site
+  const [existing] = await db.select({ sharepointSiteUrl: usersTable.sharepointSiteUrl })
+    .from(usersTable).where(eq(usersTable.id, clientId));
+  if (existing?.sharepointSiteUrl) {
+    info({ clientId, siteUrl: existing.sharepointSiteUrl }, "SharePoint provisioning skipped — site already exists");
+    return;
+  }
+
   const mailNickname = `smc-client-${clientId}-${Date.now()}`;
   const displayName = `SMC — ${clientName}`.slice(0, 120);
 
