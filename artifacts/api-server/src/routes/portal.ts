@@ -2799,6 +2799,19 @@ router.post("/admin/status-reports/:id/reply", requireAdmin, async (req: Request
     .where(eq(statusReportsTable.id, id))
     .returning();
 
+  if (report.clientUserId) {
+    const linkPath = report.projectId
+      ? `/portal/projects/${report.projectId}`
+      : "/portal/projects";
+    await db.insert(notificationsTable).values({
+      userId: report.clientUserId,
+      title: `Reply to your question on: ${report.title}`,
+      body: "Shane has replied to your question on a status report. View it in your portal.",
+      type: "project_update",
+      linkPath,
+    });
+  }
+
   res.json(updated);
 });
 
