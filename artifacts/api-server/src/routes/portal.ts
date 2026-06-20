@@ -3321,6 +3321,107 @@ router.get("/admin/purchases", requireAdmin, async (_req: Request, res: Response
   res.json(purchases);
 });
 
+// ─── ADMIN: Purchase detail ────────────────────────────────────────────────
+router.get("/admin/purchases/:id", requireAdmin, async (req: Request, res: Response) => {
+  const rawId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+  const id = parseInt(rawId, 10);
+  if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
+
+  // Fetch the base invoice row first (no contract join yet)
+  const invoiceRows = await db
+    .select({
+      id: invoicesTable.id,
+      invoiceNumber: invoicesTable.invoiceNumber,
+      description: invoicesTable.description,
+      amount: invoicesTable.amount,
+      currency: invoicesTable.currency,
+      status: invoicesTable.status,
+      paidAt: invoicesTable.paidAt,
+      stripeSessionId: invoicesTable.stripeSessionId,
+      createdAt: invoicesTable.createdAt,
+      clientId: usersTable.id,
+      clientName: usersTable.name,
+      clientEmail: usersTable.email,
+      clientCompany: usersTable.company,
+      projectId: projectsTable.id,
+      projectName: projectsTable.title,
+    })
+    .from(invoicesTable)
+    .leftJoin(usersTable, eq(invoicesTable.clientUserId, usersTable.id))
+    .leftJoin(projectsTable, eq(invoicesTable.projectId, projectsTable.id))
+    .where(eq(invoicesTable.id, id))
+    .limit(1);
+
+  if (invoiceRows.length === 0) { res.status(404).json({ error: "Not found" }); return; }
+  const inv = invoiceRows[0];
+
+  // Fetch ALL contracts linked to this purchase (multi-service cart support).
+  // Strategy: prefer stripeSessionId match (set on all contracts during fulfillment).
+  // Fallback to projectId match for non-first invoices whose stripeSessionId is null.
+  type ContractRow = {
+    contractId: number;
+    serviceName: string | null;
+    wizardSelections: unknown;
+    orderWorkflow: unknown;
+  };
+  let contracts: ContractRow[] = [];
+  if (inv.stripeSessionId) {
+    contracts = await db
+      .select({
+        contractId: contractsTable.id,
+        serviceName: servicesTable.name,
+        wizardSelections: contractsTable.wizardSelections,
+        orderWorkflow: servicesTable.orderWorkflow,
+      })
+      .from(contractsTable)
+      .leftJoin(servicesTable, eq(contractsTable.serviceId, servicesTable.id))
+      .where(eq(contractsTable.stripeSessionId, inv.stripeSessionId));
+  } else if (inv.projectId) {
+    // Non-first invoice in a multi-service cart — contracts were updated with
+    // projectId at fulfillment time even though the invoice has no sessionId.
+    contracts = await db
+      .select({
+        contractId: contractsTable.id,
+        serviceName: servicesTable.name,
+        wizardSelections: contractsTable.wizardSelections,
+        orderWorkflow: servicesTable.orderWorkflow,
+      })
+      .from(contractsTable)
+      .leftJoin(servicesTable, eq(contractsTable.serviceId, servicesTable.id))
+      .where(
+        and(
+          eq(contractsTable.projectId, inv.projectId),
+          eq(contractsTable.userId, inv.clientId ?? -1)
+        )
+      );
+  }
+
+  res.json({
+    id: inv.id,
+    invoiceNumber: inv.invoiceNumber,
+    description: inv.description,
+    amount: inv.amount,
+    currency: inv.currency,
+    status: inv.status,
+    paidAt: inv.paidAt,
+    stripeSessionId: inv.stripeSessionId,
+    createdAt: inv.createdAt,
+    client: {
+      id: inv.clientId,
+      name: inv.clientName,
+      email: inv.clientEmail,
+      company: inv.clientCompany,
+    },
+    project: inv.projectId ? { id: inv.projectId, name: inv.projectName } : null,
+    contracts: contracts.map(c => ({
+      contractId: c.contractId,
+      serviceName: c.serviceName,
+      wizardSelections: c.wizardSelections ?? null,
+      orderWorkflow: c.orderWorkflow ?? null,
+    })),
+  });
+});
+
 // ─── ADMIN: Admin messages (all clients) ────────────────────────────────────
 router.get("/admin/messages/clients", requireAdmin, async (_req: Request, res: Response) => {
   const clients = await db.select({

@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useLocation } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
 
 interface Purchase {
@@ -18,6 +19,7 @@ interface Purchase {
 
 export default function PurchasesPage() {
   const { fetchWithAuth } = useAuth();
+  const [, navigate] = useLocation();
   const [purchases, setPurchases] = useState<Purchase[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -59,7 +61,7 @@ export default function PurchasesPage() {
               </thead>
               <tbody>
                 {purchases.map(p => (
-                  <tr key={p.id} className="border-b border-border last:border-0 hover:bg-[#F7F9FC] transition-colors">
+                  <tr key={p.id} className="border-b border-border last:border-0 hover:bg-[#F7F9FC] transition-colors cursor-pointer" onClick={() => navigate(`/crm/purchases/${p.id}`)}>
                     <td className="px-5 py-3.5">
                       <p className="font-semibold text-[#0A2540]">{p.clientName ?? p.clientEmail ?? "—"}</p>
                       <p className="text-xs text-muted-foreground">{p.clientEmail}</p>
