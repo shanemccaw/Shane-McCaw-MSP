@@ -491,20 +491,20 @@ function SidebarContent({
 }
 
 const POLL_INTERVAL_MS = 60_000;
-const LS_EMAIL_LAST_VIEWED = "emailActivityLastViewedAt";
+const LS_EMAIL_LAST_SEEN = "emailActivityLastSeenAt";
 
-function readLastViewedAt(): number | null {
+function readLastSeenAt(): number | null {
   try {
-    const raw = localStorage.getItem(LS_EMAIL_LAST_VIEWED);
+    const raw = localStorage.getItem(LS_EMAIL_LAST_SEEN);
     return raw ? parseInt(raw, 10) : null;
   } catch {
     return null;
   }
 }
 
-function saveLastViewedAt(ts: number): void {
+function saveLastSeenAt(ts: number): void {
   try {
-    localStorage.setItem(LS_EMAIL_LAST_VIEWED, String(ts));
+    localStorage.setItem(LS_EMAIL_LAST_SEEN, String(ts));
   } catch {}
 }
 
@@ -523,9 +523,9 @@ export default function DashboardShell({ children }: { children: ReactNode }) {
   const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const fetchCount = useCallback(async () => {
-    const lastViewed = readLastViewedAt();
-    const url = lastViewed
-      ? `/api/admin/emails/unread-count?since=${lastViewed}`
+    const lastSeen = readLastSeenAt();
+    const url = lastSeen
+      ? `/api/admin/emails/unread-count?since=${lastSeen}`
       : "/api/admin/emails/unread-count";
     try {
       const res = await fetch(url, { credentials: "include" });
@@ -546,7 +546,7 @@ export default function DashboardShell({ children }: { children: ReactNode }) {
   // When away: poll the count using the watermark so already-seen emails stay cleared.
   useEffect(() => {
     if (location === "/email-activity") {
-      saveLastViewedAt(Date.now());
+      saveLastSeenAt(Date.now());
       setUnreadEmailCount(0);
       if (pollTimerRef.current) {
         clearInterval(pollTimerRef.current);
