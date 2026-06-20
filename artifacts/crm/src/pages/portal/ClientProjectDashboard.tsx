@@ -231,8 +231,8 @@ export default function ClientProjectDashboard() {
   // Invoice pay loading
   const [payingInvoice, setPayingInvoice] = useState<number | null>(null);
 
-  // Mobile project selector
-  const [mobileOpen, setMobileOpen] = useState(false);
+  // Ref to scroll to task board when "Waiting on You" stat is clicked
+  const taskBoardRef = useRef<HTMLDivElement>(null);
 
   // ── Load project list ────────────────────────────────────────────────────
 
@@ -314,6 +314,48 @@ export default function ClientProjectDashboard() {
   const computedProgress = steps && steps.length > 0
     ? Math.round((completedSteps / steps.length) * 100)
     : project?.progress ?? 0;
+
+  // Derived health status: Blocked > Needs Attention > On Track
+  const healthStatus = useMemo((): { label: string; cls: string; dot: string } => {
+    if (steps?.some(s => s.status === "blocked")) {
+      return { label: "Blocked", cls: "bg-red-100 text-red-700 border-red-200", dot: "bg-red-500" };
+    }
+    if (projectInvoices.some(inv => inv.status === "overdue")) {
+      return { label: "Needs Attention", cls: "bg-amber-100 text-amber-700 border-amber-200", dot: "bg-amber-500" };
+    }
+    if (project?.status === "completed") {
+      return { label: "Complete", cls: "bg-green-100 text-green-700 border-green-200", dot: "bg-green-500" };
+    }
+    return { label: "On Track", cls: "bg-emerald-100 text-emerald-700 border-emerald-200", dot: "bg-emerald-500" };
+  }, [steps, projectInvoices, project?.status]);
+
+  // Composite activity feed — chronological merge from all sources for this project
+  const activityFeed = useMemo(() => {
+    type FeedItem = { id: string; content: string; type: string; createdAt: string };
+    const items: FeedItem[] = [];
+
+    // Project updates
+    (updates ?? []).forEach(u => items.push({ id: `update-${u.id}`, content: u.content, type: u.type, createdAt: u.createdAt }));
+
+    // Status reports
+    (statusReports ?? []).forEach(r => {
+      if (r.sentAt) items.push({ id: `report-${r.id}`, content: `Status report "${r.title}" sent`, type: "report", createdAt: r.sentAt });
+    });
+
+    // Project invoices
+    projectInvoices.forEach(inv => {
+      if (inv.paidAt) items.push({ id: `inv-paid-${inv.id}`, content: `Invoice ${inv.invoiceNumber} (${fmtCurrency(inv.amount, inv.currency)}) marked paid`, type: "invoice", createdAt: inv.paidAt });
+      items.push({ id: `inv-${inv.id}`, content: `Invoice ${inv.invoiceNumber} for ${fmtCurrency(inv.amount, inv.currency)} created`, type: "invoice", createdAt: inv.createdAt });
+    });
+
+    // Documents
+    (documents ?? []).forEach(doc => items.push({ id: `doc-${doc.id}`, content: `Document "${doc.name}" uploaded`, type: "document", createdAt: doc.createdAt }));
+
+    // Last 3 messages
+    messages.slice(-3).forEach(msg => items.push({ id: `msg-${msg.id}`, content: `Message: "${msg.body.slice(0, 80)}${msg.body.length > 80 ? "…" : ""}"`, type: "message", createdAt: msg.createdAt }));
+
+    return items.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()).slice(0, 15);
+  }, [updates, statusReports, projectInvoices, documents, messages]);
 
   // ── Acknowledge status report ────────────────────────────────────────────
 
@@ -447,8 +489,8 @@ export default function ClientProjectDashboard() {
           </div>
           <h2 className="text-xl font-bold text-[#0A2540] mb-2">No projects yet</h2>
           <p className="text-muted-foreground text-sm mb-6">Your active projects will appear here once Shane sets them up for you.</p>
-          <Link href="/portal/services" className="inline-flex items-center gap-2 bg-[#0078D4] text-white text-sm font-semibold px-5 py-2.5 rounded-xl hover:bg-[#0078D4]/90 transition-colors">
-            Browse Services
+          <Link href="/portal/onboarding/select" className="inline-flex items-center gap-2 bg-[#0078D4] text-white text-sm font-semibold px-5 py-2.5 rounded-xl hover:bg-[#0078D4]/90 transition-colors">
+            Get Started
           </Link>
         </div>
       </PortalLayout>
@@ -587,8 +629,12 @@ export default function ClientProjectDashboard() {
             <div className="bg-gradient-to-br from-[#0A2540] to-[#0A2540]/90 rounded-2xl p-5 text-white">
               <div className="flex flex-wrap items-start justify-between gap-3 mb-4">
                 <div className="min-w-0">
-                  <div className="flex items-center gap-2 mb-1">
+                  <div className="flex items-center gap-2 mb-1 flex-wrap">
                     <StatusBadge status={project.status} />
+                    <span className={`text-[10px] font-bold tracking-wider uppercase px-2.5 py-1 rounded-md border flex items-center gap-1.5 ${healthStatus.cls}`}>
+                      <span className={`w-1.5 h-1.5 rounded-full ${healthStatus.dot}`} />
+                      {healthStatus.label}
+                    </span>
                     <span className="text-white/50 text-xs uppercase tracking-widest font-semibold">
                       {project.projectType === "retainer" ? "Retainer" : "Project"}
                     </span>
@@ -664,44 +710,86 @@ export default function ClientProjectDashboard() {
                   <h3 className="text-sm font-bold text-[#0A2540]">Phase Timeline</h3>
                   <span className="text-xs text-muted-foreground">{completedSteps}/{steps.length} complete</span>
                 </div>
-                <div className="overflow-x-auto -mx-1 px-1 pb-1">
+
+                {/* Mobile: vertical layout */}
+                <div className="sm:hidden space-y-0">
+                  {steps.map((step, idx) => {
+                    const isCompleted = step.status === "completed";
+                    const isActive = step.status === "in_progress";
+                    const isBlocked = step.status === "blocked";
+                    const isLast = idx === steps.length - 1;
+                    return (
+                      <div key={step.id} className="flex gap-3">
+                        {/* Dot + line */}
+                        <div className="flex flex-col items-center">
+                          <div className={`w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 border-2 ${
+                            isCompleted ? "bg-green-500 border-green-500" :
+                            isActive ? "bg-[#0078D4] border-[#0078D4]" :
+                            isBlocked ? "bg-red-500 border-red-500" :
+                            "bg-white border-gray-300"
+                          }`}>
+                            {isCompleted ? (
+                              <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
+                            ) : isActive ? (
+                              <div className="w-2 h-2 bg-white rounded-full" />
+                            ) : isBlocked ? (
+                              <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+                            ) : (
+                              <span className="text-[8px] font-bold text-gray-400">{idx + 1}</span>
+                            )}
+                          </div>
+                          {!isLast && <div className={`w-0.5 flex-1 my-1 ${isCompleted ? "bg-[#0078D4]" : "bg-gray-200"}`} style={{ minHeight: "24px" }} />}
+                        </div>
+                        {/* Content */}
+                        <div className="pb-4 min-w-0 flex-1">
+                          <p className={`text-xs font-semibold leading-snug ${isActive ? "text-[#0078D4]" : isCompleted ? "text-green-600" : isBlocked ? "text-red-600" : "text-gray-400"}`}>
+                            {step.title}
+                          </p>
+                          {isActive && <p className="text-[10px] font-semibold text-[#0078D4] mt-0.5">Active</p>}
+                          {step.completedAt && <p className="text-[10px] text-muted-foreground mt-0.5">{fmtDate(step.completedAt, { month: "short", day: "numeric" })}</p>}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* Desktop: horizontal layout */}
+                <div className="hidden sm:block overflow-x-auto -mx-1 px-1 pb-1">
                   <div className="flex items-start gap-0 min-w-max">
                     {steps.map((step, idx) => {
                       const isCompleted = step.status === "completed";
                       const isActive = step.status === "in_progress";
+                      const isBlocked = step.status === "blocked";
                       const isLast = idx === steps.length - 1;
                       return (
                         <div key={step.id} className="flex items-start">
-                          <div className="flex flex-col items-center w-24 sm:w-28">
-                            {/* Connector line + icon row */}
+                          <div className="flex flex-col items-center w-24 lg:w-28">
                             <div className="flex items-center w-full">
                               <div className={`flex-1 h-0.5 ${idx === 0 ? "invisible" : isCompleted || isActive ? "bg-[#0078D4]" : "bg-gray-200"}`} />
                               <div className={`w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 border-2 transition-colors ${
                                 isCompleted ? "bg-green-500 border-green-500" :
                                 isActive ? "bg-[#0078D4] border-[#0078D4]" :
+                                isBlocked ? "bg-red-500 border-red-500" :
                                 "bg-white border-gray-300"
                               }`}>
                                 {isCompleted ? (
                                   <svg className="w-3.5 h-3.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
                                 ) : isActive ? (
                                   <div className="w-2.5 h-2.5 bg-white rounded-full" />
+                                ) : isBlocked ? (
+                                  <svg className="w-3.5 h-3.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
                                 ) : (
                                   <span className="text-[9px] font-bold text-gray-400">{idx + 1}</span>
                                 )}
                               </div>
                               <div className={`flex-1 h-0.5 ${isLast ? "invisible" : isCompleted ? "bg-[#0078D4]" : "bg-gray-200"}`} />
                             </div>
-                            {/* Label */}
                             <div className="mt-2 px-1 text-center">
                               <p className={`text-[10px] font-semibold leading-tight line-clamp-2 ${
-                                isActive ? "text-[#0078D4]" : isCompleted ? "text-green-600" : "text-gray-400"
+                                isActive ? "text-[#0078D4]" : isCompleted ? "text-green-600" : isBlocked ? "text-red-600" : "text-gray-400"
                               }`}>{step.title}</p>
-                              {step.completedAt && (
-                                <p className="text-[9px] text-muted-foreground mt-0.5">{fmtDate(step.completedAt, { month: "short", day: "numeric" })}</p>
-                              )}
-                              {isActive && !step.completedAt && (
-                                <p className="text-[9px] font-semibold text-[#0078D4] mt-0.5">Active</p>
-                              )}
+                              {step.completedAt && <p className="text-[9px] text-muted-foreground mt-0.5">{fmtDate(step.completedAt, { month: "short", day: "numeric" })}</p>}
+                              {isActive && !step.completedAt && <p className="text-[9px] font-semibold text-[#0078D4] mt-0.5">Active</p>}
                             </div>
                           </div>
                         </div>
@@ -714,7 +802,7 @@ export default function ClientProjectDashboard() {
 
             {/* ── 3. Task Summary + Kanban ──────────────────────────────────── */}
             {tasks && tasks.length > 0 && (
-              <div className="bg-white border border-border rounded-2xl p-5">
+              <div className="bg-white border border-border rounded-2xl p-5" ref={taskBoardRef}>
                 <div className="flex items-center justify-between mb-4">
                   <h3 className="text-sm font-bold text-[#0A2540]">Tasks</h3>
                   <Link href={`/portal/projects/${project.id}`} className="text-xs font-semibold text-[#0078D4] hover:underline">
@@ -722,26 +810,38 @@ export default function ClientProjectDashboard() {
                   </Link>
                 </div>
 
-                {/* Stat strip */}
+                {/* Stat strip — "Waiting on You" scrolls to board */}
                 <div className="grid grid-cols-4 gap-2 mb-5">
-                  {[
-                    { label: "Backlog", count: taskCounts.backlog, color: "text-gray-500", bg: "bg-gray-50 border-gray-200" },
-                    { label: "In Progress", count: taskCounts.in_progress, color: "text-[#0078D4]", bg: "bg-blue-50 border-blue-200" },
-                    { label: "Waiting on You", count: taskCounts.waiting, color: "text-yellow-600", bg: "bg-yellow-50 border-yellow-200" },
-                    { label: "Completed", count: taskCounts.completed, color: "text-green-600", bg: "bg-green-50 border-green-200" },
-                  ].map(s => (
-                    <div key={s.label} className={`rounded-xl border p-3 text-center ${s.bg}`}>
-                      <p className={`text-xl font-bold ${s.color}`}>{s.count}</p>
-                      <p className="text-[10px] text-muted-foreground font-medium leading-tight mt-0.5">{s.label}</p>
-                    </div>
+                  {([
+                    { label: "Backlog", count: taskCounts.backlog, color: "text-gray-500", bg: "bg-gray-50 border-gray-200", scroll: false },
+                    { label: "In Progress", count: taskCounts.in_progress, color: "text-[#0078D4]", bg: "bg-blue-50 border-blue-200", scroll: false },
+                    { label: "Waiting on You", count: taskCounts.waiting, color: "text-yellow-600", bg: "bg-yellow-50 border-yellow-200", scroll: true },
+                    { label: "Completed", count: taskCounts.completed, color: "text-green-600", bg: "bg-green-50 border-green-200", scroll: false },
+                  ] as const).map(s => (
+                    s.scroll ? (
+                      <button
+                        key={s.label}
+                        onClick={() => taskBoardRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })}
+                        className={`rounded-xl border p-3 text-center transition-colors hover:opacity-80 ${s.bg}`}
+                      >
+                        <p className={`text-xl font-bold ${s.color}`}>{s.count}</p>
+                        <p className="text-[10px] text-muted-foreground font-medium leading-tight mt-0.5">{s.label}</p>
+                      </button>
+                    ) : (
+                      <div key={s.label} className={`rounded-xl border p-3 text-center ${s.bg}`}>
+                        <p className={`text-xl font-bold ${s.color}`}>{s.count}</p>
+                        <p className="text-[10px] text-muted-foreground font-medium leading-tight mt-0.5">{s.label}</p>
+                      </div>
+                    )
                   ))}
                 </div>
 
-                {/* Compact kanban — 3 active columns (skip backlog for brevity if empty) */}
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  {(["in_progress", "waiting_on_customer", "completed"] as const).map(col => {
+                {/* Compact kanban — all 4 columns */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
+                  {(["backlog", "in_progress", "waiting_on_customer", "completed"] as const).map(col => {
                     const colTasks = tasks.filter(t => t.column === col).slice(0, 5);
                     const colCfg = {
+                      backlog: { label: "Backlog", hdr: "border-gray-300 bg-gray-50", chip: "bg-gray-200 text-gray-600" },
                       in_progress: { label: "In Progress", hdr: "border-[#0078D4] bg-blue-50", chip: "bg-[#0078D4]/10 text-[#0078D4]" },
                       waiting_on_customer: { label: "Waiting on You", hdr: "border-yellow-300 bg-yellow-50", chip: "bg-yellow-100 text-yellow-700" },
                       completed: { label: "Completed", hdr: "border-green-300 bg-green-50", chip: "bg-green-100 text-green-700" },
@@ -756,20 +856,40 @@ export default function ClientProjectDashboard() {
                         <div className="px-3 pb-3 space-y-2">
                           {colTasks.length === 0 ? (
                             <p className="text-xs text-muted-foreground py-2 text-center">No tasks</p>
-                          ) : colTasks.map(task => (
-                            <button
-                              key={task.id}
-                              onClick={() => setSelectedTask(task)}
-                              className="w-full text-left bg-white rounded-lg border border-border p-2.5 hover:border-[#0078D4]/30 hover:shadow-sm transition-all group"
-                            >
-                              <p className="text-xs font-medium text-[#0A2540] line-clamp-2 leading-snug">{task.title}</p>
-                              {task.dueDate && (
-                                <p className="text-[10px] text-muted-foreground mt-1">
-                                  Due {fmtDate(task.dueDate, { month: "short", day: "numeric" })}
-                                </p>
-                              )}
-                            </button>
-                          ))}
+                          ) : colTasks.map(task => {
+                            const priorityColor: Record<string, string> = {
+                              high: "bg-red-100 text-red-700",
+                              medium: "bg-amber-100 text-amber-700",
+                              low: "bg-gray-100 text-gray-500",
+                            };
+                            const priCls = task.priority ? (priorityColor[task.priority] ?? "bg-gray-100 text-gray-500") : null;
+                            return (
+                              <button
+                                key={task.id}
+                                onClick={() => setSelectedTask(task)}
+                                className="w-full text-left bg-white rounded-lg border border-border p-2.5 hover:border-[#0078D4]/30 hover:shadow-sm transition-all"
+                              >
+                                <p className="text-xs font-medium text-[#0A2540] line-clamp-2 leading-snug">{task.title}</p>
+                                <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
+                                  {priCls && task.priority && (
+                                    <span className={`text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded ${priCls}`}>
+                                      {task.priority}
+                                    </span>
+                                  )}
+                                  {task.assignedTo && (
+                                    <span className="text-[9px] text-muted-foreground bg-gray-100 px-1.5 py-0.5 rounded truncate max-w-[80px]">
+                                      {task.assignedTo}
+                                    </span>
+                                  )}
+                                  {task.dueDate && (
+                                    <span className="text-[9px] text-muted-foreground">
+                                      Due {fmtDate(task.dueDate, { month: "short", day: "numeric" })}
+                                    </span>
+                                  )}
+                                </div>
+                              </button>
+                            );
+                          })}
                           {totalCol > 5 && (
                             <p className="text-[10px] text-muted-foreground text-center pt-1">+{totalCol - 5} more</p>
                           )}
@@ -907,51 +1027,75 @@ export default function ClientProjectDashboard() {
                 <div className="text-center py-6">
                   <p className="text-sm text-muted-foreground">No invoices for this project yet.</p>
                 </div>
-              ) : (
-                <div className="divide-y divide-border">
-                  {projectInvoices.map(inv => (
-                    <div key={inv.id} className="flex items-center gap-3 py-3 first:pt-0 last:pb-0">
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2">
-                          <span className="text-sm font-semibold text-[#0A2540]">{inv.invoiceNumber}</span>
-                          <InvoiceStatusBadge status={inv.status} />
-                        </div>
-                        {inv.description && <p className="text-xs text-muted-foreground mt-0.5 truncate">{inv.description}</p>}
-                        <div className="flex items-center gap-3 mt-0.5">
-                          <span className="text-xs font-bold text-[#0A2540]">{fmtCurrency(inv.amount, inv.currency)}</span>
-                          {inv.dueDate && inv.status !== "paid" && (
-                            <span className="text-xs text-muted-foreground">Due {fmtDate(inv.dueDate, { month: "short", day: "numeric" })}</span>
-                          )}
-                          {inv.paidAt && (
-                            <span className="text-xs text-green-600">Paid {fmtDate(inv.paidAt, { month: "short", day: "numeric" })}</span>
-                          )}
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-2 flex-shrink-0">
-                        {inv.pdfFilename && (
-                          <a
-                            href={`/api/portal/invoices/${inv.id}/download`}
-                            className="text-xs font-semibold text-muted-foreground hover:text-[#0078D4] transition-colors"
-                            title="Download PDF"
-                          >
-                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" /></svg>
-                          </a>
-                        )}
-                        {(inv.status === "due" || inv.status === "overdue") && (
-                          <button
-                            onClick={() => payInvoice(inv.id)}
-                            disabled={payingInvoice === inv.id}
-                            className="text-xs font-semibold text-white bg-[#0078D4] px-3 py-1.5 rounded-lg hover:bg-[#0078D4]/90 transition-colors disabled:opacity-50 flex items-center gap-1"
-                          >
-                            {payingInvoice === inv.id && <div className="w-3 h-3 border-2 border-white/40 border-t-white rounded-full animate-spin" />}
-                            Pay Now
-                          </button>
-                        )}
-                      </div>
+              ) : (() => {
+                const totalBilled = projectInvoices.reduce((s, i) => s + parseFloat(i.amount), 0);
+                const totalPaid = projectInvoices.filter(i => i.status === "paid").reduce((s, i) => s + parseFloat(i.amount), 0);
+                const totalOutstanding = totalBilled - totalPaid;
+                const currency = projectInvoices[0].currency;
+                return (
+                  <>
+                    <div className="divide-y divide-border mb-4">
+                      {projectInvoices.map(inv => {
+                        const isOverdue = inv.status === "overdue";
+                        return (
+                          <div key={inv.id} className={`flex items-center gap-3 py-3 first:pt-0 ${isOverdue ? "bg-red-50 -mx-5 px-5 first:rounded-t-xl" : ""}`}>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2">
+                                <span className={`text-sm font-semibold ${isOverdue ? "text-red-700" : "text-[#0A2540]"}`}>{inv.invoiceNumber}</span>
+                                <InvoiceStatusBadge status={inv.status} />
+                              </div>
+                              {inv.description && <p className="text-xs text-muted-foreground mt-0.5 truncate">{inv.description}</p>}
+                              <div className="flex items-center gap-3 mt-0.5">
+                                <span className={`text-xs font-bold ${isOverdue ? "text-red-700" : "text-[#0A2540]"}`}>{fmtCurrency(inv.amount, inv.currency)}</span>
+                                {inv.dueDate && inv.status !== "paid" && (
+                                  <span className={`text-xs ${isOverdue ? "text-red-600 font-semibold" : "text-muted-foreground"}`}>
+                                    {isOverdue ? "Overdue since" : "Due"} {fmtDate(inv.dueDate, { month: "short", day: "numeric" })}
+                                  </span>
+                                )}
+                                {inv.paidAt && (
+                                  <span className="text-xs text-green-600">Paid {fmtDate(inv.paidAt, { month: "short", day: "numeric" })}</span>
+                                )}
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-2 flex-shrink-0">
+                              {inv.pdfFilename && (
+                                <a
+                                  href={`/api/portal/invoices/${inv.id}/download`}
+                                  className="text-xs font-semibold text-muted-foreground hover:text-[#0078D4] transition-colors"
+                                  title="Download PDF"
+                                >
+                                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" /></svg>
+                                </a>
+                              )}
+                              {(inv.status === "due" || inv.status === "overdue") && (
+                                <Link
+                                  href={`/portal/billing/invoices/${inv.id}`}
+                                  className={`text-xs font-semibold text-white px-3 py-1.5 rounded-lg transition-colors ${isOverdue ? "bg-red-600 hover:bg-red-700" : "bg-[#0078D4] hover:bg-[#0078D4]/90"}`}
+                                >
+                                  Pay Now
+                                </Link>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
                     </div>
-                  ))}
-                </div>
-              )}
+                    {/* Totals footer */}
+                    <div className="border-t border-border pt-3 grid grid-cols-3 gap-2">
+                      {[
+                        { label: "Total Billed", value: fmtCurrency(String(totalBilled), currency), cls: "text-[#0A2540]" },
+                        { label: "Paid", value: fmtCurrency(String(totalPaid), currency), cls: "text-green-600" },
+                        { label: "Outstanding", value: fmtCurrency(String(totalOutstanding), currency), cls: totalOutstanding > 0 ? "text-red-600" : "text-green-600" },
+                      ].map(t => (
+                        <div key={t.label} className="text-center">
+                          <p className={`text-sm font-bold ${t.cls}`}>{t.value}</p>
+                          <p className="text-[10px] text-muted-foreground font-medium mt-0.5">{t.label}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                );
+              })()}
             </div>
 
             {/* ── 6. Documents ──────────────────────────────────────────────── */}
@@ -1091,35 +1235,35 @@ export default function ClientProjectDashboard() {
             </div>
 
             {/* ── 8. Activity Feed ──────────────────────────────────────────── */}
-            {updates && updates.length > 0 && (
+            {activityFeed.length > 0 && (
               <div className="bg-white border border-border rounded-2xl p-5">
                 <h3 className="text-sm font-bold text-[#0A2540] mb-4">Activity Feed</h3>
                 <div className="relative">
                   <div className="absolute left-3.5 top-0 bottom-0 w-px bg-border" />
                   <div className="space-y-4">
-                    {updates.slice(0, 10).map((upd, idx) => {
-                      const typeIcon = {
+                    {activityFeed.map(item => {
+                      const typeIcon: Record<string, { bg: string; icon: string; svg: React.ReactNode }> = {
                         milestone: { bg: "bg-green-100", icon: "text-green-600", svg: <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg> },
-                        file: { bg: "bg-[#0078D4]/10", icon: "text-[#0078D4]", svg: <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M18.375 12.739l-7.693 7.693a4.5 4.5 0 01-6.364-6.364l10.94-10.94A3 3 0 1119.5 7.372L8.552 18.32m.009-.01l-.01.01m5.699-9.941l-7.81 7.81a1.5 1.5 0 002.112 2.13" /></svg> },
+                        report: { bg: "bg-[#0078D4]/10", icon: "text-[#0078D4]", svg: <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 12h3.75M9 15h3.75M9 18h3.75m3 .75H18a2.25 2.25 0 002.25-2.25V6.108c0-1.135-.845-2.098-1.976-2.192a48.424 48.424 0 00-1.123-.08m-5.801 0c-.065.21-.1.433-.1.664 0 .414.336.75.75.75h4.5a.75.75 0 00.75-.75 2.25 2.25 0 00-.1-.664m-5.8 0A2.251 2.251 0 0113.5 2.25H15c1.012 0 1.867.668 2.15 1.586m-5.8 0c-.376.023-.75.05-1.124.08C9.095 4.01 8.25 4.973 8.25 6.108V8.25m0 0H4.875c-.621 0-1.125.504-1.125 1.125v11.25c0 .621.504 1.125 1.125 1.125h9.75c.621 0 1.125-.504 1.125-1.125V9.375c0-.621-.504-1.125-1.125-1.125H8.25z" /></svg> },
+                        invoice: { bg: "bg-emerald-100", icon: "text-emerald-600", svg: <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M2.25 18.75a60.07 60.07 0 0115.797 2.101c.727.198 1.453-.342 1.453-1.096V18.75M3.75 4.5v.75A.75.75 0 013 6h-.75m0 0v-.375c0-.621.504-1.125 1.125-1.125H20.25M2.25 6v9m18-10.5v.75c0 .414.336.75.75.75h.75m-1.5-1.5h.375c.621 0 1.125.504 1.125 1.125v9.75c0 .621-.504 1.125-1.125 1.125h-.375m1.5-1.5H21a.75.75 0 00-.75.75v.75m0 0H3.75m0 0h-.375a1.125 1.125 0 01-1.125-1.125V15m1.5 1.5v-.75A.75.75 0 003 15h-.75M15 10.5a3 3 0 11-6 0 3 3 0 016 0zm3 0h.008v.008H18V10.5zm-12 0h.008v.008H6V10.5z" /></svg> },
+                        document: { bg: "bg-amber-100", icon: "text-amber-600", svg: <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" /></svg> },
                         message: { bg: "bg-purple-100", icon: "text-purple-600", svg: <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M8.625 9.75a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H8.25m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H12m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0h-.375m-13.5 3.01c0 1.6 1.123 2.994 2.707 3.227 1.087.16 2.185.283 3.293.369V21l4.184-4.183a1.14 1.14 0 01.778-.332 48.294 48.294 0 005.83-.498c1.585-.233 2.708-1.626 2.708-3.228V6.741c0-1.602-1.123-2.995-2.707-3.228A48.394 48.394 0 0012 3c-2.392 0-4.744.175-7.043.513C3.373 3.746 2.25 5.14 2.25 6.741v6.018z" /></svg> },
-                      }[upd.type] ?? { bg: "bg-gray-100", icon: "text-gray-500", svg: <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M11.25 11.25l.041-.02a.75.75 0 011.063.852l-.708 2.836a.75.75 0 001.063.853l.041-.021M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9-3.75h.008v.008H12V8.25z" /></svg> };
+                      };
+                      const ic = typeIcon[item.type] ?? { bg: "bg-gray-100", icon: "text-gray-500", svg: <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M11.25 11.25l.041-.02a.75.75 0 011.063.852l-.708 2.836a.75.75 0 001.063.853l.041-.021M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9-3.75h.008v.008H12V8.25z" /></svg> };
                       return (
-                        <div key={upd.id} className="flex items-start gap-3 pl-1 relative">
-                          <div className={`w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 z-10 ${typeIcon.bg} ${typeIcon.icon}`}>
-                            {typeIcon.svg}
+                        <div key={item.id} className="flex items-start gap-3 pl-1 relative">
+                          <div className={`w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 z-10 ${ic.bg} ${ic.icon}`}>
+                            {ic.svg}
                           </div>
                           <div className="flex-1 min-w-0 pt-0.5">
-                            <p className="text-sm text-[#0A2540] leading-relaxed">{upd.content}</p>
+                            <p className="text-sm text-[#0A2540] leading-relaxed">{item.content}</p>
                             <p className="text-xs text-muted-foreground mt-1">
-                              {fmtDate(upd.createdAt, { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" })}
+                              {fmtDate(item.createdAt, { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" })}
                             </p>
                           </div>
                         </div>
                       );
                     })}
-                    {updates.length > 10 && (
-                      <p className="text-xs text-muted-foreground pl-10">+{updates.length - 10} more events</p>
-                    )}
                   </div>
                 </div>
               </div>
