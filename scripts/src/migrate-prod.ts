@@ -95,6 +95,10 @@ const migrations = [
       DROP TABLE IF EXISTS "project_templates" CASCADE;
     `,
   },
+  {
+    name: "0003_add_priority_to_kanban_tasks",
+    sql: `ALTER TABLE "kanban_tasks" ADD COLUMN IF NOT EXISTS "priority" text;`,
+  },
 ];
 
 async function main(): Promise<void> {

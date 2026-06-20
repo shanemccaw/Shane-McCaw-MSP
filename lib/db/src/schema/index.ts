@@ -160,6 +160,7 @@ export const kanbanTasksTable = pgTable("kanban_tasks", {
   waitingReason: text("waiting_reason"),
   completionStatus: text("completion_status"),
   completionNotes: text("completion_notes"),
+  priority: text("priority"),
 });
 
 export type InsertKanbanTask = typeof kanbanTasksTable.$inferInsert;

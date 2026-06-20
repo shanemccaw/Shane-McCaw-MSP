@@ -17,6 +17,7 @@ export interface KanbanCardModalTask {
   waitingReason?: string | null;
   completionStatus?: string | null;
   completionNotes?: string | null;
+  priority?: string | null;
   createdAt?: string | null;
   updatedAt?: string | null;
 }
@@ -36,9 +37,17 @@ const COLUMN_CONFIG: Record<string, { label: string; cls: string }> = {
   completed: { label: "Completed", cls: "bg-green-100 text-green-700 border border-green-200" },
 };
 
+const PRIORITY_CONFIG: Record<string, { label: string; cls: string; dot: string }> = {
+  critical: { label: "Critical", cls: "bg-red-100 text-red-700 border border-red-200", dot: "bg-red-500" },
+  high:     { label: "High",     cls: "bg-orange-100 text-orange-700 border border-orange-200", dot: "bg-orange-500" },
+  medium:   { label: "Medium",   cls: "bg-blue-100 text-blue-700 border border-blue-200", dot: "bg-blue-500" },
+  low:      { label: "Low",      cls: "bg-gray-100 text-gray-500 border border-gray-200", dot: "bg-gray-400" },
+};
+
 export function KanbanCardModal({ task, stepTitle, open, onClose, mode = "client" }: Props) {
   if (!task) return null;
   const colCfg = COLUMN_CONFIG[task.column] ?? { label: task.column, cls: "bg-gray-100 text-gray-600 border border-gray-200" };
+  const priorityCfg = task.priority ? PRIORITY_CONFIG[task.priority] : null;
 
   return (
     <Dialog open={open} onOpenChange={o => { if (!o) onClose(); }}>
@@ -59,9 +68,17 @@ export function KanbanCardModal({ task, stepTitle, open, onClose, mode = "client
         </DialogHeader>
 
         <div className="space-y-4 mt-1">
-          <span className={`inline-block text-xs font-semibold px-2.5 py-1 rounded-full ${colCfg.cls}`}>
-            {colCfg.label}
-          </span>
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className={`inline-flex items-center text-xs font-semibold px-2.5 py-1 rounded-full ${colCfg.cls}`}>
+              {colCfg.label}
+            </span>
+            {priorityCfg && (
+              <span className={`inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full ${priorityCfg.cls}`}>
+                <span className={`w-1.5 h-1.5 rounded-full ${priorityCfg.dot}`} />
+                {priorityCfg.label}
+              </span>
+            )}
+          </div>
 
           {task.description && (
             <div>
