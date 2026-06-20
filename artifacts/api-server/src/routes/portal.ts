@@ -2772,6 +2772,38 @@ router.patch("/portal/status-reports/:id/acknowledge", requireAuth, async (req: 
   res.json(updated);
 });
 
+// ─── PORTAL: Resolve Status Report (after reading Shane's reply) ─────────────
+
+router.post("/portal/status-reports/:id/resolve", requireAuth, async (req: Request, res: Response) => {
+  const userId = req.user!.id;
+  const id = parseInt(String(req.params.id ?? ""), 10);
+  if (isNaN(id)) { res.status(400).json({ error: "Invalid ID" }); return; }
+
+  const [report] = await db.select().from(statusReportsTable)
+    .where(and(
+      eq(statusReportsTable.id, id),
+      eq(statusReportsTable.clientUserId, userId),
+      eq(statusReportsTable.reportStatus, "sent"),
+    ));
+  if (!report) { res.status(404).json({ error: "Not found" }); return; }
+
+  if (report.clientStatus !== "has_questions") {
+    res.status(409).json({ error: "Report is not in has_questions state" });
+    return;
+  }
+  if (!report.adminReply) {
+    res.status(409).json({ error: "Cannot resolve: consultant has not replied yet" });
+    return;
+  }
+
+  const [updated] = await db.update(statusReportsTable)
+    .set({ clientStatus: "accepted", updatedAt: new Date() })
+    .where(eq(statusReportsTable.id, id))
+    .returning();
+
+  res.json(updated);
+});
+
 // ─── ADMIN: Status Report Reply ──────────────────────────────────────────────
 
 router.post("/admin/status-reports/:id/reply", requireAdmin, async (req: Request, res: Response) => {
