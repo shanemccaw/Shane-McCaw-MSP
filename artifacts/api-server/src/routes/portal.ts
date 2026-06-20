@@ -1493,10 +1493,8 @@ async function provisionOnboardingProject(
   const parsedStart = rawStart ? new Date(rawStart) : new Date();
   const startDate = isNaN(parsedStart.getTime()) ? new Date() : parsedStart;
 
-  const buyerLabel = buyer.name ?? buyer.company ?? buyer.email;
-
   // ── Create one project workspace covering all services in this session ─────
-  const projectTitle = `${buyerLabel} — ${serviceNames.join(" + ")}`;
+  const projectTitle = serviceNames.join(" + ");
   const [project] = await db.insert(projectsTable).values({
     title: projectTitle,
     description: orderedServices.length === 1
@@ -3313,12 +3311,8 @@ router.post("/admin/client-services", requireAdmin, async (req: Request, res: Re
     let templateStepsSeeded = false;
 
     if (templateWorkflowSteps.length > 0) {
-      const [client] = await db.select({ name: usersTable.name, company: usersTable.company, email: usersTable.email })
-        .from(usersTable).where(eq(usersTable.id, clientUserId));
-      const clientLabel = client?.name ?? client?.company ?? client?.email ?? String(clientUserId);
-
       const [autoProject] = await db.insert(projectsTable).values({
-        title: `${clientLabel} — ${service.name}`,
+        title: service.name,
         description: service.description ?? `Auto-generated from service: ${service.name}`,
         status: "active",
         clientUserId,

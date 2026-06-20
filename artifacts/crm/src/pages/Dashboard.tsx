@@ -610,7 +610,8 @@ export default function DashboardPage() {
 
       <div className="flex-1 max-w-[1400px] mx-auto w-full px-4 sm:px-6 py-8">
         {/* Admin Tab Bar */}
-        <div className="flex flex-wrap gap-1.5 mb-8 border-b border-border pb-4">
+        <div className="overflow-x-auto -mx-1 px-1 mb-8 border-b border-border pb-4">
+          <div className="flex flex-nowrap min-w-max gap-1.5">
           {ADMIN_TABS.map(tab => (
             <button
               key={tab.key}
@@ -626,6 +627,7 @@ export default function DashboardPage() {
               {tab.label}
             </button>
           ))}
+          </div>
         </div>
 
         {/* Tab content */}
