@@ -441,7 +441,7 @@ function DroppableColumn({
 type PendingMove = { task: KanbanTask; targetColumn: ColumnKey };
 
 function KanbanBoard({
-  projectId, tasks, steps, onTasksChange, onDelete, fetchWithAuth, toast, onCardClick,
+  projectId, tasks, steps, onTasksChange, onDelete, fetchWithAuth, toast, onCardClick, onMutation,
 }: {
   projectId: number;
   tasks: KanbanTask[];
@@ -451,6 +451,7 @@ function KanbanBoard({
   fetchWithAuth: (url: string, options?: RequestInit) => Promise<Response>;
   toast: ReturnType<typeof useToast>["toast"];
   onCardClick: (task: KanbanTask) => void;
+  onMutation: () => void;
 })  {
   const [activeTask, setActiveTask] = useState<KanbanTask | null>(null);
   const [overColumnKey, setOverColumnKey] = useState<string | null>(null);
@@ -483,6 +484,7 @@ function KanbanBoard({
         body: JSON.stringify({ column: newColumn, ...extra }),
       });
       if (!res.ok) throw new Error("API error");
+      onMutation();
     } catch {
       onTasksChange(ts =>
         ts.map(t => t.id === task.id ? { ...t, column: previousColumn } : t)
@@ -553,6 +555,7 @@ function KanbanBoard({
         toast({ title: "Reply failed", description: data.error ?? "Could not send reply.", variant: "destructive" });
         throw new Error(data.error ?? "Reply failed");
       }
+      onMutation();
     } catch (err) {
       if (!(err instanceof Error && err.message === "Reply failed")) {
         toast({ title: "Reply failed", description: "Could not send reply. Please try again.", variant: "destructive" });
@@ -971,6 +974,7 @@ export default function ProjectDetailPage() {
     await fetchWithAuth(`/api/admin/kanban-tasks/${deleteTaskTarget.taskId}`, { method: "DELETE" });
     setTasks(prev => prev.filter(t => t.id !== deleteTaskTarget.taskId));
     setDeleteTaskTarget(null);
+    void loadAuditLogs();
   };
 
   const handleCardClick = (task: KanbanTask) => {
@@ -1080,6 +1084,7 @@ export default function ProjectDetailPage() {
         metaDocuments: "",
         metaRiskScore: "", metaFindingsSummary: "", metaRecommendations: "", metaAssessmentUrl: "",
       });
+      void loadAuditLogs();
     }
     setTaskSaving(false);
   };
@@ -1102,6 +1107,7 @@ export default function ProjectDetailPage() {
     setAddStepOpen(false);
     setStepForm({ title: "", description: "", status: "pending", dueDate: "" });
     await reloadAll();
+    void loadAuditLogs();
     setStepSaving(false);
   };
 
@@ -1112,6 +1118,7 @@ export default function ProjectDetailPage() {
       body: JSON.stringify({ status }),
     });
     setSteps(prev => prev.map(s => s.id === stepId ? { ...s, status } : s));
+    void loadAuditLogs();
   };
 
   const handleUpdateStepDueDate = async (stepId: number, dueDate: string) => {
@@ -1145,6 +1152,7 @@ export default function ProjectDetailPage() {
     if (!confirm("Delete this workflow step?")) return;
     await fetchWithAuth(`/api/admin/workflow-steps/${stepId}`, { method: "DELETE" });
     setSteps(prev => prev.filter(s => s.id !== stepId));
+    void loadAuditLogs();
   };
 
   const handleExportJson = () => {
@@ -1198,6 +1206,7 @@ export default function ProjectDetailPage() {
       setJsonImportOpen(false);
       setJsonImportText("");
       await reloadAll();
+      void loadAuditLogs();
       toast({ title: "Steps imported", description: `${created.length} step${created.length !== 1 ? "s" : ""} created successfully.` });
     } finally {
       setJsonImporting(false);
@@ -1560,6 +1569,7 @@ export default function ProjectDetailPage() {
           fetchWithAuth={fetchWithAuth}
           toast={toast}
           onCardClick={handleCardClick}
+          onMutation={loadAuditLogs}
         />
       </section>
 

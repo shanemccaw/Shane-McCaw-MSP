@@ -536,6 +536,7 @@ export default function PortalProjectDetail() {
         const updated = await r.json() as ClosureRecord;
         setClosure(updated);
         setSignModalOpen(false);
+        void loadAuditLogs();
       }
     } finally {
       setClosureSigning(false);
@@ -585,6 +586,7 @@ export default function PortalProjectDetail() {
           return { ...prev, statusReports: newReports, pendingStatusReport: newPending };
         });
         setQuestionDialogReportId(null);
+        void loadAuditLogs();
       }
     } finally {
       setAcknowledging(false);
@@ -610,6 +612,7 @@ export default function PortalProjectDetail() {
           const newPending = newReports.find(r => r.clientStatus === "pending" || r.clientStatus === "has_questions") ?? null;
           return { ...prev, statusReports: newReports, pendingStatusReport: newPending };
         });
+        void loadAuditLogs();
       }
     } finally {
       setThreadReplySending(prev => ({ ...prev, [reportId]: false }));
@@ -630,6 +633,7 @@ export default function PortalProjectDetail() {
           const newPending = newReports.find(r => r.clientStatus === "pending" || r.clientStatus === "has_questions") ?? null;
           return { ...prev, statusReports: newReports, pendingStatusReport: newPending };
         });
+        void loadAuditLogs();
       }
     } finally {
       setAcknowledging(false);
@@ -663,6 +667,7 @@ export default function PortalProjectDetail() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ column: targetColumn }),
     });
+    void loadAuditLogs();
   };
 
   if (loading) {
