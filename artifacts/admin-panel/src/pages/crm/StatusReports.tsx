@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { useLocation } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
+import { useToast } from "@/hooks/use-toast";
 import StatusReportForm, { type StatusReport as SRType } from "@/components/StatusReportForm";
 
 interface StatusReport {
@@ -40,6 +41,7 @@ const PERIOD_LABELS: Record<string, string> = {
 
 export default function StatusReportsPage() {
   const { fetchWithAuth } = useAuth();
+  const { toast } = useToast();
   const [, navigate] = useLocation();
   const [reports, setReports] = useState<StatusReport[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
@@ -94,6 +96,13 @@ export default function StatusReportsPage() {
   const openEdit = (r: StatusReport) => {
     setEditing(r as SRType);
     setIsNew(false);
+  };
+
+  const handleCopyLink = (id: number) => {
+    const url = `${window.location.origin}/admin-panel/crm/status-reports?report=${id}`;
+    void navigator.clipboard.writeText(url).then(() => {
+      toast({ title: "Link copied", description: "Paste it anywhere to open this report directly." });
+    });
   };
 
   const handleDelete = async (id: number) => {
@@ -169,6 +178,15 @@ export default function StatusReportsPage() {
                   {r.reportStatus === "sent" ? "Published" : "Draft"}
                 </span>
                 <div className="flex items-center gap-2 flex-shrink-0">
+                  <button
+                    onClick={() => handleCopyLink(r.id)}
+                    title="Copy link to this report"
+                    className="p-1.5 text-gray-400 hover:text-[#0078D4] rounded hover:bg-[#0078D4]/10 transition-colors"
+                  >
+                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                    </svg>
+                  </button>
                   <button onClick={() => openEdit(r)} className="text-xs text-[#0078D4] hover:text-[#0078D4]/80 font-semibold transition-colors px-2 py-1 rounded hover:bg-[#0078D4]/10">
                     Edit
                   </button>
