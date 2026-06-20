@@ -1,5 +1,3 @@
-import { useState } from "react";
-
 export type TaskType =
   | "training"
   | "environmentHealthCheck"
@@ -63,37 +61,37 @@ export const TASK_TYPE_CONFIG: Record<
     label: "Training",
     badge: "bg-purple-100 text-purple-700 border border-purple-200",
     bar: "bg-purple-500",
-    icon: "🎓",
+    icon: "school",
   },
   environmentHealthCheck: {
     label: "Health Check",
     badge: "bg-green-100 text-green-700 border border-green-200",
     bar: "bg-green-500",
-    icon: "🔍",
+    icon: "monitor_heart",
   },
   governanceSetup: {
     label: "Governance",
     badge: "bg-blue-100 text-blue-700 border border-blue-200",
     bar: "bg-blue-500",
-    icon: "🛡️",
+    icon: "shield",
   },
   automationBuild: {
     label: "Automation",
     badge: "bg-orange-100 text-orange-700 border border-orange-200",
     bar: "bg-orange-500",
-    icon: "⚡",
+    icon: "bolt",
   },
   documentDelivery: {
     label: "Document",
     badge: "bg-amber-100 text-amber-700 border border-amber-200",
     bar: "bg-amber-500",
-    icon: "📄",
+    icon: "description",
   },
   discovery: {
     label: "Discovery",
     badge: "bg-pink-100 text-pink-700 border border-pink-200",
     bar: "bg-pink-500",
-    icon: "🔬",
+    icon: "microwave",
   },
 };
 
@@ -105,15 +103,34 @@ const RISK_CFG = {
 };
 
 const HEALTH_CFG = {
-  healthy: { cls: "bg-green-100 text-green-700", label: "All systems healthy" },
-  warning: { cls: "bg-yellow-100 text-yellow-700", label: "Needs attention" },
-  critical: { cls: "bg-red-100 text-red-700", label: "Requires immediate action" },
+  healthy: {
+    banner: "bg-green-50 border border-green-200 text-green-800",
+    icon: "check_circle",
+    label: "All systems healthy",
+  },
+  warning: {
+    banner: "bg-yellow-50 border border-yellow-200 text-yellow-800",
+    icon: "warning",
+    label: "Needs attention",
+  },
+  critical: {
+    banner: "bg-red-50 border border-red-200 text-red-800",
+    icon: "error",
+    label: "Requires immediate action",
+  },
+};
+
+const FLOW_DOT: Record<string, string> = {
+  live: "bg-green-500",
+  testing: "bg-yellow-400",
+  building: "bg-yellow-400",
+  error: "bg-red-500",
 };
 
 const FLOW_STATUS_LABEL: Record<string, string> = {
   live: "Active",
   testing: "In testing",
-  building: "Being built",
+  building: "In testing",
   error: "Needs attention",
 };
 
@@ -165,17 +182,6 @@ function TrainingBody({ m }: { m: TrainingMetadata }) {
           Requires: {m.prerequisites}
         </p>
       )}
-      {m.materialsUrl && (
-        <a
-          href={m.materialsUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          onClick={e => e.stopPropagation()}
-          className="inline-flex items-center gap-1 text-[10px] text-[#0078D4] font-semibold hover:underline"
-        >
-          📥 View materials
-        </a>
-      )}
     </div>
   );
 }
@@ -185,9 +191,10 @@ function HealthCheckBody({ m }: { m: HealthCheckMetadata }) {
   return (
     <div className="space-y-2">
       {cfg && (
-        <span className={`inline-flex items-center text-[10px] font-semibold px-2 py-0.5 rounded-full ${cfg.cls}`}>
-          {m.healthStatus === "healthy" ? "✓" : "⚠"} {cfg.label}
-        </span>
+        <div className={`flex items-center gap-1.5 w-full rounded px-2 py-1.5 ${cfg.banner}`}>
+          <span className="material-symbols-outlined" style={{ fontSize: "14px" }}>{cfg.icon}</span>
+          <span className="text-[10px] font-semibold">{cfg.label}</span>
+        </div>
       )}
       {m.lastRunDate && (
         <p className="text-[10px] text-muted-foreground">
@@ -198,7 +205,7 @@ function HealthCheckBody({ m }: { m: HealthCheckMetadata }) {
         </p>
       )}
       {m.outputSummary && (
-        <p className="text-[10px] text-[#0A2540] leading-snug">{m.outputSummary}</p>
+        <p className="text-[10px] text-[#0A2540] leading-snug italic">{m.outputSummary}</p>
       )}
     </div>
   );
@@ -222,7 +229,7 @@ function GovernanceBody({ m }: { m: GovernanceMetadata }) {
           <div className="space-y-0.5">
             {allItems.map((item, i) => (
               <div key={i} className="flex items-center gap-1.5">
-                <span className="w-3 h-3 rounded-full bg-blue-100 flex items-center justify-center text-[8px] text-blue-700 flex-shrink-0">✓</span>
+                <span className="material-symbols-outlined text-blue-600 flex-shrink-0" style={{ fontSize: "13px" }}>check_circle</span>
                 <span className="text-[10px] text-[#0A2540]">{item}</span>
               </div>
             ))}
@@ -243,7 +250,7 @@ function AutomationBody({ m }: { m: AutomationMetadata }) {
           <div className="space-y-1">
             {flows.map((flow, i) => (
               <div key={i} className="flex items-center gap-1.5">
-                <span className={`w-2 h-2 rounded-full flex-shrink-0 ${flow.status === "live" ? "bg-green-500" : flow.status === "error" ? "bg-red-500" : "bg-yellow-400"}`} />
+                <span className={`w-2 h-2 rounded-full flex-shrink-0 ${FLOW_DOT[flow.status] ?? "bg-gray-400"}`} />
                 <span className="text-[10px] text-[#0A2540] truncate">{flow.name}</span>
                 <span className="text-[9px] text-muted-foreground ml-auto flex-shrink-0">
                   {FLOW_STATUS_LABEL[flow.status] ?? flow.status}
@@ -288,7 +295,7 @@ function DocumentBody({ m, onMarkApproved }: { m: DocumentMetadata; onMarkApprov
                   {doc.approvalStatus === "pending" && (
                     <button
                       onClick={e => { e.stopPropagation(); onMarkApproved?.(doc.name); }}
-                      className="text-[9px] font-semibold text-green-700 bg-green-50 border border-green-200 px-1.5 py-0.5 rounded hover:bg-green-100 transition-colors"
+                      className="text-[9px] font-semibold text-teal-700 border border-teal-400 px-1.5 py-0.5 rounded hover:bg-teal-50 transition-colors"
                     >
                       Approve
                     </button>
@@ -313,20 +320,24 @@ function DiscoveryBody({ m }: { m: DiscoveryMetadata }) {
           {riskCfg.label}
         </span>
       )}
-      {m.findingsSummary && (
-        <p className="text-[10px] text-[#0A2540] leading-snug">{m.findingsSummary}</p>
-      )}
-      {recs.length > 0 && (
-        <div>
-          <p className="text-[10px] font-semibold text-[#0A2540] mb-1">Recommended next steps:</p>
-          <div className="space-y-0.5">
-            {recs.map((r, i) => (
-              <div key={i} className="flex items-start gap-1.5">
-                <span className="text-[9px] text-pink-500 flex-shrink-0 mt-0.5">→</span>
-                <span className="text-[10px] text-[#0A2540]">{r}</span>
+      {(m.findingsSummary || recs.length > 0) && (
+        <div className="bg-gray-50 border border-l-4 border-gray-200 border-l-pink-400 rounded px-2 py-1.5 space-y-1.5">
+          {m.findingsSummary && (
+            <p className="text-[10px] text-[#0A2540] leading-snug">{m.findingsSummary}</p>
+          )}
+          {recs.length > 0 && (
+            <div>
+              <p className="text-[10px] font-semibold text-[#0A2540] mb-1">Recommended next steps:</p>
+              <div className="space-y-0.5">
+                {recs.map((r, i) => (
+                  <div key={i} className="flex items-start gap-1">
+                    <span className="material-symbols-outlined text-pink-500 flex-shrink-0" style={{ fontSize: "13px", marginTop: "1px" }}>arrow_right_alt</span>
+                    <span className="text-[10px] text-[#0A2540]">{r}</span>
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
+            </div>
+          )}
         </div>
       )}
       {m.assessmentUrl && (
@@ -353,8 +364,6 @@ export function TypedCardContent({
   metadata: Record<string, unknown> | null | undefined;
   onMarkDocumentApproved?: (docName: string) => void;
 }) {
-  const [expanded, setExpanded] = useState(false);
-
   if (!taskType) return null;
   const cfg = TASK_TYPE_CONFIG[taskType as TaskType];
   if (!cfg) return null;
@@ -363,22 +372,15 @@ export function TypedCardContent({
 
   return (
     <div className="mt-2 border-t border-border/60 pt-2">
-      <div className="flex items-center gap-1.5 justify-between mb-1">
+      <div className="flex items-center gap-1.5 mb-2">
         <span className={`inline-flex items-center gap-1 text-[9px] font-bold px-1.5 py-0.5 rounded ${cfg.badge}`}>
-          {cfg.icon} {cfg.label}
+          <span className="material-symbols-outlined" style={{ fontSize: "12px" }}>{cfg.icon}</span>
+          {cfg.label}
         </span>
-        {hasDetail && (
-          <button
-            onClick={e => { e.stopPropagation(); setExpanded(x => !x); }}
-            className="text-[9px] font-semibold text-[#0078D4] hover:underline flex items-center gap-0.5"
-          >
-            {expanded ? "▲ Less" : "▼ More"}
-          </button>
-        )}
       </div>
 
-      {expanded && hasDetail && (
-        <div className="mt-1.5">
+      {hasDetail && (
+        <div>
           {taskType === "training" && <TrainingBody m={metadata as TrainingMetadata} />}
           {taskType === "environmentHealthCheck" && <HealthCheckBody m={metadata as HealthCheckMetadata} />}
           {taskType === "governanceSetup" && <GovernanceBody m={metadata as GovernanceMetadata} />}
@@ -399,7 +401,8 @@ export function TypedTaskTypeBadge({ taskType }: { taskType: string | null | und
   if (!cfg) return null;
   return (
     <span className={`inline-flex items-center gap-1 text-[9px] font-bold px-1.5 py-0.5 rounded ${cfg.badge}`}>
-      {cfg.icon} {cfg.label}
+      <span className="material-symbols-outlined" style={{ fontSize: "12px" }}>{cfg.icon}</span>
+      {cfg.label}
     </span>
   );
 }
