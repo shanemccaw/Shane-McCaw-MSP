@@ -1920,6 +1920,39 @@ router.delete("/admin/workflow-steps/:id", requireAdmin, async (req: Request, re
   res.json({ deleted: id });
 });
 
+router.post("/admin/workflow-steps/bulk", requireAdmin, async (req: Request, res: Response) => {
+  const { projectId, steps } = req.body as {
+    projectId?: number;
+    steps?: Array<{ title?: string; description?: string; status?: string; dueDate?: string | null; notes?: string }>;
+  };
+  if (!projectId || isNaN(projectId)) { res.status(400).json({ error: "projectId is required" }); return; }
+  if (!Array.isArray(steps) || steps.length === 0) { res.status(400).json({ error: "steps must be a non-empty array" }); return; }
+
+  const invalid = steps.findIndex(s => !s.title?.trim());
+  if (invalid !== -1) { res.status(400).json({ error: `Step at index ${invalid} is missing a title` }); return; }
+
+  const existing = await db.select({ order: workflowStepsTable.order })
+    .from(workflowStepsTable)
+    .where(eq(workflowStepsTable.projectId, projectId))
+    .orderBy(desc(workflowStepsTable.order))
+    .limit(1);
+  const maxOrder = existing[0]?.order ?? -1;
+
+  const validStatuses = ["pending", "in_progress", "completed", "blocked"];
+  const rows = steps.map((s, i) => ({
+    projectId,
+    title: s.title!.trim(),
+    description: s.description?.trim() ?? null,
+    status: (validStatuses.includes(s.status ?? "") ? s.status : "pending") as "pending" | "in_progress" | "completed" | "blocked",
+    order: maxOrder + 1 + i,
+    dueDate: s.dueDate ? new Date(s.dueDate) : null,
+    notes: s.notes?.trim() ?? null,
+  }));
+
+  const created = await db.insert(workflowStepsTable).values(rows).returning();
+  res.status(201).json(created);
+});
+
 router.post("/admin/workflow-steps", requireAdmin, async (req: Request, res: Response) => {
   const { projectId, clientServiceId, title, description, order, status, dueDate } = req.body as {
     projectId?: number; clientServiceId?: number; title?: string; description?: string; order?: number; status?: string; dueDate?: string | null;

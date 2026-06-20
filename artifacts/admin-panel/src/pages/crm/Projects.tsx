@@ -329,6 +329,10 @@ export default function ProjectsPage() {
   const [addStepProjectId, setAddStepProjectId] = useState<number | null>(null);
   const [stepForm, setStepForm] = useState({ title: "", status: "pending", dueDate: "" });
 
+  const [jsonImportProjectId, setJsonImportProjectId] = useState<number | null>(null);
+  const [jsonImportText, setJsonImportText] = useState("");
+  const [jsonImporting, setJsonImporting] = useState(false);
+
   const [addTaskProjectId, setAddTaskProjectId] = useState<number | null>(null);
   const [taskForm, setTaskForm] = useState({ title: "", column: "backlog", assignedTo: "" });
   const [subSaving, setSubSaving] = useState(false);
@@ -451,6 +455,44 @@ export default function ProjectsPage() {
       projectType: p.projectType ?? "project",
     });
     setShowForm(true);
+  };
+
+  const parseJsonSteps = (text: string): { parsed: Array<{ title: string; description?: string; status?: string; dueDate?: string; notes?: string }> | null; error: string | null } => {
+    if (!text.trim()) return { parsed: null, error: null };
+    try {
+      const raw: unknown = JSON.parse(text);
+      if (!Array.isArray(raw)) return { parsed: null, error: "JSON must be an array [ … ]" };
+      if (raw.length === 0) return { parsed: null, error: "Array is empty" };
+      const steps = raw as Array<Record<string, unknown>>;
+      const missingTitle = steps.findIndex(s => !s.title || typeof s.title !== "string" || !(s.title as string).trim());
+      if (missingTitle !== -1) return { parsed: null, error: `Item at index ${missingTitle} is missing a "title"` };
+      return { parsed: steps as Array<{ title: string; description?: string; status?: string; dueDate?: string; notes?: string }>, error: null };
+    } catch (e) {
+      return { parsed: null, error: (e as SyntaxError).message };
+    }
+  };
+
+  const handleJsonImport = async (projectId: number) => {
+    const { parsed, error } = parseJsonSteps(jsonImportText);
+    if (error || !parsed) return;
+    setJsonImporting(true);
+    try {
+      const res = await fetchWithAuth("/api/admin/workflow-steps/bulk", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ projectId, steps: parsed }),
+      });
+      if (!res.ok) {
+        const err = await res.json() as { error: string };
+        alert(`Import failed: ${err.error}`);
+        return;
+      }
+      setJsonImportProjectId(null);
+      setJsonImportText("");
+      await reloadDetails(projectId);
+    } finally {
+      setJsonImporting(false);
+    }
   };
 
   const handleAddStep = async (e: React.FormEvent, projectId: number) => {
@@ -654,12 +696,69 @@ export default function ProjectsPage() {
                         <div>
                           <div className="flex items-center justify-between mb-3">
                             <h4 className="text-xs font-bold uppercase tracking-wider text-[#0A2540]">Workflow Steps</h4>
-                            <button onClick={() => { setAddStepProjectId(addStepProjectId === p.id ? null : p.id); setStepForm({ title: "", status: "pending", dueDate: "" }); }}
-                              className="flex items-center gap-1 text-xs font-semibold text-[#0078D4] hover:underline">
-                              <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" /></svg>
-                              Add Step
-                            </button>
+                            <div className="flex items-center gap-3">
+                              <button
+                                onClick={() => {
+                                  setJsonImportProjectId(jsonImportProjectId === p.id ? null : p.id);
+                                  setJsonImportText("");
+                                  setAddStepProjectId(null);
+                                }}
+                                className="flex items-center gap-1 text-xs font-semibold text-[#00B4D8] hover:underline">
+                                <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M17 16v2a2 2 0 01-2 2H5a2 2 0 01-2-2v-2M9 12l3 3 3-3M12 3v12" /></svg>
+                                Import JSON
+                              </button>
+                              <button onClick={() => { setAddStepProjectId(addStepProjectId === p.id ? null : p.id); setStepForm({ title: "", status: "pending", dueDate: "" }); setJsonImportProjectId(null); }}
+                                className="flex items-center gap-1 text-xs font-semibold text-[#0078D4] hover:underline">
+                                <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" /></svg>
+                                Add Step
+                              </button>
+                            </div>
                           </div>
+                          {jsonImportProjectId === p.id && (() => {
+                            const { parsed, error } = parseJsonSteps(jsonImportText);
+                            return (
+                              <div className="mb-3 p-3 bg-white border border-[#00B4D8]/30 rounded-lg space-y-3">
+                                <div>
+                                  <label className="block text-xs font-semibold text-[#0A2540] mb-1">Paste JSON array of steps</label>
+                                  <textarea
+                                    autoFocus
+                                    rows={6}
+                                    value={jsonImportText}
+                                    onChange={e => setJsonImportText(e.target.value)}
+                                    placeholder={`[\n  {\n    "title": "Discovery & Assessment",\n    "description": "Review current environment",\n    "status": "pending",\n    "dueDate": "2026-07-15"\n  },\n  { "title": "Architecture Design" }\n]`}
+                                    className="w-full border border-border rounded px-3 py-2 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-[#00B4D8] resize-y"
+                                  />
+                                </div>
+                                {jsonImportText.trim() && error && (
+                                  <p className="text-xs text-red-600 bg-red-50 border border-red-100 rounded px-2 py-1.5 font-mono">{error}</p>
+                                )}
+                                {parsed && parsed.length > 0 && (
+                                  <div className="bg-[#F7F9FC] border border-border rounded p-2 space-y-1">
+                                    <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1.5">{parsed.length} step{parsed.length !== 1 ? "s" : ""} to create</p>
+                                    {parsed.map((s, i) => (
+                                      <div key={i} className="flex items-center gap-2 text-xs">
+                                        <span className="w-4 h-4 rounded-full bg-[#0A2540] text-white flex items-center justify-center text-[9px] font-bold flex-shrink-0">{i + 1}</span>
+                                        <span className="font-semibold text-[#0A2540] truncate">{s.title}</span>
+                                        {s.status && s.status !== "pending" && <span className="text-muted-foreground">· {s.status.replace("_", " ")}</span>}
+                                        {s.dueDate && <span className="text-muted-foreground ml-auto flex-shrink-0">due {s.dueDate}</span>}
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+                                <div className="flex gap-2">
+                                  <button
+                                    type="button"
+                                    disabled={!parsed || jsonImporting}
+                                    onClick={() => void handleJsonImport(p.id)}
+                                    className="bg-[#0A2540] text-white text-xs font-semibold px-4 py-1.5 rounded hover:bg-[#0A2540]/90 disabled:opacity-40 flex items-center gap-1.5 whitespace-nowrap"
+                                  >
+                                    {jsonImporting ? <><div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" /> Importing…</> : `Import ${parsed ? parsed.length : ""} Step${parsed?.length !== 1 ? "s" : ""}`}
+                                  </button>
+                                  <button type="button" onClick={() => { setJsonImportProjectId(null); setJsonImportText(""); }} className="border border-border text-xs font-medium px-3 py-1.5 rounded hover:bg-[#F7F9FC]">Cancel</button>
+                                </div>
+                              </div>
+                            );
+                          })()}
                           {addStepProjectId === p.id && (
                             <form onSubmit={e => void handleAddStep(e, p.id)} className="flex flex-wrap items-end gap-2 mb-3 p-3 bg-white border border-border rounded-lg">
                               <div className="flex-1 min-w-[160px]">
