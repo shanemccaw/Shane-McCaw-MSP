@@ -3,15 +3,13 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import { useAssignEmail } from "@/hooks/useAssignEmail";
 import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog";
 
 interface Client {
   id: number;
@@ -38,6 +36,18 @@ interface EmailRow {
   };
   clientName: string | null;
   clientEmail: string | null;
+}
+
+interface DeletePreview {
+  projects: number;
+  invoices: number;
+  unpaidInvoices: number;
+  contracts: number;
+  messages: number;
+  services: number;
+  reports: number;
+  statusReports: number;
+  hasActiveStripeSubscription: boolean;
 }
 
 const CRM_PORTAL_BASE = (() => {
@@ -86,7 +96,6 @@ function ClientEmailPanel({ client, onClose }: ClientEmailPanelProps) {
     setLoading(true);
     setError(null);
     try {
-      // Fetch all emails from this client's domain (linked + unlinked)
       const res = await fetchWithAuth(
         `/api/admin/emails?domain=${encodeURIComponent(clientDomain)}&limit=50`
       );
@@ -130,7 +139,6 @@ function ClientEmailPanel({ client, onClose }: ClientEmailPanelProps) {
     <tr>
       <td colSpan={5} className="px-0 py-0 bg-blue-50/40 border-b border-blue-100">
         <div className="px-5 py-4">
-          {/* Header */}
           <div className="flex items-center justify-between mb-3">
             <div>
               <span className="text-xs font-bold text-[#0078D4] uppercase tracking-widest">
@@ -165,7 +173,6 @@ function ClientEmailPanel({ client, onClose }: ClientEmailPanelProps) {
             </p>
           ) : (
             <div className="space-y-4">
-              {/* Unlinked emails from this domain */}
               {unlinked.length > 0 && (
                 <div>
                   <p className="text-[10px] font-bold text-amber-600 uppercase tracking-widest mb-2">
@@ -198,7 +205,6 @@ function ClientEmailPanel({ client, onClose }: ClientEmailPanelProps) {
                 </div>
               )}
 
-              {/* Emails already linked to this client */}
               {linkedToThis.length > 0 && (
                 <div>
                   <p className="text-[10px] font-bold text-emerald-600 uppercase tracking-widest mb-2">
@@ -231,7 +237,6 @@ function ClientEmailPanel({ client, onClose }: ClientEmailPanelProps) {
                 </div>
               )}
 
-              {/* Emails linked to a different client — visible but not actionable */}
               {linkedToOther.length > 0 && (
                 <div>
                   <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">
@@ -323,7 +328,6 @@ function ClientSharePointPanel({ client, onClose, onUpdate }: {
         return;
       }
 
-      // provisioning: true — start polling
       toast({ title: "SharePoint provisioning started", description: "This may take up to a minute." });
 
       let polls = 0;
@@ -414,6 +418,157 @@ function ClientSharePointPanel({ client, onClose, onUpdate }: {
         </div>
       </td>
     </tr>
+  );
+}
+
+// ─── DeleteConfirmDialog ──────────────────────────────────────────────────────
+function DeleteConfirmDialog({
+  client,
+  onClose,
+  onConfirm,
+  deleting,
+}: {
+  client: Client;
+  onClose: () => void;
+  onConfirm: () => void;
+  deleting: boolean;
+}) {
+  const { fetchWithAuth } = useAuth();
+  const [preview, setPreview] = useState<DeletePreview | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(true);
+  const [previewError, setPreviewError] = useState<string | null>(null);
+
+  const loadPreview = useCallback(() => {
+    setPreviewLoading(true);
+    setPreviewError(null);
+    fetchWithAuth(`/api/admin/clients/${client.id}/delete-preview`)
+      .then(async res => {
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        setPreview(await res.json() as DeletePreview);
+      })
+      .catch(e => setPreviewError(e instanceof Error ? e.message : "Failed to load"))
+      .finally(() => setPreviewLoading(false));
+  }, [client.id, fetchWithAuth]);
+
+  useEffect(() => { loadPreview(); }, [loadPreview]);
+
+  const clientLabel = client.name ?? client.email;
+
+  const summaryItems: Array<{ label: string; count: number }> = preview
+    ? [
+        { label: "Projects", count: preview.projects },
+        { label: "Invoices", count: preview.invoices },
+        { label: "Contracts", count: preview.contracts },
+        { label: "Messages", count: preview.messages },
+        { label: "Services", count: preview.services },
+        { label: "Reports", count: preview.reports },
+        { label: "Status reports", count: preview.statusReports },
+      ].filter(item => item.count > 0)
+    : [];
+
+  const hasWarnings = preview && (preview.unpaidInvoices > 0 || preview.hasActiveStripeSubscription);
+
+  return (
+    <Dialog open onOpenChange={open => { if (!open && !deleting) onClose(); }}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2 text-red-600">
+            <svg className="w-5 h-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
+            </svg>
+            Permanently delete client?
+          </DialogTitle>
+          <DialogDescription asChild>
+            <div className="text-sm text-gray-600 mt-1">
+              You are about to permanently delete <strong className="text-[#0A2540]">{clientLabel}</strong> and all their associated data. This cannot be undone.
+            </div>
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-3">
+          {/* Dependency summary */}
+          {previewLoading ? (
+            <div className="flex items-center gap-2 py-3 text-sm text-gray-400">
+              <div className="w-4 h-4 border-2 border-[#0078D4] border-t-transparent rounded-full animate-spin" />
+              Checking what will be deleted…
+            </div>
+          ) : previewError ? (
+            <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-3">
+              <p className="text-sm font-semibold text-red-700 mb-1">Could not load dependency summary</p>
+              <p className="text-xs text-red-600 mb-2">{previewError}</p>
+              <p className="text-xs text-red-700 mb-3">Deletion is blocked until the summary loads successfully. This protects you from accidentally removing data you didn't know existed.</p>
+              <button
+                onClick={loadPreview}
+                className="text-xs font-semibold text-red-700 border border-red-300 bg-white px-3 py-1.5 rounded-lg hover:bg-red-50 transition-colors"
+              >
+                Retry
+              </button>
+            </div>
+          ) : preview ? (
+            <>
+              {summaryItems.length === 0 ? (
+                <div className="bg-gray-50 border border-border rounded-lg px-4 py-3">
+                  <p className="text-sm text-gray-500">This client has no associated records. Only their account will be removed.</p>
+                </div>
+              ) : (
+                <div className="bg-gray-50 border border-border rounded-lg px-4 py-3">
+                  <p className="text-xs font-semibold text-[#0A2540] uppercase tracking-wider mb-2">Will be permanently erased</p>
+                  <div className="grid grid-cols-2 gap-x-6 gap-y-1">
+                    {summaryItems.map(item => (
+                      <div key={item.label} className="flex items-center justify-between text-sm">
+                        <span className="text-gray-600">{item.label}</span>
+                        <span className="font-semibold text-[#0A2540]">{item.count}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Warnings */}
+              {hasWarnings && (
+                <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 space-y-1.5">
+                  <p className="text-xs font-bold text-amber-800 uppercase tracking-wider">⚠ Warnings</p>
+                  {preview.unpaidInvoices > 0 && (
+                    <p className="text-sm text-amber-800">
+                      This client has <strong>{preview.unpaidInvoices} unpaid invoice{preview.unpaidInvoices !== 1 ? "s" : ""}</strong>. Deleting will erase them without collecting payment.
+                    </p>
+                  )}
+                  {preview.hasActiveStripeSubscription && (
+                    <p className="text-sm text-amber-800">
+                      This client has an <strong>active Stripe subscription</strong>. Cancel it in the Stripe dashboard before deleting to avoid continued billing.
+                    </p>
+                  )}
+                </div>
+              )}
+            </>
+          ) : null}
+        </div>
+
+        <DialogFooter className="flex gap-2 pt-2">
+          <button
+            onClick={onClose}
+            disabled={deleting}
+            className="flex-1 border border-border text-sm font-medium px-4 py-2 rounded-lg hover:bg-gray-50 disabled:opacity-50 transition-colors"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={onConfirm}
+            disabled={deleting || previewLoading || !!previewError}
+            className="flex-1 flex items-center justify-center gap-2 bg-red-600 hover:bg-red-700 text-white text-sm font-semibold px-4 py-2 rounded-lg disabled:opacity-50 transition-colors"
+          >
+            {deleting ? (
+              <>
+                <span className="w-3.5 h-3.5 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+                Deleting…
+              </>
+            ) : (
+              "Permanently delete"
+            )}
+          </button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -722,26 +877,14 @@ export default function ClientsPage() {
         </div>
       )}
 
-      <AlertDialog open={!!deleteTarget} onOpenChange={open => { if (!open) setDeleteTarget(null); }}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Delete client?</AlertDialogTitle>
-            <AlertDialogDescription>
-              This will permanently delete <strong>{deleteTarget?.name ?? deleteTarget?.email}</strong> and cascade-remove all their projects, services, contracts, invoices, messages, and reports. This cannot be undone.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={deleting}>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              disabled={deleting}
-              onClick={e => { e.preventDefault(); void handleDelete(); }}
-              className="bg-red-600 hover:bg-red-700 text-white"
-            >
-              {deleting ? "Deleting…" : "Yes, delete client"}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      {deleteTarget && (
+        <DeleteConfirmDialog
+          client={deleteTarget}
+          onClose={() => { if (!deleting) setDeleteTarget(null); }}
+          onConfirm={() => void handleDelete()}
+          deleting={deleting}
+        />
+      )}
     </div>
   );
 }

@@ -2732,6 +2732,55 @@ router.patch("/admin/clients/:id", requireAdmin, async (req: Request, res: Respo
   res.json({ ...updated, passwordHash: undefined });
 });
 
+router.get("/admin/clients/:id/delete-preview", requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const id = parseInt(String(req.params.id ?? ""), 10);
+    if (isNaN(id)) { res.status(400).json({ error: "Invalid ID" }); return; }
+
+    const [client] = await db.select({ id: usersTable.id, name: usersTable.name, email: usersTable.email })
+      .from(usersTable)
+      .where(and(eq(usersTable.id, id), eq(usersTable.role, "client"))).limit(1);
+    if (!client) { res.status(404).json({ error: "Client not found" }); return; }
+
+    const [
+      projectRows,
+      invoiceRows,
+      contractRows,
+      messageRows,
+      serviceRows,
+      reportRows,
+      statusReportRows,
+    ] = await Promise.all([
+      db.select({ id: projectsTable.id }).from(projectsTable).where(eq(projectsTable.clientUserId, id)),
+      db.select({ id: invoicesTable.id, status: invoicesTable.status }).from(invoicesTable).where(eq(invoicesTable.clientUserId, id)),
+      db.select({ id: contractsTable.id }).from(contractsTable).where(eq(contractsTable.userId, id)),
+      db.select({ id: messagesTable.id }).from(messagesTable).where(eq(messagesTable.clientUserId, id)),
+      db.select({ id: clientServicesTable.id, stripeSubscriptionId: clientServicesTable.stripeSubscriptionId })
+        .from(clientServicesTable).where(eq(clientServicesTable.clientUserId, id)),
+      db.select({ id: reportsTable.id }).from(reportsTable).where(eq(reportsTable.clientUserId, id)),
+      db.select({ id: statusReportsTable.id }).from(statusReportsTable).where(eq(statusReportsTable.clientUserId, id)),
+    ]);
+
+    const unpaidInvoices = invoiceRows.filter(inv => inv.status === "due" || inv.status === "overdue").length;
+    const hasActiveStripeSubscription = serviceRows.some(s => s.stripeSubscriptionId != null);
+
+    res.json({
+      projects: projectRows.length,
+      invoices: invoiceRows.length,
+      unpaidInvoices,
+      contracts: contractRows.length,
+      messages: messageRows.length,
+      services: serviceRows.length,
+      reports: reportRows.length,
+      statusReports: statusReportRows.length,
+      hasActiveStripeSubscription,
+    });
+  } catch (err) {
+    req.log.error(err, "Failed to fetch client delete preview");
+    res.status(500).json({ error: "Failed to fetch delete preview" });
+  }
+});
+
 router.delete("/admin/clients/:id", requireAdmin, async (req: Request, res: Response) => {
   try {
     const id = parseInt(String(req.params.id ?? ""), 10);
