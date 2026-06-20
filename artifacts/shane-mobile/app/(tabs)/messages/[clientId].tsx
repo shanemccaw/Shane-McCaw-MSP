@@ -1,6 +1,7 @@
 import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
-import { useLocalSearchParams, useRouter } from "expo-router";
+import * as Notifications from "expo-notifications";
+import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
@@ -65,6 +66,13 @@ export default function ConversationScreen() {
   const [text, setText] = useState("");
   const inputRef = useRef<TextInput>(null);
   const clientIdNum = parseInt(clientId, 10);
+
+  // Clear the app icon badge whenever Shane opens a conversation
+  useFocusEffect(
+    useCallback(() => {
+      Notifications.setBadgeCountAsync(0).catch(() => null);
+    }, []),
+  );
 
   const { data: messages, isLoading } = useQuery<Message[]>({
     queryKey: ["admin-messages", clientIdNum],

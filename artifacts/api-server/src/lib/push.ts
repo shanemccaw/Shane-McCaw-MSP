@@ -16,6 +16,7 @@ export async function sendPushNotifications(
   body: string,
   data?: Record<string, unknown>,
   categoryIdentifier?: string,
+  badge?: number,
 ): Promise<void> {
   if (!tokens.length) return;
 
@@ -25,6 +26,10 @@ export async function sendPushNotifications(
     title,
     body,
     data: data ?? {},
+    // badge tells the OS to display this count on the app icon when the app is
+    // backgrounded or terminated. The client increments from this value for
+    // foreground arrivals and resets to 0 when Shane opens the relevant screen.
+    badge: badge ?? 1,
     ...(categoryIdentifier ? { categoryIdentifier } : {}),
   }));
 

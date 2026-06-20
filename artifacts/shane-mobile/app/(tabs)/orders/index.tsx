@@ -1,6 +1,7 @@
 import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
-import { useRouter } from "expo-router";
+import * as Notifications from "expo-notifications";
+import { useFocusEffect, useRouter } from "expo-router";
 import React, { useCallback, useState } from "react";
 import {
   ActivityIndicator,
@@ -104,6 +105,13 @@ export default function OrdersScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const [refreshing, setRefreshing] = useState(false);
+
+  // Clear the app icon badge whenever Shane opens this screen
+  useFocusEffect(
+    useCallback(() => {
+      Notifications.setBadgeCountAsync(0).catch(() => null);
+    }, []),
+  );
 
   const { data, isLoading, error, refetch } = useQuery<Purchase[]>({
     queryKey: ["admin-purchases"],

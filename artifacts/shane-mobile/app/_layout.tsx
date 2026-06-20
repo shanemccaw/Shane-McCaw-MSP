@@ -121,6 +121,20 @@ function PushSetup() {
       })
       .catch(() => null);
 
+    // Foreground notification: increment the app icon badge count for order and
+    // message pushes only (unrelated system pushes should not inflate the badge).
+    const receiveSub = Notifications.addNotificationReceivedListener(async (notification) => {
+      const data = notification.request.content.data as Record<string, string | undefined>;
+      const isRelevant = data.screen === "order" || data.screen === "orders" || data.screen === "conversation";
+      if (!isRelevant) return;
+      try {
+        const current = await Notifications.getBadgeCountAsync();
+        await Notifications.setBadgeCountAsync(current + 1);
+      } catch {
+        // Badge update is best-effort
+      }
+    });
+
     // Foreground / background tap routing and inline reply handling
     const tapSub = Notifications.addNotificationResponseReceivedListener(async (response) => {
       const data = response.notification.request.content.data as Record<string, string | undefined>;
@@ -131,7 +145,10 @@ function PushSetup() {
       }
     });
 
-    return () => tapSub.remove();
+    return () => {
+      receiveSub.remove();
+      tapSub.remove();
+    };
   }, [user, router, fetchWithAuth, showToast]);
 
   useEffect(() => {

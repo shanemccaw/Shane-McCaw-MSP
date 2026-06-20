@@ -12,6 +12,23 @@ import { PDFDocument, rgb, StandardFonts } from "pdf-lib";
 
 const router: IRouter = Router();
 
+/**
+ * Returns the number of messages that Shane has not yet read.
+ * Used to set the iOS app icon badge count in outgoing push payloads so that
+ * consecutive background pushes show 2, 3, … rather than always 1.
+ */
+async function getAdminUnreadMessageCount(): Promise<number> {
+  try {
+    const [row] = await db
+      .select({ n: count() })
+      .from(messagesTable)
+      .where(eq(messagesTable.readByAdmin, false));
+    return row?.n ?? 0;
+  } catch {
+    return 0;
+  }
+}
+
 const UPLOADS_BASE = process.env.UPLOADS_DIR
   ? path.resolve(process.env.UPLOADS_DIR)
   : path.resolve("../../data/uploads");
@@ -1767,13 +1784,17 @@ async function processStripeEvent(req: Request, event: import("stripe").Stripe.E
 
       // Push notification to Shane's devices
       db.select({ token: deviceTokensTable.token }).from(deviceTokensTable)
-        .then((rows) => {
+        .then(async (rows) => {
           const tokens = rows.map((r) => r.token);
+          // Unread messages + 1 for this new order gives an accurate cumulative badge
+          const badge = await getAdminUnreadMessageCount() + 1;
           return sendPushNotifications(
             tokens,
             "New Order",
             `${buyer?.name ?? buyer?.email ?? "Client"} — ${serviceName} — $${amountDollars}`,
             { screen: "order", id: String(newInvoice?.id ?? "") },
+            undefined,
+            badge,
           );
         })
         .catch(() => null);
@@ -1817,11 +1838,15 @@ async function processStripeEvent(req: Request, event: import("stripe").Stripe.E
             const pushData: Record<string, string> = firstInv?.id
               ? { screen: "order", id: String(firstInv.id) }
               : { screen: "orders" };
+            // Unread messages + 1 for this new order gives an accurate cumulative badge
+            const badge = await getAdminUnreadMessageCount() + 1;
             return sendPushNotifications(
               tokens,
               "New Order",
               `${buyerLabel} — ${serviceLabel} — $${totalDollars}`,
               pushData,
+              undefined,
+              badge,
             );
           })
           .catch(() => null);
@@ -1922,14 +1947,18 @@ router.post("/portal/messages", requireAuth, async (req: Request, res: Response)
       // Push notification to Shane's devices
       const clientName = clientUser?.name ?? clientUser?.email ?? "A client";
       db.select({ token: deviceTokensTable.token }).from(deviceTokensTable)
-        .then((rows) => {
+        .then(async (rows) => {
           const tokens = rows.map((r) => r.token);
+          // The new message is already in the DB (readByAdmin = false), so the count
+          // naturally includes it — this gives an accurate cumulative unread badge.
+          const badge = await getAdminUnreadMessageCount();
           return sendPushNotifications(
             tokens,
             "New Client Message",
             `${clientName}: ${body.trim().slice(0, 80)}`,
             { screen: "conversation", clientId: String(senderId) },
             "MESSAGE",
+            badge,
           );
         })
         .catch(() => null);
