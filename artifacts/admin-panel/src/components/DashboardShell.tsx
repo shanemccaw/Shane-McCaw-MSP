@@ -1,6 +1,12 @@
-import { type ReactNode, useState } from "react";
+import { type ReactNode, useState, useEffect, useCallback } from "react";
 import { Link, useLocation } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 interface NavItem {
   label: string;
@@ -21,7 +27,7 @@ const NAV_GROUPS: NavGroup[] = [
         label: "Articles",
         path: "/articles",
         icon: (
-          <svg className="w-4.5 h-4.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg className="w-4.5 h-4.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 20H5a2 2 0 01-2-2V6a2 2 0 012-2h10a2 2 0 012 2v1m2 13a2 2 0 01-2-2V7m2 13a2 2 0 002-2V9a2 2 0 00-2-2h-2m-4-3H9M7 16h6M7 8h6v4H7V8z" />
           </svg>
         ),
@@ -30,7 +36,7 @@ const NAV_GROUPS: NavGroup[] = [
         label: "Services",
         path: "/services",
         icon: (
-          <svg className="w-4.5 h-4.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg className="w-4.5 h-4.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2 2v2m4 6h.01M5 20h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
           </svg>
         ),
@@ -39,7 +45,7 @@ const NAV_GROUPS: NavGroup[] = [
         label: "Workflows",
         path: "/workflows",
         icon: (
-          <svg className="w-4.5 h-4.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg className="w-4.5 h-4.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
           </svg>
         ),
@@ -48,7 +54,7 @@ const NAV_GROUPS: NavGroup[] = [
         label: "Contract Templates",
         path: "/contract-templates",
         icon: (
-          <svg className="w-4.5 h-4.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg className="w-4.5 h-4.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
           </svg>
         ),
@@ -57,7 +63,7 @@ const NAV_GROUPS: NavGroup[] = [
         label: "Engagement Projects",
         path: "/engagement-projects",
         icon: (
-          <svg className="w-4.5 h-4.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg className="w-4.5 h-4.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7m0 10a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 00-2-2h-2a2 2 0 00-2 2" />
           </svg>
         ),
@@ -71,7 +77,7 @@ const NAV_GROUPS: NavGroup[] = [
         label: "Leads",
         path: "/crm/leads",
         icon: (
-          <svg className="w-4.5 h-4.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg className="w-4.5 h-4.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 018.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0111.964-3.07M12 6.375a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zm8.25 2.25a2.625 2.625 0 11-5.25 0 2.625 2.625 0 015.25 0z" />
           </svg>
         ),
@@ -80,7 +86,7 @@ const NAV_GROUPS: NavGroup[] = [
         label: "Clients",
         path: "/crm/clients",
         icon: (
-          <svg className="w-4.5 h-4.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg className="w-4.5 h-4.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
           </svg>
         ),
@@ -89,7 +95,7 @@ const NAV_GROUPS: NavGroup[] = [
         label: "Projects",
         path: "/crm/projects",
         icon: (
-          <svg className="w-4.5 h-4.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg className="w-4.5 h-4.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
           </svg>
         ),
@@ -98,7 +104,7 @@ const NAV_GROUPS: NavGroup[] = [
         label: "Reports",
         path: "/crm/reports",
         icon: (
-          <svg className="w-4.5 h-4.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg className="w-4.5 h-4.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
           </svg>
         ),
@@ -107,7 +113,7 @@ const NAV_GROUPS: NavGroup[] = [
         label: "Invoices",
         path: "/crm/invoices",
         icon: (
-          <svg className="w-4.5 h-4.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg className="w-4.5 h-4.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 14l6-6m-5.5.5h.01m4.99 5h.01M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16l3.5-2 3.5 2 3.5-2 3.5 2z" />
           </svg>
         ),
@@ -116,7 +122,7 @@ const NAV_GROUPS: NavGroup[] = [
         label: "Documents",
         path: "/crm/documents",
         icon: (
-          <svg className="w-4.5 h-4.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg className="w-4.5 h-4.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
           </svg>
         ),
@@ -125,7 +131,7 @@ const NAV_GROUPS: NavGroup[] = [
         label: "Messages",
         path: "/crm/messages",
         icon: (
-          <svg className="w-4.5 h-4.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg className="w-4.5 h-4.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
           </svg>
         ),
@@ -134,7 +140,7 @@ const NAV_GROUPS: NavGroup[] = [
         label: "Purchases",
         path: "/crm/purchases",
         icon: (
-          <svg className="w-4.5 h-4.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg className="w-4.5 h-4.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z" />
           </svg>
         ),
@@ -143,7 +149,7 @@ const NAV_GROUPS: NavGroup[] = [
         label: "Contracts",
         path: "/crm/contracts",
         icon: (
-          <svg className="w-4.5 h-4.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg className="w-4.5 h-4.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
           </svg>
         ),
@@ -152,7 +158,7 @@ const NAV_GROUPS: NavGroup[] = [
         label: "Status Reports",
         path: "/crm/status-reports",
         icon: (
-          <svg className="w-4.5 h-4.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg className="w-4.5 h-4.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
           </svg>
         ),
@@ -161,7 +167,7 @@ const NAV_GROUPS: NavGroup[] = [
         label: "View as Client",
         path: "/crm/clients",
         icon: (
-          <svg className="w-4.5 h-4.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg className="w-4.5 h-4.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
           </svg>
@@ -171,111 +177,355 @@ const NAV_GROUPS: NavGroup[] = [
   },
 ];
 
+const LS_SIDEBAR_COLLAPSED = "admin_sidebar_collapsed";
+const LS_COLLAPSED_GROUPS = "admin_collapsed_groups";
+
+function readSidebarCollapsed(): boolean {
+  try {
+    return localStorage.getItem(LS_SIDEBAR_COLLAPSED) === "true";
+  } catch {
+    return false;
+  }
+}
+
+function readCollapsedGroups(): Set<string> {
+  try {
+    const raw = localStorage.getItem(LS_COLLAPSED_GROUPS);
+    if (!raw) return new Set();
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? new Set(parsed) : new Set();
+  } catch {
+    return new Set();
+  }
+}
+
+function NavItemLink({
+  item,
+  isActive,
+  collapsed,
+  onClick,
+}: {
+  item: NavItem;
+  isActive: boolean;
+  collapsed: boolean;
+  onClick?: () => void;
+}) {
+  const linkEl = (
+    <Link
+      href={item.path}
+      onClick={onClick}
+      className={`flex items-center gap-3 rounded-xl text-sm font-medium transition-all ${
+        collapsed ? "px-0 py-2.5 justify-center" : "px-3 py-2.5"
+      } ${
+        isActive
+          ? "bg-[#0078D4] text-white"
+          : "text-blue-200 hover:bg-[#1a3a5c] hover:text-white"
+      }`}
+    >
+      {item.icon}
+      {!collapsed && <span className="truncate">{item.label}</span>}
+    </Link>
+  );
+
+  if (!collapsed) return linkEl;
+
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>{linkEl}</TooltipTrigger>
+      <TooltipContent side="right">{item.label}</TooltipContent>
+    </Tooltip>
+  );
+}
+
+function SignOutButton({
+  collapsed,
+  onLogout,
+}: {
+  collapsed: boolean;
+  onLogout: () => void;
+}) {
+  const signOutIcon = (
+    <svg className="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+    </svg>
+  );
+
+  const btn = (
+    <button
+      onClick={onLogout}
+      className={`flex items-center gap-2 px-3 py-2 text-xs text-blue-300 hover:text-white hover:bg-[#1a3a5c] rounded-lg transition-colors ${
+        collapsed ? "w-auto justify-center" : "w-full justify-center"
+      }`}
+    >
+      {signOutIcon}
+      {!collapsed && "Sign out"}
+    </button>
+  );
+
+  if (!collapsed) return btn;
+
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>{btn}</TooltipTrigger>
+      <TooltipContent side="right">Sign out</TooltipContent>
+    </Tooltip>
+  );
+}
+
+function SidebarContent({
+  collapsed,
+  collapsedGroups,
+  onToggleGroup,
+  location,
+  user,
+  onLogout,
+  onClose,
+}: {
+  collapsed: boolean;
+  collapsedGroups: Set<string>;
+  onToggleGroup: (label: string) => void;
+  location: string;
+  user: { email?: string } | null;
+  onLogout: () => void;
+  onClose?: () => void;
+}) {
+  return (
+    <div className="h-full flex flex-col bg-[#0A2540]">
+      {/* Header / logo */}
+      <div className={`border-b border-[#1a3a5c] transition-all duration-200 ${collapsed ? "px-0 py-4 flex justify-center" : "px-5 py-5"}`}>
+        {collapsed ? (
+          <div className="w-9 h-9 bg-[#0078D4] rounded-xl flex items-center justify-center">
+            <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+            </svg>
+          </div>
+        ) : (
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 bg-[#0078D4] rounded-xl flex items-center justify-center flex-shrink-0">
+              <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+              </svg>
+            </div>
+            <div>
+              <p className="font-bold text-white text-sm leading-tight">Admin Panel</p>
+              <p className="text-xs text-blue-300 leading-tight">Shane McCaw Consulting</p>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Nav */}
+      <nav className={`flex-1 overflow-y-auto p-3 space-y-4 ${collapsed ? "overflow-x-hidden" : ""}`}>
+        {NAV_GROUPS.map(group => {
+          const isGroupCollapsed = !collapsed && collapsedGroups.has(group.label);
+
+          return (
+            <div key={group.label}>
+              {/* Group header */}
+              {collapsed ? (
+                /* In rail mode: show a thin divider line between groups (skip for first) */
+                group.label !== NAV_GROUPS[0].label && (
+                  <div className="border-t border-[#1a3a5c] my-2" />
+                )
+              ) : (
+                <button
+                  onClick={() => onToggleGroup(group.label)}
+                  className="w-full flex items-center justify-between px-3 mb-1 group"
+                >
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-blue-400/70 group-hover:text-blue-300 transition-colors">
+                    {group.label}
+                  </p>
+                  <svg
+                    className={`w-3 h-3 text-blue-400/70 group-hover:text-blue-300 transition-transform duration-200 ${
+                      isGroupCollapsed ? "-rotate-90" : "rotate-0"
+                    }`}
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 9l-7 7-7-7" />
+                  </svg>
+                </button>
+              )}
+
+              {/* Group items */}
+              <div
+                className={`space-y-0.5 overflow-hidden transition-all duration-200 ${
+                  isGroupCollapsed ? "max-h-0 opacity-0" : "max-h-[2000px] opacity-100"
+                }`}
+              >
+                {group.items.map(item => {
+                  const isActive =
+                    location === item.path || location.startsWith(item.path + "/");
+                  return (
+                    <NavItemLink
+                      key={item.label + item.path}
+                      item={item}
+                      isActive={isActive}
+                      collapsed={collapsed}
+                      onClick={onClose}
+                    />
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })}
+      </nav>
+
+      {/* Footer */}
+      <div className={`border-t border-[#1a3a5c] ${collapsed ? "p-3 flex flex-col items-center gap-2" : "p-4"}`}>
+        {collapsed ? (
+          <>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <div className="w-8 h-8 bg-[#0078D4]/20 border border-[#0078D4]/30 rounded-full flex items-center justify-center cursor-default">
+                  <span className="text-xs font-bold text-blue-300 uppercase">
+                    {user?.email?.[0] ?? "A"}
+                  </span>
+                </div>
+              </TooltipTrigger>
+              <TooltipContent side="right">{user?.email ?? "Administrator"}</TooltipContent>
+            </Tooltip>
+            <SignOutButton collapsed={collapsed} onLogout={onLogout} />
+          </>
+        ) : (
+          <>
+            <div className="flex items-center gap-3 mb-3">
+              <div className="w-8 h-8 bg-[#0078D4]/20 border border-[#0078D4]/30 rounded-full flex items-center justify-center flex-shrink-0">
+                <span className="text-xs font-bold text-blue-300 uppercase">
+                  {user?.email?.[0] ?? "A"}
+                </span>
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="text-xs text-white font-medium truncate">{user?.email}</p>
+                <p className="text-xs text-blue-400">Administrator</p>
+              </div>
+            </div>
+            <SignOutButton collapsed={collapsed} onLogout={onLogout} />
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function DashboardShell({ children }: { children: ReactNode }) {
   const { user, logout } = useAuth();
   const [location] = useLocation();
   const [mobileOpen, setMobileOpen] = useState(false);
 
+  const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(() =>
+    readSidebarCollapsed()
+  );
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(() =>
+    readCollapsedGroups()
+  );
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(LS_SIDEBAR_COLLAPSED, String(sidebarCollapsed));
+    } catch {}
+  }, [sidebarCollapsed]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(
+        LS_COLLAPSED_GROUPS,
+        JSON.stringify(Array.from(collapsedGroups))
+      );
+    } catch {}
+  }, [collapsedGroups]);
+
+  const toggleGroup = useCallback((label: string) => {
+    setCollapsedGroups(prev => {
+      const next = new Set(prev);
+      if (next.has(label)) {
+        next.delete(label);
+      } else {
+        next.add(label);
+      }
+      return next;
+    });
+  }, []);
+
   const handleLogout = async () => {
     await logout();
   };
 
-  const Sidebar = () => (
-    <div className="h-full flex flex-col bg-[#0A2540]">
-      <div className="px-5 py-5 border-b border-[#1a3a5c]">
-        <div className="flex items-center gap-3">
-          <div className="w-9 h-9 bg-[#0078D4] rounded-xl flex items-center justify-center flex-shrink-0">
-            <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
-            </svg>
-          </div>
-          <div>
-            <p className="font-bold text-white text-sm leading-tight">Admin Panel</p>
-            <p className="text-xs text-blue-300 leading-tight">Shane McCaw Consulting</p>
-          </div>
-        </div>
-      </div>
-
-      <nav className="flex-1 overflow-y-auto p-3 space-y-4">
-        {NAV_GROUPS.map(group => (
-          <div key={group.label}>
-            <p className="px-3 mb-1 text-[10px] font-bold uppercase tracking-widest text-blue-400/70">{group.label}</p>
-            <div className="space-y-0.5">
-              {group.items.map(item => {
-                const isActive = location === item.path || location.startsWith(item.path + "/");
-                return (
-                  <Link
-                    key={item.path}
-                    href={item.path}
-                    onClick={() => setMobileOpen(false)}
-                    className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all ${
-                      isActive
-                        ? "bg-[#0078D4] text-white"
-                        : "text-blue-200 hover:bg-[#1a3a5c] hover:text-white"
-                    }`}
-                  >
-                    {item.icon}
-                    {item.label}
-                  </Link>
-                );
-              })}
-            </div>
-          </div>
-        ))}
-      </nav>
-
-      <div className="p-4 border-t border-[#1a3a5c]">
-        <div className="flex items-center gap-3 mb-3">
-          <div className="w-8 h-8 bg-[#0078D4]/20 border border-[#0078D4]/30 rounded-full flex items-center justify-center flex-shrink-0">
-            <span className="text-xs font-bold text-blue-300 uppercase">{user?.email?.[0] ?? "A"}</span>
-          </div>
-          <div className="min-w-0 flex-1">
-            <p className="text-xs text-white font-medium truncate">{user?.email}</p>
-            <p className="text-xs text-blue-400">Administrator</p>
-          </div>
-        </div>
-        <button
-          onClick={handleLogout}
-          className="w-full flex items-center justify-center gap-2 px-3 py-2 text-xs text-blue-300 hover:text-white hover:bg-[#1a3a5c] rounded-lg transition-colors"
-        >
-          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-          </svg>
-          Sign out
-        </button>
-      </div>
-    </div>
+  const CollapseToggleButton = () => (
+    <button
+      onClick={() => setSidebarCollapsed(v => !v)}
+      title={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+      className="absolute -right-3 top-1/2 -translate-y-1/2 z-10 w-6 h-6 rounded-full bg-[#0078D4] text-white flex items-center justify-center shadow-md hover:bg-[#005fa3] transition-colors"
+    >
+      <svg
+        className={`w-3 h-3 transition-transform duration-200 ${sidebarCollapsed ? "rotate-180" : "rotate-0"}`}
+        fill="none"
+        stroke="currentColor"
+        viewBox="0 0 24 24"
+      >
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M15 19l-7-7 7-7" />
+      </svg>
+    </button>
   );
 
   return (
-    <div className="flex h-screen overflow-hidden bg-gray-50">
-      <aside className="hidden lg:flex lg:flex-col w-64 flex-shrink-0">
-        <Sidebar />
-      </aside>
+    <TooltipProvider delayDuration={300}>
+      <div className="flex h-screen overflow-hidden bg-gray-50">
+        {/* Desktop sidebar */}
+        <aside
+          className={`hidden lg:flex lg:flex-col flex-shrink-0 relative transition-all duration-200 ${
+            sidebarCollapsed ? "w-[60px]" : "w-64"
+          }`}
+        >
+          <SidebarContent
+            collapsed={sidebarCollapsed}
+            collapsedGroups={collapsedGroups}
+            onToggleGroup={toggleGroup}
+            location={location}
+            user={user}
+            onLogout={handleLogout}
+          />
+          <CollapseToggleButton />
+        </aside>
 
-      {mobileOpen && (
-        <div className="fixed inset-0 z-50 lg:hidden">
-          <div className="absolute inset-0 bg-black/50" onClick={() => setMobileOpen(false)} />
-          <aside className="absolute left-0 top-0 bottom-0 w-64 flex flex-col">
-            <Sidebar />
-          </aside>
+        {/* Mobile drawer */}
+        {mobileOpen && (
+          <div className="fixed inset-0 z-50 lg:hidden">
+            <div
+              className="absolute inset-0 bg-black/50"
+              onClick={() => setMobileOpen(false)}
+            />
+            <aside className="absolute left-0 top-0 bottom-0 w-64 flex flex-col">
+              <SidebarContent
+                collapsed={false}
+                collapsedGroups={collapsedGroups}
+                onToggleGroup={toggleGroup}
+                location={location}
+                user={user}
+                onLogout={handleLogout}
+                onClose={() => setMobileOpen(false)}
+              />
+            </aside>
+          </div>
+        )}
+
+        {/* Main content */}
+        <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+          {/* Mobile top bar */}
+          <div className="lg:hidden flex items-center gap-3 px-4 py-3 bg-[#0A2540] border-b border-[#1a3a5c]">
+            <button onClick={() => setMobileOpen(true)} className="text-white p-1">
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+              </svg>
+            </button>
+            <p className="font-bold text-white text-sm">Admin Panel</p>
+          </div>
+
+          <main className="flex-1 overflow-y-auto">{children}</main>
         </div>
-      )}
-
-      <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-        <div className="lg:hidden flex items-center gap-3 px-4 py-3 bg-[#0A2540] border-b border-[#1a3a5c]">
-          <button onClick={() => setMobileOpen(true)} className="text-white p-1">
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
-            </svg>
-          </button>
-          <p className="font-bold text-white text-sm">Admin Panel</p>
-        </div>
-
-        <main className="flex-1 overflow-y-auto">
-          {children}
-        </main>
       </div>
-    </div>
+    </TooltipProvider>
   );
 }
