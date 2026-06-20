@@ -421,7 +421,7 @@ export const statusReportsTable = pgTable("status_reports", {
   executiveSummary: text("executive_summary"),
   completedActivities: jsonb("completed_activities").$type<Array<{ title: string; description: string }>>().notNull().default([]),
   keyOutcomes: text("key_outcomes"),
-  nextSteps: jsonb("next_steps").$type<Array<{ label: string; title: string; description: string }>>().notNull().default([]),
+  nextSteps: jsonb("next_steps").$type<Array<{ label: string; title: string; description: string; kanbanTaskId?: number | null }>>().notNull().default([]),
   reportDate: timestamp("report_date"),
   sentAt: timestamp("sent_at"),
   clientStatus: text("client_status", { enum: ["pending", "accepted", "has_questions"] }).notNull().default("pending"),

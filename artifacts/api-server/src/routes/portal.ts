@@ -2679,6 +2679,81 @@ router.delete("/admin/status-reports/:id", requireAdmin, async (req: Request, re
   res.json({ deleted: id });
 });
 
+type NextStepWithKanban = { label: string; title: string; description: string; kanbanTaskId?: number | null };
+
+router.post("/admin/status-reports/:id/next-steps/:index/push-to-kanban", requireAdmin, async (req: Request, res: Response) => {
+  const id = parseInt(String(req.params.id ?? ""), 10);
+  const index = parseInt(String(req.params.index ?? ""), 10);
+  if (isNaN(id) || isNaN(index)) { res.status(400).json({ error: "Invalid params" }); return; }
+
+  const [report] = await db.select().from(statusReportsTable).where(eq(statusReportsTable.id, id));
+  if (!report) { res.status(404).json({ error: "Not found" }); return; }
+  if (!report.projectId) { res.status(400).json({ error: "Assign a project to this report before pushing to Kanban" }); return; }
+
+  const steps = (report.nextSteps ?? []) as NextStepWithKanban[];
+  if (index < 0 || index >= steps.length) { res.status(400).json({ error: "Index out of range" }); return; }
+
+  const step = steps[index];
+  if (step.kanbanTaskId) {
+    res.json({ report, kanbanTaskId: step.kanbanTaskId });
+    return;
+  }
+
+  const descParts = [step.label ? `[${step.label}]` : null, step.description || null].filter(Boolean);
+  const desc = descParts.length > 0 ? descParts.join(" ") : null;
+  const [task] = await db.insert(kanbanTasksTable).values({
+    projectId: report.projectId,
+    title: step.title || "Untitled step",
+    description: desc,
+    column: "backlog",
+    priority: "medium",
+  }).returning();
+
+  const updatedSteps = steps.map((s, i) => i === index ? { ...s, kanbanTaskId: task.id } : s);
+  const [updatedReport] = await db.update(statusReportsTable)
+    .set({ nextSteps: updatedSteps, updatedAt: new Date() })
+    .where(eq(statusReportsTable.id, id))
+    .returning();
+
+  res.json({ report: updatedReport, kanbanTaskId: task.id });
+});
+
+router.post("/admin/status-reports/:id/push-all-to-kanban", requireAdmin, async (req: Request, res: Response) => {
+  const id = parseInt(String(req.params.id ?? ""), 10);
+  if (isNaN(id)) { res.status(400).json({ error: "Invalid ID" }); return; }
+
+  const [report] = await db.select().from(statusReportsTable).where(eq(statusReportsTable.id, id));
+  if (!report) { res.status(404).json({ error: "Not found" }); return; }
+  if (!report.projectId) { res.status(400).json({ error: "Assign a project to this report before pushing to Kanban" }); return; }
+
+  const steps = (report.nextSteps ?? []) as NextStepWithKanban[];
+  const updatedSteps = [...steps];
+  let pushed = 0;
+
+  for (let i = 0; i < steps.length; i++) {
+    const step = steps[i];
+    if (step.kanbanTaskId) continue;
+    const descParts = [step.label ? `[${step.label}]` : null, step.description || null].filter(Boolean);
+    const desc = descParts.length > 0 ? descParts.join(" ") : null;
+    const [task] = await db.insert(kanbanTasksTable).values({
+      projectId: report.projectId,
+      title: step.title || "Untitled step",
+      description: desc,
+      column: "backlog",
+      priority: "medium",
+    }).returning();
+    updatedSteps[i] = { ...step, kanbanTaskId: task.id };
+    pushed++;
+  }
+
+  const [updatedReport] = await db.update(statusReportsTable)
+    .set({ nextSteps: updatedSteps, updatedAt: new Date() })
+    .where(eq(statusReportsTable.id, id))
+    .returning();
+
+  res.json({ report: updatedReport, pushed });
+});
+
 // Returns auto-populated data for a given project to pre-fill a new status report
 router.get("/admin/projects/:id/report-autofill", requireAdmin, async (req: Request, res: Response) => {
   const id = parseInt(String(req.params.id ?? ""), 10);

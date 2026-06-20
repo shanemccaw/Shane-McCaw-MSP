@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 
 interface Activity { title: string; description: string; completionStatus?: string | null; completionNotes?: string | null; }
-interface NextStep { label: string; title: string; description: string; }
+interface NextStep { label: string; title: string; description: string; kanbanTaskId?: number | null; }
 
 interface StatusReport {
   id: number;
@@ -115,6 +115,8 @@ export default function StatusReportsPage() {
   const [saving, setSaving] = useState(false);
   const [sending, setSending] = useState(false);
   const [saveMsg, setSaveMsg] = useState("");
+  const [pushLoading, setPushLoading] = useState<Record<number, boolean>>({});
+  const [pushAllLoading, setPushAllLoading] = useState(false);
 
   const load = useCallback(async () => {
     const [rRes, pRes, cRes] = await Promise.all([
@@ -373,8 +375,51 @@ export default function StatusReportsPage() {
 
   const removeNextStep = (i: number) => setNextSteps(s => s.filter((_, idx) => idx !== i));
   const addNextStep = () => setNextSteps(s => [...s, { label: "Upcoming", title: "", description: "" }]);
-  const updateNextStep = (i: number, field: keyof NextStep, val: string) =>
+  const updateNextStep = (i: number, field: "label" | "title" | "description", val: string) =>
     setNextSteps(s => s.map((item, idx) => idx === i ? { ...item, [field]: val } : item));
+
+  const handlePushToKanban = async (index: number) => {
+    if (!editing || isNew) return;
+    setPushLoading(p => ({ ...p, [index]: true }));
+    try {
+      const res = await fetchWithAuth(`/api/admin/status-reports/${editing.id}/next-steps/${index}/push-to-kanban`, {
+        method: "POST",
+        body: "{}",
+      });
+      if (res.ok) {
+        const data = await res.json() as { report: StatusReport; kanbanTaskId: number };
+        setNextSteps(data.report.nextSteps ?? []);
+        setEditing(data.report);
+      } else {
+        const err = await res.json() as { error?: string };
+        alert(err.error ?? "Failed to push to Kanban");
+      }
+    } finally {
+      setPushLoading(p => ({ ...p, [index]: false }));
+    }
+  };
+
+  const handlePushAllToKanban = async () => {
+    if (!editing || isNew) return;
+    setPushAllLoading(true);
+    try {
+      const res = await fetchWithAuth(`/api/admin/status-reports/${editing.id}/push-all-to-kanban`, {
+        method: "POST",
+        body: "{}",
+      });
+      if (res.ok) {
+        const data = await res.json() as { report: StatusReport; pushed: number };
+        setNextSteps(data.report.nextSteps ?? []);
+        setEditing(data.report);
+        setSaveMsg(`${data.pushed} step${data.pushed !== 1 ? "s" : ""} added to Kanban.`);
+      } else {
+        const err = await res.json() as { error?: string };
+        alert(err.error ?? "Failed to push to Kanban");
+      }
+    } finally {
+      setPushAllLoading(false);
+    }
+  };
 
   const selectedProject = autofill?.project ?? projects.find(p => p.id === parseInt(selectedProjectId, 10));
   const progress = selectedProject?.progress ?? 0;
@@ -911,15 +956,34 @@ export default function StatusReportsPage() {
             <section className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
               <div className="flex items-center justify-between mb-4">
                 <h3 className="text-base font-bold text-[#0A2540]">Next Steps: Lookahead</h3>
-                <button
-                  onClick={addNextStep}
-                  className="text-xs font-semibold text-[#0078D4] hover:text-[#0078D4]/80 flex items-center gap-1 px-2 py-1 rounded hover:bg-[#0078D4]/10 transition-colors"
-                >
-                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
-                  </svg>
-                  Add
-                </button>
+                <div className="flex items-center gap-2">
+                  {editing && !isNew && nextSteps.length > 0 && nextSteps.some(s => !s.kanbanTaskId) && (
+                    <button
+                      onClick={() => void handlePushAllToKanban()}
+                      disabled={pushAllLoading}
+                      title="Push all unpushed steps to the project Kanban board as Backlog tasks"
+                      className="flex items-center gap-1 text-xs font-semibold text-emerald-700 border border-emerald-300 bg-emerald-50 hover:bg-emerald-100 disabled:opacity-50 disabled:cursor-not-allowed px-2.5 py-1 rounded-lg transition-colors"
+                    >
+                      {pushAllLoading ? (
+                        <div className="w-3 h-3 border-2 border-emerald-600 border-t-transparent rounded-full animate-spin" />
+                      ) : (
+                        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 0v10m0-10a2 2 0 012 2h2a2 2 0 012-2" />
+                        </svg>
+                      )}
+                      Push all to Kanban
+                    </button>
+                  )}
+                  <button
+                    onClick={addNextStep}
+                    className="text-xs font-semibold text-[#0078D4] hover:text-[#0078D4]/80 flex items-center gap-1 px-2 py-1 rounded hover:bg-[#0078D4]/10 transition-colors"
+                  >
+                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
+                    </svg>
+                    Add
+                  </button>
+                </div>
               </div>
               {nextSteps.length === 0 ? (
                 <div className="text-center py-6 border-2 border-dashed border-gray-200 rounded-lg">
@@ -928,7 +992,7 @@ export default function StatusReportsPage() {
               ) : (
                 <div className="flex flex-col gap-3">
                   {nextSteps.map((s, i) => (
-                    <div key={i} className="group p-3 border-l-4 border-[#0078D4] bg-gray-50 rounded-r-lg relative">
+                    <div key={i} className={`group p-3 border-l-4 bg-gray-50 rounded-r-lg relative ${s.kanbanTaskId ? "border-emerald-400" : "border-[#0078D4]"}`}>
                       <input
                         value={s.label}
                         onChange={e => updateNextStep(i, "label", e.target.value)}
@@ -947,14 +1011,42 @@ export default function StatusReportsPage() {
                         placeholder="Brief description…"
                         className="text-xs text-gray-500 bg-transparent border-0 focus:outline-none w-full"
                       />
-                      <button
-                        onClick={() => removeNextStep(i)}
-                        className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 text-gray-300 hover:text-red-400 transition-all"
-                      >
-                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                        </svg>
-                      </button>
+                      <div className="flex items-center justify-between mt-2">
+                        {s.kanbanTaskId ? (
+                          <span className="flex items-center gap-1 text-[10px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">
+                            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                            </svg>
+                            On Kanban #{s.kanbanTaskId}
+                          </span>
+                        ) : editing && !isNew ? (
+                          <button
+                            onClick={() => void handlePushToKanban(i)}
+                            disabled={!!pushLoading[i]}
+                            title="Add this step to the project Kanban board as a Backlog task"
+                            className="flex items-center gap-1 text-[10px] font-semibold text-[#0078D4] hover:text-white border border-[#0078D4]/30 hover:bg-[#0078D4] hover:border-[#0078D4] bg-white disabled:opacity-50 disabled:cursor-not-allowed px-2 py-0.5 rounded-full transition-colors"
+                          >
+                            {pushLoading[i] ? (
+                              <div className="w-2.5 h-2.5 border-2 border-[#0078D4] border-t-transparent rounded-full animate-spin" />
+                            ) : (
+                              <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
+                              </svg>
+                            )}
+                            Add to Kanban
+                          </button>
+                        ) : (
+                          <span className="text-[10px] text-gray-300">Save report first to push to Kanban</span>
+                        )}
+                        <button
+                          onClick={() => removeNextStep(i)}
+                          className="opacity-0 group-hover:opacity-100 text-gray-300 hover:text-red-400 transition-all"
+                        >
+                          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                          </svg>
+                        </button>
+                      </div>
                     </div>
                   ))}
                 </div>
