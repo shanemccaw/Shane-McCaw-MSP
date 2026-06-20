@@ -9,6 +9,7 @@ import {
 } from "@/components/ui/dialog";
 import { KanbanCardModal } from "@/components/KanbanCardModal";
 import type { KanbanCardModalTask } from "@/components/KanbanCardModal";
+import { TypedCardContent } from "@/components/kanban/TypedCardContent";
 
 interface Client {
   id: number;
@@ -53,6 +54,8 @@ interface KanbanTask {
   completionNotes: string | null;
   createdAt: string;
   updatedAt: string;
+  taskType: string | null;
+  taskMetadata: Record<string, unknown> | null;
 }
 
 const STATUS_COLORS: Record<string, string> = {
@@ -94,6 +97,8 @@ function CrmTaskCard({ task, projectId, onQuickMove, onDelete, columns, onCardCl
         onClick={() => onCardClick(task)}
       >{task.title}</p>
       {task.assignedTo && <p className="text-xs text-muted-foreground mt-0.5">→ {task.assignedTo}</p>}
+
+      <TypedCardContent taskType={task.taskType} metadata={task.taskMetadata} />
 
       {task.column === "waiting_on_customer" && task.waitingReason && (
         <p className="mt-1 text-[10px] text-amber-700 bg-amber-50 border border-amber-200 rounded px-1.5 py-0.5 leading-snug line-clamp-2">

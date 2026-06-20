@@ -4,7 +4,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import PortalLayout from "@/components/PortalLayout";
 import { KanbanCardModal } from "@/components/KanbanCardModal";
 import type { KanbanCardModalTask } from "@/components/KanbanCardModal";
-import { TypedTaskTypeBadge } from "@/components/kanban/TypedCardContent";
+import { TypedCardContent } from "@/components/kanban/TypedCardContent";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -899,14 +899,14 @@ export default function ClientProjectDashboard() {
                             };
                             const priCls = task.priority ? (priorityColor[task.priority] ?? "bg-gray-100 text-gray-500") : null;
                             return (
-                              <button
+                              <div
                                 key={task.id}
                                 onClick={() => setSelectedTask(task)}
-                                className="w-full text-left bg-white rounded-lg border border-border p-2.5 hover:border-[#0078D4]/30 hover:shadow-sm transition-all"
+                                className="w-full text-left bg-white rounded-lg border border-border p-2.5 hover:border-[#0078D4]/30 hover:shadow-sm transition-all cursor-pointer"
                               >
                                 <p className="text-xs font-medium text-[#0A2540] line-clamp-2 leading-snug">{task.title}</p>
+                                <TypedCardContent taskType={task.taskType} metadata={task.taskMetadata} />
                                 <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
-                                  <TypedTaskTypeBadge taskType={task.taskType} />
                                   {priCls && task.priority && (
                                     <span className={`text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded ${priCls}`}>
                                       {task.priority}
@@ -923,7 +923,7 @@ export default function ClientProjectDashboard() {
                                     </span>
                                   )}
                                 </div>
-                              </button>
+                              </div>
                             );
                           })}
                           {totalCol > 5 && (
