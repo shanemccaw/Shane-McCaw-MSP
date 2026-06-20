@@ -1,4 +1,5 @@
-import { Switch, Route, Router as WouterRouter, Redirect } from "wouter";
+import { Switch, Route, Router as WouterRouter, Redirect, useLocation } from "wouter";
+import { useEffect } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
@@ -39,8 +40,28 @@ function RequireAdmin({ children }: { children: ReactNode }) {
       </div>
     );
   }
-  if (!user || user.role !== "admin") return <Redirect to="/login" />;
+  if (!user || user.role !== "admin") {
+    // Preserve the intended destination so we can restore it after login
+    const base = import.meta.env.BASE_URL.replace(/\/$/, "");
+    const rel = window.location.pathname.replace(base, "") + window.location.search;
+    if (rel && rel !== "/" && !rel.startsWith("/login")) {
+      sessionStorage.setItem("adminReturnTo", rel);
+    }
+    return <Redirect to="/login" />;
+  }
   return <>{children}</>;
+}
+
+// After a successful login, redirect to the page the user originally tried to visit
+// (stored in sessionStorage by RequireAdmin), or fall back to the overview.
+function PostLoginRedirect() {
+  const [, navigate] = useLocation();
+  useEffect(() => {
+    const returnTo = sessionStorage.getItem("adminReturnTo") ?? "";
+    sessionStorage.removeItem("adminReturnTo");
+    navigate(returnTo && !returnTo.startsWith("/login") ? returnTo : "/overview", { replace: true });
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  return null;
 }
 
 function Router() {
@@ -57,7 +78,7 @@ function Router() {
   return (
     <Switch>
       <Route path="/login">
-        {user && user.role === "admin" ? <Redirect to="/overview" /> : <LoginPage />}
+        {user && user.role === "admin" ? <PostLoginRedirect /> : <LoginPage />}
       </Route>
       <Route path="/">
         {user && user.role === "admin" ? <Redirect to="/overview" /> : <Redirect to="/login" />}
