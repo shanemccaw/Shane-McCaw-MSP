@@ -75,6 +75,7 @@ function nextBillingFromAnchor(anchor: number | null): string | null {
 function SubscriptionCard({
   sub,
   onCancel,
+  onResume,
   cancelling,
   fetchWithAuth,
   onAlert,
@@ -82,6 +83,7 @@ function SubscriptionCard({
 }: {
   sub: Subscription;
   onCancel: (sub: Subscription) => void;
+  onResume: (sub: Subscription) => void;
   cancelling: boolean;
   fetchWithAuth: (url: string, opts?: RequestInit) => Promise<Response>;
   onAlert: (a: { type: "success" | "error"; message: string }) => void;
@@ -89,7 +91,6 @@ function SubscriptionCard({
 }) {
   const [portalLoading, setPortalLoading] = useState(false);
   const [resubLoading, setResubLoading] = useState(false);
-  const [resumeLoading, setResumeLoading] = useState(false);
 
   const stripe = sub.stripe;
   const isCanceled = stripe?.status === "canceled";
@@ -124,28 +125,6 @@ function SubscriptionCard({
       onAlert({ type: "error", message: "Network error. Please try again." });
     } finally {
       setPortalLoading(false);
-    }
-  };
-
-  const handleResume = async () => {
-    setResumeLoading(true);
-    try {
-      const res = await fetchWithAuth(`/api/portal/billing/subscriptions/${sub.id}/resume`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-      });
-      if (res.ok) {
-        const data = await res.json() as { cancelAtPeriodEnd: boolean; cancelAt: number | null; currentPeriodEnd: number | null };
-        onAlert({ type: "success", message: `Your ${sub.serviceName} retainer has been resumed and will continue renewing.` });
-        onUpdate(sub.id, { cancelAtPeriodEnd: data.cancelAtPeriodEnd, cancelAt: data.cancelAt, currentPeriodEnd: data.currentPeriodEnd });
-      } else {
-        const err = await res.json() as { error: string };
-        onAlert({ type: "error", message: err.error ?? "Could not resume subscription. Please try again." });
-      }
-    } catch {
-      onAlert({ type: "error", message: "Network error. Please try again." });
-    } finally {
-      setResumeLoading(false);
     }
   };
 
@@ -237,13 +216,9 @@ function SubscriptionCard({
 
         {isCancelPending && sub.stripeSubscriptionId && (
           <button
-            onClick={() => void handleResume()}
-            disabled={resumeLoading}
-            className="flex items-center gap-1.5 text-xs font-semibold bg-green-600 text-white px-3 py-1.5 rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50"
+            onClick={() => onResume(sub)}
+            className="flex items-center gap-1.5 text-xs font-semibold bg-green-600 text-white px-3 py-1.5 rounded-lg hover:bg-green-700 transition-colors"
           >
-            {resumeLoading ? (
-              <span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-            ) : null}
             Resume subscription
           </button>
         )}
@@ -334,6 +309,80 @@ function CancelDialog({
   );
 }
 
+function ResumeDialog({
+  sub,
+  onConfirm,
+  onClose,
+  loading,
+}: {
+  sub: Subscription;
+  onConfirm: () => void;
+  onClose: () => void;
+  loading: boolean;
+}) {
+  const stripe = sub.stripe;
+  const amount = stripe?.amount;
+  const currency = stripe?.currency ?? "usd";
+  const nextBilling = stripe?.currentPeriodEnd
+    ? formatDate(stripe.currentPeriodEnd)
+    : nextBillingFromAnchor(stripe?.billingCycleAnchor ?? null);
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 z-10">
+        <div className="w-12 h-12 rounded-full bg-green-100 flex items-center justify-center mb-4">
+          <svg className="w-6 h-6 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+          </svg>
+        </div>
+
+        <h2 className="text-lg font-bold text-[#0A2540] mb-2">Resume subscription?</h2>
+        <p className="text-sm text-muted-foreground mb-3">
+          You're about to resume your <strong>{sub.serviceName}</strong> retainer.
+        </p>
+
+        <div className="bg-gray-50 rounded-xl border border-border px-4 py-3 mb-6 space-y-1.5">
+          {amount !== null && amount !== undefined && (
+            <div className="flex justify-between text-sm">
+              <span className="text-muted-foreground">Next charge</span>
+              <span className="font-semibold text-[#0A2540]">
+                {formatCurrency(amount / 100, currency)}/month
+              </span>
+            </div>
+          )}
+          {nextBilling && (
+            <div className="flex justify-between text-sm">
+              <span className="text-muted-foreground">Billing date</span>
+              <span className="font-semibold text-[#0A2540]">{nextBilling}</span>
+            </div>
+          )}
+        </div>
+
+        <div className="flex gap-3">
+          <button
+            onClick={onClose}
+            disabled={loading}
+            className="flex-1 border border-border text-sm font-semibold px-4 py-2.5 rounded-xl hover:bg-gray-50 transition-colors disabled:opacity-50"
+          >
+            Never mind
+          </button>
+          <button
+            onClick={onConfirm}
+            disabled={loading}
+            className="flex-1 bg-green-600 text-white text-sm font-semibold px-4 py-2.5 rounded-xl hover:bg-green-700 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+          >
+            {loading ? (
+              <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+            ) : null}
+            Yes, resume
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function PortalBilling() {
   const { fetchWithAuth } = useAuth();
   const [location, navigate] = useLocation();
@@ -346,6 +395,8 @@ export default function PortalBilling() {
   const [paying, setPayingId] = useState<number | null>(null);
   const [cancelTarget, setCancelTarget] = useState<Subscription | null>(null);
   const [cancelling, setCancelling] = useState(false);
+  const [resumeTarget, setResumeTarget] = useState<Subscription | null>(null);
+  const [resuming, setResuming] = useState(false);
   const [alert, setAlert] = useState<{ type: "success" | "error"; message: string } | null>(null);
 
   useEffect(() => {
@@ -436,6 +487,34 @@ export default function PortalBilling() {
     }
   }, [cancelTarget, fetchWithAuth]);
 
+  const handleResumeConfirm = useCallback(async () => {
+    if (!resumeTarget) return;
+    setResuming(true);
+    try {
+      const res = await fetchWithAuth(`/api/portal/billing/subscriptions/${resumeTarget.id}/resume`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
+      if (res.ok) {
+        const data = await res.json() as { cancelAtPeriodEnd: boolean; cancelAt: number | null; currentPeriodEnd: number | null };
+        setSubscriptions(prev => prev.map(s =>
+          s.id === resumeTarget.id
+            ? { ...s, stripe: s.stripe ? { ...s.stripe, cancelAtPeriodEnd: data.cancelAtPeriodEnd, cancelAt: data.cancelAt, currentPeriodEnd: data.currentPeriodEnd } : null }
+            : s
+        ));
+        setResumeTarget(null);
+        setAlert({ type: "success", message: `Your ${resumeTarget.serviceName} retainer has been resumed and will continue renewing.` });
+      } else {
+        const err = await res.json() as { error: string };
+        setAlert({ type: "error", message: err.error ?? "Could not resume subscription. Please try again." });
+      }
+    } catch {
+      setAlert({ type: "error", message: "Network error. Please try again." });
+    } finally {
+      setResuming(false);
+    }
+  }, [resumeTarget, fetchWithAuth]);
+
   const totalDue = invoices.filter(i => i.status === "due" || i.status === "overdue")
     .reduce((sum, i) => sum + parseFloat(i.amount), 0);
   const totalPaid = invoices.filter(i => i.status === "paid")
@@ -484,6 +563,7 @@ export default function PortalBilling() {
                       key={sub.id}
                       sub={sub}
                       onCancel={setCancelTarget}
+                      onResume={setResumeTarget}
                       cancelling={cancelling && cancelTarget?.id === sub.id}
                       fetchWithAuth={fetchWithAuth}
                       onAlert={setAlert}
@@ -703,6 +783,15 @@ export default function PortalBilling() {
           onConfirm={() => void handleCancelConfirm()}
           onClose={() => setCancelTarget(null)}
           loading={cancelling}
+        />
+      )}
+
+      {resumeTarget && (
+        <ResumeDialog
+          sub={resumeTarget}
+          onConfirm={() => void handleResumeConfirm()}
+          onClose={() => setResumeTarget(null)}
+          loading={resuming}
         />
       )}
     </PortalLayout>
