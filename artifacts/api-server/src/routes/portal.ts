@@ -93,7 +93,34 @@ router.get("/portal/projects", requireAuth, async (req: Request, res: Response) 
   const projects = await db.select().from(projectsTable)
     .where(eq(projectsTable.clientUserId, userId))
     .orderBy(desc(projectsTable.createdAt));
-  res.json(projects);
+
+  if (projects.length === 0) { res.json([]); return; }
+
+  const projectIds = projects.map(p => p.id);
+  const allSteps = await db.select().from(workflowStepsTable)
+    .where(inArray(workflowStepsTable.projectId, projectIds))
+    .orderBy(asc(workflowStepsTable.order));
+
+  const stepsByProject = new Map<number, typeof allSteps>();
+  for (const s of allSteps) {
+    if (!stepsByProject.has(s.projectId!)) stepsByProject.set(s.projectId!, []);
+    stepsByProject.get(s.projectId!)!.push(s);
+  }
+
+  const enriched = projects.map(p => {
+    const steps = stepsByProject.get(p.id) ?? [];
+    const currentStep = steps.find(s => s.status === "in_progress") ?? steps.find(s => s.status === "pending") ?? steps[steps.length - 1];
+    const currentStepIndex = currentStep ? steps.indexOf(currentStep) : steps.length - 1;
+    return {
+      ...p,
+      stepCount: steps.length,
+      currentStepIndex,
+      currentStepTitle: currentStep?.title ?? null,
+      steps: steps.map(s => ({ id: s.id, title: s.title, status: s.status, order: s.order })),
+    };
+  });
+
+  res.json(enriched);
 });
 
 router.get("/portal/projects/:id", requireAuth, async (req: Request, res: Response) => {
