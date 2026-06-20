@@ -47,6 +47,8 @@ interface AutofillData {
   blockedCount: number;
   totalSteps: number;
   completedStepsCount: number;
+  lastReportDate: string | null;
+  sinceDate: string | null;
 }
 
 const PERIOD_LABELS: Record<string, string> = {
@@ -88,6 +90,9 @@ export default function StatusReportsPage() {
   const [selectedProjectId, setSelectedProjectId] = useState<string>("");
   const [autofill, setAutofill] = useState<AutofillData | null>(null);
   const [autofillLoading, setAutofillLoading] = useState(false);
+  const [activityFillLoading, setActivityFillLoading] = useState(false);
+  const [activitySince, setActivitySince] = useState<string | null>(null);
+  const [oneDraftLoading, setOneDraftLoading] = useState(false);
 
   const [form, setForm] = useState({
     title: "",
@@ -137,14 +142,22 @@ export default function StatusReportsPage() {
     return p?.title ?? String(id);
   };
 
-  const fetchAutofill = async (projectId: string) => {
+  const fetchAutofill = async (projectId: string, since?: string | null, isActivityFill = false) => {
     if (!projectId) { setAutofill(null); return; }
-    setAutofillLoading(true);
+    const url = since
+      ? `/api/admin/projects/${projectId}/report-autofill?since=${encodeURIComponent(since)}`
+      : `/api/admin/projects/${projectId}/report-autofill`;
+    if (isActivityFill) {
+      setActivityFillLoading(true);
+    } else {
+      setAutofillLoading(true);
+    }
     try {
-      const res = await fetchWithAuth(`/api/admin/projects/${projectId}/report-autofill`);
+      const res = await fetchWithAuth(url);
       if (res.ok) {
         const data = await res.json() as AutofillData;
         setAutofill(data);
+        setActivitySince(data.sinceDate ?? null);
         const combined = [...data.completedSteps, ...data.completedTasks];
         setActivities(combined);
         setNextSteps(data.pendingSteps.slice(0, 5));
@@ -166,9 +179,47 @@ export default function StatusReportsPage() {
             .join("\n\n");
           setDraftInput(prompt);
         }
+        return data;
       }
     } finally {
-      setAutofillLoading(false);
+      if (isActivityFill) {
+        setActivityFillLoading(false);
+      } else {
+        setAutofillLoading(false);
+      }
+    }
+    return null;
+  };
+
+  const handleActivityFill = async () => {
+    if (!selectedProjectId) return;
+    // Use lastReportDate from the current autofill data if available, otherwise default to 30 days ago
+    const since = autofill?.lastReportDate
+      ? autofill.lastReportDate
+      : new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+    await fetchAutofill(selectedProjectId, since, true);
+  };
+
+  const handleOneDraft = async () => {
+    if (!selectedProjectId) return;
+    setOneDraftLoading(true);
+    try {
+      // Step 1: auto-fill activity since last report
+      const since = autofill?.lastReportDate
+        ? autofill.lastReportDate
+        : new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+      const filled = await fetchAutofill(selectedProjectId, since, false);
+      if (!filled) return;
+      // Step 2: run full AI draft using freshly fetched data directly (bypasses stale React state)
+      const filledActivities = [...filled.completedSteps, ...filled.completedTasks];
+      const filledNextSteps = filled.pendingSteps.slice(0, 5);
+      await aiDraft("all", {
+        activities: filledActivities,
+        nextSteps: filledNextSteps,
+        autofillData: filled,
+      });
+    } finally {
+      setOneDraftLoading(false);
     }
   };
 
@@ -177,6 +228,7 @@ export default function StatusReportsPage() {
     setIsNew(true);
     setSelectedProjectId("");
     setAutofill(null);
+    setActivitySince(null);
     setForm({ title: "", period: "monthly", executiveSummary: "", keyOutcomes: "", reportDate: "" });
     setActivities([]);
     setNextSteps([]);
@@ -191,6 +243,7 @@ export default function StatusReportsPage() {
     setIsNew(false);
     setSelectedProjectId(r.projectId ? String(r.projectId) : "");
     setAutofill(null);
+    setActivitySince(null);
     setForm({
       title: r.title,
       period: r.period,
@@ -271,8 +324,17 @@ export default function StatusReportsPage() {
     await load();
   };
 
-  const aiDraft = async (section: AiSection) => {
-    const proj = autofill?.project ?? projects.find(p => p.id === parseInt(selectedProjectId, 10));
+  interface AiDraftOverrides {
+    activities?: Activity[];
+    nextSteps?: NextStep[];
+    autofillData?: AutofillData;
+  }
+
+  const aiDraft = async (section: AiSection, overrides?: AiDraftOverrides) => {
+    const resolvedAutofill = overrides?.autofillData ?? autofill;
+    const resolvedActivities = overrides?.activities ?? activities;
+    const resolvedNextSteps = overrides?.nextSteps ?? nextSteps;
+    const proj = resolvedAutofill?.project ?? projects.find(p => p.id === parseInt(selectedProjectId, 10));
     setAiLoading(section);
     setAiError(null);
     try {
@@ -281,10 +343,10 @@ export default function StatusReportsPage() {
         body: JSON.stringify({
           section,
           project: proj ? { title: proj.title, status: proj.status, progress: proj.progress, description: proj.description } : undefined,
-          client: autofill?.client ?? null,
-          activities,
-          nextSteps,
-          blockedCount: autofill?.blockedCount ?? 0,
+          client: resolvedAutofill?.client ?? null,
+          activities: resolvedActivities,
+          nextSteps: resolvedNextSteps,
+          blockedCount: resolvedAutofill?.blockedCount ?? 0,
           progress: proj?.progress ?? 0,
           period: form.period,
           extraContext: draftInput.trim() || undefined,
@@ -452,6 +514,34 @@ export default function StatusReportsPage() {
               Loading project data…
             </div>
           )}
+          {selectedProjectId && !autofillLoading && (
+            <div className="flex items-center gap-2 flex-wrap pb-1">
+              <button
+                onClick={() => void handleActivityFill()}
+                disabled={activityFillLoading || !!aiLoading}
+                className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-[#0078D4] border border-[#0078D4]/30 rounded-lg bg-[#0078D4]/5 hover:bg-[#0078D4]/10 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                {activityFillLoading ? (
+                  <div className="w-3.5 h-3.5 border-2 border-[#0078D4] border-t-transparent rounded-full animate-spin" />
+                ) : (
+                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                  </svg>
+                )}
+                {activityFillLoading ? "Fetching activity…" : "Auto-fill from project activity"}
+              </button>
+              {autofill?.lastReportDate && (
+                <span className="text-[10px] text-gray-400 font-medium">
+                  Last report: {new Date(autofill.lastReportDate).toLocaleDateString()}
+                </span>
+              )}
+              {!autofill?.lastReportDate && (
+                <span className="text-[10px] text-gray-400 font-medium">
+                  No prior reports — will fetch last 30 days
+                </span>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Header */}
@@ -568,7 +658,17 @@ export default function StatusReportsPage() {
             {/* Completed Activities */}
             <section className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
               <div className="flex items-center justify-between mb-4">
-                <h3 className="text-base font-bold text-[#0A2540]">Completed Activities</h3>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h3 className="text-base font-bold text-[#0A2540]">Completed Activities</h3>
+                  {activitySince && (
+                    <span className="flex items-center gap-1 text-[10px] font-semibold text-teal-700 bg-teal-50 border border-teal-200 px-2 py-0.5 rounded-full">
+                      <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                      </svg>
+                      Since {new Date(activitySince).toLocaleDateString()}
+                    </span>
+                  )}
+                </div>
                 <button
                   onClick={addActivity}
                   className="text-xs font-semibold text-[#0078D4] hover:text-[#0078D4]/80 flex items-center gap-1 px-2 py-1 rounded hover:bg-[#0078D4]/10 transition-colors"
@@ -662,6 +762,24 @@ export default function StatusReportsPage() {
                 />
               </div>
 
+              {/* One-click draft */}
+              {selectedProjectId && (
+                <button
+                  onClick={() => void handleOneDraft()}
+                  disabled={oneDraftLoading || !!aiLoading || activityFillLoading}
+                  className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-[#0A2540] text-white rounded-lg text-xs font-bold hover:bg-[#0A2540]/90 disabled:opacity-50 disabled:cursor-not-allowed transition-all active:scale-95"
+                >
+                  {oneDraftLoading ? (
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  ) : (
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z" />
+                    </svg>
+                  )}
+                  {oneDraftLoading ? "Auto-filling & drafting…" : "One-click draft from activity"}
+                </button>
+              )}
+
               {/* AI action buttons */}
               <div className="grid grid-cols-2 gap-2">
                 {([ 
@@ -674,7 +792,7 @@ export default function StatusReportsPage() {
                     <button
                       key={section}
                       onClick={() => void aiDraft(section)}
-                      disabled={!!aiLoading}
+                      disabled={!!aiLoading || oneDraftLoading}
                       className="p-3 border border-gray-200 rounded-lg text-xs font-semibold text-gray-700 hover:bg-[#0078D4]/5 hover:border-[#0078D4]/30 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex flex-col items-center gap-1.5 group"
                     >
                       {loading ? (
@@ -690,7 +808,7 @@ export default function StatusReportsPage() {
                 })}
                 <button
                   onClick={() => void aiDraft("all")}
-                  disabled={!!aiLoading}
+                  disabled={!!aiLoading || oneDraftLoading}
                   className="p-3 bg-[#0078D4]/5 border border-[#0078D4]/20 rounded-lg text-xs font-bold text-[#0078D4] hover:bg-[#0078D4]/10 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex flex-col items-center gap-1.5 group"
                 >
                   {aiLoading === "all" ? (

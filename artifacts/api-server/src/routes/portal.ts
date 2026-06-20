@@ -1,6 +1,6 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { db, projectsTable, clientServicesTable, servicesTable, workflowStepsTable, kanbanTasksTable, documentsTable, reportsTable, invoicesTable, messagesTable, notificationsTable, projectUpdatesTable, usersTable, contractsTable, passwordResetTokensTable, workflowTemplateStepsTable, workflowTemplateStepTasksTable, contractTemplatesTable, impersonationTokensTable, statusReportsTable } from "@workspace/db";
-import { eq, and, desc, asc, count, sql, inArray } from "drizzle-orm";
+import { eq, and, desc, asc, count, sql, inArray, gte } from "drizzle-orm";
 import { requireAuth, requireAdmin } from "../middlewares/requireAuth";
 import { sendEmail, purchaseConfirmationEmail, onboardingConfirmationEmail, adminPurchaseAlertEmail } from "../lib/mailer";
 import multer from "multer";
@@ -2424,6 +2424,9 @@ router.get("/admin/projects/:id/report-autofill", requireAdmin, async (req: Requ
   const id = parseInt(String(req.params.id ?? ""), 10);
   if (isNaN(id)) { res.status(400).json({ error: "Invalid ID" }); return; }
 
+  const sinceParam = typeof req.query.since === "string" ? req.query.since : null;
+  const sinceDate = sinceParam ? new Date(sinceParam) : null;
+
   const [project] = await db.select().from(projectsTable).where(eq(projectsTable.id, id));
   if (!project) { res.status(404).json({ error: "Project not found" }); return; }
 
@@ -2432,12 +2435,28 @@ router.get("/admin/projects/:id/report-autofill", requireAdmin, async (req: Requ
         .from(usersTable).where(eq(usersTable.id, project.clientUserId))
     : [null];
 
+  // Find the most recent status report date for this project (to return to the frontend)
+  const [lastReport] = await db
+    .select({ reportDate: statusReportsTable.reportDate, sentAt: statusReportsTable.sentAt, createdAt: statusReportsTable.createdAt })
+    .from(statusReportsTable)
+    .where(eq(statusReportsTable.projectId, id))
+    .orderBy(desc(statusReportsTable.createdAt))
+    .limit(1);
+
+  const lastReportDate = lastReport
+    ? (lastReport.reportDate ?? lastReport.sentAt ?? lastReport.createdAt).toISOString()
+    : null;
+
   const steps = await db.select().from(workflowStepsTable)
     .where(eq(workflowStepsTable.projectId, id))
     .orderBy(asc(workflowStepsTable.order));
 
+  const tasksWhere = sinceDate
+    ? and(eq(kanbanTasksTable.projectId, id), gte(kanbanTasksTable.updatedAt, sinceDate))
+    : eq(kanbanTasksTable.projectId, id);
+
   const tasks = await db.select().from(kanbanTasksTable)
-    .where(eq(kanbanTasksTable.projectId, id))
+    .where(tasksWhere)
     .orderBy(asc(kanbanTasksTable.order));
 
   const completedTasks = tasks
@@ -2449,15 +2468,20 @@ router.get("/admin/projects/:id/report-autofill", requireAdmin, async (req: Requ
       completionNotes: t.completionNotes ?? null,
     }));
 
-  const completedSteps = steps.filter(s => s.status === "completed")
-    .map(s => ({ title: s.title, description: s.description ?? "" }));
+  // For steps, filter by completedAt when sinceDate is provided
+  const allCompletedSteps = steps.filter(s => s.status === "completed");
+  const filteredCompletedSteps = sinceDate
+    ? allCompletedSteps.filter(s => s.completedAt && s.completedAt >= sinceDate)
+    : allCompletedSteps;
+
+  const completedSteps = filteredCompletedSteps.map(s => ({ title: s.title, description: s.description ?? "" }));
 
   const pendingSteps = steps
     .filter(s => s.status === "pending" || s.status === "in_progress")
     .map(s => ({ label: s.status === "in_progress" ? "In Progress" : "Upcoming", title: s.title, description: s.description ?? "" }));
 
   const blockedCount = steps.filter(s => s.status === "blocked").length;
-  const completedStepsCount = completedSteps.length;
+  const completedStepsCount = allCompletedSteps.length;
 
   res.json({
     project: {
@@ -2477,6 +2501,8 @@ router.get("/admin/projects/:id/report-autofill", requireAdmin, async (req: Requ
     blockedCount,
     totalSteps: steps.length,
     completedStepsCount,
+    lastReportDate,
+    sinceDate: sinceDate ? sinceDate.toISOString() : null,
   });
 });
 
