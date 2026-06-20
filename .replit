@@ -38,7 +38,7 @@ integrations = ["resend:1.0.0", "stripe:1.0.0"]
 
 [postMerge]
 path = "scripts/post-merge.sh"
-timeoutMs = 60000
+timeoutMs = 600000
 
 [[ports]]
 localPort = 8080
