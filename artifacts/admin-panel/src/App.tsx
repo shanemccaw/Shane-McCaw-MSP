@@ -25,6 +25,7 @@ import StatusReportsPage from "@/pages/crm/StatusReports";
 import TestimonialsPage from "@/pages/crm/Testimonials";
 import OverviewPage from "@/pages/Overview";
 import EmailActivityPage from "@/pages/EmailActivity";
+import ActivityLogPage from "@/pages/ActivityLog";
 import type { ReactNode } from "react";
 
 const queryClient = new QueryClient({
@@ -150,6 +151,11 @@ function Router() {
       {/* Email Activity */}
       <Route path="/email-activity">
         <RequireAdmin><DashboardShell><EmailActivityPage /></DashboardShell></RequireAdmin>
+      </Route>
+
+      {/* Activity Log */}
+      <Route path="/activity-log">
+        <RequireAdmin><DashboardShell><ActivityLogPage /></DashboardShell></RequireAdmin>
       </Route>
 
       <Route>

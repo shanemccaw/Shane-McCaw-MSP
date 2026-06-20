@@ -4,6 +4,7 @@ import jwt from "jsonwebtoken";
 export interface AuthUser {
   id: number;
   email: string;
+  name?: string;
   role: "admin" | "client";
   impersonatedBy?: number;
 }

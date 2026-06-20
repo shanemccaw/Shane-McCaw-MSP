@@ -483,6 +483,25 @@ export const projectClosuresTable = pgTable("project_closures", {
 export type InsertProjectClosure = typeof projectClosuresTable.$inferInsert;
 export type ProjectClosure = typeof projectClosuresTable.$inferSelect;
 
+// Audit Log — persistent chronological record of all admin and client actions
+export const auditLogsTable = pgTable("audit_logs", {
+  id: serial("id").primaryKey(),
+  actorUserId: integer("actor_user_id").references(() => usersTable.id, { onDelete: "set null" }),
+  actorName: text("actor_name").notNull(),
+  actorRole: text("actor_role", { enum: ["admin", "client"] }).notNull(),
+  actionType: text("action_type").notNull(),
+  entityType: text("entity_type").notNull(),
+  entityId: text("entity_id"),
+  entityLabel: text("entity_label"),
+  clientId: integer("client_id").references(() => usersTable.id, { onDelete: "set null" }),
+  projectId: integer("project_id").references(() => projectsTable.id, { onDelete: "set null" }),
+  metadata: jsonb("metadata").$type<Record<string, unknown>>(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export type InsertAuditLog = typeof auditLogsTable.$inferInsert;
+export type AuditLog = typeof auditLogsTable.$inferSelect;
+
 // Microsoft Graph webhook subscription tracking
 export const graphSubscriptionsTable = pgTable("graph_subscriptions", {
   id: serial("id").primaryKey(),

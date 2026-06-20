@@ -3,6 +3,7 @@ import { db, leadsTable, emailsTable } from "@workspace/db";
 import { eq, desc, count, gte, and, type SQL } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/requireAuth";
 import { sendEmailOrThrow, contactInquiryNotificationEmail } from "../lib/mailer";
+import { createAuditLog } from "../lib/audit";
 
 const router: IRouter = Router();
 
@@ -66,6 +67,16 @@ router.post("/leads", async (req: Request, res: Response) => {
       return;
     }
   }
+
+  void createAuditLog({
+    actorName: lead.name,
+    actorRole: "client",
+    actionType: "lead_created",
+    entityType: "lead",
+    entityId: lead.id,
+    entityLabel: lead.name,
+    metadata: { source: lead.source, company: lead.company ?? null },
+  });
 
   res.status(201).json(lead);
 });
@@ -172,6 +183,20 @@ router.patch("/leads/:id", requireAdmin, async (req: Request, res: Response) => 
   if (!updated) {
     res.status(404).json({ error: "Lead not found" });
     return;
+  }
+
+  if (status && req.user) {
+    const actor = req.user;
+    void createAuditLog({
+      actorUserId: actor.id,
+      actorName: actor.name ?? actor.email,
+      actorRole: "admin",
+      actionType: "lead_status_changed",
+      entityType: "lead",
+      entityId: updated.id,
+      entityLabel: updated.name,
+      metadata: { from: null, to: status },
+    });
   }
 
   res.json(updated);

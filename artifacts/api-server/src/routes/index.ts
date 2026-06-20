@@ -18,6 +18,7 @@ import adminOverviewRouter from "./admin-overview";
 import adminMobileRouter from "./admin-mobile";
 import adminEmailsRouter from "./admin-emails";
 import graphWebhookRouter from "./graph-webhook";
+import auditLogsRouter from "./audit-logs";
 
 const router: IRouter = Router();
 
@@ -40,5 +41,6 @@ router.use(downloadsRouter);
 router.use(publicServicesRouter);
 router.use(publicEngagementProjectsRouter);
 router.use(portalRouter);
+router.use(auditLogsRouter);
 
 export default router;

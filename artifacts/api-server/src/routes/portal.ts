@@ -5,6 +5,7 @@ import { requireAuth, requireAdmin } from "../middlewares/requireAuth";
 import { sendEmail, purchaseConfirmationEmail, onboardingConfirmationEmail, adminPurchaseAlertEmail, closureRequestEmail, statusReportReplyEmail, clientThreadReplyEmail, adminThreadReplyEmail } from "../lib/mailer";
 import { sendAdminSms } from "../lib/sms";
 import { sendPushNotifications } from "../lib/push";
+import { createAuditLog } from "../lib/audit";
 import multer from "multer";
 import path from "path";
 import fs from "fs";
@@ -918,6 +919,23 @@ router.patch("/portal/kanban-tasks/:id", requireAuth, async (req: Request, res: 
 
   const [updated] = await db.update(kanbanTasksTable).set(updates).where(eq(kanbanTasksTable.id, id)).returning();
   if (updated?.projectId) await syncProjectProgress(updated.projectId);
+
+  if (column !== undefined && updated) {
+    const actor = req.user!;
+    void createAuditLog({
+      actorUserId: actor.id,
+      actorName: actor.name ?? actor.email,
+      actorRole: actor.role as "admin" | "client",
+      actionType: column === "completed" ? "kanban_task_closed" : "kanban_task_moved",
+      entityType: "kanban_task",
+      entityId: updated.id,
+      entityLabel: updated.title,
+      projectId: updated.projectId,
+      clientId: actor.role === "client" ? actor.id : null,
+      metadata: { from: task.column, to: column },
+    });
+  }
+
   res.json(updated);
 });
 
@@ -1189,6 +1207,17 @@ router.post("/portal/billing/subscriptions/:id/cancel", requireAuth, async (req:
   });
 
   req.log.info({ clientServiceId: cs.id, subscriptionId: cs.stripeSubscriptionId }, "subscription: cancel_at_period_end set");
+
+  void createAuditLog({
+    actorUserId: userId,
+    actorName: req.user!.name ?? req.user!.email,
+    actorRole: "client",
+    actionType: "retainer_cancelled",
+    entityType: "service",
+    entityId: cs.id,
+    entityLabel: String(cs.serviceId),
+    clientId: userId,
+  });
 
   res.json({
     ok: true,
@@ -1629,7 +1658,7 @@ async function provisionOnboardingProject(
     await db.insert(notificationsTable).values({
       userId: admin.id,
       title: `New onboarding purchase: ${serviceNames.join(", ")}`,
-      body: `${buyerLabel} purchased ${serviceNames.length > 1 ? serviceNames.join(" + ") : `"${serviceNames[0]}"`} ($${totalAmountDollars}). Project #${project.id} auto-created.`,
+      body: `${buyer.name ?? buyer.email} purchased ${serviceNames.length > 1 ? serviceNames.join(" + ") : `"${serviceNames[0]}"`} ($${totalAmountDollars}). Project #${project.id} auto-created.`,
       type: "general",
       linkPath: `/dashboard`,
     });
@@ -1897,9 +1926,25 @@ async function processStripeEvent(req: Request, event: import("stripe").Stripe.E
     // Invoice payment
     const invoiceId = session.metadata?.invoiceId;
     if (invoiceId && session.payment_status === "paid") {
-      await db.update(invoicesTable)
+      const parsedInvoiceId = parseInt(invoiceId, 10);
+      const [paidInvoice] = await db.update(invoicesTable)
         .set({ status: "paid", paidAt: new Date(), updatedAt: new Date() })
-        .where(eq(invoicesTable.id, parseInt(invoiceId, 10)));
+        .where(eq(invoicesTable.id, parsedInvoiceId))
+        .returning();
+      if (paidInvoice) {
+        void createAuditLog({
+          actorUserId: paidInvoice.clientUserId ?? undefined,
+          actorName: session.customer_details?.name ?? session.customer_email ?? "Client",
+          actorRole: "client",
+          actionType: "invoice_paid",
+          entityType: "invoice",
+          entityId: parsedInvoiceId,
+          entityLabel: paidInvoice.description ?? `Invoice #${parsedInvoiceId}`,
+          clientId: paidInvoice.clientUserId ?? undefined,
+          projectId: paidInvoice.projectId ?? undefined,
+          metadata: { amountDollars: paidInvoice.amount, stripeSessionId: session.id },
+        });
+      }
     }
 
     // Service purchase — notify admin, create invoice record
@@ -1961,6 +2006,19 @@ async function processStripeEvent(req: Request, event: import("stripe").Stripe.E
           }),
         ).catch(() => null);
       }
+
+      // Audit log
+      void createAuditLog({
+        actorUserId: uid,
+        actorName: buyer?.name ?? buyer?.email ?? "Client",
+        actorRole: "client",
+        actionType: "service_purchased",
+        entityType: "service",
+        entityId: session.metadata?.serviceId ?? null,
+        entityLabel: serviceName,
+        clientId: uid,
+        metadata: { amount: amountDollars, category: serviceCategory },
+      });
 
       // SMS alert to Shane
       sendAdminSms(
@@ -2203,6 +2261,16 @@ router.post("/admin/clients", requireAdmin, async (req: Request, res: Response) 
     phone: phone ?? null,
   }).returning();
 
+  void createAuditLog({
+    actorUserId: req.user!.id,
+    actorName: req.user!.name ?? req.user!.email,
+    actorRole: "admin",
+    actionType: "client_created",
+    entityType: "user",
+    entityId: client.id,
+    entityLabel: client.name ?? client.email,
+  });
+
   res.status(201).json({ ...client, passwordHash: undefined });
 });
 
@@ -2289,6 +2357,16 @@ router.post("/admin/impersonate/:userId", requireAdmin, async (req: Request, res
     expiresAt,
   });
 
+  void createAuditLog({
+    actorUserId: req.user!.id,
+    actorName: req.user!.name ?? req.user!.email,
+    actorRole: "admin",
+    actionType: "admin_impersonated",
+    entityType: "user",
+    entityId: client.id,
+    entityLabel: client.name ?? client.email,
+  });
+
   res.json({ token, client: { id: client.id, email: client.email, name: client.name } });
 });
 
@@ -2335,6 +2413,18 @@ router.post("/admin/projects", requireAdmin, async (req: Request, res: Response)
       linkPath: `/portal/projects/${project.id}`,
     });
   }
+
+  void createAuditLog({
+    actorUserId: req.user!.id,
+    actorName: req.user!.name ?? req.user!.email,
+    actorRole: "admin",
+    actionType: "project_created",
+    entityType: "project",
+    entityId: project.id,
+    entityLabel: project.title,
+    clientId: clientUserId ?? null,
+    projectId: project.id,
+  });
 
   res.status(201).json(project);
 });
@@ -2474,8 +2564,26 @@ router.patch("/admin/workflow-steps/:id", requireAdmin, async (req: Request, res
   if (description !== undefined) updates.description = description;
   if (dueDate !== undefined) updates.dueDate = dueDate ? new Date(dueDate) : null;
 
+  const [existing] = await db.select().from(workflowStepsTable).where(eq(workflowStepsTable.id, id));
+  if (!existing) { res.status(404).json({ error: "Step not found" }); return; }
+
   const [updated] = await db.update(workflowStepsTable).set(updates).where(eq(workflowStepsTable.id, id)).returning();
   if (!updated) { res.status(404).json({ error: "Step not found" }); return; }
+
+  if (status !== undefined) {
+    void createAuditLog({
+      actorUserId: req.user!.id,
+      actorName: req.user!.name ?? req.user!.email,
+      actorRole: "admin",
+      actionType: "workflow_step_changed",
+      entityType: "workflow_step",
+      entityId: updated.id,
+      entityLabel: updated.title,
+      projectId: updated.projectId ?? undefined,
+      metadata: { from: existing.status, to: updated.status },
+    });
+  }
+
   res.json(updated);
 });
 
@@ -2509,6 +2617,22 @@ router.post("/admin/kanban-tasks", requireAdmin, async (req: Request, res: Respo
     taskMetadata: taskMetadata ?? null,
   }).returning();
   await syncProjectProgress(projectId);
+
+  const [createdTaskProject] = await db.select({ clientUserId: projectsTable.clientUserId })
+    .from(projectsTable).where(eq(projectsTable.id, projectId));
+
+  void createAuditLog({
+    actorUserId: req.user!.id,
+    actorName: req.user!.name ?? req.user!.email,
+    actorRole: "admin",
+    actionType: "kanban_task_created",
+    entityType: "kanban_task",
+    entityId: task.id,
+    entityLabel: task.title,
+    projectId: task.projectId,
+    clientId: createdTaskProject?.clientUserId ?? undefined,
+  });
+
   res.status(201).json(task);
 });
 
@@ -2521,6 +2645,10 @@ router.patch("/admin/kanban-tasks/:id", requireAdmin, async (req: Request, res: 
     waitingReason?: string | null; completionStatus?: string | null; completionNotes?: string | null; priority?: string | null;
     taskType?: string | null; taskMetadata?: Record<string, unknown> | null;
   };
+
+  const [existingTask] = await db.select().from(kanbanTasksTable).where(eq(kanbanTasksTable.id, id));
+  if (!existingTask) { res.status(404).json({ error: "Task not found" }); return; }
+
   const updates: Partial<typeof kanbanTasksTable.$inferInsert & { updatedAt: Date }> = { updatedAt: new Date() };
   if (column !== undefined) updates.column = column as "backlog" | "in_progress" | "waiting_on_customer" | "completed";
   if (title !== undefined) updates.title = title;
@@ -2537,6 +2665,10 @@ router.patch("/admin/kanban-tasks/:id", requireAdmin, async (req: Request, res: 
 
   const [updated] = await db.update(kanbanTasksTable).set(updates).where(eq(kanbanTasksTable.id, id)).returning();
   if (!updated) { res.status(404).json({ error: "Task not found" }); return; }
+
+  const [taskProject] = updated.projectId
+    ? await db.select({ clientUserId: projectsTable.clientUserId }).from(projectsTable).where(eq(projectsTable.id, updated.projectId))
+    : [];
 
   // Auto-progression: when a task is completed, check if its workflow step is done
   if (updates.column === "completed" && updated.workflowStepId) {
@@ -2587,6 +2719,38 @@ router.patch("/admin/kanban-tasks/:id", requireAdmin, async (req: Request, res: 
   }
 
   await syncProjectProgress(updated.projectId);
+
+  const auditBase = {
+    actorUserId: req.user!.id,
+    actorName: req.user!.name ?? req.user!.email,
+    actorRole: "admin" as const,
+    entityType: "kanban_task",
+    entityId: updated.id,
+    entityLabel: updated.title,
+    projectId: updated.projectId ?? undefined,
+    clientId: taskProject?.clientUserId ?? undefined,
+  };
+
+  if (column !== undefined) {
+    void createAuditLog({
+      ...auditBase,
+      actionType: column === "completed" ? "kanban_task_closed" : "kanban_task_moved",
+      metadata: { from: existingTask.column, to: column, notes: completionNotes ?? null },
+    });
+  } else if (dueDate !== undefined) {
+    void createAuditLog({
+      ...auditBase,
+      actionType: "kanban_task_due_date_set",
+      metadata: { from: existingTask.dueDate ?? null, to: dueDate ?? null },
+    });
+  } else if (title !== undefined || description !== undefined || priority !== undefined) {
+    void createAuditLog({
+      ...auditBase,
+      actionType: "kanban_task_updated",
+      metadata: { changedFields: Object.keys(req.body as object).filter(k => ["title","description","priority"].includes(k)) },
+    });
+  }
+
   res.json(updated);
 });
 
@@ -2629,6 +2793,19 @@ router.post("/admin/documents", requireAdmin, uploadDoc.single("file"), async (r
       linkPath: `/portal/projects/${projectId}`,
     });
   }
+
+  void createAuditLog({
+    actorUserId: req.user!.id,
+    actorName: req.user!.name ?? req.user!.email,
+    actorRole: "admin",
+    actionType: "document_uploaded",
+    entityType: "document",
+    entityId: doc.id,
+    entityLabel: doc.name,
+    projectId: doc.projectId ?? undefined,
+    clientId: project?.clientUserId ?? undefined,
+    metadata: { filename: doc.filename, mimeType: doc.mimeType, sizeBytes: doc.sizeBytes },
+  });
 
   res.status(201).json(doc);
 });
@@ -2805,6 +2982,18 @@ router.post("/portal/status-reports/:id/resolve", requireAuth, async (req: Reque
     .where(eq(statusReportsTable.id, id))
     .returning();
 
+  void createAuditLog({
+    actorUserId: userId,
+    actorName: req.user!.name ?? req.user!.email,
+    actorRole: "client",
+    actionType: "status_report_resolved",
+    entityType: "status_report",
+    entityId: id,
+    entityLabel: report.title,
+    projectId: report.projectId ?? undefined,
+    clientId: userId,
+  });
+
   res.json(updated);
 });
 
@@ -2855,6 +3044,18 @@ router.post("/portal/status-reports/:id/thread", requireAuth, async (req: Reques
       }),
     );
   }
+
+  void createAuditLog({
+    actorUserId: userId,
+    actorName: req.user!.name ?? req.user!.email,
+    actorRole: "client",
+    actionType: "status_report_question",
+    entityType: "status_report",
+    entityId: report.id,
+    entityLabel: report.title,
+    clientId: userId,
+    projectId: report.projectId ?? null,
+  });
 
   res.json(updated);
 });
@@ -2913,6 +3114,20 @@ router.post("/admin/status-reports/:id/reply", requireAdmin, async (req: Request
         }),
       );
     }
+  }
+
+  if (report.clientUserId) {
+    void createAuditLog({
+      actorUserId: req.user!.id,
+      actorName: req.user!.name ?? req.user!.email,
+      actorRole: "admin",
+      actionType: "status_report_reply",
+      entityType: "status_report",
+      entityId: report.id,
+      entityLabel: report.title,
+      clientId: report.clientUserId,
+      projectId: report.projectId ?? null,
+    });
   }
 
   res.json(updated);
@@ -3048,6 +3263,21 @@ router.post("/admin/status-reports/:id/send", requireAdmin, async (req: Request,
       body: "Your consultant has sent you a project status report. View it in your portal.",
       type: "project_update",
       linkPath: "/portal/projects",
+    });
+  }
+
+  if (report.clientUserId) {
+    void createAuditLog({
+      actorUserId: req.user!.id,
+      actorName: req.user!.name ?? req.user!.email,
+      actorRole: "admin",
+      actionType: "status_report_published",
+      entityType: "status_report",
+      entityId: report.id,
+      entityLabel: report.title,
+      clientId: report.clientUserId,
+      projectId: report.projectId ?? null,
+      metadata: { period: report.period ?? null },
     });
   }
 
@@ -3258,6 +3488,18 @@ router.post("/admin/invoices", requireAdmin, uploadInvoice.single("pdf"), async 
     linkPath: "/portal/billing",
   });
 
+  void createAuditLog({
+    actorUserId: req.user!.id,
+    actorName: req.user!.name ?? req.user!.email,
+    actorRole: "admin",
+    actionType: "invoice_created",
+    entityType: "invoice",
+    entityId: invoice.id,
+    entityLabel: invoice.invoiceNumber,
+    clientId: invoice.clientUserId,
+    metadata: { amount: invoice.amount },
+  });
+
   res.status(201).json(invoice);
 });
 
@@ -3275,6 +3517,21 @@ router.patch("/admin/invoices/:id", requireAdmin, async (req: Request, res: Resp
 
   const [updated] = await db.update(invoicesTable).set(updates).where(eq(invoicesTable.id, id)).returning();
   if (!updated) { res.status(404).json({ error: "Not found" }); return; }
+
+  if (status) {
+    void createAuditLog({
+      actorUserId: req.user!.id,
+      actorName: req.user!.name ?? req.user!.email,
+      actorRole: "admin",
+      actionType: "invoice_status_changed",
+      entityType: "invoice",
+      entityId: updated.id,
+      entityLabel: updated.invoiceNumber,
+      clientId: updated.clientUserId,
+      metadata: { status },
+    });
+  }
+
   res.json(updated);
 });
 
@@ -3494,6 +3751,17 @@ router.post("/admin/client-services", requireAdmin, async (req: Request, res: Re
     }
   }
 
+  void createAuditLog({
+    actorUserId: req.user!.id,
+    actorName: req.user!.name ?? req.user!.email,
+    actorRole: "admin",
+    actionType: "service_activated",
+    entityType: "service",
+    entityId: cs.id,
+    entityLabel: service?.name ?? String(serviceId),
+    clientId: clientUserId,
+  });
+
   res.status(201).json(cs);
 });
 
@@ -3703,6 +3971,19 @@ router.post("/portal/onboarding/contract", requireAuth, async (req: Request, res
       createdContracts.push(contract);
     }
   }
+
+  // Audit the signing
+  void createAuditLog({
+    actorUserId: userId,
+    actorName: req.user!.name ?? req.user!.email,
+    actorRole: "client",
+    actionType: "contract_signed",
+    entityType: "contract",
+    entityId: createdContracts.map(c => c.id).join(","),
+    entityLabel: services.map(s => s.name).join(", "),
+    clientId: userId,
+    metadata: { signerName, serviceCount: createdContracts.length },
+  });
 
   // Return both legacy single-contract and new multi-contract formats
   if (createdContracts.length === 1) {

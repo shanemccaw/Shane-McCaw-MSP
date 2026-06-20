@@ -312,11 +312,11 @@ export default function OverviewPage() {
             <div className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
             <h2 className="text-sm font-bold text-[#0A2540] uppercase tracking-widest">Customer Questions</h2>
             <span className="text-xs font-bold bg-amber-100 text-amber-700 border border-amber-200 px-2 py-0.5 rounded-full">
-              {data.pendingQuestions.length} pending
+              {data.pendingQuestions?.length ?? 0} pending
             </span>
           </div>
           <div className="space-y-2">
-            {data.pendingQuestions.map(q => (
+            {data.pendingQuestions?.map(q => (
               <div key={q.id} className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3.5 flex items-start gap-3">
                 <div className="w-8 h-8 rounded-full bg-amber-200 flex items-center justify-center flex-shrink-0 mt-0.5">
                   <svg className="w-4 h-4 text-amber-700" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
