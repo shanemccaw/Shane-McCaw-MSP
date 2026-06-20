@@ -310,7 +310,7 @@ export default function StatusReportsPage() {
       } else {
         await handleSave();
         await fetchWithAuth(`/api/admin/status-reports/${editing.id}/send`, { method: "POST", body: "{}" });
-        setSaveMsg("Report sent to client!");
+        setSaveMsg("Report published to client!");
         await load();
       }
     } finally {
@@ -433,7 +433,7 @@ export default function StatusReportsPage() {
                     <span className="text-xs text-gray-500">{new Date(r.updatedAt).toLocaleDateString()}</span>
                   </div>
                 </div>
-                <span className={`text-xs font-semibold px-2.5 py-1 rounded-full border ${r.reportStatus === "sent" ? "bg-emerald-50 text-emerald-700 border-emerald-200" : "bg-amber-50 text-amber-700 border-amber-200"}`}>
+                <span className={`text-xs font-semibold px-2.5 py-1 rounded-full border ${r.reportStatus === "sent" ? "bg-emerald-50 text-emerald-700 border-emerald-200" : "bg-gray-100 text-gray-500 border-gray-200"}`}>
                   {r.reportStatus === "sent" ? "Published" : "Draft"}
                 </span>
                 <div className="flex items-center gap-2 flex-shrink-0">

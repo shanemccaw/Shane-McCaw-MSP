@@ -2424,7 +2424,7 @@ router.post("/admin/status-reports/:id/send", requireAdmin, async (req: Request,
       title: `New status report: ${report.title}`,
       body: "Your consultant has sent you a project status report. View it in your portal.",
       type: "project_update",
-      linkPath: "/portal/status-reports",
+      linkPath: "/portal/projects",
     });
   }
 
