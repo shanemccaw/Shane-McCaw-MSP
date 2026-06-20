@@ -100,7 +100,12 @@ export default function StatusReportsPage() {
   const [nextSteps, setNextSteps] = useState<NextStep[]>([]);
 
   const [draftInput, setDraftInput] = useState("");
-  const [draftPreview, setDraftPreview] = useState("");
+
+  type AiSection = "executive_summary" | "key_outcomes" | "next_steps" | "all";
+  interface AiPreview { executiveSummary?: string; keyOutcomes?: string; nextSteps?: NextStep[] }
+  const [aiLoading, setAiLoading] = useState<AiSection | null>(null);
+  const [aiError, setAiError] = useState<string | null>(null);
+  const [aiPreview, setAiPreview] = useState<AiPreview>({});
 
   const [saving, setSaving] = useState(false);
   const [sending, setSending] = useState(false);
@@ -176,7 +181,8 @@ export default function StatusReportsPage() {
     setActivities([]);
     setNextSteps([]);
     setDraftInput("");
-    setDraftPreview("");
+    setAiPreview({});
+    setAiError(null);
     setSaveMsg("");
   };
 
@@ -195,7 +201,8 @@ export default function StatusReportsPage() {
     setActivities(r.completedActivities ?? []);
     setNextSteps(r.nextSteps ?? []);
     setDraftInput("");
-    setDraftPreview("");
+    setAiPreview({});
+    setAiError(null);
     setSaveMsg("");
   };
 
@@ -264,20 +271,37 @@ export default function StatusReportsPage() {
     await load();
   };
 
-  const draftSummary = () => {
+  const aiDraft = async (section: AiSection) => {
     const proj = autofill?.project ?? projects.find(p => p.id === parseInt(selectedProjectId, 10));
-    const acts = activities.map(a => `• ${a.title}`).join("\n");
-    const input = draftInput.trim();
-    const summary = `${proj?.title ?? "This project"} has made strong progress this period${input ? `, with ${input}` : ""}. `
-      + (activities.length > 0 ? `Key completed activities include:\n${acts}\n\n` : "")
-      + (proj ? `The project is currently ${Math.round(proj.progress)}% complete` : "")
-      + (autofill?.blockedCount ? `, with ${autofill.blockedCount} item(s) flagged for attention.` : ".");
-    setDraftPreview(summary);
-  };
-
-  const applyDraft = () => {
-    setForm(f => ({ ...f, executiveSummary: draftPreview }));
-    setDraftPreview("");
+    setAiLoading(section);
+    setAiError(null);
+    try {
+      const res = await fetchWithAuth("/api/admin/status-reports/ai-draft", {
+        method: "POST",
+        body: JSON.stringify({
+          section,
+          project: proj ? { title: proj.title, status: proj.status, progress: proj.progress, description: proj.description } : undefined,
+          client: autofill?.client ?? null,
+          activities,
+          nextSteps,
+          blockedCount: autofill?.blockedCount ?? 0,
+          progress: proj?.progress ?? 0,
+          period: form.period,
+          extraContext: draftInput.trim() || undefined,
+        }),
+      });
+      if (!res.ok) {
+        const err = await res.json() as { error?: string };
+        setAiError(err.error ?? "AI generation failed");
+        return;
+      }
+      const data = await res.json() as { executiveSummary?: string; keyOutcomes?: string; nextSteps?: NextStep[] };
+      setAiPreview(prev => ({ ...prev, ...data }));
+    } catch {
+      setAiError("AI generation failed. Check your connection and try again.");
+    } finally {
+      setAiLoading(null);
+    }
   };
 
   const removeActivity = (i: number) => setActivities(a => a.filter((_, idx) => idx !== i));
@@ -624,62 +648,143 @@ export default function StatusReportsPage() {
                   </svg>
                   <h4 className="text-base font-bold text-[#0A2540]">Draft Assist</h4>
                 </div>
-                <span className="text-[9px] px-2 py-0.5 bg-[#0078D4] text-white rounded font-bold uppercase tracking-wider">Smart</span>
+                <span className="text-[9px] px-2 py-0.5 bg-[#0078D4] text-white rounded font-bold uppercase tracking-wider">AI</span>
               </div>
+
               <div>
-                <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-1.5 block">Additional Context / Activity Log</label>
+                <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-1.5 block">Additional Context</label>
                 <textarea
                   value={draftInput}
                   onChange={e => setDraftInput(e.target.value)}
-                  placeholder="Describe what else happened this period, any extra context, blockers resolved… (optional)"
-                  rows={4}
+                  placeholder="Any extra context, blockers resolved, or notable events this period… (passed to AI)"
+                  rows={3}
                   className="w-full p-3 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-[#0078D4] focus:outline-none resize-none"
                 />
               </div>
+
+              {/* AI action buttons */}
               <div className="grid grid-cols-2 gap-2">
+                {([ 
+                  { section: "executive_summary" as AiSection, label: "Executive Summary", icon: "M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" },
+                  { section: "key_outcomes" as AiSection, label: "Key Outcomes", icon: "M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" },
+                  { section: "next_steps" as AiSection, label: "Next Steps", icon: "M9 5l7 7-7 7" },
+                ] as { section: AiSection; label: string; icon: string }[]).map(({ section, label, icon }) => {
+                  const loading = aiLoading === section || aiLoading === "all";
+                  return (
+                    <button
+                      key={section}
+                      onClick={() => void aiDraft(section)}
+                      disabled={!!aiLoading}
+                      className="p-3 border border-gray-200 rounded-lg text-xs font-semibold text-gray-700 hover:bg-[#0078D4]/5 hover:border-[#0078D4]/30 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex flex-col items-center gap-1.5 group"
+                    >
+                      {loading ? (
+                        <div className="w-4 h-4 border-2 border-[#0078D4] border-t-transparent rounded-full animate-spin" />
+                      ) : (
+                        <svg className="w-4.5 h-4.5 text-[#0078D4] group-hover:scale-110 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d={icon} />
+                        </svg>
+                      )}
+                      {loading ? "Writing…" : `Write ${label}`}
+                    </button>
+                  );
+                })}
                 <button
-                  onClick={draftSummary}
-                  className="p-3 border border-gray-200 rounded-lg text-xs font-semibold text-gray-700 hover:bg-gray-50 transition-all flex flex-col items-center gap-1.5 group"
+                  onClick={() => void aiDraft("all")}
+                  disabled={!!aiLoading}
+                  className="p-3 bg-[#0078D4]/5 border border-[#0078D4]/20 rounded-lg text-xs font-bold text-[#0078D4] hover:bg-[#0078D4]/10 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex flex-col items-center gap-1.5 group"
                 >
-                  <svg className="w-5 h-5 text-[#0078D4] group-hover:scale-110 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125" />
-                  </svg>
-                  Draft Summary
-                </button>
-                <button
-                  onClick={() => {
-                    const exec = activities.map(a => `✓ ${a.title}`).join(". ");
-                    setDraftPreview(exec ? `Key activities this period: ${exec}.` : "No completed activities to summarize.");
-                  }}
-                  className="p-3 border border-gray-200 rounded-lg text-xs font-semibold text-gray-700 hover:bg-gray-50 transition-all flex flex-col items-center gap-1.5 group"
-                >
-                  <svg className="w-5 h-5 text-[#0078D4] group-hover:scale-110 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M11.48 3.499a.562.562 0 011.04 0l2.125 5.111a.563.563 0 00.475.345l5.518.442c.499.04.701.663.321.988l-4.204 3.602a.563.563 0 00-.182.557l1.285 5.385a.562.562 0 01-.84.61l-4.725-2.885a.563.563 0 00-.586 0L6.982 20.54a.562.562 0 01-.84-.61l1.285-5.386a.562.562 0 00-.182-.557l-4.204-3.602a.562.562 0 01.321-.988l5.518-.442a.563.563 0 00.475-.345L11.48 3.5z" />
-                  </svg>
-                  Exec Translate
+                  {aiLoading === "all" ? (
+                    <div className="w-4 h-4 border-2 border-[#0078D4] border-t-transparent rounded-full animate-spin" />
+                  ) : (
+                    <svg className="w-4.5 h-4.5 text-[#0078D4] group-hover:scale-110 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z" />
+                    </svg>
+                  )}
+                  {aiLoading === "all" ? "Writing Full Report…" : "Write Full Report"}
                 </button>
               </div>
-              {draftPreview && (
-                <div className="border-t border-gray-100 pt-4 flex flex-col gap-3">
+
+              {/* Error state */}
+              {aiError && (
+                <div className="flex items-start gap-2 p-3 bg-red-50 border border-red-200 rounded-lg">
+                  <svg className="w-4 h-4 text-red-500 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                  </svg>
+                  <p className="text-xs text-red-600 font-medium">{aiError}</p>
+                </div>
+              )}
+
+              {/* AI preview results */}
+              {(aiPreview.executiveSummary || aiPreview.keyOutcomes || aiPreview.nextSteps) && (
+                <div className="border-t border-gray-100 pt-4 flex flex-col gap-4">
                   <div className="flex justify-between items-center">
-                    <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Draft Preview</label>
-                    <span className="flex items-center gap-1 text-[10px] text-teal-600 font-bold">
-                      <span className="w-1.5 h-1.5 bg-teal-500 rounded-full animate-pulse" />
-                      Ready
-                    </span>
+                    <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400">AI Draft Preview</label>
+                    <div className="flex items-center gap-2">
+                      <span className="flex items-center gap-1 text-[10px] text-teal-600 font-bold">
+                        <span className="w-1.5 h-1.5 bg-teal-500 rounded-full animate-pulse" />
+                        Ready to apply
+                      </span>
+                      <button
+                        onClick={() => setAiPreview({})}
+                        className="text-[10px] text-gray-400 hover:text-gray-600 transition-colors"
+                      >
+                        Clear
+                      </button>
+                    </div>
                   </div>
-                  <div className="p-3 bg-gray-50 rounded-lg border border-dashed border-gray-200 text-sm italic text-gray-600 leading-relaxed">
-                    {draftPreview}
-                  </div>
-                  <button
-                    onClick={applyDraft}
-                    className="w-full py-2.5 bg-gray-100 hover:bg-[#0078D4]/10 text-[#0A2540] text-xs font-bold uppercase tracking-wider rounded-lg flex items-center justify-center gap-2 transition-colors"
-                  >
-                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-                    </svg>
-                    Apply to Executive Summary
-                  </button>
+
+                  {aiPreview.executiveSummary && (
+                    <div className="flex flex-col gap-2">
+                      <p className="text-[10px] font-bold uppercase tracking-widest text-[#0078D4]">Executive Summary</p>
+                      <div className="p-3 bg-blue-50/50 rounded-lg border border-blue-100 text-sm text-gray-700 leading-relaxed">
+                        {aiPreview.executiveSummary}
+                      </div>
+                      <button
+                        onClick={() => { setForm(f => ({ ...f, executiveSummary: aiPreview.executiveSummary! })); setAiPreview(p => ({ ...p, executiveSummary: undefined })); }}
+                        className="self-start text-xs font-bold text-[#0078D4] hover:text-[#0078D4]/80 px-3 py-1.5 rounded-lg bg-[#0078D4]/10 hover:bg-[#0078D4]/15 transition-colors flex items-center gap-1.5"
+                      >
+                        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" /></svg>
+                        Apply to Executive Summary
+                      </button>
+                    </div>
+                  )}
+
+                  {aiPreview.keyOutcomes && (
+                    <div className="flex flex-col gap-2">
+                      <p className="text-[10px] font-bold uppercase tracking-widest text-teal-600">Key Outcomes</p>
+                      <div className="p-3 bg-teal-50/50 rounded-lg border border-teal-100 text-sm text-gray-700 leading-relaxed">
+                        {aiPreview.keyOutcomes}
+                      </div>
+                      <button
+                        onClick={() => { setForm(f => ({ ...f, keyOutcomes: aiPreview.keyOutcomes! })); setAiPreview(p => ({ ...p, keyOutcomes: undefined })); }}
+                        className="self-start text-xs font-bold text-teal-600 hover:text-teal-700 px-3 py-1.5 rounded-lg bg-teal-50 hover:bg-teal-100 transition-colors flex items-center gap-1.5"
+                      >
+                        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" /></svg>
+                        Apply to Key Outcomes
+                      </button>
+                    </div>
+                  )}
+
+                  {aiPreview.nextSteps && aiPreview.nextSteps.length > 0 && (
+                    <div className="flex flex-col gap-2">
+                      <p className="text-[10px] font-bold uppercase tracking-widest text-gray-500">Suggested Next Steps</p>
+                      <div className="flex flex-col gap-1.5">
+                        {aiPreview.nextSteps.map((s, i) => (
+                          <div key={i} className="p-2.5 bg-gray-50 rounded-lg border border-gray-100 text-xs text-gray-700">
+                            <span className="font-bold text-[#0A2540]">{s.title}</span>
+                            {s.description && <span className="text-gray-500"> — {s.description}</span>}
+                          </div>
+                        ))}
+                      </div>
+                      <button
+                        onClick={() => { setNextSteps(aiPreview.nextSteps!); setAiPreview(p => ({ ...p, nextSteps: undefined })); }}
+                        className="self-start text-xs font-bold text-gray-600 hover:text-gray-800 px-3 py-1.5 rounded-lg bg-gray-100 hover:bg-gray-200 transition-colors flex items-center gap-1.5"
+                      >
+                        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" /></svg>
+                        Apply as Next Steps
+                      </button>
+                    </div>
+                  )}
                 </div>
               )}
             </section>

@@ -13,6 +13,7 @@ import portalRouter from "./portal";
 import publicServicesRouter from "./public-services";
 import publicEngagementProjectsRouter from "./public-engagement-projects";
 import adminEngagementProjectsRouter from "./admin-engagement-projects";
+import adminAiDraftRouter from "./admin-ai-draft";
 
 const router: IRouter = Router();
 
@@ -23,6 +24,7 @@ router.use(adminWorkflowTemplatesRouter);
 router.use(adminProjectTemplatesRouter);
 router.use(adminContractTemplatesRouter);
 router.use(adminEngagementProjectsRouter);
+router.use(adminAiDraftRouter);
 router.use(sharesRouter);
 router.use(authRouter);
 router.use(leadsRouter);
