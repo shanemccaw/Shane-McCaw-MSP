@@ -874,6 +874,7 @@ router.get("/portal/contracts/:id", requireAuth, async (req: Request, res: Respo
     userId: contractsTable.userId,
     serviceId: contractsTable.serviceId,
     serviceName: servicesTable.name,
+    orderWorkflow: servicesTable.orderWorkflow,
     signedAt: contractsTable.signedAt,
     signatureData: contractsTable.signatureData,
     signerName: contractsTable.signerName,

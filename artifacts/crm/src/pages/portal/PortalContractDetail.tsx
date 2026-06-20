@@ -3,11 +3,24 @@ import { useParams, Link } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
 import PortalLayout from "@/components/PortalLayout";
 
+interface WizardOption {
+  id: string;
+  label: string;
+  priceAdjustment: number;
+}
+
+interface WizardStep {
+  id: string;
+  title: string;
+  options: WizardOption[];
+}
+
 interface ContractDetail {
   id: number;
   userId: number;
   serviceId: number;
   serviceName: string;
+  orderWorkflow: WizardStep[] | null;
   signedAt: string;
   signatureData: string | null;
   signerName: string | null;
@@ -93,7 +106,21 @@ export default function PortalContractDetail() {
     );
   }
 
-  const wizardItems = Array.isArray(data?.wizardSelections) ? data.wizardSelections : [];
+  // Build a lookup map from the service's order_workflow so that old contracts
+  // that only stored stepId/optionId (no labels) still display human-readable text.
+  const workflowStepMap = new Map<string, WizardStep>(
+    (data?.orderWorkflow ?? []).map(s => [s.id, s])
+  );
+
+  const wizardItems = (Array.isArray(data?.wizardSelections) ? data.wizardSelections : []).map(sel => {
+    const step = workflowStepMap.get(sel.stepId);
+    const option = step?.options.find(o => o.id === sel.optionId);
+    return {
+      ...sel,
+      stepTitle: sel.stepTitle ?? step?.title,
+      optionLabel: sel.optionLabel ?? option?.label,
+    };
+  });
 
   return (
     <PortalLayout>
