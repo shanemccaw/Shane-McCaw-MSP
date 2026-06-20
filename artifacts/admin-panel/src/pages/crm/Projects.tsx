@@ -2,6 +2,16 @@ import { useEffect, useState, useCallback } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import {
+  DndContext,
+  DragOverlay,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  type DragStartEvent,
+  type DragEndEvent,
+} from "@dnd-kit/core";
+import { useDraggable, useDroppable } from "@dnd-kit/core";
+import {
   AlertDialog,
   AlertDialogAction,
   AlertDialogCancel,
@@ -76,6 +86,184 @@ const EMPTY_FORM: ProjectFormState = {
   title: "", description: "", status: "active", phase: "", progress: 0, clientUserId: "", startDate: "", endDate: "",
 };
 
+const COLUMNS = [
+  { key: "backlog", label: "Backlog" },
+  { key: "in_progress", label: "In Progress" },
+  { key: "waiting_on_customer", label: "Waiting" },
+  { key: "completed", label: "Done" },
+] as const;
+
+type ColumnKey = typeof COLUMNS[number]["key"];
+
+function DraggableCard({ task, onDelete, projectId }: { task: KanbanTask; onDelete: (taskId: number, projectId: number) => void; projectId: number }) {
+  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
+    id: task.id,
+    data: { task },
+  });
+
+  const style = transform
+    ? { transform: `translate3d(${transform.x}px, ${transform.y}px, 0)` }
+    : undefined;
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      className={`bg-[#F7F9FC] border border-border rounded p-2 text-xs select-none ${isDragging ? "opacity-40" : ""}`}
+    >
+      <div className="flex items-start gap-1">
+        <div
+          {...listeners}
+          {...attributes}
+          className="mt-0.5 flex-shrink-0 cursor-grab active:cursor-grabbing text-muted-foreground hover:text-[#0078D4] transition-colors"
+          title="Drag to move"
+        >
+          <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24">
+            <circle cx="9" cy="6" r="1.5" /><circle cx="15" cy="6" r="1.5" />
+            <circle cx="9" cy="12" r="1.5" /><circle cx="15" cy="12" r="1.5" />
+            <circle cx="9" cy="18" r="1.5" /><circle cx="15" cy="18" r="1.5" />
+          </svg>
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="font-medium text-[#0A2540]">{task.title}</p>
+          {task.assignedTo && <p className="text-muted-foreground text-[10px] mt-0.5">{task.assignedTo}</p>}
+          <button
+            onClick={() => onDelete(task.id, projectId)}
+            className="text-red-400 hover:text-red-600 text-[10px] font-semibold mt-1"
+          >
+            Delete
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function CardOverlay({ task }: { task: KanbanTask }) {
+  return (
+    <div className="bg-[#F7F9FC] border border-[#0078D4] rounded p-2 text-xs shadow-lg rotate-1 opacity-90 w-48">
+      <p className="font-medium text-[#0A2540]">{task.title}</p>
+      {task.assignedTo && <p className="text-muted-foreground text-[10px] mt-0.5">{task.assignedTo}</p>}
+    </div>
+  );
+}
+
+function DroppableColumn({
+  col,
+  tasks,
+  onDelete,
+  projectId,
+  isOver,
+}: {
+  col: { key: string; label: string };
+  tasks: KanbanTask[];
+  onDelete: (taskId: number, projectId: number) => void;
+  projectId: number;
+  isOver: boolean;
+}) {
+  const { setNodeRef } = useDroppable({ id: col.key });
+
+  return (
+    <div
+      ref={setNodeRef}
+      className={`rounded-lg p-3 transition-colors ${isOver ? "bg-blue-50 border-2 border-[#0078D4]/40" : "bg-white border border-border"}`}
+    >
+      <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-2">
+        {col.label}
+        <span className="ml-1.5 text-[10px] font-normal">({tasks.length})</span>
+      </p>
+      <div className="space-y-1.5 min-h-[32px]">
+        {tasks.map(task => (
+          <DraggableCard key={task.id} task={task} onDelete={onDelete} projectId={projectId} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function KanbanBoard({
+  projectId,
+  tasks,
+  onTasksChange,
+  onDelete,
+  fetchWithAuth,
+  toast,
+}: {
+  projectId: number;
+  tasks: KanbanTask[];
+  onTasksChange: (projectId: number, updater: (tasks: KanbanTask[]) => KanbanTask[]) => void;
+  onDelete: (taskId: number, projectId: number) => void;
+  fetchWithAuth: (url: string, options?: RequestInit) => Promise<Response>;
+  toast: ReturnType<typeof useToast>["toast"];
+}) {
+  const [activeTask, setActiveTask] = useState<KanbanTask | null>(null);
+  const [overColumnKey, setOverColumnKey] = useState<string | null>(null);
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } })
+  );
+
+  const handleDragStart = (event: DragStartEvent) => {
+    const task = (event.active.data.current as { task: KanbanTask }).task;
+    setActiveTask(task);
+  };
+
+  const handleDragOver = (event: { over: { id: string | number } | null }) => {
+    setOverColumnKey(event.over ? String(event.over.id) : null);
+  };
+
+  const handleDragEnd = async (event: DragEndEvent) => {
+    setActiveTask(null);
+    setOverColumnKey(null);
+    const { active, over } = event;
+    if (!over) return;
+
+    const task = (active.data.current as { task: KanbanTask }).task;
+    const newColumn = String(over.id) as ColumnKey;
+    if (task.column === newColumn) return;
+
+    const previousColumn = task.column;
+
+    onTasksChange(projectId, tasks =>
+      tasks.map(t => t.id === task.id ? { ...t, column: newColumn } : t)
+    );
+
+    try {
+      const res = await fetchWithAuth(`/api/admin/kanban-tasks/${task.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ column: newColumn }),
+      });
+      if (!res.ok) throw new Error("API error");
+    } catch {
+      onTasksChange(projectId, tasks =>
+        tasks.map(t => t.id === task.id ? { ...t, column: previousColumn } : t)
+      );
+      toast({ title: "Move failed", description: "Could not update task. Please try again.", variant: "destructive" });
+    }
+  };
+
+  return (
+    <DndContext sensors={sensors} onDragStart={handleDragStart} onDragOver={handleDragOver} onDragEnd={e => void handleDragEnd(e)}>
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        {COLUMNS.map(col => (
+          <DroppableColumn
+            key={col.key}
+            col={col}
+            tasks={tasks.filter(t => t.column === col.key)}
+            onDelete={onDelete}
+            projectId={projectId}
+            isOver={overColumnKey === col.key}
+          />
+        ))}
+      </div>
+      <DragOverlay>
+        {activeTask ? <CardOverlay task={activeTask} /> : null}
+      </DragOverlay>
+    </DndContext>
+  );
+}
+
 export default function ProjectsPage() {
   const { fetchWithAuth } = useAuth();
   const { toast } = useToast();
@@ -136,6 +324,14 @@ export default function ProjectsPage() {
     await reloadDetails(projectId);
     setDetailLoading(false);
   };
+
+  const handleTasksChange = useCallback((projectId: number, updater: (tasks: KanbanTask[]) => KanbanTask[]) => {
+    setProjectDetails(prev => {
+      const detail = prev[projectId];
+      if (!detail) return prev;
+      return { ...prev, [projectId]: { ...detail, tasks: updater(detail.tasks) } };
+    });
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -469,42 +665,33 @@ export default function ProjectsPage() {
                                   className="w-full border border-border rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4] bg-white">
                                   <option value="backlog">Backlog</option>
                                   <option value="in_progress">In Progress</option>
-                                  <option value="waiting_on_customer">Waiting on Client</option>
-                                  <option value="completed">Completed</option>
+                                  <option value="waiting_on_customer">Waiting</option>
+                                  <option value="completed">Done</option>
                                 </select>
                               </div>
                               <div>
                                 <label className="block text-xs font-semibold text-[#0A2540] mb-1">Assigned To</label>
                                 <input value={taskForm.assignedTo} onChange={e => setTaskForm(f => ({ ...f, assignedTo: e.target.value }))}
-                                  placeholder="Optional" className="w-full border border-border rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4]" />
+                                  placeholder="Optional name"
+                                  className="w-full border border-border rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4]" />
                               </div>
                               <div className="sm:col-span-3 flex gap-2">
-                                <button type="submit" disabled={subSaving} className="bg-[#0078D4] text-white text-xs font-semibold px-3 py-1.5 rounded hover:bg-[#0078D4]/90 disabled:opacity-50">Add Task</button>
+                                <button type="submit" disabled={subSaving} className="bg-[#0078D4] text-white text-xs font-semibold px-3 py-1.5 rounded hover:bg-[#0078D4]/90 disabled:opacity-50">Add</button>
                                 <button type="button" onClick={() => setAddTaskProjectId(null)} className="border border-border text-xs font-medium px-3 py-1.5 rounded hover:bg-[#F7F9FC]">Cancel</button>
                               </div>
                             </form>
                           )}
                           {!detail?.tasks.length ? (
-                            <p className="text-xs text-muted-foreground">No tasks yet.</p>
+                            <p className="text-xs text-muted-foreground">No Kanban tasks yet.</p>
                           ) : (
-                            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                              {["backlog", "in_progress", "waiting_on_customer", "completed"].map(col => (
-                                <div key={col} className="bg-white border border-border rounded-lg p-3">
-                                  <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-2">
-                                    {col === "backlog" ? "Backlog" : col === "in_progress" ? "In Progress" : col === "waiting_on_customer" ? "Waiting" : "Done"}
-                                  </p>
-                                  <div className="space-y-1.5">
-                                    {detail.tasks.filter(t => t.column === col).map(task => (
-                                      <div key={task.id} className="bg-[#F7F9FC] border border-border rounded p-2 text-xs">
-                                        <p className="font-medium text-[#0A2540]">{task.title}</p>
-                                        {task.assignedTo && <p className="text-muted-foreground text-[10px] mt-0.5">{task.assignedTo}</p>}
-                                        <button onClick={() => void handleDeleteTask(task.id, p.id)} className="text-red-400 hover:text-red-600 text-[10px] font-semibold mt-1">Delete</button>
-                                      </div>
-                                    ))}
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
+                            <KanbanBoard
+                              projectId={p.id}
+                              tasks={detail.tasks}
+                              onTasksChange={handleTasksChange}
+                              onDelete={handleDeleteTask}
+                              fetchWithAuth={fetchWithAuth}
+                              toast={toast}
+                            />
                           )}
                         </div>
                       </>
@@ -522,17 +709,13 @@ export default function ProjectsPage() {
           <AlertDialogHeader>
             <AlertDialogTitle>Delete project?</AlertDialogTitle>
             <AlertDialogDescription>
-              This will permanently delete <strong>{deleteTarget?.title}</strong> and all its workflow steps, Kanban tasks, documents, and updates. This cannot be undone.
+              This will permanently delete <strong>{deleteTarget?.title}</strong> and all its workflow steps, kanban tasks, and associated data. This cannot be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={deleting}>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              disabled={deleting}
-              onClick={e => { e.preventDefault(); void handleDelete(); }}
-              className="bg-red-600 hover:bg-red-700 text-white"
-            >
-              {deleting ? "Deleting…" : "Yes, delete project"}
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={() => void handleDelete()} disabled={deleting} className="bg-red-600 hover:bg-red-700 text-white">
+              {deleting ? "Deleting…" : "Delete Project"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
