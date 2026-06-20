@@ -201,7 +201,7 @@ function CancelDialog({
 
 export default function PortalBilling() {
   const { fetchWithAuth } = useAuth();
-  const [location] = useLocation();
+  const [location, navigate] = useLocation();
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
   const [loading, setLoading] = useState(true);
@@ -394,7 +394,11 @@ export default function PortalBilling() {
                 const config = STATUS_CONFIG[inv.status] ?? STATUS_CONFIG.draft;
                 const canPay = inv.status === "due" || inv.status === "overdue";
                 return (
-                  <div key={inv.id} className="px-5 py-4 flex items-center gap-4 flex-wrap sm:flex-nowrap">
+                  <div
+                    key={inv.id}
+                    onClick={() => navigate(`/portal/billing/invoices/${inv.id}`)}
+                    className="px-5 py-4 flex items-center gap-4 flex-wrap sm:flex-nowrap hover:bg-[#F7F9FC] transition-colors group cursor-pointer"
+                  >
                     <div className="w-10 h-10 rounded-xl bg-[#0078D4]/10 flex items-center justify-center flex-shrink-0">
                       <svg className="w-5 h-5 text-[#0078D4]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                         <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
@@ -403,7 +407,7 @@ export default function PortalBilling() {
 
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 flex-wrap mb-0.5">
-                        <p className="text-sm font-bold text-[#0A2540]">{inv.invoiceNumber}</p>
+                        <p className="text-sm font-bold text-[#0A2540] group-hover:text-[#0078D4] transition-colors">{inv.invoiceNumber}</p>
                         <span className={`text-xs font-semibold px-2 py-0.5 rounded-full border ${config.classes}`}>{config.label}</span>
                       </div>
                       {inv.description && <p className="text-xs text-muted-foreground truncate">{inv.description}</p>}
@@ -424,7 +428,8 @@ export default function PortalBilling() {
                       <div className="flex items-center gap-2">
                         {inv.pdfFilename && (
                           <button
-                            onClick={async () => {
+                            onClick={async (e) => {
+                              e.stopPropagation();
                               const r = await fetchWithAuth(`/api/portal/invoices/${inv.id}/download`);
                               const blob = await r.blob();
                               const url = URL.createObjectURL(blob);
@@ -442,7 +447,7 @@ export default function PortalBilling() {
                         )}
                         {canPay && (
                           <button
-                            onClick={() => void handlePay(inv)}
+                            onClick={(e) => { e.stopPropagation(); void handlePay(inv); }}
                             disabled={paying === inv.id}
                             className="flex items-center gap-1.5 bg-[#0078D4] text-white text-sm font-semibold px-4 py-2 rounded-lg hover:bg-[#0078D4]/90 transition-colors disabled:opacity-60"
                           >

@@ -692,6 +692,56 @@ router.get("/portal/invoices", requireAuth, async (req: Request, res: Response) 
   res.json(invoices);
 });
 
+// ─── CLIENT: Invoice detail ───────────────────────────────────────────────────
+router.get("/portal/invoices/:id", requireAuth, async (req: Request, res: Response) => {
+  const userId = req.user!.id;
+  const id = parseInt(String(req.params.id ?? ""), 10);
+  if (isNaN(id)) { res.status(400).json({ error: "Invalid ID" }); return; }
+
+  const [invoice] = await db.select().from(invoicesTable)
+    .where(and(eq(invoicesTable.id, id), eq(invoicesTable.clientUserId, userId)));
+  if (!invoice) { res.status(404).json({ error: "Invoice not found" }); return; }
+
+  let project: { id: number; title: string } | null = null;
+  if (invoice.projectId) {
+    const [p] = await db.select({ id: projectsTable.id, title: projectsTable.title })
+      .from(projectsTable)
+      .where(and(eq(projectsTable.id, invoice.projectId), eq(projectsTable.clientUserId, userId)));
+    project = p ?? null;
+  }
+
+  let contracts: Array<{
+    id: number;
+    serviceId: number;
+    serviceName: string;
+    signedAt: Date;
+    signerName: string | null;
+    contractVersion: string;
+    finalPrice: string | null;
+  }> = [];
+
+  if (invoice.projectId) {
+    const rows = await db.select({
+      id: contractsTable.id,
+      serviceId: contractsTable.serviceId,
+      serviceName: servicesTable.name,
+      signedAt: contractsTable.signedAt,
+      signerName: contractsTable.signerName,
+      contractVersion: contractsTable.contractVersion,
+      finalPrice: contractsTable.finalPrice,
+    })
+      .from(contractsTable)
+      .innerJoin(servicesTable, eq(contractsTable.serviceId, servicesTable.id))
+      .where(and(
+        eq(contractsTable.projectId, invoice.projectId),
+        eq(contractsTable.userId, userId),
+      ));
+    contracts = rows;
+  }
+
+  res.json({ invoice, project, contracts });
+});
+
 router.post("/portal/invoices/:id/pay", requireAuth, async (req: Request, res: Response) => {
   const userId = req.user!.id;
   const id = parseInt(String(req.params.id ?? ""), 10);
@@ -749,6 +799,56 @@ router.get("/portal/invoices/:id/download", requireAuth, async (req: Request, re
   const filePath = path.join(UPLOADS_BASE, "invoices", invoice.pdfFilename);
   if (!fs.existsSync(filePath)) { res.status(404).json({ error: "File not found" }); return; }
   res.download(filePath, invoice.pdfFilename);
+});
+
+// ─── CLIENT: Contract detail ──────────────────────────────────────────────────
+router.get("/portal/contracts/:id", requireAuth, async (req: Request, res: Response) => {
+  const userId = req.user!.id;
+  const id = parseInt(String(req.params.id ?? ""), 10);
+  if (isNaN(id)) { res.status(400).json({ error: "Invalid ID" }); return; }
+
+  const [row] = await db.select({
+    id: contractsTable.id,
+    userId: contractsTable.userId,
+    serviceId: contractsTable.serviceId,
+    serviceName: servicesTable.name,
+    signedAt: contractsTable.signedAt,
+    signatureData: contractsTable.signatureData,
+    signerName: contractsTable.signerName,
+    contractVersion: contractsTable.contractVersion,
+    projectId: contractsTable.projectId,
+    pdfFilename: contractsTable.pdfFilename,
+    finalPrice: contractsTable.finalPrice,
+    wizardSelections: contractsTable.wizardSelections,
+    createdAt: contractsTable.createdAt,
+  })
+    .from(contractsTable)
+    .innerJoin(servicesTable, eq(contractsTable.serviceId, servicesTable.id))
+    .where(and(eq(contractsTable.id, id), eq(contractsTable.userId, userId)));
+
+  if (!row) { res.status(404).json({ error: "Contract not found" }); return; }
+
+  // Fetch the template body for this service (admin-authored agreement text)
+  const [template] = await db.select({ body: contractTemplatesTable.body })
+    .from(contractTemplatesTable)
+    .where(eq(contractTemplatesTable.serviceId, row.serviceId));
+
+  res.json({ ...row, agreementBody: template?.body ?? null });
+});
+
+router.get("/portal/contracts/:id/download", requireAuth, async (req: Request, res: Response) => {
+  const userId = req.user!.id;
+  const id = parseInt(String(req.params.id ?? ""), 10);
+  if (isNaN(id)) { res.status(400).json({ error: "Invalid ID" }); return; }
+
+  const [contract] = await db.select().from(contractsTable)
+    .where(and(eq(contractsTable.id, id), eq(contractsTable.userId, userId)));
+  if (!contract) { res.status(404).json({ error: "Contract not found" }); return; }
+  if (!contract.pdfFilename) { res.status(404).json({ error: "No PDF available" }); return; }
+
+  const filePath = path.join(UPLOADS_BASE, "contracts", contract.pdfFilename);
+  if (!fs.existsSync(filePath)) { res.status(404).json({ error: "File not found" }); return; }
+  res.download(filePath, contract.pdfFilename);
 });
 
 // ─── CLIENT: Subscriptions ────────────────────────────────────────────────────
