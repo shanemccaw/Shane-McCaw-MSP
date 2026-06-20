@@ -1,5 +1,12 @@
 import { useEffect, useState, useCallback } from "react";
 import { useAuth } from "@/contexts/AuthContext";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
 
 interface Client {
   id: number;
@@ -35,6 +42,9 @@ interface KanbanTask {
   column: string;
   assignedTo: string | null;
   order: number;
+  waitingReason: string | null;
+  completionStatus: string | null;
+  completionNotes: string | null;
 }
 
 const STATUS_COLORS: Record<string, string> = {
@@ -56,6 +66,87 @@ const KANBAN_COLUMNS: { key: string; label: string }[] = [
   { key: "waiting_on_customer", label: "Waiting on Client" },
   { key: "completed", label: "Completed" },
 ];
+
+function CrmTaskCard({ task, projectId, onQuickMove, onDelete, columns }: {
+  task: KanbanTask;
+  projectId: number;
+  onQuickMove: (task: KanbanTask, projectId: number, targetColumn: string) => void;
+  onDelete: (taskId: number, projectId: number) => void;
+  columns: { key: string; label: string }[];
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const hasDetail = (task.column === "waiting_on_customer" && task.waitingReason) ||
+    (task.column === "completed" && (task.completionStatus || task.completionNotes));
+
+  return (
+    <div className="bg-[#F7F9FC] border border-border rounded p-2">
+      <p className="text-xs font-medium text-[#0A2540] leading-tight">{task.title}</p>
+      {task.assignedTo && <p className="text-xs text-muted-foreground mt-0.5">→ {task.assignedTo}</p>}
+
+      {task.column === "waiting_on_customer" && task.waitingReason && (
+        <p className="mt-1 text-[10px] text-amber-700 bg-amber-50 border border-amber-200 rounded px-1.5 py-0.5 leading-snug line-clamp-2">
+          ⏳ {task.waitingReason}
+        </p>
+      )}
+      {task.column === "completed" && task.completionStatus && (
+        <span className="inline-block mt-1 text-[10px] font-semibold text-green-700 bg-green-50 border border-green-200 rounded px-1.5 py-0.5">
+          ✓ {task.completionStatus}
+        </span>
+      )}
+
+      {hasDetail && (
+        <button
+          onClick={() => setExpanded(e => !e)}
+          className="mt-1 text-[9px] font-semibold text-[#0078D4] hover:underline flex items-center gap-0.5"
+        >
+          {expanded ? "▲ Hide details" : "▼ Show details"}
+        </button>
+      )}
+
+      {expanded && hasDetail && (
+        <div className="mt-2 space-y-2 border-t border-border pt-2">
+          {task.column === "waiting_on_customer" && task.waitingReason && (
+            <div>
+              <p className="text-[9px] font-bold uppercase tracking-wider text-amber-600 mb-0.5">Waiting for</p>
+              <p className="text-[10px] text-amber-800 bg-amber-50 border border-amber-100 rounded px-2 py-1 whitespace-pre-wrap leading-snug">{task.waitingReason}</p>
+            </div>
+          )}
+          {task.column === "completed" && task.completionStatus && (
+            <div>
+              <p className="text-[9px] font-bold uppercase tracking-wider text-green-700 mb-0.5">Completion Status</p>
+              <p className="text-[10px] text-green-800 bg-green-50 border border-green-100 rounded px-2 py-1">{task.completionStatus}</p>
+            </div>
+          )}
+          {task.column === "completed" && task.completionNotes && (
+            <div>
+              <p className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground mb-0.5">Task Results</p>
+              <pre className="text-[9px] text-[#0A2540] bg-white border border-border rounded px-2 py-1.5 whitespace-pre-wrap font-mono leading-relaxed max-h-40 overflow-y-auto">{task.completionNotes}</pre>
+            </div>
+          )}
+        </div>
+      )}
+
+      <div className="flex flex-wrap items-center gap-1 mt-1.5">
+        {columns.filter(c => c.key !== task.column).map(c => (
+          <button
+            key={c.key}
+            onClick={() => onQuickMove(task, projectId, c.key)}
+            className="text-[9px] font-semibold px-1.5 py-0.5 rounded border border-border bg-white hover:bg-[#0078D4] hover:text-white hover:border-[#0078D4] transition-colors text-muted-foreground"
+            title={`Move to ${c.label}`}
+          >
+            → {c.label}
+          </button>
+        ))}
+        <button
+          onClick={() => void onDelete(task.id, projectId)}
+          className="text-[9px] text-red-400 hover:text-red-600 font-semibold ml-auto"
+        >
+          Delete
+        </button>
+      </div>
+    </div>
+  );
+}
 
 interface ProjectFormState {
   title: string;
@@ -96,6 +187,13 @@ export default function AdminProjects() {
   const [addTaskProjectId, setAddTaskProjectId] = useState<number | null>(null);
   const [taskForm, setTaskForm] = useState({ title: "", column: "backlog", assignedTo: "" });
   const [subSaving, setSubSaving] = useState(false);
+
+  // Quick-move modal state
+  const [pendingMove, setPendingMove] = useState<{ task: KanbanTask; projectId: number; targetColumn: string } | null>(null);
+  const [waitingReason, setWaitingReason] = useState("");
+  const [completionStatus, setCompletionStatus] = useState("");
+  const [completionNotes, setCompletionNotes] = useState("");
+  const [modalSaving, setModalSaving] = useState(false);
 
   const load = async () => {
     const [projRes, clientRes] = await Promise.all([
@@ -247,6 +345,47 @@ export default function AdminProjects() {
     if (!confirm("Delete this Kanban task?")) return;
     await fetchWithAuth(`/api/admin/kanban-tasks/${taskId}`, { method: "DELETE" });
     await reloadDetails(projectId);
+  };
+
+  const executeQuickMove = async (task: KanbanTask, pId: number, targetColumn: string, extra?: {
+    waitingReason?: string; completionStatus?: string; completionNotes?: string;
+  }) => {
+    await fetchWithAuth(`/api/admin/kanban-tasks/${task.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ column: targetColumn, ...extra }),
+    });
+    await reloadDetails(pId);
+  };
+
+  const handleQuickMove = (task: KanbanTask, pId: number, targetColumn: string) => {
+    if (targetColumn === "waiting_on_customer" || targetColumn === "completed") {
+      setPendingMove({ task, projectId: pId, targetColumn });
+      setWaitingReason("");
+      setCompletionStatus("");
+      setCompletionNotes("");
+    } else {
+      void executeQuickMove(task, pId, targetColumn);
+    }
+  };
+
+  const confirmWaiting = async () => {
+    if (!pendingMove || !waitingReason.trim()) return;
+    setModalSaving(true);
+    await executeQuickMove(pendingMove.task, pendingMove.projectId, "waiting_on_customer", { waitingReason: waitingReason.trim() });
+    setModalSaving(false);
+    setPendingMove(null);
+  };
+
+  const confirmCompleted = async () => {
+    if (!pendingMove || !completionStatus.trim()) return;
+    setModalSaving(true);
+    await executeQuickMove(pendingMove.task, pendingMove.projectId, "completed", {
+      completionStatus: completionStatus.trim(),
+      completionNotes: completionNotes.trim() || undefined,
+    });
+    setModalSaving(false);
+    setPendingMove(null);
   };
 
   return (
@@ -524,16 +663,14 @@ export default function AdminProjects() {
                                       {colTasks.length === 0 ? (
                                         <p className="text-xs text-muted-foreground/60 italic">Empty</p>
                                       ) : colTasks.map(t => (
-                                        <div key={t.id} className="bg-[#F7F9FC] border border-border rounded p-2">
-                                          <p className="text-xs font-medium text-[#0A2540] leading-tight">{t.title}</p>
-                                          {t.assignedTo && <p className="text-xs text-muted-foreground mt-0.5">→ {t.assignedTo}</p>}
-                                          <button
-                                            onClick={() => void handleDeleteTask(t.id, p.id)}
-                                            className="text-xs text-red-400 hover:text-red-600 mt-1 font-semibold"
-                                          >
-                                            Delete
-                                          </button>
-                                        </div>
+                                        <CrmTaskCard
+                                          key={t.id}
+                                          task={t}
+                                          projectId={p.id}
+                                          onQuickMove={handleQuickMove}
+                                          onDelete={handleDeleteTask}
+                                          columns={KANBAN_COLUMNS}
+                                        />
                                       ))}
                                     </div>
                                   </div>
@@ -551,6 +688,85 @@ export default function AdminProjects() {
           })}
         </div>
       )}
+
+      {/* Waiting on Customer modal */}
+      <Dialog open={pendingMove?.targetColumn === "waiting_on_customer"} onOpenChange={open => { if (!open) setPendingMove(null); }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Move to Waiting on Client</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 py-1">
+            <p className="text-sm text-muted-foreground">Moving: <strong className="text-[#0A2540]">{pendingMove?.task.title}</strong></p>
+            <div>
+              <label className="block text-xs font-semibold text-[#0A2540] mb-1">What are you waiting for from the customer? *</label>
+              <textarea
+                autoFocus
+                rows={3}
+                value={waitingReason}
+                onChange={e => setWaitingReason(e.target.value)}
+                placeholder="e.g. Approval of the migration plan, admin credentials for the tenant…"
+                className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4] resize-none"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <button onClick={() => setPendingMove(null)} className="border border-border text-sm font-medium px-4 py-2 rounded-lg hover:bg-[#F7F9FC]">
+              Cancel
+            </button>
+            <button
+              onClick={() => void confirmWaiting()}
+              disabled={!waitingReason.trim() || modalSaving}
+              className="bg-amber-500 text-white text-sm font-semibold px-4 py-2 rounded-lg hover:bg-amber-600 disabled:opacity-50"
+            >
+              {modalSaving ? "Moving…" : "Move to Waiting"}
+            </button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Completed modal */}
+      <Dialog open={pendingMove?.targetColumn === "completed"} onOpenChange={open => { if (!open) setPendingMove(null); }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Mark as Completed</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 py-1">
+            <p className="text-sm text-muted-foreground">Completing: <strong className="text-[#0A2540]">{pendingMove?.task.title}</strong></p>
+            <div>
+              <label className="block text-xs font-semibold text-[#0A2540] mb-1">Completion status *</label>
+              <input
+                autoFocus
+                value={completionStatus}
+                onChange={e => setCompletionStatus(e.target.value)}
+                placeholder="e.g. Deployed successfully, All users migrated…"
+                className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4]"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-[#0A2540] mb-1">Script output / results <span className="font-normal text-muted-foreground">(optional)</span></label>
+              <textarea
+                rows={5}
+                value={completionNotes}
+                onChange={e => setCompletionNotes(e.target.value)}
+                placeholder="Paste command output, script results, or any notes…"
+                className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4] resize-y font-mono"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <button onClick={() => setPendingMove(null)} className="border border-border text-sm font-medium px-4 py-2 rounded-lg hover:bg-[#F7F9FC]">
+              Cancel
+            </button>
+            <button
+              onClick={() => void confirmCompleted()}
+              disabled={!completionStatus.trim() || modalSaving}
+              className="bg-green-600 text-white text-sm font-semibold px-4 py-2 rounded-lg hover:bg-green-700 disabled:opacity-50"
+            >
+              {modalSaving ? "Saving…" : "Mark Completed"}
+            </button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

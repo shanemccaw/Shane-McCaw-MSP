@@ -157,6 +157,9 @@ export const kanbanTasksTable = pgTable("kanban_tasks", {
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
   workflowStepId: integer("workflow_step_id"),
   groupName: text("group_name"),
+  waitingReason: text("waiting_reason"),
+  completionStatus: text("completion_status"),
+  completionNotes: text("completion_notes"),
 });
 
 export type InsertKanbanTask = typeof kanbanTasksTable.$inferInsert;

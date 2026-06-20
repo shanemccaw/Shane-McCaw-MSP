@@ -437,6 +437,26 @@ router.get("/portal/projects/:id/audit-pdf", requireAuth, async (req: Request, r
           const titleLines = wrap(task.title, 80);
           text(titleLines[0] ?? task.title, margin + 20, y, { size: 8.5, color: navy });
           y -= 12;
+
+          const t = task as typeof task & { completionStatus?: string | null; completionNotes?: string | null; waitingReason?: string | null };
+          if (task.column === "completed" && t.completionStatus) {
+            ensureSpace(12);
+            text(`  Status: ${t.completionStatus}`, margin + 20, y, { size: 8, color: green });
+            y -= 11;
+          }
+          if (task.column === "completed" && t.completionNotes) {
+            const noteLines = wrap(t.completionNotes, 78);
+            for (const line of noteLines.slice(0, 3)) {
+              ensureSpace(11);
+              text(`  ${line}`, margin + 20, y, { size: 7.5, color: rgb(0.45, 0.45, 0.45) });
+              y -= 10;
+            }
+          }
+          if (task.column === "waiting_on_customer" && t.waitingReason) {
+            ensureSpace(11);
+            text(`  Waiting for: ${t.waitingReason}`, margin + 20, y, { size: 8, color: rgb(0.761, 0.490, 0) });
+            y -= 11;
+          }
         }
         y -= 4;
       }
@@ -2040,8 +2060,9 @@ router.patch("/admin/kanban-tasks/:id", requireAdmin, async (req: Request, res: 
   const id = parseInt(String(req.params.id ?? ""), 10);
   if (isNaN(id)) { res.status(400).json({ error: "Invalid ID" }); return; }
 
-  const { column, title, description, order, assignedTo, dueDate } = req.body as {
+  const { column, title, description, order, assignedTo, dueDate, waitingReason, completionStatus, completionNotes } = req.body as {
     column?: string; title?: string; description?: string; order?: number; assignedTo?: string; dueDate?: string;
+    waitingReason?: string | null; completionStatus?: string | null; completionNotes?: string | null;
   };
   const updates: Partial<typeof kanbanTasksTable.$inferInsert & { updatedAt: Date }> = { updatedAt: new Date() };
   if (column !== undefined) updates.column = column as "backlog" | "in_progress" | "waiting_on_customer" | "completed";
@@ -2050,6 +2071,9 @@ router.patch("/admin/kanban-tasks/:id", requireAdmin, async (req: Request, res: 
   if (order !== undefined) updates.order = order;
   if (assignedTo !== undefined) updates.assignedTo = assignedTo;
   if (dueDate !== undefined) updates.dueDate = dueDate ? new Date(dueDate) : null;
+  if (waitingReason !== undefined) updates.waitingReason = waitingReason ?? null;
+  if (completionStatus !== undefined) updates.completionStatus = completionStatus ?? null;
+  if (completionNotes !== undefined) updates.completionNotes = completionNotes ?? null;
 
   const [updated] = await db.update(kanbanTasksTable).set(updates).where(eq(kanbanTasksTable.id, id)).returning();
   if (!updated) { res.status(404).json({ error: "Task not found" }); return; }
