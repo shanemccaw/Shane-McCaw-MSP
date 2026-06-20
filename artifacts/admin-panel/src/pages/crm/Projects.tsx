@@ -47,7 +47,7 @@ interface ProjectWithSteps extends Project {
 
 interface TrackConfig {
   num: string;
-  type: string;
+  type: string | string[];
   label: string;
   description: string;
   icon: string;
@@ -57,19 +57,11 @@ interface TrackConfig {
 const TRACKS: TrackConfig[] = [
   {
     num: "01",
-    type: "micro-offer",
-    label: "Micro-Offers",
-    description: "Fixed-price, rapid-delivery engagements",
+    type: ["micro-offer", "project"],
+    label: "Micro-Offers & Projects",
+    description: "Fixed-price and scoped project-based engagements",
     icon: "bolt",
     color: "#00B4D8",
-  },
-  {
-    num: "02",
-    type: "project",
-    label: "Project-Based Engagements",
-    description: "Scoped deliverables with defined milestones",
-    icon: "folder_open",
-    color: "#0078D4",
   },
   {
     num: "03",
@@ -325,6 +317,7 @@ function TrackSection({
   onEdit: (p: Project) => void;
   onDelete: (p: Project) => void;
 }) {
+  if (projects.length === 0) return null;
   const isRetainer = track.type === "retainer";
   return (
     <div>
@@ -564,7 +557,8 @@ export default function ProjectsPage() {
     setShowForm(true);
   };
 
-  const byType = (type: string) => projects.filter(p => p.projectType === type);
+  const byType = (type: string | string[]) =>
+    projects.filter(p => Array.isArray(type) ? type.includes(p.projectType) : p.projectType === type);
 
   return (
     <div className="p-6 max-w-[1200px]">
@@ -675,7 +669,7 @@ export default function ProjectsPage() {
           <div className="space-y-10">
             {TRACKS.map(track => (
               <TrackSection
-                key={track.type}
+                key={track.num}
                 track={track}
                 projects={byType(track.type)}
                 steps={steps}
