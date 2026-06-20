@@ -345,6 +345,24 @@ export function adminThreadReplyEmail(opts: {
   `;
 }
 
+export function retainerResumedEmail(opts: {
+  clientName: string;
+  serviceName: string;
+  nextBillingDate: string;
+}): string {
+  return `
+    <p>Hi ${escapeHtml(opts.clientName) || "there"},</p>
+    <p>Great news — your <strong>${escapeHtml(opts.serviceName)}</strong> retainer has been successfully resumed. The scheduled cancellation has been reversed and your service will continue uninterrupted.</p>
+    <table cellpadding="0" cellspacing="0" style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:16px 20px;margin:16px 0;width:100%;">
+      <tr><td style="padding:4px 0;color:#64748b;font-size:13px;width:160px;">Service</td><td style="padding:4px 0;font-weight:600;">${escapeHtml(opts.serviceName)}</td></tr>
+      <tr><td style="padding:4px 0;color:#64748b;font-size:13px;">Next charge</td><td style="padding:4px 0;font-weight:600;">${escapeHtml(opts.nextBillingDate)}</td></tr>
+    </table>
+    <p>If you didn't intend to resume this retainer, or if you have any questions, please reach out via your client portal.</p>
+    ${emailButton("View your portal", PORTAL_URL)}
+    <p style="margin-top:24px;">— Shane McCaw</p>
+  `;
+}
+
 export function adminPurchaseAlertEmail(opts: {
   clientName: string;
   clientEmail: string;

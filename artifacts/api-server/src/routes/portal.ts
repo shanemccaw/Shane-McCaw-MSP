@@ -2,7 +2,7 @@ import { Router, type IRouter, type Request, type Response } from "express";
 import { db, projectsTable, clientServicesTable, servicesTable, workflowStepsTable, kanbanTasksTable, documentsTable, reportsTable, invoicesTable, messagesTable, notificationsTable, projectUpdatesTable, usersTable, contractsTable, passwordResetTokensTable, workflowTemplateStepsTable, workflowTemplateStepTasksTable, contractTemplatesTable, impersonationTokensTable, statusReportsTable, deviceTokensTable, projectClosuresTable, auditLogsTable } from "@workspace/db";
 import { eq, and, desc, asc, count, sql, inArray, gte, isNotNull } from "drizzle-orm";
 import { requireAuth, requireAdmin } from "../middlewares/requireAuth";
-import { sendEmail, purchaseConfirmationEmail, onboardingConfirmationEmail, adminPurchaseAlertEmail, closureRequestEmail, statusReportReplyEmail, clientThreadReplyEmail, adminThreadReplyEmail } from "../lib/mailer";
+import { sendEmail, purchaseConfirmationEmail, onboardingConfirmationEmail, adminPurchaseAlertEmail, closureRequestEmail, statusReportReplyEmail, clientThreadReplyEmail, adminThreadReplyEmail, retainerResumedEmail } from "../lib/mailer";
 import { sendAdminSms } from "../lib/sms";
 import { sendPushNotifications } from "../lib/push";
 import { createAuditLog } from "../lib/audit";
@@ -1387,11 +1387,29 @@ router.post("/portal/billing/subscriptions/:id/resume", requireAuth, async (req:
     clientId: userId,
   });
 
+  const nextPeriodEnd = sub.items.data[0]?.current_period_end ?? null;
+  const nextBillingDate = nextPeriodEnd
+    ? new Date(nextPeriodEnd * 1000).toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" })
+    : "your next billing cycle";
+
+  const [svc] = await db.select({ name: servicesTable.name }).from(servicesTable).where(eq(servicesTable.id, cs.serviceId)).limit(1);
+  const serviceName = svc?.name ?? "your service";
+
+  void sendEmail(
+    req.user!.email,
+    `Your ${serviceName} retainer is back on`,
+    retainerResumedEmail({
+      clientName: req.user!.name ?? "",
+      serviceName,
+      nextBillingDate,
+    }),
+  );
+
   res.json({
     ok: true,
     cancelAtPeriodEnd: sub.cancel_at_period_end,
     cancelAt: sub.cancel_at ?? null,
-    currentPeriodEnd: sub.items.data[0]?.current_period_end ?? null,
+    currentPeriodEnd: nextPeriodEnd,
   });
 });
 
