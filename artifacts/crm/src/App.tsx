@@ -4,7 +4,6 @@ import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import { Toaster } from "@/components/ui/toaster";
 import LoginPage from "@/pages/Login";
 import DashboardPage from "@/pages/Dashboard";
-import PortalDashboard from "@/pages/portal/PortalDashboard";
 import PortalProjects from "@/pages/portal/PortalProjects";
 import PortalProjectDetail from "@/pages/portal/PortalProjectDetail";
 import PortalServices from "@/pages/portal/PortalServices";
@@ -70,7 +69,7 @@ function Router() {
 
       {/* Client portal routes */}
       <Route path="/portal">
-        <RequireAuth role="client"><PortalDashboard /></RequireAuth>
+        <RequireAuth role="client"><Dashboard2 /></RequireAuth>
       </Route>
       <Route path="/portal/projects">
         <RequireAuth role="client"><PortalProjects /></RequireAuth>
@@ -90,9 +89,7 @@ function Router() {
       <Route path="/portal/messages">
         <RequireAuth role="client"><PortalMessages /></RequireAuth>
       </Route>
-      <Route path="/portal/dashboard2">
-        <RequireAuth role="client"><Dashboard2 /></RequireAuth>
-      </Route>
+
       <Route path="/portal/executive">
         <RequireAuth role="client"><ExecutiveDashboard /></RequireAuth>
       </Route>
