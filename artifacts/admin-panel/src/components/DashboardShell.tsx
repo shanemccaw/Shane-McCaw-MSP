@@ -1,6 +1,7 @@
 import { type ReactNode, useState, useEffect, useCallback, useRef } from "react";
 import { Link, useLocation } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
+import { EmailBadgeContext } from "@/contexts/EmailBadgeContext";
 import {
   Tooltip,
   TooltipContent,
@@ -521,6 +522,26 @@ export default function DashboardShell({ children }: { children: ReactNode }) {
   const [unreadEmailCount, setUnreadEmailCount] = useState(0);
   const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
+  const fetchCount = useCallback(async () => {
+    const lastViewed = readLastViewedAt();
+    const url = lastViewed
+      ? `/api/admin/emails/unread-count?since=${lastViewed}`
+      : "/api/admin/emails/unread-count";
+    try {
+      const res = await fetch(url, { credentials: "include" });
+      if (res.ok) {
+        const data = await res.json() as { count: number };
+        setUnreadEmailCount(data.count);
+      }
+    } catch {
+      // non-fatal — silently ignore
+    }
+  }, []);
+
+  const refreshUnreadCount = useCallback(() => {
+    void fetchCount();
+  }, [fetchCount]);
+
   // When on Email Activity: mark as viewed (watermark) and clear badge.
   // When away: poll the count using the watermark so already-seen emails stay cleared.
   useEffect(() => {
@@ -534,22 +555,6 @@ export default function DashboardShell({ children }: { children: ReactNode }) {
       return;
     }
 
-    const fetchCount = async () => {
-      const lastViewed = readLastViewedAt();
-      const url = lastViewed
-        ? `/api/admin/emails/unread-count?since=${lastViewed}`
-        : "/api/admin/emails/unread-count";
-      try {
-        const res = await fetch(url, { credentials: "include" });
-        if (res.ok) {
-          const data = await res.json() as { count: number };
-          setUnreadEmailCount(data.count);
-        }
-      } catch {
-        // non-fatal — silently ignore
-      }
-    };
-
     void fetchCount();
     pollTimerRef.current = setInterval(() => void fetchCount(), POLL_INTERVAL_MS);
 
@@ -559,7 +564,7 @@ export default function DashboardShell({ children }: { children: ReactNode }) {
         pollTimerRef.current = null;
       }
     };
-  }, [location]);
+  }, [location, fetchCount]);
 
   useEffect(() => {
     try {
@@ -664,7 +669,11 @@ export default function DashboardShell({ children }: { children: ReactNode }) {
             <p className="font-bold text-white text-sm">Admin Panel</p>
           </div>
 
-          <main className="flex-1 overflow-y-auto">{children}</main>
+          <main className="flex-1 overflow-y-auto">
+            <EmailBadgeContext.Provider value={{ refreshUnreadCount }}>
+              {children}
+            </EmailBadgeContext.Provider>
+          </main>
         </div>
       </div>
     </TooltipProvider>

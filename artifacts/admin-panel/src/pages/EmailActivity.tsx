@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { useAuth } from "@/contexts/AuthContext";
+import { useEmailBadge } from "@/contexts/EmailBadgeContext";
 
 interface EmailRow {
   email: {
@@ -70,6 +71,7 @@ function formatDate(ts: string) {
 
 export default function EmailActivityPage() {
   const { fetchWithAuth } = useAuth();
+  const { refreshUnreadCount } = useEmailBadge();
   const [tab, setTab] = useState<Tab>("all");
   const [emails, setEmails] = useState<EmailRow[]>([]);
   const [total, setTotal] = useState(0);
@@ -152,6 +154,7 @@ export default function EmailActivityPage() {
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       await loadEmails();
+      refreshUnreadCount();
     } catch (e) {
       alert(e instanceof Error ? e.message : "Failed to assign email");
     } finally {
