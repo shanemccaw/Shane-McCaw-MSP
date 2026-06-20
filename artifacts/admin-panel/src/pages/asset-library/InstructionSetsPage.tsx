@@ -143,6 +143,8 @@ const InstructionSetImportSchema = z.object({
   instructions: z.array(z.string(), { invalid_type_error: "instructions must be an array of strings" }).optional(),
 });
 
+type ImportRecord = z.infer<typeof InstructionSetImportSchema>;
+
 function JsonImportModal({ onClose, onImported, collection }: {
   onClose: () => void; onImported: () => void; collection: string;
 }) {
@@ -156,25 +158,50 @@ function JsonImportModal({ onClose, onImported, collection }: {
     setErrors([]);
     let parsed: unknown;
     try { parsed = JSON.parse(raw); } catch { setErrors(["Invalid JSON — check syntax and try again."]); return; }
-    const validated = InstructionSetImportSchema.safeParse(parsed);
-    if (!validated.success) {
-      setErrors(validated.error.errors.map(e => {
-        const path = e.path.length ? e.path.join(".") + ": " : "";
-        return `${path}${e.message}`;
-      }));
-      return;
-    }
+
+    const isBulk = Array.isArray(parsed);
+    const records = isBulk ? (parsed as unknown[]) : [parsed];
+
+    const allErrors: string[] = [];
+    const validatedRecords: ImportRecord[] = [];
+    records.forEach((rec, idx) => {
+      const result = InstructionSetImportSchema.safeParse(rec);
+      if (!result.success) {
+        result.error.errors.forEach(e => {
+          const path = e.path.length ? e.path.join(".") + ": " : "";
+          allErrors.push(isBulk ? `[${idx}] ${path}${e.message}` : `${path}${e.message}`);
+        });
+      } else {
+        validatedRecords.push(result.data);
+      }
+    });
+
+    if (allErrors.length > 0) { setErrors(allErrors); return; }
+
     setSaving(true);
-    try {
-      const data = validated.data;
+    let created = 0, updated = 0;
+    const networkErrors: string[] = [];
+
+    for (const data of validatedRecords) {
       const hasId = typeof data.id === "number";
       const url = hasId ? `/api/admin/asset-library/${collection}/${data.id}` : `/api/admin/asset-library/${collection}`;
-      const res = await fetchWithAuth(url, { method: hasId ? "PUT" : "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) });
-      if (!res.ok) { const j = await res.json().catch(()=>({error:"Unknown error"})); setErrors([(j as {error?:string}).error ?? "Request failed"]); return; }
-      toast({ title: hasId ? "Record updated via import" : "Record created via import" });
-      onImported();
-    } catch { setErrors(["Network error — please try again."]); }
-    finally { setSaving(false); }
+      try {
+        const res = await fetchWithAuth(url, { method: hasId ? "PUT" : "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) });
+        if (!res.ok) { const j = await res.json().catch(()=>({error:"Unknown error"})); networkErrors.push((j as {error?:string}).error ?? "Request failed"); }
+        else if (hasId) { updated++; } else { created++; }
+      } catch { networkErrors.push("Network error — please try again."); }
+    }
+
+    setSaving(false);
+
+    if (networkErrors.length > 0) {
+      setErrors(networkErrors);
+      if (created > 0 || updated > 0) { toast({ title: `Partial import: ${created} created, ${updated} updated` }); onImported(); }
+      return;
+    }
+
+    toast({ title: isBulk ? `${created} created, ${updated} updated` : (validatedRecords[0] && typeof validatedRecords[0].id === "number" ? "Record updated via import" : "Record created via import") });
+    onImported();
   };
 
   return (
@@ -184,12 +211,12 @@ function JsonImportModal({ onClose, onImported, collection }: {
           <h2 className="font-semibold text-gray-900">JSON Import</h2>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600"><X className="w-5 h-5"/></button>
         </div>
-        <p className="text-sm text-gray-500 mb-3">Paste a full record JSON blob. If it has an <code className="bg-gray-100 px-1 rounded">id</code> field the record will be updated; otherwise a new record is created.</p>
+        <p className="text-sm text-gray-500 mb-3">Paste a single record or an array of records as JSON. Records with an <code className="bg-gray-100 px-1 rounded">id</code> field are updated; without one, a new record is created.</p>
         <textarea value={raw} onChange={e=>setRaw(e.target.value)} rows={10} spellCheck={false}
           className="w-full border border-gray-200 rounded px-3 py-2 text-sm font-mono resize-none focus:outline-none focus:ring-1 focus:ring-[#0078D4]"
-          placeholder='{"title": "My Set", "instructions": ["Step 1", "Step 2"]}' />
+          placeholder={'[{"title": "Set A", "instructions": ["Step 1"]}, {"title": "Set B"}]'} />
         {errors.length > 0 && (
-          <ul className="mt-2 space-y-1">
+          <ul className="mt-2 space-y-1 max-h-32 overflow-y-auto">
             {errors.map((e, i) => <li key={i} className="text-sm text-red-600">{e}</li>)}
           </ul>
         )}
@@ -241,6 +268,9 @@ export default function InstructionSetsPage() {
         <div className="flex gap-2">
           <button onClick={() => setShowImport(true)} className="flex items-center gap-1.5 px-3 py-2 text-sm border border-gray-200 rounded-lg hover:bg-gray-50 text-gray-600">
             <Upload className="w-4 h-4"/> JSON Import
+          </button>
+          <button onClick={() => exportAsJson(rows, "instruction-sets-export.json")} disabled={rows.length === 0} className="flex items-center gap-1.5 px-3 py-2 text-sm border border-gray-200 rounded-lg hover:bg-gray-50 text-gray-600 disabled:opacity-40 disabled:cursor-not-allowed">
+            <Download className="w-4 h-4"/> Export All
           </button>
           <button onClick={() => setEditorRecord({})} className="flex items-center gap-1.5 px-3 py-2 text-sm bg-[#0078D4] text-white rounded-lg hover:bg-[#005fa3]">
             <Plus className="w-4 h-4"/> New
