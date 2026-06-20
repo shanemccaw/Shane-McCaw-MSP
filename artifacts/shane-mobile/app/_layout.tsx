@@ -1,3 +1,4 @@
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
   Inter_400Regular,
   Inter_500Medium,
@@ -48,10 +49,17 @@ function PushSetup() {
       }
     }
 
-    // Cold-start: launched by tapping a push notification while app was terminated
+    // Cold-start: launched by tapping a push notification while app was terminated.
+    // We persist the last-handled notification identifier so that normal relaunches
+    // (force-quit then reopen) don't re-navigate to a stale notification.
+    const LAST_HANDLED_KEY = "lastHandledNotificationId";
     Notifications.getLastNotificationResponseAsync()
-      .then((response) => {
+      .then(async (response) => {
         if (!response) return;
+        const notifId = response.notification.request.identifier;
+        const lastHandled = await AsyncStorage.getItem(LAST_HANDLED_KEY).catch(() => null);
+        if (lastHandled === notifId) return;
+        await AsyncStorage.setItem(LAST_HANDLED_KEY, notifId).catch(() => null);
         const data = response.notification.request.content.data as Record<string, string | undefined>;
         handleNotificationData(data);
       })
