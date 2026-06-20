@@ -76,6 +76,15 @@ interface Document {
   createdAt: string;
 }
 
+interface SharePointFile {
+  id: string;
+  name: string;
+  webUrl: string;
+  mimeType: string | null;
+  size: number | null;
+  lastModifiedDateTime: string | null;
+}
+
 interface Update {
   id: number;
   content: string;
@@ -463,10 +472,39 @@ export default function PortalProjectDetail() {
   const [closureSigning, setClosureSigning] = useState(false);
   const sigCanvasRef = useRef<SignatureCanvas>(null);
 
+  // SharePoint documents state
+  const [spFiles, setSpFiles] = useState<SharePointFile[]>([]);
+  const [spLoading, setSpLoading] = useState(false);
+  const [spError, setSpError] = useState<string | null>(null);
+  const [spNoSite, setSpNoSite] = useState(false);
+  const [spFetched, setSpFetched] = useState(false);
+
   // Recent activity state
   const [activityOpen, setActivityOpen] = useState(false);
   const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>([]);
   const [auditLoading, setAuditLoading] = useState(false);
+
+  const loadSpFiles = useCallback(async () => {
+    if (!params.id || spFetched) return;
+    setSpLoading(true);
+    setSpError(null);
+    try {
+      const res = await fetchWithAuth(`/api/portal/projects/${params.id}/sharepoint-documents`);
+      if (!res.ok) {
+        const d = await res.json() as { error?: string };
+        setSpError(d.error ?? "Failed to load SharePoint files.");
+      } else {
+        const d = await res.json() as { items: SharePointFile[]; noSite: boolean };
+        setSpFiles(d.items);
+        setSpNoSite(d.noSite);
+      }
+    } catch {
+      setSpError("Could not connect to the server. Please try again.");
+    } finally {
+      setSpLoading(false);
+      setSpFetched(true);
+    }
+  }, [params.id, fetchWithAuth, spFetched]);
 
   const loadAuditLogs = useCallback(async () => {
     if (!params.id) return;
@@ -519,6 +557,7 @@ export default function PortalProjectDetail() {
   }, [fetchWithAuth, params.id]);
 
   useEffect(() => { loadClosure(); }, [loadClosure]);
+  useEffect(() => { if (secondaryTab === "documents") void loadSpFiles(); }, [secondaryTab, loadSpFiles]);
 
   const handleSignClosure = async () => {
     if (!params.id || closureSigning) return;
@@ -1378,42 +1417,133 @@ export default function PortalProjectDetail() {
 
         {/* ── Documents ── */}
         {secondaryTab === "documents" && (
-          <div className="space-y-4">
-            <DocumentUpload projectId={Number(params.id)} onUploaded={loadProject} fetchWithAuth={fetchWithAuth} />
-            <div className="bg-white border border-border rounded-xl divide-y divide-border">
-              {documents.length === 0 ? (
-                <div className="p-8 text-center text-muted-foreground text-sm">No documents uploaded yet.</div>
-              ) : documents.map(doc => (
-                <div key={doc.id} className="flex items-center gap-4 px-5 py-4">
-                  <div className="w-10 h-10 rounded-xl bg-[#0078D4]/10 flex items-center justify-center flex-shrink-0">
-                    <svg className="w-5 h-5 text-[#0078D4]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
-                    </svg>
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-semibold text-[#0A2540] truncate">{doc.name}</p>
-                    <p className="text-xs text-muted-foreground mt-0.5">
-                      {doc.sizeBytes ? formatBytes(doc.sizeBytes) : ""}{doc.mimeType ? ` · ${doc.mimeType.split("/")[1]?.toUpperCase()}` : ""} · {new Date(doc.createdAt).toLocaleDateString()}
-                    </p>
-                  </div>
-                  <button
-                    onClick={async () => {
-                      const r = await fetchWithAuth(`/api/portal/documents/${doc.id}/download`);
-                      const blob = await r.blob();
-                      const url = URL.createObjectURL(blob);
-                      const a = document.createElement("a");
-                      a.href = url; a.download = doc.name; a.click();
-                      URL.revokeObjectURL(url);
-                    }}
-                    className="flex items-center gap-1.5 text-sm font-semibold text-[#0078D4] hover:text-[#0078D4]/80 transition-colors px-3 py-1.5 border border-[#0078D4]/30 rounded-lg hover:bg-[#0078D4]/5"
-                  >
-                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-                    </svg>
-                    Download
-                  </button>
+          <div className="space-y-6">
+            {/* ── SharePoint Files ── */}
+            <div>
+              <div className="flex items-center gap-2 mb-3">
+                <svg className="w-4 h-4 text-[#0078D4]" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M10.5 3A7.5 7.5 0 003 10.5a7.5 7.5 0 007.5 7.5 7.45 7.45 0 004.743-1.694l4.476 4.476a.75.75 0 001.06-1.06l-4.476-4.476A7.45 7.45 0 0018 10.5 7.5 7.5 0 0010.5 3zm0 1.5a6 6 0 110 12 6 6 0 010-12z" />
+                </svg>
+                <h3 className="text-sm font-bold text-[#0A2540]">SharePoint Files</h3>
+                <span className="text-xs text-muted-foreground">Files from your project folder in SharePoint</span>
+              </div>
+
+              {spLoading ? (
+                <div className="bg-white border border-border rounded-xl divide-y divide-border">
+                  {[1, 2, 3].map(i => (
+                    <div key={i} className="flex items-center gap-4 px-5 py-4">
+                      <div className="w-10 h-10 rounded-xl bg-gray-100 animate-pulse flex-shrink-0" />
+                      <div className="flex-1 space-y-2">
+                        <div className="h-3.5 bg-gray-100 rounded animate-pulse w-2/3" />
+                        <div className="h-2.5 bg-gray-100 rounded animate-pulse w-1/3" />
+                      </div>
+                      <div className="w-16 h-7 bg-gray-100 rounded-lg animate-pulse" />
+                    </div>
+                  ))}
                 </div>
-              ))}
+              ) : spError ? (
+                <div className="bg-red-50 border border-red-200 rounded-xl px-5 py-4 flex items-center gap-3">
+                  <svg className="w-5 h-5 text-red-500 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
+                  </svg>
+                  <p className="text-sm text-red-700">{spError}</p>
+                </div>
+              ) : spNoSite ? (
+                <div className="bg-gray-50 border border-border rounded-xl px-5 py-6 flex items-center gap-3">
+                  <svg className="w-5 h-5 text-muted-foreground flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M13.19 8.688a4.5 4.5 0 011.242 7.244l-4.5 4.5a4.5 4.5 0 01-6.364-6.364l1.757-1.757m13.35-.622l1.757-1.757a4.5 4.5 0 00-6.364-6.364l-4.5 4.5a4.5 4.5 0 001.242 7.244" />
+                  </svg>
+                  <p className="text-sm text-muted-foreground">No SharePoint site has been linked to this account yet.</p>
+                </div>
+              ) : spFiles.length === 0 ? (
+                <div className="bg-gray-50 border border-border rounded-xl px-5 py-6 text-center text-sm text-muted-foreground">
+                  No files found in the SharePoint project folder.
+                </div>
+              ) : (
+                <div className="bg-white border border-border rounded-xl divide-y divide-border">
+                  {spFiles.map(file => {
+                    const ext = file.name.includes(".") ? file.name.split(".").pop()?.toUpperCase() : null;
+                    const typeLabel = file.mimeType
+                      ? file.mimeType.split("/")[1]?.split(";")[0]?.toUpperCase()
+                      : ext ?? "FILE";
+                    return (
+                      <div key={file.id} className="flex items-center gap-4 px-5 py-4">
+                        <div className="w-10 h-10 rounded-xl bg-[#0078D4]/10 flex items-center justify-center flex-shrink-0">
+                          <svg className="w-5 h-5 text-[#0078D4]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+                          </svg>
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-semibold text-[#0A2540] truncate">{file.name}</p>
+                          <p className="text-xs text-muted-foreground mt-0.5">
+                            {typeLabel}
+                            {file.size != null ? ` · ${formatBytes(file.size)}` : ""}
+                            {file.lastModifiedDateTime ? ` · ${new Date(file.lastModifiedDateTime).toLocaleDateString()}` : ""}
+                          </p>
+                        </div>
+                        <a
+                          href={file.webUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="flex items-center gap-1.5 text-sm font-semibold text-[#0078D4] hover:text-[#0078D4]/80 transition-colors px-3 py-1.5 border border-[#0078D4]/30 rounded-lg hover:bg-[#0078D4]/5 whitespace-nowrap"
+                        >
+                          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                          </svg>
+                          Open
+                        </a>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            {/* ── Uploaded Files ── */}
+            <div>
+              <div className="flex items-center gap-2 mb-3">
+                <svg className="w-4 h-4 text-[#0A2540]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+                </svg>
+                <h3 className="text-sm font-bold text-[#0A2540]">Uploaded Files</h3>
+                <span className="text-xs text-muted-foreground">Files uploaded directly through the portal</span>
+              </div>
+              <DocumentUpload projectId={Number(params.id)} onUploaded={loadProject} fetchWithAuth={fetchWithAuth} />
+              <div className="mt-3 bg-white border border-border rounded-xl divide-y divide-border">
+                {documents.length === 0 ? (
+                  <div className="p-8 text-center text-muted-foreground text-sm">No documents uploaded yet.</div>
+                ) : documents.map(doc => (
+                  <div key={doc.id} className="flex items-center gap-4 px-5 py-4">
+                    <div className="w-10 h-10 rounded-xl bg-[#0A2540]/8 flex items-center justify-center flex-shrink-0">
+                      <svg className="w-5 h-5 text-[#0A2540]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+                      </svg>
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-semibold text-[#0A2540] truncate">{doc.name}</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        {doc.sizeBytes ? formatBytes(doc.sizeBytes) : ""}{doc.mimeType ? ` · ${doc.mimeType.split("/")[1]?.toUpperCase()}` : ""} · {new Date(doc.createdAt).toLocaleDateString()}
+                      </p>
+                    </div>
+                    <button
+                      onClick={async () => {
+                        const r = await fetchWithAuth(`/api/portal/documents/${doc.id}/download`);
+                        const blob = await r.blob();
+                        const url = URL.createObjectURL(blob);
+                        const a = document.createElement("a");
+                        a.href = url; a.download = doc.name; a.click();
+                        URL.revokeObjectURL(url);
+                      }}
+                      className="flex items-center gap-1.5 text-sm font-semibold text-[#0078D4] hover:text-[#0078D4]/80 transition-colors px-3 py-1.5 border border-[#0078D4]/30 rounded-lg hover:bg-[#0078D4]/5"
+                    >
+                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                      </svg>
+                      Download
+                    </button>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
         )}

@@ -6,6 +6,7 @@ import { sendEmail, purchaseConfirmationEmail, onboardingConfirmationEmail, admi
 import { sendAdminSms } from "../lib/sms";
 import { sendPushNotifications } from "../lib/push";
 import { createAuditLog } from "../lib/audit";
+import { listDriveItems, graphCredentialsPresent } from "../lib/graph";
 import multer from "multer";
 import path from "path";
 import fs from "fs";
@@ -243,6 +244,56 @@ router.get("/portal/projects/:id/audit-logs", requireAuth, async (req: Request, 
     .limit(limit);
 
   res.json({ entries });
+});
+
+// ─── CLIENT: SharePoint Documents for a project ───────────────────────────────
+router.get("/portal/projects/:id/sharepoint-documents", requireAuth, async (req: Request, res: Response) => {
+  const userId = req.user!.id;
+  const id = parseInt(String(req.params.id ?? ""), 10);
+  if (isNaN(id)) { res.status(400).json({ error: "Invalid project ID" }); return; }
+
+  const isAdmin = req.user!.role === "admin";
+  const [project] = await db.select().from(projectsTable)
+    .where(isAdmin ? eq(projectsTable.id, id) : and(eq(projectsTable.id, id), eq(projectsTable.clientUserId, userId)));
+  if (!project) { res.status(404).json({ error: "Project not found" }); return; }
+
+  // Look up the customer's SharePoint site ID (on the users table per Task #418)
+  const clientUserId = project.clientUserId;
+  if (!clientUserId) { res.json({ items: [], noSite: false }); return; }
+
+  const [clientUser] = await db.select({
+    sharepointSiteId: usersTable.sharepointSiteId,
+  }).from(usersTable).where(eq(usersTable.id, clientUserId));
+
+  if (!clientUser?.sharepointSiteId) {
+    res.json({ items: [], noSite: true });
+    return;
+  }
+
+  if (!graphCredentialsPresent()) {
+    req.log.warn("SharePoint documents requested but Graph credentials are not configured");
+    res.status(503).json({ error: "Microsoft Graph is not configured on this server." });
+    return;
+  }
+
+  try {
+    const folderPath = project.title;
+    const raw = await listDriveItems(clientUser.sharepointSiteId, folderPath);
+    const items = raw
+      .filter(item => item.type === "file")
+      .map(item => ({
+        id: item.id,
+        name: item.name,
+        webUrl: item.webUrl,
+        mimeType: item.mimeType ?? null,
+        size: item.size ?? null,
+        lastModifiedDateTime: item.lastModified ?? null,
+      }));
+    res.json({ items, noSite: false });
+  } catch (err) {
+    req.log.error({ err }, "listDriveItems failed for portal sharepoint-documents");
+    res.status(502).json({ error: "Failed to fetch files from SharePoint. Please try again later." });
+  }
 });
 
 // ─── CLIENT: Project Audit PDF ───────────────────────────────────────────────
