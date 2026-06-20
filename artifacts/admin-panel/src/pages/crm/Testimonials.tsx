@@ -31,7 +31,7 @@ export default function TestimonialsPage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetchWithAuth("/api/admin/closures/approved")
+    fetchWithAuth("/api/admin/closures/signed")
       .then(r => r.json())
       .then(d => setItems(d as Testimonial[]))
       .catch(() => null)

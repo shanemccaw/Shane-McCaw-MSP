@@ -1437,6 +1437,22 @@ export default function PortalProjectDetail() {
             </div>
 
             <div className="px-6 py-5 space-y-5">
+              {/* Project Summary */}
+              <div className="bg-[#F7F9FC] border border-border rounded-xl p-4">
+                <p className="text-xs font-bold text-[#0A2540]">{project.title}</p>
+                {project.description && (
+                  <p className="text-xs text-muted-foreground leading-relaxed mt-1">{project.description}</p>
+                )}
+                <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-2 text-[10px] font-medium text-muted-foreground">
+                  {project.startDate && (
+                    <span>Started: {new Date(project.startDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</span>
+                  )}
+                  {project.endDate && (
+                    <span>Target: {new Date(project.endDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</span>
+                  )}
+                </div>
+              </div>
+
               {/* Feedback */}
               <div>
                 <label className="block text-xs font-bold text-[#0A2540] mb-1.5">

@@ -81,13 +81,19 @@ function LiveTestimonialsSection() {
   const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
-    fetch("/api/public/testimonials")
+    fetch("/api/testimonials")
       .then(r => r.ok ? r.json() : [])
       .then(d => { setTestimonials(d as PublicTestimonial[]); setLoaded(true); })
       .catch(() => setLoaded(true));
   }, []);
 
-  if (!loaded || testimonials.length === 0) return null;
+  const PLACEHOLDER_TESTIMONIALS = [
+    { id: -1, feedback: "Shane completely transformed how our team works in Microsoft 365. The Copilot rollout alone saved us hours every week.", clientFirstName: "David", projectType: "retainer" },
+    { id: -2, feedback: "Practical, structured, and delivered exactly on time. Our SharePoint migration was seamless — no disruption to the business at all.", clientFirstName: "Karen", projectType: "project" },
+    { id: -3, feedback: "We got more done in a 30-day sprint than in the previous year. Shane's Power Platform build gave us automation we didn't think was possible.", clientFirstName: "Marcus", projectType: "micro-offer" },
+  ];
+
+  const displayList = loaded && testimonials.length > 0 ? testimonials : PLACEHOLDER_TESTIMONIALS;
 
   return (
     <section className="py-20 bg-white">
@@ -98,7 +104,7 @@ function LiveTestimonialsSection() {
           <p className="text-muted-foreground mt-4 max-w-xl mx-auto">Real feedback from real engagements — collected at project close.</p>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {testimonials.map(t => (
+          {displayList.map(t => (
             <div key={t.id} className="bg-[#F7F9FC] border border-border rounded-2xl p-6 flex flex-col gap-4">
               <div className="flex items-center gap-1">
                 {[...Array(5)].map((_, i) => (

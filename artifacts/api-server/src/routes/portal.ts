@@ -3799,6 +3799,10 @@ router.post("/admin/projects/:id/closure-request", requireAdmin, async (req: Req
 
   const [project] = await db.select().from(projectsTable).where(eq(projectsTable.id, projectId));
   if (!project) { res.status(404).json({ error: "Project not found" }); return; }
+  if (project.status !== "completed") {
+    res.status(422).json({ error: "Closure can only be requested for completed projects" });
+    return;
+  }
 
   const existing = await db.select().from(projectClosuresTable).where(eq(projectClosuresTable.projectId, projectId));
   if (existing.length > 0) {
@@ -3833,8 +3837,68 @@ router.get("/admin/projects/:id/closure", requireAdmin, async (req: Request, res
   res.json(closure);
 });
 
-// ─── ADMIN: List all approved (signed) closures ───────────────────────────────
+// ─── ADMIN: List all approved (signed + permissionGranted) closures ──────────
 router.get("/admin/closures/approved", requireAdmin, async (_req: Request, res: Response) => {
+  const rows = await db
+    .select({
+      id: projectClosuresTable.id,
+      projectId: projectClosuresTable.projectId,
+      projectTitle: projectsTable.title,
+      projectType: projectsTable.projectType,
+      feedback: projectClosuresTable.feedback,
+      permissionGranted: projectClosuresTable.permissionGranted,
+      signedAt: projectClosuresTable.signedAt,
+      requestedAt: projectClosuresTable.requestedAt,
+      clientName: usersTable.name,
+      clientEmail: usersTable.email,
+    })
+    .from(projectClosuresTable)
+    .innerJoin(projectsTable, eq(projectClosuresTable.projectId, projectsTable.id))
+    .leftJoin(usersTable, eq(projectClosuresTable.signerUserId, usersTable.id))
+    .where(
+      and(
+        sql`${projectClosuresTable.signedAt} IS NOT NULL`,
+        eq(projectClosuresTable.permissionGranted, true),
+      )
+    )
+    .orderBy(desc(projectClosuresTable.signedAt));
+  res.json(rows);
+});
+
+// ─── PUBLIC: Testimonials alias ──────────────────────────────────────────────
+router.get("/testimonials", async (_req: Request, res: Response) => {
+  const rows = await db
+    .select({
+      id: projectClosuresTable.id,
+      feedback: projectClosuresTable.feedback,
+      signedAt: projectClosuresTable.signedAt,
+      projectType: projectsTable.projectType,
+      clientName: usersTable.name,
+    })
+    .from(projectClosuresTable)
+    .innerJoin(projectsTable, eq(projectClosuresTable.projectId, projectsTable.id))
+    .leftJoin(usersTable, eq(projectClosuresTable.signerUserId, usersTable.id))
+    .where(
+      and(
+        eq(projectClosuresTable.permissionGranted, true),
+        sql`${projectClosuresTable.signedAt} IS NOT NULL`,
+        sql`${projectClosuresTable.feedback} IS NOT NULL AND trim(${projectClosuresTable.feedback}) <> ''`,
+      )
+    )
+    .orderBy(desc(projectClosuresTable.signedAt));
+
+  const out = rows.map(r => ({
+    id: r.id,
+    feedback: r.feedback,
+    signedAt: r.signedAt,
+    projectType: r.projectType,
+    clientFirstName: r.clientName ? r.clientName.trim().split(/\s+/)[0] : null,
+  }));
+  res.json(out);
+});
+
+// ─── ADMIN: List ALL signed closures (for admin testimonials page) ───────────
+router.get("/admin/closures/signed", requireAdmin, async (_req: Request, res: Response) => {
   const rows = await db
     .select({
       id: projectClosuresTable.id,

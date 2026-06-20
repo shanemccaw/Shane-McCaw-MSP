@@ -658,8 +658,9 @@ interface ClosureRecord {
   signedAt: string | null;
 }
 
-function ClosureCard({ projectId, fetchWithAuth, toast }: {
+function ClosureCard({ projectId, projectStatus, fetchWithAuth, toast }: {
   projectId: number | null;
+  projectStatus: string | undefined;
   fetchWithAuth: (url: string, opts?: RequestInit) => Promise<Response>;
   toast: (opts: { title: string; description?: string }) => void;
 }) {
@@ -710,23 +711,29 @@ function ClosureCard({ projectId, fetchWithAuth, toast }: {
             </div>
             <div>
               <p className="text-sm font-semibold text-[#0A2540]">No closure requested yet</p>
-              <p className="text-xs text-muted-foreground mt-0.5">Request a sign-off to collect client feedback and a testimonial.</p>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                {projectStatus === "completed"
+                  ? "Request a sign-off to collect client feedback and a testimonial."
+                  : "Mark the project as Completed before requesting a client sign-off."}
+              </p>
             </div>
           </div>
-          <button
-            onClick={() => void handleRequest()}
-            disabled={requesting}
-            className="flex items-center gap-2 text-sm font-semibold px-4 py-2 rounded-lg bg-[#0078D4] text-white hover:bg-[#0078D4]/90 disabled:opacity-50 flex-shrink-0"
-          >
-            {requesting ? (
-              <div className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
-            ) : (
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-              </svg>
-            )}
-            {requesting ? "Requesting…" : "Request Sign-Off"}
-          </button>
+          {projectStatus === "completed" && (
+            <button
+              onClick={() => void handleRequest()}
+              disabled={requesting}
+              className="flex items-center gap-2 text-sm font-semibold px-4 py-2 rounded-lg bg-[#0078D4] text-white hover:bg-[#0078D4]/90 disabled:opacity-50 flex-shrink-0"
+            >
+              {requesting ? (
+                <div className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+              ) : (
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                </svg>
+              )}
+              {requesting ? "Requesting…" : "Request Sign-Off"}
+            </button>
+          )}
         </div>
       ) : closure.signedAt ? (
         <div className="bg-white border border-green-200 rounded-xl p-5 space-y-3">
@@ -1404,7 +1411,7 @@ export default function ProjectDetailPage() {
       </section>
 
       {/* ── Closure Sign-Off ────────────────────────────────────────────────── */}
-      <ClosureCard projectId={projectId} fetchWithAuth={fetchWithAuth} toast={toast} />
+      <ClosureCard projectId={projectId} projectStatus={project?.status} fetchWithAuth={fetchWithAuth} toast={toast} />
 
       {/* Status Report slide-over */}
       <Dialog open={statusReportOpen} onOpenChange={open => { if (!open) setStatusReportOpen(false); }}>
