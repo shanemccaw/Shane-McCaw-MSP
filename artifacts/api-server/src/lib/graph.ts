@@ -204,6 +204,7 @@ export interface GraphDriveItem {
   name: string;
   type: "folder" | "file";
   webUrl: string;
+  mimeType?: string;
   size?: number;
   lastModified?: string;
 }
@@ -287,7 +288,7 @@ export async function listDriveItems(
 ): Promise<GraphDriveItem[]> {
   try {
     const endpoint = folderPath
-      ? `/sites/${siteId}/drive/root:/${encodeURIComponent(folderPath)}:/children`
+      ? `/sites/${siteId}/drive/root:/${folderPath.split("/").filter(Boolean).map(encodeURIComponent).join("/")}:/children`
       : `/sites/${siteId}/drive/root/children`;
     const res = await graphFetch(
       `${endpoint}?$select=id,name,folder,file,webUrl,size,lastModifiedDateTime`,
@@ -301,7 +302,7 @@ export async function listDriveItems(
       id: string;
       name: string;
       folder?: unknown;
-      file?: unknown;
+      file?: { mimeType?: string };
       webUrl: string;
       size?: number;
       lastModifiedDateTime?: string;
@@ -311,6 +312,7 @@ export async function listDriveItems(
       name: item.name,
       type: item.folder ? "folder" : "file",
       webUrl: item.webUrl,
+      mimeType: item.file?.mimeType,
       size: item.size,
       lastModified: item.lastModifiedDateTime,
     }));
@@ -326,8 +328,9 @@ export async function createSiteFolder(
   folderName: string,
 ): Promise<boolean> {
   try {
-    const endpoint = parentPath && parentPath !== "/"
-      ? `/sites/${siteId}/drive/root:/${encodeURIComponent(parentPath)}:/children`
+    const cleanParent = parentPath.replace(/^\/|\/$/g, "");
+    const endpoint = cleanParent
+      ? `/sites/${siteId}/drive/root:/${cleanParent.split("/").filter(Boolean).map(encodeURIComponent).join("/")}:/children`
       : `/sites/${siteId}/drive/root/children`;
     const res = await graphFetch(endpoint, {
       method: "POST",

@@ -27,6 +27,7 @@ import OverviewPage from "@/pages/Overview";
 import EmailActivityPage from "@/pages/EmailActivity";
 import ActivityLogPage from "@/pages/ActivityLog";
 import SharePointPage from "@/pages/SharePoint";
+import TemplateLibraryPage from "@/pages/templates/TemplateLibrary";
 import type { ReactNode } from "react";
 
 const queryClient = new QueryClient({
@@ -162,6 +163,11 @@ function Router() {
       {/* SharePoint Hub */}
       <Route path="/sharepoint">
         <RequireAdmin><DashboardShell><SharePointPage /></DashboardShell></RequireAdmin>
+      </Route>
+
+      {/* Template Library */}
+      <Route path="/templates/library">
+        <RequireAdmin><DashboardShell><TemplateLibraryPage /></DashboardShell></RequireAdmin>
       </Route>
 
       <Route>

@@ -16,6 +16,8 @@ const router: IRouter = Router();
 
 const HUB_SITE_URL_KEY = "sharepoint_hub_site_url";
 const HUB_SITE_ID_KEY = "sharepoint_hub_site_id";
+const TEMPLATE_SITE_URL_KEY = "sharepoint_template_site_url";
+const TEMPLATE_SITE_ID_KEY = "sharepoint_template_site_id";
 
 // ─── GET hub site config ──────────────────────────────────────────────────────
 router.get("/admin/sharepoint/hub-config", requireAdmin, async (_req: Request, res: Response) => {
@@ -84,6 +86,90 @@ router.get("/admin/sharepoint/hub/items", requireAdmin, async (req: Request, res
   } catch (err) {
     logger.warn({ err, siteId, folderPath }, "listDriveItems failed");
     res.status(502).json({ error: "Could not fetch SharePoint items", items: [] });
+  }
+});
+
+// ─── GET template site config ─────────────────────────────────────────────────
+router.get("/admin/sharepoint/template-site", requireAdmin, async (_req: Request, res: Response) => {
+  const [urlRow, idRow] = await Promise.all([
+    db.select().from(settingsTable).where(eq(settingsTable.key, TEMPLATE_SITE_URL_KEY)),
+    db.select().from(settingsTable).where(eq(settingsTable.key, TEMPLATE_SITE_ID_KEY)),
+  ]);
+  res.json({
+    templateSiteUrl: urlRow[0]?.value ?? null,
+    templateSiteId: idRow[0]?.value ?? null,
+    graphConfigured: graphCredentialsPresent(),
+  });
+});
+
+// ─── PUT save template site URL ───────────────────────────────────────────────
+router.put("/admin/sharepoint/template-site", requireAdmin, async (req: Request, res: Response) => {
+  const { templateSiteUrl } = req.body as { templateSiteUrl?: string };
+  if (!templateSiteUrl || typeof templateSiteUrl !== "string") {
+    res.status(400).json({ error: "templateSiteUrl is required" });
+    return;
+  }
+
+  const cleanUrl = templateSiteUrl.trim().replace(/\/$/, "");
+
+  await db.insert(settingsTable).values({ key: TEMPLATE_SITE_URL_KEY, value: cleanUrl })
+    .onConflictDoUpdate({ target: settingsTable.key, set: { value: cleanUrl, updatedAt: new Date() } });
+
+  let siteId: string | null = null;
+  if (graphCredentialsPresent()) {
+    try {
+      const site = await getSiteByUrl(cleanUrl);
+      if (site) {
+        siteId = site.id;
+        await db.insert(settingsTable).values({ key: TEMPLATE_SITE_ID_KEY, value: siteId })
+          .onConflictDoUpdate({ target: settingsTable.key, set: { value: siteId, updatedAt: new Date() } });
+      } else {
+        await db.insert(settingsTable).values({ key: TEMPLATE_SITE_ID_KEY, value: null })
+          .onConflictDoUpdate({ target: settingsTable.key, set: { value: null, updatedAt: new Date() } });
+      }
+    } catch (err) {
+      logger.warn({ err }, "Could not resolve SharePoint template site ID from URL");
+    }
+  }
+
+  res.json({
+    templateSiteUrl: cleanUrl,
+    templateSiteId: siteId,
+    graphConfigured: graphCredentialsPresent(),
+  });
+});
+
+// ─── GET template drive items (root or subfolder) ─────────────────────────────
+router.get("/admin/sharepoint/templates/items", requireAdmin, async (req: Request, res: Response) => {
+  const folderPath = typeof req.query.folder === "string" ? req.query.folder : undefined;
+
+  if (!graphCredentialsPresent()) {
+    res.status(503).json({ error: "Graph credentials not configured", items: [] });
+    return;
+  }
+
+  const [idRow] = await db.select().from(settingsTable).where(eq(settingsTable.key, TEMPLATE_SITE_ID_KEY));
+  const siteId = idRow?.value ?? null;
+
+  if (!siteId) {
+    res.status(404).json({ error: "Template site not configured", items: [] });
+    return;
+  }
+
+  try {
+    const raw = await listDriveItems(siteId, folderPath);
+    const items = raw.map(item => ({
+      driveItemId: item.id,
+      name: item.name,
+      webUrl: item.webUrl,
+      mimeType: item.mimeType ?? null,
+      folder: item.type === "folder",
+      lastModifiedDateTime: item.lastModified ?? null,
+    }));
+    res.json({ items });
+  } catch (err) {
+    logger.warn({ err, siteId, folderPath }, "listDriveItems for templates failed");
+    res.status(502).json({ error: "Could not fetch template files", items: [] });
   }
 });
 
