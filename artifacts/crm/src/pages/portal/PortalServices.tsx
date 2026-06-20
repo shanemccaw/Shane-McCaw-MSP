@@ -65,7 +65,7 @@ function formatPrice(basePrice: string | null): string {
 
 const BOOKINGS_URL = import.meta.env.VITE_BOOKINGS_URL as string | undefined;
 
-// ─── Purchased service card ───────────────────────────────────────────────────
+// ─── Step status config ───────────────────────────────────────────────────────
 
 const STEP_STATUS: Record<string, { color: string; icon: React.ReactNode }> = {
   completed: {
@@ -86,41 +86,63 @@ const STEP_STATUS: Record<string, { color: string; icon: React.ReactNode }> = {
   },
 };
 
-function ProgressBar({ value }: { value: number }) {
-  return (
-    <div className="w-full bg-[#F7F9FC] rounded-full h-2">
-      <div className="h-2 rounded-full bg-[#0078D4] transition-all duration-500" style={{ width: `${Math.min(100, value)}%` }} />
-    </div>
-  );
-}
+// ─── Purchased service card (compact horizontal) ──────────────────────────────
 
 function PurchasedServiceCard({ cs }: { cs: ClientService }) {
   const [expanded, setExpanded] = useState(false);
   const completedSteps = cs.steps.filter(s => s.status === "completed").length;
+  const totalSteps = cs.steps.length;
+  const progress = cs.progress;
 
   return (
     <div className="bg-white border border-border rounded-xl overflow-hidden">
-      <div className="p-5">
-        <div className="flex items-start justify-between gap-4 mb-4">
-          <div className="min-w-0">
-            <div className="flex items-center gap-2 flex-wrap mb-1">
-              {cs.service.category && (
-                <span className="text-xs bg-[#0078D4]/10 text-[#0078D4] font-semibold px-2.5 py-1 rounded-full">{cs.service.category}</span>
-              )}
-              <span className={`text-xs font-semibold px-2.5 py-1 rounded-full capitalize ${
-                cs.status === "completed" ? "bg-green-100 text-green-700" :
-                cs.status === "active" ? "bg-blue-100 text-blue-700" :
-                "bg-yellow-100 text-yellow-700"
-              }`}>{cs.status}</span>
-            </div>
-            <h3 className="text-base font-bold text-[#0A2540]">{cs.service.name}</h3>
-            {cs.service.description && <p className="text-sm text-muted-foreground mt-1">{cs.service.description}</p>}
+      {/* Compact horizontal row */}
+      <div className="flex items-center gap-4 px-5 py-4">
+        {/* Left: badge + name */}
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 mb-1 flex-wrap">
+            {cs.service.category && (
+              <span className="text-[10px] font-bold uppercase tracking-wider bg-blue-50 text-[#0078D4] px-2 py-0.5 rounded-full">
+                {cs.service.category}
+              </span>
+            )}
+            <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full ${
+              cs.status === "completed" ? "bg-green-50 text-green-700" :
+              cs.status === "active" ? "bg-blue-50 text-blue-700" :
+              "bg-yellow-50 text-yellow-700"
+            }`}>{cs.status}</span>
           </div>
+          <p className="text-sm font-bold text-[#0A2540] truncate">{cs.service.name}</p>
+        </div>
+
+        {/* Center: thin progress bar + label */}
+        <div className="hidden sm:flex flex-col gap-1.5 w-40 flex-shrink-0">
+          <div className="w-full bg-slate-100 rounded-full h-1.5">
+            <div
+              className="h-1.5 rounded-full bg-[#0078D4] transition-all duration-500"
+              style={{ width: `${Math.min(100, progress)}%` }}
+            />
+          </div>
+          <p className="text-[10px] text-muted-foreground leading-none">
+            {progress}%{totalSteps > 0 ? ` · ${completedSteps}/${totalSteps} steps` : ""}
+          </p>
+        </div>
+
+        {/* Right: View Details + Book Meeting */}
+        <div className="flex items-center gap-3 flex-shrink-0">
+          {totalSteps > 0 && (
+            <button
+              onClick={() => setExpanded(!expanded)}
+              className="text-xs font-semibold text-[#0078D4] hover:underline hidden sm:block"
+            >
+              {expanded ? "Hide Details" : "View Details"}
+            </button>
+          )}
           <a
             href={BOOKINGS_URL ?? "mailto:info@shanemccaw.com"}
             target="_blank"
             rel="noopener noreferrer"
-            className="flex-shrink-0 bg-[#0078D4] text-white text-xs font-semibold px-3 py-2 rounded-lg hover:bg-[#0078D4]/90 transition-colors flex items-center gap-1.5"
+            className="flex items-center gap-1.5 bg-[#0078D4] text-white text-xs font-semibold px-3 py-2 rounded-lg hover:bg-[#0078D4]/90 transition-colors"
           >
             <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
@@ -128,53 +150,31 @@ function PurchasedServiceCard({ cs }: { cs: ClientService }) {
             Book Meeting
           </a>
         </div>
+      </div>
 
-        <div className="mb-4">
-          <div className="flex items-center justify-between text-xs text-muted-foreground mb-1.5">
-            <span>Progress</span>
-            <span className="font-bold text-[#0078D4]">{cs.progress}%</span>
-          </div>
-          <ProgressBar value={cs.progress} />
-          {cs.steps.length > 0 && (
-            <p className="text-xs text-muted-foreground mt-1">{completedSteps} of {cs.steps.length} workflow steps complete</p>
-          )}
+      {/* Mobile progress row */}
+      <div className="sm:hidden px-5 pb-3 flex items-center gap-3">
+        <div className="flex-1 bg-slate-100 rounded-full h-1.5">
+          <div
+            className="h-1.5 rounded-full bg-[#0078D4] transition-all"
+            style={{ width: `${Math.min(100, progress)}%` }}
+          />
         </div>
-
-        {cs.nextMilestone && (
-          <div className="bg-[#0078D4]/5 border border-[#0078D4]/20 rounded-lg px-4 py-3 mb-4">
-            <p className="text-xs font-bold text-[#0078D4] uppercase tracking-wide mb-0.5">Next Milestone</p>
-            <p className="text-sm text-[#0A2540] font-medium">{cs.nextMilestone}</p>
-            {cs.nextMilestoneDate && (
-              <p className="text-xs text-muted-foreground mt-0.5">Target: {new Date(cs.nextMilestoneDate).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}</p>
-            )}
-          </div>
-        )}
-
-        {cs.service.deliverables && (
-          <div className="mb-4">
-            <p className="text-xs font-bold text-muted-foreground uppercase tracking-wide mb-2">Deliverables</p>
-            <div className="flex flex-wrap gap-2">
-              {cs.service.deliverables.split(",").map((d, i) => (
-                <span key={i} className="text-xs bg-[#F7F9FC] border border-border text-[#0A2540] px-2.5 py-1 rounded-full">{d.trim()}</span>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {cs.steps.length > 0 && (
+        <span className="text-[10px] text-muted-foreground flex-shrink-0">
+          {progress}%{totalSteps > 0 ? ` · ${completedSteps}/${totalSteps}` : ""}
+        </span>
+        {totalSteps > 0 && (
           <button
             onClick={() => setExpanded(!expanded)}
-            className="flex items-center gap-2 text-sm font-semibold text-[#0078D4] hover:text-[#0078D4]/80 transition-colors"
+            className="text-xs font-semibold text-[#0078D4] hover:underline flex-shrink-0"
           >
-            <svg className={`w-4 h-4 transition-transform ${expanded ? "rotate-90" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
-            </svg>
-            {expanded ? "Hide" : "Show"} workflow steps ({cs.steps.length})
+            {expanded ? "Hide" : "Details"}
           </button>
         )}
       </div>
 
-      {expanded && cs.steps.length > 0 && (
+      {/* Expanded steps panel */}
+      {expanded && totalSteps > 0 && (
         <div className="border-t border-border bg-[#F7F9FC] px-5 py-4 space-y-3">
           {cs.steps.map((s, idx) => {
             const config = STEP_STATUS[s.status] ?? STEP_STATUS.pending;
@@ -206,60 +206,87 @@ function MicroOfferCard({
   offer,
   onBuy,
   buying,
+  recommended,
 }: {
   offer: DbService;
   onBuy: (offer: DbService) => void;
   buying: boolean;
+  recommended?: boolean;
 }) {
   const [expanded, setExpanded] = useState(false);
   const inclusions = offer.inclusions ?? [];
 
   return (
-    <div className="bg-white border border-border rounded-xl overflow-hidden flex flex-col hover:shadow-md hover:-translate-y-0.5 transition-all duration-200">
-      <div className="p-5 flex-1 flex flex-col">
+    <div className={`relative bg-white border rounded-xl overflow-hidden flex flex-col transition-all duration-200 ${
+      recommended
+        ? "border-[#0078D4] shadow-lg shadow-[#0078D4]/10 scale-[1.02]"
+        : "border-border hover:shadow-md hover:-translate-y-0.5"
+    }`}>
+      {/* Floating "Recommended" pill */}
+      {recommended && (
+        <div className="absolute -top-3 left-1/2 -translate-x-1/2 z-10">
+          <span className="bg-[#0078D4] text-white text-[10px] font-bold uppercase tracking-wider px-3 py-1 rounded-full shadow-md whitespace-nowrap">
+            Recommended
+          </span>
+        </div>
+      )}
+
+      <div className={`p-5 flex-1 flex flex-col ${recommended ? "pt-6" : ""}`}>
+        {/* Top row: badge + clock left, price right */}
         <div className="flex items-start justify-between gap-3 mb-3">
-          <div className="min-w-0">
-            <div className="flex items-center gap-2 flex-wrap mb-1.5">
-              {offer.badge && (
-                <span className="text-xs bg-[#0078D4] text-white font-bold px-2.5 py-0.5 rounded-full">{offer.badge}</span>
-              )}
-              {offer.turnaround && (
-                <span className="text-xs bg-[#F7F9FC] border border-border text-muted-foreground font-medium px-2.5 py-0.5 rounded-full flex items-center gap-1">
-                  <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-                  {offer.turnaround}
-                </span>
-              )}
-            </div>
-            <h3 className="text-sm font-bold text-[#0A2540]">{offer.name}</h3>
+          <div className="flex items-center gap-1.5 flex-wrap">
+            {offer.badge && (
+              <span className="text-[10px] font-bold uppercase tracking-wider bg-[#0078D4] text-white px-2.5 py-0.5 rounded-full">
+                {offer.badge}
+              </span>
+            )}
+            {offer.turnaround && (
+              <span className="text-[10px] font-semibold text-muted-foreground bg-slate-50 border border-slate-200 px-2 py-0.5 rounded-full flex items-center gap-1">
+                <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" />
+                </svg>
+                {offer.turnaround}
+              </span>
+            )}
           </div>
-          <span className="text-xl font-extrabold text-[#0078D4] flex-shrink-0">{formatPrice(offer.basePrice)}</span>
+          <span className="text-xl font-extrabold text-[#0078D4] flex-shrink-0 leading-none">
+            {formatPrice(offer.basePrice)}
+          </span>
         </div>
 
+        {/* Title */}
+        <h3 className="text-sm font-bold text-[#0A2540] mb-2 leading-snug">{offer.name}</h3>
+
+        {/* Description */}
         {offer.description && (
           <p className="text-xs text-muted-foreground leading-relaxed mb-3">{offer.description}</p>
         )}
 
+        {/* Deliverable box */}
         {offer.deliverables && (
-          <div className="text-xs bg-[#F7F9FC] border border-border rounded-lg px-3 py-2 mb-3">
+          <div className="bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 mb-3 text-xs">
             <span className="font-bold text-[#0A2540]">Deliverable: </span>
             <span className="text-muted-foreground">{offer.deliverables}</span>
           </div>
         )}
 
+        {/* "See what's included" chevron link */}
         {inclusions.length > 0 && (
           <>
             <button
               onClick={() => setExpanded(!expanded)}
-              className="flex items-center gap-1.5 text-xs font-semibold text-[#0078D4] hover:text-[#0078D4]/80 transition-colors mb-4"
+              className="flex items-center gap-1.5 text-xs font-semibold text-[#0078D4] hover:text-[#0078D4]/80 transition-colors mb-3"
             >
-              <svg className={`w-3.5 h-3.5 transition-transform ${expanded ? "rotate-90" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <svg
+                className={`w-3.5 h-3.5 transition-transform duration-150 ${expanded ? "rotate-90" : ""}`}
+                fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}
+              >
                 <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
               </svg>
               {expanded ? "Hide" : "See"} what's included
             </button>
-
             {expanded && (
-              <ul className="mb-4 space-y-1.5">
+              <ul className="mb-3 space-y-1.5">
                 {inclusions.map((item, i) => (
                   <li key={i} className="flex items-start gap-2 text-xs text-[#0A2540]">
                     <svg className="w-3.5 h-3.5 text-green-500 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
@@ -273,7 +300,8 @@ function MicroOfferCard({
           </>
         )}
 
-        <div className="mt-auto">
+        {/* Full-width purchase button */}
+        <div className="mt-auto pt-2">
           <button
             onClick={() => onBuy(offer)}
             disabled={buying}
@@ -285,12 +313,7 @@ function MicroOfferCard({
                 Preparing checkout…
               </>
             ) : (
-              <>
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z" />
-                </svg>
-                Purchase — {formatPrice(offer.basePrice)}
-              </>
+              `Purchase — ${formatPrice(offer.basePrice)}`
             )}
           </button>
         </div>
@@ -317,7 +340,6 @@ function RetainerCard({ plan }: { plan: DbService }) {
             <span className="text-xs bg-[#0078D4] text-white font-bold px-3 py-1 rounded-full">Most popular</span>
           </div>
         )}
-
         <div className="mb-3">
           {plan.hoursPerMonth && (
             <p className={`text-xs font-semibold uppercase tracking-wide mb-1 ${highlighted ? "text-[#00B4D8]" : "text-[#0078D4]"}`}>{plan.hoursPerMonth}</p>
@@ -328,11 +350,9 @@ function RetainerCard({ plan }: { plan: DbService }) {
             <span className={`text-sm ${highlighted ? "text-white/50" : "text-muted-foreground"}`}>/month</span>
           </div>
         </div>
-
         {plan.tagline && (
           <p className={`text-xs leading-relaxed mb-4 ${highlighted ? "text-white/70" : "text-muted-foreground"}`}>{plan.tagline}</p>
         )}
-
         {features.length > 0 && (
           <ul className="space-y-2 mb-5 flex-1">
             {features.map((f, i) => (
@@ -345,7 +365,6 @@ function RetainerCard({ plan }: { plan: DbService }) {
             ))}
           </ul>
         )}
-
         <a
           href={BOOKINGS_URL ?? "mailto:info@shanemccaw.com?subject=Retainer Inquiry"}
           target="_blank"
@@ -494,15 +513,20 @@ export default function PortalServices() {
 
         {/* ── SECTION 1: Purchased services ──────────────────────────────── */}
         <div className="mb-10">
+          {/* Section header: blue-tinted icon box + Active (N) small-caps label */}
           <div className="flex items-center gap-3 mb-5">
-            <div className="w-8 h-8 rounded-lg bg-[#0078D4]/10 flex items-center justify-center flex-shrink-0">
-              <svg className="w-4.5 h-4.5 text-[#0078D4]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <div className="w-9 h-9 rounded-lg bg-blue-50 flex items-center justify-center flex-shrink-0">
+              <svg className="w-5 h-5 text-[#0078D4]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
               </svg>
             </div>
             <div>
               <h1 className="text-lg font-extrabold text-[#0A2540] leading-tight">Your Purchased Services</h1>
-              <p className="text-xs text-muted-foreground mt-0.5">Active engagements and their delivery progress</p>
+              {!loading && purchasedServices.length > 0 && (
+                <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mt-0.5">
+                  Active ({active.length})
+                </p>
+              )}
             </div>
           </div>
 
@@ -524,16 +548,16 @@ export default function PortalServices() {
             <div className="space-y-6">
               {active.length > 0 && (
                 <section>
-                  <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-3">Active ({active.length})</p>
-                  <div className="space-y-4">
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-3">Active ({active.length})</p>
+                  <div className="space-y-3">
                     {active.map(cs => <PurchasedServiceCard key={cs.id} cs={cs} />)}
                   </div>
                 </section>
               )}
               {completed.length > 0 && (
                 <section>
-                  <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-3">Completed ({completed.length})</p>
-                  <div className="space-y-4">
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-3">Completed ({completed.length})</p>
+                  <div className="space-y-3">
                     {completed.map(cs => <PurchasedServiceCard key={cs.id} cs={cs} />)}
                   </div>
                 </section>
@@ -547,9 +571,10 @@ export default function PortalServices() {
 
         {/* ── SECTION 2: Available services ──────────────────────────────── */}
         <div>
+          {/* Section header: dark navy icon box */}
           <div className="flex items-center gap-3 mb-2">
-            <div className="w-8 h-8 rounded-lg bg-[#00B4D8]/10 flex items-center justify-center flex-shrink-0">
-              <svg className="w-4.5 h-4.5 text-[#00B4D8]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <div className="w-9 h-9 rounded-lg bg-[#0A2540] flex items-center justify-center flex-shrink-0">
+              <svg className="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
               </svg>
             </div>
@@ -559,14 +584,14 @@ export default function PortalServices() {
             </div>
           </div>
 
-          {/* Tabs */}
+          {/* Pill toggle tabs */}
           <div className="flex gap-2 mb-6 mt-5">
             <button
               onClick={() => setActiveTab("packages")}
               className={`px-4 py-2 rounded-full text-sm font-semibold transition-all ${
                 activeTab === "packages"
-                  ? "bg-[#0078D4] text-white shadow-md"
-                  : "bg-white text-[#0A2540] border border-border hover:border-[#0078D4]/40 hover:text-[#0078D4]"
+                  ? "bg-[#0A2540] text-white shadow-md"
+                  : "bg-white border border-slate-200 text-slate-600 hover:border-[#0078D4]/40 hover:text-[#0078D4]"
               }`}
             >
               Quick-Win Packages
@@ -575,8 +600,8 @@ export default function PortalServices() {
               onClick={() => setActiveTab("retainers")}
               className={`px-4 py-2 rounded-full text-sm font-semibold transition-all ${
                 activeTab === "retainers"
-                  ? "bg-[#0078D4] text-white shadow-md"
-                  : "bg-white text-[#0A2540] border border-border hover:border-[#0078D4]/40 hover:text-[#0078D4]"
+                  ? "bg-[#0A2540] text-white shadow-md"
+                  : "bg-white border border-slate-200 text-slate-600 hover:border-[#0078D4]/40 hover:text-[#0078D4]"
               }`}
             >
               Monthly Retainers
@@ -596,13 +621,14 @@ export default function PortalServices() {
                   <p className="text-muted-foreground text-xs">Check back soon or contact Shane directly.</p>
                 </div>
               ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6 py-4">
                   {packages.map((offer) => (
                     <MicroOfferCard
                       key={offer.id}
                       offer={offer}
                       onBuy={handleBuy}
                       buying={buyingOffer === offer.id}
+                      recommended={offer.highlighted}
                     />
                   ))}
                 </div>
