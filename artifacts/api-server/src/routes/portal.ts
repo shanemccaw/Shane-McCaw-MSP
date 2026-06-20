@@ -1118,12 +1118,43 @@ router.get("/portal/contracts/:id", requireAuth, async (req: Request, res: Respo
 
   // Use the snapshotted agreement body stored at signing time.
   // For older contracts where it was not snapshotted, fall back to the live template.
+  // If neither exists, use the standard Shane McCaw Consulting service agreement text.
   let agreementBody: string | null = row.agreementBody ?? null;
   if (agreementBody === null) {
     const [template] = await db.select({ body: contractTemplatesTable.body })
       .from(contractTemplatesTable)
       .where(eq(contractTemplatesTable.serviceId, row.serviceId));
     agreementBody = template?.body ?? null;
+  }
+  if (agreementBody === null) {
+    agreementBody = `SHANE McCAW CONSULTING — STANDARD SERVICE AGREEMENT
+
+1. SCOPE OF SERVICES
+Shane McCaw Consulting ("Consultant") agrees to provide the Microsoft 365 and related technology consulting services described in the applicable service order or statement of work accepted by the Client. Services are performed remotely unless otherwise agreed in writing.
+
+2. PAYMENT TERMS
+Fees are due as specified in the service order. Fixed-price engagements are billed in full upon acceptance. Retainer arrangements are billed monthly in advance. All invoices are payable within 15 days of issuance. Overdue balances accrue interest at 1.5% per month.
+
+3. INTELLECTUAL PROPERTY
+Work product created specifically for Client under a paid engagement becomes Client's property upon receipt of full payment. Pre-existing tools, templates, methodologies, and know-how developed independently by Consultant remain Consultant's property. Consultant retains the right to describe the nature of services performed for portfolio and reference purposes.
+
+4. CONFIDENTIALITY
+Each party agrees to keep confidential all non-public information of the other party that is designated as confidential or that reasonably should be understood to be confidential given the nature of the information and circumstances of disclosure. This obligation survives termination for three (3) years.
+
+5. LIMITATION OF LIABILITY
+Consultant's total liability for any claim arising out of or relating to this agreement shall not exceed the fees paid by Client in the three (3) months preceding the claim. In no event shall either party be liable for indirect, incidental, special, or consequential damages, even if advised of the possibility of such damages.
+
+6. TERM AND TERMINATION
+Either party may terminate ongoing services with 14 days' written notice. Client remains responsible for fees earned through the termination date. Fixed-price project engagements may only be terminated for material breach that remains uncured for 10 business days after written notice.
+
+7. INDEPENDENT CONTRACTOR
+Consultant is an independent contractor. Nothing in this agreement creates an employment, partnership, or joint-venture relationship between the parties.
+
+8. GOVERNING LAW
+This agreement is governed by the laws of the State of Virginia, without regard to conflict-of-law principles. Any dispute not resolved by good-faith negotiation shall be submitted to binding arbitration in Fairfax County, Virginia under the AAA Commercial Arbitration Rules.
+
+9. ENTIRE AGREEMENT
+This agreement, together with any applicable service order, constitutes the entire agreement between the parties regarding its subject matter and supersedes all prior discussions and representations.`;
   }
 
   res.json({ ...row, agreementBody });
