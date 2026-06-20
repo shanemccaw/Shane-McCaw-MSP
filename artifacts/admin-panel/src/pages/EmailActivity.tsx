@@ -27,7 +27,7 @@ interface EmailList {
   limit: number;
 }
 
-interface DomainRuleRow {
+interface MatchingRuleRow {
   rule: {
     id: number;
     domain: string;
@@ -69,6 +69,11 @@ function formatDate(ts: string) {
   });
 }
 
+/** Returns a friendly label for a rule value — email address or @domain */
+function ruleLabel(value: string) {
+  return value.includes("@") ? value : `@${value}`;
+}
+
 export default function EmailActivityPage() {
   const { fetchWithAuth } = useAuth();
   const { refreshUnreadCount } = useEmailBadge();
@@ -79,7 +84,7 @@ export default function EmailActivityPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const [domainRules, setDomainRules] = useState<DomainRuleRow[]>([]);
+  const [matchingRules, setMatchingRules] = useState<MatchingRuleRow[]>([]);
   const [rulesLoading, setRulesLoading] = useState(true);
   const [rulesError, setRulesError] = useState<string | null>(null);
   const [rulesOpen, setRulesOpen] = useState(false);
@@ -87,7 +92,7 @@ export default function EmailActivityPage() {
   const [clients, setClients] = useState<ClientOption[]>([]);
   const [assigningId, setAssigningId] = useState<number | null>(null);
 
-  const [newRuleDomain, setNewRuleDomain] = useState("");
+  const [newRuleValue, setNewRuleValue] = useState("");
   const [newRuleUserId, setNewRuleUserId] = useState<string>("");
   const [addingRule, setAddingRule] = useState(false);
 
@@ -118,7 +123,7 @@ export default function EmailActivityPage() {
     try {
       const res = await fetchWithAuth("/api/admin/email-domain-rules");
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      setDomainRules(await res.json() as DomainRuleRow[]);
+      setMatchingRules(await res.json() as MatchingRuleRow[]);
     } catch (e) {
       setRulesError(e instanceof Error ? e.message : "Failed to load rules");
     } finally {
@@ -128,20 +133,15 @@ export default function EmailActivityPage() {
 
   const loadClients = useCallback(async () => {
     try {
-      const res = await fetchWithAuth("/api/portal/admin/clients");
+      const res = await fetchWithAuth("/api/admin/clients");
       if (!res.ok) return;
-      const data = await res.json() as { clients?: ClientOption[] } | ClientOption[];
-      if (Array.isArray(data)) {
-        setClients(data);
-      } else if (data.clients) {
-        setClients(data.clients);
-      }
+      const data = await res.json() as ClientOption[];
+      setClients(Array.isArray(data) ? data : []);
     } catch { /* silent */ }
   }, [fetchWithAuth]);
 
   useEffect(() => { void loadEmails(); }, [loadEmails]);
   useEffect(() => { void loadRules(); void loadClients(); }, [loadRules, loadClients]);
-
   useEffect(() => { setPage(1); }, [tab]);
 
   async function assignEmail(emailId: number, userId: number | null) {
@@ -163,7 +163,7 @@ export default function EmailActivityPage() {
   }
 
   async function deleteRule(ruleId: number) {
-    if (!confirm("Delete this domain rule?")) return;
+    if (!confirm("Delete this matching rule?")) return;
     try {
       const res = await fetchWithAuth(`/api/admin/email-domain-rules/${ruleId}`, { method: "DELETE" });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -175,19 +175,19 @@ export default function EmailActivityPage() {
 
   async function addRule(e: React.FormEvent) {
     e.preventDefault();
-    if (!newRuleDomain.trim() || !newRuleUserId) return;
+    if (!newRuleValue.trim() || !newRuleUserId) return;
     setAddingRule(true);
     try {
       const res = await fetchWithAuth("/api/admin/email-domain-rules", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ domain: newRuleDomain.trim(), userId: parseInt(newRuleUserId, 10) }),
+        body: JSON.stringify({ domain: newRuleValue.trim(), userId: parseInt(newRuleUserId, 10) }),
       });
       if (!res.ok) {
         const body = await res.json() as { error?: string };
         throw new Error(body.error ?? `HTTP ${res.status}`);
       }
-      setNewRuleDomain("");
+      setNewRuleValue("");
       setNewRuleUserId("");
       await loadRules();
     } catch (err) {
@@ -210,7 +210,7 @@ export default function EmailActivityPage() {
       <div>
         <h1 className="text-xl font-bold text-[#0A2540]">Email Activity</h1>
         <p className="text-sm text-gray-500 mt-0.5">
-          Emails ingested from Shane's M365 mailbox via Microsoft Graph — matched to clients by sender domain.
+          Emails ingested from Shane's M365 mailbox via Microsoft Graph — matched to clients by sender address or domain.
         </p>
       </div>
 
@@ -272,7 +272,7 @@ export default function EmailActivityPage() {
                       <p className="font-medium text-[#0A2540] truncate max-w-[200px]">
                         {row.email.rawFrom ?? row.email.senderAddress}
                       </p>
-                      <p className="text-xs text-gray-400">{row.email.senderDomain}</p>
+                      <p className="text-xs text-gray-400">{row.email.senderAddress}</p>
                     </td>
                     <td className="px-4 py-3">
                       <p className="text-[#0A2540] truncate max-w-[260px]">
@@ -350,16 +350,16 @@ export default function EmailActivityPage() {
         )}
       </div>
 
-      {/* Domain Rules section */}
+      {/* Matching Rules section */}
       <div className="bg-white border border-gray-100 rounded-xl shadow-sm overflow-hidden">
         <button
           onClick={() => setRulesOpen(v => !v)}
           className="w-full flex items-center justify-between px-5 py-4 text-left hover:bg-gray-50/50 transition-colors"
         >
           <div>
-            <p className="text-sm font-bold text-[#0A2540]">Domain Rules</p>
+            <p className="text-sm font-bold text-[#0A2540]">Matching Rules</p>
             <p className="text-xs text-gray-500 mt-0.5">
-              Map email domains to clients automatically (e.g. @contoso.com → Contoso client)
+              Auto-link inbound emails to clients by exact address (e.g. <span className="font-mono">john@outlook.com</span>) or whole domain (e.g. <span className="font-mono">@contoso.com</span>). Address rules take priority over domain rules.
             </p>
           </div>
           <svg
@@ -378,21 +378,31 @@ export default function EmailActivityPage() {
               <div className="p-4 text-sm text-red-600">{rulesError}</div>
             ) : (
               <>
-                {domainRules.length === 0 ? (
-                  <div className="px-5 py-4 text-sm text-gray-400">No domain rules defined yet.</div>
+                {matchingRules.length === 0 ? (
+                  <div className="px-5 py-4 text-sm text-gray-400">No matching rules defined yet.</div>
                 ) : (
                   <table className="w-full text-sm">
                     <thead className="bg-gray-50/50 border-b border-gray-100">
                       <tr>
-                        {["Domain", "Assigned Client", ""].map(h => (
-                          <th key={h} className="text-left text-[11px] font-bold text-gray-400 uppercase tracking-widest px-5 py-3">{h}</th>
-                        ))}
+                        <th className="text-left text-[11px] font-bold text-gray-400 uppercase tracking-widest px-5 py-3">Address / Domain</th>
+                        <th className="text-left text-[11px] font-bold text-gray-400 uppercase tracking-widest px-5 py-3">Type</th>
+                        <th className="text-left text-[11px] font-bold text-gray-400 uppercase tracking-widest px-5 py-3">Assigned Client</th>
+                        <th className="px-5 py-3" />
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-50">
-                      {domainRules.map(row => (
+                      {matchingRules.map(row => (
                         <tr key={row.rule.id} className="hover:bg-gray-50/50">
-                          <td className="px-5 py-3 font-mono text-xs text-[#0A2540]">@{row.rule.domain}</td>
+                          <td className="px-5 py-3 font-mono text-xs text-[#0A2540]">{ruleLabel(row.rule.domain)}</td>
+                          <td className="px-5 py-3">
+                            <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                              row.rule.domain.includes("@")
+                                ? "bg-purple-100 text-purple-700"
+                                : "bg-blue-100 text-blue-700"
+                            }`}>
+                              {row.rule.domain.includes("@") ? "Address" : "Domain"}
+                            </span>
+                          </td>
                           <td className="px-5 py-3">
                             <p className="font-medium text-[#0A2540]">{row.clientName ?? row.clientEmail}</p>
                           </td>
@@ -412,15 +422,21 @@ export default function EmailActivityPage() {
 
                 {/* Add new rule form */}
                 <form onSubmit={e => void addRule(e)} className="px-5 py-4 border-t border-gray-100 flex flex-wrap gap-3 items-end">
-                  <div className="flex flex-col gap-1">
-                    <label className="text-[11px] font-bold text-gray-500 uppercase tracking-widest">Domain</label>
+                  <div className="flex flex-col gap-1 flex-1 min-w-[200px]">
+                    <label className="text-[11px] font-bold text-gray-500 uppercase tracking-widest">
+                      Email address or domain
+                    </label>
                     <input
                       type="text"
-                      placeholder="contoso.com"
-                      value={newRuleDomain}
-                      onChange={e => setNewRuleDomain(e.target.value)}
-                      className="border border-gray-200 rounded-lg px-3 py-2 text-sm text-[#0A2540] w-48 focus:outline-none focus:ring-1 focus:ring-[#0078D4]"
+                      placeholder="john@outlook.com or contoso.com"
+                      value={newRuleValue}
+                      onChange={e => setNewRuleValue(e.target.value)}
+                      className="border border-gray-200 rounded-lg px-3 py-2 text-sm text-[#0A2540] w-full focus:outline-none focus:ring-1 focus:ring-[#0078D4]"
                     />
+                    <p className="text-[10px] text-gray-400">
+                      Full address (e.g. <span className="font-mono">john@outlook.com</span>) matches only that sender.
+                      Domain (e.g. <span className="font-mono">contoso.com</span>) matches everyone from that company.
+                    </p>
                   </div>
                   <div className="flex flex-col gap-1">
                     <label className="text-[11px] font-bold text-gray-500 uppercase tracking-widest">Client</label>
@@ -439,7 +455,7 @@ export default function EmailActivityPage() {
                   </div>
                   <button
                     type="submit"
-                    disabled={addingRule || !newRuleDomain.trim() || !newRuleUserId}
+                    disabled={addingRule || !newRuleValue.trim() || !newRuleUserId}
                     className="px-4 py-2 bg-[#0078D4] text-white text-sm font-semibold rounded-lg hover:bg-[#005fa3] disabled:opacity-50 transition-colors"
                   >
                     {addingRule ? "Adding…" : "Add Rule"}

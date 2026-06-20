@@ -2,7 +2,7 @@ import { Router, type IRouter, type Request, type Response } from "express";
 import { db, emailsTable, deviceTokensTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { getMailMessage } from "../lib/graph";
-import { matchDomainToUser, extractDomain } from "../lib/email-domain-match";
+import { matchSenderToUser, extractDomain } from "../lib/email-domain-match";
 import { logger } from "../lib/logger";
 import { sendPushNotifications } from "../lib/push";
 
@@ -92,7 +92,7 @@ async function ingestMessage(messageId: string): Promise<void> {
       ? `${message.from.emailAddress.name} <${senderAddress}>`
       : senderAddress;
     const senderDomain = extractDomain(senderAddress);
-    const linkedUserId = senderDomain ? await matchDomainToUser(senderDomain) : null;
+    const linkedUserId = senderAddress ? await matchSenderToUser(senderAddress) : null;
 
     await db.insert(emailsTable).values({
       messageId,

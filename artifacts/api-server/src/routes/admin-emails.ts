@@ -171,8 +171,8 @@ router.post("/admin/emails/:id/rematch", requireAdmin, async (req: Request, res:
 
   if (!email) { res.status(404).json({ error: "Email not found" }); return; }
 
-  const { matchDomainToUser } = await import("../lib/email-domain-match");
-  const linkedUserId = await matchDomainToUser(email.senderDomain);
+  const { matchSenderToUser } = await import("../lib/email-domain-match");
+  const linkedUserId = await matchSenderToUser(email.senderAddress);
 
   const [updated] = await db
     .update(emailsTable)
