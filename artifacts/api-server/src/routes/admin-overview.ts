@@ -1,7 +1,8 @@
 import { Router, type Request, type Response } from "express";
 import { db, usersTable, leadsTable, projectsTable, invoicesTable, clientServicesTable, servicesTable, projectUpdatesTable, messagesTable } from "@workspace/db";
-import { eq, desc, count, ne } from "drizzle-orm";
+import { eq, desc, count } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/requireAuth";
+import { anthropic } from "@workspace/integrations-anthropic-ai";
 
 const router = Router();
 
@@ -269,6 +270,110 @@ router.get("/admin/overview", requireAdmin, async (_req: Request, res: Response)
       threeMonthsAgo: Math.round(mrrThreeMonthsAgo * 100) / 100,
     },
   });
+});
+
+router.post("/admin/insights", requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const now = new Date();
+    const fourteenDaysAgo = new Date(now.getTime() - 14 * 24 * 60 * 60 * 1000);
+    const quarterStart = new Date(now.getFullYear(), Math.floor(now.getMonth() / 3) * 3, 1);
+
+    const [clientRows, allLeads, activeProjectCountRows, allInvoices, allClientServices] = await Promise.all([
+      db.select({ cnt: count() }).from(usersTable).where(eq(usersTable.role, "client")),
+      db.select().from(leadsTable).orderBy(desc(leadsTable.createdAt)),
+      db.select({ cnt: count() }).from(projectsTable).where(eq(projectsTable.status, "active")),
+      db.select().from(invoicesTable),
+      db.select({ cs: clientServicesTable, service: servicesTable })
+        .from(clientServicesTable)
+        .innerJoin(servicesTable, eq(clientServicesTable.serviceId, servicesTable.id)),
+    ]);
+
+    const clientCount = Number(clientRows[0]?.cnt ?? 0);
+    const activeProjectCount = Number(activeProjectCountRows[0]?.cnt ?? 0);
+    const openLeads = allLeads.filter(l => !["converted", "archived"].includes(l.status));
+    const staleLeads = openLeads.filter(l => new Date(l.createdAt) < fourteenDaysAgo);
+    const paidInvoices = allInvoices.filter(i => i.status === "paid");
+    const overdueInvoices = allInvoices.filter(i => i.status === "overdue");
+    const unpaidInvoices = allInvoices.filter(i => ["due", "overdue"].includes(i.status));
+    const invoicePaidRevenue = paidInvoices.reduce((s, i) => s + parseFloat(i.amount), 0);
+    const purchaseRevenue = allClientServices.reduce((s, r) =>
+      s + parseFloat(r.service.basePrice ?? r.service.price ?? "0"), 0);
+    const totalRevenuePaid = invoicePaidRevenue + purchaseRevenue;
+    const totalRevenueOutstanding = unpaidInvoices.reduce((s, i) => s + parseFloat(i.amount), 0);
+    const overdueValue = overdueInvoices.reduce((s, i) => s + parseFloat(i.amount), 0);
+    const mrr = allClientServices
+      .filter(r => r.cs.status === "active" && r.service.billingType === "recurring_monthly")
+      .reduce((s, r) => s + parseFloat(r.service.basePrice ?? r.service.price ?? "0"), 0);
+    const clientsWithActiveProjectSet = new Set(allClientServices.filter(r => r.cs.status === "active").map(r => r.cs.clientUserId));
+    const clientsWithoutProjectsCount = Math.max(0, clientCount - clientsWithActiveProjectSet.size);
+    const currQuarterDeals = paidInvoices.filter(i => i.paidAt && new Date(i.paidAt) >= quarterStart);
+    const avgDealSize = currQuarterDeals.length > 0
+      ? currQuarterDeals.reduce((s, i) => s + parseFloat(i.amount), 0) / currQuarterDeals.length : 0;
+    const fmtN = (n: number) => n >= 1000 ? `$${(n / 1000).toFixed(1)}k` : `$${n.toFixed(0)}`;
+
+    const context = `BUSINESS METRICS — Shane McCaw Consulting (${now.toLocaleDateString("en-US", { month: "long", year: "numeric" })})
+
+PIPELINE:
+- Open leads: ${openLeads.length} of ${allLeads.length} total (${staleLeads.length} stale >14 days, no follow-up)
+- Clients: ${clientCount}
+- Active projects: ${activeProjectCount}
+- Clients without an active project (upsell candidates): ${clientsWithoutProjectsCount}
+
+REVENUE:
+- Total paid revenue (all time): ${fmtN(totalRevenuePaid)} (${fmtN(invoicePaidRevenue)} invoices + ${fmtN(purchaseRevenue)} purchases)
+- Monthly recurring revenue (MRR): ${fmtN(mrr)}
+- Outstanding receivables: ${fmtN(totalRevenueOutstanding)} (${overdueInvoices.length} overdue at ${fmtN(overdueValue)})
+- Avg deal size this quarter: ${avgDealSize > 0 ? fmtN(avgDealSize) : "no closed deals yet"}
+- Invoices: ${paidInvoices.length} paid, ${unpaidInvoices.length} unpaid
+
+SERVICES:
+- Total client service purchases: ${allClientServices.length}
+- Active recurring subscriptions: ${allClientServices.filter(r => r.cs.status === "active" && r.service.billingType === "recurring_monthly").length}`;
+
+    const prompt = `You are a senior business analyst for Shane McCaw Consulting, a Microsoft 365 consulting practice run by a solo consultant. Analyze the business metrics below and return exactly 4 insight cards as a JSON array.
+
+Cover these themes in order:
+1. Pipeline health — lead velocity, stale follow-ups, conversion rate
+2. Revenue & financial status — MRR, outstanding invoices, deal size
+3. Client engagement — upsell opportunities, active project coverage, retention signals
+4. Recommended next action — the single highest-impact action Shane should take today based on the data
+
+Rules:
+- Each narrative must be 2–4 specific, data-driven sentences referencing the actual numbers. No generic advice.
+- The metric field must be a concise string (e.g. "7 stale leads" or "$4.2k overdue") that will be displayed as a callout badge.
+- Return ONLY valid JSON, no markdown fences, no preamble.
+
+Format:
+[{"title":"...","narrative":"...","metric":"..."}]
+
+Business data:
+${context}`;
+
+    const msg = await anthropic.messages.create({
+      model: "claude-haiku-4-5",
+      max_tokens: 1024,
+      messages: [{ role: "user", content: prompt }],
+    });
+
+    const block = msg.content[0];
+    if (block.type !== "text") { res.status(500).json({ error: "Unexpected AI response format" }); return; }
+
+    let insights: Array<{ title: string; narrative: string; metric: string }>;
+    try {
+      const jsonMatch = block.text.match(/\[[\s\S]*\]/);
+      if (!jsonMatch) throw new Error("No JSON array found in AI response");
+      insights = JSON.parse(jsonMatch[0]) as typeof insights;
+    } catch {
+      res.status(500).json({ error: "Failed to parse AI response" });
+      return;
+    }
+
+    res.json({ insights });
+  } catch (err) {
+    const errMsg = err instanceof Error ? err.message : "AI insights generation failed";
+    req.log.error({ err }, "POST /admin/insights failed");
+    res.status(500).json({ error: errMsg });
+  }
 });
 
 export default router;
