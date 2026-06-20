@@ -3950,7 +3950,7 @@ router.post("/portal/projects/:id/closure/sign", requireAuth, async (req: Reques
 
   const [existing] = await db.select().from(projectClosuresTable).where(eq(projectClosuresTable.projectId, projectId));
   if (!existing) { res.status(404).json({ error: "Closure not requested yet" }); return; }
-  if (existing.signedAt) { res.json(existing); return; }
+  if (existing.signedAt) { res.status(409).json({ error: "Project has already been signed off", closure: existing }); return; }
 
   const { feedback, permissionGranted, signatureDataUrl } = req.body as {
     feedback?: string;
@@ -3958,11 +3958,21 @@ router.post("/portal/projects/:id/closure/sign", requireAuth, async (req: Reques
     signatureDataUrl?: string;
   };
 
+  const trimmedFeedback = feedback?.trim() ?? "";
+  if (!trimmedFeedback) {
+    res.status(422).json({ error: "Feedback is required" });
+    return;
+  }
+  if (!signatureDataUrl || !signatureDataUrl.startsWith("data:image/")) {
+    res.status(422).json({ error: "A valid signature is required" });
+    return;
+  }
+
   const [updated] = await db.update(projectClosuresTable)
     .set({
-      feedback: feedback?.trim() ?? null,
+      feedback: trimmedFeedback,
       permissionGranted: permissionGranted === true,
-      signatureDataUrl: signatureDataUrl ?? null,
+      signatureDataUrl,
       signedAt: new Date(),
       signerUserId: userId,
     })

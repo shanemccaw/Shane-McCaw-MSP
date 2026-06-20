@@ -1456,7 +1456,7 @@ export default function PortalProjectDetail() {
               {/* Feedback */}
               <div>
                 <label className="block text-xs font-bold text-[#0A2540] mb-1.5">
-                  Your Feedback <span className="text-muted-foreground font-normal">(optional)</span>
+                  Your Feedback <span className="text-red-500">*</span>
                 </label>
                 <textarea
                   rows={4}
@@ -1513,8 +1513,8 @@ export default function PortalProjectDetail() {
                 </button>
                 <button
                   onClick={() => void handleSignClosure()}
-                  disabled={closureSigning}
-                  className="flex-1 bg-[#0078D4] text-white text-sm font-bold py-2.5 rounded-xl hover:bg-[#0078D4]/90 disabled:opacity-50 transition-colors flex items-center justify-center gap-2"
+                  disabled={closureSigning || !closureFeedback.trim() || sigCanvasRef.current?.isEmpty() !== false}
+                  className="flex-1 bg-[#0078D4] text-white text-sm font-bold py-2.5 rounded-xl hover:bg-[#0078D4]/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
                 >
                   {closureSigning ? (
                     <div className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
