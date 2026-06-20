@@ -96,6 +96,44 @@ export async function getMailMessage(userId: string, messageId: string): Promise
   }
 }
 
+export interface GraphMessageBody {
+  id: string;
+  subject: string | null;
+  bodyPreview: string | null;
+  receivedDateTime: string;
+  from: {
+    emailAddress: {
+      name: string;
+      address: string;
+    };
+  } | null;
+  toRecipients: Array<{
+    emailAddress: { name: string; address: string };
+  }>;
+  body: {
+    contentType: "html" | "text";
+    content: string;
+  } | null;
+}
+
+export async function getMailMessageBody(userId: string, messageId: string): Promise<GraphMessageBody | null> {
+  try {
+    const res = await graphFetch(
+      `/users/${userId}/messages/${messageId}?$select=id,subject,bodyPreview,receivedDateTime,from,toRecipients,body`
+    );
+    if (res.status === 404) return null;
+    if (!res.ok) {
+      const text = await res.text();
+      logger.warn({ status: res.status, body: text }, "Graph getMailMessageBody failed");
+      return null;
+    }
+    return await res.json() as GraphMessageBody;
+  } catch (err) {
+    logger.error({ err }, "Graph getMailMessageBody error");
+    return null;
+  }
+}
+
 export interface GraphSubscription {
   id: string;
   expirationDateTime: string;

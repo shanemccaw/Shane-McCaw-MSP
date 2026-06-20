@@ -161,6 +161,7 @@ export const kanbanTasksTable = pgTable("kanban_tasks", {
   completionStatus: text("completion_status"),
   completionNotes: text("completion_notes"),
   priority: text("priority").notNull().default("medium"),
+  sourceEmailId: integer("source_email_id"),
 });
 
 export type InsertKanbanTask = typeof kanbanTasksTable.$inferInsert;

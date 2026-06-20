@@ -1,6 +1,8 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useAssignEmail } from "@/hooks/useAssignEmail";
+
+// ─── Types ────────────────────────────────────────────────────────────────────
 
 interface EmailRow {
   email: {
@@ -27,13 +29,30 @@ interface EmailList {
   limit: number;
 }
 
-interface MatchingRuleRow {
-  rule: {
+interface EmailDetail {
+  email: {
     id: number;
-    domain: string;
-    linkedUserId: number;
-    createdAt: string;
+    messageId: string;
+    subject: string | null;
+    senderAddress: string;
+    senderDomain: string;
+    bodyPreview: string | null;
+    receivedAt: string;
+    rawFrom: string | null;
+    linkedUserId: number | null;
   };
+  clientName: string | null;
+  clientEmail: string | null;
+  clientCompany: string | null;
+  clientPhone: string | null;
+  clientId: number | null;
+  bodyContent: string | null;
+  bodyContentType: "html" | "text" | "preview";
+  graphAvailable: boolean;
+}
+
+interface MatchingRuleRow {
+  rule: { id: number; domain: string; linkedUserId: number; createdAt: string };
   clientName: string | null;
   clientEmail: string | null;
 }
@@ -45,7 +64,19 @@ interface ClientOption {
   company: string | null;
 }
 
+interface Project {
+  id: number;
+  title: string;
+  status: string;
+  progress: number;
+  phase: string | null;
+  projectType: string;
+  clientUserId: number | null;
+}
+
 type Tab = "all" | "linked" | "unlinked";
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function timeAgo(ts: string) {
   const diff = Date.now() - new Date(ts).getTime();
@@ -59,62 +90,622 @@ function timeAgo(ts: string) {
   return new Date(ts).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 }
 
-function formatDate(ts: string) {
+function formatDateLong(ts: string) {
   return new Date(ts).toLocaleString("en-US", {
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-    hour12: true,
+    weekday: "short", month: "short", day: "numeric", year: "numeric",
+    hour: "numeric", minute: "2-digit", hour12: true,
   });
 }
 
-/** Returns a friendly label for a rule value — email address or @domain */
+function initials(name: string | null, email: string): string {
+  if (name) {
+    const parts = name.trim().split(/\s+/);
+    if (parts.length >= 2) return (parts[0]![0]! + parts[parts.length - 1]![0]!).toUpperCase();
+    return (parts[0]![0] ?? "").toUpperCase();
+  }
+  return email.slice(0, 2).toUpperCase();
+}
+
+function senderDisplayName(row: EmailRow): string {
+  if (row.email.rawFrom) {
+    const m = row.email.rawFrom.match(/^(.+?)\s*</);
+    if (m && m[1]) return m[1].trim().replace(/^"(.*)"$/, "$1");
+  }
+  return row.email.senderAddress;
+}
+
+function avatarColor(seed: string): string {
+  const colors = [
+    "bg-blue-600", "bg-purple-600", "bg-green-600", "bg-amber-600",
+    "bg-rose-600", "bg-teal-600", "bg-indigo-600", "bg-orange-600",
+  ];
+  let hash = 0;
+  for (let i = 0; i < seed.length; i++) hash = seed.charCodeAt(i) + ((hash << 5) - hash);
+  return colors[Math.abs(hash) % colors.length]!;
+}
+
 function ruleLabel(value: string) {
   return value.includes("@") ? value : `@${value}`;
 }
 
-export default function EmailActivityPage() {
+// ─── Sub-components ───────────────────────────────────────────────────────────
+
+function Avatar({ name, email, size = "md" }: { name: string | null; email: string; size?: "sm" | "md" }) {
+  const ini = initials(name, email);
+  const color = avatarColor(email);
+  const sz = size === "sm" ? "w-7 h-7 text-[10px]" : "w-9 h-9 text-xs";
+  return (
+    <div className={`${sz} ${color} rounded-full flex items-center justify-center text-white font-bold shrink-0`}>
+      {ini}
+    </div>
+  );
+}
+
+function SkeletonDetail() {
+  return (
+    <div className="p-6 space-y-4 animate-pulse">
+      <div className="h-5 w-2/3 bg-gray-200 rounded" />
+      <div className="h-4 w-1/2 bg-gray-100 rounded" />
+      <div className="h-4 w-1/3 bg-gray-100 rounded" />
+      <div className="mt-6 h-40 bg-gray-100 rounded-xl" />
+    </div>
+  );
+}
+
+// ─── Email List Panel ─────────────────────────────────────────────────────────
+
+interface EmailListPanelProps {
+  emails: EmailRow[];
+  total: number;
+  page: number;
+  totalPages: number;
+  loading: boolean;
+  error: string | null;
+  tab: Tab;
+  selectedId: number | null;
+  assigningId: number | null;
+  onTabChange: (t: Tab) => void;
+  onSelect: (id: number) => void;
+  onPageChange: (p: number) => void;
+}
+
+function EmailListPanel({
+  emails, total, page, totalPages, loading, error, tab, selectedId,
+  onTabChange, onSelect, onPageChange,
+}: EmailListPanelProps) {
+  const tabs: { key: Tab; label: string }[] = [
+    { key: "all", label: "All" },
+    { key: "linked", label: "Linked" },
+    { key: "unlinked", label: "Unlinked" },
+  ];
+
+  return (
+    <div className="flex flex-col h-full border-r border-gray-100 bg-white">
+      {/* Tab bar */}
+      <div className="flex gap-0 border-b border-gray-100 shrink-0">
+        {tabs.map(t => (
+          <button
+            key={t.key}
+            onClick={() => onTabChange(t.key)}
+            className={`flex-1 px-3 py-3 text-xs font-semibold border-b-2 transition-colors -mb-px ${
+              tab === t.key
+                ? "border-[#0078D4] text-[#0078D4]"
+                : "border-transparent text-gray-500 hover:text-gray-700"
+            }`}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {/* Email list */}
+      <div className="flex-1 overflow-y-auto">
+        {loading ? (
+          <div className="flex justify-center py-10">
+            <div className="w-6 h-6 border-2 border-[#0078D4] border-t-transparent rounded-full animate-spin" />
+          </div>
+        ) : error ? (
+          <div className="p-4 text-sm text-red-600">{error}</div>
+        ) : emails.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-14 px-4 text-center gap-3">
+            <div className="w-10 h-10 bg-gray-100 rounded-xl flex items-center justify-center">
+              <svg className="w-5 h-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M21.75 6.75v10.5a2.25 2.25 0 01-2.25 2.25h-15a2.25 2.25 0 01-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25m19.5 0v.243a2.25 2.25 0 01-1.07 1.916l-7.5 4.615a2.25 2.25 0 01-2.36 0L3.32 8.91a2.25 2.25 0 01-1.07-1.916V6.75" />
+              </svg>
+            </div>
+            <p className="text-xs text-gray-500">
+              {tab === "unlinked"
+                ? "All senders matched to a client."
+                : tab === "linked"
+                ? "No linked emails yet."
+                : "No emails ingested yet."}
+            </p>
+          </div>
+        ) : (
+          <div className="divide-y divide-gray-50">
+            {emails.map(row => {
+              const active = row.email.id === selectedId;
+              const linked = Boolean(row.email.linkedUserId);
+              const displayName = senderDisplayName(row);
+              return (
+                <button
+                  key={row.email.id}
+                  onClick={() => onSelect(row.email.id)}
+                  className={`w-full text-left px-4 py-3 flex gap-3 transition-colors ${
+                    active ? "bg-blue-50/80 border-l-2 border-[#0078D4]" : "hover:bg-gray-50/50 border-l-2 border-transparent"
+                  }`}
+                >
+                  <Avatar name={displayName !== row.email.senderAddress ? displayName : null} email={row.email.senderAddress} />
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-xs font-semibold text-[#0A2540] truncate">{displayName}</span>
+                      <span className="text-[10px] text-gray-400 shrink-0 whitespace-nowrap">{timeAgo(row.email.receivedAt)}</span>
+                    </div>
+                    <p className="text-xs text-gray-700 truncate mt-0.5">
+                      {row.email.subject ?? "(no subject)"}
+                    </p>
+                    <p className="text-[11px] text-gray-400 truncate mt-0.5 leading-tight">
+                      {row.email.bodyPreview ?? ""}
+                    </p>
+                    <div className="mt-1.5 flex items-center gap-1.5">
+                      {linked ? (
+                        <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-blue-100 text-blue-700 max-w-[130px] truncate">
+                          {row.clientName ?? row.clientEmail ?? "Linked"}
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-amber-100 text-amber-700">
+                          Unlinked
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* Pagination */}
+      {totalPages > 1 && (
+        <div className="shrink-0 px-4 py-2.5 border-t border-gray-100 flex items-center justify-between">
+          <span className="text-[10px] text-gray-400">{total} total</span>
+          <div className="flex items-center gap-1.5">
+            <button
+              onClick={() => onPageChange(Math.max(1, page - 1))}
+              disabled={page === 1}
+              className="w-6 h-6 flex items-center justify-center rounded border border-gray-200 text-gray-500 text-xs hover:bg-gray-50 disabled:opacity-40"
+            >
+              ‹
+            </button>
+            <span className="text-[10px] text-gray-500">{page}/{totalPages}</span>
+            <button
+              onClick={() => onPageChange(Math.min(totalPages, page + 1))}
+              disabled={page === totalPages}
+              className="w-6 h-6 flex items-center justify-center rounded border border-gray-200 text-gray-500 text-xs hover:bg-gray-50 disabled:opacity-40"
+            >
+              ›
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Email Detail Panel ───────────────────────────────────────────────────────
+
+interface EmailDetailPanelProps {
+  emailId: number | null;
+  clients: ClientOption[];
+  onEmailReassigned: () => void;
+}
+
+function EmailDetailPanel({ emailId, clients, onEmailReassigned }: EmailDetailPanelProps) {
   const { fetchWithAuth } = useAuth();
   const { assignEmail, assigningId } = useAssignEmail();
-  const [tab, setTab] = useState<Tab>("all");
-  const [emails, setEmails] = useState<EmailRow[]>([]);
-  const [total, setTotal] = useState(0);
-  const [page, setPage] = useState(1);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
 
-  const [matchingRules, setMatchingRules] = useState<MatchingRuleRow[]>([]);
-  const [rulesLoading, setRulesLoading] = useState(true);
-  const [rulesError, setRulesError] = useState<string | null>(null);
-  const [rulesOpen, setRulesOpen] = useState(false);
+  const [detail, setDetail] = useState<EmailDetail | null>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [detailError, setDetailError] = useState<string | null>(null);
 
-  const [clients, setClients] = useState<ClientOption[]>([]);
+  const [clientProjects, setClientProjects] = useState<Project[]>([]);
+  const [projectsLoading, setProjectsLoading] = useState(false);
 
-  const [newRuleValue, setNewRuleValue] = useState("");
-  const [newRuleUserId, setNewRuleUserId] = useState<string>("");
-  const [addingRule, setAddingRule] = useState(false);
+  const [nextStepOpen, setNextStepOpen] = useState(false);
+  const [taskTitle, setTaskTitle] = useState("");
+  const [taskProjectId, setTaskProjectId] = useState<string>("");
+  const [taskPriority, setTaskPriority] = useState<string>("");
+  const [taskDueDate, setTaskDueDate] = useState<string>("");
+  const [taskNotes, setTaskNotes] = useState<string>("");
+  const [taskSubmitting, setTaskSubmitting] = useState(false);
+  const [createdTask, setCreatedTask] = useState<{ id: number; title: string; projectId: number } | null>(null);
+  const [taskError, setTaskError] = useState<string | null>(null);
 
-  const LIMIT = 50;
+  const prevEmailIdRef = useRef<number | null>(null);
 
-  const loadEmails = useCallback(async () => {
-    setLoading(true);
-    setError(null);
+  const loadDetail = useCallback(async (id: number) => {
+    setDetailLoading(true);
+    setDetailError(null);
+    setDetail(null);
+    setCreatedTask(null);
+    setTaskError(null);
+    setNextStepOpen(false);
     try {
-      const params = new URLSearchParams({ page: String(page), limit: String(LIMIT) });
-      if (tab === "linked") params.set("linked", "true");
-      if (tab === "unlinked") params.set("unlinked", "true");
-      const res = await fetchWithAuth(`/api/admin/emails?${params}`);
+      const res = await fetchWithAuth(`/api/admin/emails/${id}`);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json() as EmailList;
-      setEmails(data.emails);
-      setTotal(data.total);
+      const data = await res.json() as EmailDetail;
+      setDetail(data);
+      setTaskTitle(data.email.subject ?? "");
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to load emails");
+      setDetailError(e instanceof Error ? e.message : "Failed to load email");
     } finally {
-      setLoading(false);
+      setDetailLoading(false);
     }
-  }, [fetchWithAuth, tab, page]);
+  }, [fetchWithAuth]);
+
+  const loadClientProjects = useCallback(async (clientId: number) => {
+    setProjectsLoading(true);
+    try {
+      const res = await fetchWithAuth("/api/admin/projects");
+      if (!res.ok) return;
+      const all = await res.json() as Project[];
+      setClientProjects(all.filter(p => p.clientUserId === clientId && p.status === "active"));
+    } catch { /* silent */ } finally {
+      setProjectsLoading(false);
+    }
+  }, [fetchWithAuth]);
+
+  useEffect(() => {
+    if (emailId === null) { setDetail(null); return; }
+    if (emailId === prevEmailIdRef.current) return;
+    prevEmailIdRef.current = emailId;
+    setClientProjects([]);
+    setTaskProjectId("");
+    void loadDetail(emailId);
+  }, [emailId, loadDetail]);
+
+  useEffect(() => {
+    if (detail?.clientId) {
+      void loadClientProjects(detail.clientId);
+    } else {
+      setClientProjects([]);
+    }
+  }, [detail?.clientId, loadClientProjects]);
+
+  useEffect(() => {
+    if (clientProjects.length > 0 && !taskProjectId) {
+      setTaskProjectId(String(clientProjects[0]!.id));
+    }
+  }, [clientProjects, taskProjectId]);
+
+  async function handleAssign(userId: number | null) {
+    if (!detail) return;
+    try {
+      await assignEmail(detail.email.id, userId);
+      await loadDetail(detail.email.id);
+      onEmailReassigned();
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "Failed to assign email");
+    }
+  }
+
+  async function handleCreateTask(e: React.FormEvent) {
+    e.preventDefault();
+    if (!detail || !taskProjectId || !taskTitle.trim()) return;
+    setTaskSubmitting(true);
+    setTaskError(null);
+    try {
+      const res = await fetchWithAuth(`/api/admin/emails/${detail.email.id}/tasks`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          projectId: parseInt(taskProjectId, 10),
+          title: taskTitle.trim(),
+          description: taskNotes.trim() || undefined,
+          priority: taskPriority || undefined,
+          dueDate: taskDueDate || undefined,
+        }),
+      });
+      if (!res.ok) {
+        const body = await res.json() as { error?: string };
+        throw new Error(body.error ?? `HTTP ${res.status}`);
+      }
+      const { task } = await res.json() as { task: { id: number; title: string; projectId: number } };
+      setCreatedTask(task);
+      setNextStepOpen(false);
+      setTaskNotes("");
+      setTaskDueDate("");
+      setTaskPriority("");
+    } catch (err) {
+      setTaskError(err instanceof Error ? err.message : "Failed to create task");
+    } finally {
+      setTaskSubmitting(false);
+    }
+  }
+
+  if (emailId === null) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full gap-3 text-gray-400">
+        <svg className="w-12 h-12 text-gray-200" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M21.75 6.75v10.5a2.25 2.25 0 01-2.25 2.25h-15a2.25 2.25 0 01-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25m19.5 0v.243a2.25 2.25 0 01-1.07 1.916l-7.5 4.615a2.25 2.25 0 01-2.36 0L3.32 8.91a2.25 2.25 0 01-1.07-1.916V6.75" />
+        </svg>
+        <p className="text-sm">Select an email to read</p>
+      </div>
+    );
+  }
+
+  if (detailLoading) return <SkeletonDetail />;
+  if (detailError) return <div className="p-6 text-sm text-red-600">{detailError}</div>;
+  if (!detail) return null;
+
+  const senderName = detail.email.rawFrom
+    ? detail.email.rawFrom.replace(/^"?(.*?)"?\s*<.*>$/, "$1").trim() || detail.email.senderAddress
+    : detail.email.senderAddress;
+
+  const activeProjects = clientProjects.filter(p => p.status === "active");
+
+  return (
+    <div className="flex flex-col h-full overflow-y-auto">
+      {/* Email header */}
+      <div className="px-6 pt-5 pb-4 border-b border-gray-100 shrink-0">
+        <h2 className="text-base font-bold text-[#0A2540] leading-snug mb-3">
+          {detail.email.subject ?? "(no subject)"}
+        </h2>
+        <div className="flex items-start gap-3">
+          <Avatar name={senderName !== detail.email.senderAddress ? senderName : null} email={detail.email.senderAddress} size="md" />
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-semibold text-[#0A2540]">{senderName}</p>
+            <p className="text-xs text-gray-500">{detail.email.senderAddress}</p>
+            <p className="text-xs text-gray-400 mt-0.5">{formatDateLong(detail.email.receivedAt)}</p>
+          </div>
+          {/* Assign dropdown */}
+          <div className="shrink-0">
+            <select
+              disabled={assigningId === detail.email.id}
+              value={detail.email.linkedUserId ?? ""}
+              onChange={e => {
+                const val = e.target.value;
+                void handleAssign(val === "" ? null : parseInt(val, 10));
+              }}
+              className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 text-gray-700 bg-white focus:outline-none focus:ring-1 focus:ring-[#0078D4] disabled:opacity-50 max-w-[180px]"
+            >
+              <option value="">— Unassigned —</option>
+              {clients.map(c => (
+                <option key={c.id} value={c.id}>
+                  {c.name ?? c.email}{c.company ? ` (${c.company})` : ""}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+      </div>
+
+      {/* Email body */}
+      <div className="px-6 py-4 border-b border-gray-100 shrink-0">
+        {detail.bodyContentType === "html" && detail.bodyContent ? (
+          <iframe
+            srcDoc={detail.bodyContent}
+            sandbox="allow-same-origin"
+            className="w-full min-h-[280px] border-0 rounded-lg bg-white"
+            title="Email body"
+            style={{ height: "320px" }}
+          />
+        ) : detail.bodyContent ? (
+          <pre className="text-sm text-gray-700 whitespace-pre-wrap font-sans leading-relaxed max-h-72 overflow-y-auto">
+            {detail.bodyContent}
+          </pre>
+        ) : (
+          <p className="text-sm text-gray-400 italic">No body content available.</p>
+        )}
+        {!detail.graphAvailable && (
+          <p className="mt-2 text-[10px] text-gray-400 italic">
+            Showing preview only — configure Graph credentials to load the full email body.
+          </p>
+        )}
+      </div>
+
+      {/* Client context */}
+      {detail.clientId ? (
+        <div className="px-6 py-4 border-b border-gray-100 shrink-0">
+          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">Client</p>
+          <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-xl">
+            <Avatar name={detail.clientName} email={detail.clientEmail ?? ""} />
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-semibold text-[#0A2540]">{detail.clientName ?? detail.clientEmail}</p>
+              {detail.clientCompany && <p className="text-xs text-gray-500">{detail.clientCompany}</p>}
+              {detail.clientEmail && <p className="text-xs text-gray-400">{detail.clientEmail}</p>}
+            </div>
+          </div>
+
+          {/* Active projects */}
+          <div className="mt-3">
+            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">Active Projects</p>
+            {projectsLoading ? (
+              <div className="text-xs text-gray-400 animate-pulse">Loading projects…</div>
+            ) : activeProjects.length === 0 ? (
+              <p className="text-xs text-gray-400">No active projects.</p>
+            ) : (
+              <div className="space-y-2">
+                {activeProjects.map(p => (
+                  <div key={p.id} className="p-3 bg-white border border-gray-100 rounded-xl">
+                    <div className="flex items-center justify-between gap-2 mb-1.5">
+                      <p className="text-xs font-semibold text-[#0A2540] truncate">{p.title}</p>
+                      <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full ${
+                        p.projectType === "retainer" ? "bg-purple-100 text-purple-700" : "bg-blue-100 text-blue-700"
+                      }`}>
+                        {p.projectType === "retainer" ? "Retainer" : "Project"}
+                      </span>
+                    </div>
+                    {p.phase && <p className="text-[10px] text-gray-500 mb-1.5">{p.phase}</p>}
+                    <div className="flex items-center gap-2">
+                      <div className="flex-1 h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                        <div
+                          className="h-full bg-[#0078D4] rounded-full transition-all"
+                          style={{ width: `${p.progress}%` }}
+                        />
+                      </div>
+                      <span className="text-[10px] text-gray-400 shrink-0">{p.progress}%</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      ) : (
+        <div className="px-6 py-4 border-b border-gray-100 shrink-0">
+          <div className="flex items-center gap-2 text-amber-600">
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
+            </svg>
+            <p className="text-xs font-medium">Email not linked to a client. Assign a client above to see project context.</p>
+          </div>
+        </div>
+      )}
+
+      {/* Next Steps */}
+      <div className="px-6 py-4 shrink-0">
+        <div className="flex items-center justify-between mb-2">
+          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Next Step</p>
+          {!nextStepOpen && !createdTask && detail.clientId && (
+            <button
+              onClick={() => setNextStepOpen(true)}
+              className="text-xs text-[#0078D4] hover:text-[#005fa3] font-semibold transition-colors flex items-center gap-1"
+            >
+              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+              </svg>
+              Add task
+            </button>
+          )}
+        </div>
+
+        {createdTask ? (
+          <div className="flex items-center gap-2 p-3 bg-green-50 border border-green-100 rounded-xl">
+            <svg className="w-4 h-4 text-green-600 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <div className="flex-1 min-w-0">
+              <p className="text-xs font-semibold text-green-800 truncate">{createdTask.title}</p>
+              <p className="text-[10px] text-green-600">Task added to project backlog</p>
+            </div>
+            <button
+              onClick={() => setCreatedTask(null)}
+              className="text-[10px] text-green-600 hover:text-green-800 font-semibold"
+            >
+              + Add another
+            </button>
+          </div>
+        ) : nextStepOpen ? (
+          <form onSubmit={e => void handleCreateTask(e)} className="p-4 bg-gray-50 border border-gray-100 rounded-xl space-y-3">
+            <div>
+              <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest block mb-1">Task title</label>
+              <input
+                type="text"
+                value={taskTitle}
+                onChange={e => setTaskTitle(e.target.value)}
+                placeholder="e.g. Follow up on proposal"
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-[#0A2540] focus:outline-none focus:ring-1 focus:ring-[#0078D4]"
+                required
+              />
+            </div>
+            <div>
+              <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest block mb-1">Project</label>
+              {activeProjects.length === 0 ? (
+                <p className="text-xs text-gray-400 italic">No active projects for this client.</p>
+              ) : (
+                <select
+                  value={taskProjectId}
+                  onChange={e => setTaskProjectId(e.target.value)}
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-700 focus:outline-none focus:ring-1 focus:ring-[#0078D4]"
+                  required
+                >
+                  <option value="">Select project…</option>
+                  {activeProjects.map(p => (
+                    <option key={p.id} value={p.id}>{p.title}</option>
+                  ))}
+                </select>
+              )}
+            </div>
+            <div className="flex gap-3">
+              <div className="flex-1">
+                <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest block mb-1">Priority</label>
+                <select
+                  value={taskPriority}
+                  onChange={e => setTaskPriority(e.target.value)}
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-700 focus:outline-none focus:ring-1 focus:ring-[#0078D4]"
+                >
+                  <option value="">None</option>
+                  <option value="low">Low</option>
+                  <option value="medium">Medium</option>
+                  <option value="high">High</option>
+                  <option value="urgent">Urgent</option>
+                </select>
+              </div>
+              <div className="flex-1">
+                <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest block mb-1">Due date</label>
+                <input
+                  type="date"
+                  value={taskDueDate}
+                  onChange={e => setTaskDueDate(e.target.value)}
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-700 focus:outline-none focus:ring-1 focus:ring-[#0078D4]"
+                />
+              </div>
+            </div>
+            <div>
+              <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest block mb-1">Notes (optional)</label>
+              <textarea
+                value={taskNotes}
+                onChange={e => setTaskNotes(e.target.value)}
+                rows={2}
+                placeholder="Additional context…"
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-[#0A2540] focus:outline-none focus:ring-1 focus:ring-[#0078D4] resize-none"
+              />
+            </div>
+            {taskError && <p className="text-xs text-red-600">{taskError}</p>}
+            <div className="flex gap-2 justify-end">
+              <button
+                type="button"
+                onClick={() => setNextStepOpen(false)}
+                className="px-3 py-1.5 text-xs text-gray-600 hover:text-gray-800 font-medium"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={taskSubmitting || !taskTitle.trim() || !taskProjectId}
+                className="px-4 py-1.5 bg-[#0078D4] text-white text-xs font-semibold rounded-lg hover:bg-[#005fa3] disabled:opacity-50 transition-colors"
+              >
+                {taskSubmitting ? "Creating…" : "Create Task"}
+              </button>
+            </div>
+          </form>
+        ) : !detail.clientId ? (
+          <p className="text-xs text-gray-400 italic">Link a client above to add follow-up tasks.</p>
+        ) : (
+          <p className="text-xs text-gray-400 italic">No follow-up tasks yet.</p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── Email Settings (Rules + Setup) ──────────────────────────────────────────
+
+interface EmailSettingsProps {
+  clients: ClientOption[];
+}
+
+function EmailSettings({ clients }: EmailSettingsProps) {
+  const { fetchWithAuth } = useAuth();
+  const [open, setOpen] = useState(false);
+  const [rules, setRules] = useState<MatchingRuleRow[]>([]);
+  const [rulesLoading, setRulesLoading] = useState(false);
+  const [rulesError, setRulesError] = useState<string | null>(null);
+  const [newRuleValue, setNewRuleValue] = useState("");
+  const [newRuleUserId, setNewRuleUserId] = useState("");
+  const [addingRule, setAddingRule] = useState(false);
 
   const loadRules = useCallback(async () => {
     setRulesLoading(true);
@@ -122,7 +713,7 @@ export default function EmailActivityPage() {
     try {
       const res = await fetchWithAuth("/api/admin/email-domain-rules");
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      setMatchingRules(await res.json() as MatchingRuleRow[]);
+      setRules(await res.json() as MatchingRuleRow[]);
     } catch (e) {
       setRulesError(e instanceof Error ? e.message : "Failed to load rules");
     } finally {
@@ -130,27 +721,9 @@ export default function EmailActivityPage() {
     }
   }, [fetchWithAuth]);
 
-  const loadClients = useCallback(async () => {
-    try {
-      const res = await fetchWithAuth("/api/admin/clients");
-      if (!res.ok) return;
-      const data = await res.json() as ClientOption[];
-      setClients(Array.isArray(data) ? data : []);
-    } catch { /* silent */ }
-  }, [fetchWithAuth]);
-
-  useEffect(() => { void loadEmails(); }, [loadEmails]);
-  useEffect(() => { void loadRules(); void loadClients(); }, [loadRules, loadClients]);
-  useEffect(() => { setPage(1); }, [tab]);
-
-  async function handleAssignEmail(emailId: number, userId: number | null) {
-    try {
-      await assignEmail(emailId, userId);
-      await loadEmails();
-    } catch (e) {
-      alert(e instanceof Error ? e.message : "Failed to assign email");
-    }
-  }
+  useEffect(() => {
+    if (open && rules.length === 0 && !rulesLoading) void loadRules();
+  }, [open, rules.length, rulesLoading, loadRules]);
 
   async function deleteRule(ruleId: number) {
     if (!confirm("Delete this matching rule?")) return;
@@ -187,286 +760,202 @@ export default function EmailActivityPage() {
     }
   }
 
+  return (
+    <div className="border-t border-gray-100 bg-white shrink-0">
+      <button
+        onClick={() => setOpen(v => !v)}
+        className="w-full flex items-center justify-between px-4 py-3 text-left hover:bg-gray-50/50 transition-colors"
+      >
+        <div className="flex items-center gap-2">
+          <svg className="w-3.5 h-3.5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M10.343 3.94c.09-.542.56-.94 1.11-.94h1.093c.55 0 1.02.398 1.11.94l.149.894c.07.424.384.764.78.93.398.164.855.142 1.205-.108l.737-.527a1.125 1.125 0 011.45.12l.773.774c.39.389.44 1.002.12 1.45l-.527.737c-.25.35-.272.806-.107 1.204.165.397.505.71.93.78l.893.15c.543.09.94.56.94 1.109v1.094c0 .55-.397 1.02-.94 1.11l-.893.149c-.425.07-.765.383-.93.78-.165.398-.143.854.107 1.204l.527.738c.32.447.269 1.06-.12 1.45l-.774.773a1.125 1.125 0 01-1.449.12l-.738-.527c-.35-.25-.806-.272-1.203-.107-.397.165-.71.505-.781.929l-.149.894c-.09.542-.56.94-1.11.94h-1.094c-.55 0-1.019-.398-1.11-.94l-.148-.894c-.071-.424-.384-.764-.781-.93-.398-.164-.854-.142-1.204.108l-.738.527c-.447.32-1.06.269-1.45-.12l-.773-.774a1.125 1.125 0 01-.12-1.45l.527-.737c.25-.35.273-.806.108-1.204-.165-.397-.505-.71-.93-.78l-.894-.15c-.542-.09-.94-.56-.94-1.109v-1.094c0-.55.398-1.02.94-1.11l.894-.149c.424-.07.765-.383.93-.78.165-.398.143-.854-.107-1.204l-.527-.738a1.125 1.125 0 01.12-1.45l.773-.773a1.125 1.125 0 011.45-.12l.737.527c.35.25.807.272 1.204.107.397-.165.71-.505.78-.929l.15-.894z" />
+            <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+          </svg>
+          <span className="text-xs font-semibold text-gray-600">Email Settings</span>
+        </div>
+        <svg
+          className={`w-3.5 h-3.5 text-gray-400 transition-transform duration-200 ${open ? "rotate-180" : ""}`}
+          fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}
+        >
+          <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+        </svg>
+      </button>
+
+      {open && (
+        <div className="border-t border-gray-50">
+          {/* Matching Rules */}
+          <div className="px-4 py-3">
+            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">Matching Rules</p>
+            <p className="text-[11px] text-gray-500 mb-3 leading-relaxed">
+              Auto-link inbound emails by exact address (e.g. <span className="font-mono">john@outlook.com</span>) or domain (e.g. <span className="font-mono">@contoso.com</span>).
+            </p>
+            {rulesLoading ? (
+              <p className="text-xs text-gray-400 animate-pulse">Loading rules…</p>
+            ) : rulesError ? (
+              <p className="text-xs text-red-600">{rulesError}</p>
+            ) : rules.length === 0 ? (
+              <p className="text-xs text-gray-400 mb-3">No rules defined yet.</p>
+            ) : (
+              <div className="space-y-1.5 mb-3">
+                {rules.map(row => (
+                  <div key={row.rule.id} className="flex items-center gap-2 py-1.5 px-3 bg-gray-50 rounded-lg">
+                    <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full ${
+                      row.rule.domain.includes("@")
+                        ? "bg-purple-100 text-purple-700"
+                        : "bg-blue-100 text-blue-700"
+                    }`}>
+                      {row.rule.domain.includes("@") ? "Addr" : "Dom"}
+                    </span>
+                    <span className="font-mono text-xs text-[#0A2540] flex-1 truncate">{ruleLabel(row.rule.domain)}</span>
+                    <span className="text-xs text-gray-500 truncate max-w-[100px]">{row.clientName ?? row.clientEmail}</span>
+                    <button
+                      onClick={() => void deleteRule(row.rule.id)}
+                      className="text-[10px] text-red-500 hover:text-red-700 font-medium shrink-0"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+            {/* Add rule form */}
+            <form onSubmit={e => void addRule(e)} className="space-y-2">
+              <input
+                type="text"
+                placeholder="john@outlook.com or contoso.com"
+                value={newRuleValue}
+                onChange={e => setNewRuleValue(e.target.value)}
+                className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-xs text-[#0A2540] focus:outline-none focus:ring-1 focus:ring-[#0078D4]"
+              />
+              <div className="flex gap-2">
+                <select
+                  value={newRuleUserId}
+                  onChange={e => setNewRuleUserId(e.target.value)}
+                  className="flex-1 border border-gray-200 rounded-lg px-2 py-1.5 text-xs text-gray-700 focus:outline-none focus:ring-1 focus:ring-[#0078D4]"
+                >
+                  <option value="">Select client…</option>
+                  {clients.map(c => (
+                    <option key={c.id} value={c.id}>
+                      {c.name ?? c.email}{c.company ? ` (${c.company})` : ""}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  type="submit"
+                  disabled={addingRule || !newRuleValue.trim() || !newRuleUserId}
+                  className="px-3 py-1.5 bg-[#0078D4] text-white text-xs font-semibold rounded-lg hover:bg-[#005fa3] disabled:opacity-50 transition-colors"
+                >
+                  {addingRule ? "…" : "Add"}
+                </button>
+              </div>
+            </form>
+          </div>
+
+          {/* Setup instructions */}
+          <div className="px-4 py-3 border-t border-gray-50 bg-blue-50/60">
+            <p className="text-[10px] font-bold text-[#0078D4] uppercase tracking-widest mb-1.5">Connect M365 Mailbox</p>
+            <ol className="text-[11px] text-blue-800 space-y-1 list-decimal list-inside leading-relaxed">
+              <li>Register an Azure AD app → grant <span className="font-mono">Mail.Read</span> permission → admin-consent.</li>
+              <li>Set secrets: <span className="font-mono">GRAPH_TENANT_ID</span>, <span className="font-mono">GRAPH_CLIENT_ID</span>, <span className="font-mono">GRAPH_CLIENT_SECRET</span>, <span className="font-mono">GRAPH_MAIL_USER_ID</span>.</li>
+              <li>Redeploy — Graph webhook registers automatically.</li>
+            </ol>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Main Page ────────────────────────────────────────────────────────────────
+
+export default function EmailActivityPage() {
+  const { fetchWithAuth } = useAuth();
+  const [tab, setTab] = useState<Tab>("all");
+  const [emails, setEmails] = useState<EmailRow[]>([]);
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(1);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [selectedEmailId, setSelectedEmailId] = useState<number | null>(null);
+  const [clients, setClients] = useState<ClientOption[]>([]);
+
+  const LIMIT = 50;
+
+  const loadEmails = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const params = new URLSearchParams({ page: String(page), limit: String(LIMIT) });
+      if (tab === "linked") params.set("linked", "true");
+      if (tab === "unlinked") params.set("unlinked", "true");
+      const res = await fetchWithAuth(`/api/admin/emails?${params}`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json() as EmailList;
+      setEmails(data.emails);
+      setTotal(data.total);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to load emails");
+    } finally {
+      setLoading(false);
+    }
+  }, [fetchWithAuth, tab, page]);
+
+  const loadClients = useCallback(async () => {
+    try {
+      const res = await fetchWithAuth("/api/admin/clients");
+      if (!res.ok) return;
+      const data = await res.json() as ClientOption[];
+      setClients(Array.isArray(data) ? data : []);
+    } catch { /* silent */ }
+  }, [fetchWithAuth]);
+
+  useEffect(() => { void loadEmails(); }, [loadEmails]);
+  useEffect(() => { void loadClients(); }, [loadClients]);
+  useEffect(() => { setPage(1); setSelectedEmailId(null); }, [tab]);
+
   const totalPages = Math.ceil(total / LIMIT);
 
-  const tabs: { key: Tab; label: string }[] = [
-    { key: "all", label: "All" },
-    { key: "linked", label: "Linked" },
-    { key: "unlinked", label: "Unlinked" },
-  ];
-
   return (
-    <div className="p-6 max-w-[1200px] space-y-6">
-      <div>
-        <h1 className="text-xl font-bold text-[#0A2540]">Email Activity</h1>
-        <p className="text-sm text-gray-500 mt-0.5">
-          Emails ingested from Shane's M365 mailbox via Microsoft Graph — matched to clients by sender address or domain.
+    <div className="flex flex-col h-[calc(100vh-48px)]">
+      {/* Page header */}
+      <div className="px-6 py-4 border-b border-gray-100 bg-white shrink-0">
+        <h1 className="text-lg font-bold text-[#0A2540]">Email Activity</h1>
+        <p className="text-xs text-gray-500 mt-0.5">
+          M365 mailbox emails matched to clients by sender address or domain.
         </p>
       </div>
 
-      {/* Tabs */}
-      <div className="flex gap-1 border-b border-gray-200">
-        {tabs.map(t => (
-          <button
-            key={t.key}
-            onClick={() => setTab(t.key)}
-            className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors -mb-px ${
-              tab === t.key
-                ? "border-[#0078D4] text-[#0078D4]"
-                : "border-transparent text-gray-500 hover:text-gray-700"
-            }`}
-          >
-            {t.label}
-          </button>
-        ))}
-      </div>
-
-      {/* Email table */}
-      <div className="bg-white border border-gray-100 rounded-xl shadow-sm overflow-hidden">
-        {loading ? (
-          <div className="p-8 flex justify-center">
-            <div className="w-7 h-7 border-3 border-[#0078D4] border-t-transparent rounded-full animate-spin" />
+      {/* Split pane */}
+      <div className="flex-1 flex overflow-hidden">
+        {/* Left: email list + settings */}
+        <div className="w-[340px] shrink-0 flex flex-col overflow-hidden border-r border-gray-100">
+          <div className="flex-1 overflow-hidden flex flex-col">
+            <EmailListPanel
+              emails={emails}
+              total={total}
+              page={page}
+              totalPages={totalPages}
+              loading={loading}
+              error={error}
+              tab={tab}
+              selectedId={selectedEmailId}
+              assigningId={null}
+              onTabChange={t => setTab(t)}
+              onSelect={id => setSelectedEmailId(id)}
+              onPageChange={p => setPage(p)}
+            />
           </div>
-        ) : error ? (
-          <div className="p-6 text-sm text-red-600">{error}</div>
-        ) : emails.length === 0 ? (
-          <div className="p-12 text-center">
-            <div className="w-12 h-12 bg-gray-100 rounded-xl flex items-center justify-center mx-auto mb-3">
-              <svg className="w-6 h-6 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M21.75 6.75v10.5a2.25 2.25 0 01-2.25 2.25h-15a2.25 2.25 0 01-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25m19.5 0v.243a2.25 2.25 0 01-1.07 1.916l-7.5 4.615a2.25 2.25 0 01-2.36 0L3.32 8.91a2.25 2.25 0 01-1.07-1.916V6.75" />
-              </svg>
-            </div>
-            <p className="text-sm text-gray-500">
-              {tab === "unlinked"
-                ? "No unlinked emails — all senders matched to a client."
-                : tab === "linked"
-                ? "No linked emails yet."
-                : "No emails ingested yet. Configure Graph credentials to start ingesting."}
-            </p>
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="border-b border-gray-100 bg-gray-50/50">
-                <tr>
-                  {["Sender", "Subject", "Received", "Client"].map(h => (
-                    <th key={h} className="text-left text-[11px] font-bold text-gray-400 uppercase tracking-widest px-4 py-3">{h}</th>
-                  ))}
-                  <th className="px-4 py-3 text-right text-[11px] font-bold text-gray-400 uppercase tracking-widest">Assign</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-50">
-                {emails.map(row => (
-                  <tr key={row.email.id} className="hover:bg-gray-50/50 transition-colors">
-                    <td className="px-4 py-3">
-                      <p className="font-medium text-[#0A2540] truncate max-w-[200px]">
-                        {row.email.rawFrom ?? row.email.senderAddress}
-                      </p>
-                      <p className="text-xs text-gray-400">{row.email.senderAddress}</p>
-                    </td>
-                    <td className="px-4 py-3">
-                      <p className="text-[#0A2540] truncate max-w-[260px]">
-                        {row.email.subject ?? "(no subject)"}
-                      </p>
-                      {row.email.bodyPreview && (
-                        <p className="text-xs text-gray-400 truncate max-w-[260px]">{row.email.bodyPreview}</p>
-                      )}
-                    </td>
-                    <td className="px-4 py-3 whitespace-nowrap">
-                      <p className="text-[#0A2540]">{formatDate(row.email.receivedAt)}</p>
-                      <p className="text-xs text-gray-400">{timeAgo(row.email.receivedAt)}</p>
-                    </td>
-                    <td className="px-4 py-3">
-                      {row.email.linkedUserId ? (
-                        <div>
-                          <p className="font-medium text-[#0A2540]">{row.clientName ?? row.clientEmail}</p>
-                          {row.clientCompany && <p className="text-xs text-gray-400">{row.clientCompany}</p>}
-                        </div>
-                      ) : (
-                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-700">
-                          Unlinked
-                        </span>
-                      )}
-                    </td>
-                    <td className="px-4 py-3 text-right">
-                      <select
-                        disabled={assigningId === row.email.id}
-                        value={row.email.linkedUserId ?? ""}
-                        onChange={e => {
-                          const val = e.target.value;
-                          void handleAssignEmail(row.email.id, val === "" ? null : parseInt(val, 10));
-                        }}
-                        className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 text-gray-700 bg-white focus:outline-none focus:ring-1 focus:ring-[#0078D4] disabled:opacity-50 max-w-[160px]"
-                      >
-                        <option value="">— Unassigned —</option>
-                        {clients.map(c => (
-                          <option key={c.id} value={c.id}>
-                            {c.name ?? c.email}{c.company ? ` (${c.company})` : ""}
-                          </option>
-                        ))}
-                      </select>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
+          <EmailSettings clients={clients} />
+        </div>
 
-        {/* Pagination */}
-        {totalPages > 1 && (
-          <div className="px-4 py-3 border-t border-gray-100 flex items-center justify-between">
-            <p className="text-xs text-gray-500">{total} emails total</p>
-            <div className="flex gap-2">
-              <button
-                onClick={() => setPage(p => Math.max(1, p - 1))}
-                disabled={page === 1}
-                className="px-3 py-1 text-xs rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 disabled:opacity-40"
-              >
-                ← Prev
-              </button>
-              <span className="px-3 py-1 text-xs text-gray-600">
-                {page} / {totalPages}
-              </span>
-              <button
-                onClick={() => setPage(p => Math.min(totalPages, p + 1))}
-                disabled={page === totalPages}
-                className="px-3 py-1 text-xs rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 disabled:opacity-40"
-              >
-                Next →
-              </button>
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* Matching Rules section */}
-      <div className="bg-white border border-gray-100 rounded-xl shadow-sm overflow-hidden">
-        <button
-          onClick={() => setRulesOpen(v => !v)}
-          className="w-full flex items-center justify-between px-5 py-4 text-left hover:bg-gray-50/50 transition-colors"
-        >
-          <div>
-            <p className="text-sm font-bold text-[#0A2540]">Matching Rules</p>
-            <p className="text-xs text-gray-500 mt-0.5">
-              Auto-link inbound emails to clients by exact address (e.g. <span className="font-mono">john@outlook.com</span>) or whole domain (e.g. <span className="font-mono">@contoso.com</span>). Address rules take priority over domain rules.
-            </p>
-          </div>
-          <svg
-            className={`w-4 h-4 text-gray-400 transition-transform duration-200 ${rulesOpen ? "rotate-180" : ""}`}
-            fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}
-          >
-            <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
-          </svg>
-        </button>
-
-        {rulesOpen && (
-          <div className="border-t border-gray-100">
-            {rulesLoading ? (
-              <div className="p-6 text-center text-sm text-gray-400">Loading rules…</div>
-            ) : rulesError ? (
-              <div className="p-4 text-sm text-red-600">{rulesError}</div>
-            ) : (
-              <>
-                {matchingRules.length === 0 ? (
-                  <div className="px-5 py-4 text-sm text-gray-400">No matching rules defined yet.</div>
-                ) : (
-                  <table className="w-full text-sm">
-                    <thead className="bg-gray-50/50 border-b border-gray-100">
-                      <tr>
-                        <th className="text-left text-[11px] font-bold text-gray-400 uppercase tracking-widest px-5 py-3">Address / Domain</th>
-                        <th className="text-left text-[11px] font-bold text-gray-400 uppercase tracking-widest px-5 py-3">Type</th>
-                        <th className="text-left text-[11px] font-bold text-gray-400 uppercase tracking-widest px-5 py-3">Assigned Client</th>
-                        <th className="px-5 py-3" />
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-50">
-                      {matchingRules.map(row => (
-                        <tr key={row.rule.id} className="hover:bg-gray-50/50">
-                          <td className="px-5 py-3 font-mono text-xs text-[#0A2540]">{ruleLabel(row.rule.domain)}</td>
-                          <td className="px-5 py-3">
-                            <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                              row.rule.domain.includes("@")
-                                ? "bg-purple-100 text-purple-700"
-                                : "bg-blue-100 text-blue-700"
-                            }`}>
-                              {row.rule.domain.includes("@") ? "Address" : "Domain"}
-                            </span>
-                          </td>
-                          <td className="px-5 py-3">
-                            <p className="font-medium text-[#0A2540]">{row.clientName ?? row.clientEmail}</p>
-                          </td>
-                          <td className="px-5 py-3 text-right">
-                            <button
-                              onClick={() => void deleteRule(row.rule.id)}
-                              className="text-xs text-red-500 hover:text-red-700 font-medium transition-colors"
-                            >
-                              Delete
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                )}
-
-                {/* Add new rule form */}
-                <form onSubmit={e => void addRule(e)} className="px-5 py-4 border-t border-gray-100 flex flex-wrap gap-3 items-end">
-                  <div className="flex flex-col gap-1 flex-1 min-w-[200px]">
-                    <label className="text-[11px] font-bold text-gray-500 uppercase tracking-widest">
-                      Email address or domain
-                    </label>
-                    <input
-                      type="text"
-                      placeholder="john@outlook.com or contoso.com"
-                      value={newRuleValue}
-                      onChange={e => setNewRuleValue(e.target.value)}
-                      className="border border-gray-200 rounded-lg px-3 py-2 text-sm text-[#0A2540] w-full focus:outline-none focus:ring-1 focus:ring-[#0078D4]"
-                    />
-                    <p className="text-[10px] text-gray-400">
-                      Full address (e.g. <span className="font-mono">john@outlook.com</span>) matches only that sender.
-                      Domain (e.g. <span className="font-mono">contoso.com</span>) matches everyone from that company.
-                    </p>
-                  </div>
-                  <div className="flex flex-col gap-1">
-                    <label className="text-[11px] font-bold text-gray-500 uppercase tracking-widest">Client</label>
-                    <select
-                      value={newRuleUserId}
-                      onChange={e => setNewRuleUserId(e.target.value)}
-                      className="border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-700 w-52 focus:outline-none focus:ring-1 focus:ring-[#0078D4]"
-                    >
-                      <option value="">Select client…</option>
-                      {clients.map(c => (
-                        <option key={c.id} value={c.id}>
-                          {c.name ?? c.email}{c.company ? ` (${c.company})` : ""}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <button
-                    type="submit"
-                    disabled={addingRule || !newRuleValue.trim() || !newRuleUserId}
-                    className="px-4 py-2 bg-[#0078D4] text-white text-sm font-semibold rounded-lg hover:bg-[#005fa3] disabled:opacity-50 transition-colors"
-                  >
-                    {addingRule ? "Adding…" : "Add Rule"}
-                  </button>
-                </form>
-              </>
-            )}
-          </div>
-        )}
-      </div>
-
-      {/* Setup instructions */}
-      <div className="bg-blue-50 border border-blue-100 rounded-xl p-5">
-        <h3 className="text-sm font-bold text-[#0078D4] mb-2">Setup: Connect your M365 Mailbox</h3>
-        <ol className="text-xs text-blue-800 space-y-1.5 list-decimal list-inside">
-          <li>Register an Azure AD app at <span className="font-mono">portal.azure.com</span> → Azure Active Directory → App registrations.</li>
-          <li>Grant <span className="font-mono">Mail.Read</span> application permission (not delegated) and admin-consent it.</li>
-          <li>Set three Replit Secrets: <span className="font-mono">GRAPH_TENANT_ID</span>, <span className="font-mono">GRAPH_CLIENT_ID</span>, <span className="font-mono">GRAPH_CLIENT_SECRET</span>.</li>
-          <li>Set <span className="font-mono">GRAPH_MAIL_USER_ID</span> to the UPN or object ID of the mailbox user (e.g. <span className="font-mono">shane@contoso.com</span>).</li>
-          <li>Redeploy — the server will register a Graph webhook subscription automatically. New inbox emails will appear here within seconds.</li>
-        </ol>
+        {/* Right: email detail */}
+        <div className="flex-1 overflow-hidden bg-white">
+          <EmailDetailPanel
+            emailId={selectedEmailId}
+            clients={clients}
+            onEmailReassigned={loadEmails}
+          />
+        </div>
       </div>
     </div>
   );
