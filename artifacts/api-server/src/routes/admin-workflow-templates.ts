@@ -80,6 +80,10 @@ router.delete("/admin/workflow-templates/:id", requireAdmin, async (req: Request
   try {
     const id = Number(req.params.id);
     if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
+    // Unlink any project templates referencing this workflow template to avoid FK violation
+    await db.update(projectTemplatesTable)
+      .set({ workflowTemplateId: null })
+      .where(eq(projectTemplatesTable.workflowTemplateId, id));
     await db.delete(workflowTemplatesTable).where(eq(workflowTemplatesTable.id, id));
     res.json({ deleted: id });
   } catch {
