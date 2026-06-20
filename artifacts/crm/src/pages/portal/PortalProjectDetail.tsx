@@ -695,7 +695,6 @@ export default function PortalProjectDetail() {
   }
 
   const nextMilestone = steps.find(s => s.status !== "completed");
-  const latestUpdate = updates[0] ?? null;
   const PHASE_LIMIT = 4;
   const visibleSteps = showAllPhases ? steps : steps.slice(0, PHASE_LIMIT);
   const hiddenCount = steps.length - PHASE_LIMIT;
@@ -1323,33 +1322,6 @@ export default function PortalProjectDetail() {
                   )}
                 </div>
 
-                {/* Consultant Message Card */}
-                <div className="bg-white border border-border rounded-2xl p-5 shadow-sm">
-                  <h3 className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-4">Consultant Message</h3>
-                  <div className="flex items-center gap-3 mb-3">
-                    <div className="w-10 h-10 rounded-full bg-[#0078D4] flex items-center justify-center flex-shrink-0">
-                      <span className="text-white text-sm font-bold">SM</span>
-                    </div>
-                    <div>
-                      <p className="text-sm font-bold text-[#0A2540]">Shane McCaw</p>
-                      <p className="text-xs text-muted-foreground">Lead Consultant</p>
-                    </div>
-                  </div>
-                  {latestUpdate ? (
-                    <blockquote className="text-sm text-[#0A2540] italic leading-relaxed border-l-2 border-[#0078D4] pl-3">
-                      "{latestUpdate.content}"
-                    </blockquote>
-                  ) : (
-                    <blockquote className="text-sm text-muted-foreground italic leading-relaxed border-l-2 border-border pl-3">
-                      "No updates posted yet. Your consultant will share progress notes here as the project moves forward."
-                    </blockquote>
-                  )}
-                  {latestUpdate && (
-                    <p className="text-xs text-muted-foreground mt-2">
-                      {new Date(latestUpdate.createdAt).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}
-                    </p>
-                  )}
-                </div>
               </div>
             </div>
           </div>
