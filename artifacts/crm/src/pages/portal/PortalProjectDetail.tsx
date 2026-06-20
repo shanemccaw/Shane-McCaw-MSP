@@ -71,10 +71,18 @@ interface Update {
   createdAt: string;
 }
 
+interface PreviewTask {
+  stepId: number;
+  title: string;
+  groupName: string | null;
+  description: string | null;
+}
+
 interface ProjectDetailData {
   project: Project;
   steps: WorkflowStep[];
   tasks: KanbanTask[];
+  previewTasks: PreviewTask[];
   documents: Document[];
   updates: Update[];
 }
@@ -602,66 +610,100 @@ export default function PortalProjectDetail() {
                           {/* Expanded phase content */}
                           {isExpanded && (() => {
                             const stepTasks = data.tasks.filter(t => t.workflowStepId === step.id);
-                            // Group by groupName, preserving insertion order
+                            const stepPreviewTasks = data.previewTasks?.filter(t => t.stepId === step.id) ?? [];
+                            const isPreviewOnly = stepTasks.length === 0 && stepPreviewTasks.length > 0;
+
+                            // Group live kanban tasks by groupName
                             const groups: Record<string, KanbanTask[]> = {};
                             for (const t of stepTasks) {
                               const g = t.groupName ?? "Tasks";
                               if (!groups[g]) groups[g] = [];
                               groups[g].push(t);
                             }
-                            const groupEntries = Object.entries(groups);
+
+                            // Group preview tasks by groupName
+                            const previewGroups: Record<string, PreviewTask[]> = {};
+                            for (const t of stepPreviewTasks) {
+                              const g = t.groupName ?? "Tasks";
+                              if (!previewGroups[g]) previewGroups[g] = [];
+                              previewGroups[g].push(t);
+                            }
+
                             return (
                               <div className="bg-white border-t border-border px-5 py-4 space-y-4">
                                 {step.description && (
                                   <p className="text-xs text-muted-foreground leading-relaxed">{step.description}</p>
                                 )}
-                                {stepTasks.length === 0 ? (
-                                  <p className="text-xs text-muted-foreground italic">No tasks defined for this phase.</p>
-                                ) : (
-                                  groupEntries.map(([group, tasks]) => (
-                                    <div key={group}>
-                                      <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-2">{group}</p>
-                                      <div className="space-y-2">
-                                        {tasks.map(task => {
-                                          const taskDone = task.column === "completed";
-                                          return (
-                                            <div key={task.id} className="flex items-start gap-3 py-2.5 border border-border rounded-xl px-4 bg-[#F7F9FC]">
-                                              <div className={`w-4 h-4 rounded border-2 flex items-center justify-center flex-shrink-0 mt-0.5 ${
-                                                taskDone ? "bg-green-500 border-green-500" : "border-gray-300"
-                                              }`}>
-                                                {taskDone && (
-                                                  <svg className="w-2.5 h-2.5 text-white" viewBox="0 0 12 12" fill="none">
-                                                    <path d="M2 6l3 3 5-5" stroke="white" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" />
-                                                  </svg>
-                                                )}
-                                              </div>
+
+                                {/* Preview tasks (phase not yet active — show planned state) */}
+                                {isPreviewOnly && (
+                                  <>
+                                    <p className="text-[10px] font-semibold text-[#0078D4] uppercase tracking-wide">
+                                      Planned tasks — will activate when this phase begins
+                                    </p>
+                                    {Object.entries(previewGroups).map(([group, pts]) => (
+                                      <div key={group}>
+                                        <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-2">{group}</p>
+                                        <div className="space-y-2">
+                                          {pts.map((pt, tidx) => (
+                                            <div key={tidx} className="flex items-start gap-3 py-2.5 border border-dashed border-border rounded-xl px-4 bg-gray-50/60">
+                                              <div className="w-4 h-4 rounded border-2 border-gray-200 flex-shrink-0 mt-0.5" />
                                               <div className="flex-1 min-w-0">
-                                                <p className={`text-sm font-medium leading-snug ${taskDone ? "line-through text-muted-foreground" : "text-[#0A2540]"}`}>
-                                                  {task.title}
-                                                </p>
-                                                {task.description && (
-                                                  <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">{task.description}</p>
-                                                )}
-                                                {task.assignedTo && (
-                                                  <p className="text-[10px] text-muted-foreground mt-0.5">{task.assignedTo}</p>
+                                                <p className="text-sm font-medium text-muted-foreground leading-snug">{pt.title}</p>
+                                                {pt.description && (
+                                                  <p className="text-xs text-muted-foreground/70 mt-0.5 leading-relaxed">{pt.description}</p>
                                                 )}
                                               </div>
-                                              {task.column !== "completed" && (
-                                                <span className={`text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full flex-shrink-0 ${
-                                                  task.column === "in_progress" ? "bg-blue-100 text-blue-700" :
-                                                  task.column === "waiting_on_customer" ? "bg-yellow-100 text-yellow-700" :
-                                                  "bg-gray-100 text-gray-500"
-                                                }`}>
-                                                  {task.column === "in_progress" ? "In Progress" :
-                                                   task.column === "waiting_on_customer" ? "Waiting" : "Backlog"}
-                                                </span>
-                                              )}
+                                              <span className="text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full flex-shrink-0 bg-gray-100 text-gray-400">
+                                                Planned
+                                              </span>
                                             </div>
-                                          );
-                                        })}
+                                          ))}
+                                        </div>
                                       </div>
-                                    </div>
-                                  ))
+                                    ))}
+                                  </>
+                                )}
+
+                                {/* Live kanban tasks (phase active or completed) */}
+                                {!isPreviewOnly && (
+                                  <>
+                                    {stepTasks.length === 0 ? (
+                                      <p className="text-xs text-muted-foreground italic">No tasks defined for this phase.</p>
+                                    ) : (
+                                      Object.entries(groups).map(([group, kts]) => (
+                                        <div key={group}>
+                                          <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-2">{group}</p>
+                                          <div className="space-y-2">
+                                            {kts.map(kt => {
+                                              const taskDone = kt.column === "completed";
+                                              return (
+                                                <div key={kt.id} className="flex items-start gap-3 py-2.5 border border-border rounded-xl px-4 bg-[#F7F9FC]">
+                                                  <div className={`w-4 h-4 rounded border-2 flex items-center justify-center flex-shrink-0 mt-0.5 ${taskDone ? "bg-green-500 border-green-500" : "border-gray-300"}`}>
+                                                    {taskDone && (
+                                                      <svg className="w-2.5 h-2.5 text-white" viewBox="0 0 12 12" fill="none">
+                                                        <path d="M2 6l3 3 5-5" stroke="white" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" />
+                                                      </svg>
+                                                    )}
+                                                  </div>
+                                                  <div className="flex-1 min-w-0">
+                                                    <p className={`text-sm font-medium leading-snug ${taskDone ? "line-through text-muted-foreground" : "text-[#0A2540]"}`}>{kt.title}</p>
+                                                    {kt.description && <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">{kt.description}</p>}
+                                                    {kt.assignedTo && <p className="text-[10px] text-muted-foreground mt-0.5">{kt.assignedTo}</p>}
+                                                  </div>
+                                                  {!taskDone && (
+                                                    <span className={`text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full flex-shrink-0 ${kt.column === "in_progress" ? "bg-blue-100 text-blue-700" : kt.column === "waiting_on_customer" ? "bg-yellow-100 text-yellow-700" : "bg-gray-100 text-gray-500"}`}>
+                                                      {kt.column === "in_progress" ? "In Progress" : kt.column === "waiting_on_customer" ? "Waiting" : "Backlog"}
+                                                    </span>
+                                                  )}
+                                                </div>
+                                              );
+                                            })}
+                                          </div>
+                                        </div>
+                                      ))
+                                    )}
+                                  </>
                                 )}
                                 {step.notes && (
                                   <p className="text-xs text-[#0078D4] italic">Note: {step.notes}</p>

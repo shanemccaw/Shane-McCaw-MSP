@@ -114,6 +114,27 @@ router.get("/portal/projects/:id", requireAuth, async (req: Request, res: Respon
     .where(eq(kanbanTasksTable.projectId, id))
     .orderBy(asc(kanbanTasksTable.order));
 
+  // For steps that haven't had kanban tasks seeded yet, return their template tasks as a preview
+  const seededStepIds = new Set(tasks.map(t => t.workflowStepId).filter(Boolean));
+  const unseededSteps = steps.filter(s => s.workflowTemplateStepId && !seededStepIds.has(s.id));
+  let previewTasks: Array<{ stepId: number; title: string; groupName: string | null; description: string | null }> = [];
+  if (unseededSteps.length > 0) {
+    const templateStepIds = unseededSteps.map(s => s.workflowTemplateStepId!);
+    const tmplTasks = await db.select().from(projectTemplateTasksTable)
+      .where(inArray(projectTemplateTasksTable.workflowTemplateStepId, templateStepIds))
+      .orderBy(asc(projectTemplateTasksTable.order));
+    // Map each template task back to the project step ID
+    const templateStepToProjectStep = new Map(unseededSteps.map(s => [s.workflowTemplateStepId!, s.id]));
+    previewTasks = tmplTasks
+      .filter(t => t.workflowTemplateStepId && templateStepToProjectStep.has(t.workflowTemplateStepId))
+      .map(t => ({
+        stepId: templateStepToProjectStep.get(t.workflowTemplateStepId!)!,
+        title: t.title,
+        groupName: t.groupName ?? null,
+        description: t.description ?? null,
+      }));
+  }
+
   const documents = await db.select().from(documentsTable)
     .where(eq(documentsTable.projectId, id))
     .orderBy(desc(documentsTable.createdAt));
@@ -122,7 +143,7 @@ router.get("/portal/projects/:id", requireAuth, async (req: Request, res: Respon
     .where(eq(projectUpdatesTable.projectId, id))
     .orderBy(desc(projectUpdatesTable.createdAt));
 
-  res.json({ project, steps, tasks, documents, updates });
+  res.json({ project, steps, tasks, previewTasks, documents, updates });
 });
 
 // ─── CLIENT: Project Audit PDF ───────────────────────────────────────────────
