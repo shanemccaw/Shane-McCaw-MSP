@@ -50,6 +50,19 @@ interface KanbanTask {
   order: number;
 }
 
+interface Invoice {
+  id: number;
+  invoiceNumber: string;
+  description: string | null;
+  amount: string;
+  currency: string;
+  status: string;
+  paidAt: string | null;
+  pdfFilename: string | null;
+  projectId: number | null;
+  createdAt: string;
+}
+
 // ─── Visual config lookup ──────────────────────────────────────────────────
 
 interface VisualConfig {
@@ -245,18 +258,22 @@ export default function Dashboard2() {
   const [reports, setReports] = useState<Report[]>([]);
   const [docsByProject, setDocsByProject] = useState<Record<number, Document[]>>({});
   const [tasksByProject, setTasksByProject] = useState<Record<number, KanbanTask[]>>({});
+  const [invoices, setInvoices] = useState<Invoice[]>([]);
   const { fetchWithAuth } = useAuth();
 
   const loadData = useCallback(async () => {
     try {
-      const [svcRes, rptRes] = await Promise.all([
+      const [svcRes, rptRes, invRes] = await Promise.all([
         fetchWithAuth("/api/portal/services"),
         fetchWithAuth("/api/portal/reports"),
+        fetchWithAuth("/api/portal/invoices"),
       ]);
       const svcs: ClientService[] = svcRes.ok ? await svcRes.json() : [];
       const rpts: Report[] = rptRes.ok ? await rptRes.json() : [];
+      const invs: Invoice[] = invRes.ok ? await invRes.json() : [];
       setServices(svcs);
       setReports(rpts);
+      setInvoices(invs);
 
       // Fetch documents + tasks for every project the user has
       const projectIds = [...new Set(svcs.map(s => s.projectId).filter((id): id is number => id !== null))];
@@ -307,6 +324,23 @@ export default function Dashboard2() {
   const taskOpen = activeTasks.filter(t => t.column === "backlog" || t.column === "in_progress").length;
   const taskWaiting = activeTasks.filter(t => t.column === "waiting_on_customer").length;
   const taskClosed = activeTasks.filter(t => t.column === "completed").length;
+
+  // ─── Billing stats ───────────────────────────────────────────────────────
+  const totalBilled = invoices.reduce((sum, inv) => sum + parseFloat(inv.amount), 0);
+  const totalPaid   = invoices.filter(inv => inv.status === "paid").reduce((sum, inv) => sum + parseFloat(inv.amount), 0);
+  const totalOwed   = invoices.filter(inv => inv.status !== "paid").reduce((sum, inv) => sum + parseFloat(inv.amount), 0);
+
+  function fmtCurrency(amount: number, currency = "usd") {
+    return new Intl.NumberFormat("en-US", { style: "currency", currency: currency.toUpperCase(), minimumFractionDigits: 0 }).format(amount);
+  }
+
+  function statusBadge(status: string) {
+    switch (status) {
+      case "paid":     return { label: "Paid",     bg: "bg-[#dcfce7]", text: "text-[#16a34a]" };
+      case "overdue":  return { label: "Overdue",  bg: "bg-[#fee2e2]", text: "text-[#dc2626]" };
+      default:         return { label: "Pending",  bg: "bg-[#fff3cd]", text: "text-[#b45309]" };
+    }
+  }
 
   return (
     <PortalLayout>
@@ -500,6 +534,103 @@ export default function Dashboard2() {
             </section>
 
           </div>
+        )}
+
+        {/* ── Billing & Invoices ── */}
+        {invoices.length > 0 && (
+          <section className="space-y-6">
+            <h3 className="text-2xl font-semibold text-[#191c1e]">Billing &amp; Invoices</h3>
+
+            {/* Stats row */}
+            <div className="grid grid-cols-3 gap-4">
+              <div className="bg-white rounded-xl border border-[#c6c6cd] d2-card-elevation px-6 py-5 flex items-center gap-4">
+                <div className="w-10 h-10 rounded-full bg-[#dae2fd] flex items-center justify-center flex-shrink-0">
+                  <span className="material-symbols-outlined text-[#0078D4]" style={{ fontSize: 20 }}>receipt_long</span>
+                </div>
+                <div>
+                  <p className="text-2xl font-bold text-[#191c1e] leading-none">{fmtCurrency(totalBilled)}</p>
+                  <p className="text-xs text-[#76777d] mt-1 font-medium uppercase tracking-wide">Total Invoiced</p>
+                </div>
+              </div>
+              <div className="bg-white rounded-xl border border-[#c6c6cd] d2-card-elevation px-6 py-5 flex items-center gap-4">
+                <div className="w-10 h-10 rounded-full bg-[#dcfce7] flex items-center justify-center flex-shrink-0">
+                  <span className="material-symbols-outlined text-[#16a34a]" style={{ fontSize: 20 }}>payments</span>
+                </div>
+                <div>
+                  <p className="text-2xl font-bold text-[#191c1e] leading-none">{fmtCurrency(totalPaid)}</p>
+                  <p className="text-xs text-[#76777d] mt-1 font-medium uppercase tracking-wide">Total Paid</p>
+                </div>
+              </div>
+              <div className="bg-white rounded-xl border border-[#c6c6cd] d2-card-elevation px-6 py-5 flex items-center gap-4">
+                <div className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${totalOwed > 0 ? "bg-[#fee2e2]" : "bg-[#f2f4f6]"}`}>
+                  <span className="material-symbols-outlined" style={{ fontSize: 20, color: totalOwed > 0 ? "#dc2626" : "#76777d" }}>pending_actions</span>
+                </div>
+                <div>
+                  <p className="text-2xl font-bold text-[#191c1e] leading-none">{fmtCurrency(totalOwed)}</p>
+                  <p className="text-xs text-[#76777d] mt-1 font-medium uppercase tracking-wide">Outstanding</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Invoice list */}
+            <div className="bg-white rounded-xl border border-[#c6c6cd] d2-card-elevation overflow-hidden">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-[#e8e9eb] bg-[#f7f9fc]">
+                    <th className="text-left text-[11px] font-semibold text-[#76777d] uppercase tracking-wider px-5 py-3">Invoice</th>
+                    <th className="text-left text-[11px] font-semibold text-[#76777d] uppercase tracking-wider px-5 py-3">Description</th>
+                    <th className="text-left text-[11px] font-semibold text-[#76777d] uppercase tracking-wider px-5 py-3">Date</th>
+                    <th className="text-right text-[11px] font-semibold text-[#76777d] uppercase tracking-wider px-5 py-3">Amount</th>
+                    <th className="text-center text-[11px] font-semibold text-[#76777d] uppercase tracking-wider px-5 py-3">Status</th>
+                    <th className="px-5 py-3" />
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-[#e8e9eb]">
+                  {invoices.map(inv => {
+                    const badge = statusBadge(inv.status);
+                    return (
+                      <tr key={inv.id} className="hover:bg-[#f7f9fc] transition-colors">
+                        <td className="px-5 py-4 font-mono text-[12px] text-[#76777d] whitespace-nowrap">{inv.invoiceNumber}</td>
+                        <td className="px-5 py-4 text-[#191c1e] max-w-[260px] truncate">{inv.description ?? "—"}</td>
+                        <td className="px-5 py-4 text-[#76777d] whitespace-nowrap text-[12px]">
+                          {new Date(inv.paidAt ?? inv.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                        </td>
+                        <td className="px-5 py-4 text-right font-semibold text-[#191c1e] whitespace-nowrap">
+                          {fmtCurrency(parseFloat(inv.amount), inv.currency)}
+                        </td>
+                        <td className="px-5 py-4 text-center">
+                          <span className={`inline-block px-2.5 py-0.5 rounded-full text-[11px] font-semibold ${badge.bg} ${badge.text}`}>
+                            {badge.label}
+                          </span>
+                        </td>
+                        <td className="px-5 py-4 text-right whitespace-nowrap">
+                          {inv.pdfFilename ? (
+                            <a
+                              href={`/api/portal/invoices/${inv.id}/download`}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="inline-flex items-center gap-1 text-[#0078D4] hover:text-[#005a9e] text-[12px] font-medium transition-colors"
+                            >
+                              <span className="material-symbols-outlined" style={{ fontSize: 15 }}>download</span>
+                              PDF
+                            </a>
+                          ) : inv.status !== "paid" ? (
+                            <a
+                              href={`/portal/billing`}
+                              className="inline-flex items-center gap-1 text-[#b45309] hover:text-[#92400e] text-[12px] font-medium transition-colors"
+                            >
+                              <span className="material-symbols-outlined" style={{ fontSize: 15 }}>credit_card</span>
+                              Pay Now
+                            </a>
+                          ) : null}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </section>
         )}
 
       </div>
