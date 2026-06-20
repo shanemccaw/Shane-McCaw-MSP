@@ -1216,7 +1216,7 @@ export default function PortalProjectDetail() {
                 <div className="bg-white border border-border rounded-2xl p-5 shadow-sm">
                   <h3 className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-3">Project Contract</h3>
                   {contract ? (
-                    <Link href={`/portal/contracts/${contract.id}`}>
+                    <Link href={`/portal/billing/contracts/${contract.id}`}>
                       <div className="flex items-center gap-3 cursor-pointer group">
                         <div className="w-10 h-10 rounded-xl bg-[#0078D4]/10 flex items-center justify-center flex-shrink-0 group-hover:bg-[#0078D4]/20 transition-colors">
                           <svg className="w-5 h-5 text-[#0078D4]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
