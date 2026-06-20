@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { useAuth } from "@/contexts/AuthContext";
-import { useEmailBadge } from "@/contexts/EmailBadgeContext";
+import { useAssignEmail } from "@/hooks/useAssignEmail";
 
 interface EmailRow {
   email: {
@@ -76,7 +76,7 @@ function ruleLabel(value: string) {
 
 export default function EmailActivityPage() {
   const { fetchWithAuth } = useAuth();
-  const { refreshUnreadCount } = useEmailBadge();
+  const { assignEmail, assigningId } = useAssignEmail();
   const [tab, setTab] = useState<Tab>("all");
   const [emails, setEmails] = useState<EmailRow[]>([]);
   const [total, setTotal] = useState(0);
@@ -90,7 +90,6 @@ export default function EmailActivityPage() {
   const [rulesOpen, setRulesOpen] = useState(false);
 
   const [clients, setClients] = useState<ClientOption[]>([]);
-  const [assigningId, setAssigningId] = useState<number | null>(null);
 
   const [newRuleValue, setNewRuleValue] = useState("");
   const [newRuleUserId, setNewRuleUserId] = useState<string>("");
@@ -144,21 +143,12 @@ export default function EmailActivityPage() {
   useEffect(() => { void loadRules(); void loadClients(); }, [loadRules, loadClients]);
   useEffect(() => { setPage(1); }, [tab]);
 
-  async function assignEmail(emailId: number, userId: number | null) {
-    setAssigningId(emailId);
+  async function handleAssignEmail(emailId: number, userId: number | null) {
     try {
-      const res = await fetchWithAuth(`/api/admin/emails/${emailId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userId }),
-      });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      await assignEmail(emailId, userId);
       await loadEmails();
-      refreshUnreadCount();
     } catch (e) {
       alert(e instanceof Error ? e.message : "Failed to assign email");
-    } finally {
-      setAssigningId(null);
     }
   }
 
@@ -304,7 +294,7 @@ export default function EmailActivityPage() {
                         value={row.email.linkedUserId ?? ""}
                         onChange={e => {
                           const val = e.target.value;
-                          void assignEmail(row.email.id, val === "" ? null : parseInt(val, 10));
+                          void handleAssignEmail(row.email.id, val === "" ? null : parseInt(val, 10));
                         }}
                         className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 text-gray-700 bg-white focus:outline-none focus:ring-1 focus:ring-[#0078D4] disabled:opacity-50 max-w-[160px]"
                       >
