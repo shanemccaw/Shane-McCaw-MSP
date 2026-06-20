@@ -587,7 +587,9 @@ export default function ProjectsPage() {
 
   const clientName = (id: number | null) => {
     const c = clients.find(c => c.id === id);
-    return c ? (c.name ?? c.email) : "Unassigned";
+    if (!c) return "Unassigned";
+    const person = c.name ?? c.email;
+    return c.company ? `${c.company} · ${person}` : person;
   };
 
   const reloadDetails = useCallback(async (projectId: number) => {
