@@ -602,8 +602,12 @@ export default function WorkflowsPage() {
                         <div className="px-5 py-4 space-y-3">
                           <input type="text" value={editingStepForm.title} placeholder="Step title" autoFocus
                             onChange={e => setEditingStepForm(p => ({ ...p, title: e.target.value }))}
-                            onKeyDown={e => { if (e.key === "Enter") void saveStep(); if (e.key === "Escape") setEditingStep(null); }}
+                            onKeyDown={e => { if (e.key === "Escape") setEditingStep(null); }}
                             className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4]" />
+                          <textarea value={editingStepForm.description} placeholder="Step description (optional)"
+                            rows={2}
+                            onChange={e => setEditingStepForm(p => ({ ...p, description: e.target.value }))}
+                            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4] resize-none" />
                           <div className="flex gap-2">
                             <button onClick={saveStep} className="text-xs bg-[#0078D4] text-white px-3 py-1.5 rounded-lg font-medium hover:bg-[#006CBE]">Save</button>
                             <button onClick={() => setEditingStep(null)} className="text-xs text-gray-500 hover:text-gray-700 px-3 py-1.5">Cancel</button>
@@ -617,7 +621,12 @@ export default function WorkflowsPage() {
                               <div className="flex-shrink-0 w-5 h-5 rounded-full bg-[#0078D4]/10 text-[#0078D4] text-xs font-bold flex items-center justify-center">
                                 {idx + 1}
                               </div>
-                              <span className="text-sm font-medium text-[#0A2540] flex-1 truncate">{step.title}</span>
+                              <div className="flex-1 min-w-0">
+                                <span className="text-sm font-medium text-[#0A2540] block truncate">{step.title}</span>
+                                {step.description && (
+                                  <span className="text-xs text-gray-400 block truncate">{step.description}</span>
+                                )}
+                              </div>
                               {tasks.length > 0 && (
                                 <span className="text-xs text-gray-400 bg-gray-100 rounded-full px-2 py-0.5 flex-shrink-0">
                                   {tasks.length} task{tasks.length !== 1 ? "s" : ""}
@@ -733,8 +742,12 @@ export default function WorkflowsPage() {
                   <div className="px-5 py-4 space-y-3 bg-blue-50 border-t border-gray-100">
                     <input type="text" value={newStep.title} placeholder="Step title" autoFocus
                       onChange={e => setNewStep(p => p ? { ...p, title: e.target.value } : p)}
-                      onKeyDown={e => { if (e.key === "Enter") void addStep(); if (e.key === "Escape") setNewStep(null); }}
+                      onKeyDown={e => { if (e.key === "Escape") setNewStep(null); }}
                       className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4]" />
+                    <textarea value={newStep.description} placeholder="Step description (optional)"
+                      rows={2}
+                      onChange={e => setNewStep(p => p ? { ...p, description: e.target.value } : p)}
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4] resize-none" />
                     <div className="flex gap-2">
                       <button onClick={() => void addStep()} className="text-xs bg-[#0078D4] text-white px-3 py-1.5 rounded-lg font-medium hover:bg-[#006CBE]">Add Step</button>
                       <button onClick={() => setNewStep(null)} className="text-xs text-gray-500 hover:text-gray-700 px-3 py-1.5">Cancel</button>
