@@ -119,6 +119,11 @@ export default function WorkflowsPage() {
   const [editingStepForm, setEditingStepForm] = useState({ title: "", description: "" });
   const [expandedStepIds, setExpandedStepIds] = useState<Set<number>>(new Set());
 
+  // JSON import state
+  const [jsonImportOpen, setJsonImportOpen] = useState(false);
+  const [jsonImportText, setJsonImportText] = useState("");
+  const [jsonImporting, setJsonImporting] = useState(false);
+
   // Task state
   const [newTask, setNewTask] = useState<{ stepId: number; title: string; groupName: string; description: string } | null>(null);
   const [editingTask, setEditingTask] = useState<StepTask | null>(null);
@@ -158,6 +163,8 @@ export default function WorkflowsPage() {
       setEditingTask(null);
       setNewTask(null);
       setNewStep(null);
+      setJsonImportOpen(false);
+      setJsonImportText("");
     } catch { /* ignore */ }
   }, [fetchWithAuth]);
 
@@ -207,6 +214,50 @@ export default function WorkflowsPage() {
     setSelected(null);
     await fetchTemplates();
     toast({ title: "Template deleted" });
+  }
+
+  function parseTemplateSteps(text: string): { parsed: Array<{ title: string; description?: string }> | null; error: string | null } {
+    if (!text.trim()) return { parsed: null, error: null };
+    try {
+      const raw: unknown = JSON.parse(text);
+      if (!Array.isArray(raw)) return { parsed: null, error: "JSON must be an array [ … ]" };
+      if (raw.length === 0) return { parsed: null, error: "Array is empty" };
+      const items = raw as Array<Record<string, unknown>>;
+      const missingTitle = items.findIndex(s => !s.title || typeof s.title !== "string" || !(s.title as string).trim());
+      if (missingTitle !== -1) return { parsed: null, error: `Item at index ${missingTitle} is missing a "title"` };
+      return { parsed: items as Array<{ title: string; description?: string }>, error: null };
+    } catch (e) {
+      return { parsed: null, error: (e as SyntaxError).message };
+    }
+  }
+
+  async function importStepsFromJson() {
+    if (!selected) return;
+    const { parsed, error } = parseTemplateSteps(jsonImportText);
+    if (error || !parsed) return;
+    setJsonImporting(true);
+    try {
+      const maxOrder = (selected.steps ?? []).reduce((m, s) => Math.max(m, s.order), -1);
+      for (let i = 0; i < parsed.length; i++) {
+        const s = parsed[i];
+        const res = await fetchWithAuth(`/api/admin/workflow-templates/${selected.id}/steps`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ title: s.title.trim(), description: s.description?.trim() || null, order: maxOrder + 1 + i }),
+        });
+        if (!res.ok) {
+          toast({ title: `Failed at step ${i + 1}`, variant: "destructive" });
+          await refreshSelected();
+          return;
+        }
+      }
+      setJsonImportOpen(false);
+      setJsonImportText("");
+      await refreshSelected();
+      toast({ title: "Steps imported", description: `${parsed.length} step${parsed.length !== 1 ? "s" : ""} added successfully.` });
+    } finally {
+      setJsonImporting(false);
+    }
   }
 
   async function addStep() {
@@ -399,14 +450,75 @@ export default function WorkflowsPage() {
                 <h3 className="font-semibold text-[#0A2540]">
                   Steps <span className="text-gray-400 font-normal text-sm">({steps.length})</span>
                 </h3>
-                <button onClick={() => setNewStep({ title: "", description: "" })}
-                  className="text-xs text-[#0078D4] hover:underline font-medium">
-                  + Add step
-                </button>
+                <div className="flex items-center gap-4">
+                  <button
+                    onClick={() => { setJsonImportOpen(v => !v); setJsonImportText(""); setNewStep(null); }}
+                    className="flex items-center gap-1 text-xs text-[#00B4D8] hover:underline font-medium">
+                    <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M17 16v2a2 2 0 01-2 2H5a2 2 0 01-2-2v-2M9 12l3 3 3-3M12 3v12" />
+                    </svg>
+                    Import from JSON
+                  </button>
+                  <button onClick={() => { setNewStep({ title: "", description: "" }); setJsonImportOpen(false); }}
+                    className="text-xs text-[#0078D4] hover:underline font-medium">
+                    + Add step
+                  </button>
+                </div>
               </div>
 
+              {jsonImportOpen && (() => {
+                const { parsed, error } = parseTemplateSteps(jsonImportText);
+                return (
+                  <div className="px-5 py-4 border-b border-gray-100 space-y-3 bg-gray-50">
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-600 mb-1 uppercase tracking-wide">Paste JSON array of steps</label>
+                      <textarea
+                        autoFocus
+                        rows={6}
+                        value={jsonImportText}
+                        onChange={e => setJsonImportText(e.target.value)}
+                        placeholder={`[\n  {\n    "title": "Discovery & Assessment",\n    "description": "Review current M365 environment"\n  },\n  { "title": "Architecture Design" }\n]`}
+                        className="w-full border border-gray-300 rounded-lg px-3 py-2 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-[#00B4D8] resize-y bg-white"
+                      />
+                    </div>
+                    {jsonImportText.trim() && error && (
+                      <p className="text-xs text-red-600 bg-red-50 border border-red-100 rounded px-2 py-1.5 font-mono">{error}</p>
+                    )}
+                    {parsed && parsed.length > 0 && (
+                      <div className="bg-white border border-gray-200 rounded-lg p-3 space-y-1.5">
+                        <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-2">{parsed.length} step{parsed.length !== 1 ? "s" : ""} to add</p>
+                        {parsed.map((s, i) => (
+                          <div key={i} className="flex items-start gap-2 text-xs">
+                            <span className="w-5 h-5 rounded-full bg-[#0078D4]/10 text-[#0078D4] text-[10px] font-bold flex items-center justify-center flex-shrink-0 mt-0.5">{i + 1}</span>
+                            <div className="min-w-0">
+                              <p className="font-semibold text-[#0A2540] leading-snug">{s.title}</p>
+                              {s.description && <p className="text-gray-400 mt-0.5 leading-snug">{s.description}</p>}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    <div className="flex gap-2">
+                      <button
+                        disabled={!parsed || jsonImporting}
+                        onClick={() => void importStepsFromJson()}
+                        className="bg-[#0A2540] text-white text-xs font-semibold px-4 py-1.5 rounded-lg hover:bg-[#0A2540]/90 disabled:opacity-40 flex items-center gap-1.5 whitespace-nowrap"
+                      >
+                        {jsonImporting
+                          ? <><div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" /> Importing…</>
+                          : `Import ${parsed ? parsed.length : ""} Step${parsed?.length !== 1 ? "s" : ""}`}
+                      </button>
+                      <button type="button" onClick={() => { setJsonImportOpen(false); setJsonImportText(""); }}
+                        className="border border-gray-200 text-xs font-medium px-3 py-1.5 rounded-lg hover:bg-gray-100 text-gray-600">
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                );
+              })()}
+
               <div>
-                {steps.length === 0 && !newStep && (
+                {steps.length === 0 && !newStep && !jsonImportOpen && (
                   <div className="px-5 py-8 text-center text-sm text-gray-400">
                     No steps yet. Add the first step to define this workflow.
                   </div>
