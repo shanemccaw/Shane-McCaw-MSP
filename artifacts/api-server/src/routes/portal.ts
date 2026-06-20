@@ -2325,7 +2325,7 @@ router.post("/admin/kanban-tasks", requireAdmin, async (req: Request, res: Respo
     order: order ?? 0,
     assignedTo: assignedTo ?? null,
     dueDate: dueDate ? new Date(dueDate) : null,
-    priority: priority ?? null,
+    priority: priority ?? "medium",
   }).returning();
   await syncProjectProgress(projectId);
   res.status(201).json(task);
@@ -2349,7 +2349,7 @@ router.patch("/admin/kanban-tasks/:id", requireAdmin, async (req: Request, res: 
   if (waitingReason !== undefined) updates.waitingReason = waitingReason ?? null;
   if (completionStatus !== undefined) updates.completionStatus = completionStatus ?? null;
   if (completionNotes !== undefined) updates.completionNotes = completionNotes ?? null;
-  if (priority !== undefined) updates.priority = priority ?? null;
+  if (priority !== undefined) updates.priority = priority ?? "medium";
 
   const [updated] = await db.update(kanbanTasksTable).set(updates).where(eq(kanbanTasksTable.id, id)).returning();
   if (!updated) { res.status(404).json({ error: "Task not found" }); return; }
