@@ -502,7 +502,7 @@ router.get("/portal/projects/:id/audit-pdf", requireAuth, async (req: Request, r
         // Description
         if (task.description && task.description.trim()) {
           const dLines = wrap(task.description.trim(), 80);
-          for (const line of dLines.slice(0, 2)) {
+          for (const line of dLines) {
             ensureSpace(12);
             text(line, margin + 24, y, { size: 7.5, color: rgb(0.5, 0.5, 0.5) });
             y -= 11;
@@ -519,7 +519,7 @@ router.get("/portal/projects/:id/audit-pdf", requireAuth, async (req: Request, r
         // Completion notes
         if (task.completionNotes) {
           const nLines = wrap(task.completionNotes, 80);
-          for (const line of nLines.slice(0, 2)) {
+          for (const line of nLines) {
             ensureSpace(11);
             text(line, margin + 24, y, { size: 7.5, color: rgb(0.45, 0.45, 0.45) });
             y -= 10;
@@ -588,7 +588,7 @@ router.get("/portal/projects/:id/audit-pdf", requireAuth, async (req: Request, r
         text("Executive Summary", margin, y, { font: bold, size: 8.5, color: blue });
         y -= 12;
         const esLines = wrap(sr.executiveSummary, 90);
-        for (const line of esLines.slice(0, 6)) {
+        for (const line of esLines) {
           ensureSpace(12);
           text(line, margin + 4, y, { size: 8.5, color: navy });
           y -= 11;
@@ -609,7 +609,7 @@ router.get("/portal/projects/:id/audit-pdf", requireAuth, async (req: Request, r
           y -= 11;
           if (act.description) {
             const aLines = wrap(act.description, 85);
-            for (const line of aLines.slice(0, 2)) {
+            for (const line of aLines) {
               ensureSpace(11);
               text(`  ${line}`, margin + 10, y, { size: 7.5, color: grey });
               y -= 10;
@@ -625,7 +625,7 @@ router.get("/portal/projects/:id/audit-pdf", requireAuth, async (req: Request, r
         text("Key Outcomes", margin, y, { font: bold, size: 8.5, color: blue });
         y -= 12;
         const koLines = wrap(sr.keyOutcomes, 90);
-        for (const line of koLines.slice(0, 4)) {
+        for (const line of koLines) {
           ensureSpace(11);
           text(line, margin + 4, y, { size: 8.5, color: navy });
           y -= 11;
@@ -654,7 +654,7 @@ router.get("/portal/projects/:id/audit-pdf", requireAuth, async (req: Request, r
         text("Client Question:", margin + 4, y, { font: bold, size: 8, color: rgb(0.5, 0.3, 0) });
         y -= 11;
         const qLines = wrap(sr.clientQuestion, 86);
-        for (const line of qLines.slice(0, 3)) {
+        for (const line of qLines) {
           ensureSpace(11);
           text(line, margin + 10, y, { size: 8, color: navy });
           y -= 10;
@@ -664,7 +664,7 @@ router.get("/portal/projects/:id/audit-pdf", requireAuth, async (req: Request, r
           text("Response:", margin + 4, y, { font: bold, size: 8, color: blue });
           y -= 11;
           const rLines = wrap(sr.adminReply, 86);
-          for (const line of rLines.slice(0, 3)) {
+          for (const line of rLines) {
             ensureSpace(11);
             text(line, margin + 10, y, { size: 8, color: navy });
             y -= 10;
