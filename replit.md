@@ -72,6 +72,7 @@ _Populate as you build — explicit user instructions worth remembering across s
 - The booking calendar on `/book` and `/contact` uses `MicrosoftBookingsEmbed.tsx`. To activate: set up a Bookings page in the M365 admin portal, then set `VITE_BOOKINGS_URL` in Replit Secrets to the booking page URL (format: `https://outlook.office365.com/book/...`). No code changes needed — the component reads the env var automatically. Until then, a branded placeholder card is shown.
 - Contact form uses react-hook-form + zod but has no backend submission — shows a toast on success
 - Header is transparent on `/` and solid Deep Navy on all other pages (via scroll + location detection)
+- **SMS order alerts**: When a Stripe payment completes, the server sends Shane an SMS via Twilio. Requires four secrets in Replit Secrets: `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN` (both from console.twilio.com), `TWILIO_FROM_NUMBER` (your Twilio number in E.164 format, e.g. `+12025551234`), and `SHANE_PHONE_NUMBER` (destination in E.164 format). SMS is silently skipped (with a warning log) if any secret is missing. Helper is at `artifacts/api-server/src/lib/sms.ts`; hooked into `processStripeEvent` in `portal.ts` for both `service_purchase` and `onboarding_purchase` event types.
 
 ## Pointers
 
