@@ -668,8 +668,8 @@ export default function OverviewPage() {
               </div>
             ))}
           </div>
-        )}
       </section>
+      )}
     </div>
   );
 }
