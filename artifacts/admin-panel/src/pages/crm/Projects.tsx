@@ -343,37 +343,31 @@ function TrackSection({
         </div>
       </div>
 
-      {projects.length === 0 ? (
-        <div className="border border-dashed border-border rounded-xl py-8 text-center text-sm text-muted-foreground">
-          No {track.label.toLowerCase()} yet
-        </div>
-      ) : (
-        <div className={`grid gap-4 ${isRetainer ? "grid-cols-[repeat(auto-fit,minmax(320px,1fr))]" : "grid-cols-[repeat(auto-fit,minmax(280px,1fr))]"}`}>
-          {projects.map(p => {
-            const projectSteps = steps[p.id] ?? [];
-            return isRetainer ? (
-              <RetainerCard
-                key={p.id}
-                project={p}
-                steps={projectSteps}
-                onDetails={() => onDetails(p.id)}
-                onEdit={() => onEdit(p)}
-                onDelete={() => onDelete(p)}
-              />
-            ) : (
-              <ServiceCard
-                key={p.id}
-                project={p}
-                steps={projectSteps}
-                trackColor={track.color}
-                onDetails={() => onDetails(p.id)}
-                onEdit={() => onEdit(p)}
-                onDelete={() => onDelete(p)}
-              />
-            );
-          })}
-        </div>
-      )}
+      <div className={`grid gap-4 ${isRetainer ? "grid-cols-[repeat(auto-fit,minmax(320px,1fr))]" : "grid-cols-[repeat(auto-fit,minmax(280px,1fr))]"}`}>
+        {projects.map(p => {
+          const projectSteps = steps[p.id] ?? [];
+          return isRetainer ? (
+            <RetainerCard
+              key={p.id}
+              project={p}
+              steps={projectSteps}
+              onDetails={() => onDetails(p.id)}
+              onEdit={() => onEdit(p)}
+              onDelete={() => onDelete(p)}
+            />
+          ) : (
+            <ServiceCard
+              key={p.id}
+              project={p}
+              steps={projectSteps}
+              trackColor={track.color}
+              onDetails={() => onDetails(p.id)}
+              onEdit={() => onEdit(p)}
+              onDelete={() => onDelete(p)}
+            />
+          );
+        })}
+      </div>
     </div>
   );
 }
