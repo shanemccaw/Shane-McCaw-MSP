@@ -20,6 +20,7 @@ import MessagesPage from "@/pages/crm/Messages";
 import PurchasesPage from "@/pages/crm/Purchases";
 import ContractsPage from "@/pages/crm/Contracts";
 import StatusReportsPage from "@/pages/crm/StatusReports";
+import OverviewPage from "@/pages/Overview";
 import type { ReactNode } from "react";
 
 const queryClient = new QueryClient({
@@ -53,10 +54,15 @@ function Router() {
   return (
     <Switch>
       <Route path="/login">
-        {user && user.role === "admin" ? <Redirect to="/articles" /> : <LoginPage />}
+        {user && user.role === "admin" ? <Redirect to="/overview" /> : <LoginPage />}
       </Route>
       <Route path="/">
-        {user && user.role === "admin" ? <Redirect to="/articles" /> : <Redirect to="/login" />}
+        {user && user.role === "admin" ? <Redirect to="/overview" /> : <Redirect to="/login" />}
+      </Route>
+
+      {/* Overview */}
+      <Route path="/overview">
+        <RequireAdmin><DashboardShell><OverviewPage /></DashboardShell></RequireAdmin>
       </Route>
 
       {/* Content */}
