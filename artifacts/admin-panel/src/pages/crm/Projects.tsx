@@ -1,6 +1,8 @@
 import { useEffect, useState, useCallback } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
+import { KanbanCardModal } from "@/components/KanbanCardModal";
+import type { KanbanCardModalTask } from "@/components/KanbanCardModal";
 import {
   DndContext,
   DragOverlay,
@@ -63,14 +65,18 @@ interface WorkflowStep {
 interface KanbanTask {
   id: number;
   title: string;
+  description: string | null;
   column: string;
   assignedTo: string | null;
   order: number;
+  dueDate: string | null;
   groupName: string | null;
   workflowStepId: number | null;
   waitingReason: string | null;
   completionStatus: string | null;
   completionNotes: string | null;
+  createdAt: string;
+  updatedAt: string;
 }
 
 const STATUS_COLORS: Record<string, string> = {
@@ -133,12 +139,13 @@ const COLUMN_LABELS: Record<string, string> = {
   completed: "Done",
 };
 
-function DraggableCard({ task, onDelete, projectId, steps, onQuickMove }: {
+function DraggableCard({ task, onDelete, projectId, steps, onQuickMove, onCardClick }: {
   task: KanbanTask;
   onDelete: (taskId: number, projectId: number) => void;
   projectId: number;
   steps: WorkflowStep[];
   onQuickMove: (task: KanbanTask, targetColumn: ColumnKey) => void;
+  onCardClick: (task: KanbanTask) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
 
@@ -189,7 +196,10 @@ function DraggableCard({ task, onDelete, projectId, steps, onQuickMove }: {
               )}
             </div>
           )}
-          <p className="font-medium text-[#0A2540]">{task.title}</p>
+          <p
+            className="font-medium text-[#0A2540] cursor-pointer hover:text-[#0078D4] transition-colors"
+            onClick={() => onCardClick(task)}
+          >{task.title}</p>
           {task.assignedTo && <p className="text-muted-foreground text-[10px] mt-0.5">{task.assignedTo}</p>}
 
           {task.column === "waiting_on_customer" && task.waitingReason && (
@@ -281,6 +291,7 @@ function DroppableColumn({
   isOver,
   steps,
   onQuickMove,
+  onCardClick,
 }: {
   col: { key: string; label: string };
   tasks: KanbanTask[];
@@ -289,6 +300,7 @@ function DroppableColumn({
   isOver: boolean;
   steps: WorkflowStep[];
   onQuickMove: (task: KanbanTask, targetColumn: ColumnKey) => void;
+  onCardClick: (task: KanbanTask) => void;
 }) {
   const { setNodeRef } = useDroppable({ id: col.key });
 
@@ -303,7 +315,7 @@ function DroppableColumn({
       </p>
       <div className="space-y-1.5 min-h-[32px]">
         {tasks.map(task => (
-          <DraggableCard key={task.id} task={task} onDelete={onDelete} projectId={projectId} steps={steps} onQuickMove={onQuickMove} />
+          <DraggableCard key={task.id} task={task} onDelete={onDelete} projectId={projectId} steps={steps} onQuickMove={onQuickMove} onCardClick={onCardClick} />
         ))}
       </div>
     </div>
@@ -320,6 +332,7 @@ function KanbanBoard({
   onDelete,
   fetchWithAuth,
   toast,
+  onCardClick,
 }: {
   projectId: number;
   tasks: KanbanTask[];
@@ -328,6 +341,7 @@ function KanbanBoard({
   onDelete: (taskId: number, projectId: number) => void;
   fetchWithAuth: (url: string, options?: RequestInit) => Promise<Response>;
   toast: ReturnType<typeof useToast>["toast"];
+  onCardClick: (task: KanbanTask) => void;
 }) {
   const [activeTask, setActiveTask] = useState<KanbanTask | null>(null);
   const [overColumnKey, setOverColumnKey] = useState<string | null>(null);
@@ -436,6 +450,7 @@ function KanbanBoard({
               isOver={overColumnKey === col.key}
               steps={steps}
               onQuickMove={interceptMove}
+              onCardClick={onCardClick}
             />
           ))}
         </div>
@@ -554,6 +569,9 @@ export default function ProjectsPage() {
   const [addTaskProjectId, setAddTaskProjectId] = useState<number | null>(null);
   const [taskForm, setTaskForm] = useState({ title: "", column: "backlog", assignedTo: "" });
   const [subSaving, setSubSaving] = useState(false);
+
+  const [selectedTask, setSelectedTask] = useState<KanbanCardModalTask | null>(null);
+  const [selectedStepTitle, setSelectedStepTitle] = useState<string | null>(null);
 
   const load = async () => {
     const [projRes, clientRes] = await Promise.all([
@@ -1111,6 +1129,13 @@ export default function ProjectsPage() {
                               onDelete={handleDeleteTask}
                               fetchWithAuth={fetchWithAuth}
                               toast={toast}
+                              onCardClick={(task) => {
+                                const stepTitle = task.workflowStepId
+                                  ? detail.steps.find(s => s.id === task.workflowStepId)?.title ?? null
+                                  : null;
+                                setSelectedTask(task);
+                                setSelectedStepTitle(stepTitle);
+                              }}
                             />
                           )}
                         </div>
@@ -1140,6 +1165,14 @@ export default function ProjectsPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <KanbanCardModal
+        task={selectedTask}
+        stepTitle={selectedStepTitle}
+        open={!!selectedTask}
+        onClose={() => setSelectedTask(null)}
+        mode="admin"
+      />
     </div>
   );
 }

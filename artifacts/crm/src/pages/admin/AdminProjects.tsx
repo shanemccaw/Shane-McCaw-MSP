@@ -7,6 +7,8 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog";
+import { KanbanCardModal } from "@/components/KanbanCardModal";
+import type { KanbanCardModalTask } from "@/components/KanbanCardModal";
 
 interface Client {
   id: number;
@@ -39,12 +41,18 @@ interface WorkflowStep {
 interface KanbanTask {
   id: number;
   title: string;
+  description: string | null;
   column: string;
   assignedTo: string | null;
   order: number;
+  dueDate: string | null;
+  groupName: string | null;
+  workflowStepId: number | null;
   waitingReason: string | null;
   completionStatus: string | null;
   completionNotes: string | null;
+  createdAt: string;
+  updatedAt: string;
 }
 
 const STATUS_COLORS: Record<string, string> = {
@@ -67,12 +75,13 @@ const KANBAN_COLUMNS: { key: string; label: string }[] = [
   { key: "completed", label: "Completed" },
 ];
 
-function CrmTaskCard({ task, projectId, onQuickMove, onDelete, columns }: {
+function CrmTaskCard({ task, projectId, onQuickMove, onDelete, columns, onCardClick }: {
   task: KanbanTask;
   projectId: number;
   onQuickMove: (task: KanbanTask, projectId: number, targetColumn: string) => void;
   onDelete: (taskId: number, projectId: number) => void;
   columns: { key: string; label: string }[];
+  onCardClick: (task: KanbanTask) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
   const hasDetail = (task.column === "waiting_on_customer" && task.waitingReason) ||
@@ -80,7 +89,10 @@ function CrmTaskCard({ task, projectId, onQuickMove, onDelete, columns }: {
 
   return (
     <div className="bg-[#F7F9FC] border border-border rounded p-2">
-      <p className="text-xs font-medium text-[#0A2540] leading-tight">{task.title}</p>
+      <p
+        className="text-xs font-medium text-[#0A2540] leading-tight cursor-pointer hover:text-[#0078D4] transition-colors"
+        onClick={() => onCardClick(task)}
+      >{task.title}</p>
       {task.assignedTo && <p className="text-xs text-muted-foreground mt-0.5">→ {task.assignedTo}</p>}
 
       {task.column === "waiting_on_customer" && task.waitingReason && (
@@ -194,6 +206,10 @@ export default function AdminProjects() {
   const [completionStatus, setCompletionStatus] = useState("");
   const [completionNotes, setCompletionNotes] = useState("");
   const [modalSaving, setModalSaving] = useState(false);
+
+  // Card detail modal state
+  const [selectedTask, setSelectedTask] = useState<KanbanCardModalTask | null>(null);
+  const [selectedStepTitle, setSelectedStepTitle] = useState<string | null>(null);
 
   const load = async () => {
     const [projRes, clientRes] = await Promise.all([
@@ -670,6 +686,14 @@ export default function AdminProjects() {
                                           onQuickMove={handleQuickMove}
                                           onDelete={handleDeleteTask}
                                           columns={KANBAN_COLUMNS}
+                                          onCardClick={(task) => {
+                                            const detail = projectDetails[p.id];
+                                            const stepTitle = task.workflowStepId && detail
+                                              ? detail.steps.find((s: WorkflowStep) => s.id === task.workflowStepId)?.title ?? null
+                                              : null;
+                                            setSelectedTask(task);
+                                            setSelectedStepTitle(stepTitle);
+                                          }}
                                         />
                                       ))}
                                     </div>
@@ -767,6 +791,14 @@ export default function AdminProjects() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <KanbanCardModal
+        task={selectedTask}
+        stepTitle={selectedStepTitle}
+        open={!!selectedTask}
+        onClose={() => setSelectedTask(null)}
+        mode="admin"
+      />
     </div>
   );
 }

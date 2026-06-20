@@ -3,6 +3,8 @@ import { useParams, Link } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
 import PortalLayout from "@/components/PortalLayout";
 import PortalRetainerDetail from "./PortalRetainerDetail";
+import { KanbanCardModal } from "@/components/KanbanCardModal";
+import type { KanbanCardModalTask } from "@/components/KanbanCardModal";
 import {
   DndContext,
   DragOverlay,
@@ -53,6 +55,11 @@ interface KanbanTask {
   dueDate: string | null;
   workflowStepId: number | null;
   groupName: string | null;
+  waitingReason: string | null;
+  completionStatus: string | null;
+  completionNotes: string | null;
+  createdAt: string;
+  updatedAt: string;
 }
 
 interface Document {
@@ -132,7 +139,7 @@ function stepPercent(status: string): number {
   return 0;
 }
 
-function SortableTaskCard({ task }: { task: KanbanTask }) {
+function SortableTaskCard({ task, onCardClick }: { task: KanbanTask; onCardClick: (task: KanbanTask) => void }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: task.id });
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -152,6 +159,16 @@ function SortableTaskCard({ task }: { task: KanbanTask }) {
         {task.dueDate && (
           <span className="text-xs text-muted-foreground">Due {new Date(task.dueDate).toLocaleDateString("en-US", { month: "short", day: "numeric" })}</span>
         )}
+        <button
+          onClick={e => { e.stopPropagation(); onCardClick(task); }}
+          className="ml-auto text-[10px] font-semibold text-[#0078D4] hover:underline flex items-center gap-0.5 flex-shrink-0"
+          title="View details"
+        >
+          <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+          Details
+        </button>
       </div>
     </div>
   );
@@ -316,6 +333,13 @@ export default function PortalProjectDetail() {
   const [showAllPhases, setShowAllPhases] = useState(false);
   const [activeTask, setActiveTask] = useState<KanbanTask | null>(null);
   const [exportingAudit, setExportingAudit] = useState(false);
+  const [selectedTask, setSelectedTask] = useState<KanbanCardModalTask | null>(null);
+  const [selectedStepTitle, setSelectedStepTitle] = useState<string | null>(null);
+
+  const handleCardClick = useCallback((task: KanbanTask, stepTitle?: string | null) => {
+    setSelectedTask(task);
+    setSelectedStepTitle(stepTitle ?? null);
+  }, []);
 
   const loadProject = useCallback(() => {
     if (!params.id) return;
@@ -678,7 +702,7 @@ export default function PortalProjectDetail() {
                                             {kts.map(kt => {
                                               const taskDone = kt.column === "completed";
                                               return (
-                                                <div key={kt.id} className="flex items-start gap-3 py-2.5 border border-border rounded-xl px-4 bg-[#F7F9FC]">
+                                                <div key={kt.id} className="flex items-start gap-3 py-2.5 border border-border rounded-xl px-4 bg-[#F7F9FC] cursor-pointer hover:border-[#0078D4]/40 transition-colors" onClick={() => handleCardClick(kt, step.title)}>
                                                   <div className={`w-4 h-4 rounded border-2 flex items-center justify-center flex-shrink-0 mt-0.5 ${taskDone ? "bg-green-500 border-green-500" : "border-gray-300"}`}>
                                                     {taskDone && (
                                                       <svg className="w-2.5 h-2.5 text-white" viewBox="0 0 12 12" fill="none">
@@ -865,7 +889,16 @@ export default function PortalProjectDetail() {
                       </div>
                       <SortableContext items={colTasks.map(t => t.id)} strategy={verticalListSortingStrategy}>
                         <div className="space-y-2">
-                          {colTasks.map(task => <SortableTaskCard key={task.id} task={task} />)}
+                          {colTasks.map(task => (
+                            <SortableTaskCard
+                              key={task.id}
+                              task={task}
+                              onCardClick={t => {
+                                const stepTitle = t.workflowStepId ? steps.find(s => s.id === t.workflowStepId)?.title ?? null : null;
+                                handleCardClick(t, stepTitle);
+                              }}
+                            />
+                          ))}
                         </div>
                       </SortableContext>
                     </div>
@@ -954,6 +987,14 @@ export default function PortalProjectDetail() {
           </div>
         )}
       </div>
+
+      <KanbanCardModal
+        task={selectedTask}
+        stepTitle={selectedStepTitle}
+        open={!!selectedTask}
+        onClose={() => setSelectedTask(null)}
+        mode="client"
+      />
     </PortalLayout>
   );
 }
