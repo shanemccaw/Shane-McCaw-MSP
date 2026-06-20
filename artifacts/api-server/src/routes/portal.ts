@@ -1999,8 +1999,8 @@ async function provisionOnboardingProject(
   }
 
   // ── SharePoint site provisioning (fire-and-forget, non-blocking) ─────────
-  void import("./admin-sharepoint").then(({ provisionProjectSite }) => {
-    provisionProjectSite(project.id, projectTitle, req.log).catch((err: unknown) => {
+  void import("./admin-sharepoint").then(({ provisionClientSite }) => {
+    provisionClientSite(uid, buyer.name ?? buyer.company ?? buyer.email, req.log).catch((err: unknown) => {
       req.log.warn({ err }, "SharePoint site provisioning failed (non-blocking)");
     });
   }).catch((err: unknown) => {

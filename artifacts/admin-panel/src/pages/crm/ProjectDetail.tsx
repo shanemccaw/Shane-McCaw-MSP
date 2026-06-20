@@ -48,8 +48,6 @@ interface Project {
   startDate: string | null;
   endDate: string | null;
   projectType: string;
-  sharepointSiteUrl: string | null;
-  sharepointSiteId: string | null;
   createdAt: string;
 }
 
@@ -853,62 +851,9 @@ export default function ProjectDetailPage() {
   const [deleteTaskTarget, setDeleteTaskTarget] = useState<{ taskId: number } | null>(null);
   const [statusReportOpen, setStatusReportOpen] = useState(false);
 
-  const [spUrlInput, setSpUrlInput] = useState("");
-  const [spSaving, setSpSaving] = useState(false);
-  const [spProvisioning, setSpProvisioning] = useState(false);
-
   const [auditOpen, setAuditOpen] = useState(false);
   const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>([]);
   const [auditLoading, setAuditLoading] = useState(false);
-
-  const handleSaveSharepointUrl = async () => {
-    if (!projectId) return;
-    setSpSaving(true);
-    try {
-      const res = await fetchWithAuth(`/api/admin/projects/${projectId}/sharepoint`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sharepointSiteUrl: spUrlInput }),
-      });
-      if (res.ok) {
-        const data = await res.json() as { sharepointSiteUrl: string | null };
-        setProject(p => p ? { ...p, sharepointSiteUrl: data.sharepointSiteUrl, sharepointSiteId: null } : p);
-        toast({ title: "SharePoint link saved" });
-      } else {
-        toast({ title: "Error saving SharePoint link", variant: "destructive" });
-      }
-    } catch {
-      toast({ title: "Network error", variant: "destructive" });
-    } finally {
-      setSpSaving(false);
-    }
-  };
-
-  const handleProvisionSharepoint = async () => {
-    if (!projectId) return;
-    setSpProvisioning(true);
-    try {
-      const res = await fetchWithAuth(`/api/admin/projects/${projectId}/sharepoint/provision`, {
-        method: "POST",
-      });
-      if (res.ok) {
-        const data = await res.json() as { provisioning?: boolean; alreadyProvisioned?: boolean; sharepointSiteUrl?: string };
-        if (data.alreadyProvisioned) {
-          toast({ title: "Already provisioned", description: data.sharepointSiteUrl ?? "" });
-        } else {
-          toast({ title: "SharePoint provisioning started", description: "The site will appear once Microsoft 365 finishes provisioning (may take 1-2 min)." });
-          setTimeout(() => { void reloadAll(); }, 30_000);
-        }
-      } else {
-        const d = await res.json() as { error?: string };
-        toast({ title: d.error ?? "Provisioning failed", variant: "destructive" });
-      }
-    } catch {
-      toast({ title: "Network error", variant: "destructive" });
-    } finally {
-      setSpProvisioning(false);
-    }
-  };
 
   const loadAuditLogs = useCallback(async () => {
     if (!projectId) return;
@@ -1271,22 +1216,6 @@ export default function ProjectDetailPage() {
           </div>
 
           <div className="flex items-center gap-2 flex-shrink-0 flex-wrap">
-            {project.sharepointSiteUrl && (
-              <a
-                href={project.sharepointSiteUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center gap-1.5 border border-[#0078D4]/40 bg-[#0078D4]/5 text-[#0078D4] text-sm font-medium px-3 py-2 rounded-lg hover:bg-[#0078D4]/10 transition-colors"
-              >
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
-                </svg>
-                SharePoint
-                <svg className="w-3 h-3 opacity-60" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 6H5.25A2.25 2.25 0 003 8.25v10.5A2.25 2.25 0 005.25 21h10.5A2.25 2.25 0 0018 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25" />
-                </svg>
-              </a>
-            )}
             <button
               onClick={handleExportJson}
               className="flex items-center gap-1.5 border border-border text-sm font-medium px-3 py-2 rounded-lg hover:bg-[#F7F9FC] transition-colors text-[#0A2540]"
@@ -1802,92 +1731,6 @@ export default function ProjectDetailPage() {
           </div>
         </section>
       )}
-
-      {/* ── SharePoint Site ─────────────────────────────────────────────────── */}
-      <section className="mb-8">
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-sm font-bold uppercase tracking-wider text-[#0A2540]">SharePoint Site</h2>
-        </div>
-        <div className="bg-white border border-border rounded-xl p-5 space-y-4">
-          {project.sharepointSiteUrl ? (
-            <div className="flex items-center gap-3">
-              <div className="w-9 h-9 rounded-full bg-[#0078D4]/10 flex items-center justify-center flex-shrink-0">
-                <svg className="w-4.5 h-4.5 text-[#0078D4]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
-                </svg>
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-semibold text-[#0A2540]">Site provisioned</p>
-                <a
-                  href={project.sharepointSiteUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-xs text-[#0078D4] hover:underline truncate block"
-                >
-                  {project.sharepointSiteUrl}
-                </a>
-              </div>
-              <a
-                href={project.sharepointSiteUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center gap-1.5 bg-[#0078D4] text-white text-sm font-semibold px-3 py-2 rounded-lg hover:bg-[#0078D4]/90 transition-colors flex-shrink-0"
-              >
-                Open
-                <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 6H5.25A2.25 2.25 0 003 8.25v10.5A2.25 2.25 0 005.25 21h10.5A2.25 2.25 0 0018 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25" />
-                </svg>
-              </a>
-            </div>
-          ) : (
-            <div className="flex items-center gap-3">
-              <div className="w-9 h-9 rounded-full bg-gray-100 flex items-center justify-center flex-shrink-0">
-                <svg className="w-4.5 h-4.5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
-                </svg>
-              </div>
-              <div className="flex-1">
-                <p className="text-sm font-semibold text-[#0A2540]">No SharePoint site linked</p>
-                <p className="text-xs text-muted-foreground mt-0.5">Provision automatically or enter the URL manually below.</p>
-              </div>
-              <button
-                onClick={() => void handleProvisionSharepoint()}
-                disabled={spProvisioning}
-                className="flex items-center gap-2 text-sm font-semibold px-3 py-2 rounded-lg bg-[#0078D4] text-white hover:bg-[#0078D4]/90 disabled:opacity-50 flex-shrink-0 transition-colors"
-              >
-                {spProvisioning ? (
-                  <div className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
-                ) : (
-                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
-                  </svg>
-                )}
-                {spProvisioning ? "Provisioning…" : "Auto-Provision"}
-              </button>
-            </div>
-          )}
-
-          <div className="border-t border-border pt-4">
-            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">Manual Override</p>
-            <div className="flex gap-2">
-              <input
-                type="url"
-                value={spUrlInput}
-                onChange={e => setSpUrlInput(e.target.value)}
-                placeholder="https://tenant.sharepoint.com/sites/..."
-                className="flex-1 border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4]/40"
-              />
-              <button
-                onClick={() => void handleSaveSharepointUrl()}
-                disabled={spSaving || !spUrlInput.trim()}
-                className="flex items-center gap-1.5 border border-[#0078D4] text-[#0078D4] text-sm font-semibold px-3 py-2 rounded-lg hover:bg-[#0078D4]/10 disabled:opacity-50 transition-colors flex-shrink-0"
-              >
-                {spSaving ? "Saving…" : "Save URL"}
-              </button>
-            </div>
-          </div>
-        </div>
-      </section>
 
       {/* ── Recent Activity ─────────────────────────────────────────────────── */}
       <section className="mb-8">

@@ -19,6 +19,8 @@ interface Client {
   name: string | null;
   company: string | null;
   phone: string | null;
+  sharepointSiteUrl: string | null;
+  sharepointSiteId: string | null;
   createdAt: string;
 }
 
@@ -262,6 +264,113 @@ function ClientEmailPanel({ client, onClose }: ClientEmailPanelProps) {
   );
 }
 
+// ─── ClientSharePointPanel ────────────────────────────────────────────────────
+function ClientSharePointPanel({ client, onClose, onUpdate }: {
+  client: Client;
+  onClose: () => void;
+  onUpdate: (patch: Pick<Client, "sharepointSiteUrl" | "sharepointSiteId">) => void;
+}) {
+  const { fetchWithAuth } = useAuth();
+  const [urlInput, setUrlInput] = useState(client.sharepointSiteUrl ?? "");
+  const [saving, setSaving] = useState(false);
+  const [provisioning, setProvisioning] = useState(false);
+
+  async function handleSave() {
+    setSaving(true);
+    try {
+      const res = await fetchWithAuth(`/api/admin/clients/${client.id}/sharepoint`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sharepointSiteUrl: urlInput || null }),
+      });
+      if (res.ok) {
+        const data = await res.json() as { sharepointSiteUrl: string | null; sharepointSiteId: string | null };
+        onUpdate({ sharepointSiteUrl: data.sharepointSiteUrl, sharepointSiteId: data.sharepointSiteId });
+      }
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleProvision() {
+    setProvisioning(true);
+    try {
+      const res = await fetchWithAuth(`/api/admin/clients/${client.id}/sharepoint/provision`, {
+        method: "POST",
+      });
+      if (res.ok) {
+        const data = await res.json() as { alreadyProvisioned?: boolean; sharepointSiteUrl?: string };
+        if (data.alreadyProvisioned && data.sharepointSiteUrl) {
+          onUpdate({ sharepointSiteUrl: data.sharepointSiteUrl, sharepointSiteId: null });
+        }
+      }
+    } finally {
+      setProvisioning(false);
+    }
+  }
+
+  const siteUrl = client.sharepointSiteUrl;
+
+  return (
+    <tr>
+      <td colSpan={5} className="px-0 py-0 bg-blue-50/40 border-b border-blue-100">
+        <div className="px-5 py-4">
+          <div className="flex items-center justify-between mb-3">
+            <span className="text-xs font-bold text-[#0078D4] uppercase tracking-widest">SharePoint Site</span>
+            <button onClick={onClose} className="text-gray-400 hover:text-gray-600 transition-colors" aria-label="Close">
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+
+          {siteUrl ? (
+            <div className="flex items-center gap-3 bg-white border border-[#0078D4]/20 rounded-lg px-3 py-2.5 mb-3">
+              <svg className="w-5 h-5 text-[#0078D4] flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+              </svg>
+              <div className="flex-1 min-w-0">
+                <p className="text-xs font-semibold text-[#0A2540]">Site linked</p>
+                <a href={siteUrl} target="_blank" rel="noopener noreferrer"
+                  className="text-[11px] text-[#0078D4] hover:underline truncate block">{siteUrl}</a>
+              </div>
+              <a href={siteUrl} target="_blank" rel="noopener noreferrer"
+                className="flex-shrink-0 text-xs font-semibold bg-[#0078D4] text-white px-3 py-1.5 rounded-lg hover:bg-[#005fa3] transition-colors">
+                Open →
+              </a>
+            </div>
+          ) : (
+            <div className="flex items-center gap-3 bg-white border border-gray-200 rounded-lg px-3 py-2.5 mb-3">
+              <svg className="w-5 h-5 text-gray-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+              </svg>
+              <p className="flex-1 text-xs text-gray-500">No SharePoint site linked yet.</p>
+              <button onClick={() => void handleProvision()} disabled={provisioning}
+                className="flex-shrink-0 flex items-center gap-1.5 text-xs font-semibold bg-[#0078D4] text-white px-3 py-1.5 rounded-lg hover:bg-[#005fa3] disabled:opacity-50 transition-colors">
+                {provisioning ? <span className="w-3 h-3 border-2 border-white/40 border-t-white rounded-full animate-spin inline-block" /> : null}
+                {provisioning ? "Provisioning…" : "Auto-Provision"}
+              </button>
+            </div>
+          )}
+
+          <div>
+            <p className="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1.5">Manual URL</p>
+            <div className="flex gap-2">
+              <input type="url" value={urlInput} onChange={e => setUrlInput(e.target.value)}
+                placeholder="https://tenant.sharepoint.com/sites/…"
+                className="flex-1 border border-border rounded-lg px-3 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-[#0078D4] bg-white" />
+              <button onClick={() => void handleSave()} disabled={saving}
+                className="flex-shrink-0 text-xs font-semibold border border-[#0078D4] text-[#0078D4] px-3 py-1.5 rounded-lg hover:bg-[#0078D4]/10 disabled:opacity-50 transition-colors">
+                {saving ? "Saving…" : "Save"}
+              </button>
+            </div>
+          </div>
+        </div>
+      </td>
+    </tr>
+  );
+}
+
 // ─── Main page ────────────────────────────────────────────────────────────────
 export default function ClientsPage() {
   const { fetchWithAuth } = useAuth();
@@ -277,6 +386,7 @@ export default function ClientsPage() {
   const [deleting, setDeleting] = useState(false);
   const [search, setSearch] = useState("");
   const [expandedClientId, setExpandedClientId] = useState<number | null>(null);
+  const [expandedSpClientId, setExpandedSpClientId] = useState<number | null>(null);
 
   const load = async () => {
     const res = await fetchWithAuth("/api/admin/clients");
@@ -373,6 +483,12 @@ export default function ClientsPage() {
 
   function toggleEmails(clientId: number) {
     setExpandedClientId(prev => prev === clientId ? null : clientId);
+    setExpandedSpClientId(null);
+  }
+
+  function toggleSp(clientId: number) {
+    setExpandedSpClientId(prev => prev === clientId ? null : clientId);
+    setExpandedClientId(null);
   }
 
   return (
@@ -517,6 +633,23 @@ export default function ClientsPage() {
                           )}
                           View as Client
                         </button>
+                        <button
+                          onClick={() => toggleSp(c.id)}
+                          className={`flex items-center gap-1 text-xs font-semibold transition-colors ${
+                            expandedSpClientId === c.id
+                              ? "text-[#0078D4]"
+                              : "text-gray-500 hover:text-[#0078D4]"
+                          }`}
+                          title="Manage SharePoint site for this client"
+                        >
+                          <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+                          </svg>
+                          SharePoint
+                          {c.sharepointSiteUrl && (
+                            <span className="w-1.5 h-1.5 rounded-full bg-green-500 inline-block" />
+                          )}
+                        </button>
                         <button onClick={() => setDeleteTarget(c)} className="text-xs font-semibold text-red-500 hover:text-red-700">Delete</button>
                       </div>
                     </td>
@@ -526,6 +659,14 @@ export default function ClientsPage() {
                       key={`email-panel-${c.id}`}
                       client={c}
                       onClose={() => setExpandedClientId(null)}
+                    />
+                  )}
+                  {expandedSpClientId === c.id && (
+                    <ClientSharePointPanel
+                      key={`sp-panel-${c.id}`}
+                      client={c}
+                      onClose={() => setExpandedSpClientId(null)}
+                      onUpdate={patch => setClients(prev => prev.map(x => x.id === c.id ? { ...x, ...patch } : x))}
                     />
                   )}
                 </>

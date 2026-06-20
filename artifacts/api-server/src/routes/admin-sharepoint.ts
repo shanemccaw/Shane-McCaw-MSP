@@ -1,5 +1,5 @@
 import { Router, type IRouter, type Request, type Response } from "express";
-import { db, projectsTable, settingsTable } from "@workspace/db";
+import { db, projectsTable, usersTable, settingsTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/requireAuth";
 import { logger } from "../lib/logger";
@@ -173,10 +173,10 @@ router.get("/admin/sharepoint/templates/items", requireAdmin, async (req: Reques
   }
 });
 
-// ─── PATCH project SharePoint link (manual override) ─────────────────────────
-router.patch("/admin/projects/:id/sharepoint", requireAdmin, async (req: Request, res: Response) => {
+// ─── PATCH client SharePoint link (manual override) ───────────────────────────
+router.patch("/admin/clients/:id/sharepoint", requireAdmin, async (req: Request, res: Response) => {
   const id = parseInt(String(req.params.id ?? ""), 10);
-  if (isNaN(id)) { res.status(400).json({ error: "Invalid project ID" }); return; }
+  if (isNaN(id)) { res.status(400).json({ error: "Invalid client ID" }); return; }
 
   const { sharepointSiteUrl } = req.body as { sharepointSiteUrl?: string };
   const url = sharepointSiteUrl ? sharepointSiteUrl.trim() || null : null;
@@ -191,31 +191,31 @@ router.patch("/admin/projects/:id/sharepoint", requireAdmin, async (req: Request
     }
   }
 
-  const [updated] = await db.update(projectsTable)
+  const [updated] = await db.update(usersTable)
     .set({ sharepointSiteUrl: url, sharepointSiteId: siteId })
-    .where(eq(projectsTable.id, id))
+    .where(eq(usersTable.id, id))
     .returning();
 
-  if (!updated) { res.status(404).json({ error: "Project not found" }); return; }
+  if (!updated) { res.status(404).json({ error: "Client not found" }); return; }
 
   res.json({ ok: true, sharepointSiteUrl: url, sharepointSiteId: siteId });
 });
 
-// ─── POST provision SharePoint site for a project (async trigger) ─────────────
-router.post("/admin/projects/:id/sharepoint/provision", requireAdmin, async (req: Request, res: Response) => {
+// ─── POST provision SharePoint site for a client (async trigger) ──────────────
+router.post("/admin/clients/:id/sharepoint/provision", requireAdmin, async (req: Request, res: Response) => {
   const id = parseInt(String(req.params.id ?? ""), 10);
-  if (isNaN(id)) { res.status(400).json({ error: "Invalid project ID" }); return; }
+  if (isNaN(id)) { res.status(400).json({ error: "Invalid client ID" }); return; }
 
   if (!graphCredentialsPresent()) {
     res.status(503).json({ error: "Graph credentials not configured. Set GRAPH_TENANT_ID, GRAPH_CLIENT_ID, and GRAPH_CLIENT_SECRET." });
     return;
   }
 
-  const [project] = await db.select().from(projectsTable).where(eq(projectsTable.id, id));
-  if (!project) { res.status(404).json({ error: "Project not found" }); return; }
+  const [client] = await db.select().from(usersTable).where(eq(usersTable.id, id));
+  if (!client) { res.status(404).json({ error: "Client not found" }); return; }
 
-  if (project.sharepointSiteUrl) {
-    res.json({ ok: true, alreadyProvisioned: true, sharepointSiteUrl: project.sharepointSiteUrl });
+  if (client.sharepointSiteUrl) {
+    res.json({ ok: true, alreadyProvisioned: true, sharepointSiteUrl: client.sharepointSiteUrl });
     return;
   }
 
@@ -223,32 +223,32 @@ router.post("/admin/projects/:id/sharepoint/provision", requireAdmin, async (req
 
   void (async () => {
     try {
-      await provisionProjectSite(id, project.title, req.log);
+      await provisionClientSite(id, client.name ?? client.company ?? client.email, req.log);
     } catch (err) {
-      logger.error({ err, projectId: id }, "Manual SharePoint provisioning failed");
+      logger.error({ err, clientId: id }, "Manual SharePoint provisioning failed");
     }
   })();
 });
 
-export async function provisionProjectSite(
-  projectId: number,
-  projectTitle: string,
+export async function provisionClientSite(
+  clientId: number,
+  clientName: string,
   log?: { warn: (obj: unknown, msg?: string) => void; info: (obj: unknown, msg?: string) => void },
 ): Promise<void> {
   const warn = log?.warn.bind(log) ?? logger.warn.bind(logger);
   const info = log?.info.bind(log) ?? logger.info.bind(logger);
 
   if (!graphCredentialsPresent()) {
-    warn({ projectId }, "SharePoint provisioning skipped — Graph credentials missing");
+    warn({ clientId }, "SharePoint provisioning skipped — Graph credentials missing");
     return;
   }
 
-  const mailNickname = `smc-project-${projectId}-${Date.now()}`;
-  const displayName = `SMC — ${projectTitle}`.slice(0, 120);
+  const mailNickname = `smc-client-${clientId}-${Date.now()}`;
+  const displayName = `SMC — ${clientName}`.slice(0, 120);
 
   const group = await createM365Group(displayName, mailNickname);
   if (!group) {
-    warn({ projectId, displayName }, "SharePoint provisioning: createM365Group returned null");
+    warn({ clientId, displayName }, "SharePoint provisioning: createM365Group returned null");
     return;
   }
 
@@ -261,14 +261,14 @@ export async function provisionProjectSite(
   }
 
   if (!siteInfo) {
-    warn({ projectId, groupId: group.id }, "SharePoint provisioning: site URL not available after polling");
+    warn({ clientId, groupId: group.id }, "SharePoint provisioning: site URL not available after polling");
     return;
   }
 
-  // Save to DB immediately so the link shows up
-  await db.update(projectsTable)
+  // Save to DB immediately so the link shows up on the client profile
+  await db.update(usersTable)
     .set({ sharepointSiteUrl: siteInfo.webUrl, sharepointSiteId: siteInfo.id })
-    .where(eq(projectsTable.id, projectId));
+    .where(eq(usersTable.id, clientId));
 
   // Pre-create standard folders
   const folders = ["Deliverables", "Meetings", "Contracts", "Scripts"];
@@ -280,7 +280,7 @@ export async function provisionProjectSite(
     }
   }
 
-  info({ projectId, siteUrl: siteInfo.webUrl }, "SharePoint site provisioned");
+  info({ clientId, siteUrl: siteInfo.webUrl }, "SharePoint site provisioned for client");
 }
 
 export default router;

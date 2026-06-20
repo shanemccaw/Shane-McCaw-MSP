@@ -113,6 +113,13 @@
       "when": 1750155300000,
       "tag": "0015_add_sharepoint_and_settings",
       "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1750241700000,
+      "tag": "0016_move_sharepoint_to_users",
+      "breakpoints": true
     }
   ]
 }

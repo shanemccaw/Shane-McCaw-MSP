@@ -22,6 +22,8 @@ export const usersTable = pgTable("users", {
   name: text("name"),
   company: text("company"),
   phone: text("phone"),
+  sharepointSiteUrl: text("sharepoint_site_url"),
+  sharepointSiteId: text("sharepoint_site_id"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
@@ -99,8 +101,6 @@ export const projectsTable = pgTable("projects", {
   startDate: timestamp("start_date"),
   endDate: timestamp("end_date"),
   projectType: text("project_type", { enum: ["project", "retainer"] }).notNull().default("project"),
-  sharepointSiteUrl: text("sharepoint_site_url"),
-  sharepointSiteId: text("sharepoint_site_id"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
