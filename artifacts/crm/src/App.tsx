@@ -10,7 +10,7 @@ import PortalBilling from "@/pages/portal/PortalBilling";
 import PortalInvoiceDetail from "@/pages/portal/PortalInvoiceDetail";
 import PortalContractDetail from "@/pages/portal/PortalContractDetail";
 import PortalMessages from "@/pages/portal/PortalMessages";
-import Dashboard2 from "@/pages/portal/Dashboard2";
+import ClientProjectDashboard from "@/pages/portal/ClientProjectDashboard";
 import OnboardingSelect from "@/pages/portal/OnboardingSelect";
 import OnboardingContract from "@/pages/portal/OnboardingContract";
 import OnboardingSuccess from "@/pages/portal/OnboardingSuccess";
@@ -68,7 +68,7 @@ function Router() {
 
       {/* Client portal routes */}
       <Route path="/portal">
-        <RequireAuth role="client"><Dashboard2 /></RequireAuth>
+        <RequireAuth role="client"><ClientProjectDashboard /></RequireAuth>
       </Route>
       <Route path="/portal/projects">
         <RequireAuth role="client"><PortalProjects /></RequireAuth>
