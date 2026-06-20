@@ -86,6 +86,12 @@ function PushSetup() {
         router.push(`/messages/${data.clientId}`);
       } else if (data.screen === "orders") {
         router.push("/(tabs)/orders");
+      } else if (data.screen === "EmailActivity") {
+        if (data.messageId) {
+          router.push(`/(tabs)/email?messageId=${encodeURIComponent(data.messageId)}`);
+        } else {
+          router.push("/(tabs)/email");
+        }
       }
     }
 
@@ -125,7 +131,7 @@ function PushSetup() {
     // message pushes only (unrelated system pushes should not inflate the badge).
     const receiveSub = Notifications.addNotificationReceivedListener(async (notification) => {
       const data = notification.request.content.data as Record<string, string | undefined>;
-      const isRelevant = data.screen === "order" || data.screen === "orders" || data.screen === "conversation";
+      const isRelevant = data.screen === "order" || data.screen === "orders" || data.screen === "conversation" || data.screen === "EmailActivity";
       if (!isRelevant) return;
       try {
         const current = await Notifications.getBadgeCountAsync();

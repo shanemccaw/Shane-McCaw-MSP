@@ -89,6 +89,18 @@ export default function TabLayout() {
             ),
         }}
       />
+      <Tabs.Screen
+        name="email"
+        options={{
+          title: "Email",
+          tabBarIcon: ({ color }) =>
+            isIOS ? (
+              <SymbolView name="envelope" tintColor={color} size={24} />
+            ) : (
+              <Feather name="mail" size={22} color={color} />
+            ),
+        }}
+      />
     </Tabs>
   );
 }
