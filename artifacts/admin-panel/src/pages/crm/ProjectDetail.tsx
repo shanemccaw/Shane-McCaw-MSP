@@ -79,6 +79,7 @@ interface KanbanTask {
   priority: string | null;
   createdAt: string;
   updatedAt: string;
+  statusReportId: number | null;
 }
 
 const COLUMNS = [
@@ -139,7 +140,7 @@ function AssigneeAvatar({ name }: { name: string }) {
 }
 
 function DraggableCard({
-  task, onDelete, projectId, steps, onQuickMove, onCardClick,
+  task, onDelete, projectId, steps, onQuickMove, onCardClick, onReply,
 }: {
   task: KanbanTask;
   onDelete: (taskId: number, projectId: number) => void;
@@ -147,8 +148,12 @@ function DraggableCard({
   steps: WorkflowStep[];
   onQuickMove: (task: KanbanTask, targetColumn: ColumnKey) => void;
   onCardClick: (task: KanbanTask) => void;
+  onReply: (reportId: number, reply: string) => Promise<void>;
 }) {
   const [expanded, setExpanded] = useState(false);
+  const [replyDraft, setReplyDraft] = useState("");
+  const [replySending, setReplySending] = useState(false);
+  const [replySent, setReplySent] = useState(false);
 
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
     id: task.id,
@@ -219,6 +224,53 @@ function DraggableCard({
               <p className="text-[10px] text-muted-foreground mt-0.5 leading-snug line-clamp-2">
                 {task.description}
               </p>
+            )}
+
+            {task.statusReportId && (
+              <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-2">
+                <p className="text-[9px] font-bold uppercase tracking-wider text-amber-700 mb-1.5 flex items-center gap-1">
+                  <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  Customer Question
+                </p>
+                {replySent ? (
+                  <p className="text-[9px] font-semibold text-green-700 flex items-center gap-1">
+                    <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
+                    Reply sent
+                  </p>
+                ) : (
+                  <div className="space-y-1.5">
+                    <textarea
+                      value={replyDraft}
+                      onChange={e => setReplyDraft(e.target.value)}
+                      onClick={e => e.stopPropagation()}
+                      placeholder="Type your reply…"
+                      rows={2}
+                      className="w-full text-[10px] border border-amber-200 rounded px-2 py-1 resize-none focus:outline-none focus:ring-1 focus:ring-amber-400 bg-white"
+                    />
+                    <button
+                      disabled={!replyDraft.trim() || replySending}
+                      onClick={async e => {
+                        e.stopPropagation();
+                        if (!replyDraft.trim() || replySending) return;
+                        setReplySending(true);
+                        await onReply(task.statusReportId!, replyDraft.trim());
+                        setReplySent(true);
+                        setReplySending(false);
+                      }}
+                      className="flex items-center gap-1 text-[9px] font-bold text-white bg-[#0078D4] hover:bg-[#0078D4]/90 disabled:opacity-50 px-2 py-1 rounded transition-colors"
+                    >
+                      {replySending ? (
+                        <div className="w-2.5 h-2.5 border border-white/40 border-t-white rounded-full animate-spin" />
+                      ) : (
+                        <svg className="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" /></svg>
+                      )}
+                      Send Reply
+                    </button>
+                  </div>
+                )}
+              </div>
             )}
 
             <div className="flex items-center gap-2 mt-1.5 flex-wrap">
@@ -312,7 +364,7 @@ function CardOverlay({ task }: { task: KanbanTask }) {
 }
 
 function DroppableColumn({
-  col, tasks, onDelete, projectId, isOver, steps, onQuickMove, onCardClick,
+  col, tasks, onDelete, projectId, isOver, steps, onQuickMove, onCardClick, onReply,
 }: {
   col: { key: string; label: string };
   tasks: KanbanTask[];
@@ -322,6 +374,7 @@ function DroppableColumn({
   steps: WorkflowStep[];
   onQuickMove: (task: KanbanTask, targetColumn: ColumnKey) => void;
   onCardClick: (task: KanbanTask) => void;
+  onReply: (reportId: number, reply: string) => Promise<void>;
 }) {
   const { setNodeRef } = useDroppable({ id: col.key });
 
@@ -355,6 +408,7 @@ function DroppableColumn({
             steps={steps}
             onQuickMove={onQuickMove}
             onCardClick={onCardClick}
+            onReply={onReply}
           />
         ))}
       </div>
@@ -375,7 +429,7 @@ function KanbanBoard({
   fetchWithAuth: (url: string, options?: RequestInit) => Promise<Response>;
   toast: ReturnType<typeof useToast>["toast"];
   onCardClick: (task: KanbanTask) => void;
-}) {
+})  {
   const [activeTask, setActiveTask] = useState<KanbanTask | null>(null);
   const [overColumnKey, setOverColumnKey] = useState<string | null>(null);
   const [pendingMove, setPendingMove] = useState<PendingMove | null>(null);
@@ -465,6 +519,26 @@ function KanbanBoard({
     setPendingMove(null);
   };
 
+  const handleReply = async (reportId: number, reply: string): Promise<void> => {
+    try {
+      const res = await fetchWithAuth(`/api/admin/status-reports/${reportId}/reply`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ reply }),
+      });
+      if (!res.ok) {
+        const data = await res.json() as { error?: string };
+        toast({ title: "Reply failed", description: data.error ?? "Could not send reply.", variant: "destructive" });
+        throw new Error(data.error ?? "Reply failed");
+      }
+    } catch (err) {
+      if (!(err instanceof Error && err.message === "Reply failed")) {
+        toast({ title: "Reply failed", description: "Could not send reply. Please try again.", variant: "destructive" });
+      }
+      throw err;
+    }
+  };
+
   const isWaitingModal = pendingMove?.targetColumn === "waiting_on_customer";
   const isCompletedModal = pendingMove?.targetColumn === "completed";
 
@@ -483,6 +557,7 @@ function KanbanBoard({
               steps={steps}
               onQuickMove={interceptMove}
               onCardClick={onCardClick}
+              onReply={handleReply}
             />
           ))}
         </div>

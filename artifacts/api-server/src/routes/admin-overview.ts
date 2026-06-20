@@ -1,6 +1,6 @@
 import { Router, type Request, type Response } from "express";
-import { db, usersTable, leadsTable, projectsTable, invoicesTable, clientServicesTable, servicesTable, projectUpdatesTable, messagesTable, shareEventsTable, checklistDownloadsTable } from "@workspace/db";
-import { eq, desc, count } from "drizzle-orm";
+import { db, usersTable, leadsTable, projectsTable, invoicesTable, clientServicesTable, servicesTable, projectUpdatesTable, messagesTable, shareEventsTable, checklistDownloadsTable, statusReportsTable } from "@workspace/db";
+import { eq, desc, count, isNull, and } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/requireAuth";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
 
@@ -26,6 +26,7 @@ router.get("/admin/overview", requireAdmin, async (_req: Request, res: Response)
     recentLeads,
     recentUpdates,
     recentMessages,
+    pendingQuestionsRows,
   ] = await Promise.all([
     db.select({ cnt: count() }).from(usersTable).where(eq(usersTable.role, "client")),
     db.select().from(leadsTable).orderBy(desc(leadsTable.createdAt)),
@@ -57,6 +58,24 @@ router.get("/admin/overview", requireAdmin, async (_req: Request, res: Response)
       .where(eq(messagesTable.readByAdmin, false))
       .orderBy(desc(messagesTable.createdAt))
       .limit(3),
+    db.select({
+      id: statusReportsTable.id,
+      title: statusReportsTable.title,
+      clientQuestion: statusReportsTable.clientQuestion,
+      projectId: statusReportsTable.projectId,
+      updatedAt: statusReportsTable.updatedAt,
+      projectTitle: projectsTable.title,
+      clientName: usersTable.name,
+      clientEmail: usersTable.email,
+    })
+      .from(statusReportsTable)
+      .leftJoin(projectsTable, eq(statusReportsTable.projectId, projectsTable.id))
+      .leftJoin(usersTable, eq(statusReportsTable.clientUserId, usersTable.id))
+      .where(and(
+        eq(statusReportsTable.clientStatus, "has_questions"),
+        isNull(statusReportsTable.adminReply),
+      ))
+      .orderBy(desc(statusReportsTable.updatedAt)),
   ]);
 
   const clientCount = Number(clientRows[0]?.cnt ?? 0);
@@ -269,6 +288,15 @@ router.get("/admin/overview", requireAdmin, async (_req: Request, res: Response)
       current: Math.round(mrr * 100) / 100,
       threeMonthsAgo: Math.round(mrrThreeMonthsAgo * 100) / 100,
     },
+    pendingQuestions: pendingQuestionsRows.map(r => ({
+      id: r.id,
+      title: r.title,
+      clientQuestion: r.clientQuestion,
+      projectId: r.projectId,
+      projectTitle: r.projectTitle ?? null,
+      clientName: r.clientName ?? r.clientEmail ?? "Unknown client",
+      updatedAt: r.updatedAt.toISOString(),
+    })),
   });
 });
 

@@ -162,6 +162,7 @@ export const kanbanTasksTable = pgTable("kanban_tasks", {
   completionNotes: text("completion_notes"),
   priority: text("priority").notNull().default("medium"),
   sourceEmailId: integer("source_email_id"),
+  statusReportId: integer("status_report_id"),
 });
 
 export type InsertKanbanTask = typeof kanbanTasksTable.$inferInsert;
@@ -426,6 +427,7 @@ export const statusReportsTable = pgTable("status_reports", {
   sentAt: timestamp("sent_at"),
   clientStatus: text("client_status", { enum: ["pending", "accepted", "has_questions"] }).notNull().default("pending"),
   clientQuestion: text("client_question"),
+  adminReply: text("admin_reply"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });

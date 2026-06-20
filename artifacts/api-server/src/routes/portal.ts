@@ -2582,11 +2582,42 @@ router.patch("/portal/status-reports/:id/acknowledge", requireAuth, async (req: 
         description: question.trim(),
         column: "backlog",
         order: nextOrder,
+        statusReportId: id,
       });
     }
 
     return updatedReport;
   });
+
+  res.json(updated);
+});
+
+// ─── ADMIN: Status Report Reply ──────────────────────────────────────────────
+
+router.post("/admin/status-reports/:id/reply", requireAdmin, async (req: Request, res: Response) => {
+  const id = parseInt(String(req.params.id ?? ""), 10);
+  if (isNaN(id)) { res.status(400).json({ error: "Invalid ID" }); return; }
+
+  const { reply } = req.body as { reply?: string };
+  if (!reply?.trim()) { res.status(400).json({ error: "reply is required" }); return; }
+
+  const [report] = await db.select().from(statusReportsTable).where(eq(statusReportsTable.id, id));
+  if (!report) { res.status(404).json({ error: "Not found" }); return; }
+
+  if (report.clientStatus !== "has_questions") {
+    res.status(409).json({ error: "This report has no pending client question" });
+    return;
+  }
+
+  if (report.adminReply) {
+    res.status(409).json({ error: "A reply has already been sent for this report" });
+    return;
+  }
+
+  const [updated] = await db.update(statusReportsTable)
+    .set({ adminReply: reply.trim(), updatedAt: new Date() })
+    .where(eq(statusReportsTable.id, id))
+    .returning();
 
   res.json(updated);
 });

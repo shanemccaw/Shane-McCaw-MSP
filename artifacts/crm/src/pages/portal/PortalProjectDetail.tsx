@@ -96,6 +96,7 @@ interface StatusReport {
   sentAt: string | null;
   clientStatus: "pending" | "accepted" | "has_questions";
   clientQuestion: string | null;
+  adminReply: string | null;
 }
 
 interface ContractRef {
@@ -1218,11 +1219,27 @@ export default function PortalProjectDetail() {
                     </div>
                   )}
 
-                  {/* If has_questions, show submitted question */}
+                  {/* If has_questions, show submitted question + any admin reply */}
                   {report.clientStatus === "has_questions" && report.clientQuestion && (
-                    <div className="px-5 pb-4 pt-3 border-t border-amber-100 bg-amber-50/30">
-                      <p className="text-xs font-semibold text-amber-800 mb-1">Your Question:</p>
-                      <p className="text-xs text-amber-700 leading-relaxed">{report.clientQuestion}</p>
+                    <div className="px-5 pb-4 pt-3 border-t border-amber-100 bg-amber-50/30 space-y-3">
+                      <div>
+                        <p className="text-xs font-semibold text-amber-800 mb-1">Your Question:</p>
+                        <p className="text-xs text-amber-700 leading-relaxed">{report.clientQuestion}</p>
+                      </div>
+                      {report.adminReply && (
+                        <div className="border-l-4 border-[#0078D4] pl-3 bg-white/60 rounded-r-lg py-2 pr-3">
+                          <div className="flex items-center gap-1.5 mb-1">
+                            <div className="w-5 h-5 rounded-full bg-[#0078D4] flex items-center justify-center flex-shrink-0">
+                              <span className="text-white text-[8px] font-bold">SM</span>
+                            </div>
+                            <p className="text-xs font-semibold text-[#0A2540]">Consultant Response</p>
+                          </div>
+                          <p className="text-xs text-[#0A2540] leading-relaxed">{report.adminReply}</p>
+                        </div>
+                      )}
+                      {!report.adminReply && (
+                        <p className="text-[10px] text-amber-600 italic">Your consultant will reply shortly.</p>
+                      )}
                     </div>
                   )}
 

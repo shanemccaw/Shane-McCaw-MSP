@@ -36,6 +36,15 @@ interface OverviewData {
   prevQuarterAvgDeal: number;
   leadFunnel: { leads: number; clients: number; activeProjects: number };
   mrrTrend: { current: number; threeMonthsAgo: number };
+  pendingQuestions?: Array<{
+    id: number;
+    title: string;
+    clientQuestion: string | null;
+    projectId: number | null;
+    projectTitle: string | null;
+    clientName: string;
+    updatedAt: string;
+  }>;
 }
 
 interface Insight {
@@ -295,6 +304,53 @@ export default function OverviewPage() {
           </div>
         ))}
       </div>
+
+      {/* ── Customer Questions Alert ── */}
+      {!loading && !error && data && (data.pendingQuestions?.length ?? 0) > 0 && (
+        <section>
+          <div className="flex items-center gap-2 mb-3">
+            <div className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
+            <h2 className="text-sm font-bold text-[#0A2540] uppercase tracking-widest">Customer Questions</h2>
+            <span className="text-xs font-bold bg-amber-100 text-amber-700 border border-amber-200 px-2 py-0.5 rounded-full">
+              {data.pendingQuestions.length} pending
+            </span>
+          </div>
+          <div className="space-y-2">
+            {data.pendingQuestions.map(q => (
+              <div key={q.id} className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3.5 flex items-start gap-3">
+                <div className="w-8 h-8 rounded-full bg-amber-200 flex items-center justify-center flex-shrink-0 mt-0.5">
+                  <svg className="w-4 h-4 text-amber-700" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap mb-0.5">
+                    <span className="text-xs font-bold text-amber-900">{q.clientName}</span>
+                    {q.projectTitle && (
+                      <>
+                        <span className="text-amber-400">·</span>
+                        <span className="text-xs text-amber-700">{q.projectTitle}</span>
+                      </>
+                    )}
+                    <span className="text-amber-400">·</span>
+                    <span className="text-[10px] text-amber-600">{q.title}</span>
+                  </div>
+                  {q.clientQuestion && (
+                    <p className="text-xs text-amber-800 leading-relaxed line-clamp-2">{q.clientQuestion}</p>
+                  )}
+                </div>
+                {q.projectId && (
+                  <Link href={`/crm/projects/${q.projectId}`}>
+                    <span className="flex-shrink-0 text-xs font-semibold text-amber-700 border border-amber-300 bg-white hover:bg-amber-100 px-3 py-1.5 rounded-lg transition-colors whitespace-nowrap cursor-pointer">
+                      Go to Project →
+                    </span>
+                  </Link>
+                )}
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
 
       {/* ── Financial Snapshot ── */}
       <section>
