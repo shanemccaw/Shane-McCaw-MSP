@@ -4,6 +4,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import PortalLayout from "@/components/PortalLayout";
 import { KanbanCardModal } from "@/components/KanbanCardModal";
 import type { KanbanCardModalTask } from "@/components/KanbanCardModal";
+import { TypedTaskTypeBadge } from "@/components/kanban/TypedCardContent";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -46,6 +47,8 @@ interface KanbanTask {
   createdAt: string;
   updatedAt: string;
   priority?: string;
+  taskType?: string | null;
+  taskMetadata?: Record<string, unknown> | null;
 }
 
 interface Document {
@@ -903,6 +906,7 @@ export default function ClientProjectDashboard() {
                               >
                                 <p className="text-xs font-medium text-[#0A2540] line-clamp-2 leading-snug">{task.title}</p>
                                 <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
+                                  <TypedTaskTypeBadge taskType={task.taskType} />
                                   {priCls && task.priority && (
                                     <span className={`text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded ${priCls}`}>
                                       {task.priority}

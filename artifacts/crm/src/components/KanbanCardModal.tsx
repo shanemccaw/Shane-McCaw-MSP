@@ -19,6 +19,8 @@ export interface KanbanCardModalTask {
   completionNotes?: string | null;
   createdAt?: string | null;
   updatedAt?: string | null;
+  taskType?: string | null;
+  taskMetadata?: Record<string, unknown> | null;
 }
 
 interface Props {

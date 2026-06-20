@@ -4,6 +4,8 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import { KanbanCardModal } from "@/components/KanbanCardModal";
 import type { KanbanCardModalTask } from "@/components/KanbanCardModal";
+import { TypedCardContent, TASK_TYPE_CONFIG } from "@/components/kanban/TypedCardContent";
+import type { TaskType } from "@/components/kanban/TypedCardContent";
 import StatusReportForm from "@/components/StatusReportForm";
 import type { StatusReport } from "@/components/StatusReportForm";
 import {
@@ -93,6 +95,8 @@ interface KanbanTask {
   createdAt: string;
   updatedAt: string;
   statusReportId: number | null;
+  taskType: string | null;
+  taskMetadata: Record<string, unknown> | null;
 }
 
 const COLUMNS = [
@@ -238,6 +242,8 @@ function DraggableCard({
                 {task.description}
               </p>
             )}
+
+            <TypedCardContent taskType={task.taskType} metadata={task.taskMetadata} />
 
             {task.statusReportId && (
               <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-2">
@@ -819,7 +825,16 @@ export default function ProjectDetailPage() {
   const [stepSaving, setStepSaving] = useState(false);
 
   const [addTaskOpen, setAddTaskOpen] = useState(false);
-  const [taskForm, setTaskForm] = useState({ title: "", description: "", column: "backlog", assignedTo: "", priority: "" });
+  const [taskForm, setTaskForm] = useState({
+    title: "", description: "", column: "backlog", assignedTo: "", priority: "",
+    taskType: "",
+    metaModules: "", metaEstimatedHours: "", metaPrerequisites: "", metaMaterialsUrl: "",
+    metaHealthStatus: "", metaScriptName: "", metaLastRunDate: "", metaOutputSummary: "",
+    metaPostureSummary: "", metaConfiguredItems: "",
+    metaFlows: "",
+    metaDocuments: "",
+    metaRiskScore: "", metaFindingsSummary: "", metaRecommendations: "", metaAssessmentUrl: "",
+  });
   const [taskSaving, setTaskSaving] = useState(false);
 
   const [jsonImportOpen, setJsonImportOpen] = useState(false);
@@ -888,10 +903,74 @@ export default function ProjectDetailPage() {
     } as KanbanCardModalTask & { priority: string | null });
   };
 
+  const buildTaskMetadata = (form: typeof taskForm): Record<string, unknown> | null => {
+    if (!form.taskType) return null;
+    switch (form.taskType) {
+      case "training": {
+        const modules = form.metaModules.trim()
+          ? form.metaModules.split("\n").map(l => l.trim()).filter(Boolean).map(name => ({ name, completed: false }))
+          : [];
+        return {
+          ...(modules.length && { modules }),
+          ...(form.metaEstimatedHours && { estimatedHours: parseFloat(form.metaEstimatedHours) }),
+          ...(form.metaPrerequisites.trim() && { prerequisites: form.metaPrerequisites.trim() }),
+          ...(form.metaMaterialsUrl.trim() && { materialsUrl: form.metaMaterialsUrl.trim() }),
+        };
+      }
+      case "environmentHealthCheck":
+        return {
+          ...(form.metaHealthStatus && { healthStatus: form.metaHealthStatus }),
+          ...(form.metaScriptName.trim() && { scriptName: form.metaScriptName.trim() }),
+          ...(form.metaLastRunDate && { lastRunDate: form.metaLastRunDate }),
+          ...(form.metaOutputSummary.trim() && { outputSummary: form.metaOutputSummary.trim() }),
+        };
+      case "governanceSetup": {
+        const configuredItems = form.metaConfiguredItems.trim()
+          ? form.metaConfiguredItems.split("\n").map(l => l.trim()).filter(Boolean)
+          : [];
+        return {
+          ...(form.metaPostureSummary.trim() && { postureSummary: form.metaPostureSummary.trim() }),
+          ...(configuredItems.length && { configuredItems }),
+        };
+      }
+      case "automationBuild": {
+        const flows = form.metaFlows.trim()
+          ? form.metaFlows.split("\n").map(l => l.trim()).filter(Boolean).map(line => {
+              const [name, status] = line.split("|").map(s => s.trim());
+              return { name: name ?? line, status: (status ?? "building") as "building" | "testing" | "live" | "error" };
+            })
+          : [];
+        return { ...(flows.length && { flows }) };
+      }
+      case "documentDelivery": {
+        const documents = form.metaDocuments.trim()
+          ? form.metaDocuments.split("\n").map(l => l.trim()).filter(Boolean).map(line => {
+              const [name, version, status] = line.split("|").map(s => s.trim());
+              return { name: name ?? line, ...(version && { version }), approvalStatus: (status ?? "pending") as "pending" | "approved" | "revision_requested" };
+            })
+          : [];
+        return { ...(documents.length && { documents }) };
+      }
+      case "discovery": {
+        const recommendations = form.metaRecommendations.trim()
+          ? form.metaRecommendations.split("\n").map(l => l.trim()).filter(Boolean)
+          : [];
+        return {
+          ...(form.metaRiskScore && { riskScore: form.metaRiskScore }),
+          ...(form.metaFindingsSummary.trim() && { findingsSummary: form.metaFindingsSummary.trim() }),
+          ...(recommendations.length && { recommendations }),
+          ...(form.metaAssessmentUrl.trim() && { assessmentUrl: form.metaAssessmentUrl.trim() }),
+        };
+      }
+      default: return null;
+    }
+  };
+
   const handleAddTask = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!taskForm.title.trim() || !projectId) return;
     setTaskSaving(true);
+    const taskMetadata = buildTaskMetadata(taskForm);
     const res = await fetchWithAuth("/api/admin/kanban-tasks", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -902,13 +981,24 @@ export default function ProjectDetailPage() {
         column: taskForm.column,
         assignedTo: taskForm.assignedTo.trim() || null,
         priority: taskForm.priority || null,
+        taskType: taskForm.taskType || null,
+        taskMetadata,
       }),
     });
     if (res.ok) {
       const newTask = await res.json() as KanbanTask;
       setTasks(prev => [...prev, newTask]);
       setAddTaskOpen(false);
-      setTaskForm({ title: "", description: "", column: "backlog", assignedTo: "", priority: "" });
+      setTaskForm({
+        title: "", description: "", column: "backlog", assignedTo: "", priority: "",
+        taskType: "",
+        metaModules: "", metaEstimatedHours: "", metaPrerequisites: "", metaMaterialsUrl: "",
+        metaHealthStatus: "", metaScriptName: "", metaLastRunDate: "", metaOutputSummary: "",
+        metaPostureSummary: "", metaConfiguredItems: "",
+        metaFlows: "",
+        metaDocuments: "",
+        metaRiskScore: "", metaFindingsSummary: "", metaRecommendations: "", metaAssessmentUrl: "",
+      });
     }
     setTaskSaving(false);
   };
@@ -1220,6 +1310,130 @@ export default function ProjectDetailPage() {
                   placeholder="Name or email…"
                 />
               </div>
+              <div>
+                <label className="block text-xs font-semibold text-[#0A2540] mb-1">Task Type <span className="font-normal text-muted-foreground">(optional)</span></label>
+                <select
+                  value={taskForm.taskType}
+                  onChange={e => setTaskForm(f => ({ ...f, taskType: e.target.value }))}
+                  className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4] bg-white"
+                >
+                  <option value="">— Generic task —</option>
+                  {(Object.entries(TASK_TYPE_CONFIG) as [TaskType, typeof TASK_TYPE_CONFIG[TaskType]][]).map(([key, cfg]) => (
+                    <option key={key} value={key}>{cfg.icon} {cfg.label}</option>
+                  ))}
+                </select>
+              </div>
+              {taskForm.taskType === "training" && (
+                <div className="sm:col-span-2 border border-purple-200 bg-purple-50/50 rounded-lg p-3 space-y-2">
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-purple-700">🎓 Training Details</p>
+                  <div>
+                    <label className="block text-xs font-semibold text-[#0A2540] mb-1">Modules <span className="font-normal text-muted-foreground">(one per line)</span></label>
+                    <textarea rows={3} value={taskForm.metaModules} onChange={e => setTaskForm(f => ({ ...f, metaModules: e.target.value }))} placeholder={"Intro to Microsoft 365\nTeams Setup & Best Practices\nSharePoint Fundamentals"} className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400 resize-none" />
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="block text-xs font-semibold text-[#0A2540] mb-1">Estimated hours</label>
+                      <input type="number" value={taskForm.metaEstimatedHours} onChange={e => setTaskForm(f => ({ ...f, metaEstimatedHours: e.target.value }))} placeholder="4" className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400" />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-[#0A2540] mb-1">Materials URL</label>
+                      <input value={taskForm.metaMaterialsUrl} onChange={e => setTaskForm(f => ({ ...f, metaMaterialsUrl: e.target.value }))} placeholder="https://…" className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400" />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-[#0A2540] mb-1">Prerequisites</label>
+                    <input value={taskForm.metaPrerequisites} onChange={e => setTaskForm(f => ({ ...f, metaPrerequisites: e.target.value }))} placeholder="Azure AD account, M365 license" className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400" />
+                  </div>
+                </div>
+              )}
+              {taskForm.taskType === "environmentHealthCheck" && (
+                <div className="sm:col-span-2 border border-green-200 bg-green-50/50 rounded-lg p-3 space-y-2">
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-green-700">🔍 Health Check Details</p>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="block text-xs font-semibold text-[#0A2540] mb-1">Health status</label>
+                      <select value={taskForm.metaHealthStatus} onChange={e => setTaskForm(f => ({ ...f, metaHealthStatus: e.target.value }))} className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-400 bg-white">
+                        <option value="">Select…</option>
+                        <option value="healthy">✓ Healthy</option>
+                        <option value="warning">⚠ Warning</option>
+                        <option value="critical">✖ Critical</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-[#0A2540] mb-1">Script name</label>
+                      <input value={taskForm.metaScriptName} onChange={e => setTaskForm(f => ({ ...f, metaScriptName: e.target.value }))} placeholder="run-m365-health.ps1" className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-400" />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-[#0A2540] mb-1">Last run date</label>
+                    <input type="date" value={taskForm.metaLastRunDate} onChange={e => setTaskForm(f => ({ ...f, metaLastRunDate: e.target.value }))} className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-400" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-[#0A2540] mb-1">Output summary</label>
+                    <textarea rows={2} value={taskForm.metaOutputSummary} onChange={e => setTaskForm(f => ({ ...f, metaOutputSummary: e.target.value }))} placeholder="All 47 checks passed. 2 warnings noted…" className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-400 resize-none" />
+                  </div>
+                </div>
+              )}
+              {taskForm.taskType === "governanceSetup" && (
+                <div className="sm:col-span-2 border border-blue-200 bg-blue-50/50 rounded-lg p-3 space-y-2">
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-blue-700">🛡️ Governance Details</p>
+                  <div>
+                    <label className="block text-xs font-semibold text-[#0A2540] mb-1">Posture summary</label>
+                    <textarea rows={2} value={taskForm.metaPostureSummary} onChange={e => setTaskForm(f => ({ ...f, metaPostureSummary: e.target.value }))} placeholder="DLP and sensitivity labels configured across all M365 workloads…" className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 resize-none" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-[#0A2540] mb-1">Configured items <span className="font-normal text-muted-foreground">(one per line)</span></label>
+                    <textarea rows={3} value={taskForm.metaConfiguredItems} onChange={e => setTaskForm(f => ({ ...f, metaConfiguredItems: e.target.value }))} placeholder={"Confidential sensitivity label\nExternal sharing DLP policy\nMFA conditional access"} className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 resize-none" />
+                  </div>
+                </div>
+              )}
+              {taskForm.taskType === "automationBuild" && (
+                <div className="sm:col-span-2 border border-orange-200 bg-orange-50/50 rounded-lg p-3 space-y-2">
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-orange-700">⚡ Automation Details</p>
+                  <div>
+                    <label className="block text-xs font-semibold text-[#0A2540] mb-1">Flows <span className="font-normal text-muted-foreground">(one per line: "Flow Name | live/testing/building/error")</span></label>
+                    <textarea rows={3} value={taskForm.metaFlows} onChange={e => setTaskForm(f => ({ ...f, metaFlows: e.target.value }))} placeholder={"Approval Request Flow | live\nNew Hire Onboarding | testing\nExpense Approval | building"} className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400 resize-none font-mono text-xs" />
+                  </div>
+                </div>
+              )}
+              {taskForm.taskType === "documentDelivery" && (
+                <div className="sm:col-span-2 border border-amber-200 bg-amber-50/50 rounded-lg p-3 space-y-2">
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-amber-700">📄 Document Details</p>
+                  <div>
+                    <label className="block text-xs font-semibold text-[#0A2540] mb-1">Documents <span className="font-normal text-muted-foreground">(one per line: "Name | version | pending/approved")</span></label>
+                    <textarea rows={3} value={taskForm.metaDocuments} onChange={e => setTaskForm(f => ({ ...f, metaDocuments: e.target.value }))} placeholder={"M365 Governance Policy | v1.0 | pending\nSharePoint Architecture Diagram | v2.1 | approved\nTraining Guide | v1.0 | pending"} className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400 resize-none font-mono text-xs" />
+                  </div>
+                </div>
+              )}
+              {taskForm.taskType === "discovery" && (
+                <div className="sm:col-span-2 border border-pink-200 bg-pink-50/50 rounded-lg p-3 space-y-2">
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-pink-700">🔬 Discovery Details</p>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="block text-xs font-semibold text-[#0A2540] mb-1">Risk score</label>
+                      <select value={taskForm.metaRiskScore} onChange={e => setTaskForm(f => ({ ...f, metaRiskScore: e.target.value }))} className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-pink-400 bg-white">
+                        <option value="">Select…</option>
+                        <option value="low">Low</option>
+                        <option value="medium">Medium</option>
+                        <option value="high">High</option>
+                        <option value="critical">Critical</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-[#0A2540] mb-1">Assessment URL</label>
+                      <input value={taskForm.metaAssessmentUrl} onChange={e => setTaskForm(f => ({ ...f, metaAssessmentUrl: e.target.value }))} placeholder="https://…" className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-pink-400" />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-[#0A2540] mb-1">Findings summary</label>
+                    <textarea rows={2} value={taskForm.metaFindingsSummary} onChange={e => setTaskForm(f => ({ ...f, metaFindingsSummary: e.target.value }))} placeholder="Current tenant has 3 critical gaps in DLP coverage…" className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-pink-400 resize-none" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-[#0A2540] mb-1">Recommendations <span className="font-normal text-muted-foreground">(one per line)</span></label>
+                    <textarea rows={3} value={taskForm.metaRecommendations} onChange={e => setTaskForm(f => ({ ...f, metaRecommendations: e.target.value }))} placeholder={"Enable MFA for all admin accounts\nDeploy Purview DLP across Exchange + SharePoint\nConduct phishing simulation"} className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-pink-400 resize-none" />
+                  </div>
+                </div>
+              )}
               <div className="sm:col-span-2 flex gap-2">
                 <button
                   type="submit"

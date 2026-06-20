@@ -2490,8 +2490,9 @@ router.get("/admin/kanban-tasks", requireAdmin, async (req: Request, res: Respon
 });
 
 router.post("/admin/kanban-tasks", requireAdmin, async (req: Request, res: Response) => {
-  const { projectId, title, description, column, order, assignedTo, dueDate, priority } = req.body as {
+  const { projectId, title, description, column, order, assignedTo, dueDate, priority, taskType, taskMetadata } = req.body as {
     projectId?: number; title?: string; description?: string; column?: string; order?: number; assignedTo?: string; dueDate?: string; priority?: string;
+    taskType?: string; taskMetadata?: Record<string, unknown>;
   };
   if (!projectId || !title) { res.status(400).json({ error: "projectId and title are required" }); return; }
 
@@ -2504,6 +2505,8 @@ router.post("/admin/kanban-tasks", requireAdmin, async (req: Request, res: Respo
     assignedTo: assignedTo ?? null,
     dueDate: dueDate ? new Date(dueDate) : null,
     priority: priority ?? "medium",
+    taskType: taskType ?? null,
+    taskMetadata: taskMetadata ?? null,
   }).returning();
   await syncProjectProgress(projectId);
   res.status(201).json(task);
@@ -2513,9 +2516,10 @@ router.patch("/admin/kanban-tasks/:id", requireAdmin, async (req: Request, res: 
   const id = parseInt(String(req.params.id ?? ""), 10);
   if (isNaN(id)) { res.status(400).json({ error: "Invalid ID" }); return; }
 
-  const { column, title, description, order, assignedTo, dueDate, waitingReason, completionStatus, completionNotes, priority } = req.body as {
+  const { column, title, description, order, assignedTo, dueDate, waitingReason, completionStatus, completionNotes, priority, taskType, taskMetadata } = req.body as {
     column?: string; title?: string; description?: string; order?: number; assignedTo?: string; dueDate?: string;
     waitingReason?: string | null; completionStatus?: string | null; completionNotes?: string | null; priority?: string | null;
+    taskType?: string | null; taskMetadata?: Record<string, unknown> | null;
   };
   const updates: Partial<typeof kanbanTasksTable.$inferInsert & { updatedAt: Date }> = { updatedAt: new Date() };
   if (column !== undefined) updates.column = column as "backlog" | "in_progress" | "waiting_on_customer" | "completed";
@@ -2528,6 +2532,8 @@ router.patch("/admin/kanban-tasks/:id", requireAdmin, async (req: Request, res: 
   if (completionStatus !== undefined) updates.completionStatus = completionStatus ?? null;
   if (completionNotes !== undefined) updates.completionNotes = completionNotes ?? null;
   if (priority !== undefined) updates.priority = priority ?? "medium";
+  if (taskType !== undefined) updates.taskType = taskType ?? null;
+  if (taskMetadata !== undefined) updates.taskMetadata = taskMetadata ?? null;
 
   const [updated] = await db.update(kanbanTasksTable).set(updates).where(eq(kanbanTasksTable.id, id)).returning();
   if (!updated) { res.status(404).json({ error: "Task not found" }); return; }

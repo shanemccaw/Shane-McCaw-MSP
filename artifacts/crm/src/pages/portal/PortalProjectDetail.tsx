@@ -6,6 +6,7 @@ import PortalLayout from "@/components/PortalLayout";
 import PortalRetainerDetail from "./PortalRetainerDetail";
 import { KanbanCardModal } from "@/components/KanbanCardModal";
 import type { KanbanCardModalTask } from "@/components/KanbanCardModal";
+import { TypedCardContent } from "@/components/kanban/TypedCardContent";
 import {
   DndContext,
   DragOverlay,
@@ -61,6 +62,8 @@ interface KanbanTask {
   completionNotes: string | null;
   createdAt: string;
   updatedAt: string;
+  taskType: string | null;
+  taskMetadata: Record<string, unknown> | null;
 }
 
 interface Document {
@@ -174,6 +177,7 @@ function SortableTaskCard({ task, onCardClick }: { task: KanbanTask; onCardClick
     >
       <p className="text-sm font-medium text-[#0A2540] leading-snug">{task.title}</p>
       {task.description && <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{task.description}</p>}
+      <TypedCardContent taskType={task.taskType} metadata={task.taskMetadata} />
       <div className="flex items-center gap-2 mt-2 flex-wrap">
         {task.assignedTo && (
           <span className="text-xs bg-[#0078D4]/10 text-[#0078D4] px-2 py-0.5 rounded-full font-medium">{task.assignedTo}</span>
