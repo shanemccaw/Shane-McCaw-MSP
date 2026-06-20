@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback } from "react";
+import { useLocation } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
 import StatusReportForm, { type StatusReport as SRType } from "@/components/StatusReportForm";
 
@@ -39,6 +40,7 @@ const PERIOD_LABELS: Record<string, string> = {
 
 export default function StatusReportsPage() {
   const { fetchWithAuth } = useAuth();
+  const [, navigate] = useLocation();
   const [reports, setReports] = useState<StatusReport[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [clients, setClients] = useState<Client[]>([]);
@@ -52,7 +54,19 @@ export default function StatusReportsPage() {
       fetchWithAuth("/api/admin/projects"),
       fetchWithAuth("/api/admin/clients"),
     ]);
-    if (rRes.ok) setReports(await rRes.json() as StatusReport[]);
+    if (rRes.ok) {
+      const loaded = await rRes.json() as StatusReport[];
+      setReports(loaded);
+      const params = new URLSearchParams(window.location.search);
+      const reportId = params.get("report");
+      if (reportId) {
+        const found = loaded.find(r => r.id === Number(reportId));
+        if (found) {
+          setEditing(found as SRType);
+          setIsNew(false);
+        }
+      }
+    }
     if (pRes.ok) setProjects(await pRes.json() as Project[]);
     if (cRes.ok) setClients(await cRes.json() as Client[]);
     setLoading(false);
@@ -91,6 +105,10 @@ export default function StatusReportsPage() {
   const handleBack = () => {
     setEditing(null);
     setIsNew(false);
+    const params = new URLSearchParams(window.location.search);
+    if (params.has("report")) {
+      navigate("/crm/status-reports", { replace: true });
+    }
   };
 
   if (!isNew && !editing) {

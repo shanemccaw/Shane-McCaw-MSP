@@ -1440,7 +1440,17 @@ export default function ProjectDetailPage() {
                   setStatusReportOpen(false);
                   toast({
                     title: "Status report saved",
-                    description: `"${saved.title}" was created successfully.`,
+                    description: (
+                      <span>
+                        &ldquo;{saved.title}&rdquo; was created.{" "}
+                        <button
+                          onClick={() => navigate(`/crm/status-reports?report=${saved.id}`)}
+                          className="underline font-semibold hover:opacity-80 transition-opacity"
+                        >
+                          View Report
+                        </button>
+                      </span>
+                    ),
                   });
                 }}
                 onCancel={() => setStatusReportOpen(false)}
