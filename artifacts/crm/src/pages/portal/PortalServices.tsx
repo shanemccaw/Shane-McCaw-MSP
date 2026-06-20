@@ -35,169 +35,33 @@ interface ClientService {
   steps: WorkflowStep[];
 }
 
-// ─── Catalog data (mirrors consulting site) ───────────────────────────────────
+interface DbService {
+  id: number;
+  slug: string | null;
+  name: string;
+  description: string | null;
+  category: string | null;
+  deliverables: string | null;
+  basePrice: string | null;
+  turnaround: string | null;
+  billingType: "one_time" | "recurring_monthly";
+  badge: string | null;
+  highlighted: boolean;
+  hoursPerMonth: string | null;
+  tagline: string | null;
+  inclusions: string[] | null;
+  features: string[] | null;
+  orderWorkflow: Array<unknown> | null;
+}
 
-const MICRO_OFFERS = [
-  {
-    slug: "m365-health-check",
-    title: "M365 Health Check",
-    price: "$497",
-    priceInCents: 49700,
-    turnaround: "2 business days",
-    badge: null,
-    description: "A full audit of your M365 tenant configuration — permissions, sharing policies, licensing gaps, and security posture — with a prioritized remediation report.",
-    deliverable: "Written audit report + remediation priority list",
-    inclusions: [
-      "90-minute live audit session via video call",
-      "Review of tenant settings, security configuration, and permissions",
-      "Assessment of Teams, SharePoint, OneDrive, and Exchange setup",
-      "Comprehensive written report with prioritized findings",
-      "30-minute debrief call to walk through recommendations",
-    ],
-  },
-  {
-    slug: "copilot-readiness",
-    title: "Copilot Readiness Assessment",
-    price: "$797",
-    priceInCents: 79700,
-    turnaround: "5 business days",
-    badge: "Most requested",
-    description: "A six-dimension readiness scorecard for Copilot deployment: licensing, identity, permissions, governance, sensitivity labeling, and oversharing risk.",
-    deliverable: "Readiness scorecard + deployment roadmap",
-    inclusions: [
-      "Full audit of data governance, sensitivity labels, and DLP policies",
-      "Review of SharePoint permissions and oversharing risks",
-      "Licensing review and optimization recommendations",
-      "Copilot deployment readiness score with findings report",
-      "Custom deployment roadmap and adoption strategy",
-      "45-minute debrief and Q&A session",
-    ],
-  },
-  {
-    slug: "sharepoint-blueprint",
-    title: "SharePoint Intranet Blueprint",
-    price: "$997",
-    priceInCents: 99700,
-    turnaround: "7 business days",
-    badge: null,
-    description: "A complete information architecture and navigation blueprint for a SharePoint intranet — site structure, permission model, governance policy, and rollout sequence.",
-    deliverable: "IA document + governance policy + rollout plan",
-    inclusions: [
-      "Discovery session to understand organizational structure and needs",
-      "Information architecture design",
-      "Site map and navigation strategy",
-      "Taxonomy and metadata framework",
-      "Wireframe for key page types",
-      "Written blueprint document with implementation guidance",
-    ],
-  },
-  {
-    slug: "power-automate",
-    title: "Power Automate Quick Win",
-    price: "$597",
-    priceInCents: 59700,
-    turnaround: "5–7 business days",
-    badge: null,
-    description: "Shane identifies, designs, and builds one high-impact Power Automate flow for your organization — documented and handed off with user instructions.",
-    deliverable: "Live flow + documentation + handoff walkthrough",
-    inclusions: [
-      "Discovery call to document the target process",
-      "Design and build of one Power Automate flow",
-      "Testing and error handling configuration",
-      "Documentation and knowledge transfer",
-      "30-day email support post-delivery",
-    ],
-  },
-  {
-    slug: "security-audit",
-    title: "M365 Security & Governance Audit",
-    price: "$897",
-    priceInCents: 89700,
-    turnaround: "5 business days",
-    badge: null,
-    description: "An in-depth review of your DLP policies, retention labels, conditional access rules, and Entra ID posture — with specific remediation steps for each gap found.",
-    deliverable: "Security audit report + DLP/retention gap analysis",
-    inclusions: [
-      "Full review of DLP policies, sensitivity labels, and retention",
-      "Conditional access policy audit",
-      "Admin role and permissions review",
-      "Guest access and external sharing assessment",
-      "Purview compliance posture review",
-      "Prioritized remediation report",
-    ],
-  },
-  {
-    slug: "copilot-prompts",
-    title: "Copilot Prompt Library Build",
-    price: "$397",
-    priceInCents: 39700,
-    turnaround: "5 business days",
-    badge: null,
-    description: "A custom library of 25+ role-specific Copilot prompts built for your organization's departments — covering your actual workflows, not generic examples.",
-    deliverable: "Role-specific prompt library (Word + SharePoint-ready)",
-    inclusions: [
-      "Discovery call to understand your team's key use cases",
-      "Custom library of 25+ role-specific Copilot prompts",
-      "Prompts organized by department and task type",
-      "Formatted as a sharable, editable document",
-      "Tips for prompt refinement and iteration",
-    ],
-  },
-];
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
-const RETAINERS = [
-  {
-    name: "Architect Essentials",
-    price: "$1,500",
-    period: "/month",
-    hours: "10 hrs / month",
-    highlight: false,
-    tagline: "Right for organizations that need a senior M365 resource on call — without the overhead of a full-time hire.",
-    features: [
-      "10 hours of consulting per month",
-      "Email and Teams support",
-      "Monthly strategy call (60 min)",
-      "Standard response within 1 business day",
-      "Access to all M365 service areas",
-      "Monthly written summary",
-    ],
-  },
-  {
-    name: "Architect Growth",
-    price: "$3,000",
-    period: "/month",
-    hours: "25 hrs / month",
-    highlight: true,
-    tagline: "Right for organizations actively modernizing their M365 environment or planning a Copilot deployment.",
-    features: [
-      "25 hours of consulting per month",
-      "Priority email and Teams support",
-      "Two strategy calls per month (60 min each)",
-      "Priority response within 4 business hours",
-      "Access to all M365 service areas",
-      "Monthly written progress report",
-      "Proactive tenant health monitoring",
-    ],
-  },
-  {
-    name: "Architect Enterprise",
-    price: "$5,500",
-    period: "/month",
-    hours: "50 hrs / month",
-    highlight: false,
-    tagline: "Right for organizations that need a dedicated senior architect embedded in their operations every week.",
-    features: [
-      "50 hours of consulting per month",
-      "Dedicated Teams support channel",
-      "Weekly strategy calls (60 min)",
-      "Same-day emergency response",
-      "Access to all M365 service areas",
-      "Monthly written progress report",
-      "Custom technology roadmap",
-      "Quarterly strategic review",
-    ],
-  },
-];
+function formatPrice(basePrice: string | null): string {
+  if (!basePrice) return "Contact us";
+  const num = parseFloat(basePrice);
+  if (isNaN(num)) return "Contact us";
+  return "$" + num.toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+}
 
 const BOOKINGS_URL = import.meta.env.VITE_BOOKINGS_URL as string | undefined;
 
@@ -343,11 +207,12 @@ function MicroOfferCard({
   onBuy,
   buying,
 }: {
-  offer: typeof MICRO_OFFERS[0];
-  onBuy: (offer: typeof MICRO_OFFERS[0]) => void;
+  offer: DbService;
+  onBuy: (offer: DbService) => void;
   buying: boolean;
 }) {
   const [expanded, setExpanded] = useState(false);
+  const inclusions = offer.inclusions ?? [];
 
   return (
     <div className="bg-white border border-border rounded-xl overflow-hidden flex flex-col hover:shadow-md hover:-translate-y-0.5 transition-all duration-200">
@@ -358,44 +223,54 @@ function MicroOfferCard({
               {offer.badge && (
                 <span className="text-xs bg-[#0078D4] text-white font-bold px-2.5 py-0.5 rounded-full">{offer.badge}</span>
               )}
-              <span className="text-xs bg-[#F7F9FC] border border-border text-muted-foreground font-medium px-2.5 py-0.5 rounded-full flex items-center gap-1">
-                <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-                {offer.turnaround}
-              </span>
+              {offer.turnaround && (
+                <span className="text-xs bg-[#F7F9FC] border border-border text-muted-foreground font-medium px-2.5 py-0.5 rounded-full flex items-center gap-1">
+                  <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                  {offer.turnaround}
+                </span>
+              )}
             </div>
-            <h3 className="text-sm font-bold text-[#0A2540]">{offer.title}</h3>
+            <h3 className="text-sm font-bold text-[#0A2540]">{offer.name}</h3>
           </div>
-          <span className="text-xl font-extrabold text-[#0078D4] flex-shrink-0">{offer.price}</span>
+          <span className="text-xl font-extrabold text-[#0078D4] flex-shrink-0">{formatPrice(offer.basePrice)}</span>
         </div>
 
-        <p className="text-xs text-muted-foreground leading-relaxed mb-3">{offer.description}</p>
+        {offer.description && (
+          <p className="text-xs text-muted-foreground leading-relaxed mb-3">{offer.description}</p>
+        )}
 
-        <div className="text-xs bg-[#F7F9FC] border border-border rounded-lg px-3 py-2 mb-3">
-          <span className="font-bold text-[#0A2540]">Deliverable: </span>
-          <span className="text-muted-foreground">{offer.deliverable}</span>
-        </div>
+        {offer.deliverables && (
+          <div className="text-xs bg-[#F7F9FC] border border-border rounded-lg px-3 py-2 mb-3">
+            <span className="font-bold text-[#0A2540]">Deliverable: </span>
+            <span className="text-muted-foreground">{offer.deliverables}</span>
+          </div>
+        )}
 
-        <button
-          onClick={() => setExpanded(!expanded)}
-          className="flex items-center gap-1.5 text-xs font-semibold text-[#0078D4] hover:text-[#0078D4]/80 transition-colors mb-4"
-        >
-          <svg className={`w-3.5 h-3.5 transition-transform ${expanded ? "rotate-90" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
-          </svg>
-          {expanded ? "Hide" : "See"} what's included
-        </button>
+        {inclusions.length > 0 && (
+          <>
+            <button
+              onClick={() => setExpanded(!expanded)}
+              className="flex items-center gap-1.5 text-xs font-semibold text-[#0078D4] hover:text-[#0078D4]/80 transition-colors mb-4"
+            >
+              <svg className={`w-3.5 h-3.5 transition-transform ${expanded ? "rotate-90" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+              </svg>
+              {expanded ? "Hide" : "See"} what's included
+            </button>
 
-        {expanded && (
-          <ul className="mb-4 space-y-1.5">
-            {offer.inclusions.map((item, i) => (
-              <li key={i} className="flex items-start gap-2 text-xs text-[#0A2540]">
-                <svg className="w-3.5 h-3.5 text-green-500 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                </svg>
-                {item}
-              </li>
-            ))}
-          </ul>
+            {expanded && (
+              <ul className="mb-4 space-y-1.5">
+                {inclusions.map((item, i) => (
+                  <li key={i} className="flex items-start gap-2 text-xs text-[#0A2540]">
+                    <svg className="w-3.5 h-3.5 text-green-500 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                    </svg>
+                    {item}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </>
         )}
 
         <div className="mt-auto">
@@ -414,7 +289,7 @@ function MicroOfferCard({
                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z" />
                 </svg>
-                Purchase — {offer.price}
+                Purchase — {formatPrice(offer.basePrice)}
               </>
             )}
           </button>
@@ -426,48 +301,57 @@ function MicroOfferCard({
 
 // ─── Retainer card ────────────────────────────────────────────────────────────
 
-function RetainerCard({ plan }: { plan: typeof RETAINERS[0] }) {
+function RetainerCard({ plan }: { plan: DbService }) {
+  const features = plan.features ?? [];
+  const highlighted = plan.highlighted;
+
   return (
     <div className={`rounded-xl overflow-hidden flex flex-col border transition-all duration-200 ${
-      plan.highlight
+      highlighted
         ? "bg-[#0A2540] border-[#0078D4] shadow-xl shadow-[#0078D4]/10"
         : "bg-white border-border hover:shadow-md hover:-translate-y-0.5"
     }`}>
       <div className="p-5 flex-1 flex flex-col">
-        {plan.highlight && (
+        {highlighted && (
           <div className="mb-3">
             <span className="text-xs bg-[#0078D4] text-white font-bold px-3 py-1 rounded-full">Most popular</span>
           </div>
         )}
 
         <div className="mb-3">
-          <p className={`text-xs font-semibold uppercase tracking-wide mb-1 ${plan.highlight ? "text-[#00B4D8]" : "text-[#0078D4]"}`}>{plan.hours}</p>
-          <h3 className={`text-base font-bold ${plan.highlight ? "text-white" : "text-[#0A2540]"}`}>{plan.name}</h3>
+          {plan.hoursPerMonth && (
+            <p className={`text-xs font-semibold uppercase tracking-wide mb-1 ${highlighted ? "text-[#00B4D8]" : "text-[#0078D4]"}`}>{plan.hoursPerMonth}</p>
+          )}
+          <h3 className={`text-base font-bold ${highlighted ? "text-white" : "text-[#0A2540]"}`}>{plan.name}</h3>
           <div className="flex items-baseline gap-1 mt-1">
-            <span className={`text-2xl font-extrabold ${plan.highlight ? "text-white" : "text-[#0078D4]"}`}>{plan.price}</span>
-            <span className={`text-sm ${plan.highlight ? "text-white/50" : "text-muted-foreground"}`}>{plan.period}</span>
+            <span className={`text-2xl font-extrabold ${highlighted ? "text-white" : "text-[#0078D4]"}`}>{formatPrice(plan.basePrice)}</span>
+            <span className={`text-sm ${highlighted ? "text-white/50" : "text-muted-foreground"}`}>/month</span>
           </div>
         </div>
 
-        <p className={`text-xs leading-relaxed mb-4 ${plan.highlight ? "text-white/70" : "text-muted-foreground"}`}>{plan.tagline}</p>
+        {plan.tagline && (
+          <p className={`text-xs leading-relaxed mb-4 ${highlighted ? "text-white/70" : "text-muted-foreground"}`}>{plan.tagline}</p>
+        )}
 
-        <ul className="space-y-2 mb-5 flex-1">
-          {plan.features.map((f, i) => (
-            <li key={i} className="flex items-start gap-2 text-xs">
-              <svg className={`w-3.5 h-3.5 flex-shrink-0 mt-0.5 ${plan.highlight ? "text-[#00B4D8]" : "text-green-500"}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-              </svg>
-              <span className={plan.highlight ? "text-white/80" : "text-[#0A2540]"}>{f}</span>
-            </li>
-          ))}
-        </ul>
+        {features.length > 0 && (
+          <ul className="space-y-2 mb-5 flex-1">
+            {features.map((f, i) => (
+              <li key={i} className="flex items-start gap-2 text-xs">
+                <svg className={`w-3.5 h-3.5 flex-shrink-0 mt-0.5 ${highlighted ? "text-[#00B4D8]" : "text-green-500"}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                </svg>
+                <span className={highlighted ? "text-white/80" : "text-[#0A2540]"}>{f}</span>
+              </li>
+            ))}
+          </ul>
+        )}
 
         <a
           href={BOOKINGS_URL ?? "mailto:info@shanemccaw.com?subject=Retainer Inquiry"}
           target="_blank"
           rel="noopener noreferrer"
           className={`w-full text-center text-sm font-semibold py-2.5 rounded-xl transition-colors flex items-center justify-center gap-2 ${
-            plan.highlight
+            highlighted
               ? "bg-[#0078D4] hover:bg-[#0078D4]/90 text-white"
               : "border-2 border-[#0078D4] text-[#0078D4] hover:bg-[#0078D4] hover:text-white"
           }`}
@@ -482,25 +366,30 @@ function RetainerCard({ plan }: { plan: typeof RETAINERS[0] }) {
   );
 }
 
+// ─── Spinner ──────────────────────────────────────────────────────────────────
+
+function CatalogSpinner() {
+  return (
+    <div className="flex items-center justify-center py-10 bg-white border border-border rounded-xl">
+      <div className="w-7 h-7 border-4 border-[#0078D4] border-t-transparent rounded-full animate-spin" />
+    </div>
+  );
+}
+
 // ─── Main page ────────────────────────────────────────────────────────────────
 
 type AlertState = { type: "success" | "error"; message: string } | null;
-
-interface CatalogService {
-  id: number;
-  slug: string | null;
-  orderWorkflow: Array<unknown> | null;
-  basePrice: string | null;
-}
 
 export default function PortalServices() {
   const { fetchWithAuth } = useAuth();
   const [location, setLocation] = useLocation();
   const [purchasedServices, setPurchasedServices] = useState<ClientService[]>([]);
-  const [catalogServices, setCatalogServices] = useState<CatalogService[]>([]);
+  const [packages, setPackages] = useState<DbService[]>([]);
+  const [retainers, setRetainers] = useState<DbService[]>([]);
   const [loading, setLoading] = useState(true);
+  const [catalogLoading, setCatalogLoading] = useState(true);
   const [alert, setAlert] = useState<AlertState>(null);
-  const [buyingOffer, setBuyingOffer] = useState<string | null>(null);
+  const [buyingOffer, setBuyingOffer] = useState<number | null>(null);
   const [activeTab, setActiveTab] = useState<"packages" | "retainers">("packages");
 
   // Handle Stripe return
@@ -516,46 +405,53 @@ export default function PortalServices() {
     }
   }, [location]);
 
-  // Load purchased services and service catalog (to check for configured workflows)
+  // Load purchased services
   useEffect(() => {
-    Promise.all([
-      fetchWithAuth("/api/portal/services").then(r => r.json() as Promise<ClientService[]>),
-      fetch("/api/portal/onboarding/services").then(r => r.json() as Promise<CatalogService[]>),
-    ]).then(([purchased, catalog]) => {
-      setPurchasedServices(purchased);
-      setCatalogServices(catalog);
-    }).catch(() => null).finally(() => setLoading(false));
+    fetchWithAuth("/api/portal/services")
+      .then(r => r.json() as Promise<ClientService[]>)
+      .then(purchased => setPurchasedServices(purchased))
+      .catch(() => null)
+      .finally(() => setLoading(false));
   }, [fetchWithAuth]);
+
+  // Load public service catalog
+  useEffect(() => {
+    fetch("/api/services")
+      .then(r => r.json() as Promise<DbService[]>)
+      .then(services => {
+        setPackages(services.filter(s => s.billingType === "one_time"));
+        setRetainers(services.filter(s => s.billingType === "recurring_monthly"));
+      })
+      .catch(() => null)
+      .finally(() => setCatalogLoading(false));
+  }, []);
 
   const active = purchasedServices.filter(s => s.status === "active");
   const completed = purchasedServices.filter(s => s.status === "completed");
 
-  const handleBuy = async (offer: typeof MICRO_OFFERS[0]) => {
-    // If this service has a configured wizard (non-empty orderWorkflow + basePrice),
-    // route through the onboarding flow so the wizard captures selections.
-    // Otherwise use the direct checkout path unchanged.
-    const catalogSvc = catalogServices.find(s => s.slug === offer.slug);
-    const hasWizard = catalogSvc
-      && Array.isArray(catalogSvc.orderWorkflow)
-      && catalogSvc.orderWorkflow.length > 0
-      && catalogSvc.basePrice;
+  const handleBuy = async (offer: DbService) => {
+    const hasWizard =
+      Array.isArray(offer.orderWorkflow) &&
+      offer.orderWorkflow.length > 0 &&
+      offer.basePrice;
 
-    if (hasWizard) {
+    if (hasWizard && offer.slug) {
       setLocation(`/portal/onboarding/select?service=${encodeURIComponent(offer.slug)}`);
       return;
     }
 
-    // Direct checkout path (no wizard configured)
-    setBuyingOffer(offer.title);
+    const priceInCents = Math.round(parseFloat(offer.basePrice ?? "0") * 100);
+
+    setBuyingOffer(offer.id);
     try {
       const res = await fetchWithAuth("/api/portal/services/checkout", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          name: offer.title,
-          priceInCents: offer.priceInCents,
-          description: offer.deliverable,
-          category: "Quick-Win Package",
+          name: offer.name,
+          priceInCents,
+          description: offer.deliverables ?? offer.description,
+          category: offer.category ?? "Quick-Win Package",
           returnUrl: window.location.origin + import.meta.env.BASE_URL.replace(/\/$/, "") + "/portal/services",
         }),
       });
@@ -692,16 +588,25 @@ export default function PortalServices() {
               <p className="text-sm text-muted-foreground mb-5">
                 Fixed scope. Fixed price. Clear deliverables. Start within 3–5 business days.
               </p>
-              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-                {MICRO_OFFERS.map((offer) => (
-                  <MicroOfferCard
-                    key={offer.title}
-                    offer={offer}
-                    onBuy={handleBuy}
-                    buying={buyingOffer === offer.title}
-                  />
-                ))}
-              </div>
+              {catalogLoading ? (
+                <CatalogSpinner />
+              ) : packages.length === 0 ? (
+                <div className="bg-white border border-dashed border-border rounded-xl px-6 py-8 text-center">
+                  <p className="text-[#0A2540] font-semibold text-sm mb-1">No packages available right now</p>
+                  <p className="text-muted-foreground text-xs">Check back soon or contact Shane directly.</p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                  {packages.map((offer) => (
+                    <MicroOfferCard
+                      key={offer.id}
+                      offer={offer}
+                      onBuy={handleBuy}
+                      buying={buyingOffer === offer.id}
+                    />
+                  ))}
+                </div>
+              )}
               <p className="text-xs text-muted-foreground text-center mt-5">
                 Secure checkout powered by Stripe. After purchase, Shane will be in touch within 1–2 business days to schedule your kickoff.
               </p>
@@ -713,11 +618,20 @@ export default function PortalServices() {
               <p className="text-sm text-muted-foreground mb-5">
                 Ongoing senior M365 architect access — no hiring overhead, no long-term lock-in.
               </p>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                {RETAINERS.map((plan) => (
-                  <RetainerCard key={plan.name} plan={plan} />
-                ))}
-              </div>
+              {catalogLoading ? (
+                <CatalogSpinner />
+              ) : retainers.length === 0 ? (
+                <div className="bg-white border border-dashed border-border rounded-xl px-6 py-8 text-center">
+                  <p className="text-[#0A2540] font-semibold text-sm mb-1">No retainer plans available right now</p>
+                  <p className="text-muted-foreground text-xs">Contact Shane directly to discuss ongoing support.</p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  {retainers.map((plan) => (
+                    <RetainerCard key={plan.id} plan={plan} />
+                  ))}
+                </div>
+              )}
               <div className="mt-6 bg-[#0078D4]/5 border border-[#0078D4]/20 rounded-xl px-5 py-4 text-center">
                 <p className="text-sm font-semibold text-[#0A2540] mb-1">Not sure which retainer fits?</p>
                 <p className="text-xs text-muted-foreground mb-3">Book a free 30-minute consultation and Shane will recommend the right level for your situation.</p>
