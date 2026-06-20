@@ -3,6 +3,7 @@ import { db, projectsTable, clientServicesTable, servicesTable, workflowStepsTab
 import { eq, and, desc, asc, count, sql, inArray, gte } from "drizzle-orm";
 import { requireAuth, requireAdmin } from "../middlewares/requireAuth";
 import { sendEmail, purchaseConfirmationEmail, onboardingConfirmationEmail, adminPurchaseAlertEmail } from "../lib/mailer";
+import { sendAdminSms } from "../lib/sms";
 import multer from "multer";
 import path from "path";
 import fs from "fs";
@@ -1734,6 +1735,11 @@ async function processStripeEvent(req: Request, event: import("stripe").Stripe.E
           }),
         ).catch(() => null);
       }
+
+      // SMS alert to Shane
+      sendAdminSms(
+        `New order: ${buyer?.name ?? buyer?.email ?? "A client"} — ${serviceName} — $${amountDollars}`,
+      ).catch(() => null);
     }
 
     // Onboarding purchase — auto-provision project + workflow steps
@@ -1742,6 +1748,26 @@ async function processStripeEvent(req: Request, event: import("stripe").Stripe.E
         ? session.subscription
         : (session.subscription as { id?: string } | null)?.id ?? null;
       await provisionOnboardingProject(req, session, subId);
+
+      // SMS alert to Shane — look up buyer + services after provisioning
+      try {
+        const uid = parseInt(session.metadata?.userId ?? "", 10);
+        const [buyer] = isNaN(uid) ? [] : await db.select().from(usersTable).where(eq(usersTable.id, uid));
+        const sidsStr = session.metadata?.serviceIds ?? session.metadata?.serviceId ?? "";
+        const sids = sidsStr.split(",").map((s: string) => parseInt(s.trim(), 10)).filter((n: number) => !isNaN(n));
+        let serviceLabel = "Onboarding";
+        if (sids.length > 0) {
+          const svcs = await db.select({ name: servicesTable.name }).from(servicesTable)
+            .where(inArray(servicesTable.id, sids));
+          if (svcs.length > 0) serviceLabel = svcs.map(s => s.name).join(", ");
+        }
+        const totalDollars = session.amount_total ? (session.amount_total / 100).toFixed(2) : "—";
+        sendAdminSms(
+          `New order: ${buyer?.name ?? buyer?.email ?? "A client"} — ${serviceLabel} — $${totalDollars}`,
+        ).catch(() => null);
+      } catch {
+        // SMS failure must never break provisioning
+      }
     }
   }
 }
