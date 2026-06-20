@@ -297,11 +297,12 @@ function EmailListPanel({
 
 interface EmailDetailPanelProps {
   emailId: number | null;
+  reloadKey: number;
   clients: ClientOption[];
   onEmailReassigned: () => void;
 }
 
-function EmailDetailPanel({ emailId, clients, onEmailReassigned }: EmailDetailPanelProps) {
+function EmailDetailPanel({ emailId, reloadKey, clients, onEmailReassigned }: EmailDetailPanelProps) {
   const { fetchWithAuth } = useAuth();
   const { assignEmail, assigningId } = useAssignEmail();
 
@@ -358,12 +359,11 @@ function EmailDetailPanel({ emailId, clients, onEmailReassigned }: EmailDetailPa
 
   useEffect(() => {
     if (emailId === null) { setDetail(null); return; }
-    if (emailId === prevEmailIdRef.current) return;
     prevEmailIdRef.current = emailId;
     setClientProjects([]);
     setTaskProjectId("");
     void loadDetail(emailId);
-  }, [emailId, loadDetail]);
+  }, [emailId, reloadKey, loadDetail]);
 
   useEffect(() => {
     if (detail?.clientId) {
@@ -877,6 +877,7 @@ export default function EmailActivityPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedEmailId, setSelectedEmailId] = useState<number | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
   const [clients, setClients] = useState<ClientOption[]>([]);
 
   const LIMIT = 50;
@@ -941,7 +942,7 @@ export default function EmailActivityPage() {
               selectedId={selectedEmailId}
               assigningId={null}
               onTabChange={t => setTab(t)}
-              onSelect={id => setSelectedEmailId(id)}
+              onSelect={id => { setSelectedEmailId(id); setReloadKey(k => k + 1); }}
               onPageChange={p => setPage(p)}
             />
           </div>
@@ -952,6 +953,7 @@ export default function EmailActivityPage() {
         <div className="flex-1 overflow-hidden bg-white">
           <EmailDetailPanel
             emailId={selectedEmailId}
+            reloadKey={reloadKey}
             clients={clients}
             onEmailReassigned={loadEmails}
           />
