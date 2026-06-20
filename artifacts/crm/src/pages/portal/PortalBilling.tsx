@@ -16,6 +16,16 @@ interface Invoice {
   createdAt: string;
 }
 
+interface StripeReceipt {
+  id: string;
+  number: string | null;
+  amount: number;
+  currency: string;
+  status: string;
+  date: number;
+  invoicePdf: string | null;
+}
+
 interface Subscription {
   id: number;
   serviceId: number;
@@ -329,8 +339,10 @@ export default function PortalBilling() {
   const [location, navigate] = useLocation();
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
+  const [stripeReceipts, setStripeReceipts] = useState<StripeReceipt[]>([]);
   const [loading, setLoading] = useState(true);
   const [subLoading, setSubLoading] = useState(true);
+  const [receiptsLoading, setReceiptsLoading] = useState(true);
   const [paying, setPayingId] = useState<number | null>(null);
   const [cancelTarget, setCancelTarget] = useState<Subscription | null>(null);
   const [cancelling, setCancelling] = useState(false);
@@ -359,6 +371,14 @@ export default function PortalBilling() {
       .then(d => setSubscriptions(d as Subscription[]))
       .catch(() => null)
       .finally(() => setSubLoading(false));
+  }, [fetchWithAuth]);
+
+  useEffect(() => {
+    fetchWithAuth("/api/portal/billing/stripe-receipts")
+      .then(r => r.json())
+      .then(d => setStripeReceipts(d as StripeReceipt[]))
+      .catch(() => null)
+      .finally(() => setReceiptsLoading(false));
   }, [fetchWithAuth]);
 
   const handlePay = async (invoice: Invoice) => {
@@ -599,6 +619,73 @@ export default function PortalBilling() {
                 );
               })}
             </div>
+          </div>
+        )}
+
+        {/* ── Subscription Receipts ─────────────────────────────────────── */}
+        {(receiptsLoading || stripeReceipts.length > 0) && (
+          <div className="mt-8">
+            <h2 className="text-base font-bold text-[#0A2540] mb-3">Subscription Receipts</h2>
+            {receiptsLoading ? (
+              <div className="bg-white border border-border rounded-xl p-6 flex items-center gap-3 text-muted-foreground text-sm">
+                <div className="w-5 h-5 border-2 border-[#0078D4] border-t-transparent rounded-full animate-spin flex-shrink-0" />
+                Loading receipts…
+              </div>
+            ) : (
+              <div className="bg-white border border-border rounded-xl overflow-hidden">
+                <div className="divide-y divide-border">
+                  {stripeReceipts.map(receipt => {
+                    const isPaid = receipt.status === "paid";
+                    const statusClasses = isPaid
+                      ? "bg-green-100 text-green-700 border-green-200"
+                      : receipt.status === "open"
+                        ? "bg-yellow-100 text-yellow-700 border-yellow-200"
+                        : "bg-gray-100 text-gray-500 border-gray-200";
+                    const statusLabel = isPaid ? "Paid" : receipt.status.charAt(0).toUpperCase() + receipt.status.slice(1);
+                    return (
+                      <div key={receipt.id} className="px-5 py-4 flex items-center gap-4 flex-wrap sm:flex-nowrap">
+                        <div className="w-10 h-10 rounded-xl bg-[#00B4D8]/10 flex items-center justify-center flex-shrink-0">
+                          <svg className="w-5 h-5 text-[#00B4D8]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                          </svg>
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap mb-0.5">
+                            <p className="text-sm font-bold text-[#0A2540]">
+                              {receipt.number ?? receipt.id}
+                            </p>
+                            <span className={`text-xs font-semibold px-2 py-0.5 rounded-full border ${statusClasses}`}>
+                              {statusLabel}
+                            </span>
+                          </div>
+                          <p className="text-xs text-muted-foreground">
+                            {new Date(receipt.date * 1000).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-3 flex-shrink-0 ml-auto">
+                          <p className="text-base font-extrabold text-[#0A2540]">
+                            {formatCurrency(receipt.amount / 100, receipt.currency)}
+                          </p>
+                          {receipt.invoicePdf && (
+                            <a
+                              href={receipt.invoicePdf}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="p-2 border border-border rounded-lg text-muted-foreground hover:text-[#0078D4] hover:border-[#0078D4]/30 transition-colors"
+                              title="Download PDF"
+                            >
+                              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                              </svg>
+                            </a>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
           </div>
         )}
 

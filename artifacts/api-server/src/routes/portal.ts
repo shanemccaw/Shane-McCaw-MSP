@@ -1175,6 +1175,70 @@ router.get("/portal/contracts/:id/download", requireAuth, async (req: Request, r
   res.download(filePath, contract.pdfFilename);
 });
 
+// ─── CLIENT: Stripe subscription receipts ────────────────────────────────────
+router.get("/portal/billing/stripe-receipts", requireAuth, async (req: Request, res: Response) => {
+  const userId = req.user!.id;
+
+  const stripeKey = process.env.STRIPE_SECRET_KEY;
+  if (!stripeKey) {
+    res.json([]);
+    return;
+  }
+
+  // Find any client service with a Stripe subscription ID for this user
+  const rows = await db.select({ stripeSubscriptionId: clientServicesTable.stripeSubscriptionId })
+    .from(clientServicesTable)
+    .where(
+      and(
+        eq(clientServicesTable.clientUserId, userId),
+        isNotNull(clientServicesTable.stripeSubscriptionId),
+      )
+    )
+    .limit(1);
+
+  if (rows.length === 0 || !rows[0]?.stripeSubscriptionId) {
+    res.json([]);
+    return;
+  }
+
+  try {
+    const { default: Stripe } = await import("stripe");
+    const stripe = new Stripe(stripeKey);
+
+    // Resolve the Stripe customer ID from the subscription
+    const sub = await stripe.subscriptions.retrieve(rows[0].stripeSubscriptionId, {
+      expand: ["customer"],
+    });
+
+    const customer = sub.customer;
+    if (!customer || typeof customer === "string" || customer.deleted) {
+      res.json([]);
+      return;
+    }
+
+    // Fetch all invoices for this customer
+    const invoiceList = await stripe.invoices.list({
+      customer: customer.id,
+      limit: 50,
+    });
+
+    const receipts = invoiceList.data.map(inv => ({
+      id: inv.id,
+      number: inv.number ?? null,
+      amount: inv.amount_paid,
+      currency: inv.currency,
+      status: inv.status ?? "unknown",
+      date: inv.created,
+      invoicePdf: inv.invoice_pdf ?? null,
+    }));
+
+    res.json(receipts);
+  } catch (err) {
+    req.log.warn({ err }, "stripe-receipts: failed to fetch invoices");
+    res.json([]);
+  }
+});
+
 // ─── CLIENT: Subscriptions ────────────────────────────────────────────────────
 router.get("/portal/billing/subscriptions", requireAuth, async (req: Request, res: Response) => {
   const userId = req.user!.id;
