@@ -58,8 +58,8 @@ const TRACKS: TrackConfig[] = [
   {
     num: "01",
     type: ["micro-offer", "project"],
-    label: "Micro-Offers & Projects",
-    description: "Fixed-price and scoped project-based engagements",
+    label: "Micro-Offers",
+    description: "Fixed-price, rapid-delivery engagements",
     icon: "bolt",
     color: "#00B4D8",
   },
