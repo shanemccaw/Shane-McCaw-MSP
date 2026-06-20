@@ -1,4 +1,5 @@
 import { createContext, useContext, useState, useEffect, useCallback, useRef, type ReactNode } from "react";
+import { setAuthTokenGetter } from "@workspace/api-client-react";
 
 export interface AuthUser {
   id: number;
@@ -62,6 +63,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     refreshInFlight.current = p;
     return p;
   }, [doRefresh]);
+
+  useEffect(() => {
+    setAuthTokenGetter(() => accessTokenRef.current);
+    return () => { setAuthTokenGetter(null); };
+  }, []);
 
   useEffect(() => {
     refresh().then((token) => {

@@ -20,6 +20,7 @@ import adminEmailsRouter from "./admin-emails";
 import graphWebhookRouter from "./graph-webhook";
 import auditLogsRouter from "./audit-logs";
 import adminSharepointRouter from "./admin-sharepoint";
+import adminAssetLibraryRouter from "./admin-asset-library";
 
 const router: IRouter = Router();
 
@@ -44,5 +45,6 @@ router.use(publicEngagementProjectsRouter);
 router.use(portalRouter);
 router.use(auditLogsRouter);
 router.use(adminSharepointRouter);
+router.use(adminAssetLibraryRouter);
 
 export default router;

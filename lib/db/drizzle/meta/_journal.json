@@ -127,6 +127,20 @@
       "when": 1750241800000,
       "tag": "0017_add_task_engineer_fields",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1750328200000,
+      "tag": "0018_add_asset_library",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1750414600000,
+      "tag": "0019_add_task_asset_fk_columns",
+      "breakpoints": true
     }
   ]
 }

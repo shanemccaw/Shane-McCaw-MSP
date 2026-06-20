@@ -20,21 +20,33 @@ import type {
 } from '@tanstack/react-query';
 
 import type {
+  ArtifactSet,
+  ArtifactSetInput,
   AssignEmailInput,
   AuthResponse,
+  Checklist,
+  ChecklistInput,
   CreateDomainRuleInput,
+  DeliverableSet,
+  DeliverableSetInput,
   EmailDomainRule,
   EmailDomainRuleRow,
   ErrorResponse,
   HealthStatus,
   IngestedEmail,
   IngestedEmailList,
+  InstructionSet,
+  InstructionSetInput,
   Lead,
   LeadInput,
   LeadList,
   LeadStats,
   LeadUpdate,
   ListAdminEmailsParams,
+  ListArtifactSetsParams,
+  ListChecklistsParams,
+  ListDeliverableSetsParams,
+  ListInstructionSetsParams,
   ListLeadsParams,
   LoginInput,
   SuccessResponse
@@ -339,6 +351,1502 @@ export const useAuthLogout = <TError = ErrorType<unknown>,
         TContext
       > => {
       return useMutation(getAuthLogoutMutationOptions(options));
+    }
+
+export const getListInstructionSetsUrl = (params?: ListInstructionSetsParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : value.toString())
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/admin/asset-library/instruction-sets?${stringifiedParams}` : `/api/admin/asset-library/instruction-sets`
+}
+
+/**
+ * @summary List instruction sets
+ */
+export const listInstructionSets = async (params?: ListInstructionSetsParams, options?: RequestInit): Promise<InstructionSet[]> => {
+
+  return customFetch<InstructionSet[]>(getListInstructionSetsUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListInstructionSetsQueryKey = (params?: ListInstructionSetsParams,) => {
+    return [
+    `/api/admin/asset-library/instruction-sets`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getListInstructionSetsQueryOptions = <TData = Awaited<ReturnType<typeof listInstructionSets>>, TError = ErrorType<unknown>>(params?: ListInstructionSetsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listInstructionSets>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListInstructionSetsQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listInstructionSets>>> = ({ signal }) => listInstructionSets(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listInstructionSets>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListInstructionSetsQueryResult = NonNullable<Awaited<ReturnType<typeof listInstructionSets>>>
+export type ListInstructionSetsQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List instruction sets
+ */
+
+export function useListInstructionSets<TData = Awaited<ReturnType<typeof listInstructionSets>>, TError = ErrorType<unknown>>(
+ params?: ListInstructionSetsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listInstructionSets>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListInstructionSetsQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getCreateInstructionSetUrl = () => {
+
+
+
+
+  return `/api/admin/asset-library/instruction-sets`
+}
+
+/**
+ * @summary Create instruction set
+ */
+export const createInstructionSet = async (instructionSetInput: InstructionSetInput, options?: RequestInit): Promise<InstructionSet> => {
+
+  return customFetch<InstructionSet>(getCreateInstructionSetUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      instructionSetInput,)
+  }
+);}
+
+
+
+
+export const getCreateInstructionSetMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createInstructionSet>>, TError,{data: BodyType<InstructionSetInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createInstructionSet>>, TError,{data: BodyType<InstructionSetInput>}, TContext> => {
+
+const mutationKey = ['createInstructionSet'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createInstructionSet>>, {data: BodyType<InstructionSetInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  createInstructionSet(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateInstructionSetMutationResult = NonNullable<Awaited<ReturnType<typeof createInstructionSet>>>
+    export type CreateInstructionSetMutationBody = BodyType<InstructionSetInput>
+    export type CreateInstructionSetMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Create instruction set
+ */
+export const useCreateInstructionSet = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createInstructionSet>>, TError,{data: BodyType<InstructionSetInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createInstructionSet>>,
+        TError,
+        {data: BodyType<InstructionSetInput>},
+        TContext
+      > => {
+      return useMutation(getCreateInstructionSetMutationOptions(options));
+    }
+
+export const getGetInstructionSetUrl = (id: number,) => {
+
+
+
+
+  return `/api/admin/asset-library/instruction-sets/${id}`
+}
+
+/**
+ * @summary Get instruction set by ID
+ */
+export const getInstructionSet = async (id: number, options?: RequestInit): Promise<InstructionSet> => {
+
+  return customFetch<InstructionSet>(getGetInstructionSetUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetInstructionSetQueryKey = (id: number,) => {
+    return [
+    `/api/admin/asset-library/instruction-sets/${id}`
+    ] as const;
+    }
+
+
+export const getGetInstructionSetQueryOptions = <TData = Awaited<ReturnType<typeof getInstructionSet>>, TError = ErrorType<unknown>>(id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getInstructionSet>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetInstructionSetQueryKey(id);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getInstructionSet>>> = ({ signal }) => getInstructionSet(id, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(id), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getInstructionSet>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetInstructionSetQueryResult = NonNullable<Awaited<ReturnType<typeof getInstructionSet>>>
+export type GetInstructionSetQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Get instruction set by ID
+ */
+
+export function useGetInstructionSet<TData = Awaited<ReturnType<typeof getInstructionSet>>, TError = ErrorType<unknown>>(
+ id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getInstructionSet>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetInstructionSetQueryOptions(id,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getUpdateInstructionSetUrl = (id: number,) => {
+
+
+
+
+  return `/api/admin/asset-library/instruction-sets/${id}`
+}
+
+/**
+ * @summary Update instruction set
+ */
+export const updateInstructionSet = async (id: number,
+    instructionSetInput: InstructionSetInput, options?: RequestInit): Promise<InstructionSet> => {
+
+  return customFetch<InstructionSet>(getUpdateInstructionSetUrl(id),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      instructionSetInput,)
+  }
+);}
+
+
+
+
+export const getUpdateInstructionSetMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateInstructionSet>>, TError,{id: number;data: BodyType<InstructionSetInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateInstructionSet>>, TError,{id: number;data: BodyType<InstructionSetInput>}, TContext> => {
+
+const mutationKey = ['updateInstructionSet'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateInstructionSet>>, {id: number;data: BodyType<InstructionSetInput>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  updateInstructionSet(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateInstructionSetMutationResult = NonNullable<Awaited<ReturnType<typeof updateInstructionSet>>>
+    export type UpdateInstructionSetMutationBody = BodyType<InstructionSetInput>
+    export type UpdateInstructionSetMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Update instruction set
+ */
+export const useUpdateInstructionSet = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateInstructionSet>>, TError,{id: number;data: BodyType<InstructionSetInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateInstructionSet>>,
+        TError,
+        {id: number;data: BodyType<InstructionSetInput>},
+        TContext
+      > => {
+      return useMutation(getUpdateInstructionSetMutationOptions(options));
+    }
+
+export const getDeleteInstructionSetUrl = (id: number,) => {
+
+
+
+
+  return `/api/admin/asset-library/instruction-sets/${id}`
+}
+
+/**
+ * @summary Delete instruction set
+ */
+export const deleteInstructionSet = async (id: number, options?: RequestInit): Promise<SuccessResponse> => {
+
+  return customFetch<SuccessResponse>(getDeleteInstructionSetUrl(id),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+export const getDeleteInstructionSetMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteInstructionSet>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteInstructionSet>>, TError,{id: number}, TContext> => {
+
+const mutationKey = ['deleteInstructionSet'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteInstructionSet>>, {id: number}> = (props) => {
+          const {id} = props ?? {};
+
+          return  deleteInstructionSet(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeleteInstructionSetMutationResult = NonNullable<Awaited<ReturnType<typeof deleteInstructionSet>>>
+
+    export type DeleteInstructionSetMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Delete instruction set
+ */
+export const useDeleteInstructionSet = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteInstructionSet>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof deleteInstructionSet>>,
+        TError,
+        {id: number},
+        TContext
+      > => {
+      return useMutation(getDeleteInstructionSetMutationOptions(options));
+    }
+
+export const getListChecklistsUrl = (params?: ListChecklistsParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : value.toString())
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/admin/asset-library/checklists?${stringifiedParams}` : `/api/admin/asset-library/checklists`
+}
+
+/**
+ * @summary List checklists
+ */
+export const listChecklists = async (params?: ListChecklistsParams, options?: RequestInit): Promise<Checklist[]> => {
+
+  return customFetch<Checklist[]>(getListChecklistsUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListChecklistsQueryKey = (params?: ListChecklistsParams,) => {
+    return [
+    `/api/admin/asset-library/checklists`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getListChecklistsQueryOptions = <TData = Awaited<ReturnType<typeof listChecklists>>, TError = ErrorType<unknown>>(params?: ListChecklistsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listChecklists>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListChecklistsQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listChecklists>>> = ({ signal }) => listChecklists(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listChecklists>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListChecklistsQueryResult = NonNullable<Awaited<ReturnType<typeof listChecklists>>>
+export type ListChecklistsQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List checklists
+ */
+
+export function useListChecklists<TData = Awaited<ReturnType<typeof listChecklists>>, TError = ErrorType<unknown>>(
+ params?: ListChecklistsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listChecklists>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListChecklistsQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getCreateChecklistUrl = () => {
+
+
+
+
+  return `/api/admin/asset-library/checklists`
+}
+
+/**
+ * @summary Create checklist
+ */
+export const createChecklist = async (checklistInput: ChecklistInput, options?: RequestInit): Promise<Checklist> => {
+
+  return customFetch<Checklist>(getCreateChecklistUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      checklistInput,)
+  }
+);}
+
+
+
+
+export const getCreateChecklistMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createChecklist>>, TError,{data: BodyType<ChecklistInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createChecklist>>, TError,{data: BodyType<ChecklistInput>}, TContext> => {
+
+const mutationKey = ['createChecklist'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createChecklist>>, {data: BodyType<ChecklistInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  createChecklist(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateChecklistMutationResult = NonNullable<Awaited<ReturnType<typeof createChecklist>>>
+    export type CreateChecklistMutationBody = BodyType<ChecklistInput>
+    export type CreateChecklistMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Create checklist
+ */
+export const useCreateChecklist = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createChecklist>>, TError,{data: BodyType<ChecklistInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createChecklist>>,
+        TError,
+        {data: BodyType<ChecklistInput>},
+        TContext
+      > => {
+      return useMutation(getCreateChecklistMutationOptions(options));
+    }
+
+export const getGetChecklistUrl = (id: number,) => {
+
+
+
+
+  return `/api/admin/asset-library/checklists/${id}`
+}
+
+/**
+ * @summary Get checklist by ID
+ */
+export const getChecklist = async (id: number, options?: RequestInit): Promise<Checklist> => {
+
+  return customFetch<Checklist>(getGetChecklistUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetChecklistQueryKey = (id: number,) => {
+    return [
+    `/api/admin/asset-library/checklists/${id}`
+    ] as const;
+    }
+
+
+export const getGetChecklistQueryOptions = <TData = Awaited<ReturnType<typeof getChecklist>>, TError = ErrorType<unknown>>(id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getChecklist>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetChecklistQueryKey(id);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getChecklist>>> = ({ signal }) => getChecklist(id, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(id), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getChecklist>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetChecklistQueryResult = NonNullable<Awaited<ReturnType<typeof getChecklist>>>
+export type GetChecklistQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Get checklist by ID
+ */
+
+export function useGetChecklist<TData = Awaited<ReturnType<typeof getChecklist>>, TError = ErrorType<unknown>>(
+ id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getChecklist>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetChecklistQueryOptions(id,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getUpdateChecklistUrl = (id: number,) => {
+
+
+
+
+  return `/api/admin/asset-library/checklists/${id}`
+}
+
+/**
+ * @summary Update checklist
+ */
+export const updateChecklist = async (id: number,
+    checklistInput: ChecklistInput, options?: RequestInit): Promise<Checklist> => {
+
+  return customFetch<Checklist>(getUpdateChecklistUrl(id),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      checklistInput,)
+  }
+);}
+
+
+
+
+export const getUpdateChecklistMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateChecklist>>, TError,{id: number;data: BodyType<ChecklistInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateChecklist>>, TError,{id: number;data: BodyType<ChecklistInput>}, TContext> => {
+
+const mutationKey = ['updateChecklist'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateChecklist>>, {id: number;data: BodyType<ChecklistInput>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  updateChecklist(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateChecklistMutationResult = NonNullable<Awaited<ReturnType<typeof updateChecklist>>>
+    export type UpdateChecklistMutationBody = BodyType<ChecklistInput>
+    export type UpdateChecklistMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Update checklist
+ */
+export const useUpdateChecklist = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateChecklist>>, TError,{id: number;data: BodyType<ChecklistInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateChecklist>>,
+        TError,
+        {id: number;data: BodyType<ChecklistInput>},
+        TContext
+      > => {
+      return useMutation(getUpdateChecklistMutationOptions(options));
+    }
+
+export const getDeleteChecklistUrl = (id: number,) => {
+
+
+
+
+  return `/api/admin/asset-library/checklists/${id}`
+}
+
+/**
+ * @summary Delete checklist
+ */
+export const deleteChecklist = async (id: number, options?: RequestInit): Promise<SuccessResponse> => {
+
+  return customFetch<SuccessResponse>(getDeleteChecklistUrl(id),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+export const getDeleteChecklistMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteChecklist>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteChecklist>>, TError,{id: number}, TContext> => {
+
+const mutationKey = ['deleteChecklist'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteChecklist>>, {id: number}> = (props) => {
+          const {id} = props ?? {};
+
+          return  deleteChecklist(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeleteChecklistMutationResult = NonNullable<Awaited<ReturnType<typeof deleteChecklist>>>
+
+    export type DeleteChecklistMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Delete checklist
+ */
+export const useDeleteChecklist = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteChecklist>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof deleteChecklist>>,
+        TError,
+        {id: number},
+        TContext
+      > => {
+      return useMutation(getDeleteChecklistMutationOptions(options));
+    }
+
+export const getListArtifactSetsUrl = (params?: ListArtifactSetsParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : value.toString())
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/admin/asset-library/artifact-sets?${stringifiedParams}` : `/api/admin/asset-library/artifact-sets`
+}
+
+/**
+ * @summary List artifact sets
+ */
+export const listArtifactSets = async (params?: ListArtifactSetsParams, options?: RequestInit): Promise<ArtifactSet[]> => {
+
+  return customFetch<ArtifactSet[]>(getListArtifactSetsUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListArtifactSetsQueryKey = (params?: ListArtifactSetsParams,) => {
+    return [
+    `/api/admin/asset-library/artifact-sets`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getListArtifactSetsQueryOptions = <TData = Awaited<ReturnType<typeof listArtifactSets>>, TError = ErrorType<unknown>>(params?: ListArtifactSetsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listArtifactSets>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListArtifactSetsQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listArtifactSets>>> = ({ signal }) => listArtifactSets(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listArtifactSets>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListArtifactSetsQueryResult = NonNullable<Awaited<ReturnType<typeof listArtifactSets>>>
+export type ListArtifactSetsQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List artifact sets
+ */
+
+export function useListArtifactSets<TData = Awaited<ReturnType<typeof listArtifactSets>>, TError = ErrorType<unknown>>(
+ params?: ListArtifactSetsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listArtifactSets>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListArtifactSetsQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getCreateArtifactSetUrl = () => {
+
+
+
+
+  return `/api/admin/asset-library/artifact-sets`
+}
+
+/**
+ * @summary Create artifact set
+ */
+export const createArtifactSet = async (artifactSetInput: ArtifactSetInput, options?: RequestInit): Promise<ArtifactSet> => {
+
+  return customFetch<ArtifactSet>(getCreateArtifactSetUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      artifactSetInput,)
+  }
+);}
+
+
+
+
+export const getCreateArtifactSetMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createArtifactSet>>, TError,{data: BodyType<ArtifactSetInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createArtifactSet>>, TError,{data: BodyType<ArtifactSetInput>}, TContext> => {
+
+const mutationKey = ['createArtifactSet'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createArtifactSet>>, {data: BodyType<ArtifactSetInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  createArtifactSet(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateArtifactSetMutationResult = NonNullable<Awaited<ReturnType<typeof createArtifactSet>>>
+    export type CreateArtifactSetMutationBody = BodyType<ArtifactSetInput>
+    export type CreateArtifactSetMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Create artifact set
+ */
+export const useCreateArtifactSet = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createArtifactSet>>, TError,{data: BodyType<ArtifactSetInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createArtifactSet>>,
+        TError,
+        {data: BodyType<ArtifactSetInput>},
+        TContext
+      > => {
+      return useMutation(getCreateArtifactSetMutationOptions(options));
+    }
+
+export const getGetArtifactSetUrl = (id: number,) => {
+
+
+
+
+  return `/api/admin/asset-library/artifact-sets/${id}`
+}
+
+/**
+ * @summary Get artifact set by ID
+ */
+export const getArtifactSet = async (id: number, options?: RequestInit): Promise<ArtifactSet> => {
+
+  return customFetch<ArtifactSet>(getGetArtifactSetUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetArtifactSetQueryKey = (id: number,) => {
+    return [
+    `/api/admin/asset-library/artifact-sets/${id}`
+    ] as const;
+    }
+
+
+export const getGetArtifactSetQueryOptions = <TData = Awaited<ReturnType<typeof getArtifactSet>>, TError = ErrorType<unknown>>(id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getArtifactSet>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetArtifactSetQueryKey(id);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getArtifactSet>>> = ({ signal }) => getArtifactSet(id, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(id), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getArtifactSet>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetArtifactSetQueryResult = NonNullable<Awaited<ReturnType<typeof getArtifactSet>>>
+export type GetArtifactSetQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Get artifact set by ID
+ */
+
+export function useGetArtifactSet<TData = Awaited<ReturnType<typeof getArtifactSet>>, TError = ErrorType<unknown>>(
+ id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getArtifactSet>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetArtifactSetQueryOptions(id,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getUpdateArtifactSetUrl = (id: number,) => {
+
+
+
+
+  return `/api/admin/asset-library/artifact-sets/${id}`
+}
+
+/**
+ * @summary Update artifact set
+ */
+export const updateArtifactSet = async (id: number,
+    artifactSetInput: ArtifactSetInput, options?: RequestInit): Promise<ArtifactSet> => {
+
+  return customFetch<ArtifactSet>(getUpdateArtifactSetUrl(id),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      artifactSetInput,)
+  }
+);}
+
+
+
+
+export const getUpdateArtifactSetMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateArtifactSet>>, TError,{id: number;data: BodyType<ArtifactSetInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateArtifactSet>>, TError,{id: number;data: BodyType<ArtifactSetInput>}, TContext> => {
+
+const mutationKey = ['updateArtifactSet'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateArtifactSet>>, {id: number;data: BodyType<ArtifactSetInput>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  updateArtifactSet(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateArtifactSetMutationResult = NonNullable<Awaited<ReturnType<typeof updateArtifactSet>>>
+    export type UpdateArtifactSetMutationBody = BodyType<ArtifactSetInput>
+    export type UpdateArtifactSetMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Update artifact set
+ */
+export const useUpdateArtifactSet = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateArtifactSet>>, TError,{id: number;data: BodyType<ArtifactSetInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateArtifactSet>>,
+        TError,
+        {id: number;data: BodyType<ArtifactSetInput>},
+        TContext
+      > => {
+      return useMutation(getUpdateArtifactSetMutationOptions(options));
+    }
+
+export const getDeleteArtifactSetUrl = (id: number,) => {
+
+
+
+
+  return `/api/admin/asset-library/artifact-sets/${id}`
+}
+
+/**
+ * @summary Delete artifact set
+ */
+export const deleteArtifactSet = async (id: number, options?: RequestInit): Promise<SuccessResponse> => {
+
+  return customFetch<SuccessResponse>(getDeleteArtifactSetUrl(id),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+export const getDeleteArtifactSetMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteArtifactSet>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteArtifactSet>>, TError,{id: number}, TContext> => {
+
+const mutationKey = ['deleteArtifactSet'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteArtifactSet>>, {id: number}> = (props) => {
+          const {id} = props ?? {};
+
+          return  deleteArtifactSet(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeleteArtifactSetMutationResult = NonNullable<Awaited<ReturnType<typeof deleteArtifactSet>>>
+
+    export type DeleteArtifactSetMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Delete artifact set
+ */
+export const useDeleteArtifactSet = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteArtifactSet>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof deleteArtifactSet>>,
+        TError,
+        {id: number},
+        TContext
+      > => {
+      return useMutation(getDeleteArtifactSetMutationOptions(options));
+    }
+
+export const getListDeliverableSetsUrl = (params?: ListDeliverableSetsParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : value.toString())
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/admin/asset-library/deliverable-sets?${stringifiedParams}` : `/api/admin/asset-library/deliverable-sets`
+}
+
+/**
+ * @summary List deliverable sets
+ */
+export const listDeliverableSets = async (params?: ListDeliverableSetsParams, options?: RequestInit): Promise<DeliverableSet[]> => {
+
+  return customFetch<DeliverableSet[]>(getListDeliverableSetsUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListDeliverableSetsQueryKey = (params?: ListDeliverableSetsParams,) => {
+    return [
+    `/api/admin/asset-library/deliverable-sets`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getListDeliverableSetsQueryOptions = <TData = Awaited<ReturnType<typeof listDeliverableSets>>, TError = ErrorType<unknown>>(params?: ListDeliverableSetsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listDeliverableSets>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListDeliverableSetsQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listDeliverableSets>>> = ({ signal }) => listDeliverableSets(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listDeliverableSets>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListDeliverableSetsQueryResult = NonNullable<Awaited<ReturnType<typeof listDeliverableSets>>>
+export type ListDeliverableSetsQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List deliverable sets
+ */
+
+export function useListDeliverableSets<TData = Awaited<ReturnType<typeof listDeliverableSets>>, TError = ErrorType<unknown>>(
+ params?: ListDeliverableSetsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listDeliverableSets>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListDeliverableSetsQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getCreateDeliverableSetUrl = () => {
+
+
+
+
+  return `/api/admin/asset-library/deliverable-sets`
+}
+
+/**
+ * @summary Create deliverable set
+ */
+export const createDeliverableSet = async (deliverableSetInput: DeliverableSetInput, options?: RequestInit): Promise<DeliverableSet> => {
+
+  return customFetch<DeliverableSet>(getCreateDeliverableSetUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      deliverableSetInput,)
+  }
+);}
+
+
+
+
+export const getCreateDeliverableSetMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createDeliverableSet>>, TError,{data: BodyType<DeliverableSetInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createDeliverableSet>>, TError,{data: BodyType<DeliverableSetInput>}, TContext> => {
+
+const mutationKey = ['createDeliverableSet'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createDeliverableSet>>, {data: BodyType<DeliverableSetInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  createDeliverableSet(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateDeliverableSetMutationResult = NonNullable<Awaited<ReturnType<typeof createDeliverableSet>>>
+    export type CreateDeliverableSetMutationBody = BodyType<DeliverableSetInput>
+    export type CreateDeliverableSetMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Create deliverable set
+ */
+export const useCreateDeliverableSet = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createDeliverableSet>>, TError,{data: BodyType<DeliverableSetInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createDeliverableSet>>,
+        TError,
+        {data: BodyType<DeliverableSetInput>},
+        TContext
+      > => {
+      return useMutation(getCreateDeliverableSetMutationOptions(options));
+    }
+
+export const getGetDeliverableSetUrl = (id: number,) => {
+
+
+
+
+  return `/api/admin/asset-library/deliverable-sets/${id}`
+}
+
+/**
+ * @summary Get deliverable set by ID
+ */
+export const getDeliverableSet = async (id: number, options?: RequestInit): Promise<DeliverableSet> => {
+
+  return customFetch<DeliverableSet>(getGetDeliverableSetUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetDeliverableSetQueryKey = (id: number,) => {
+    return [
+    `/api/admin/asset-library/deliverable-sets/${id}`
+    ] as const;
+    }
+
+
+export const getGetDeliverableSetQueryOptions = <TData = Awaited<ReturnType<typeof getDeliverableSet>>, TError = ErrorType<unknown>>(id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getDeliverableSet>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetDeliverableSetQueryKey(id);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getDeliverableSet>>> = ({ signal }) => getDeliverableSet(id, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(id), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getDeliverableSet>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetDeliverableSetQueryResult = NonNullable<Awaited<ReturnType<typeof getDeliverableSet>>>
+export type GetDeliverableSetQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Get deliverable set by ID
+ */
+
+export function useGetDeliverableSet<TData = Awaited<ReturnType<typeof getDeliverableSet>>, TError = ErrorType<unknown>>(
+ id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getDeliverableSet>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetDeliverableSetQueryOptions(id,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getUpdateDeliverableSetUrl = (id: number,) => {
+
+
+
+
+  return `/api/admin/asset-library/deliverable-sets/${id}`
+}
+
+/**
+ * @summary Update deliverable set
+ */
+export const updateDeliverableSet = async (id: number,
+    deliverableSetInput: DeliverableSetInput, options?: RequestInit): Promise<DeliverableSet> => {
+
+  return customFetch<DeliverableSet>(getUpdateDeliverableSetUrl(id),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      deliverableSetInput,)
+  }
+);}
+
+
+
+
+export const getUpdateDeliverableSetMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateDeliverableSet>>, TError,{id: number;data: BodyType<DeliverableSetInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateDeliverableSet>>, TError,{id: number;data: BodyType<DeliverableSetInput>}, TContext> => {
+
+const mutationKey = ['updateDeliverableSet'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateDeliverableSet>>, {id: number;data: BodyType<DeliverableSetInput>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  updateDeliverableSet(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateDeliverableSetMutationResult = NonNullable<Awaited<ReturnType<typeof updateDeliverableSet>>>
+    export type UpdateDeliverableSetMutationBody = BodyType<DeliverableSetInput>
+    export type UpdateDeliverableSetMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Update deliverable set
+ */
+export const useUpdateDeliverableSet = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateDeliverableSet>>, TError,{id: number;data: BodyType<DeliverableSetInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateDeliverableSet>>,
+        TError,
+        {id: number;data: BodyType<DeliverableSetInput>},
+        TContext
+      > => {
+      return useMutation(getUpdateDeliverableSetMutationOptions(options));
+    }
+
+export const getDeleteDeliverableSetUrl = (id: number,) => {
+
+
+
+
+  return `/api/admin/asset-library/deliverable-sets/${id}`
+}
+
+/**
+ * @summary Delete deliverable set
+ */
+export const deleteDeliverableSet = async (id: number, options?: RequestInit): Promise<SuccessResponse> => {
+
+  return customFetch<SuccessResponse>(getDeleteDeliverableSetUrl(id),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+export const getDeleteDeliverableSetMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteDeliverableSet>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteDeliverableSet>>, TError,{id: number}, TContext> => {
+
+const mutationKey = ['deleteDeliverableSet'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteDeliverableSet>>, {id: number}> = (props) => {
+          const {id} = props ?? {};
+
+          return  deleteDeliverableSet(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeleteDeliverableSetMutationResult = NonNullable<Awaited<ReturnType<typeof deleteDeliverableSet>>>
+
+    export type DeleteDeliverableSetMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Delete deliverable set
+ */
+export const useDeleteDeliverableSet = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteDeliverableSet>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof deleteDeliverableSet>>,
+        TError,
+        {id: number},
+        TContext
+      > => {
+      return useMutation(getDeleteDeliverableSetMutationOptions(options));
     }
 
 export const getCreateLeadUrl = () => {

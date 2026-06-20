@@ -1,0 +1,304 @@
+import { useEffect, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import { z } from "zod";
+import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/contexts/AuthContext";
+import {
+  useListDeliverableSets,
+  useCreateDeliverableSet,
+  useUpdateDeliverableSet,
+  useDeleteDeliverableSet,
+  getListDeliverableSetsQueryKey,
+  type DeliverableSet,
+  type DeliverableSetInput,
+} from "@workspace/api-client-react";
+import { Plus, Pencil, Trash2, Download, Upload, Search, X } from "lucide-react";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { exportAsJson } from "@/lib/exportJson";
+
+function StringListEditor({ label, items, onChange, placeholder }: {
+  label: string; items: string[]; onChange: (v: string[]) => void; placeholder?: string;
+}) {
+  const [draft, setDraft] = useState("");
+  const add = () => { const t=draft.trim(); if(!t) return; onChange([...items,t]); setDraft(""); };
+  return (
+    <div>
+      <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wide mb-2">{label}</label>
+      <div className="space-y-1.5 mb-2">
+        {items.map((item, i) => (
+          <div key={i} className="flex items-center gap-2">
+            <span className="text-xs text-gray-400 w-4 shrink-0">→</span>
+            <input value={item} onChange={e => { const a=[...items]; a[i]=e.target.value; onChange(a); }}
+              className="flex-1 text-sm border border-gray-200 rounded px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-[#0078D4]" />
+            <button type="button" onClick={() => onChange(items.filter((_,j)=>j!==i))} className="text-gray-400 hover:text-red-500"><X className="w-3.5 h-3.5"/></button>
+          </div>
+        ))}
+      </div>
+      <div className="flex gap-2">
+        <input value={draft} onChange={e=>setDraft(e.target.value)} onKeyDown={e=>{if(e.key==="Enter"){e.preventDefault();add();}}}
+          placeholder={placeholder ?? "Add item…"}
+          className="flex-1 text-sm border border-gray-200 rounded px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-[#0078D4]"
+        />
+        <button type="button" onClick={add} className="px-3 py-1.5 bg-[#0078D4] text-white text-sm rounded hover:bg-[#005fa3]">Add</button>
+      </div>
+    </div>
+  );
+}
+
+function EditorSheet({ record, onClose }: {
+  record: Partial<DeliverableSet> | null; onClose: () => void;
+}) {
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const isEdit = record && "id" in record && typeof record.id === "number";
+  const [form, setForm] = useState({
+    title: record?.title ?? "",
+    deliverables: record?.deliverables ?? ([] as string[]),
+  });
+
+  const invalidate = () => queryClient.invalidateQueries({ queryKey: getListDeliverableSetsQueryKey() });
+
+  const createMutation = useCreateDeliverableSet({
+    mutation: {
+      onSuccess: () => { toast({ title: "Deliverable set created" }); invalidate(); onClose(); },
+      onError: () => toast({ title: "Save failed", variant: "destructive" }),
+    },
+  });
+
+  const updateMutation = useUpdateDeliverableSet({
+    mutation: {
+      onSuccess: () => { toast({ title: "Deliverable set updated" }); invalidate(); onClose(); },
+      onError: () => toast({ title: "Save failed", variant: "destructive" }),
+    },
+  });
+
+  const saving = createMutation.isPending || updateMutation.isPending;
+
+  const save = () => {
+    if (!form.title.trim()) { toast({ title: "Title is required", variant: "destructive" }); return; }
+    const data: DeliverableSetInput = { title: form.title, deliverables: form.deliverables };
+    if (isEdit) {
+      updateMutation.mutate({ id: (record as DeliverableSet).id, data });
+    } else {
+      createMutation.mutate({ data });
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex justify-end" onClick={e => { if(e.target===e.currentTarget) onClose(); }}>
+      <div className="w-full max-w-lg bg-white h-full shadow-2xl flex flex-col">
+        <div className="flex items-center justify-between px-6 py-4 border-b">
+          <h2 className="font-semibold text-gray-900">{isEdit ? "Edit Deliverable Set" : "New Deliverable Set"}</h2>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600"><X className="w-5 h-5"/></button>
+        </div>
+        <div className="flex-1 overflow-y-auto p-6 space-y-5">
+          <div>
+            <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wide mb-1">Title *</label>
+            <input value={form.title} onChange={e=>setForm(f=>({...f,title:e.target.value}))}
+              className="w-full border border-gray-200 rounded px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-[#0078D4]" placeholder="e.g. M365 Migration Deliverables" />
+          </div>
+          <StringListEditor label="Client Deliverables" items={form.deliverables} onChange={v=>setForm(f=>({...f,deliverables:v}))} placeholder="Add deliverable description…" />
+        </div>
+        <div className="px-6 py-4 border-t flex justify-end gap-2">
+          <button onClick={onClose} className="px-4 py-2 text-sm text-gray-600 hover:text-gray-900 border border-gray-200 rounded">Cancel</button>
+          <button onClick={save} disabled={saving} className="px-4 py-2 text-sm bg-[#0078D4] text-white rounded hover:bg-[#005fa3] disabled:opacity-50">
+            {saving ? "Saving…" : "Save"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+const DeliverableSetImportSchema = z.object({
+  id: z.number().int().positive().optional(),
+  title: z.string().min(1, "title is required"),
+  deliverables: z.array(z.string(), { invalid_type_error: "deliverables must be an array of strings" }).optional(),
+});
+
+function JsonImportModal({ onClose, onImported }: { onClose: () => void; onImported: () => void }) {
+  const { fetchWithAuth } = useAuth();
+  const { toast } = useToast();
+  const [raw, setRaw] = useState("");
+  const [errors, setErrors] = useState<string[]>([]);
+  const [saving, setSaving] = useState(false);
+
+  const submit = async () => {
+    setErrors([]);
+    let parsed: unknown;
+    try { parsed = JSON.parse(raw); } catch { setErrors(["Invalid JSON — check syntax and try again."]); return; }
+    const validated = DeliverableSetImportSchema.safeParse(parsed);
+    if (!validated.success) {
+      setErrors(validated.error.errors.map(e => {
+        const path = e.path.length ? e.path.join(".") + ": " : "";
+        return `${path}${e.message}`;
+      }));
+      return;
+    }
+    setSaving(true);
+    try {
+      const data = validated.data;
+      const hasId = typeof data.id === "number";
+      const url = hasId ? `/api/admin/asset-library/deliverable-sets/${data.id}` : "/api/admin/asset-library/deliverable-sets";
+      const res = await fetchWithAuth(url, { method: hasId ? "PUT" : "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) });
+      if (!res.ok) { const j = await res.json().catch(()=>({error:"Unknown error"})); setErrors([(j as {error?:string}).error ?? "Request failed"]); return; }
+      toast({ title: hasId ? "Deliverable set updated via import" : "Deliverable set created via import" });
+      onImported();
+    } catch { setErrors(["Network error — please try again."]); }
+    finally { setSaving(false); }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+      <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg p-6">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="font-semibold text-gray-900">JSON Import</h2>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600"><X className="w-5 h-5"/></button>
+        </div>
+        <p className="text-sm text-gray-500 mb-3">Paste a full deliverable set JSON. If it has an <code className="bg-gray-100 px-1 rounded">id</code> field the record will be updated; otherwise a new one is created.</p>
+        <textarea value={raw} onChange={e=>setRaw(e.target.value)} rows={10} spellCheck={false}
+          className="w-full border border-gray-200 rounded px-3 py-2 text-sm font-mono resize-none focus:outline-none focus:ring-1 focus:ring-[#0078D4]"
+          placeholder='{"title": "My Deliverables", "deliverables": ["Executive Summary", "Roadmap"]}' />
+        {errors.length > 0 && (
+          <ul className="mt-2 space-y-1">
+            {errors.map((e, i) => <li key={i} className="text-sm text-red-600">{e}</li>)}
+          </ul>
+        )}
+        <div className="flex justify-end gap-2 mt-4">
+          <button onClick={onClose} className="px-4 py-2 text-sm text-gray-600 border border-gray-200 rounded hover:text-gray-900">Cancel</button>
+          <button onClick={submit} disabled={saving || !raw.trim()} className="px-4 py-2 text-sm bg-[#0078D4] text-white rounded hover:bg-[#005fa3] disabled:opacity-50">
+            {saving ? "Importing…" : "Import"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export default function DeliverableSetsPage() {
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const [q, setQ] = useState("");
+  const [debouncedQ, setDebouncedQ] = useState("");
+  const [editorRecord, setEditorRecord] = useState<Partial<DeliverableSet> | null | undefined>(undefined);
+  const [deleteTarget, setDeleteTarget] = useState<DeliverableSet | null>(null);
+  const [showImport, setShowImport] = useState(false);
+
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedQ(q), 300);
+    return () => clearTimeout(t);
+  }, [q]);
+
+  const { data: rows = [], isLoading } = useListDeliverableSets(debouncedQ ? { q: debouncedQ } : undefined);
+
+  const deleteMutation = useDeleteDeliverableSet({
+    mutation: {
+      onSuccess: () => {
+        toast({ title: "Deleted" });
+        setDeleteTarget(null);
+        void queryClient.invalidateQueries({ queryKey: getListDeliverableSetsQueryKey() });
+      },
+      onError: () => toast({ title: "Delete failed", variant: "destructive" }),
+    },
+  });
+
+  return (
+    <div className="p-6 max-w-5xl mx-auto">
+      <div className="flex items-center justify-between mb-6">
+        <div>
+          <h1 className="text-xl font-bold text-gray-900">Deliverable Sets</h1>
+          <p className="text-sm text-gray-500 mt-0.5">Reusable lists of client-facing deliverables for workflow tasks.</p>
+        </div>
+        <div className="flex gap-2">
+          <button onClick={() => setShowImport(true)} className="flex items-center gap-1.5 px-3 py-2 text-sm border border-gray-200 rounded-lg hover:bg-gray-50 text-gray-600">
+            <Upload className="w-4 h-4"/> JSON Import
+          </button>
+          <button onClick={() => setEditorRecord({})} className="flex items-center gap-1.5 px-3 py-2 text-sm bg-[#0078D4] text-white rounded-lg hover:bg-[#005fa3]">
+            <Plus className="w-4 h-4"/> New
+          </button>
+        </div>
+      </div>
+
+      <div className="relative mb-4">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400"/>
+        <input value={q} onChange={e=>setQ(e.target.value)} placeholder="Search by title…"
+          className="w-full pl-9 pr-4 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-[#0078D4]"/>
+      </div>
+
+      {isLoading ? (
+        <div className="flex justify-center py-12"><div className="w-6 h-6 border-2 border-[#0078D4] border-t-transparent rounded-full animate-spin"/></div>
+      ) : rows.length === 0 ? (
+        <div className="text-center py-12 text-gray-400">
+          <p className="font-medium">No deliverable sets yet</p>
+          <p className="text-sm mt-1">Click "New" to create your first one.</p>
+        </div>
+      ) : (
+        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-gray-100 bg-gray-50">
+                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide w-12">ID</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Title</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide w-28">Deliverables</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide w-36">Created</th>
+                <th className="px-4 py-3 w-28"/>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-50">
+              {rows.map(row => (
+                <tr key={row.id} className="hover:bg-gray-50/50">
+                  <td className="px-4 py-3 text-gray-400 font-mono text-xs">#{row.id}</td>
+                  <td className="px-4 py-3 font-medium text-gray-900">{row.title}</td>
+                  <td className="px-4 py-3 text-gray-500">{row.deliverables.length}</td>
+                  <td className="px-4 py-3 text-gray-400 text-xs">{new Date(row.createdAt).toLocaleDateString()}</td>
+                  <td className="px-4 py-3">
+                    <div className="flex items-center justify-end gap-1">
+                      <button onClick={() => setEditorRecord(row)} className="p-1.5 text-gray-400 hover:text-[#0078D4] rounded" title="Edit"><Pencil className="w-3.5 h-3.5"/></button>
+                      <button onClick={() => exportAsJson(row, `deliverable-set-${row.id}.json`)} className="p-1.5 text-gray-400 hover:text-[#0078D4] rounded" title="Export JSON"><Download className="w-3.5 h-3.5"/></button>
+                      <button onClick={() => setDeleteTarget(row)} className="p-1.5 text-gray-400 hover:text-red-500 rounded" title="Delete"><Trash2 className="w-3.5 h-3.5"/></button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {editorRecord !== undefined && (
+        <EditorSheet record={editorRecord} onClose={() => setEditorRecord(undefined)} />
+      )}
+      {showImport && (
+        <JsonImportModal
+          onClose={() => setShowImport(false)}
+          onImported={() => {
+            setShowImport(false);
+            void queryClient.invalidateQueries({ queryKey: getListDeliverableSetsQueryKey() });
+          }}
+        />
+      )}
+
+      <AlertDialog open={!!deleteTarget} onOpenChange={open => !open && setDeleteTarget(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete deliverable set?</AlertDialogTitle>
+            <AlertDialogDescription>"<strong>{deleteTarget?.title}</strong>" will be permanently deleted.</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => deleteTarget && deleteMutation.mutate({ id: deleteTarget.id })}
+              className="bg-red-600 hover:bg-red-700"
+              disabled={deleteMutation.isPending}
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </div>
+  );
+}

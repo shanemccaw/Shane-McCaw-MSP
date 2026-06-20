@@ -6,10 +6,17 @@
  * OpenAPI spec version: 0.1.0
  */
 
+export * from './artifactSet';
+export * from './artifactSetInput';
 export * from './assignEmailInput';
 export * from './authResponse';
 export * from './authUser';
+export * from './checklist';
+export * from './checklistInput';
+export * from './checklistItem';
 export * from './createDomainRuleInput';
+export * from './deliverableSet';
+export * from './deliverableSetInput';
 export * from './emailDomainRule';
 export * from './emailDomainRuleRow';
 export * from './errorResponse';
@@ -17,6 +24,8 @@ export * from './healthStatus';
 export * from './ingestedEmail';
 export * from './ingestedEmailList';
 export * from './ingestedEmailRow';
+export * from './instructionSet';
+export * from './instructionSetInput';
 export * from './lead';
 export * from './leadInput';
 export * from './leadInputSource';
@@ -25,6 +34,10 @@ export * from './leadStats';
 export * from './leadUpdate';
 export * from './leadUpdateStatus';
 export * from './listAdminEmailsParams';
+export * from './listArtifactSetsParams';
+export * from './listChecklistsParams';
+export * from './listDeliverableSetsParams';
+export * from './listInstructionSetsParams';
 export * from './listLeadsParams';
 export * from './loginInput';
 export * from './successResponse';

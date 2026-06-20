@@ -402,6 +402,10 @@ export const workflowTemplateStepTasksTable = pgTable("workflow_template_step_ta
   checklist: jsonb("checklist").$type<Array<{ id: string; label: string }>>(),
   artifactsProduced: jsonb("artifacts_produced").$type<string[]>(),
   clientDeliverables: jsonb("client_deliverables").$type<string[]>(),
+  instructionSetId: integer("instruction_set_id").references(() => instructionSetsTable.id, { onDelete: "set null" }),
+  checklistId: integer("checklist_id").references(() => checklistsTable.id, { onDelete: "set null" }),
+  artifactsId: integer("artifacts_id").references(() => artifactSetsTable.id, { onDelete: "set null" }),
+  deliverablesId: integer("deliverables_id").references(() => deliverableSetsTable.id, { onDelete: "set null" }),
 });
 
 export type InsertWorkflowTemplateStepTask = typeof workflowTemplateStepTasksTable.$inferInsert;
@@ -507,6 +511,52 @@ export const auditLogsTable = pgTable("audit_logs", {
 
 export type InsertAuditLog = typeof auditLogsTable.$inferInsert;
 export type AuditLog = typeof auditLogsTable.$inferSelect;
+
+// Asset Library — reusable workflow building blocks
+export const instructionSetsTable = pgTable("instruction_sets", {
+  id: serial("id").primaryKey(),
+  title: text("title").notNull(),
+  description: text("description"),
+  instructions: jsonb("instructions").$type<string[]>().notNull().default([]),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export type InsertInstructionSet = typeof instructionSetsTable.$inferInsert;
+export type InstructionSet = typeof instructionSetsTable.$inferSelect;
+
+export const checklistsTable = pgTable("checklists", {
+  id: serial("id").primaryKey(),
+  title: text("title").notNull(),
+  items: jsonb("items").$type<Array<{ id: string; label: string }>>().notNull().default([]),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export type InsertChecklist = typeof checklistsTable.$inferInsert;
+export type Checklist = typeof checklistsTable.$inferSelect;
+
+export const artifactSetsTable = pgTable("artifact_sets", {
+  id: serial("id").primaryKey(),
+  title: text("title").notNull(),
+  artifacts: jsonb("artifacts").$type<string[]>().notNull().default([]),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export type InsertArtifactSet = typeof artifactSetsTable.$inferInsert;
+export type ArtifactSet = typeof artifactSetsTable.$inferSelect;
+
+export const deliverableSetsTable = pgTable("deliverable_sets", {
+  id: serial("id").primaryKey(),
+  title: text("title").notNull(),
+  deliverables: jsonb("deliverables").$type<string[]>().notNull().default([]),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export type InsertDeliverableSet = typeof deliverableSetsTable.$inferInsert;
+export type DeliverableSet = typeof deliverableSetsTable.$inferSelect;
 
 // Microsoft Graph webhook subscription tracking
 export const graphSubscriptionsTable = pgTable("graph_subscriptions", {

@@ -171,6 +171,82 @@ export interface CreateDomainRuleInput {
   userId: number;
 }
 
+export interface InstructionSet {
+  id: number;
+  title: string;
+  /** @nullable */
+  description?: string | null;
+  instructions: string[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface InstructionSetInput {
+  title: string;
+  description?: string;
+  instructions?: string[];
+}
+
+export interface ChecklistItem {
+  id: string;
+  label: string;
+}
+
+export interface Checklist {
+  id: number;
+  title: string;
+  items: ChecklistItem[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ChecklistInput {
+  title: string;
+  items?: ChecklistItem[];
+}
+
+export interface ArtifactSet {
+  id: number;
+  title: string;
+  artifacts: string[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ArtifactSetInput {
+  title: string;
+  artifacts?: string[];
+}
+
+export interface DeliverableSet {
+  id: number;
+  title: string;
+  deliverables: string[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface DeliverableSetInput {
+  title: string;
+  deliverables?: string[];
+}
+
+export type ListInstructionSetsParams = {
+q?: string;
+};
+
+export type ListChecklistsParams = {
+q?: string;
+};
+
+export type ListArtifactSetsParams = {
+q?: string;
+};
+
+export type ListDeliverableSetsParams = {
+q?: string;
+};
+
 export type ListLeadsParams = {
 status?: string;
 source?: string;

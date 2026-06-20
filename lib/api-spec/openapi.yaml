@@ -86,6 +86,390 @@ paths:
               schema:
                 $ref: "#/components/schemas/SuccessResponse"
 
+  /admin/asset-library/instruction-sets:
+    get:
+      operationId: listInstructionSets
+      tags: [asset-library]
+      summary: List instruction sets
+      parameters:
+        - name: q
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: List of instruction sets
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/InstructionSet"
+    post:
+      operationId: createInstructionSet
+      tags: [asset-library]
+      summary: Create instruction set
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InstructionSetInput"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InstructionSet"
+
+  /admin/asset-library/instruction-sets/{id}:
+    get:
+      operationId: getInstructionSet
+      tags: [asset-library]
+      summary: Get instruction set by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Instruction set
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InstructionSet"
+    put:
+      operationId: updateInstructionSet
+      tags: [asset-library]
+      summary: Update instruction set
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InstructionSetInput"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InstructionSet"
+    delete:
+      operationId: deleteInstructionSet
+      tags: [asset-library]
+      summary: Delete instruction set
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessResponse"
+
+  /admin/asset-library/checklists:
+    get:
+      operationId: listChecklists
+      tags: [asset-library]
+      summary: List checklists
+      parameters:
+        - name: q
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: List of checklists
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Checklist"
+    post:
+      operationId: createChecklist
+      tags: [asset-library]
+      summary: Create checklist
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChecklistInput"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Checklist"
+
+  /admin/asset-library/checklists/{id}:
+    get:
+      operationId: getChecklist
+      tags: [asset-library]
+      summary: Get checklist by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Checklist
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Checklist"
+    put:
+      operationId: updateChecklist
+      tags: [asset-library]
+      summary: Update checklist
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChecklistInput"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Checklist"
+    delete:
+      operationId: deleteChecklist
+      tags: [asset-library]
+      summary: Delete checklist
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessResponse"
+
+  /admin/asset-library/artifact-sets:
+    get:
+      operationId: listArtifactSets
+      tags: [asset-library]
+      summary: List artifact sets
+      parameters:
+        - name: q
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: List of artifact sets
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ArtifactSet"
+    post:
+      operationId: createArtifactSet
+      tags: [asset-library]
+      summary: Create artifact set
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ArtifactSetInput"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ArtifactSet"
+
+  /admin/asset-library/artifact-sets/{id}:
+    get:
+      operationId: getArtifactSet
+      tags: [asset-library]
+      summary: Get artifact set by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Artifact set
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ArtifactSet"
+    put:
+      operationId: updateArtifactSet
+      tags: [asset-library]
+      summary: Update artifact set
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ArtifactSetInput"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ArtifactSet"
+    delete:
+      operationId: deleteArtifactSet
+      tags: [asset-library]
+      summary: Delete artifact set
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessResponse"
+
+  /admin/asset-library/deliverable-sets:
+    get:
+      operationId: listDeliverableSets
+      tags: [asset-library]
+      summary: List deliverable sets
+      parameters:
+        - name: q
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: List of deliverable sets
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/DeliverableSet"
+    post:
+      operationId: createDeliverableSet
+      tags: [asset-library]
+      summary: Create deliverable set
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DeliverableSetInput"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeliverableSet"
+
+  /admin/asset-library/deliverable-sets/{id}:
+    get:
+      operationId: getDeliverableSet
+      tags: [asset-library]
+      summary: Get deliverable set by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Deliverable set
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeliverableSet"
+    put:
+      operationId: updateDeliverableSet
+      tags: [asset-library]
+      summary: Update deliverable set
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DeliverableSetInput"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeliverableSet"
+    delete:
+      operationId: deleteDeliverableSet
+      tags: [asset-library]
+      summary: Delete deliverable set
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessResponse"
+
   /leads:
     post:
       operationId: createLead
@@ -609,3 +993,136 @@ components:
           type: string
         userId:
           type: integer
+
+    InstructionSet:
+      type: object
+      required: [id, title, instructions, createdAt, updatedAt]
+      properties:
+        id:
+          type: integer
+        title:
+          type: string
+        description:
+          type: ["string", "null"]
+        instructions:
+          type: array
+          items:
+            type: string
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    InstructionSetInput:
+      type: object
+      required: [title]
+      properties:
+        title:
+          type: string
+        description:
+          type: string
+        instructions:
+          type: array
+          items:
+            type: string
+
+    ChecklistItem:
+      type: object
+      required: [id, label]
+      properties:
+        id:
+          type: string
+        label:
+          type: string
+
+    Checklist:
+      type: object
+      required: [id, title, items, createdAt, updatedAt]
+      properties:
+        id:
+          type: integer
+        title:
+          type: string
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/ChecklistItem"
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    ChecklistInput:
+      type: object
+      required: [title]
+      properties:
+        title:
+          type: string
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/ChecklistItem"
+
+    ArtifactSet:
+      type: object
+      required: [id, title, artifacts, createdAt, updatedAt]
+      properties:
+        id:
+          type: integer
+        title:
+          type: string
+        artifacts:
+          type: array
+          items:
+            type: string
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    ArtifactSetInput:
+      type: object
+      required: [title]
+      properties:
+        title:
+          type: string
+        artifacts:
+          type: array
+          items:
+            type: string
+
+    DeliverableSet:
+      type: object
+      required: [id, title, deliverables, createdAt, updatedAt]
+      properties:
+        id:
+          type: integer
+        title:
+          type: string
+        deliverables:
+          type: array
+          items:
+            type: string
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    DeliverableSetInput:
+      type: object
+      required: [title]
+      properties:
+        title:
+          type: string
+        deliverables:
+          type: array
+          items:
+            type: string

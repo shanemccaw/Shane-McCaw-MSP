@@ -60,6 +60,326 @@ export const AuthLogoutResponse = zod.object({
 
 
 /**
+ * @summary List instruction sets
+ */
+export const ListInstructionSetsQueryParams = zod.object({
+  "q": zod.coerce.string().optional()
+})
+
+export const ListInstructionSetsResponseItem = zod.object({
+  "id": zod.number(),
+  "title": zod.string(),
+  "description": zod.string().nullish(),
+  "instructions": zod.array(zod.string()),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+export const ListInstructionSetsResponse = zod.array(ListInstructionSetsResponseItem)
+
+
+/**
+ * @summary Create instruction set
+ */
+export const CreateInstructionSetBody = zod.object({
+  "title": zod.string(),
+  "description": zod.string().optional(),
+  "instructions": zod.array(zod.string()).optional()
+})
+
+
+/**
+ * @summary Get instruction set by ID
+ */
+export const GetInstructionSetParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const GetInstructionSetResponse = zod.object({
+  "id": zod.number(),
+  "title": zod.string(),
+  "description": zod.string().nullish(),
+  "instructions": zod.array(zod.string()),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Update instruction set
+ */
+export const UpdateInstructionSetParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const UpdateInstructionSetBody = zod.object({
+  "title": zod.string(),
+  "description": zod.string().optional(),
+  "instructions": zod.array(zod.string()).optional()
+})
+
+export const UpdateInstructionSetResponse = zod.object({
+  "id": zod.number(),
+  "title": zod.string(),
+  "description": zod.string().nullish(),
+  "instructions": zod.array(zod.string()),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Delete instruction set
+ */
+export const DeleteInstructionSetParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const DeleteInstructionSetResponse = zod.object({
+  "success": zod.boolean()
+})
+
+
+/**
+ * @summary List checklists
+ */
+export const ListChecklistsQueryParams = zod.object({
+  "q": zod.coerce.string().optional()
+})
+
+export const ListChecklistsResponseItem = zod.object({
+  "id": zod.number(),
+  "title": zod.string(),
+  "items": zod.array(zod.object({
+  "id": zod.string(),
+  "label": zod.string()
+})),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+export const ListChecklistsResponse = zod.array(ListChecklistsResponseItem)
+
+
+/**
+ * @summary Create checklist
+ */
+export const CreateChecklistBody = zod.object({
+  "title": zod.string(),
+  "items": zod.array(zod.object({
+  "id": zod.string(),
+  "label": zod.string()
+})).optional()
+})
+
+
+/**
+ * @summary Get checklist by ID
+ */
+export const GetChecklistParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const GetChecklistResponse = zod.object({
+  "id": zod.number(),
+  "title": zod.string(),
+  "items": zod.array(zod.object({
+  "id": zod.string(),
+  "label": zod.string()
+})),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Update checklist
+ */
+export const UpdateChecklistParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const UpdateChecklistBody = zod.object({
+  "title": zod.string(),
+  "items": zod.array(zod.object({
+  "id": zod.string(),
+  "label": zod.string()
+})).optional()
+})
+
+export const UpdateChecklistResponse = zod.object({
+  "id": zod.number(),
+  "title": zod.string(),
+  "items": zod.array(zod.object({
+  "id": zod.string(),
+  "label": zod.string()
+})),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Delete checklist
+ */
+export const DeleteChecklistParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const DeleteChecklistResponse = zod.object({
+  "success": zod.boolean()
+})
+
+
+/**
+ * @summary List artifact sets
+ */
+export const ListArtifactSetsQueryParams = zod.object({
+  "q": zod.coerce.string().optional()
+})
+
+export const ListArtifactSetsResponseItem = zod.object({
+  "id": zod.number(),
+  "title": zod.string(),
+  "artifacts": zod.array(zod.string()),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+export const ListArtifactSetsResponse = zod.array(ListArtifactSetsResponseItem)
+
+
+/**
+ * @summary Create artifact set
+ */
+export const CreateArtifactSetBody = zod.object({
+  "title": zod.string(),
+  "artifacts": zod.array(zod.string()).optional()
+})
+
+
+/**
+ * @summary Get artifact set by ID
+ */
+export const GetArtifactSetParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const GetArtifactSetResponse = zod.object({
+  "id": zod.number(),
+  "title": zod.string(),
+  "artifacts": zod.array(zod.string()),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Update artifact set
+ */
+export const UpdateArtifactSetParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const UpdateArtifactSetBody = zod.object({
+  "title": zod.string(),
+  "artifacts": zod.array(zod.string()).optional()
+})
+
+export const UpdateArtifactSetResponse = zod.object({
+  "id": zod.number(),
+  "title": zod.string(),
+  "artifacts": zod.array(zod.string()),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Delete artifact set
+ */
+export const DeleteArtifactSetParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const DeleteArtifactSetResponse = zod.object({
+  "success": zod.boolean()
+})
+
+
+/**
+ * @summary List deliverable sets
+ */
+export const ListDeliverableSetsQueryParams = zod.object({
+  "q": zod.coerce.string().optional()
+})
+
+export const ListDeliverableSetsResponseItem = zod.object({
+  "id": zod.number(),
+  "title": zod.string(),
+  "deliverables": zod.array(zod.string()),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+export const ListDeliverableSetsResponse = zod.array(ListDeliverableSetsResponseItem)
+
+
+/**
+ * @summary Create deliverable set
+ */
+export const CreateDeliverableSetBody = zod.object({
+  "title": zod.string(),
+  "deliverables": zod.array(zod.string()).optional()
+})
+
+
+/**
+ * @summary Get deliverable set by ID
+ */
+export const GetDeliverableSetParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const GetDeliverableSetResponse = zod.object({
+  "id": zod.number(),
+  "title": zod.string(),
+  "deliverables": zod.array(zod.string()),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Update deliverable set
+ */
+export const UpdateDeliverableSetParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const UpdateDeliverableSetBody = zod.object({
+  "title": zod.string(),
+  "deliverables": zod.array(zod.string()).optional()
+})
+
+export const UpdateDeliverableSetResponse = zod.object({
+  "id": zod.number(),
+  "title": zod.string(),
+  "deliverables": zod.array(zod.string()),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Delete deliverable set
+ */
+export const DeleteDeliverableSetParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const DeleteDeliverableSetResponse = zod.object({
+  "success": zod.boolean()
+})
+
+
+/**
  * @summary Submit a lead (public)
  */
 

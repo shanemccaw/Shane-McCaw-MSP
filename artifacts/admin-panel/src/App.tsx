@@ -28,6 +28,10 @@ import EmailActivityPage from "@/pages/EmailActivity";
 import ActivityLogPage from "@/pages/ActivityLog";
 import SharePointPage from "@/pages/SharePoint";
 import TemplateLibraryPage from "@/pages/templates/TemplateLibrary";
+import InstructionSetsPage from "@/pages/asset-library/InstructionSetsPage";
+import ChecklistsPage from "@/pages/asset-library/ChecklistsPage";
+import ArtifactSetsPage from "@/pages/asset-library/ArtifactSetsPage";
+import DeliverableSetsPage from "@/pages/asset-library/DeliverableSetsPage";
 import type { ReactNode } from "react";
 
 const queryClient = new QueryClient({
@@ -168,6 +172,20 @@ function Router() {
       {/* Template Library */}
       <Route path="/templates/library">
         <RequireAdmin><DashboardShell><TemplateLibraryPage /></DashboardShell></RequireAdmin>
+      </Route>
+
+      {/* Asset Library */}
+      <Route path="/asset-library/instruction-sets">
+        <RequireAdmin><DashboardShell><InstructionSetsPage /></DashboardShell></RequireAdmin>
+      </Route>
+      <Route path="/asset-library/checklists">
+        <RequireAdmin><DashboardShell><ChecklistsPage /></DashboardShell></RequireAdmin>
+      </Route>
+      <Route path="/asset-library/artifact-sets">
+        <RequireAdmin><DashboardShell><ArtifactSetsPage /></DashboardShell></RequireAdmin>
+      </Route>
+      <Route path="/asset-library/deliverable-sets">
+        <RequireAdmin><DashboardShell><DeliverableSetsPage /></DashboardShell></RequireAdmin>
       </Route>
 
       <Route>
