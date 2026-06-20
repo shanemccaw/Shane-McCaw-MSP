@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 
 type LeadStatus = "new" | "contacted" | "qualified" | "converted" | "archived";
@@ -31,6 +31,14 @@ interface LeadStats {
   newThisWeek: number;
   fromContactForm: number;
   fromLeadMagnet: number;
+}
+
+interface LinkedEmail {
+  id: number;
+  subject: string | null;
+  senderAddress: string;
+  rawFrom: string | null;
+  receivedAt: string;
 }
 
 const STATUS_COLORS: Record<LeadStatus, string> = {
@@ -68,6 +76,20 @@ function SlideOver({ lead, onClose, onStatusChange }: {
   const { fetchWithAuth } = useAuth();
   const [status, setStatus] = useState<LeadStatus>(lead.status);
   const [saving, setSaving] = useState(false);
+  const [linkedEmails, setLinkedEmails] = useState<LinkedEmail[]>([]);
+  const [emailsLoading, setEmailsLoading] = useState(true);
+  const fetchedRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (fetchedRef.current === lead.id) return;
+    fetchedRef.current = lead.id;
+    setEmailsLoading(true);
+    fetchWithAuth(`/api/leads/${lead.id}/emails`)
+      .then(r => r.ok ? r.json() as Promise<LinkedEmail[]> : [])
+      .then(data => setLinkedEmails(data))
+      .catch(() => setLinkedEmails([]))
+      .finally(() => setEmailsLoading(false));
+  }, [lead.id, fetchWithAuth]);
 
   const save = async () => {
     setSaving(true);
@@ -152,6 +174,50 @@ function SlideOver({ lead, onClose, onStatusChange }: {
               <option value="converted">Converted</option>
               <option value="archived">Archived</option>
             </select>
+          </div>
+
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Linked Emails</p>
+              <a
+                href="/admin-panel/email-activity"
+                className="text-xs text-[#0078D4] hover:underline font-medium"
+              >
+                Open Inbox →
+              </a>
+            </div>
+            {emailsLoading ? (
+              <div className="flex items-center gap-2 py-3 text-xs text-muted-foreground">
+                <div className="w-4 h-4 border-2 border-[#0078D4] border-t-transparent rounded-full animate-spin flex-shrink-0" />
+                Loading…
+              </div>
+            ) : linkedEmails.length === 0 ? (
+              <div className="rounded-lg border border-dashed border-border bg-[#F7F9FC] px-4 py-5 text-center">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} className="w-7 h-7 mx-auto text-muted-foreground/40 mb-1.5">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M21.75 6.75v10.5a2.25 2.25 0 01-2.25 2.25h-15a2.25 2.25 0 01-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25m19.5 0v.243a2.25 2.25 0 01-1.07 1.916l-7.5 4.615a2.25 2.25 0 01-2.36 0L3.32 8.91a2.25 2.25 0 01-1.07-1.916V6.75" />
+                </svg>
+                <p className="text-xs text-muted-foreground">No emails linked to this lead yet.</p>
+                <p className="text-xs text-muted-foreground/70 mt-0.5">Pin emails from the inbox to see them here.</p>
+              </div>
+            ) : (
+              <ul className="space-y-2">
+                {linkedEmails.map(email => (
+                  <li key={email.id} className="rounded-lg border border-border bg-[#F7F9FC] px-3.5 py-3">
+                    <p className="text-xs font-semibold text-[#0A2540] truncate">{email.subject ?? "(no subject)"}</p>
+                    <p className="text-xs text-muted-foreground mt-0.5 truncate">{email.rawFrom ?? email.senderAddress}</p>
+                    <div className="flex items-center justify-between mt-1.5">
+                      <p className="text-xs text-muted-foreground/70">{new Date(email.receivedAt).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}</p>
+                      <a
+                        href="/admin-panel/email-activity"
+                        className="text-xs text-[#0078D4] hover:underline font-medium"
+                      >
+                        View in inbox
+                      </a>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
         </div>
         <div className="px-6 py-4 border-t border-border flex gap-3">

@@ -1,5 +1,5 @@
 import { Router, type IRouter, type Request, type Response } from "express";
-import { db, leadsTable } from "@workspace/db";
+import { db, leadsTable, emailsTable } from "@workspace/db";
 import { eq, desc, count, gte, and, type SQL } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/requireAuth";
 import { sendEmailOrThrow, contactInquiryNotificationEmail } from "../lib/mailer";
@@ -117,6 +117,28 @@ router.get("/leads", requireAdmin, async (req: Request, res: Response) => {
     .offset(offset);
 
   res.json({ leads, total: totalRow?.count ?? 0, page, limit });
+});
+
+router.get("/leads/:id/emails", requireAdmin, async (req: Request, res: Response) => {
+  const id = parseInt(String(req.params.id ?? ""), 10);
+  if (isNaN(id)) {
+    res.status(400).json({ error: "Invalid lead ID" });
+    return;
+  }
+
+  const emails = await db
+    .select({
+      id: emailsTable.id,
+      subject: emailsTable.subject,
+      senderAddress: emailsTable.senderAddress,
+      rawFrom: emailsTable.rawFrom,
+      receivedAt: emailsTable.receivedAt,
+    })
+    .from(emailsTable)
+    .where(eq(emailsTable.linkedLeadId, id))
+    .orderBy(desc(emailsTable.receivedAt));
+
+  res.json(emails);
 });
 
 router.patch("/leads/:id", requireAdmin, async (req: Request, res: Response) => {
