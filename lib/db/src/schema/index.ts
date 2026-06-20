@@ -289,6 +289,7 @@ export const contractsTable = pgTable("contracts", {
   pdfFilename: text("pdf_filename"),
   finalPrice: numeric("final_price"),
   wizardSelections: jsonb("wizard_selections"),
+  agreementBody: text("agreement_body"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 

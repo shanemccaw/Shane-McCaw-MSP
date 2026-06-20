@@ -883,6 +883,7 @@ router.get("/portal/contracts/:id", requireAuth, async (req: Request, res: Respo
     pdfFilename: contractsTable.pdfFilename,
     finalPrice: contractsTable.finalPrice,
     wizardSelections: contractsTable.wizardSelections,
+    agreementBody: contractsTable.agreementBody,
     createdAt: contractsTable.createdAt,
   })
     .from(contractsTable)
@@ -891,12 +892,17 @@ router.get("/portal/contracts/:id", requireAuth, async (req: Request, res: Respo
 
   if (!row) { res.status(404).json({ error: "Contract not found" }); return; }
 
-  // Fetch the template body for this service (admin-authored agreement text)
-  const [template] = await db.select({ body: contractTemplatesTable.body })
-    .from(contractTemplatesTable)
-    .where(eq(contractTemplatesTable.serviceId, row.serviceId));
+  // Use the snapshotted agreement body stored at signing time.
+  // For older contracts where it was not snapshotted, fall back to the live template.
+  let agreementBody: string | null = row.agreementBody ?? null;
+  if (agreementBody === null) {
+    const [template] = await db.select({ body: contractTemplatesTable.body })
+      .from(contractTemplatesTable)
+      .where(eq(contractTemplatesTable.serviceId, row.serviceId));
+    agreementBody = template?.body ?? null;
+  }
 
-  res.json({ ...row, agreementBody: template?.body ?? null });
+  res.json({ ...row, agreementBody });
 });
 
 router.get("/portal/contracts/:id/download", requireAuth, async (req: Request, res: Response) => {
@@ -3215,6 +3221,7 @@ router.post("/portal/onboarding/contract", requireAuth, async (req: Request, res
       contractVersion: contractTemplate?.version ?? "v1",
       finalPrice: computedFinalPrice != null ? String(computedFinalPrice) : null,
       wizardSelections: svcSelections.length > 0 ? svcSelections as never : null,
+      agreementBody: templateBody ?? null,
     }).returning();
 
     // ── Generate signed PDF immediately at signing time ──────────────────
