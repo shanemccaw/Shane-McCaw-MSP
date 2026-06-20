@@ -15,6 +15,7 @@ import publicEngagementProjectsRouter from "./public-engagement-projects";
 import adminEngagementProjectsRouter from "./admin-engagement-projects";
 import adminAiDraftRouter from "./admin-ai-draft";
 import adminOverviewRouter from "./admin-overview";
+import adminMobileRouter from "./admin-mobile";
 
 const router: IRouter = Router();
 
@@ -27,6 +28,7 @@ router.use(adminContractTemplatesRouter);
 router.use(adminEngagementProjectsRouter);
 router.use(adminAiDraftRouter);
 router.use(adminOverviewRouter);
+router.use(adminMobileRouter);
 router.use(sharesRouter);
 router.use(authRouter);
 router.use(leadsRouter);

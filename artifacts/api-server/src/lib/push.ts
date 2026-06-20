@@ -1,0 +1,45 @@
+import { logger } from "./logger";
+
+interface ExpoPushMessage {
+  to: string;
+  sound?: "default" | null;
+  title?: string;
+  body?: string;
+  data?: Record<string, unknown>;
+  badge?: number;
+}
+
+export async function sendPushNotifications(
+  tokens: string[],
+  title: string,
+  body: string,
+  data?: Record<string, unknown>,
+): Promise<void> {
+  if (!tokens.length) return;
+
+  const messages: ExpoPushMessage[] = tokens.map((token) => ({
+    to: token,
+    sound: "default",
+    title,
+    body,
+    data: data ?? {},
+  }));
+
+  try {
+    const res = await fetch("https://exp.host/--/api/v2/push/send", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+        "Accept-Encoding": "gzip, deflate",
+      },
+      body: JSON.stringify(messages),
+    });
+
+    if (!res.ok) {
+      logger.warn({ status: res.status }, "Expo push API returned non-OK status");
+    }
+  } catch (err) {
+    logger.warn({ err }, "Failed to send push notification (non-fatal)");
+  }
+}

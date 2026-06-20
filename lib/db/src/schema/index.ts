@@ -219,6 +219,18 @@ export const invoicesTable = pgTable("invoices", {
 export type InsertInvoice = typeof invoicesTable.$inferInsert;
 export type Invoice = typeof invoicesTable.$inferSelect;
 
+// Device tokens for push notifications (admin mobile app)
+export const deviceTokensTable = pgTable("device_tokens", {
+  id: serial("id").primaryKey(),
+  token: text("token").notNull().unique(),
+  platform: text("platform").notNull().default("ios"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export type InsertDeviceToken = typeof deviceTokensTable.$inferInsert;
+export type DeviceToken = typeof deviceTokensTable.$inferSelect;
+
 // Messages (client ↔ admin threaded)
 export const messagesTable = pgTable("messages", {
   id: serial("id").primaryKey(),

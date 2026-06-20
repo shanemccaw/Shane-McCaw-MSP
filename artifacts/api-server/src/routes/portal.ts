@@ -1,9 +1,10 @@
 import { Router, type IRouter, type Request, type Response } from "express";
-import { db, projectsTable, clientServicesTable, servicesTable, workflowStepsTable, kanbanTasksTable, documentsTable, reportsTable, invoicesTable, messagesTable, notificationsTable, projectUpdatesTable, usersTable, contractsTable, passwordResetTokensTable, workflowTemplateStepsTable, workflowTemplateStepTasksTable, contractTemplatesTable, impersonationTokensTable, statusReportsTable } from "@workspace/db";
+import { db, projectsTable, clientServicesTable, servicesTable, workflowStepsTable, kanbanTasksTable, documentsTable, reportsTable, invoicesTable, messagesTable, notificationsTable, projectUpdatesTable, usersTable, contractsTable, passwordResetTokensTable, workflowTemplateStepsTable, workflowTemplateStepTasksTable, contractTemplatesTable, impersonationTokensTable, statusReportsTable, deviceTokensTable } from "@workspace/db";
 import { eq, and, desc, asc, count, sql, inArray, gte } from "drizzle-orm";
 import { requireAuth, requireAdmin } from "../middlewares/requireAuth";
 import { sendEmail, purchaseConfirmationEmail, onboardingConfirmationEmail, adminPurchaseAlertEmail } from "../lib/mailer";
 import { sendAdminSms } from "../lib/sms";
+import { sendPushNotifications } from "../lib/push";
 import multer from "multer";
 import path from "path";
 import fs from "fs";
@@ -1706,7 +1707,7 @@ async function processStripeEvent(req: Request, event: import("stripe").Stripe.E
       const amountDollars = (parseInt(servicePriceInCents, 10) / 100).toFixed(2);
 
       // Create a paid invoice so it shows in billing history
-      await db.insert(invoicesTable).values({
+      const [newInvoice] = await db.insert(invoicesTable).values({
         clientUserId: uid,
         invoiceNumber: `SVC-${Date.now()}`,
         description: `${serviceName} — purchased via portal`,
@@ -1715,7 +1716,7 @@ async function processStripeEvent(req: Request, event: import("stripe").Stripe.E
         status: "paid",
         paidAt: new Date(),
         stripeSessionId: session.id,
-      });
+      }).returning({ id: invoicesTable.id });
 
       // Notify the admin user(s)
       const admins = await db.select().from(usersTable).where(eq(usersTable.role, "admin"));
@@ -1763,6 +1764,19 @@ async function processStripeEvent(req: Request, event: import("stripe").Stripe.E
       sendAdminSms(
         `New order: ${buyer?.name ?? buyer?.email ?? "A client"} — ${serviceName} — $${amountDollars}`,
       ).catch(() => null);
+
+      // Push notification to Shane's devices
+      db.select({ token: deviceTokensTable.token }).from(deviceTokensTable)
+        .then((rows) => {
+          const tokens = rows.map((r) => r.token);
+          return sendPushNotifications(
+            tokens,
+            "New Order",
+            `${buyer?.name ?? buyer?.email ?? "Client"} — ${serviceName} — $${amountDollars}`,
+            { screen: "order", id: String(newInvoice?.id ?? "") },
+          );
+        })
+        .catch(() => null);
     }
 
     // Onboarding purchase — auto-provision project + workflow steps
@@ -1788,8 +1802,31 @@ async function processStripeEvent(req: Request, event: import("stripe").Stripe.E
         sendAdminSms(
           `New order: ${buyer?.name ?? buyer?.email ?? "A client"} — ${serviceLabel} — $${totalDollars}`,
         ).catch(() => null);
+
+        // Push notification to Shane's devices — look up the invoice ID created during provisioning
+        const buyerLabel = buyer?.name ?? buyer?.email ?? "A client";
+        db.select({ token: deviceTokensTable.token }).from(deviceTokensTable)
+          .then(async (rows) => {
+            const tokens = rows.map((r) => r.token);
+            // Find the first invoice for this session so the push can deep-link to it
+            const [firstInv] = await db
+              .select({ id: invoicesTable.id })
+              .from(invoicesTable)
+              .where(eq(invoicesTable.stripeSessionId, session.id))
+              .limit(1);
+            const pushData: Record<string, string> = firstInv?.id
+              ? { screen: "order", id: String(firstInv.id) }
+              : { screen: "orders" };
+            return sendPushNotifications(
+              tokens,
+              "New Order",
+              `${buyerLabel} — ${serviceLabel} — $${totalDollars}`,
+              pushData,
+            );
+          })
+          .catch(() => null);
       } catch {
-        // SMS failure must never break provisioning
+        // SMS/push failure must never break provisioning
       }
     }
   }
@@ -1873,6 +1910,19 @@ router.post("/portal/messages", requireAuth, async (req: Request, res: Response)
         <p>${clientUser?.name ?? "A client"} sent a new message:</p>
         <blockquote style="border-left:3px solid #0078D4;padding:8px 12px;color:#333;margin:12px 0;">${body.trim()}</blockquote>
       `);
+      // Push notification to Shane's devices
+      const clientName = clientUser?.name ?? clientUser?.email ?? "A client";
+      db.select({ token: deviceTokensTable.token }).from(deviceTokensTable)
+        .then((rows) => {
+          const tokens = rows.map((r) => r.token);
+          return sendPushNotifications(
+            tokens,
+            "New Client Message",
+            `${clientName}: ${body.trim().slice(0, 80)}`,
+            { screen: "conversation", clientId: String(senderId) },
+          );
+        })
+        .catch(() => null);
     }
   }
 

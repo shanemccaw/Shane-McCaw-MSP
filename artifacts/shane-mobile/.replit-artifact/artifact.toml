@@ -1,0 +1,26 @@
+kind = "mobile"
+previewPath = "/shane-mobile/"
+title = "Shane Admin App"
+version = "1.0.0"
+id = "artifacts/shane-mobile"
+router = "expo-domain"
+
+[[integratedSkills]]
+name = "expo"
+version = "1.0.0"
+
+[[services]]
+name = "expo"
+paths = [ "/shane-mobile/" ]
+localPort = 24323
+
+[services.development]
+run = "pnpm --filter @workspace/shane-mobile run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/shane-mobile", "run", "build" ]
+run = [ "pnpm", "--filter", "@workspace/shane-mobile", "run", "serve" ]
+
+[services.env]
+PORT = "24323"
+BASE_PATH = "/shane-mobile/"
