@@ -99,6 +99,15 @@ const migrations = [
     name: "0003_add_priority_to_kanban_tasks",
     sql: `ALTER TABLE "kanban_tasks" ADD COLUMN IF NOT EXISTS "priority" text;`,
   },
+  {
+    name: "0004_add_missing_kanban_task_columns",
+    sql: `
+      ALTER TABLE "kanban_tasks" ADD COLUMN IF NOT EXISTS "group_name" text;
+      ALTER TABLE "kanban_tasks" ADD COLUMN IF NOT EXISTS "waiting_reason" text;
+      ALTER TABLE "kanban_tasks" ADD COLUMN IF NOT EXISTS "completion_status" text;
+      ALTER TABLE "kanban_tasks" ADD COLUMN IF NOT EXISTS "completion_notes" text;
+    `,
+  },
 ];
 
 async function main(): Promise<void> {
