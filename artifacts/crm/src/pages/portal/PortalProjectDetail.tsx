@@ -541,7 +541,7 @@ export default function PortalProjectDetail() {
         setData(prev => {
           if (!prev) return prev;
           const newReports = prev.statusReports.map(r => r.id === reportId ? { ...r, ...updated } : r);
-          const newPending = newReports.find(r => r.clientStatus === "pending") ?? null;
+          const newPending = newReports.find(r => r.clientStatus === "pending" || r.clientStatus === "has_questions") ?? null;
           return { ...prev, statusReports: newReports, pendingStatusReport: newPending };
         });
         setQuestionDialogReportId(null);
@@ -747,7 +747,7 @@ export default function PortalProjectDetail() {
             )}
 
             {/* Pending Status Report Banner */}
-            {pendingStatusReport && (
+            {pendingStatusReport && pendingStatusReport.clientStatus === "pending" && (
               <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex flex-col sm:flex-row sm:items-center gap-4">
                 <div className="flex items-start gap-3 flex-1 min-w-0">
                   <div className="w-8 h-8 rounded-full bg-amber-100 flex items-center justify-center flex-shrink-0 mt-0.5">
@@ -792,6 +792,59 @@ export default function PortalProjectDetail() {
                     Has Questions
                   </button>
                 </div>
+              </div>
+            )}
+
+            {/* Has-Questions Status Report Banner — persists until client accepts */}
+            {pendingStatusReport && pendingStatusReport.clientStatus === "has_questions" && (
+              <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 flex flex-col gap-4">
+                <div className="flex items-start gap-3">
+                  <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center flex-shrink-0 mt-0.5">
+                    <svg className="w-4 h-4 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-bold text-blue-900">Status Report — Question Submitted</p>
+                    <div className="flex items-center gap-2 flex-wrap mt-0.5">
+                      <p className="text-sm text-blue-800 font-medium truncate">{pendingStatusReport.title}</p>
+                      <span className="text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full bg-blue-200 text-blue-800 flex-shrink-0">
+                        {periodLabel(pendingStatusReport.period)}
+                      </span>
+                    </div>
+                    {pendingStatusReport.clientQuestion && (
+                      <p className="text-xs text-blue-700 mt-1.5 italic">
+                        Your question: &ldquo;{pendingStatusReport.clientQuestion}&rdquo;
+                      </p>
+                    )}
+                  </div>
+                </div>
+
+                {pendingStatusReport.adminReply ? (
+                  <div className="flex flex-col sm:flex-row sm:items-start gap-4">
+                    <div className="flex-1 bg-white border border-blue-200 rounded-lg p-3">
+                      <p className="text-[10px] font-bold uppercase tracking-wide text-blue-600 mb-1">Consultant Reply</p>
+                      <p className="text-sm text-[#0A2540] leading-relaxed">{pendingStatusReport.adminReply}</p>
+                    </div>
+                    <button
+                      onClick={() => void handleAcknowledge(pendingStatusReport.id, "accepted")}
+                      disabled={acknowledging}
+                      className="flex items-center gap-1.5 text-sm font-semibold text-white bg-green-600 hover:bg-green-700 px-4 py-2 rounded-lg transition-colors disabled:opacity-50 whitespace-nowrap flex-shrink-0 self-start"
+                    >
+                      {acknowledging ? (
+                        <div className="w-3.5 h-3.5 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+                      ) : (
+                        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
+                      )}
+                      Mark Accepted
+                    </button>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2 text-sm text-blue-700 bg-blue-100/60 rounded-lg px-3 py-2">
+                    <div className="w-3.5 h-3.5 border-2 border-blue-400 border-t-transparent rounded-full animate-spin flex-shrink-0" />
+                    Your question has been sent — awaiting a response from your consultant.
+                  </div>
+                )}
               </div>
             )}
 

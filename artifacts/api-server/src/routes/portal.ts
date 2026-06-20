@@ -202,8 +202,8 @@ router.get("/portal/projects/:id", requireAuth, async (req: Request, res: Respon
     ))
     .orderBy(desc(statusReportsTable.sentAt));
 
-  // First unacknowledged report = pending banner
-  const pendingStatusReport = statusReports.find(r => r.clientStatus === "pending") ?? null;
+  // First unacknowledged report = pending banner (pending OR has_questions — only "accepted" clears it)
+  const pendingStatusReport = statusReports.find(r => r.clientStatus === "pending" || r.clientStatus === "has_questions") ?? null;
 
   // Contract for this project (if any)
   const [contract] = await db.select({
