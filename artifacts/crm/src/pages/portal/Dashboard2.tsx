@@ -42,6 +42,14 @@ interface Document {
   projectId: number;
 }
 
+interface KanbanTask {
+  id: number;
+  projectId: number;
+  title: string;
+  column: string;
+  order: number;
+}
+
 // ─── Visual config lookup ──────────────────────────────────────────────────
 
 interface VisualConfig {
@@ -236,6 +244,7 @@ export default function Dashboard2() {
   const [services, setServices] = useState<ClientService[] | null>(null);
   const [reports, setReports] = useState<Report[]>([]);
   const [docsByProject, setDocsByProject] = useState<Record<number, Document[]>>({});
+  const [tasksByProject, setTasksByProject] = useState<Record<number, KanbanTask[]>>({});
   const { fetchWithAuth } = useAuth();
 
   const loadData = useCallback(async () => {
@@ -249,20 +258,29 @@ export default function Dashboard2() {
       setServices(svcs);
       setReports(rpts);
 
-      // Fetch documents for every project the user has
+      // Fetch documents + tasks for every project the user has
       const projectIds = [...new Set(svcs.map(s => s.projectId).filter((id): id is number => id !== null))];
       if (projectIds.length > 0) {
-        const docResults = await Promise.all(
+        const results = await Promise.all(
           projectIds.map(pid =>
             fetchWithAuth(`/api/portal/projects/${pid}`)
-              .then(r => (r.ok ? r.json() : { documents: [] }))
-              .then((data: { documents?: Document[] }) => ({ pid, docs: data.documents ?? [] }))
-              .catch(() => ({ pid, docs: [] as Document[] }))
+              .then(r => (r.ok ? r.json() : { documents: [], tasks: [] }))
+              .then((data: { documents?: Document[]; tasks?: KanbanTask[] }) => ({
+                pid,
+                docs: data.documents ?? [],
+                tasks: data.tasks ?? [],
+              }))
+              .catch(() => ({ pid, docs: [] as Document[], tasks: [] as KanbanTask[] }))
           )
         );
-        const map: Record<number, Document[]> = {};
-        for (const { pid, docs } of docResults) map[pid] = docs;
-        setDocsByProject(map);
+        const docMap: Record<number, Document[]> = {};
+        const taskMap: Record<number, KanbanTask[]> = {};
+        for (const { pid, docs, tasks } of results) {
+          docMap[pid] = docs;
+          taskMap[pid] = tasks;
+        }
+        setDocsByProject(docMap);
+        setTasksByProject(taskMap);
       }
     } catch {
       setServices([]);
@@ -281,6 +299,14 @@ export default function Dashboard2() {
   const activeDocuments = activeService?.projectId != null
     ? (docsByProject[activeService.projectId] ?? [])
     : [];
+
+  const activeTasks = activeService?.projectId != null
+    ? (tasksByProject[activeService.projectId] ?? [])
+    : [];
+
+  const taskOpen = activeTasks.filter(t => t.column === "backlog" || t.column === "in_progress").length;
+  const taskWaiting = activeTasks.filter(t => t.column === "waiting_on_customer").length;
+  const taskClosed = activeTasks.filter(t => t.column === "completed").length;
 
   return (
     <PortalLayout>
@@ -333,7 +359,42 @@ export default function Dashboard2() {
 
               {/* Workflow for selected service */}
               {activeService && (
-                <WorkflowTracker service={activeService} config={activeConfig} />
+                <>
+                  <WorkflowTracker service={activeService} config={activeConfig} />
+
+                  {/* Task summary stats */}
+                  {activeTasks.length > 0 && (
+                    <div className="grid grid-cols-3 gap-4 mt-6">
+                      <div className="bg-white rounded-xl border border-[#c6c6cd] d2-card-elevation px-6 py-5 flex items-center gap-4">
+                        <div className="w-10 h-10 rounded-full bg-[#dae2fd] flex items-center justify-center flex-shrink-0">
+                          <span className="material-symbols-outlined text-[#0078D4]" style={{ fontSize: 20 }}>task_alt</span>
+                        </div>
+                        <div>
+                          <p className="text-3xl font-bold text-[#191c1e] leading-none">{taskOpen}</p>
+                          <p className="text-xs text-[#76777d] mt-1 font-medium uppercase tracking-wide">Open Tasks</p>
+                        </div>
+                      </div>
+                      <div className="bg-white rounded-xl border border-[#c6c6cd] d2-card-elevation px-6 py-5 flex items-center gap-4">
+                        <div className="w-10 h-10 rounded-full bg-[#fff3cd] flex items-center justify-center flex-shrink-0">
+                          <span className="material-symbols-outlined text-[#b45309]" style={{ fontSize: 20 }}>hourglass_empty</span>
+                        </div>
+                        <div>
+                          <p className="text-3xl font-bold text-[#191c1e] leading-none">{taskWaiting}</p>
+                          <p className="text-xs text-[#76777d] mt-1 font-medium uppercase tracking-wide">Waiting on You</p>
+                        </div>
+                      </div>
+                      <div className="bg-white rounded-xl border border-[#c6c6cd] d2-card-elevation px-6 py-5 flex items-center gap-4">
+                        <div className="w-10 h-10 rounded-full bg-[#dcfce7] flex items-center justify-center flex-shrink-0">
+                          <span className="material-symbols-outlined text-[#16a34a]" style={{ fontSize: 20 }}>check_circle</span>
+                        </div>
+                        <div>
+                          <p className="text-3xl font-bold text-[#191c1e] leading-none">{taskClosed}</p>
+                          <p className="text-xs text-[#76777d] mt-1 font-medium uppercase tracking-wide">Completed</p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </>
               )}
             </>
           )}
