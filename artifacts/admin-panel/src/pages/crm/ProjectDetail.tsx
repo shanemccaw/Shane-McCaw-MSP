@@ -794,6 +794,11 @@ export default function ProjectDetailPage() {
   const [tasks, setTasks] = useState<KanbanTask[]>([]);
   const [loading, setLoading] = useState(true);
 
+  const completedTaskCount = tasks.filter(t => t.column === "completed").length;
+  const computedProgress = tasks.length > 0
+    ? Math.round(completedTaskCount / tasks.length * 100)
+    : (project?.progress ?? 0);
+
   const [selectedTask, setSelectedTask] = useState<KanbanCardModalTask | null>(null);
   const [selectedStepTitle, setSelectedStepTitle] = useState<string | null>(null);
 
@@ -1111,9 +1116,9 @@ export default function ProjectDetailPage() {
         {/* Progress bar */}
         <div className="flex items-center gap-3 mt-4">
           <div className="flex-1 bg-[#F7F9FC] rounded-full h-2 border border-border max-w-xs">
-            <div className="h-2 rounded-full bg-[#0078D4] transition-all" style={{ width: `${project.progress}%` }} />
+            <div className="h-2 rounded-full bg-[#0078D4] transition-all" style={{ width: `${computedProgress}%` }} />
           </div>
-          <span className="text-xs font-semibold text-muted-foreground">{project.progress}% complete</span>
+          <span className="text-xs font-semibold text-muted-foreground">{computedProgress}% complete</span>
           {project.endDate && (
             <span className="text-xs text-muted-foreground ml-2">
               Target: {new Date(project.endDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
