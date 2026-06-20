@@ -134,6 +134,25 @@ const legacyMigrations = [
       ALTER TABLE "kanban_tasks" ADD COLUMN IF NOT EXISTS "completion_notes" text;
     `,
   },
+  {
+    name: "0005_emails_linked_project_and_lead",
+    sql: `
+      ALTER TABLE "emails" ADD COLUMN IF NOT EXISTS "linked_project_id" integer;
+      ALTER TABLE "emails" ADD COLUMN IF NOT EXISTS "linked_lead_id" integer;
+      ALTER TABLE "emails"
+        DROP CONSTRAINT IF EXISTS "emails_linked_project_id_fk",
+        ADD CONSTRAINT "emails_linked_project_id_fk"
+          FOREIGN KEY ("linked_project_id")
+          REFERENCES "projects"("id")
+          ON DELETE SET NULL;
+      ALTER TABLE "emails"
+        DROP CONSTRAINT IF EXISTS "emails_linked_lead_id_fk",
+        ADD CONSTRAINT "emails_linked_lead_id_fk"
+          FOREIGN KEY ("linked_lead_id")
+          REFERENCES "leads"("id")
+          ON DELETE SET NULL;
+    `,
+  },
 ];
 
 // ---------------------------------------------------------------------------

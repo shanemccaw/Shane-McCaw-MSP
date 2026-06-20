@@ -85,6 +85,13 @@
       "when": 1750982400000,
       "tag": "0011_add_project_closures",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1751068800000,
+      "tag": "0012_emails_linked_project_and_lead",
+      "breakpoints": true
     }
   ]
 }

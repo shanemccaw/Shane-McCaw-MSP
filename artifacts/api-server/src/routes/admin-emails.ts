@@ -1,5 +1,5 @@
 import { Router, type IRouter, type Request, type Response } from "express";
-import { db, emailsTable, emailDomainRulesTable, usersTable, kanbanTasksTable, projectsTable } from "@workspace/db";
+import { db, emailsTable, emailDomainRulesTable, usersTable, kanbanTasksTable, projectsTable, leadsTable } from "@workspace/db";
 import { eq, and, isNull, isNotNull, desc, count, gte } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/requireAuth";
 import { graphCredentialsPresent, getMailMessageBody } from "../lib/graph";
@@ -90,6 +90,9 @@ router.get("/admin/emails/:id", requireAdmin, async (req: Request, res: Response
   const id = parseInt(String(req.params["id"] ?? ""), 10);
   if (isNaN(id)) { res.status(400).json({ error: "Invalid email ID" }); return; }
 
+  const projectsAlias = projectsTable;
+  const leadsAlias = leadsTable;
+
   const [row] = await db
     .select({
       email: emailsTable,
@@ -98,9 +101,13 @@ router.get("/admin/emails/:id", requireAdmin, async (req: Request, res: Response
       clientCompany: usersTable.company,
       clientPhone: usersTable.phone,
       clientId: usersTable.id,
+      linkedProjectTitle: projectsAlias.title,
+      linkedLeadName: leadsAlias.name,
     })
     .from(emailsTable)
     .leftJoin(usersTable, eq(emailsTable.linkedUserId, usersTable.id))
+    .leftJoin(projectsAlias, eq(emailsTable.linkedProjectId, projectsAlias.id))
+    .leftJoin(leadsAlias, eq(emailsTable.linkedLeadId, leadsAlias.id))
     .where(eq(emailsTable.id, id))
     .limit(1);
 
@@ -135,15 +142,46 @@ router.patch("/admin/emails/:id", requireAdmin, async (req: Request, res: Respon
   const id = parseInt(String(req.params["id"] ?? ""), 10);
   if (isNaN(id)) { res.status(400).json({ error: "Invalid email ID" }); return; }
 
-  const { userId } = req.body as { userId?: number | null };
+  const { userId, linkedProjectId, linkedLeadId } = req.body as {
+    userId?: number | null;
+    linkedProjectId?: number | null;
+    linkedLeadId?: number | null;
+  };
+
   if (userId !== null && userId !== undefined && (typeof userId !== "number" || isNaN(userId))) {
     res.status(400).json({ error: "userId must be a number or null" });
+    return;
+  }
+  if (linkedProjectId !== null && linkedProjectId !== undefined && (typeof linkedProjectId !== "number" || isNaN(linkedProjectId))) {
+    res.status(400).json({ error: "linkedProjectId must be a number or null" });
+    return;
+  }
+  if (linkedLeadId !== null && linkedLeadId !== undefined && (typeof linkedLeadId !== "number" || isNaN(linkedLeadId))) {
+    res.status(400).json({ error: "linkedLeadId must be a number or null" });
+    return;
+  }
+
+  const updates: Record<string, unknown> = {};
+
+  if (userId !== undefined) updates["linkedUserId"] = userId ?? null;
+
+  if (linkedProjectId !== undefined) {
+    updates["linkedProjectId"] = linkedProjectId ?? null;
+    if (linkedProjectId !== null) updates["linkedLeadId"] = null;
+  }
+  if (linkedLeadId !== undefined) {
+    updates["linkedLeadId"] = linkedLeadId ?? null;
+    if (linkedLeadId !== null) updates["linkedProjectId"] = null;
+  }
+
+  if (Object.keys(updates).length === 0) {
+    res.status(400).json({ error: "No valid fields to update" });
     return;
   }
 
   const [updated] = await db
     .update(emailsTable)
-    .set({ linkedUserId: userId ?? null })
+    .set(updates)
     .where(eq(emailsTable.id, id))
     .returning();
 
@@ -195,7 +233,7 @@ router.post("/admin/emails/:id/tasks", requireAdmin, async (req: Request, res: R
       description: description ?? null,
       column: "backlog",
       order: 0,
-      priority: priority ?? null,
+      priority: priority ?? "medium",
       dueDate: dueDate ? new Date(dueDate) : null,
       sourceEmailId: emailId,
     })

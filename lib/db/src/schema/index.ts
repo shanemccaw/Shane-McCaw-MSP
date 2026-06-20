@@ -446,6 +446,8 @@ export const emailsTable = pgTable("emails", {
   receivedAt: timestamp("received_at").notNull(),
   rawFrom: text("raw_from"),
   linkedUserId: integer("linked_user_id").references(() => usersTable.id),
+  linkedProjectId: integer("linked_project_id").references(() => projectsTable.id, { onDelete: "set null" }),
+  linkedLeadId: integer("linked_lead_id").references(() => leadsTable.id, { onDelete: "set null" }),
   ingestedAt: timestamp("ingested_at").notNull().defaultNow(),
 });
 
