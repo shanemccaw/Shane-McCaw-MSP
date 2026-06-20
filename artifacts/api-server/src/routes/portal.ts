@@ -111,8 +111,11 @@ router.get("/portal/projects", requireAuth, async (req: Request, res: Response) 
     const steps = stepsByProject.get(p.id) ?? [];
     const currentStep = steps.find(s => s.status === "in_progress") ?? steps.find(s => s.status === "pending") ?? steps[steps.length - 1];
     const currentStepIndex = currentStep ? steps.indexOf(currentStep) : steps.length - 1;
+    const completedSteps = steps.filter(s => s.status === "completed").length;
+    const computedProgress = steps.length > 0 ? Math.round((completedSteps / steps.length) * 100) : p.progress;
     return {
       ...p,
+      progress: computedProgress,
       stepCount: steps.length,
       currentStepIndex,
       currentStepTitle: currentStep?.title ?? null,
