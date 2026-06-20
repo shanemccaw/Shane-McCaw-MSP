@@ -8,6 +8,7 @@
     "generate:og": "node ../scripts/generate-og-image.mjs",
     "sync-webhooks": "tsx ./src/sync-stripe-webhooks.ts",
     "migrate-prod": "tsx ./src/migrate-prod.ts",
+    "migrate-dev": "tsx ./src/migrate-dev.ts",
     "check-drift": "tsx ./src/check-migration-drift.ts",
     "update-schema-hash": "tsx ./src/update-schema-hash.ts",
     "sync-services": "tsx ./src/sync-services-to-prod.ts",
