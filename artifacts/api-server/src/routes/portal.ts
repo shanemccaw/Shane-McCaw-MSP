@@ -2331,6 +2331,25 @@ router.delete("/admin/reports/:id", requireAdmin, async (req: Request, res: Resp
   res.json({ deleted: id });
 });
 
+// ─── CLIENT: Status Reports (published only) ─────────────────────────────────
+router.get("/portal/status-reports", requireAuth, async (req: Request, res: Response) => {
+  const userId = req.user!.id;
+  const reports = await db.select().from(statusReportsTable)
+    .where(and(eq(statusReportsTable.clientUserId, userId), eq(statusReportsTable.reportStatus, "sent")))
+    .orderBy(desc(statusReportsTable.sentAt));
+  res.json(reports);
+});
+
+router.get("/portal/status-reports/:id", requireAuth, async (req: Request, res: Response) => {
+  const userId = req.user!.id;
+  const id = parseInt(String(req.params.id ?? ""), 10);
+  if (isNaN(id)) { res.status(400).json({ error: "Invalid ID" }); return; }
+  const [report] = await db.select().from(statusReportsTable)
+    .where(and(eq(statusReportsTable.id, id), eq(statusReportsTable.clientUserId, userId), eq(statusReportsTable.reportStatus, "sent")));
+  if (!report) { res.status(404).json({ error: "Not found" }); return; }
+  res.json(report);
+});
+
 // ─── ADMIN: Status Reports ───────────────────────────────────────────────────
 
 router.get("/admin/status-reports", requireAdmin, async (_req: Request, res: Response) => {
@@ -2405,7 +2424,7 @@ router.post("/admin/status-reports/:id/send", requireAdmin, async (req: Request,
       title: `New status report: ${report.title}`,
       body: "Your consultant has sent you a project status report. View it in your portal.",
       type: "project_update",
-      linkPath: "/portal/projects",
+      linkPath: "/portal/status-reports",
     });
   }
 

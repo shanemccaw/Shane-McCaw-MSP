@@ -292,7 +292,7 @@ export default function StatusReportsPage() {
         if (statusOverride === "sent") {
           await fetchWithAuth(`/api/admin/status-reports/${saved.id}/send`, { method: "POST", body: "{}" });
         }
-        setSaveMsg(statusOverride === "sent" ? "Report sent to client!" : "Draft saved.");
+        setSaveMsg(statusOverride === "sent" ? "Report published to client!" : "Draft saved.");
         setIsNew(false);
         setEditing(saved);
         await load();
@@ -434,7 +434,7 @@ export default function StatusReportsPage() {
                   </div>
                 </div>
                 <span className={`text-xs font-semibold px-2.5 py-1 rounded-full border ${r.reportStatus === "sent" ? "bg-emerald-50 text-emerald-700 border-emerald-200" : "bg-amber-50 text-amber-700 border-amber-200"}`}>
-                  {r.reportStatus === "sent" ? "Sent" : "Draft"}
+                  {r.reportStatus === "sent" ? "Published" : "Draft"}
                 </span>
                 <div className="flex items-center gap-2 flex-shrink-0">
                   <button onClick={() => openEdit(r)} className="text-xs text-[#0078D4] hover:text-[#0078D4]/80 font-semibold transition-colors px-2 py-1 rounded hover:bg-[#0078D4]/10">
@@ -591,7 +591,7 @@ export default function StatusReportsPage() {
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
               </svg>
-              {sending ? "Sending…" : "Send to Client"}
+              {sending ? "Publishing…" : "Publish to Client"}
             </button>
           </div>
         </div>
