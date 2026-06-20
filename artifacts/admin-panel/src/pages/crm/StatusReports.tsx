@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 
-interface Activity { title: string; description: string; }
+interface Activity { title: string; description: string; completionStatus?: string | null; completionNotes?: string | null; }
 interface NextStep { label: string; title: string; description: string; }
 
 interface StatusReport {
@@ -149,6 +149,17 @@ export default function StatusReportsPage() {
             ...f,
             title: `${data.project.title} — ${now.toLocaleString("default", { month: "long" })} ${now.getFullYear()} Status Report`,
           }));
+        }
+        // Auto-populate draft input from completed tasks that have completion notes
+        const tasksWithNotes = data.completedTasks.filter(t => t.completionNotes);
+        if (tasksWithNotes.length > 0) {
+          const prompt = tasksWithNotes
+            .map(t => {
+              const header = `✓ ${t.title}${t.completionStatus ? ` — ${t.completionStatus}` : ""}`;
+              return `${header}\n${t.completionNotes!.trim()}`;
+            })
+            .join("\n\n");
+          setDraftInput(prompt);
         }
       }
     } finally {

@@ -2342,7 +2342,12 @@ router.get("/admin/projects/:id/report-autofill", requireAdmin, async (req: Requ
 
   const completedTasks = tasks
     .filter(t => t.column === "completed")
-    .map(t => ({ title: t.title, description: t.description ?? "" }));
+    .map(t => ({
+      title: t.title,
+      description: t.description ?? "",
+      completionStatus: t.completionStatus ?? null,
+      completionNotes: t.completionNotes ?? null,
+    }));
 
   const completedSteps = steps.filter(s => s.status === "completed")
     .map(s => ({ title: s.title, description: s.description ?? "" }));
