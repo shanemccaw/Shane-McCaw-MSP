@@ -2037,6 +2037,15 @@ export default function ProjectDetailPage() {
         open={!!selectedTask}
         onClose={() => setSelectedTask(null)}
         mode="admin"
+        fetchWithAuth={fetchWithAuth}
+        onUpdate={updated => {
+          setSelectedTask(prev => prev ? { ...prev, ...updated } : prev);
+          setTasks(prev => prev.map(t =>
+            t.id === updated.id
+              ? { ...t, title: updated.title, description: updated.description ?? null, priority: updated.priority ?? null, assignedTo: updated.assignedTo ?? null, dueDate: updated.dueDate ?? null }
+              : t
+          ));
+        }}
       />
     </div>
   );
