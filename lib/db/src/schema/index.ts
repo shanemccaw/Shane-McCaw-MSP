@@ -410,6 +410,8 @@ export const statusReportsTable = pgTable("status_reports", {
   nextSteps: jsonb("next_steps").$type<Array<{ label: string; title: string; description: string }>>().notNull().default([]),
   reportDate: timestamp("report_date"),
   sentAt: timestamp("sent_at"),
+  clientStatus: text("client_status", { enum: ["pending", "accepted", "has_questions"] }).notNull().default("pending"),
+  clientQuestion: text("client_question"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });

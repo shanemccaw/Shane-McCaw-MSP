@@ -85,6 +85,25 @@ interface PreviewTask {
   description: string | null;
 }
 
+interface StatusReport {
+  id: number;
+  title: string;
+  period: string;
+  executiveSummary: string | null;
+  completedActivities: Array<{ title: string; description: string }>;
+  nextSteps: Array<{ label: string; title: string; description: string }>;
+  reportDate: string | null;
+  sentAt: string | null;
+  clientStatus: "pending" | "accepted" | "has_questions";
+  clientQuestion: string | null;
+}
+
+interface ContractRef {
+  id: number;
+  signedAt: string | null;
+  signerName: string | null;
+}
+
 interface ProjectDetailData {
   project: Project;
   steps: WorkflowStep[];
@@ -92,9 +111,12 @@ interface ProjectDetailData {
   previewTasks: PreviewTask[];
   documents: Document[];
   updates: Update[];
+  statusReports: StatusReport[];
+  pendingStatusReport: StatusReport | null;
+  contract: ContractRef | null;
 }
 
-type SecondaryTab = "kanban" | "documents" | "updates";
+type SecondaryTab = "kanban" | "documents" | "status-reports";
 
 const KANBAN_COLUMNS = [
   { key: "backlog" as const, label: "Backlog", color: "border-gray-200 bg-gray-50" },
@@ -102,25 +124,6 @@ const KANBAN_COLUMNS = [
   { key: "waiting_on_customer" as const, label: "Waiting on You", color: "border-yellow-200 bg-yellow-50" },
   { key: "completed" as const, label: "Completed", color: "border-green-200 bg-green-50" },
 ];
-
-const UPDATE_TYPE_CONFIG: Record<string, { icon: React.ReactNode; color: string }> = {
-  milestone: {
-    color: "bg-[#0078D4] border-[#0078D4]",
-    icon: <svg className="w-3.5 h-3.5 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M3 21v-4m0 0V5a2 2 0 012-2h6.5l1 1H21l-3 6 3 6h-8.5l-1-1H5a2 2 0 00-2 2zm9-13.5V9" /></svg>,
-  },
-  update: {
-    color: "bg-white border-border",
-    icon: <svg className="w-3.5 h-3.5 text-[#0078D4]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>,
-  },
-  file: {
-    color: "bg-teal-500 border-teal-500",
-    icon: <svg className="w-3.5 h-3.5 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" /></svg>,
-  },
-  message: {
-    color: "bg-purple-500 border-purple-500",
-    icon: <svg className="w-3.5 h-3.5 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" /></svg>,
-  },
-};
 
 function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
@@ -323,6 +326,91 @@ function StepProgressBar({ value }: { value: number }) {
   );
 }
 
+function periodLabel(period: string): string {
+  const m: Record<string, string> = {
+    weekly: "Weekly",
+    monthly: "Monthly",
+    executive_summary: "Executive Summary",
+    other: "Report",
+  };
+  return m[period] ?? period;
+}
+
+function ClientStatusChip({ status }: { status: "pending" | "accepted" | "has_questions" }) {
+  if (status === "accepted") {
+    return (
+      <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full bg-green-100 text-green-700 border border-green-200">
+        <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
+        Accepted
+      </span>
+    );
+  }
+  if (status === "has_questions") {
+    return (
+      <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 border border-amber-200">
+        <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+        Has Questions
+      </span>
+    );
+  }
+  return (
+    <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full bg-orange-100 text-orange-700 border border-orange-200">
+      <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+      Pending
+    </span>
+  );
+}
+
+function QuestionDialog({
+  reportTitle,
+  onSubmit,
+  onCancel,
+  submitting,
+}: {
+  reportTitle: string;
+  onSubmit: (question: string) => void;
+  onCancel: () => void;
+  submitting: boolean;
+}) {
+  const [question, setQuestion] = useState("");
+  return (
+    <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6">
+        <h3 className="text-base font-bold text-[#0A2540] mb-1">Ask a Question</h3>
+        <p className="text-sm text-muted-foreground mb-4">
+          Re: <span className="font-semibold text-[#0A2540]">{reportTitle}</span>
+        </p>
+        <label className="block text-xs font-semibold text-[#0A2540] mb-1.5">Your Question</label>
+        <textarea
+          value={question}
+          onChange={e => setQuestion(e.target.value)}
+          rows={4}
+          placeholder="Describe your question or concern about this report…"
+          className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4] resize-none"
+        />
+        <p className="text-xs text-muted-foreground mt-1.5 mb-5">Your question will be submitted to your consultant for follow-up.</p>
+        <div className="flex items-center gap-3 justify-end">
+          <button
+            onClick={onCancel}
+            disabled={submitting}
+            className="text-sm font-semibold text-muted-foreground px-4 py-2 rounded-lg border border-border hover:bg-gray-50 transition-colors disabled:opacity-50"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={() => { if (question.trim()) onSubmit(question.trim()); }}
+            disabled={!question.trim() || submitting}
+            className="text-sm font-semibold text-white bg-[#0078D4] px-4 py-2 rounded-lg hover:bg-[#0078D4]/90 transition-colors disabled:opacity-50 flex items-center gap-2"
+          >
+            {submitting && <div className="w-3.5 h-3.5 border-2 border-white/40 border-t-white rounded-full animate-spin" />}
+            Submit Question
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function PortalProjectDetail() {
   const params = useParams<{ id: string }>();
   const { fetchWithAuth } = useAuth();
@@ -335,6 +423,11 @@ export default function PortalProjectDetail() {
   const [exportingAudit, setExportingAudit] = useState(false);
   const [selectedTask, setSelectedTask] = useState<KanbanCardModalTask | null>(null);
   const [selectedStepTitle, setSelectedStepTitle] = useState<string | null>(null);
+
+  // Status report acknowledgement state
+  const [acknowledging, setAcknowledging] = useState(false);
+  const [questionDialogReportId, setQuestionDialogReportId] = useState<number | null>(null);
+  const [expandedReportId, setExpandedReportId] = useState<number | null>(null);
 
   const handleCardClick = useCallback((task: KanbanTask, stepTitle?: string | null) => {
     setSelectedTask(task);
@@ -380,6 +473,29 @@ export default function PortalProjectDetail() {
       URL.revokeObjectURL(url);
     } finally {
       setExportingAudit(false);
+    }
+  };
+
+  const handleAcknowledge = async (reportId: number, status: "accepted" | "has_questions", question?: string) => {
+    setAcknowledging(true);
+    try {
+      const res = await fetchWithAuth(`/api/portal/status-reports/${reportId}/acknowledge`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status, question }),
+      });
+      if (res.ok) {
+        const updated = await res.json() as StatusReport;
+        setData(prev => {
+          if (!prev) return prev;
+          const newReports = prev.statusReports.map(r => r.id === reportId ? { ...r, ...updated } : r);
+          const newPending = newReports.find(r => r.clientStatus === "pending") ?? null;
+          return { ...prev, statusReports: newReports, pendingStatusReport: newPending };
+        });
+        setQuestionDialogReportId(null);
+      }
+    } finally {
+      setAcknowledging(false);
     }
   };
 
@@ -430,7 +546,7 @@ export default function PortalProjectDetail() {
     );
   }
 
-  const { project, steps, tasks, documents, updates } = data;
+  const { project, steps, tasks, documents, updates, statusReports, pendingStatusReport, contract } = data;
 
   // Retainer engagements get an executive dashboard view
   if (project.projectType === "retainer") {
@@ -450,7 +566,7 @@ export default function PortalProjectDetail() {
   const secondaryTabs: { key: SecondaryTab; label: string; count?: number }[] = [
     { key: "kanban", label: "Kanban Board" },
     { key: "documents", label: "Documents", count: documents.length },
-    { key: "updates", label: "Updates", count: updates.length },
+    { key: "status-reports", label: "Status Reports", count: statusReports.length },
   ];
 
   return (
@@ -535,345 +651,426 @@ export default function PortalProjectDetail() {
 
         {/* ── Workflow Explorer (default view) ── */}
         {secondaryTab === null && (
-          <div className="grid grid-cols-12 gap-6 items-start">
-            {/* Left: Workflow Explorer */}
-            <div className="col-span-12 lg:col-span-8 space-y-3">
-              <div className="flex items-center justify-between mb-1">
-                <h2 className="text-base font-bold text-[#0A2540] tracking-tight">Workflow Explorer</h2>
-                <span className="text-xs text-muted-foreground">{steps.filter(s => s.status === "completed").length}/{steps.length} phases complete</span>
-              </div>
-
-              {steps.length === 0 ? (
-                <div className="bg-white border border-border rounded-xl p-10 text-center text-muted-foreground text-sm">
-                  No workflow steps defined yet.
+          <div className="space-y-6">
+            {/* Pending Status Report Banner */}
+            {pendingStatusReport && (
+              <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex flex-col sm:flex-row sm:items-center gap-4">
+                <div className="flex items-start gap-3 flex-1 min-w-0">
+                  <div className="w-8 h-8 rounded-full bg-amber-100 flex items-center justify-center flex-shrink-0 mt-0.5">
+                    <svg className="w-4 h-4 text-amber-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    </svg>
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-sm font-bold text-amber-900">New Status Report Ready for Review</p>
+                    <div className="flex items-center gap-2 flex-wrap mt-0.5">
+                      <p className="text-sm text-amber-800 font-medium truncate">{pendingStatusReport.title}</p>
+                      <span className="text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full bg-amber-200 text-amber-800 flex-shrink-0">
+                        {periodLabel(pendingStatusReport.period)}
+                      </span>
+                    </div>
+                    {pendingStatusReport.sentAt && (
+                      <p className="text-xs text-amber-600 mt-0.5">
+                        Sent {new Date(pendingStatusReport.sentAt).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}
+                      </p>
+                    )}
+                  </div>
                 </div>
-              ) : (
-                <>
-                  <div className="space-y-2">
-                    {visibleSteps.map((step, idx) => {
-                      const isCompleted = step.status === "completed";
-                      const isInProgress = step.status === "in_progress";
-                      const isExpanded = expandedStepId === step.id;
-                      const isFirstInProgress = isInProgress && !steps.slice(0, idx).some(s => s.status === "in_progress");
+                <div className="flex items-center gap-2 flex-shrink-0 sm:flex-col sm:gap-2 lg:flex-row">
+                  <button
+                    onClick={() => void handleAcknowledge(pendingStatusReport.id, "accepted")}
+                    disabled={acknowledging}
+                    className="flex items-center gap-1.5 text-sm font-semibold text-white bg-green-600 hover:bg-green-700 px-4 py-2 rounded-lg transition-colors disabled:opacity-50 whitespace-nowrap"
+                  >
+                    {acknowledging ? (
+                      <div className="w-3.5 h-3.5 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+                    ) : (
+                      <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
+                    )}
+                    Mark Accepted
+                  </button>
+                  <button
+                    onClick={() => setQuestionDialogReportId(pendingStatusReport.id)}
+                    disabled={acknowledging}
+                    className="flex items-center gap-1.5 text-sm font-semibold text-amber-800 bg-amber-100 hover:bg-amber-200 border border-amber-300 px-4 py-2 rounded-lg transition-colors disabled:opacity-50 whitespace-nowrap"
+                  >
+                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                    Has Questions
+                  </button>
+                </div>
+              </div>
+            )}
 
-                      const prevAllComplete = steps.slice(0, idx).every(s => s.status === "completed");
-                      const isLocked = step.status === "pending" && !prevAllComplete;
+            <div className="grid grid-cols-12 gap-6 items-start">
+              {/* Left: Workflow Explorer */}
+              <div className="col-span-12 lg:col-span-8 space-y-3">
+                <div className="flex items-center justify-between mb-1">
+                  <h2 className="text-base font-bold text-[#0A2540] tracking-tight">Workflow Explorer</h2>
+                  <span className="text-xs text-muted-foreground">{steps.filter(s => s.status === "completed").length}/{steps.length} phases complete</span>
+                </div>
 
-                      return (
-                        <div
-                          key={step.id}
-                          className={`rounded-xl border overflow-hidden transition-all ${
-                            isFirstInProgress
-                              ? "border-2 border-[#0A2540] shadow-md"
-                              : isCompleted
-                              ? "border border-border opacity-60"
-                              : "border border-border"
-                          }`}
-                        >
-                          {/* Phase row header */}
-                          <button
-                            onClick={() => setExpandedStepId(isExpanded ? null : step.id)}
-                            className={`w-full flex items-center gap-3 px-4 py-3.5 text-left transition-colors ${
+                {steps.length === 0 ? (
+                  <div className="bg-white border border-border rounded-xl p-10 text-center text-muted-foreground text-sm">
+                    No workflow steps defined yet.
+                  </div>
+                ) : (
+                  <>
+                    <div className="space-y-2">
+                      {visibleSteps.map((step, idx) => {
+                        const isCompleted = step.status === "completed";
+                        const isInProgress = step.status === "in_progress";
+                        const isExpanded = expandedStepId === step.id;
+                        const isFirstInProgress = isInProgress && !steps.slice(0, idx).some(s => s.status === "in_progress");
+
+                        const prevAllComplete = steps.slice(0, idx).every(s => s.status === "completed");
+                        const isLocked = step.status === "pending" && !prevAllComplete;
+
+                        return (
+                          <div
+                            key={step.id}
+                            className={`rounded-xl border overflow-hidden transition-all ${
                               isFirstInProgress
-                                ? "bg-[#0A2540] text-white"
+                                ? "border-2 border-[#0A2540] shadow-md"
                                 : isCompleted
-                                ? "bg-gray-50 text-muted-foreground"
-                                : "bg-white text-[#0A2540] hover:bg-gray-50"
+                                ? "border border-border opacity-60"
+                                : "border border-border"
                             }`}
                           >
-                            {/* Status icon */}
-                            <span className={`flex-shrink-0 ${isCompleted ? "text-green-500" : isFirstInProgress ? "text-white/70" : "text-muted-foreground"}`}>
-                              {isCompleted ? (
-                                <CheckCircleIcon />
-                              ) : isLocked ? (
-                                <LockIcon />
-                              ) : (
-                                <CircleIcon />
-                              )}
-                            </span>
+                            {/* Phase row header */}
+                            <button
+                              onClick={() => setExpandedStepId(isExpanded ? null : step.id)}
+                              className={`w-full flex items-center gap-3 px-4 py-3.5 text-left transition-colors ${
+                                isFirstInProgress
+                                  ? "bg-[#0A2540] text-white"
+                                  : isCompleted
+                                  ? "bg-gray-50 text-muted-foreground"
+                                  : "bg-white text-[#0A2540] hover:bg-gray-50"
+                              }`}
+                            >
+                              {/* Status icon */}
+                              <span className={`flex-shrink-0 ${isCompleted ? "text-green-500" : isFirstInProgress ? "text-white/70" : "text-muted-foreground"}`}>
+                                {isCompleted ? (
+                                  <CheckCircleIcon />
+                                ) : isLocked ? (
+                                  <LockIcon />
+                                ) : (
+                                  <CircleIcon />
+                                )}
+                              </span>
 
-                            {/* Phase number + title */}
-                            <div className="flex-1 min-w-0">
-                              <div className="flex items-center gap-2 flex-wrap">
-                                <span className={`text-[10px] font-bold uppercase tracking-widest ${isFirstInProgress ? "text-white/50" : "text-muted-foreground"}`}>
-                                  Phase {idx + 1}
-                                </span>
-                                {isFirstInProgress && (
-                                  <span className="text-[10px] font-bold uppercase tracking-wide bg-white/20 text-white px-2 py-0.5 rounded">
-                                    Active
+                              {/* Phase number + title */}
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <span className={`text-[10px] font-bold uppercase tracking-widest ${isFirstInProgress ? "text-white/50" : "text-muted-foreground"}`}>
+                                    Phase {idx + 1}
+                                  </span>
+                                  {isFirstInProgress && (
+                                    <span className="text-[10px] font-bold uppercase tracking-wide bg-white/20 text-white px-2 py-0.5 rounded">
+                                      Active
+                                    </span>
+                                  )}
+                                </div>
+                                <p className={`text-sm font-semibold leading-tight ${isCompleted ? "line-through" : ""}`}>
+                                  {step.title}
+                                </p>
+                              </div>
+
+                              {/* Completion date or status */}
+                              <div className="flex items-center gap-3 flex-shrink-0">
+                                {isCompleted && step.completedAt && (
+                                  <span className="text-xs hidden sm:block">
+                                    {new Date(step.completedAt).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
                                   </span>
                                 )}
+                                {!isCompleted && (
+                                  <span className={`text-xs font-semibold px-2 py-0.5 rounded-full hidden sm:block ${
+                                    isInProgress ? (isFirstInProgress ? "bg-white/20 text-white" : "bg-blue-100 text-blue-700") :
+                                    isLocked ? "bg-gray-100 text-gray-500" :
+                                    "bg-gray-100 text-gray-500"
+                                  }`}>
+                                    {isInProgress ? "In Progress" : isLocked ? "Locked" : "Pending"}
+                                  </span>
+                                )}
+                                <span className={isFirstInProgress ? "text-white/60" : "text-muted-foreground"}>
+                                  <ChevronIcon open={isExpanded} />
+                                </span>
                               </div>
-                              <p className={`text-sm font-semibold leading-tight ${isCompleted ? "line-through" : ""}`}>
-                                {step.title}
-                              </p>
-                            </div>
+                            </button>
 
-                            {/* Completion date or status */}
-                            <div className="flex items-center gap-3 flex-shrink-0">
-                              {isCompleted && step.completedAt && (
-                                <span className="text-xs hidden sm:block">
-                                  {new Date(step.completedAt).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
-                                </span>
-                              )}
-                              {!isCompleted && (
-                                <span className={`text-xs font-semibold px-2 py-0.5 rounded-full hidden sm:block ${
-                                  isInProgress ? (isFirstInProgress ? "bg-white/20 text-white" : "bg-blue-100 text-blue-700") :
-                                  isLocked ? "bg-gray-100 text-gray-500" :
-                                  "bg-gray-100 text-gray-500"
-                                }`}>
-                                  {isInProgress ? "In Progress" : isLocked ? "Locked" : "Pending"}
-                                </span>
-                              )}
-                              <span className={isFirstInProgress ? "text-white/60" : "text-muted-foreground"}>
-                                <ChevronIcon open={isExpanded} />
-                              </span>
-                            </div>
-                          </button>
+                            {/* Expanded phase content */}
+                            {isExpanded && (() => {
+                              const stepTasks = data.tasks.filter(t => t.workflowStepId === step.id);
+                              const stepPreviewTasks = data.previewTasks?.filter(t => t.stepId === step.id) ?? [];
+                              const isPreviewOnly = stepTasks.length === 0 && stepPreviewTasks.length > 0;
 
-                          {/* Expanded phase content */}
-                          {isExpanded && (() => {
-                            const stepTasks = data.tasks.filter(t => t.workflowStepId === step.id);
-                            const stepPreviewTasks = data.previewTasks?.filter(t => t.stepId === step.id) ?? [];
-                            const isPreviewOnly = stepTasks.length === 0 && stepPreviewTasks.length > 0;
+                              const groups: Record<string, KanbanTask[]> = {};
+                              for (const t of stepTasks) {
+                                const g = t.groupName ?? "Tasks";
+                                if (!groups[g]) groups[g] = [];
+                                groups[g].push(t);
+                              }
 
-                            // Group live kanban tasks by groupName
-                            const groups: Record<string, KanbanTask[]> = {};
-                            for (const t of stepTasks) {
-                              const g = t.groupName ?? "Tasks";
-                              if (!groups[g]) groups[g] = [];
-                              groups[g].push(t);
-                            }
+                              const previewGroups: Record<string, PreviewTask[]> = {};
+                              for (const t of stepPreviewTasks) {
+                                const g = t.groupName ?? "Tasks";
+                                if (!previewGroups[g]) previewGroups[g] = [];
+                                previewGroups[g].push(t);
+                              }
 
-                            // Group preview tasks by groupName
-                            const previewGroups: Record<string, PreviewTask[]> = {};
-                            for (const t of stepPreviewTasks) {
-                              const g = t.groupName ?? "Tasks";
-                              if (!previewGroups[g]) previewGroups[g] = [];
-                              previewGroups[g].push(t);
-                            }
+                              return (
+                                <div className="bg-white border-t border-border px-5 py-4 space-y-4">
+                                  {step.description && (
+                                    <p className="text-xs text-muted-foreground leading-relaxed">{step.description}</p>
+                                  )}
 
-                            return (
-                              <div className="bg-white border-t border-border px-5 py-4 space-y-4">
-                                {step.description && (
-                                  <p className="text-xs text-muted-foreground leading-relaxed">{step.description}</p>
-                                )}
-
-                                {/* Preview tasks (phase not yet active — show planned state) */}
-                                {isPreviewOnly && (
-                                  <>
-                                    <p className="text-[10px] font-semibold text-[#0078D4] uppercase tracking-wide">
-                                      Planned tasks — will activate when this phase begins
-                                    </p>
-                                    {Object.entries(previewGroups).map(([group, pts]) => (
-                                      <div key={group}>
-                                        <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-2">{group}</p>
-                                        <div className="space-y-2">
-                                          {pts.map((pt, tidx) => (
-                                            <div key={tidx} className="flex items-start gap-3 py-2.5 border border-dashed border-border rounded-xl px-4 bg-gray-50/60">
-                                              <div className="w-4 h-4 rounded border-2 border-gray-200 flex-shrink-0 mt-0.5" />
-                                              <div className="flex-1 min-w-0">
-                                                <p className="text-sm font-medium text-muted-foreground leading-snug">{pt.title}</p>
-                                                {pt.description && (
-                                                  <p className="text-xs text-muted-foreground/70 mt-0.5 leading-relaxed">{pt.description}</p>
-                                                )}
-                                              </div>
-                                              <span className="text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full flex-shrink-0 bg-gray-100 text-gray-400">
-                                                Planned
-                                              </span>
-                                            </div>
-                                          ))}
-                                        </div>
-                                      </div>
-                                    ))}
-                                  </>
-                                )}
-
-                                {/* Live kanban tasks (phase active or completed) */}
-                                {!isPreviewOnly && (
-                                  <>
-                                    {stepTasks.length === 0 ? (
-                                      <p className="text-xs text-muted-foreground italic">No tasks defined for this phase.</p>
-                                    ) : (
-                                      Object.entries(groups).map(([group, kts]) => (
+                                  {isPreviewOnly && (
+                                    <>
+                                      <p className="text-[10px] font-semibold text-[#0078D4] uppercase tracking-wide">
+                                        Planned tasks — will activate when this phase begins
+                                      </p>
+                                      {Object.entries(previewGroups).map(([group, pts]) => (
                                         <div key={group}>
                                           <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-2">{group}</p>
                                           <div className="space-y-2">
-                                            {kts.map(kt => {
-                                              const taskDone = kt.column === "completed";
-                                              return (
-                                                <div key={kt.id} className="flex items-start gap-3 py-2.5 border border-border rounded-xl px-4 bg-[#F7F9FC] cursor-pointer hover:border-[#0078D4]/40 transition-colors" onClick={() => handleCardClick(kt, step.title)}>
-                                                  <div className={`w-4 h-4 rounded border-2 flex items-center justify-center flex-shrink-0 mt-0.5 ${taskDone ? "bg-green-500 border-green-500" : "border-gray-300"}`}>
-                                                    {taskDone && (
-                                                      <svg className="w-2.5 h-2.5 text-white" viewBox="0 0 12 12" fill="none">
-                                                        <path d="M2 6l3 3 5-5" stroke="white" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" />
-                                                      </svg>
-                                                    )}
-                                                  </div>
-                                                  <div className="flex-1 min-w-0">
-                                                    <p className={`text-sm font-medium leading-snug ${taskDone ? "line-through text-muted-foreground" : "text-[#0A2540]"}`}>{kt.title}</p>
-                                                    {kt.description && <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">{kt.description}</p>}
-                                                    {kt.assignedTo && <p className="text-[10px] text-muted-foreground mt-0.5">{kt.assignedTo}</p>}
-                                                  </div>
-                                                  {!taskDone && (
-                                                    <span className={`text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full flex-shrink-0 ${kt.column === "in_progress" ? "bg-blue-100 text-blue-700" : kt.column === "waiting_on_customer" ? "bg-yellow-100 text-yellow-700" : "bg-gray-100 text-gray-500"}`}>
-                                                      {kt.column === "in_progress" ? "In Progress" : kt.column === "waiting_on_customer" ? "Waiting" : "Backlog"}
-                                                    </span>
+                                            {pts.map((pt, tidx) => (
+                                              <div key={tidx} className="flex items-start gap-3 py-2.5 border border-dashed border-border rounded-xl px-4 bg-gray-50/60">
+                                                <div className="w-4 h-4 rounded border-2 border-gray-200 flex-shrink-0 mt-0.5" />
+                                                <div className="flex-1 min-w-0">
+                                                  <p className="text-sm font-medium text-muted-foreground leading-snug">{pt.title}</p>
+                                                  {pt.description && (
+                                                    <p className="text-xs text-muted-foreground/70 mt-0.5 leading-relaxed">{pt.description}</p>
                                                   )}
                                                 </div>
-                                              );
-                                            })}
+                                                <span className="text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full flex-shrink-0 bg-gray-100 text-gray-400">
+                                                  Planned
+                                                </span>
+                                              </div>
+                                            ))}
                                           </div>
                                         </div>
-                                      ))
-                                    )}
-                                  </>
-                                )}
-                                {step.notes && (
-                                  <p className="text-xs text-[#0078D4] italic">Note: {step.notes}</p>
-                                )}
-                                {step.dueDate && (
-                                  <p className="text-xs text-muted-foreground">
-                                    Due: {new Date(step.dueDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
-                                  </p>
-                                )}
-                              </div>
-                            );
-                          })()}
-                        </div>
-                      );
-                    })}
-                  </div>
+                                      ))}
+                                    </>
+                                  )}
 
-                  {/* Show remaining phases button */}
-                  {!showAllPhases && hiddenCount > 0 && (
-                    <button
-                      onClick={() => setShowAllPhases(true)}
-                      className="w-full py-3 text-sm font-semibold text-muted-foreground border border-dashed border-border rounded-xl hover:border-[#0078D4]/40 hover:text-[#0078D4] transition-colors bg-white"
-                    >
-                      Show Remaining {hiddenCount} Phase{hiddenCount !== 1 ? "s" : ""}
-                    </button>
-                  )}
-                  {showAllPhases && steps.length > PHASE_LIMIT && (
-                    <button
-                      onClick={() => setShowAllPhases(false)}
-                      className="w-full py-3 text-sm font-semibold text-muted-foreground border border-dashed border-border rounded-xl hover:border-[#0078D4]/40 hover:text-[#0078D4] transition-colors bg-white"
-                    >
-                      Collapse Phases
-                    </button>
-                  )}
-                </>
-              )}
-            </div>
-
-            {/* Right: Sidebar */}
-            <div className="col-span-12 lg:col-span-4 space-y-4">
-              {/* Phase Completion Card */}
-              <div className="bg-white border border-border rounded-2xl p-5 shadow-sm">
-                <h3 className="text-xs font-bold uppercase tracking-widest text-muted-foreground mb-4">Phase Completion</h3>
-
-                {/* Overall progress */}
-                {(() => {
-                  const allTasks = data.tasks ?? [];
-                  const overallPct = allTasks.length > 0
-                    ? Math.round(allTasks.filter(t => t.column === "completed").length / allTasks.length * 100)
-                    : project.progress;
-                  return (
-                    <div className="mb-4">
-                      <div className="flex items-center justify-between mb-2">
-                        <span className="text-sm font-semibold text-[#0A2540]">Overall Progress</span>
-                        <span className="text-lg font-extrabold text-[#0078D4]">{overallPct}%</span>
-                      </div>
-                      <div className="w-full bg-gray-100 rounded-full h-2.5">
-                        <div
-                          className="h-2.5 rounded-full transition-all"
-                          style={{
-                            width: `${Math.min(100, overallPct)}%`,
-                            background: "linear-gradient(90deg, #0078D4 0%, #00B4D8 100%)",
-                          }}
-                        />
-                      </div>
+                                  {!isPreviewOnly && (
+                                    <>
+                                      {stepTasks.length === 0 ? (
+                                        <p className="text-xs text-muted-foreground italic">No tasks defined for this phase.</p>
+                                      ) : (
+                                        Object.entries(groups).map(([group, kts]) => (
+                                          <div key={group}>
+                                            <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-2">{group}</p>
+                                            <div className="space-y-2">
+                                              {kts.map(kt => {
+                                                const taskDone = kt.column === "completed";
+                                                return (
+                                                  <div key={kt.id} className="flex items-start gap-3 py-2.5 border border-border rounded-xl px-4 bg-[#F7F9FC] cursor-pointer hover:border-[#0078D4]/40 transition-colors" onClick={() => handleCardClick(kt, step.title)}>
+                                                    <div className={`w-4 h-4 rounded border-2 flex items-center justify-center flex-shrink-0 mt-0.5 ${taskDone ? "bg-green-500 border-green-500" : "border-gray-300"}`}>
+                                                      {taskDone && (
+                                                        <svg className="w-2.5 h-2.5 text-white" viewBox="0 0 12 12" fill="none">
+                                                          <path d="M2 6l3 3 5-5" stroke="white" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" />
+                                                        </svg>
+                                                      )}
+                                                    </div>
+                                                    <div className="flex-1 min-w-0">
+                                                      <p className={`text-sm font-medium leading-snug ${taskDone ? "line-through text-muted-foreground" : "text-[#0A2540]"}`}>{kt.title}</p>
+                                                      {kt.description && <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">{kt.description}</p>}
+                                                      {kt.assignedTo && <p className="text-[10px] text-muted-foreground mt-0.5">{kt.assignedTo}</p>}
+                                                    </div>
+                                                    {!taskDone && (
+                                                      <span className={`text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full flex-shrink-0 ${kt.column === "in_progress" ? "bg-blue-100 text-blue-700" : kt.column === "waiting_on_customer" ? "bg-yellow-100 text-yellow-700" : "bg-gray-100 text-gray-500"}`}>
+                                                        {kt.column === "in_progress" ? "In Progress" : kt.column === "waiting_on_customer" ? "Waiting" : "Backlog"}
+                                                      </span>
+                                                    )}
+                                                  </div>
+                                                );
+                                              })}
+                                            </div>
+                                          </div>
+                                        ))
+                                      )}
+                                    </>
+                                  )}
+                                  {step.notes && (
+                                    <p className="text-xs text-[#0078D4] italic">Note: {step.notes}</p>
+                                  )}
+                                  {step.dueDate && (
+                                    <p className="text-xs text-muted-foreground">
+                                      Due: {new Date(step.dueDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                                    </p>
+                                  )}
+                                </div>
+                              );
+                            })()}
+                          </div>
+                        );
+                      })}
                     </div>
-                  );
-                })()}
 
-                {/* Per-step rows */}
-                {steps.length > 0 && (
-                  <div className="space-y-2.5 border-t border-border pt-3">
-                    {steps.map(s => {
-                      const stepTasks = (data.tasks ?? []).filter(t => t.workflowStepId === s.id);
-                      const pct = stepTasks.length > 0
-                        ? Math.round(stepTasks.filter(t => t.column === "completed").length / stepTasks.length * 100)
-                        : stepPercent(s.status);
-                      return (
-                        <div key={s.id} className="flex items-center gap-2">
-                          <p className="text-xs text-[#0A2540] flex-1 truncate font-medium">{s.title}</p>
-                          <StepProgressBar value={pct} />
-                          <span className={`text-xs font-bold w-8 text-right flex-shrink-0 ${
-                            pct === 100 ? "text-green-600" : pct > 0 ? "text-[#0078D4]" : "text-gray-400"
-                          }`}>{pct}%</span>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-
-              {/* Next Milestone Card */}
-              <div className="bg-[#0A2540] rounded-2xl p-5 shadow-sm">
-                <h3 className="text-[10px] font-bold uppercase tracking-widest text-white/40 mb-3">Next Milestone</h3>
-                {nextMilestone ? (
-                  <>
-                    <p className="text-white font-bold text-base leading-snug mb-1">{nextMilestone.title}</p>
-                    {nextMilestone.dueDate ? (
-                      <p className="text-white/50 text-xs mb-4">
-                        Target: {new Date(nextMilestone.dueDate).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}
-                      </p>
-                    ) : project.endDate ? (
-                      <p className="text-white/50 text-xs mb-4">
-                        Target: {new Date(project.endDate).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}
-                      </p>
-                    ) : (
-                      <p className="text-white/30 text-xs mb-4">No target date set</p>
+                    {!showAllPhases && hiddenCount > 0 && (
+                      <button
+                        onClick={() => setShowAllPhases(true)}
+                        className="w-full py-3 text-sm font-semibold text-muted-foreground border border-dashed border-border rounded-xl hover:border-[#0078D4]/40 hover:text-[#0078D4] transition-colors bg-white"
+                      >
+                        Show Remaining {hiddenCount} Phase{hiddenCount !== 1 ? "s" : ""}
+                      </button>
                     )}
-                    <button className="flex items-center gap-2 text-xs font-semibold text-white/70 border border-white/20 rounded-lg px-3 py-2 hover:bg-white/10 transition-colors">
-                      <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                      </svg>
-                      Add to Calendar
-                    </button>
+                    {showAllPhases && steps.length > PHASE_LIMIT && (
+                      <button
+                        onClick={() => setShowAllPhases(false)}
+                        className="w-full py-3 text-sm font-semibold text-muted-foreground border border-dashed border-border rounded-xl hover:border-[#0078D4]/40 hover:text-[#0078D4] transition-colors bg-white"
+                      >
+                        Collapse Phases
+                      </button>
+                    )}
                   </>
-                ) : (
-                  <p className="text-white/50 text-sm">All phases complete — great work!</p>
                 )}
               </div>
 
-              {/* Consultant Message Card */}
-              <div className="bg-white border border-border rounded-2xl p-5 shadow-sm">
-                <h3 className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-4">Consultant Message</h3>
-                <div className="flex items-center gap-3 mb-3">
-                  <div className="w-10 h-10 rounded-full bg-[#0078D4] flex items-center justify-center flex-shrink-0">
-                    <span className="text-white text-sm font-bold">SM</span>
-                  </div>
-                  <div>
-                    <p className="text-sm font-bold text-[#0A2540]">Shane McCaw</p>
-                    <p className="text-xs text-muted-foreground">Lead Consultant</p>
-                  </div>
+              {/* Right: Sidebar */}
+              <div className="col-span-12 lg:col-span-4 space-y-4">
+                {/* Contract Card */}
+                <div className="bg-white border border-border rounded-2xl p-5 shadow-sm">
+                  <h3 className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-3">Project Contract</h3>
+                  {contract ? (
+                    <Link href={`/portal/contracts/${contract.id}`}>
+                      <div className="flex items-center gap-3 cursor-pointer group">
+                        <div className="w-10 h-10 rounded-xl bg-[#0078D4]/10 flex items-center justify-center flex-shrink-0 group-hover:bg-[#0078D4]/20 transition-colors">
+                          <svg className="w-5 h-5 text-[#0078D4]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+                          </svg>
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-semibold text-[#0078D4] group-hover:underline leading-tight">View Contract</p>
+                          {contract.signedAt && (
+                            <p className="text-xs text-muted-foreground mt-0.5">
+                              Signed {new Date(contract.signedAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                              {contract.signerName ? ` by ${contract.signerName}` : ""}
+                            </p>
+                          )}
+                        </div>
+                        <svg className="w-4 h-4 text-muted-foreground group-hover:text-[#0078D4] flex-shrink-0 transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+                        </svg>
+                      </div>
+                    </Link>
+                  ) : (
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-xl bg-gray-100 flex items-center justify-center flex-shrink-0">
+                        <svg className="w-5 h-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+                        </svg>
+                      </div>
+                      <p className="text-sm text-muted-foreground italic">No contract on file yet</p>
+                    </div>
+                  )}
                 </div>
-                {latestUpdate ? (
-                  <blockquote className="text-sm text-[#0A2540] italic leading-relaxed border-l-2 border-[#0078D4] pl-3">
-                    "{latestUpdate.content}"
-                  </blockquote>
-                ) : (
-                  <blockquote className="text-sm text-muted-foreground italic leading-relaxed border-l-2 border-border pl-3">
-                    "No updates posted yet. Your consultant will share progress notes here as the project moves forward."
-                  </blockquote>
-                )}
-                {latestUpdate && (
-                  <p className="text-xs text-muted-foreground mt-2">
-                    {new Date(latestUpdate.createdAt).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}
-                  </p>
-                )}
+
+                {/* Phase Completion Card */}
+                <div className="bg-white border border-border rounded-2xl p-5 shadow-sm">
+                  <h3 className="text-xs font-bold uppercase tracking-widest text-muted-foreground mb-4">Phase Completion</h3>
+
+                  {(() => {
+                    const allTasks = data.tasks ?? [];
+                    const overallPct = allTasks.length > 0
+                      ? Math.round(allTasks.filter(t => t.column === "completed").length / allTasks.length * 100)
+                      : project.progress;
+                    return (
+                      <div className="mb-4">
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="text-sm font-semibold text-[#0A2540]">Overall Progress</span>
+                          <span className="text-lg font-extrabold text-[#0078D4]">{overallPct}%</span>
+                        </div>
+                        <div className="w-full bg-gray-100 rounded-full h-2.5">
+                          <div
+                            className="h-2.5 rounded-full transition-all"
+                            style={{
+                              width: `${Math.min(100, overallPct)}%`,
+                              background: "linear-gradient(90deg, #0078D4 0%, #00B4D8 100%)",
+                            }}
+                          />
+                        </div>
+                      </div>
+                    );
+                  })()}
+
+                  {steps.length > 0 && (
+                    <div className="space-y-2.5 border-t border-border pt-3">
+                      {steps.map(s => {
+                        const stepTasks = (data.tasks ?? []).filter(t => t.workflowStepId === s.id);
+                        const pct = stepTasks.length > 0
+                          ? Math.round(stepTasks.filter(t => t.column === "completed").length / stepTasks.length * 100)
+                          : stepPercent(s.status);
+                        return (
+                          <div key={s.id} className="flex items-center gap-2">
+                            <p className="text-xs text-[#0A2540] flex-1 truncate font-medium">{s.title}</p>
+                            <StepProgressBar value={pct} />
+                            <span className={`text-xs font-bold w-8 text-right flex-shrink-0 ${
+                              pct === 100 ? "text-green-600" : pct > 0 ? "text-[#0078D4]" : "text-gray-400"
+                            }`}>{pct}%</span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+
+                {/* Next Milestone Card */}
+                <div className="bg-[#0A2540] rounded-2xl p-5 shadow-sm">
+                  <h3 className="text-[10px] font-bold uppercase tracking-widest text-white/40 mb-3">Next Milestone</h3>
+                  {nextMilestone ? (
+                    <>
+                      <p className="text-white font-bold text-base leading-snug mb-1">{nextMilestone.title}</p>
+                      {nextMilestone.dueDate ? (
+                        <p className="text-white/50 text-xs mb-4">
+                          Target: {new Date(nextMilestone.dueDate).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}
+                        </p>
+                      ) : project.endDate ? (
+                        <p className="text-white/50 text-xs mb-4">
+                          Target: {new Date(project.endDate).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}
+                        </p>
+                      ) : (
+                        <p className="text-white/30 text-xs mb-4">No target date set</p>
+                      )}
+                      <button className="flex items-center gap-2 text-xs font-semibold text-white/70 border border-white/20 rounded-lg px-3 py-2 hover:bg-white/10 transition-colors">
+                        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                        </svg>
+                        Add to Calendar
+                      </button>
+                    </>
+                  ) : (
+                    <p className="text-white/50 text-sm">All phases complete — great work!</p>
+                  )}
+                </div>
+
+                {/* Consultant Message Card */}
+                <div className="bg-white border border-border rounded-2xl p-5 shadow-sm">
+                  <h3 className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-4">Consultant Message</h3>
+                  <div className="flex items-center gap-3 mb-3">
+                    <div className="w-10 h-10 rounded-full bg-[#0078D4] flex items-center justify-center flex-shrink-0">
+                      <span className="text-white text-sm font-bold">SM</span>
+                    </div>
+                    <div>
+                      <p className="text-sm font-bold text-[#0A2540]">Shane McCaw</p>
+                      <p className="text-xs text-muted-foreground">Lead Consultant</p>
+                    </div>
+                  </div>
+                  {latestUpdate ? (
+                    <blockquote className="text-sm text-[#0A2540] italic leading-relaxed border-l-2 border-[#0078D4] pl-3">
+                      "{latestUpdate.content}"
+                    </blockquote>
+                  ) : (
+                    <blockquote className="text-sm text-muted-foreground italic leading-relaxed border-l-2 border-border pl-3">
+                      "No updates posted yet. Your consultant will share progress notes here as the project moves forward."
+                    </blockquote>
+                  )}
+                  {latestUpdate && (
+                    <p className="text-xs text-muted-foreground mt-2">
+                      {new Date(latestUpdate.createdAt).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}
+                    </p>
+                  )}
+                </div>
               </div>
             </div>
           </div>
@@ -965,39 +1162,144 @@ export default function PortalProjectDetail() {
           </div>
         )}
 
-        {/* ── Updates ── */}
-        {secondaryTab === "updates" && (
-          <div>
-            {updates.length === 0 ? (
-              <div className="bg-white border border-border rounded-xl p-8 text-center text-muted-foreground text-sm">No updates yet.</div>
-            ) : (
-              <div className="relative">
-                <div className="absolute left-[19px] top-0 bottom-0 w-0.5 bg-border" />
-                <div className="space-y-6 pl-10">
-                  {updates.map(u => {
-                    const config = UPDATE_TYPE_CONFIG[u.type] ?? UPDATE_TYPE_CONFIG.update;
-                    return (
-                      <div key={u.id} className="relative">
-                        <div className={`absolute -left-[29px] w-6 h-6 rounded-full border flex items-center justify-center ${config.color}`}>
-                          {config.icon}
-                        </div>
-                        <div className="bg-white border border-border rounded-xl p-4">
-                          <div className="flex items-center gap-2 mb-2">
-                            <span className="text-xs font-semibold text-[#0078D4] capitalize">{u.type}</span>
-                            <span className="text-xs text-muted-foreground">·</span>
-                            <span className="text-xs text-muted-foreground">{new Date(u.createdAt).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}</span>
-                          </div>
-                          <p className="text-sm text-[#0A2540] leading-relaxed">{u.content}</p>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
+        {/* ── Status Reports ── */}
+        {secondaryTab === "status-reports" && (
+          <div className="space-y-4">
+            {statusReports.length === 0 ? (
+              <div className="bg-white border border-border rounded-xl p-8 text-center text-muted-foreground text-sm">
+                No status reports have been sent yet. Your consultant will share structured reports here as the project progresses.
               </div>
-            )}
+            ) : statusReports.map(report => {
+              const isExpanded = expandedReportId === report.id;
+              return (
+                <div key={report.id} className={`bg-white border rounded-xl shadow-sm overflow-hidden ${report.clientStatus === "pending" ? "border-amber-300" : "border-border"}`}>
+                  {/* Card header */}
+                  <button
+                    onClick={() => setExpandedReportId(isExpanded ? null : report.id)}
+                    className="w-full flex items-start gap-4 px-5 py-4 text-left hover:bg-gray-50 transition-colors"
+                  >
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap mb-1">
+                        <span className="text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full bg-[#0078D4]/10 text-[#0078D4]">
+                          {periodLabel(report.period)}
+                        </span>
+                        <ClientStatusChip status={report.clientStatus} />
+                      </div>
+                      <p className="text-sm font-bold text-[#0A2540] leading-tight">{report.title}</p>
+                      {(report.sentAt ?? report.reportDate) && (
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                          {new Date(report.sentAt ?? report.reportDate ?? "").toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}
+                        </p>
+                      )}
+                    </div>
+                    <ChevronIcon open={isExpanded} />
+                  </button>
+
+                  {/* Inline accept/question buttons when pending */}
+                  {report.clientStatus === "pending" && (
+                    <div className="px-5 pb-4 flex items-center gap-2 border-t border-amber-100 pt-3 bg-amber-50/40">
+                      <p className="text-xs text-amber-700 flex-1">Please acknowledge this report:</p>
+                      <button
+                        onClick={() => void handleAcknowledge(report.id, "accepted")}
+                        disabled={acknowledging}
+                        className="flex items-center gap-1 text-xs font-semibold text-white bg-green-600 hover:bg-green-700 px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50"
+                      >
+                        <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
+                        Accept
+                      </button>
+                      <button
+                        onClick={() => { setExpandedReportId(report.id); setQuestionDialogReportId(report.id); }}
+                        disabled={acknowledging}
+                        className="flex items-center gap-1 text-xs font-semibold text-amber-800 bg-amber-100 hover:bg-amber-200 border border-amber-300 px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50"
+                      >
+                        <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                        Has Questions
+                      </button>
+                    </div>
+                  )}
+
+                  {/* If has_questions, show submitted question */}
+                  {report.clientStatus === "has_questions" && report.clientQuestion && (
+                    <div className="px-5 pb-4 pt-3 border-t border-amber-100 bg-amber-50/30">
+                      <p className="text-xs font-semibold text-amber-800 mb-1">Your Question:</p>
+                      <p className="text-xs text-amber-700 leading-relaxed">{report.clientQuestion}</p>
+                    </div>
+                  )}
+
+                  {/* Expanded content */}
+                  {isExpanded && (
+                    <div className="border-t border-border px-5 py-5 space-y-5">
+                      {report.executiveSummary && (
+                        <div>
+                          <h4 className="text-xs font-bold uppercase tracking-widest text-muted-foreground mb-2">Executive Summary</h4>
+                          <p className="text-sm text-[#0A2540] leading-relaxed">{report.executiveSummary}</p>
+                        </div>
+                      )}
+
+                      {report.completedActivities.length > 0 && (
+                        <div>
+                          <h4 className="text-xs font-bold uppercase tracking-widest text-muted-foreground mb-2">Completed Activities</h4>
+                          <div className="space-y-2">
+                            {report.completedActivities.map((act, i) => (
+                              <div key={i} className="flex items-start gap-2.5">
+                                <div className="w-4 h-4 rounded-full bg-green-100 flex items-center justify-center flex-shrink-0 mt-0.5">
+                                  <svg className="w-2.5 h-2.5 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
+                                </div>
+                                <div>
+                                  <p className="text-sm font-semibold text-[#0A2540] leading-tight">{act.title}</p>
+                                  {act.description && <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">{act.description}</p>}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {report.nextSteps.length > 0 && (
+                        <div>
+                          <h4 className="text-xs font-bold uppercase tracking-widest text-muted-foreground mb-2">Next Steps</h4>
+                          <div className="space-y-2">
+                            {report.nextSteps.map((step, i) => (
+                              <div key={i} className="flex items-start gap-2.5">
+                                <div className="w-4 h-4 rounded-full bg-[#0078D4]/10 flex items-center justify-center flex-shrink-0 mt-0.5">
+                                  <svg className="w-2.5 h-2.5 text-[#0078D4]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" /></svg>
+                                </div>
+                                <div>
+                                  {step.label && <span className="text-[10px] font-bold uppercase tracking-wide text-[#0078D4]">{step.label} — </span>}
+                                  <span className="text-sm font-semibold text-[#0A2540] leading-tight">{step.title}</span>
+                                  {step.description && <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">{step.description}</p>}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {!report.executiveSummary && report.completedActivities.length === 0 && report.nextSteps.length === 0 && (
+                        <p className="text-sm text-muted-foreground italic">No detailed content available for this report.</p>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
         )}
       </div>
+
+      {/* Question Dialog */}
+      {questionDialogReportId !== null && (() => {
+        const report = statusReports.find(r => r.id === questionDialogReportId);
+        if (!report) return null;
+        return (
+          <QuestionDialog
+            reportTitle={report.title}
+            onSubmit={q => void handleAcknowledge(report.id, "has_questions", q)}
+            onCancel={() => setQuestionDialogReportId(null)}
+            submitting={acknowledging}
+          />
+        );
+      })()}
 
       <KanbanCardModal
         task={selectedTask}

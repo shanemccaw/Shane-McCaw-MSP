@@ -174,7 +174,30 @@ router.get("/portal/projects/:id", requireAuth, async (req: Request, res: Respon
     .where(eq(projectUpdatesTable.projectId, id))
     .orderBy(desc(projectUpdatesTable.createdAt));
 
-  res.json({ project, steps, tasks, previewTasks, documents, updates });
+  // Status reports for this project (sent only, visible to client)
+  const effectiveUserId = isAdmin ? (project.clientUserId ?? userId) : userId;
+  const statusReports = await db.select().from(statusReportsTable)
+    .where(and(
+      eq(statusReportsTable.projectId, id),
+      eq(statusReportsTable.clientUserId, effectiveUserId),
+      eq(statusReportsTable.reportStatus, "sent"),
+    ))
+    .orderBy(desc(statusReportsTable.sentAt));
+
+  // First unacknowledged report = pending banner
+  const pendingStatusReport = statusReports.find(r => r.clientStatus === "pending") ?? null;
+
+  // Contract for this project (if any)
+  const [contract] = await db.select({
+    id: contractsTable.id,
+    signedAt: contractsTable.signedAt,
+    signerName: contractsTable.signerName,
+  }).from(contractsTable)
+    .where(eq(contractsTable.projectId, id))
+    .orderBy(desc(contractsTable.signedAt))
+    .limit(1);
+
+  res.json({ project, steps, tasks, previewTasks, documents, updates, statusReports, pendingStatusReport: pendingStatusReport ?? null, contract: contract ?? null });
 });
 
 // ─── CLIENT: Project Audit PDF ───────────────────────────────────────────────
@@ -2408,6 +2431,68 @@ router.get("/portal/status-reports/:id", requireAuth, async (req: Request, res: 
     .where(and(eq(statusReportsTable.id, id), eq(statusReportsTable.clientUserId, userId), eq(statusReportsTable.reportStatus, "sent")));
   if (!report) { res.status(404).json({ error: "Not found" }); return; }
   res.json(report);
+});
+
+router.patch("/portal/status-reports/:id/acknowledge", requireAuth, async (req: Request, res: Response) => {
+  const userId = req.user!.id;
+  const id = parseInt(String(req.params.id ?? ""), 10);
+  if (isNaN(id)) { res.status(400).json({ error: "Invalid ID" }); return; }
+
+  const { status, question } = req.body as { status?: string; question?: string };
+  if (status !== "accepted" && status !== "has_questions") {
+    res.status(400).json({ error: "status must be 'accepted' or 'has_questions'" });
+    return;
+  }
+  if (status === "has_questions" && !question?.trim()) {
+    res.status(400).json({ error: "question is required when status is 'has_questions'" });
+    return;
+  }
+
+  const [report] = await db.select().from(statusReportsTable)
+    .where(and(
+      eq(statusReportsTable.id, id),
+      eq(statusReportsTable.clientUserId, userId),
+      eq(statusReportsTable.reportStatus, "sent"),
+    ));
+  if (!report) { res.status(404).json({ error: "Not found" }); return; }
+
+  // Guard: only allow transition from pending (prevents duplicate kanban tasks on re-submission)
+  if (report.clientStatus !== "pending") {
+    res.status(409).json({ error: "Report has already been acknowledged" });
+    return;
+  }
+
+  // Atomically update the report and (if has_questions) insert the kanban task
+  const updated = await db.transaction(async (tx) => {
+    const [updatedReport] = await tx.update(statusReportsTable)
+      .set({
+        clientStatus: status as "accepted" | "has_questions",
+        clientQuestion: status === "has_questions" ? (question ?? null) : null,
+        updatedAt: new Date(),
+      })
+      .where(eq(statusReportsTable.id, id))
+      .returning();
+
+    if (status === "has_questions" && report.projectId && question?.trim()) {
+      const existingTasks = await tx.select({ order: kanbanTasksTable.order })
+        .from(kanbanTasksTable)
+        .where(and(eq(kanbanTasksTable.projectId, report.projectId), eq(kanbanTasksTable.column, "backlog")))
+        .orderBy(desc(kanbanTasksTable.order))
+        .limit(1);
+      const nextOrder = (existingTasks[0]?.order ?? 0) + 1;
+      await tx.insert(kanbanTasksTable).values({
+        projectId: report.projectId,
+        title: `Client question: ${report.title}`,
+        description: question.trim(),
+        column: "backlog",
+        order: nextOrder,
+      });
+    }
+
+    return updatedReport;
+  });
+
+  res.json(updated);
 });
 
 // ─── ADMIN: Status Reports ───────────────────────────────────────────────────
