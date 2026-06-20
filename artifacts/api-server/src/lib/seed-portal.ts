@@ -2,7 +2,7 @@ import bcrypt from "bcryptjs";
 import {
   db, usersTable, servicesTable, projectsTable, clientServicesTable,
   workflowStepsTable, kanbanTasksTable, invoicesTable, notificationsTable, projectUpdatesTable,
-  workflowTemplatesTable, workflowTemplateStepsTable, projectTemplatesTable, projectTemplateTasksTable,
+  workflowTemplatesTable, workflowTemplateStepsTable, workflowTemplateStepTasksTable,
 } from "@workspace/db";
 import { eq } from "drizzle-orm";
 
@@ -45,35 +45,24 @@ export async function seedServiceTemplates(): Promise<void> {
     .returning();
 
   // 2. Seed the workflow steps
-  await db.insert(workflowTemplateStepsTable).values([
+  const wfSteps = await db.insert(workflowTemplateStepsTable).values([
     { workflowTemplateId: wfTemplate.id, title: "Discovery & Kickoff Call", description: "Align on scope, goals, and success criteria. Gather access credentials and key stakeholder contacts.", order: 0 },
     { workflowTemplateId: wfTemplate.id, title: "Environment Assessment", description: "Audit current M365 tenant configuration, license assignments, security posture, and usage patterns.", order: 1 },
     { workflowTemplateId: wfTemplate.id, title: "Findings & Gap Analysis", description: "Document identified gaps, risks, and opportunities. Prepare a prioritised findings report.", order: 2 },
     { workflowTemplateId: wfTemplate.id, title: "Recommendations Review", description: "Walk through findings with the client team. Agree on priority areas and implementation roadmap.", order: 3 },
     { workflowTemplateId: wfTemplate.id, title: "Implementation & Delivery", description: "Execute agreed-upon changes and configurations in the M365 environment.", order: 4 },
     { workflowTemplateId: wfTemplate.id, title: "Handoff & Documentation", description: "Deliver final documentation, admin guides, and training resources. Sign off on deliverables.", order: 5 },
-  ]);
+  ]).returning();
 
-  // 3. Create the project template linked to the workflow template and service
-  const [projTemplate] = await db
-    .insert(projectTemplatesTable)
-    .values({
-      name: "M365 Health Check Project",
-      workflowTemplateId: wfTemplate.id,
-      serviceId: m365Service.id,
-    })
-    .returning();
+  // 3. Seed step tasks for the first step (Discovery & Kickoff Call)
+  const firstStep = wfSteps[0];
+  if (firstStep) {
+    await db.insert(workflowTemplateStepTasksTable).values([
+      { workflowTemplateStepId: firstStep.id, title: "Discovery & Kickoff Call", description: "Align on scope, goals, and key contacts. Confirm access requirements and define success criteria.", order: 0, groupName: "Engineer Tasks" },
+      { workflowTemplateStepId: firstStep.id, title: "M365 Tenant Access & Setup", description: "Grant Shane read-only admin access. Configure audit logging and export settings for the review.", order: 1, groupName: "Client Deliverables" },
+    ]);
+  }
 
-  // 4. Seed the project template tasks (these become workflow_steps when the service is activated)
-  await db.insert(projectTemplateTasksTable).values([
-    { projectTemplateId: projTemplate.id, title: "Discovery & Kickoff Call", description: "Align on scope, goals, and key contacts. Confirm access requirements and define success criteria.", order: 0 },
-    { projectTemplateId: projTemplate.id, title: "M365 Tenant Access & Setup", description: "Grant Shane read-only admin access. Configure audit logging and export settings for the review.", order: 1 },
-    { projectTemplateId: projTemplate.id, title: "Environment Assessment", description: "Review licence utilisation, security defaults, identity configuration, and service adoption.", order: 2 },
-    { projectTemplateId: projTemplate.id, title: "Findings & Gap Analysis Report", description: "Receive the detailed findings document covering risks, gaps, and optimisation opportunities.", order: 3 },
-    { projectTemplateId: projTemplate.id, title: "Recommendations Review Call", description: "Walk through the findings together. Prioritise action items and agree on next steps.", order: 4 },
-    { projectTemplateId: projTemplate.id, title: "Implementation Roadmap Delivered", description: "Receive the final 90-day roadmap with prioritised actions, effort estimates, and quick wins.", order: 5 },
-    { projectTemplateId: projTemplate.id, title: "Project Closeout", description: "Final sign-off, documentation handoff, and transition to ongoing support if applicable.", order: 6 },
-  ]);
 }
 
 export async function seedMarketingServices(): Promise<void> {

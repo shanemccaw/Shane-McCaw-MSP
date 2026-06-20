@@ -43,12 +43,56 @@ const migrations = [
           REFERENCES "workflow_templates"("id")
           ON DELETE SET NULL
           DEFERRABLE INITIALLY DEFERRED;
-      UPDATE "services" s
-        SET "workflow_template_id" = pt."workflow_template_id"
-        FROM "project_templates" pt
-        WHERE pt."service_id" = s."id"
-          AND pt."workflow_template_id" IS NOT NULL
-          AND s."workflow_template_id" IS NULL;
+      DO $$
+      BEGIN
+        IF EXISTS (
+          SELECT FROM information_schema.tables
+          WHERE table_schema = 'public' AND table_name = 'project_templates'
+        ) THEN
+          UPDATE "services" s
+            SET "workflow_template_id" = pt."workflow_template_id"
+            FROM "project_templates" pt
+            WHERE pt."service_id" = s."id"
+              AND pt."workflow_template_id" IS NOT NULL
+              AND s."workflow_template_id" IS NULL;
+        END IF;
+      END $$;
+    `,
+  },
+  {
+    name: "0002_workflow_template_step_tasks_and_drop_project_templates",
+    sql: `
+      CREATE TABLE IF NOT EXISTS "workflow_template_step_tasks" (
+        "id" serial PRIMARY KEY NOT NULL,
+        "workflow_template_step_id" integer NOT NULL REFERENCES "workflow_template_steps"("id") ON DELETE CASCADE,
+        "title" text NOT NULL,
+        "description" text,
+        "group_name" text,
+        "order" integer NOT NULL DEFAULT 0,
+        "created_at" timestamp NOT NULL DEFAULT now()
+      );
+      DO $$
+      BEGIN
+        IF EXISTS (
+          SELECT FROM information_schema.tables
+          WHERE table_schema = 'public' AND table_name = 'project_template_tasks'
+        ) THEN
+          INSERT INTO "workflow_template_step_tasks"
+            ("workflow_template_step_id", "title", "description", "group_name", "order", "created_at")
+          SELECT
+            "workflow_template_step_id",
+            "title",
+            "description",
+            "group_name",
+            "order",
+            "created_at"
+          FROM "project_template_tasks"
+          WHERE "workflow_template_step_id" IS NOT NULL
+          ON CONFLICT DO NOTHING;
+        END IF;
+      END $$;
+      DROP TABLE IF EXISTS "project_template_tasks" CASCADE;
+      DROP TABLE IF EXISTS "project_templates" CASCADE;
     `,
   },
 ];

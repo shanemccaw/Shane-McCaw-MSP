@@ -1,5 +1,5 @@
 import { Router, type IRouter, type Request, type Response } from "express";
-import { db, servicesTable, clientServicesTable, contractsTable, workflowTemplatesTable, projectTemplatesTable, contractTemplatesTable } from "@workspace/db";
+import { db, servicesTable, clientServicesTable, contractsTable, workflowTemplatesTable, contractTemplatesTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/requireAuth";
 
@@ -112,18 +112,16 @@ router.delete("/admin/services/:id", requireAdmin, async (req: Request, res: Res
 
     const blockers: string[] = [];
 
-    const [clientSvc, contract, workflowTpl, projectTpl, contractTpl] = await Promise.all([
+    const [clientSvc, contract, workflowTpl, contractTpl] = await Promise.all([
       db.select({ id: clientServicesTable.id }).from(clientServicesTable).where(eq(clientServicesTable.serviceId, id)).limit(1),
       db.select({ id: contractsTable.id }).from(contractsTable).where(eq(contractsTable.serviceId, id)).limit(1),
       db.select({ id: workflowTemplatesTable.id }).from(workflowTemplatesTable).where(eq(workflowTemplatesTable.serviceId, id)).limit(1),
-      db.select({ id: projectTemplatesTable.id }).from(projectTemplatesTable).where(eq(projectTemplatesTable.serviceId, id)).limit(1),
       db.select({ id: contractTemplatesTable.id }).from(contractTemplatesTable).where(eq(contractTemplatesTable.serviceId, id)).limit(1),
     ]);
 
     if (clientSvc.length > 0) blockers.push("active client service assignments");
     if (contract.length > 0) blockers.push("contracts");
     if (workflowTpl.length > 0) blockers.push("workflow templates");
-    if (projectTpl.length > 0) blockers.push("project templates");
     if (contractTpl.length > 0) blockers.push("contract templates");
 
     if (blockers.length > 0) {

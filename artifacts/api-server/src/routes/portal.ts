@@ -1,5 +1,5 @@
 import { Router, type IRouter, type Request, type Response } from "express";
-import { db, projectsTable, clientServicesTable, servicesTable, workflowStepsTable, kanbanTasksTable, documentsTable, reportsTable, invoicesTable, messagesTable, notificationsTable, projectUpdatesTable, usersTable, contractsTable, passwordResetTokensTable, projectTemplatesTable, projectTemplateTasksTable, workflowTemplateStepsTable, contractTemplatesTable, impersonationTokensTable } from "@workspace/db";
+import { db, projectsTable, clientServicesTable, servicesTable, workflowStepsTable, kanbanTasksTable, documentsTable, reportsTable, invoicesTable, messagesTable, notificationsTable, projectUpdatesTable, usersTable, contractsTable, passwordResetTokensTable, workflowTemplateStepsTable, workflowTemplateStepTasksTable, contractTemplatesTable, impersonationTokensTable } from "@workspace/db";
 import { eq, and, desc, asc, count, sql, inArray } from "drizzle-orm";
 import { requireAuth, requireAdmin } from "../middlewares/requireAuth";
 import { sendEmail, purchaseConfirmationEmail, onboardingConfirmationEmail, adminPurchaseAlertEmail } from "../lib/mailer";
@@ -120,15 +120,15 @@ router.get("/portal/projects/:id", requireAuth, async (req: Request, res: Respon
   let previewTasks: Array<{ stepId: number; title: string; groupName: string | null; description: string | null }> = [];
   if (unseededSteps.length > 0) {
     const templateStepIds = unseededSteps.map(s => s.workflowTemplateStepId!);
-    const tmplTasks = await db.select().from(projectTemplateTasksTable)
-      .where(inArray(projectTemplateTasksTable.workflowTemplateStepId, templateStepIds))
-      .orderBy(asc(projectTemplateTasksTable.order));
+    const tmplTasks = await db.select().from(workflowTemplateStepTasksTable)
+      .where(inArray(workflowTemplateStepTasksTable.workflowTemplateStepId, templateStepIds))
+      .orderBy(asc(workflowTemplateStepTasksTable.order));
     // Map each template task back to the project step ID
     const templateStepToProjectStep = new Map(unseededSteps.map(s => [s.workflowTemplateStepId!, s.id]));
     previewTasks = tmplTasks
-      .filter(t => t.workflowTemplateStepId && templateStepToProjectStep.has(t.workflowTemplateStepId))
+      .filter(t => templateStepToProjectStep.has(t.workflowTemplateStepId))
       .map(t => ({
-        stepId: templateStepToProjectStep.get(t.workflowTemplateStepId!)!,
+        stepId: templateStepToProjectStep.get(t.workflowTemplateStepId)!,
         title: t.title,
         groupName: t.groupName ?? null,
         description: t.description ?? null,
@@ -1124,9 +1124,6 @@ async function provisionOnboardingProject(
       .orderBy(asc(workflowTemplateStepsTable.order));
   }
 
-  // Legacy fallback not needed — no more project_templates lookups
-  const legacyTemplateTasks: Array<{ title: string; description: string | null }> = [];
-
   // ── Loop over every service: assign clientService, link contract, create invoice ──
   for (let i = 0; i < orderedServices.length; i++) {
     const svc = orderedServices[i];
@@ -1170,9 +1167,9 @@ async function provisionOnboardingProject(
       if (firstStep?.workflowTemplateStepId) {
         const step1Tasks = await db
           .select()
-          .from(projectTemplateTasksTable)
-          .where(eq(projectTemplateTasksTable.workflowTemplateStepId, firstStep.workflowTemplateStepId))
-          .orderBy(asc(projectTemplateTasksTable.order));
+          .from(workflowTemplateStepTasksTable)
+          .where(eq(workflowTemplateStepTasksTable.workflowTemplateStepId, firstStep.workflowTemplateStepId))
+          .orderBy(asc(workflowTemplateStepTasksTable.order));
         if (step1Tasks.length > 0) {
           await db.insert(kanbanTasksTable).values(
             step1Tasks.map((t, idx) => ({
@@ -1187,27 +1184,7 @@ async function provisionOnboardingProject(
           );
         }
       }
-    } else if (i === 0 && legacyTemplateTasks.length > 0) {
-      // Legacy: old-style flat task list with no step association
-      await db.insert(workflowStepsTable).values(
-        legacyTemplateTasks.map((t, idx) => ({
-          clientServiceId: newCs.id,
-          projectId: project.id,
-          title: t.title,
-          description: t.description ?? "",
-          status: "pending" as const,
-          order: idx + 1,
-        }))
-      );
-      await db.insert(kanbanTasksTable).values(
-        legacyTemplateTasks.map((t, idx) => ({
-          projectId: project.id,
-          title: t.title,
-          description: t.description ?? "",
-          column: "backlog" as const,
-          order: idx,
-        }))
-      );
+
     } else {
       await seedDefaultWorkflowSteps(newCs.id, project.id, svc.slug ?? "");
     }
@@ -2072,9 +2049,9 @@ router.patch("/admin/kanban-tasks/:id", requireAdmin, async (req: Request, res: 
             .returning();
 
           if (activatedStep?.workflowTemplateStepId && activatedStep.projectId) {
-            const templateTasks = await db.select().from(projectTemplateTasksTable)
-              .where(eq(projectTemplateTasksTable.workflowTemplateStepId, activatedStep.workflowTemplateStepId))
-              .orderBy(asc(projectTemplateTasksTable.order));
+            const templateTasks = await db.select().from(workflowTemplateStepTasksTable)
+              .where(eq(workflowTemplateStepTasksTable.workflowTemplateStepId, activatedStep.workflowTemplateStepId))
+              .orderBy(asc(workflowTemplateStepTasksTable.order));
             if (templateTasks.length > 0) {
               await db.insert(kanbanTasksTable).values(
                 templateTasks.map((t, idx) => ({
@@ -2089,6 +2066,7 @@ router.patch("/admin/kanban-tasks/:id", requireAdmin, async (req: Request, res: 
               );
             }
           }
+
         }
       }
     }
@@ -2429,19 +2407,19 @@ router.post("/admin/client-services", requireAdmin, async (req: Request, res: Re
         }))
       ).returning();
 
-      // Seed kanban tasks for the first step from project_template_tasks (via workflowTemplateStepId)
-      const firstStep = createdSteps[0];
-      if (firstStep?.workflowTemplateStepId) {
+      // Seed kanban tasks for the first step from workflow_template_step_tasks (via workflowTemplateStepId)
+      const firstCreatedStep = createdSteps[0];
+      if (firstCreatedStep?.workflowTemplateStepId) {
         const step1Tasks = await db
           .select()
-          .from(projectTemplateTasksTable)
-          .where(eq(projectTemplateTasksTable.workflowTemplateStepId, firstStep.workflowTemplateStepId))
-          .orderBy(asc(projectTemplateTasksTable.order));
+          .from(workflowTemplateStepTasksTable)
+          .where(eq(workflowTemplateStepTasksTable.workflowTemplateStepId, firstCreatedStep.workflowTemplateStepId))
+          .orderBy(asc(workflowTemplateStepTasksTable.order));
         if (step1Tasks.length > 0) {
           await db.insert(kanbanTasksTable).values(
             step1Tasks.map((t, idx) => ({
               projectId: autoProject.id,
-              workflowStepId: firstStep.id,
+              workflowStepId: firstCreatedStep.id,
               groupName: t.groupName ?? null,
               title: t.title,
               description: t.description ?? null,
