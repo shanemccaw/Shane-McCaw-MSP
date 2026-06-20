@@ -1872,6 +1872,13 @@ router.post("/portal/messages", requireAuth, async (req: Request, res: Response)
     readByClient: !isAdmin,
   }).returning();
 
+  // When admin replies, mark all unread client messages in this conversation as read
+  if (isAdmin) {
+    await db.update(messagesTable)
+      .set({ readByAdmin: true })
+      .where(and(eq(messagesTable.clientUserId, clientUserId), eq(messagesTable.readByAdmin, false)));
+  }
+
   // Create in-app notification + email for the other party
   if (isAdmin) {
     await db.insert(notificationsTable).values({
