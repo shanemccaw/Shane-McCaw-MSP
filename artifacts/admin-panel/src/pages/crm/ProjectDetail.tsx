@@ -4,6 +4,8 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import { KanbanCardModal } from "@/components/KanbanCardModal";
 import type { KanbanCardModalTask } from "@/components/KanbanCardModal";
+import StatusReportForm from "@/components/StatusReportForm";
+import type { StatusReport } from "@/components/StatusReportForm";
 import {
   DndContext,
   DragOverlay,
@@ -679,6 +681,7 @@ export default function ProjectDetailPage() {
   const [savingStepDesc, setSavingStepDesc] = useState<Record<number, boolean>>({});
 
   const [deleteTaskTarget, setDeleteTaskTarget] = useState<{ taskId: number } | null>(null);
+  const [statusReportOpen, setStatusReportOpen] = useState(false);
 
   const reloadAll = useCallback(async () => {
     if (!projectId) return;
@@ -933,7 +936,7 @@ export default function ProjectDetailPage() {
             )}
           </div>
 
-          <div className="flex items-center gap-2 flex-shrink-0">
+          <div className="flex items-center gap-2 flex-shrink-0 flex-wrap">
             <button
               onClick={handleExportJson}
               className="flex items-center gap-1.5 border border-border text-sm font-medium px-3 py-2 rounded-lg hover:bg-[#F7F9FC] transition-colors text-[#0A2540]"
@@ -951,6 +954,15 @@ export default function ProjectDetailPage() {
                 <path strokeLinecap="round" strokeLinejoin="round" d="M7 8v2a2 2 0 002 2h6a2 2 0 002-2V8M9 12l3 3 3-3M12 3v12" />
               </svg>
               Import JSON
+            </button>
+            <button
+              onClick={() => setStatusReportOpen(true)}
+              className="flex items-center gap-1.5 border border-[#0078D4] text-[#0078D4] text-sm font-semibold px-3 py-2 rounded-lg hover:bg-[#0078D4]/10 transition-colors"
+            >
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
+              Generate Status Report
             </button>
             <button
               onClick={() => setAddStepOpen(s => !s)}
@@ -1265,6 +1277,38 @@ export default function ProjectDetailPage() {
           </div>
         )}
       </section>
+
+      {/* Status Report slide-over */}
+      <Dialog open={statusReportOpen} onOpenChange={open => { if (!open) setStatusReportOpen(false); }}>
+        <DialogContent className="max-w-5xl w-full max-h-[90vh] overflow-y-auto p-0">
+          <DialogHeader className="px-6 pt-5 pb-0">
+            <DialogTitle className="flex items-center gap-2 text-[#0A2540]">
+              <svg className="w-5 h-5 text-[#0078D4]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
+              Generate Status Report — {project.title}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="px-6 pb-6 pt-4">
+            {statusReportOpen && (
+              <StatusReportForm
+                key={`sr-${projectId}`}
+                lockedProjectId={projectId ?? undefined}
+                embedded
+                autoFill
+                onSaved={(saved: StatusReport) => {
+                  setStatusReportOpen(false);
+                  toast({
+                    title: "Status report saved",
+                    description: `"${saved.title}" was created successfully.`,
+                  });
+                }}
+                onCancel={() => setStatusReportOpen(false)}
+              />
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* JSON Import dialog */}
       <Dialog open={jsonImportOpen} onOpenChange={open => { if (!open) setJsonImportOpen(false); }}>
