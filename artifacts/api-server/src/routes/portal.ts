@@ -2226,6 +2226,53 @@ router.get("/portal/onboarding/session/:sessionId", requireAuth, async (req: Req
   }
 });
 
+// ─── ONBOARDING: Provision project after successful payment ──────────────────
+// Called by the success page as a fallback when webhooks are not yet configured.
+// Safe to call multiple times — provisionOnboardingProject is idempotent.
+router.post("/portal/onboarding/provision/:sessionId", requireAuth, async (req: Request, res: Response) => {
+  const stripeKey = process.env.STRIPE_SECRET_KEY;
+  if (!stripeKey) { res.status(503).json({ error: "Stripe not configured" }); return; }
+
+  const { default: Stripe } = await import("stripe");
+  const stripe = new Stripe(stripeKey);
+
+  let session: import("stripe").Stripe.Checkout.Session;
+  try {
+    session = await stripe.checkout.sessions.retrieve(String(req.params.sessionId));
+  } catch {
+    res.status(404).json({ error: "Session not found" });
+    return;
+  }
+
+  // Security: only the session owner may trigger provisioning
+  if (!session.metadata?.userId || session.metadata.userId !== String(req.user!.id)) {
+    res.status(403).json({ error: "Access denied" });
+    return;
+  }
+
+  if (session.metadata?.type !== "onboarding_purchase") {
+    res.status(400).json({ error: "Not an onboarding session" });
+    return;
+  }
+
+  if (session.payment_status !== "paid") {
+    res.status(402).json({ error: "Payment not yet confirmed" });
+    return;
+  }
+
+  try {
+    const subId = typeof session.subscription === "string"
+      ? session.subscription
+      : (session.subscription as { id?: string } | null)?.id ?? null;
+    await provisionOnboardingProject(req, session, subId);
+    req.log.info({ sessionId: session.id }, "onboarding provision: triggered from success page");
+    res.json({ ok: true });
+  } catch (err) {
+    req.log.error({ err }, "onboarding provision: failed");
+    res.status(500).json({ error: "Provisioning failed" });
+  }
+});
+
 // ─── ONBOARDING: Create Stripe checkout session (multi-service, mixed-cart) ──
 router.post("/portal/checkout/create-session", requireAuth, async (req: Request, res: Response) => {
   const userId = req.user!.id;

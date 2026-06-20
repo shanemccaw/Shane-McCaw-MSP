@@ -78,11 +78,22 @@ export default function OnboardingSuccess() {
             return;
           }
 
+          // Trigger server-side provisioning directly from the success page.
+          // This is the primary path when webhooks are not yet registered —
+          // provisionOnboardingProject is idempotent so it's safe if the
+          // webhook also fires later.
+          try {
+            await fetchWithAuth(`/api/portal/onboarding/provision/${sessionId}`, { method: "POST" });
+          } catch {
+            // Non-fatal: project may already exist (webhook fired) or will be
+            // created manually by admin. Continue to show the success screen.
+          }
+
           // Clear persisted cart — final success is now rendering
           sessionStorage.removeItem("onboardingCartSummary");
           setStatus("paid");
-          // Find newly-created project (webhook may still be processing — poll briefly)
-          for (let i = 0; i < 6; i++) {
+          // Find newly-created project — poll briefly to let the DB write settle
+          for (let i = 0; i < 8; i++) {
             await new Promise(r => setTimeout(r, 1500));
             const projRes = await fetchWithAuth("/api/portal/dashboard");
             if (projRes.ok) {
