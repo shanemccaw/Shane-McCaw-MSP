@@ -6,6 +6,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { TypedCardContent } from "@/components/kanban/TypedCardContent";
+import { DiscoveryCardModal } from "@/components/kanban/DiscoveryCardModal";
 
 export interface KanbanCardModalTask {
   id: number;
@@ -265,7 +266,24 @@ function EngineerDetailSection({
   );
 }
 
-export function KanbanCardModal({ task, stepTitle, open, onClose, mode = "client", fetchWithAuth, onUpdate }: Props) {
+export function KanbanCardModal(props: Props) {
+  const { task, open, onClose, mode = "client", onUpdate } = props;
+  // Discovery cards get their own rich two-column modal — dispatch before any hooks
+  if (task?.taskType === "discovery") {
+    return (
+      <DiscoveryCardModal
+        task={task}
+        open={open}
+        onClose={onClose}
+        mode={mode}
+        onUpdate={onUpdate}
+      />
+    );
+  }
+  return <GenericKanbanCardModal {...props} />;
+}
+
+function GenericKanbanCardModal({ task, stepTitle, open, onClose, mode = "client", fetchWithAuth, onUpdate }: Props) {
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState<EditForm>({ title: "", description: "", priority: "", assignedTo: "", dueDate: "" });
