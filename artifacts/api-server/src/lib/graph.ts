@@ -322,6 +322,36 @@ export async function listDriveItems(
   }
 }
 
+/**
+ * Create a folder at the root of a site's document library and return its webUrl.
+ * Returns null on failure (non-fatal — callers should log and continue).
+ */
+export async function createProjectFolder(
+  siteId: string,
+  folderName: string,
+): Promise<string | null> {
+  try {
+    const res = await graphFetch(`/sites/${siteId}/drive/root/children`, {
+      method: "POST",
+      body: JSON.stringify({
+        name: folderName,
+        folder: {},
+        "@microsoft.graph.conflictBehavior": "rename",
+      }),
+    });
+    if (!res.ok) {
+      const text = await res.text();
+      logger.warn({ status: res.status, body: text }, "Graph createProjectFolder failed");
+      return null;
+    }
+    const data = await res.json() as { webUrl?: string };
+    return data.webUrl ?? null;
+  } catch (err) {
+    logger.error({ err }, "Graph createProjectFolder error");
+    return null;
+  }
+}
+
 export async function createSiteFolder(
   siteId: string,
   parentPath: string,

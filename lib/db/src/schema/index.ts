@@ -101,6 +101,7 @@ export const projectsTable = pgTable("projects", {
   startDate: timestamp("start_date"),
   endDate: timestamp("end_date"),
   projectType: text("project_type", { enum: ["project", "retainer"] }).notNull().default("project"),
+  sharepointFolderUrl: text("sharepoint_folder_url"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });

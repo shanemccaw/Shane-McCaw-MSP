@@ -6,7 +6,7 @@ import { sendEmail, purchaseConfirmationEmail, onboardingConfirmationEmail, admi
 import { sendAdminSms } from "../lib/sms";
 import { sendPushNotifications } from "../lib/push";
 import { createAuditLog } from "../lib/audit";
-import { listDriveItems, graphCredentialsPresent } from "../lib/graph";
+import { listDriveItems, graphCredentialsPresent, createProjectFolder } from "../lib/graph";
 import multer from "multer";
 import path from "path";
 import fs from "fs";
@@ -1942,6 +1942,22 @@ async function provisionOnboardingProject(
     startDate,
   }).returning();
 
+  // ── Auto-create SharePoint folder for this project ────────────────────────
+  if (buyer.sharepointSiteId) {
+    try {
+      const folderUrl = await createProjectFolder(buyer.sharepointSiteId, projectTitle);
+      if (folderUrl) {
+        await db.update(projectsTable)
+          .set({ sharepointFolderUrl: folderUrl })
+          .where(eq(projectsTable.id, project.id));
+        project.sharepointFolderUrl = folderUrl;
+        req.log.info({ projectId: project.id, folderUrl }, "SharePoint project folder created");
+      }
+    } catch (err) {
+      req.log.warn({ err, projectId: project.id }, "SharePoint folder creation failed (non-fatal)");
+    }
+  }
+
   // ── Look up workflow template steps for the primary service directly ──────
   const primaryService = orderedServices[0];
   const resolvedWorkflowTemplateId = primaryService?.workflowTemplateId ?? null;
@@ -2829,6 +2845,26 @@ router.post("/admin/projects", requireAdmin, async (req: Request, res: Response)
     projectType: (projectType === "retainer" ? "retainer" : "project") as "project" | "retainer",
   }).returning();
 
+  // ── Auto-create SharePoint folder if client has a site ───────────────────
+  if (clientUserId) {
+    try {
+      const [clientUser] = await db.select({ sharepointSiteId: usersTable.sharepointSiteId })
+        .from(usersTable).where(eq(usersTable.id, clientUserId));
+      if (clientUser?.sharepointSiteId) {
+        const folderUrl = await createProjectFolder(clientUser.sharepointSiteId, title);
+        if (folderUrl) {
+          await db.update(projectsTable)
+            .set({ sharepointFolderUrl: folderUrl })
+            .where(eq(projectsTable.id, project.id));
+          project.sharepointFolderUrl = folderUrl;
+          req.log.info({ projectId: project.id, folderUrl }, "SharePoint project folder created");
+        }
+      }
+    } catch (err) {
+      req.log.warn({ err, projectId: project.id }, "SharePoint folder auto-create failed (non-fatal)");
+    }
+  }
+
   // Notify client
   if (clientUserId) {
     await db.insert(notificationsTable).values({
@@ -2853,6 +2889,41 @@ router.post("/admin/projects", requireAdmin, async (req: Request, res: Response)
   });
 
   res.status(201).json(project);
+});
+
+// ── Manually create SharePoint folder for an existing project ─────────────
+router.post("/admin/projects/:id/sharepoint-folder", requireAdmin, async (req: Request, res: Response) => {
+  const id = parseInt(String(req.params.id ?? ""), 10);
+  if (isNaN(id)) { res.status(400).json({ error: "Invalid project id" }); return; }
+
+  const [project] = await db.select().from(projectsTable).where(eq(projectsTable.id, id));
+  if (!project) { res.status(404).json({ error: "Project not found" }); return; }
+  if (project.sharepointFolderUrl) {
+    res.status(409).json({ error: "SharePoint folder already exists", sharepointFolderUrl: project.sharepointFolderUrl });
+    return;
+  }
+  if (!project.clientUserId) {
+    res.status(400).json({ error: "Project has no assigned client" }); return;
+  }
+
+  const [clientUser] = await db.select({ sharepointSiteId: usersTable.sharepointSiteId })
+    .from(usersTable).where(eq(usersTable.id, project.clientUserId));
+  if (!clientUser?.sharepointSiteId) {
+    res.status(400).json({ error: "Client has no SharePoint site configured" }); return;
+  }
+
+  const folderUrl = await createProjectFolder(clientUser.sharepointSiteId, project.title);
+  if (!folderUrl) {
+    res.status(502).json({ error: "Failed to create SharePoint folder. Check Graph API credentials." });
+    return;
+  }
+
+  await db.update(projectsTable)
+    .set({ sharepointFolderUrl: folderUrl })
+    .where(eq(projectsTable.id, id));
+
+  req.log.info({ projectId: id, folderUrl }, "SharePoint project folder created manually");
+  res.json({ sharepointFolderUrl: folderUrl });
 });
 
 router.patch("/admin/projects/:id", requireAdmin, async (req: Request, res: Response) => {

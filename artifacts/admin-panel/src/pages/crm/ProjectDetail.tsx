@@ -48,6 +48,7 @@ interface Project {
   startDate: string | null;
   endDate: string | null;
   projectType: string;
+  sharepointFolderUrl: string | null;
   createdAt: string;
 }
 
@@ -56,6 +57,7 @@ interface Client {
   email: string;
   name: string | null;
   company: string | null;
+  sharepointSiteId: string | null;
 }
 
 interface LinkedEmail {
@@ -868,6 +870,28 @@ export default function ProjectDetailPage() {
   const [deleteTaskTarget, setDeleteTaskTarget] = useState<{ taskId: number } | null>(null);
   const [statusReportOpen, setStatusReportOpen] = useState(false);
 
+  const [spFolderCreating, setSpFolderCreating] = useState(false);
+
+  const handleCreateSharePointFolder = async () => {
+    if (!projectId) return;
+    setSpFolderCreating(true);
+    try {
+      const res = await fetchWithAuth(`/api/admin/projects/${projectId}/sharepoint-folder`, { method: "POST" });
+      if (res.ok) {
+        const data = await res.json() as { sharepointFolderUrl: string };
+        setProject(prev => prev ? { ...prev, sharepointFolderUrl: data.sharepointFolderUrl } : prev);
+        toast({ title: "SharePoint folder created", description: "The project folder is ready in SharePoint." });
+      } else {
+        const err = await res.json() as { error?: string };
+        toast({ title: "Failed to create folder", description: err.error ?? "Unknown error", variant: "destructive" });
+      }
+    } catch {
+      toast({ title: "Network error", description: "Could not reach the server.", variant: "destructive" });
+    } finally {
+      setSpFolderCreating(false);
+    }
+  };
+
   const [auditOpen, setAuditOpen] = useState(false);
   const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>([]);
   const [auditLoading, setAuditLoading] = useState(false);
@@ -1285,6 +1309,59 @@ export default function ProjectDetailPage() {
           )}
         </div>
       </div>
+
+      {/* ── SharePoint Folder ──────────────────────────────────────────── */}
+      {client?.sharepointSiteId && (
+        <section className="mb-6">
+          <h2 className="text-sm font-bold uppercase tracking-wider text-[#0A2540] mb-3">SharePoint Folder</h2>
+          <div className="bg-white border border-border rounded-xl p-4 flex items-center gap-3">
+            <div className="w-8 h-8 rounded-lg bg-[#0078D4]/10 flex items-center justify-center flex-shrink-0">
+              <svg className="w-4 h-4 text-[#0078D4]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V7z" />
+              </svg>
+            </div>
+            {project.sharepointFolderUrl ? (
+              <div className="flex-1 min-w-0">
+                <p className="text-xs text-muted-foreground mb-1">Project folder in SharePoint</p>
+                <a
+                  href={project.sharepointFolderUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-sm font-medium text-[#0078D4] hover:underline truncate block"
+                >
+                  Open in SharePoint ↗
+                </a>
+              </div>
+            ) : (
+              <div className="flex-1 min-w-0">
+                <p className="text-xs text-muted-foreground mb-1">No SharePoint folder yet</p>
+                <p className="text-xs text-[#0A2540]/60">Create a dedicated folder for this project's documents.</p>
+              </div>
+            )}
+            {!project.sharepointFolderUrl && (
+              <button
+                onClick={() => void handleCreateSharePointFolder()}
+                disabled={spFolderCreating}
+                className="flex items-center gap-1.5 bg-[#0078D4] text-white text-xs font-semibold px-3 py-2 rounded-lg hover:bg-[#0078D4]/90 transition-colors disabled:opacity-60 disabled:cursor-not-allowed flex-shrink-0"
+              >
+                {spFolderCreating ? (
+                  <>
+                    <div className="w-3 h-3 border border-white/40 border-t-white rounded-full animate-spin" />
+                    Creating…
+                  </>
+                ) : (
+                  <>
+                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
+                    </svg>
+                    Create SharePoint Folder
+                  </>
+                )}
+              </button>
+            )}
+          </div>
+        </section>
+      )}
 
       {/* ── Kanban Board ───────────────────────────────────────────────── */}
       <section className="mb-8">
