@@ -37,6 +37,7 @@ interface WorkflowStep {
   status: string;
   notes: string | null;
   completedAt: string | null;
+  dueDate: string | null;
   order: number;
 }
 
@@ -636,9 +637,9 @@ export default function PortalProjectDetail() {
                                   {step.notes && (
                                     <p className="text-xs text-[#0078D4] italic">Note: {step.notes}</p>
                                   )}
-                                  {step.completedAt && (
+                                  {step.dueDate && (
                                     <p className="text-xs text-muted-foreground mt-1">
-                                      DUE: {new Date(step.completedAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                                      DUE: {new Date(step.dueDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
                                     </p>
                                   )}
                                 </div>
@@ -719,9 +720,9 @@ export default function PortalProjectDetail() {
                 {nextMilestone ? (
                   <>
                     <p className="text-white font-bold text-base leading-snug mb-1">{nextMilestone.title}</p>
-                    {nextMilestone.completedAt ? (
+                    {nextMilestone.dueDate ? (
                       <p className="text-white/50 text-xs mb-4">
-                        Target: {new Date(nextMilestone.completedAt).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}
+                        Target: {new Date(nextMilestone.dueDate).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}
                       </p>
                     ) : project.endDate ? (
                       <p className="text-white/50 text-xs mb-4">

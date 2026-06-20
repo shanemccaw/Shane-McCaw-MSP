@@ -1918,8 +1918,8 @@ router.delete("/admin/workflow-steps/:id", requireAdmin, async (req: Request, re
 });
 
 router.post("/admin/workflow-steps", requireAdmin, async (req: Request, res: Response) => {
-  const { projectId, clientServiceId, title, description, order, status } = req.body as {
-    projectId?: number; clientServiceId?: number; title?: string; description?: string; order?: number; status?: string;
+  const { projectId, clientServiceId, title, description, order, status, dueDate } = req.body as {
+    projectId?: number; clientServiceId?: number; title?: string; description?: string; order?: number; status?: string; dueDate?: string | null;
   };
   if (!title) { res.status(400).json({ error: "title is required" }); return; }
 
@@ -1930,6 +1930,7 @@ router.post("/admin/workflow-steps", requireAdmin, async (req: Request, res: Res
     description: description ?? null,
     order: order ?? 0,
     status: (status as "pending" | "in_progress" | "completed" | "blocked") ?? "pending",
+    dueDate: dueDate ? new Date(dueDate) : null,
   }).returning();
   res.status(201).json(step);
 });
@@ -1938,7 +1939,7 @@ router.patch("/admin/workflow-steps/:id", requireAdmin, async (req: Request, res
   const id = parseInt(String(req.params.id ?? ""), 10);
   if (isNaN(id)) { res.status(400).json({ error: "Invalid ID" }); return; }
 
-  const { status, notes, title, description } = req.body as { status?: string; notes?: string; title?: string; description?: string };
+  const { status, notes, title, description, dueDate } = req.body as { status?: string; notes?: string; title?: string; description?: string; dueDate?: string | null };
   const updates: Partial<typeof workflowStepsTable.$inferInsert> = {};
   if (status !== undefined) {
     updates.status = status as "pending" | "in_progress" | "completed" | "blocked";
@@ -1947,6 +1948,7 @@ router.patch("/admin/workflow-steps/:id", requireAdmin, async (req: Request, res
   if (notes !== undefined) updates.notes = notes;
   if (title !== undefined) updates.title = title;
   if (description !== undefined) updates.description = description;
+  if (dueDate !== undefined) updates.dueDate = dueDate ? new Date(dueDate) : null;
 
   const [updated] = await db.update(workflowStepsTable).set(updates).where(eq(workflowStepsTable.id, id)).returning();
   if (!updated) { res.status(404).json({ error: "Step not found" }); return; }

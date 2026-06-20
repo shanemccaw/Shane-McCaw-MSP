@@ -15,6 +15,13 @@
       "when": 1781894000000,
       "tag": "0001_add_marketing_service_fields",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1750377600000,
+      "tag": "0002_add_workflow_step_due_date",
+      "breakpoints": true
     }
   ]
 }

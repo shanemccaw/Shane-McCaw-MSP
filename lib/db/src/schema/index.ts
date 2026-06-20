@@ -129,6 +129,7 @@ export const workflowStepsTable = pgTable("workflow_steps", {
   order: integer("order").notNull().default(0),
   notes: text("notes"),
   completedAt: timestamp("completed_at"),
+  dueDate: timestamp("due_date"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   workflowTemplateStepId: integer("workflow_template_step_id"),
 });

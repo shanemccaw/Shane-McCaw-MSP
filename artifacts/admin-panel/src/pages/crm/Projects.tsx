@@ -48,6 +48,7 @@ interface WorkflowStep {
   status: string;
   order: number;
   description: string | null;
+  dueDate: string | null;
 }
 
 interface KanbanTask {
@@ -324,7 +325,7 @@ export default function ProjectsPage() {
   const [detailLoading, setDetailLoading] = useState(false);
 
   const [addStepProjectId, setAddStepProjectId] = useState<number | null>(null);
-  const [stepForm, setStepForm] = useState({ title: "", status: "pending" });
+  const [stepForm, setStepForm] = useState({ title: "", status: "pending", dueDate: "" });
 
   const [addTaskProjectId, setAddTaskProjectId] = useState<number | null>(null);
   const [taskForm, setTaskForm] = useState({ title: "", column: "backlog", assignedTo: "" });
@@ -456,12 +457,21 @@ export default function ProjectsPage() {
     await fetchWithAuth("/api/admin/workflow-steps", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ projectId, title: stepForm.title.trim(), status: stepForm.status }),
+      body: JSON.stringify({ projectId, title: stepForm.title.trim(), status: stepForm.status, dueDate: stepForm.dueDate || null }),
     });
     setAddStepProjectId(null);
-    setStepForm({ title: "", status: "pending" });
+    setStepForm({ title: "", status: "pending", dueDate: "" });
     await reloadDetails(projectId);
     setSubSaving(false);
+  };
+
+  const handleUpdateStepDueDate = async (stepId: number, projectId: number, dueDate: string) => {
+    await fetchWithAuth(`/api/admin/workflow-steps/${stepId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ dueDate: dueDate || null }),
+    });
+    await reloadDetails(projectId);
   };
 
   const handleDeleteStep = async (stepId: number, projectId: number) => {
@@ -633,15 +643,15 @@ export default function ProjectsPage() {
                         <div>
                           <div className="flex items-center justify-between mb-3">
                             <h4 className="text-xs font-bold uppercase tracking-wider text-[#0A2540]">Workflow Steps</h4>
-                            <button onClick={() => { setAddStepProjectId(addStepProjectId === p.id ? null : p.id); setStepForm({ title: "", status: "pending" }); }}
+                            <button onClick={() => { setAddStepProjectId(addStepProjectId === p.id ? null : p.id); setStepForm({ title: "", status: "pending", dueDate: "" }); }}
                               className="flex items-center gap-1 text-xs font-semibold text-[#0078D4] hover:underline">
                               <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" /></svg>
                               Add Step
                             </button>
                           </div>
                           {addStepProjectId === p.id && (
-                            <form onSubmit={e => void handleAddStep(e, p.id)} className="flex items-end gap-2 mb-3 p-3 bg-white border border-border rounded-lg">
-                              <div className="flex-1">
+                            <form onSubmit={e => void handleAddStep(e, p.id)} className="flex flex-wrap items-end gap-2 mb-3 p-3 bg-white border border-border rounded-lg">
+                              <div className="flex-1 min-w-[160px]">
                                 <label className="block text-xs font-semibold text-[#0A2540] mb-1">Step Title *</label>
                                 <input required autoFocus value={stepForm.title} onChange={e => setStepForm(f => ({ ...f, title: e.target.value }))}
                                   placeholder="e.g. Kick-off Meeting"
@@ -657,6 +667,11 @@ export default function ProjectsPage() {
                                   <option value="blocked">Blocked</option>
                                 </select>
                               </div>
+                              <div>
+                                <label className="block text-xs font-semibold text-[#0A2540] mb-1">Due Date</label>
+                                <input type="date" value={stepForm.dueDate} onChange={e => setStepForm(f => ({ ...f, dueDate: e.target.value }))}
+                                  className="border border-border rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4] bg-white" />
+                              </div>
                               <button type="submit" disabled={subSaving} className="bg-[#0078D4] text-white text-xs font-semibold px-3 py-1.5 rounded hover:bg-[#0078D4]/90 disabled:opacity-50 whitespace-nowrap">Add</button>
                               <button type="button" onClick={() => setAddStepProjectId(null)} className="border border-border text-xs font-medium px-3 py-1.5 rounded hover:bg-[#F7F9FC]">Cancel</button>
                             </form>
@@ -666,10 +681,22 @@ export default function ProjectsPage() {
                           ) : (
                             <div className="space-y-1.5">
                               {detail.steps.map(s => (
-                                <div key={s.id} className="flex items-center gap-3 p-2.5 bg-white border border-border rounded-lg">
+                                <div key={s.id} className="flex items-center gap-3 p-2.5 bg-white border border-border rounded-lg flex-wrap">
                                   <div className="flex-1 min-w-0">
                                     <span className="text-sm font-medium text-[#0A2540] truncate">{s.title}</span>
+                                    {s.dueDate && (
+                                      <span className="ml-2 text-xs text-muted-foreground">
+                                        Due {new Date(s.dueDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                                      </span>
+                                    )}
                                   </div>
+                                  <input
+                                    type="date"
+                                    value={s.dueDate ? new Date(s.dueDate).toISOString().split("T")[0] : ""}
+                                    onChange={e => void handleUpdateStepDueDate(s.id, p.id, e.target.value)}
+                                    title="Set due date"
+                                    className="border border-border rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-[#0078D4] bg-white"
+                                  />
                                   <select value={s.status} onChange={e => void handleUpdateStepStatus(s.id, p.id, e.target.value)}
                                     className={`text-xs font-semibold rounded px-2 py-1 border-0 focus:outline-none focus:ring-1 focus:ring-[#0078D4] cursor-pointer ${STEP_STATUS_COLORS[s.status] ?? "bg-gray-100 text-gray-600"}`}>
                                     <option value="pending">Pending</option>
