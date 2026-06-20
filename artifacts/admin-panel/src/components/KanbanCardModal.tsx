@@ -4,6 +4,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { TypedCardContent } from "@/components/kanban/TypedCardContent";
 
 export interface KanbanCardModalTask {
   id: number;
@@ -88,6 +89,11 @@ export function KanbanCardModal({ task, stepTitle, open, onClose, mode = "client
               <p className="text-sm text-[#0A2540] leading-relaxed">{task.description}</p>
             </div>
           )}
+
+          <TypedCardContent
+            taskType={task.taskType}
+            metadata={task.taskMetadata}
+          />
 
           {(task.assignedTo || task.dueDate || stepTitle) && (
             <div className="flex flex-wrap gap-4 text-xs text-muted-foreground">
