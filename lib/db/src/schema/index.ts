@@ -391,3 +391,24 @@ export const contractTemplatesTable = pgTable("contract_templates", {
 
 export type InsertContractTemplate = typeof contractTemplatesTable.$inferInsert;
 export type ContractTemplate = typeof contractTemplatesTable.$inferSelect;
+
+// Status Reports (structured, admin-authored client-facing reports)
+export const statusReportsTable = pgTable("status_reports", {
+  id: serial("id").primaryKey(),
+  projectId: integer("project_id").references(() => projectsTable.id),
+  clientUserId: integer("client_user_id").references(() => usersTable.id),
+  title: text("title").notNull(),
+  period: text("period", { enum: ["weekly", "monthly", "executive_summary", "other"] }).notNull().default("monthly"),
+  reportStatus: text("report_status", { enum: ["draft", "sent"] }).notNull().default("draft"),
+  executiveSummary: text("executive_summary"),
+  completedActivities: jsonb("completed_activities").$type<Array<{ title: string; description: string }>>().notNull().default([]),
+  keyOutcomes: text("key_outcomes"),
+  nextSteps: jsonb("next_steps").$type<Array<{ label: string; title: string; description: string }>>().notNull().default([]),
+  reportDate: timestamp("report_date"),
+  sentAt: timestamp("sent_at"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export type InsertStatusReport = typeof statusReportsTable.$inferInsert;
+export type StatusReport = typeof statusReportsTable.$inferSelect;

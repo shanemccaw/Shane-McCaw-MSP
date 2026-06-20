@@ -1,5 +1,5 @@
 import { Router, type IRouter, type Request, type Response } from "express";
-import { db, projectsTable, clientServicesTable, servicesTable, workflowStepsTable, kanbanTasksTable, documentsTable, reportsTable, invoicesTable, messagesTable, notificationsTable, projectUpdatesTable, usersTable, contractsTable, passwordResetTokensTable, workflowTemplateStepsTable, workflowTemplateStepTasksTable, contractTemplatesTable, impersonationTokensTable } from "@workspace/db";
+import { db, projectsTable, clientServicesTable, servicesTable, workflowStepsTable, kanbanTasksTable, documentsTable, reportsTable, invoicesTable, messagesTable, notificationsTable, projectUpdatesTable, usersTable, contractsTable, passwordResetTokensTable, workflowTemplateStepsTable, workflowTemplateStepTasksTable, contractTemplatesTable, impersonationTokensTable, statusReportsTable } from "@workspace/db";
 import { eq, and, desc, asc, count, sql, inArray } from "drizzle-orm";
 import { requireAuth, requireAdmin } from "../middlewares/requireAuth";
 import { sendEmail, purchaseConfirmationEmail, onboardingConfirmationEmail, adminPurchaseAlertEmail } from "../lib/mailer";
@@ -2205,6 +2205,150 @@ router.delete("/admin/reports/:id", requireAdmin, async (req: Request, res: Resp
   if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
   await db.delete(reportsTable).where(eq(reportsTable.id, id));
   res.json({ deleted: id });
+});
+
+// ─── ADMIN: Status Reports ───────────────────────────────────────────────────
+
+router.get("/admin/status-reports", requireAdmin, async (_req: Request, res: Response) => {
+  const reports = await db.select().from(statusReportsTable).orderBy(desc(statusReportsTable.updatedAt));
+  res.json(reports);
+});
+
+router.post("/admin/status-reports", requireAdmin, async (req: Request, res: Response) => {
+  const { projectId, clientUserId, title, period, executiveSummary, completedActivities, keyOutcomes, nextSteps, reportDate } = req.body as {
+    projectId?: number; clientUserId?: number; title?: string; period?: string;
+    executiveSummary?: string; completedActivities?: Array<{ title: string; description: string }>;
+    keyOutcomes?: string; nextSteps?: Array<{ label: string; title: string; description: string }>;
+    reportDate?: string;
+  };
+  if (!title) { res.status(400).json({ error: "title is required" }); return; }
+  const validPeriods = ["weekly", "monthly", "executive_summary", "other"];
+  const [report] = await db.insert(statusReportsTable).values({
+    projectId: projectId ?? null,
+    clientUserId: clientUserId ?? null,
+    title,
+    period: (validPeriods.includes(period ?? "") ? period : "monthly") as "weekly" | "monthly" | "executive_summary" | "other",
+    reportStatus: "draft",
+    executiveSummary: executiveSummary ?? null,
+    completedActivities: completedActivities ?? [],
+    keyOutcomes: keyOutcomes ?? null,
+    nextSteps: nextSteps ?? [],
+    reportDate: reportDate ? new Date(reportDate) : null,
+  }).returning();
+  res.status(201).json(report);
+});
+
+router.patch("/admin/status-reports/:id", requireAdmin, async (req: Request, res: Response) => {
+  const id = parseInt(String(req.params.id ?? ""), 10);
+  if (isNaN(id)) { res.status(400).json({ error: "Invalid ID" }); return; }
+
+  const { title, period, executiveSummary, completedActivities, keyOutcomes, nextSteps, reportDate } = req.body as {
+    title?: string; period?: string; executiveSummary?: string;
+    completedActivities?: Array<{ title: string; description: string }>;
+    keyOutcomes?: string; nextSteps?: Array<{ label: string; title: string; description: string }>;
+    reportDate?: string;
+  };
+
+  const updates: Partial<typeof statusReportsTable.$inferInsert> & { updatedAt: Date } = { updatedAt: new Date() };
+  if (title !== undefined) updates.title = title;
+  if (period !== undefined) updates.period = period as "weekly" | "monthly" | "executive_summary" | "other";
+  if (executiveSummary !== undefined) updates.executiveSummary = executiveSummary;
+  if (completedActivities !== undefined) updates.completedActivities = completedActivities;
+  if (keyOutcomes !== undefined) updates.keyOutcomes = keyOutcomes;
+  if (nextSteps !== undefined) updates.nextSteps = nextSteps;
+  if (reportDate !== undefined) updates.reportDate = reportDate ? new Date(reportDate) : null;
+
+  const [updated] = await db.update(statusReportsTable).set(updates).where(eq(statusReportsTable.id, id)).returning();
+  if (!updated) { res.status(404).json({ error: "Not found" }); return; }
+  res.json(updated);
+});
+
+router.post("/admin/status-reports/:id/send", requireAdmin, async (req: Request, res: Response) => {
+  const id = parseInt(String(req.params.id ?? ""), 10);
+  if (isNaN(id)) { res.status(400).json({ error: "Invalid ID" }); return; }
+
+  const [report] = await db.select().from(statusReportsTable).where(eq(statusReportsTable.id, id));
+  if (!report) { res.status(404).json({ error: "Not found" }); return; }
+
+  const [updated] = await db.update(statusReportsTable)
+    .set({ reportStatus: "sent", sentAt: new Date(), updatedAt: new Date() })
+    .where(eq(statusReportsTable.id, id))
+    .returning();
+
+  if (report.clientUserId) {
+    await db.insert(notificationsTable).values({
+      userId: report.clientUserId,
+      title: `New status report: ${report.title}`,
+      body: "Your consultant has sent you a project status report. View it in your portal.",
+      type: "project_update",
+      linkPath: "/portal/projects",
+    });
+  }
+
+  res.json(updated);
+});
+
+router.delete("/admin/status-reports/:id", requireAdmin, async (req: Request, res: Response) => {
+  const id = parseInt(String(req.params.id ?? ""), 10);
+  if (isNaN(id)) { res.status(400).json({ error: "Invalid ID" }); return; }
+  await db.delete(statusReportsTable).where(eq(statusReportsTable.id, id));
+  res.json({ deleted: id });
+});
+
+// Returns auto-populated data for a given project to pre-fill a new status report
+router.get("/admin/projects/:id/report-autofill", requireAdmin, async (req: Request, res: Response) => {
+  const id = parseInt(String(req.params.id ?? ""), 10);
+  if (isNaN(id)) { res.status(400).json({ error: "Invalid ID" }); return; }
+
+  const [project] = await db.select().from(projectsTable).where(eq(projectsTable.id, id));
+  if (!project) { res.status(404).json({ error: "Project not found" }); return; }
+
+  const [client] = project.clientUserId
+    ? await db.select({ id: usersTable.id, name: usersTable.name, email: usersTable.email, company: usersTable.company })
+        .from(usersTable).where(eq(usersTable.id, project.clientUserId))
+    : [null];
+
+  const steps = await db.select().from(workflowStepsTable)
+    .where(eq(workflowStepsTable.projectId, id))
+    .orderBy(asc(workflowStepsTable.order));
+
+  const tasks = await db.select().from(kanbanTasksTable)
+    .where(eq(kanbanTasksTable.projectId, id))
+    .orderBy(asc(kanbanTasksTable.order));
+
+  const completedTasks = tasks
+    .filter(t => t.column === "completed")
+    .map(t => ({ title: t.title, description: t.description ?? "" }));
+
+  const completedSteps = steps.filter(s => s.status === "completed")
+    .map(s => ({ title: s.title, description: s.description ?? "" }));
+
+  const pendingSteps = steps
+    .filter(s => s.status === "pending" || s.status === "in_progress")
+    .map(s => ({ label: s.status === "in_progress" ? "In Progress" : "Upcoming", title: s.title, description: s.description ?? "" }));
+
+  const blockedCount = steps.filter(s => s.status === "blocked").length;
+  const completedStepsCount = completedSteps.length;
+
+  res.json({
+    project: {
+      id: project.id,
+      title: project.title,
+      status: project.status,
+      progress: completedStepsCount > 0 && steps.length > 0
+        ? Math.round((completedStepsCount / steps.length) * 100)
+        : project.progress,
+      description: project.description,
+      endDate: project.endDate,
+    },
+    client,
+    completedTasks,
+    completedSteps,
+    pendingSteps,
+    blockedCount,
+    totalSteps: steps.length,
+    completedStepsCount,
+  });
 });
 
 // ─── ADMIN: Invoices ─────────────────────────────────────────────────────────
