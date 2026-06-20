@@ -39,6 +39,7 @@ interface Project {
   clientUserId: number | null;
   startDate: string | null;
   endDate: string | null;
+  projectType: string;
   createdAt: string;
 }
 
@@ -83,10 +84,11 @@ interface ProjectFormState {
   clientUserId: string;
   startDate: string;
   endDate: string;
+  projectType: string;
 }
 
 const EMPTY_FORM: ProjectFormState = {
-  title: "", description: "", status: "active", phase: "", progress: 0, clientUserId: "", startDate: "", endDate: "",
+  title: "", description: "", status: "active", phase: "", progress: 0, clientUserId: "", startDate: "", endDate: "", projectType: "project",
 };
 
 const COLUMNS = [
@@ -446,6 +448,7 @@ export default function ProjectsPage() {
       clientUserId: p.clientUserId ? String(p.clientUserId) : "",
       startDate: p.startDate ? new Date(p.startDate).toISOString().split("T")[0] : "",
       endDate: p.endDate ? new Date(p.endDate).toISOString().split("T")[0] : "",
+      projectType: p.projectType ?? "project",
     });
     setShowForm(true);
   };
@@ -549,6 +552,14 @@ export default function ProjectsPage() {
                 className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4] bg-white">
                 <option value="">— Unassigned —</option>
                 {clients.map(c => <option key={c.id} value={c.id}>{c.name ?? c.email}{c.company ? ` (${c.company})` : ""}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-[#0A2540] mb-1">Type</label>
+              <select value={form.projectType} onChange={e => setForm(f => ({ ...f, projectType: e.target.value }))}
+                className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4] bg-white">
+                <option value="project">Project</option>
+                <option value="retainer">Retainer</option>
               </select>
             </div>
             <div>

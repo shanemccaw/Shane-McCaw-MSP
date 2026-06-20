@@ -1819,8 +1819,8 @@ router.get("/admin/projects", requireAdmin, async (_req: Request, res: Response)
 });
 
 router.post("/admin/projects", requireAdmin, async (req: Request, res: Response) => {
-  const { title, description, status, phase, progress, clientUserId, startDate, endDate } = req.body as {
-    title?: string; description?: string; status?: string; phase?: string; progress?: number; clientUserId?: number; startDate?: string; endDate?: string;
+  const { title, description, status, phase, progress, clientUserId, startDate, endDate, projectType } = req.body as {
+    title?: string; description?: string; status?: string; phase?: string; progress?: number; clientUserId?: number; startDate?: string; endDate?: string; projectType?: string;
   };
   if (!title) { res.status(400).json({ error: "title is required" }); return; }
 
@@ -1834,6 +1834,7 @@ router.post("/admin/projects", requireAdmin, async (req: Request, res: Response)
     clientUserId: clientUserId ?? null,
     startDate: startDate ? new Date(startDate) : null,
     endDate: endDate ? new Date(endDate) : null,
+    projectType: (projectType === "retainer" ? "retainer" : "project") as "project" | "retainer",
   }).returning();
 
   // Notify client
@@ -1854,8 +1855,8 @@ router.patch("/admin/projects/:id", requireAdmin, async (req: Request, res: Resp
   const id = parseInt(String(req.params.id ?? ""), 10);
   if (isNaN(id)) { res.status(400).json({ error: "Invalid ID" }); return; }
 
-  const { title, description, status, phase, progress, clientUserId, startDate, endDate } = req.body as {
-    title?: string; description?: string; status?: string; phase?: string; progress?: number; clientUserId?: number | null; startDate?: string; endDate?: string;
+  const { title, description, status, phase, progress, clientUserId, startDate, endDate, projectType } = req.body as {
+    title?: string; description?: string; status?: string; phase?: string; progress?: number; clientUserId?: number | null; startDate?: string; endDate?: string; projectType?: string;
   };
 
   const updates: Partial<typeof projectsTable.$inferInsert & { updatedAt: Date }> = { updatedAt: new Date() };
@@ -1867,6 +1868,7 @@ router.patch("/admin/projects/:id", requireAdmin, async (req: Request, res: Resp
   if (clientUserId !== undefined) updates.clientUserId = clientUserId;
   if (startDate !== undefined) updates.startDate = startDate ? new Date(startDate) : null;
   if (endDate !== undefined) updates.endDate = endDate ? new Date(endDate) : null;
+  if (projectType !== undefined) updates.projectType = (projectType === "retainer" ? "retainer" : "project") as "project" | "retainer";
 
   const [updated] = await db.update(projectsTable).set(updates).where(eq(projectsTable.id, id)).returning();
   if (!updated) { res.status(404).json({ error: "Project not found" }); return; }

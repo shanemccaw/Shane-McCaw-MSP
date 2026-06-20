@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback } from "react";
 import { useParams, Link } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
 import PortalLayout from "@/components/PortalLayout";
+import PortalRetainerDetail from "./PortalRetainerDetail";
 import {
   DndContext,
   DragOverlay,
@@ -28,6 +29,7 @@ interface Project {
   progress: number;
   startDate: string | null;
   endDate: string | null;
+  projectType: string;
 }
 
 interface WorkflowStep {
@@ -395,6 +397,15 @@ export default function PortalProjectDetail() {
   }
 
   const { project, steps, tasks, documents, updates } = data;
+
+  // Retainer engagements get an executive dashboard view
+  if (project.projectType === "retainer") {
+    return (
+      <PortalLayout>
+        <PortalRetainerDetail data={data} projectId={params.id ?? ""} fetchWithAuth={fetchWithAuth} />
+      </PortalLayout>
+    );
+  }
 
   const nextMilestone = steps.find(s => s.status !== "completed");
   const latestUpdate = updates[0] ?? null;
