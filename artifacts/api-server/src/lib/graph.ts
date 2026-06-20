@@ -218,7 +218,7 @@ export async function createM365Group(
       body: JSON.stringify({
         displayName,
         mailNickname,
-        mailEnabled: false,
+        mailEnabled: true,
         securityEnabled: false,
         groupTypes: ["Unified"],
         visibility: "Private",

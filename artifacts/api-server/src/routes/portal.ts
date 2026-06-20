@@ -1694,8 +1694,12 @@ async function provisionOnboardingProject(
 
   // ── SharePoint site provisioning (fire-and-forget, non-blocking) ─────────
   void import("./admin-sharepoint").then(({ provisionProjectSite }) => {
-    provisionProjectSite(project.id, projectTitle, req.log).catch(() => null);
-  }).catch(() => null);
+    provisionProjectSite(project.id, projectTitle, req.log).catch((err: unknown) => {
+      req.log.warn({ err }, "SharePoint site provisioning failed (non-blocking)");
+    });
+  }).catch((err: unknown) => {
+    req.log.warn({ err }, "Failed to import admin-sharepoint for provisioning (non-blocking)");
+  });
 
   // ── Confirmation email to client (fire-and-forget) ────────────────────────
   const primaryServiceName = serviceNames.join(", ");
