@@ -56,6 +56,8 @@ interface KanbanTask {
   column: string;
   assignedTo: string | null;
   order: number;
+  groupName: string | null;
+  workflowStepId: number | null;
 }
 
 const STATUS_COLORS: Record<string, string> = {
@@ -95,7 +97,22 @@ const COLUMNS = [
 
 type ColumnKey = typeof COLUMNS[number]["key"];
 
-function DraggableCard({ task, onDelete, projectId }: { task: KanbanTask; onDelete: (taskId: number, projectId: number) => void; projectId: number }) {
+const GROUP_BADGE: Record<string, string> = {
+  "Engineer Tasks": "bg-blue-100 text-blue-700",
+  "Artifacts Produced": "bg-teal-100 text-teal-700",
+};
+
+function GroupBadge({ groupName }: { groupName: string | null }) {
+  if (!groupName) return null;
+  const cls = GROUP_BADGE[groupName] ?? "bg-gray-100 text-gray-600";
+  return (
+    <span className={`inline-block text-[10px] font-semibold px-1.5 py-0.5 rounded ${cls}`}>
+      {groupName}
+    </span>
+  );
+}
+
+function DraggableCard({ task, onDelete, projectId, steps }: { task: KanbanTask; onDelete: (taskId: number, projectId: number) => void; projectId: number; steps: WorkflowStep[] }) {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
     id: task.id,
     data: { task },
@@ -104,6 +121,10 @@ function DraggableCard({ task, onDelete, projectId }: { task: KanbanTask; onDele
   const style = transform
     ? { transform: `translate3d(${transform.x}px, ${transform.y}px, 0)` }
     : undefined;
+
+  const stepTitle = task.workflowStepId
+    ? steps.find(s => s.id === task.workflowStepId)?.title ?? null
+    : null;
 
   return (
     <div
@@ -125,6 +146,16 @@ function DraggableCard({ task, onDelete, projectId }: { task: KanbanTask; onDele
           </svg>
         </div>
         <div className="flex-1 min-w-0">
+          {(task.groupName || stepTitle) && (
+            <div className="flex flex-wrap gap-1 mb-1">
+              <GroupBadge groupName={task.groupName} />
+              {stepTitle && (
+                <span className="inline-block text-[10px] font-medium px-1.5 py-0.5 rounded bg-[#0A2540]/8 text-[#0A2540]/70 border border-[#0A2540]/10">
+                  {stepTitle}
+                </span>
+              )}
+            </div>
+          )}
           <p className="font-medium text-[#0A2540]">{task.title}</p>
           {task.assignedTo && <p className="text-muted-foreground text-[10px] mt-0.5">{task.assignedTo}</p>}
           <button
@@ -142,6 +173,11 @@ function DraggableCard({ task, onDelete, projectId }: { task: KanbanTask; onDele
 function CardOverlay({ task }: { task: KanbanTask }) {
   return (
     <div className="bg-[#F7F9FC] border border-[#0078D4] rounded p-2 text-xs shadow-lg rotate-1 opacity-90 w-48">
+      {task.groupName && (
+        <div className="mb-1">
+          <GroupBadge groupName={task.groupName} />
+        </div>
+      )}
       <p className="font-medium text-[#0A2540]">{task.title}</p>
       {task.assignedTo && <p className="text-muted-foreground text-[10px] mt-0.5">{task.assignedTo}</p>}
     </div>
@@ -154,12 +190,14 @@ function DroppableColumn({
   onDelete,
   projectId,
   isOver,
+  steps,
 }: {
   col: { key: string; label: string };
   tasks: KanbanTask[];
   onDelete: (taskId: number, projectId: number) => void;
   projectId: number;
   isOver: boolean;
+  steps: WorkflowStep[];
 }) {
   const { setNodeRef } = useDroppable({ id: col.key });
 
@@ -174,7 +212,7 @@ function DroppableColumn({
       </p>
       <div className="space-y-1.5 min-h-[32px]">
         {tasks.map(task => (
-          <DraggableCard key={task.id} task={task} onDelete={onDelete} projectId={projectId} />
+          <DraggableCard key={task.id} task={task} onDelete={onDelete} projectId={projectId} steps={steps} />
         ))}
       </div>
     </div>
@@ -184,6 +222,7 @@ function DroppableColumn({
 function KanbanBoard({
   projectId,
   tasks,
+  steps,
   onTasksChange,
   onDelete,
   fetchWithAuth,
@@ -191,6 +230,7 @@ function KanbanBoard({
 }: {
   projectId: number;
   tasks: KanbanTask[];
+  steps: WorkflowStep[];
   onTasksChange: (projectId: number, updater: (tasks: KanbanTask[]) => KanbanTask[]) => void;
   onDelete: (taskId: number, projectId: number) => void;
   fetchWithAuth: (url: string, options?: RequestInit) => Promise<Response>;
@@ -254,6 +294,7 @@ function KanbanBoard({
             onDelete={onDelete}
             projectId={projectId}
             isOver={overColumnKey === col.key}
+            steps={steps}
           />
         ))}
       </div>
@@ -687,6 +728,7 @@ export default function ProjectsPage() {
                             <KanbanBoard
                               projectId={p.id}
                               tasks={detail.tasks}
+                              steps={detail.steps}
                               onTasksChange={handleTasksChange}
                               onDelete={handleDeleteTask}
                               fetchWithAuth={fetchWithAuth}
