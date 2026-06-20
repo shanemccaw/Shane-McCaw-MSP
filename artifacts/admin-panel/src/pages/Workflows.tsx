@@ -384,6 +384,27 @@ export default function WorkflowsPage() {
     await refreshSelected();
   }
 
+  function exportToJson() {
+    if (!selected) return;
+    const sorted = (selected.steps ?? []).slice().sort((a, b) => a.order - b.order);
+    const payload = sorted.map(s => ({
+      title: s.title,
+      ...(s.description ? { description: s.description } : {}),
+      tasks: (s.tasks ?? []).slice().sort((a, b) => a.order - b.order).map(t => ({
+        title: t.title,
+        ...(t.groupName ? { groupName: t.groupName } : {}),
+        ...(t.description ? { description: t.description } : {}),
+      })),
+    }));
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${selected.name.replace(/[^a-z0-9]+/gi, "-").toLowerCase()}-steps.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
   const steps = (selected?.steps ?? []).slice().sort((a, b) => a.order - b.order);
 
   return (
@@ -482,6 +503,14 @@ export default function WorkflowsPage() {
                   Steps <span className="text-gray-400 font-normal text-sm">({steps.length})</span>
                 </h3>
                 <div className="flex items-center gap-4">
+                  <button
+                    onClick={exportToJson}
+                    className="flex items-center gap-1 text-xs text-gray-500 hover:text-[#0078D4] hover:underline font-medium">
+                    <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M17 8v-2a2 2 0 00-2-2H5a2 2 0 00-2 2v2M9 12l3-3 3 3M12 21V9" />
+                    </svg>
+                    Export JSON
+                  </button>
                   <button
                     onClick={() => { setJsonImportOpen(v => !v); setJsonImportText(""); setNewStep(null); }}
                     className="flex items-center gap-1 text-xs text-[#00B4D8] hover:underline font-medium">
