@@ -691,7 +691,7 @@ async function provisionOnboardingProject(
   session: import("stripe").Stripe.Checkout.Session,
   stripeSubscriptionId?: string | null,
 ): Promise<void> {
-  const { userId, serviceId, serviceIds: serviceIdsStr, contractId, contractIds: contractIdsStr } = session.metadata ?? {};
+  const { userId, serviceId, serviceIds: serviceIdsStr, contractId, contractIds: contractIdsStr, servicePrices: servicePricesStr } = session.metadata ?? {};
   const uid = parseInt(userId ?? "", 10);
 
   // Support both legacy (serviceId) and new (serviceIds) metadata formats
@@ -705,6 +705,13 @@ async function provisionOnboardingProject(
     : contractId
       ? [parseInt(contractId, 10)].filter(n => !isNaN(n))
       : [];
+
+  // Parse per-service prices stored in checkout session metadata
+  const servicePricesList: number[] = servicePricesStr
+    ? servicePricesStr.split(",").map(p => parseFloat(p.trim())).filter(n => !isNaN(n))
+    : [];
+  // Fallback: distribute session.amount_total equally when no per-service prices available
+  const sessionTotalCents = session.amount_total;
 
   // Legacy single-value fallback for backwards compat
   const sid = sids[0] ?? NaN;
@@ -741,9 +748,12 @@ async function provisionOnboardingProject(
   // Ordered service list matching sids order
   const orderedServices = sids.map(id => serviceMap.get(id)).filter(Boolean) as typeof fetchedServices;
   const serviceNames = orderedServices.map(s => s.name);
-  const totalAmountDollars = orderedServices
-    .reduce((sum, s) => sum + (s.price ? parseFloat(String(s.price)) : 0), 0)
-    .toFixed(2);
+  // Use per-service prices from metadata when available; fall back to session total or DB price
+  const totalAmountDollars = servicePricesList.length > 0
+    ? servicePricesList.reduce((sum, p) => sum + p, 0).toFixed(2)
+    : sessionTotalCents != null
+      ? (sessionTotalCents / 100).toFixed(2)
+      : orderedServices.reduce((sum, s) => sum + (s.price ? parseFloat(String(s.price)) : 0), 0).toFixed(2);
 
   // Parse optional start date from checkout metadata; default to now
   const rawStart = session.metadata?.startDate;
@@ -787,7 +797,13 @@ async function provisionOnboardingProject(
   for (let i = 0; i < orderedServices.length; i++) {
     const svc = orderedServices[i];
     const cid = cids[i] ?? NaN;
-    const svcAmount = svc.price ? parseFloat(String(svc.price)).toFixed(2) : "0.00";
+    // Prefer per-service price from session metadata; fall back to session total ÷ services, then DB price
+    const metaPrice = servicePricesList[i];
+    const svcAmount = metaPrice != null && !isNaN(metaPrice)
+      ? metaPrice.toFixed(2)
+      : sessionTotalCents != null
+        ? (sessionTotalCents / 100 / orderedServices.length).toFixed(2)
+        : svc.price ? parseFloat(String(svc.price)).toFixed(2) : "0.00";
 
     // Assign service to client
     const [newCs] = await db.insert(clientServicesTable).values({
@@ -2393,6 +2409,7 @@ router.post("/portal/checkout/create-session", requireAuth, async (req: Request,
           contractIds: otContractIds.join(","),
           serviceName: oneTimeServices.map(s => s.name).join(", "),
           startDate: startDateStr,
+          servicePrices: oneTimeServices.map(s => (contractFinalPrices.get(s.id) ?? parseFloat(String(s.price ?? 0))).toFixed(2)).join(","),
         },
       });
       oneTimeUrl = session.url;
@@ -2422,6 +2439,7 @@ router.post("/portal/checkout/create-session", requireAuth, async (req: Request,
           contractIds: recContractIds.join(","),
           serviceName: recurringServices.map(s => s.name).join(", "),
           startDate: startDateStr,
+          servicePrices: recurringServices.map(s => (contractFinalPrices.get(s.id) ?? parseFloat(String(s.price ?? 0))).toFixed(2)).join(","),
         },
       });
       subscriptionUrl = session.url;
