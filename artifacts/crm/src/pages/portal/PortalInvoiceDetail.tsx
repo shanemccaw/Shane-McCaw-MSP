@@ -22,6 +22,24 @@ interface Project {
   title: string;
 }
 
+interface WizardOption {
+  id: string;
+  label: string;
+  description?: string;
+  priceAdjustment: number;
+}
+
+interface WizardStep {
+  id: string;
+  title: string;
+  options: WizardOption[];
+}
+
+interface WizardSelection {
+  stepId: string;
+  optionId: string;
+}
+
 interface ContractSummary {
   id: number;
   serviceId: number;
@@ -30,6 +48,8 @@ interface ContractSummary {
   signerName: string | null;
   contractVersion: string;
   finalPrice: string | null;
+  wizardSelections: WizardSelection[] | null;
+  orderWorkflow: WizardStep[] | null;
 }
 
 interface InvoiceDetailData {
@@ -269,6 +289,43 @@ export default function PortalInvoiceDetail() {
             </>
           )}
         </div>
+
+        {/* Order Configuration */}
+        {!loading && contract && contract.wizardSelections && contract.wizardSelections.length > 0 && contract.orderWorkflow && (
+          <div className="bg-white border border-border rounded-2xl p-6 mb-5 shadow-sm">
+            <h2 className="text-sm font-bold text-[#0A2540] mb-4">Order Configuration</h2>
+            <div className="divide-y divide-border">
+              {contract.wizardSelections.map((sel) => {
+                const step = contract.orderWorkflow!.find(s => s.id === sel.stepId);
+                const option = step?.options.find(o => o.id === sel.optionId);
+                if (!step || !option) return null;
+                const adj = option.priceAdjustment ?? 0;
+                const adjLabel = adj === 0
+                  ? "Included"
+                  : adj > 0
+                  ? `+${formatCurrency(adj, "usd")}`
+                  : `−${formatCurrency(Math.abs(adj), "usd")}`;
+                return (
+                  <div key={sel.stepId} className="flex items-center justify-between py-3 gap-4">
+                    <div className="min-w-0">
+                      <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-0.5">{step.title}</p>
+                      <p className="text-sm font-medium text-[#0A2540]">{option.label}</p>
+                    </div>
+                    <span className={`text-xs font-bold px-2 py-0.5 rounded-full flex-shrink-0 ${
+                      adj === 0
+                        ? "bg-gray-100 text-gray-500"
+                        : adj > 0
+                        ? "bg-blue-50 text-[#0078D4]"
+                        : "bg-green-50 text-green-700"
+                    }`}>
+                      {adjLabel}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
         {/* Governing contract */}
         <div className="bg-white border border-border rounded-2xl p-6 mb-5 shadow-sm">

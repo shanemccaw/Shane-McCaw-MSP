@@ -718,6 +718,8 @@ router.get("/portal/invoices/:id", requireAuth, async (req: Request, res: Respon
     signerName: string | null;
     contractVersion: string;
     finalPrice: string | null;
+    wizardSelections: unknown;
+    orderWorkflow: unknown;
   }> = [];
 
   if (invoice.projectId) {
@@ -729,6 +731,8 @@ router.get("/portal/invoices/:id", requireAuth, async (req: Request, res: Respon
       signerName: contractsTable.signerName,
       contractVersion: contractsTable.contractVersion,
       finalPrice: contractsTable.finalPrice,
+      wizardSelections: contractsTable.wizardSelections,
+      orderWorkflow: servicesTable.orderWorkflow,
     })
       .from(contractsTable)
       .innerJoin(servicesTable, eq(contractsTable.serviceId, servicesTable.id))
