@@ -1,5 +1,5 @@
 import { Router, type IRouter, type Request, type Response } from "express";
-import { db, projectsTable, clientServicesTable, servicesTable, workflowStepsTable, kanbanTasksTable, documentsTable, reportsTable, invoicesTable, messagesTable, notificationsTable, projectUpdatesTable, usersTable, contractsTable, passwordResetTokensTable, workflowTemplateStepsTable, workflowTemplateStepTasksTable, contractTemplatesTable, impersonationTokensTable, statusReportsTable, deviceTokensTable, projectClosuresTable, auditLogsTable } from "@workspace/db";
+import { db, projectsTable, clientServicesTable, servicesTable, workflowStepsTable, kanbanTasksTable, documentsTable, reportsTable, invoicesTable, messagesTable, notificationsTable, projectUpdatesTable, usersTable, contractsTable, passwordResetTokensTable, workflowTemplateStepsTable, workflowTemplateStepTasksTable, contractTemplatesTable, impersonationTokensTable, statusReportsTable, deviceTokensTable, projectClosuresTable, auditLogsTable, instructionSetsTable, checklistsTable, artifactSetsTable, deliverableSetsTable } from "@workspace/db";
 import { eq, and, desc, asc, count, sql, inArray, gte, isNotNull } from "drizzle-orm";
 import { requireAuth, requireAdmin } from "../middlewares/requireAuth";
 import { sendEmail, purchaseConfirmationEmail, onboardingConfirmationEmail, adminPurchaseAlertEmail, closureRequestEmail, statusReportReplyEmail, clientThreadReplyEmail, adminThreadReplyEmail, retainerResumedEmail } from "../lib/mailer";
@@ -19,6 +19,55 @@ const router: IRouter = Router();
  * Used to set the iOS app icon badge count in outgoing push payloads so that
  * consecutive background pushes show 2, 3, … rather than always 1.
  */
+/** Resolve FK-linked asset library content for a set of template tasks.
+ *  Returns an array of taskMetadata objects ready to be inserted into kanbanTasksTable.
+ */
+async function resolveTemplateTaskMetadata(
+  templateTasks: Array<{
+    instructionSetId?: number | null;
+    checklistId?: number | null;
+    artifactsId?: number | null;
+    deliverablesId?: number | null;
+    instructions?: unknown;
+    checklist?: unknown;
+    artifactsProduced?: unknown;
+    clientDeliverables?: unknown;
+  }>
+): Promise<Array<{
+  instructions: string[];
+  checklist: Array<{ id: string; label: string }>;
+  artifactsProduced: string[];
+  clientDeliverables: string[];
+  checklistState: Record<string, never>;
+  uploadedArtifacts: never[];
+}>> {
+  const linkedInstrIds = [...new Set(templateTasks.map(t => t.instructionSetId).filter((id): id is number => id !== null && id !== undefined))];
+  const linkedClIds = [...new Set(templateTasks.map(t => t.checklistId).filter((id): id is number => id !== null && id !== undefined))];
+  const linkedArtIds = [...new Set(templateTasks.map(t => t.artifactsId).filter((id): id is number => id !== null && id !== undefined))];
+  const linkedDelIds = [...new Set(templateTasks.map(t => t.deliverablesId).filter((id): id is number => id !== null && id !== undefined))];
+
+  const [instrRows, clRows, artRows, delRows] = await Promise.all([
+    linkedInstrIds.length > 0 ? db.select().from(instructionSetsTable).where(inArray(instructionSetsTable.id, linkedInstrIds)) : Promise.resolve([]),
+    linkedClIds.length > 0 ? db.select().from(checklistsTable).where(inArray(checklistsTable.id, linkedClIds)) : Promise.resolve([]),
+    linkedArtIds.length > 0 ? db.select().from(artifactSetsTable).where(inArray(artifactSetsTable.id, linkedArtIds)) : Promise.resolve([]),
+    linkedDelIds.length > 0 ? db.select().from(deliverableSetsTable).where(inArray(deliverableSetsTable.id, linkedDelIds)) : Promise.resolve([]),
+  ]);
+
+  const instrMap = new Map(instrRows.map(r => [r.id, r.instructions as string[]]));
+  const clMap = new Map(clRows.map(r => [r.id, r.items as Array<{ id: string; label: string }>]));
+  const artMap = new Map(artRows.map(r => [r.id, r.artifacts as string[]]));
+  const delMap = new Map(delRows.map(r => [r.id, r.deliverables as string[]]));
+
+  return templateTasks.map(t => ({
+    instructions: t.instructionSetId ? (instrMap.get(t.instructionSetId) ?? (t.instructions as string[] | null) ?? []) : ((t.instructions as string[] | null) ?? []),
+    checklist: t.checklistId ? (clMap.get(t.checklistId) ?? (t.checklist as Array<{ id: string; label: string }> | null) ?? []) : ((t.checklist as Array<{ id: string; label: string }> | null) ?? []),
+    artifactsProduced: t.artifactsId ? (artMap.get(t.artifactsId) ?? (t.artifactsProduced as string[] | null) ?? []) : ((t.artifactsProduced as string[] | null) ?? []),
+    clientDeliverables: t.deliverablesId ? (delMap.get(t.deliverablesId) ?? (t.clientDeliverables as string[] | null) ?? []) : ((t.clientDeliverables as string[] | null) ?? []),
+    checklistState: {} as Record<string, never>,
+    uploadedArtifacts: [] as never[],
+  }));
+}
+
 async function getAdminUnreadMessageCount(): Promise<number> {
   try {
     const [row] = await db
@@ -1954,6 +2003,7 @@ async function provisionOnboardingProject(
           .where(eq(workflowTemplateStepTasksTable.workflowTemplateStepId, firstStep.workflowTemplateStepId))
           .orderBy(asc(workflowTemplateStepTasksTable.order));
         if (step1Tasks.length > 0) {
+          const resolvedMetadata = await resolveTemplateTaskMetadata(step1Tasks);
           await db.insert(kanbanTasksTable).values(
             step1Tasks.map((t, idx) => ({
               projectId: project.id,
@@ -1963,6 +2013,7 @@ async function provisionOnboardingProject(
               description: t.description ?? null,
               column: "backlog" as const,
               order: idx,
+              taskMetadata: resolvedMetadata[idx],
             }))
           );
         }
@@ -3074,6 +3125,7 @@ router.patch("/admin/kanban-tasks/:id", requireAdmin, async (req: Request, res: 
               .where(eq(workflowTemplateStepTasksTable.workflowTemplateStepId, activatedStep.workflowTemplateStepId))
               .orderBy(asc(workflowTemplateStepTasksTable.order));
             if (templateTasks.length > 0) {
+              const resolvedMetadata = await resolveTemplateTaskMetadata(templateTasks);
               await db.insert(kanbanTasksTable).values(
                 templateTasks.map((t, idx) => ({
                   projectId: activatedStep.projectId!,
@@ -3083,14 +3135,7 @@ router.patch("/admin/kanban-tasks/:id", requireAdmin, async (req: Request, res: 
                   description: t.description ?? null,
                   column: "backlog" as const,
                   order: idx,
-                  taskMetadata: {
-                    instructions: t.instructions ?? [],
-                    checklist: t.checklist ?? [],
-                    artifactsProduced: t.artifactsProduced ?? [],
-                    clientDeliverables: t.clientDeliverables ?? [],
-                    checklistState: {},
-                    uploadedArtifacts: [],
-                  },
+                  taskMetadata: resolvedMetadata[idx],
                 }))
               );
             }
@@ -4135,6 +4180,7 @@ router.post("/admin/client-services", requireAdmin, async (req: Request, res: Re
           .where(eq(workflowTemplateStepTasksTable.workflowTemplateStepId, firstCreatedStep.workflowTemplateStepId))
           .orderBy(asc(workflowTemplateStepTasksTable.order));
         if (step1Tasks.length > 0) {
+          const resolvedMetadata = await resolveTemplateTaskMetadata(step1Tasks);
           await db.insert(kanbanTasksTable).values(
             step1Tasks.map((t, idx) => ({
               projectId: autoProject.id,
@@ -4144,14 +4190,7 @@ router.post("/admin/client-services", requireAdmin, async (req: Request, res: Re
               description: t.description ?? null,
               column: "backlog" as const,
               order: idx,
-              taskMetadata: {
-                instructions: t.instructions ?? [],
-                checklist: t.checklist ?? [],
-                artifactsProduced: t.artifactsProduced ?? [],
-                clientDeliverables: t.clientDeliverables ?? [],
-                checklistState: {},
-                uploadedArtifacts: [],
-              },
+              taskMetadata: resolvedMetadata[idx],
             }))
           );
         }

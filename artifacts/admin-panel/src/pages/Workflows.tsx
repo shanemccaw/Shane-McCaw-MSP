@@ -10,6 +10,11 @@ interface ChecklistItem {
   label: string;
 }
 
+interface AssetItem {
+  id: number;
+  title: string;
+}
+
 interface StepTask {
   id: number;
   title: string;
@@ -21,6 +26,10 @@ interface StepTask {
   checklist: ChecklistItem[] | null;
   artifactsProduced: string[] | null;
   clientDeliverables: string[] | null;
+  instructionSetId: number | null;
+  checklistId: number | null;
+  artifactsId: number | null;
+  deliverablesId: number | null;
 }
 
 interface WorkflowStep {
@@ -200,6 +209,10 @@ interface EditingTaskForm {
   checklist: ChecklistItem[];
   artifactsProduced: string[];
   clientDeliverables: string[];
+  instructionSetId: number | null;
+  checklistId: number | null;
+  artifactsId: number | null;
+  deliverablesId: number | null;
 }
 
 function TaskCard({
@@ -212,6 +225,10 @@ function TaskCard({
   setEditingTaskForm,
   onSaveTask,
   onCancelEdit,
+  instructionSets,
+  checklists,
+  artifactSets,
+  deliverableSets,
 }: {
   task: StepTask;
   templateId: number;
@@ -222,6 +239,10 @@ function TaskCard({
   setEditingTaskForm: React.Dispatch<React.SetStateAction<EditingTaskForm>>;
   onSaveTask: () => void;
   onCancelEdit: () => void;
+  instructionSets: AssetItem[];
+  checklists: AssetItem[];
+  artifactSets: AssetItem[];
+  deliverableSets: AssetItem[];
 }) {
   const [engineerOpen, setEngineerOpen] = useState(false);
 
@@ -248,13 +269,65 @@ function TaskCard({
           </select>
         </div>
 
+        {/* Asset library links */}
+        <div className="border-t border-gray-100 pt-2">
+          <p className="text-[10px] font-bold uppercase tracking-wider text-indigo-500 mb-2">Link from Asset Library</p>
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="block text-[10px] text-gray-500 mb-0.5">Instruction Set</label>
+              <select
+                value={editingTaskForm.instructionSetId ?? ""}
+                onChange={e => setEditingTaskForm(p => ({ ...p, instructionSetId: e.target.value ? Number(e.target.value) : null }))}
+                className="w-full border border-gray-200 rounded px-2 py-1 text-[11px] focus:outline-none focus:ring-1 focus:ring-indigo-400"
+              >
+                <option value="">None (use inline)</option>
+                {instructionSets.map(a => <option key={a.id} value={a.id}>{a.title}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="block text-[10px] text-gray-500 mb-0.5">Checklist</label>
+              <select
+                value={editingTaskForm.checklistId ?? ""}
+                onChange={e => setEditingTaskForm(p => ({ ...p, checklistId: e.target.value ? Number(e.target.value) : null }))}
+                className="w-full border border-gray-200 rounded px-2 py-1 text-[11px] focus:outline-none focus:ring-1 focus:ring-indigo-400"
+              >
+                <option value="">None (use inline)</option>
+                {checklists.map(a => <option key={a.id} value={a.id}>{a.title}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="block text-[10px] text-gray-500 mb-0.5">Artifact Set</label>
+              <select
+                value={editingTaskForm.artifactsId ?? ""}
+                onChange={e => setEditingTaskForm(p => ({ ...p, artifactsId: e.target.value ? Number(e.target.value) : null }))}
+                className="w-full border border-gray-200 rounded px-2 py-1 text-[11px] focus:outline-none focus:ring-1 focus:ring-indigo-400"
+              >
+                <option value="">None (use inline)</option>
+                {artifactSets.map(a => <option key={a.id} value={a.id}>{a.title}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="block text-[10px] text-gray-500 mb-0.5">Deliverable Set</label>
+              <select
+                value={editingTaskForm.deliverablesId ?? ""}
+                onChange={e => setEditingTaskForm(p => ({ ...p, deliverablesId: e.target.value ? Number(e.target.value) : null }))}
+                className="w-full border border-gray-200 rounded px-2 py-1 text-[11px] focus:outline-none focus:ring-1 focus:ring-indigo-400"
+              >
+                <option value="">None (use inline)</option>
+                {deliverableSets.map(a => <option key={a.id} value={a.id}>{a.title}</option>)}
+              </select>
+            </div>
+          </div>
+          <p className="text-[9px] text-indigo-400 mt-1.5">Library links override inline fields when the task is instantiated.</p>
+        </div>
+
         {/* Engineer detail sections */}
         <button
           type="button"
           onClick={() => setEngineerOpen(v => !v)}
           className="w-full flex items-center justify-between text-[10px] font-semibold text-[#0078D4] hover:text-[#006CBE] py-1 border-t border-gray-100"
         >
-          <span>Engineer Detail Fields</span>
+          <span>Inline Engineer Detail Fields</span>
           <svg className={`w-3 h-3 transition-transform ${engineerOpen ? "rotate-180" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
           </svg>
@@ -295,11 +368,12 @@ function TaskCard({
     );
   }
 
-  const hasEngineerDetail =
+  const hasInlineDetail =
     (task.instructions && task.instructions.length > 0) ||
     (task.checklist && task.checklist.length > 0) ||
     (task.artifactsProduced && task.artifactsProduced.length > 0) ||
     (task.clientDeliverables && task.clientDeliverables.length > 0);
+  const hasLibraryLinks = task.instructionSetId || task.checklistId || task.artifactsId || task.deliverablesId;
 
   return (
     <div className="flex items-start gap-2 bg-white rounded-lg border border-gray-200 px-3 py-2 group/task">
@@ -308,24 +382,44 @@ function TaskCard({
       </svg>
       <div className="flex-1 min-w-0">
         <span className="text-sm text-[#0A2540] leading-snug">{task.title}</span>
-        {hasEngineerDetail && (
+        {(hasInlineDetail || hasLibraryLinks) && (
           <div className="flex flex-wrap gap-1 mt-1">
-            {task.checklist && task.checklist.length > 0 && (
-              <span className="text-[9px] bg-blue-50 text-blue-600 border border-blue-100 px-1.5 py-0.5 rounded font-semibold">
-                {task.checklist.length} checklist item{task.checklist.length !== 1 ? "s" : ""}
+            {task.instructionSetId && (
+              <span className="text-[9px] bg-indigo-50 text-indigo-600 border border-indigo-100 px-1.5 py-0.5 rounded font-semibold">
+                📚 instructions
               </span>
             )}
-            {task.instructions && task.instructions.length > 0 && (
+            {!task.instructionSetId && task.instructions && task.instructions.length > 0 && (
               <span className="text-[9px] bg-purple-50 text-purple-600 border border-purple-100 px-1.5 py-0.5 rounded font-semibold">
                 {task.instructions.length} instruction{task.instructions.length !== 1 ? "s" : ""}
               </span>
             )}
-            {task.artifactsProduced && task.artifactsProduced.length > 0 && (
+            {task.checklistId && (
+              <span className="text-[9px] bg-indigo-50 text-indigo-600 border border-indigo-100 px-1.5 py-0.5 rounded font-semibold">
+                📚 checklist
+              </span>
+            )}
+            {!task.checklistId && task.checklist && task.checklist.length > 0 && (
+              <span className="text-[9px] bg-blue-50 text-blue-600 border border-blue-100 px-1.5 py-0.5 rounded font-semibold">
+                {task.checklist.length} checklist item{task.checklist.length !== 1 ? "s" : ""}
+              </span>
+            )}
+            {task.artifactsId && (
+              <span className="text-[9px] bg-indigo-50 text-indigo-600 border border-indigo-100 px-1.5 py-0.5 rounded font-semibold">
+                📚 artifacts
+              </span>
+            )}
+            {!task.artifactsId && task.artifactsProduced && task.artifactsProduced.length > 0 && (
               <span className="text-[9px] bg-amber-50 text-amber-600 border border-amber-100 px-1.5 py-0.5 rounded font-semibold">
                 {task.artifactsProduced.length} artifact{task.artifactsProduced.length !== 1 ? "s" : ""}
               </span>
             )}
-            {task.clientDeliverables && task.clientDeliverables.length > 0 && (
+            {task.deliverablesId && (
+              <span className="text-[9px] bg-indigo-50 text-indigo-600 border border-indigo-100 px-1.5 py-0.5 rounded font-semibold">
+                📚 deliverables
+              </span>
+            )}
+            {!task.deliverablesId && task.clientDeliverables && task.clientDeliverables.length > 0 && (
               <span className="text-[9px] bg-green-50 text-green-600 border border-green-100 px-1.5 py-0.5 rounded font-semibold">
                 {task.clientDeliverables.length} deliverable{task.clientDeliverables.length !== 1 ? "s" : ""}
               </span>
@@ -357,6 +451,10 @@ const EMPTY_TASK_FORM: EditingTaskForm = {
   checklist: [],
   artifactsProduced: [],
   clientDeliverables: [],
+  instructionSetId: null,
+  checklistId: null,
+  artifactsId: null,
+  deliverablesId: null,
 };
 
 export default function WorkflowsPage() {
@@ -368,6 +466,12 @@ export default function WorkflowsPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [detailForm, setDetailForm] = useState<{ name: string; description: string; serviceId: number | null }>({ name: "", description: "", serviceId: null });
+
+  // Asset library state for FK dropdowns
+  const [instructionSets, setInstructionSets] = useState<AssetItem[]>([]);
+  const [checklists, setChecklists] = useState<AssetItem[]>([]);
+  const [artifactSets, setArtifactSets] = useState<AssetItem[]>([]);
+  const [deliverableSets, setDeliverableSets] = useState<AssetItem[]>([]);
 
   // Step state
   const [newStep, setNewStep] = useState<{ title: string; description: string } | null>(null);
@@ -407,10 +511,26 @@ export default function WorkflowsPage() {
     } catch { /* ignore */ }
   }, [fetchWithAuth]);
 
+  const fetchAssetLibrary = useCallback(async () => {
+    try {
+      const [instrRes, clRes, artRes, delRes] = await Promise.all([
+        fetchWithAuth("/api/admin/asset-library/instruction-sets"),
+        fetchWithAuth("/api/admin/asset-library/checklists"),
+        fetchWithAuth("/api/admin/asset-library/artifact-sets"),
+        fetchWithAuth("/api/admin/asset-library/deliverable-sets"),
+      ]);
+      if (instrRes.ok) setInstructionSets(await instrRes.json() as AssetItem[]);
+      if (clRes.ok) setChecklists(await clRes.json() as AssetItem[]);
+      if (artRes.ok) setArtifactSets(await artRes.json() as AssetItem[]);
+      if (delRes.ok) setDeliverableSets(await delRes.json() as AssetItem[]);
+    } catch { /* ignore */ }
+  }, [fetchWithAuth]);
+
   useEffect(() => {
     void fetchTemplates();
     void fetchServices();
-  }, [fetchTemplates, fetchServices]);
+    void fetchAssetLibrary();
+  }, [fetchTemplates, fetchServices, fetchAssetLibrary]);
 
   const selectTemplate = useCallback(async (t: WorkflowTemplate) => {
     try {
@@ -718,6 +838,10 @@ export default function WorkflowsPage() {
           checklist: editingTaskForm.checklist.filter(c => c.label.trim()).length > 0 ? editingTaskForm.checklist.filter(c => c.label.trim()) : null,
           artifactsProduced: editingTaskForm.artifactsProduced.filter(Boolean).length > 0 ? editingTaskForm.artifactsProduced.filter(Boolean) : null,
           clientDeliverables: editingTaskForm.clientDeliverables.filter(Boolean).length > 0 ? editingTaskForm.clientDeliverables.filter(Boolean) : null,
+          instructionSetId: editingTaskForm.instructionSetId,
+          checklistId: editingTaskForm.checklistId,
+          artifactsId: editingTaskForm.artifactsId,
+          deliverablesId: editingTaskForm.deliverablesId,
         }),
       }
     );
@@ -1163,6 +1287,10 @@ export default function WorkflowsPage() {
                                             checklist: t.checklist ?? [],
                                             artifactsProduced: t.artifactsProduced ?? [],
                                             clientDeliverables: t.clientDeliverables ?? [],
+                                            instructionSetId: t.instructionSetId ?? null,
+                                            checklistId: t.checklistId ?? null,
+                                            artifactsId: t.artifactsId ?? null,
+                                            deliverablesId: t.deliverablesId ?? null,
                                           });
                                         }}
                                         onDelete={t => void deleteTask(t)}
@@ -1171,6 +1299,10 @@ export default function WorkflowsPage() {
                                         setEditingTaskForm={setEditingTaskForm}
                                         onSaveTask={() => void saveTask()}
                                         onCancelEdit={() => setEditingTask(null)}
+                                        instructionSets={instructionSets}
+                                        checklists={checklists}
+                                        artifactSets={artifactSets}
+                                        deliverableSets={deliverableSets}
                                       />
                                     ))}
                                   </div>
