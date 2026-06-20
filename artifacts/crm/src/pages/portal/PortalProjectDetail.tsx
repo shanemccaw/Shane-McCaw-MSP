@@ -51,6 +51,8 @@ interface KanbanTask {
   order: number;
   assignedTo: string | null;
   dueDate: string | null;
+  workflowStepId: number | null;
+  groupName: string | null;
 }
 
 interface Document {
@@ -598,65 +600,80 @@ export default function PortalProjectDetail() {
                           </button>
 
                           {/* Expanded phase content */}
-                          {isExpanded && (
-                            <div className="bg-white border-t border-border px-5 py-4">
-                              {/* Category heading — derived from project phase for active step, step title otherwise */}
-                              <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-3">
-                                {isFirstInProgress && project.phase
-                                  ? project.phase
-                                  : step.description
-                                    ? step.description.split(" ").slice(0, 3).join(" ")
-                                    : "Tasks"}
-                              </p>
-
-                              {/* Task row */}
-                              <div className="flex items-start gap-3 py-3 border border-border rounded-xl px-4 bg-[#F7F9FC]">
-                                {/* Checkbox */}
-                                <div className={`w-5 h-5 rounded border-2 flex items-center justify-center flex-shrink-0 mt-0.5 ${
-                                  isCompleted ? "bg-green-500 border-green-500" : "border-gray-300"
-                                }`}>
-                                  {isCompleted && (
-                                    <svg className="w-3 h-3 text-white" viewBox="0 0 12 12" fill="none">
-                                      <path d="M2 6l3 3 5-5" stroke="white" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" />
-                                    </svg>
-                                  )}
-                                </div>
-
-                                <div className="flex-1 min-w-0">
-                                  <div className="flex flex-wrap items-center gap-2 mb-1">
-                                    <p className={`text-sm font-semibold ${isCompleted ? "line-through text-muted-foreground" : "text-[#0A2540]"}`}>
-                                      {step.title}
-                                    </p>
-                                    {/* Status badge */}
-                                    <span className={`text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full ${
-                                      isCompleted ? "bg-green-100 text-green-700" :
-                                      isInProgress ? "bg-blue-100 text-blue-700" :
-                                      "bg-gray-100 text-gray-500"
-                                    }`}>
-                                      {isCompleted ? "Complete" : isInProgress ? "In Progress" : "Pending"}
-                                    </span>
-                                    {/* Priority icon (high priority for in-progress) */}
-                                    {isInProgress && (
-                                      <svg className="w-4 h-4 text-amber-500 flex-shrink-0" viewBox="0 0 24 24" fill="currentColor">
-                                        <path fillRule="evenodd" d="M9.401 3.003c1.155-2 4.043-2 5.197 0l7.355 12.748c1.154 2-.29 4.5-2.599 4.5H4.645c-2.309 0-3.752-2.5-2.598-4.5L9.4 3.003zM12 8.25a.75.75 0 01.75.75v3.75a.75.75 0 01-1.5 0V9a.75.75 0 01.75-.75zm0 8.25a.75.75 0 100-1.5.75.75 0 000 1.5z" clipRule="evenodd" />
-                                      </svg>
-                                    )}
-                                  </div>
-                                  {step.description && (
-                                    <p className="text-xs text-muted-foreground leading-relaxed mb-1.5">{step.description}</p>
-                                  )}
-                                  {step.notes && (
-                                    <p className="text-xs text-[#0078D4] italic">Note: {step.notes}</p>
-                                  )}
-                                  {step.dueDate && (
-                                    <p className="text-xs text-muted-foreground mt-1">
-                                      DUE: {new Date(step.dueDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
-                                    </p>
-                                  )}
-                                </div>
+                          {isExpanded && (() => {
+                            const stepTasks = data.tasks.filter(t => t.workflowStepId === step.id);
+                            // Group by groupName, preserving insertion order
+                            const groups: Record<string, KanbanTask[]> = {};
+                            for (const t of stepTasks) {
+                              const g = t.groupName ?? "Tasks";
+                              if (!groups[g]) groups[g] = [];
+                              groups[g].push(t);
+                            }
+                            const groupEntries = Object.entries(groups);
+                            return (
+                              <div className="bg-white border-t border-border px-5 py-4 space-y-4">
+                                {step.description && (
+                                  <p className="text-xs text-muted-foreground leading-relaxed">{step.description}</p>
+                                )}
+                                {stepTasks.length === 0 ? (
+                                  <p className="text-xs text-muted-foreground italic">No tasks defined for this phase.</p>
+                                ) : (
+                                  groupEntries.map(([group, tasks]) => (
+                                    <div key={group}>
+                                      <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-2">{group}</p>
+                                      <div className="space-y-2">
+                                        {tasks.map(task => {
+                                          const taskDone = task.column === "completed";
+                                          return (
+                                            <div key={task.id} className="flex items-start gap-3 py-2.5 border border-border rounded-xl px-4 bg-[#F7F9FC]">
+                                              <div className={`w-4 h-4 rounded border-2 flex items-center justify-center flex-shrink-0 mt-0.5 ${
+                                                taskDone ? "bg-green-500 border-green-500" : "border-gray-300"
+                                              }`}>
+                                                {taskDone && (
+                                                  <svg className="w-2.5 h-2.5 text-white" viewBox="0 0 12 12" fill="none">
+                                                    <path d="M2 6l3 3 5-5" stroke="white" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" />
+                                                  </svg>
+                                                )}
+                                              </div>
+                                              <div className="flex-1 min-w-0">
+                                                <p className={`text-sm font-medium leading-snug ${taskDone ? "line-through text-muted-foreground" : "text-[#0A2540]"}`}>
+                                                  {task.title}
+                                                </p>
+                                                {task.description && (
+                                                  <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">{task.description}</p>
+                                                )}
+                                                {task.assignedTo && (
+                                                  <p className="text-[10px] text-muted-foreground mt-0.5">{task.assignedTo}</p>
+                                                )}
+                                              </div>
+                                              {task.column !== "completed" && (
+                                                <span className={`text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full flex-shrink-0 ${
+                                                  task.column === "in_progress" ? "bg-blue-100 text-blue-700" :
+                                                  task.column === "waiting_on_customer" ? "bg-yellow-100 text-yellow-700" :
+                                                  "bg-gray-100 text-gray-500"
+                                                }`}>
+                                                  {task.column === "in_progress" ? "In Progress" :
+                                                   task.column === "waiting_on_customer" ? "Waiting" : "Backlog"}
+                                                </span>
+                                              )}
+                                            </div>
+                                          );
+                                        })}
+                                      </div>
+                                    </div>
+                                  ))
+                                )}
+                                {step.notes && (
+                                  <p className="text-xs text-[#0078D4] italic">Note: {step.notes}</p>
+                                )}
+                                {step.dueDate && (
+                                  <p className="text-xs text-muted-foreground">
+                                    Due: {new Date(step.dueDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                                  </p>
+                                )}
                               </div>
-                            </div>
-                          )}
+                            );
+                          })()}
                         </div>
                       );
                     })}
