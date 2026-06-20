@@ -99,6 +99,8 @@ export const projectsTable = pgTable("projects", {
   startDate: timestamp("start_date"),
   endDate: timestamp("end_date"),
   projectType: text("project_type", { enum: ["project", "retainer"] }).notNull().default("project"),
+  sharepointSiteUrl: text("sharepoint_site_url"),
+  sharepointSiteId: text("sharepoint_site_id"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
@@ -514,3 +516,10 @@ export const graphSubscriptionsTable = pgTable("graph_subscriptions", {
 
 export type InsertGraphSubscription = typeof graphSubscriptionsTable.$inferInsert;
 export type GraphSubscription = typeof graphSubscriptionsTable.$inferSelect;
+
+// Key/value settings store
+export const settingsTable = pgTable("settings", {
+  key: text("key").primaryKey(),
+  value: text("value"),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});

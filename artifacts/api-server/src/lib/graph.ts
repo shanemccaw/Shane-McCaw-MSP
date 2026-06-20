@@ -196,3 +196,155 @@ export async function listSubscriptions(): Promise<GraphSubscription[]> {
     return [];
   }
 }
+
+// ─── SharePoint / Groups ───────────────────────────────────────────────────────
+
+export interface GraphDriveItem {
+  id: string;
+  name: string;
+  type: "folder" | "file";
+  webUrl: string;
+  size?: number;
+  lastModified?: string;
+}
+
+export async function createM365Group(
+  displayName: string,
+  mailNickname: string,
+): Promise<{ id: string } | null> {
+  try {
+    const res = await graphFetch("/groups", {
+      method: "POST",
+      body: JSON.stringify({
+        displayName,
+        mailNickname,
+        mailEnabled: false,
+        securityEnabled: false,
+        groupTypes: ["Unified"],
+        visibility: "Private",
+      }),
+    });
+    if (!res.ok) {
+      const text = await res.text();
+      logger.warn({ status: res.status, body: text }, "Graph createM365Group failed");
+      return null;
+    }
+    const data = await res.json() as { id: string };
+    return { id: data.id };
+  } catch (err) {
+    logger.error({ err }, "Graph createM365Group error");
+    return null;
+  }
+}
+
+export async function getGroupSiteUrl(
+  groupId: string,
+): Promise<{ id: string; webUrl: string } | null> {
+  try {
+    const res = await graphFetch(
+      `/groups/${groupId}/sites/root?$select=id,webUrl`,
+    );
+    if (res.status === 404 || res.status === 400) return null;
+    if (!res.ok) {
+      const text = await res.text();
+      logger.warn({ status: res.status, body: text }, "Graph getGroupSiteUrl failed");
+      return null;
+    }
+    const data = await res.json() as { id: string; webUrl: string };
+    return { id: data.id, webUrl: data.webUrl };
+  } catch (err) {
+    logger.error({ err }, "Graph getGroupSiteUrl error");
+    return null;
+  }
+}
+
+export async function getSiteByUrl(
+  siteUrl: string,
+): Promise<{ id: string; webUrl: string } | null> {
+  try {
+    const parsed = new URL(siteUrl);
+    const hostname = parsed.hostname;
+    const sitePath = parsed.pathname.replace(/\/$/, "");
+    const res = await graphFetch(
+      `/sites/${encodeURIComponent(hostname)}:${sitePath}?$select=id,webUrl`,
+    );
+    if (!res.ok) {
+      const text = await res.text();
+      logger.warn({ status: res.status, body: text }, "Graph getSiteByUrl failed");
+      return null;
+    }
+    const data = await res.json() as { id: string; webUrl: string };
+    return { id: data.id, webUrl: data.webUrl };
+  } catch (err) {
+    logger.error({ err }, "Graph getSiteByUrl error");
+    return null;
+  }
+}
+
+export async function listDriveItems(
+  siteId: string,
+  folderPath?: string,
+): Promise<GraphDriveItem[]> {
+  try {
+    const endpoint = folderPath
+      ? `/sites/${siteId}/drive/root:/${encodeURIComponent(folderPath)}:/children`
+      : `/sites/${siteId}/drive/root/children`;
+    const res = await graphFetch(
+      `${endpoint}?$select=id,name,folder,file,webUrl,size,lastModifiedDateTime`,
+    );
+    if (!res.ok) {
+      const text = await res.text();
+      logger.warn({ status: res.status, body: text }, "Graph listDriveItems failed");
+      return [];
+    }
+    const data = await res.json() as { value: Array<{
+      id: string;
+      name: string;
+      folder?: unknown;
+      file?: unknown;
+      webUrl: string;
+      size?: number;
+      lastModifiedDateTime?: string;
+    }> };
+    return (data.value ?? []).map(item => ({
+      id: item.id,
+      name: item.name,
+      type: item.folder ? "folder" : "file",
+      webUrl: item.webUrl,
+      size: item.size,
+      lastModified: item.lastModifiedDateTime,
+    }));
+  } catch (err) {
+    logger.error({ err }, "Graph listDriveItems error");
+    return [];
+  }
+}
+
+export async function createSiteFolder(
+  siteId: string,
+  parentPath: string,
+  folderName: string,
+): Promise<boolean> {
+  try {
+    const endpoint = parentPath && parentPath !== "/"
+      ? `/sites/${siteId}/drive/root:/${encodeURIComponent(parentPath)}:/children`
+      : `/sites/${siteId}/drive/root/children`;
+    const res = await graphFetch(endpoint, {
+      method: "POST",
+      body: JSON.stringify({
+        name: folderName,
+        folder: {},
+        "@microsoft.graph.conflictBehavior": "rename",
+      }),
+    });
+    if (!res.ok) {
+      const text = await res.text();
+      logger.warn({ status: res.status, body: text }, "Graph createSiteFolder failed");
+      return false;
+    }
+    return true;
+  } catch (err) {
+    logger.error({ err }, "Graph createSiteFolder error");
+    return false;
+  }
+}

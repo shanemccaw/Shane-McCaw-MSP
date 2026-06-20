@@ -1692,6 +1692,11 @@ async function provisionOnboardingProject(
     });
   }
 
+  // ── SharePoint site provisioning (fire-and-forget, non-blocking) ─────────
+  void import("./admin-sharepoint").then(({ provisionProjectSite }) => {
+    provisionProjectSite(project.id, projectTitle, req.log).catch(() => null);
+  }).catch(() => null);
+
   // ── Confirmation email to client (fire-and-forget) ────────────────────────
   const primaryServiceName = serviceNames.join(", ");
   if (buyer.email) {

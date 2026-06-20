@@ -106,6 +106,13 @@
       "when": 1781984141930,
       "tag": "0014_add_audit_logs",
       "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "7",
+      "when": 1750155300000,
+      "tag": "0015_add_sharepoint_and_settings",
+      "breakpoints": true
     }
   ]
 }

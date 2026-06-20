@@ -26,6 +26,7 @@ import TestimonialsPage from "@/pages/crm/Testimonials";
 import OverviewPage from "@/pages/Overview";
 import EmailActivityPage from "@/pages/EmailActivity";
 import ActivityLogPage from "@/pages/ActivityLog";
+import SharePointPage from "@/pages/SharePoint";
 import type { ReactNode } from "react";
 
 const queryClient = new QueryClient({
@@ -156,6 +157,11 @@ function Router() {
       {/* Activity Log */}
       <Route path="/activity-log">
         <RequireAdmin><DashboardShell><ActivityLogPage /></DashboardShell></RequireAdmin>
+      </Route>
+
+      {/* SharePoint Hub */}
+      <Route path="/sharepoint">
+        <RequireAdmin><DashboardShell><SharePointPage /></DashboardShell></RequireAdmin>
       </Route>
 
       <Route>
