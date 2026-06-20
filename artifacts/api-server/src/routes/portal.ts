@@ -1,5 +1,5 @@
 import { Router, type IRouter, type Request, type Response } from "express";
-import { db, projectsTable, clientServicesTable, servicesTable, workflowStepsTable, kanbanTasksTable, documentsTable, reportsTable, invoicesTable, messagesTable, notificationsTable, projectUpdatesTable, usersTable, contractsTable, passwordResetTokensTable, workflowTemplateStepsTable, workflowTemplateStepTasksTable, contractTemplatesTable, impersonationTokensTable, statusReportsTable, deviceTokensTable, projectClosuresTable, auditLogsTable, instructionSetsTable, checklistsTable, artifactSetsTable, deliverableSetsTable } from "@workspace/db";
+import { db, projectsTable, clientServicesTable, servicesTable, workflowStepsTable, kanbanTasksTable, documentsTable, reportsTable, invoicesTable, messagesTable, notificationsTable, projectUpdatesTable, usersTable, contractsTable, passwordResetTokensTable, workflowTemplateStepsTable, workflowTemplateStepTasksTable, contractTemplatesTable, impersonationTokensTable, statusReportsTable, deviceTokensTable, projectClosuresTable, auditLogsTable, instructionSetsTable, checklistsTable, artifactSetsTable, deliverableSetsTable, emailsTable, emailDomainRulesTable } from "@workspace/db";
 import { eq, and, desc, asc, count, sql, inArray, gte, isNotNull } from "drizzle-orm";
 import { requireAuth, requireAdmin } from "../middlewares/requireAuth";
 import { sendEmail, purchaseConfirmationEmail, onboardingConfirmationEmail, adminPurchaseAlertEmail, closureRequestEmail, statusReportReplyEmail, clientThreadReplyEmail, adminThreadReplyEmail, retainerResumedEmail } from "../lib/mailer";
@@ -2758,6 +2758,7 @@ router.delete("/admin/clients/:id", requireAdmin, async (req: Request, res: Resp
     if (clientSvcIds.length > 0) {
       await db.delete(workflowStepsTable).where(inArray(workflowStepsTable.clientServiceId, clientSvcIds));
     }
+    await db.delete(statusReportsTable).where(eq(statusReportsTable.clientUserId, id));
     await db.delete(clientServicesTable).where(eq(clientServicesTable.clientUserId, id));
     await db.delete(contractsTable).where(eq(contractsTable.userId, id));
     await db.delete(reportsTable).where(eq(reportsTable.clientUserId, id));
@@ -2766,13 +2767,16 @@ router.delete("/admin/clients/:id", requireAdmin, async (req: Request, res: Resp
     await db.delete(notificationsTable).where(eq(notificationsTable.userId, id));
     await db.delete(impersonationTokensTable).where(eq(impersonationTokensTable.clientUserId, id));
     await db.delete(passwordResetTokensTable).where(eq(passwordResetTokensTable.userId, id));
+    await db.update(emailsTable).set({ linkedUserId: null }).where(eq(emailsTable.linkedUserId, id));
+    await db.delete(emailDomainRulesTable).where(eq(emailDomainRulesTable.linkedUserId, id));
     if (projectIds.length > 0) {
       await db.delete(projectsTable).where(inArray(projectsTable.id, projectIds));
     }
     await db.delete(usersTable).where(eq(usersTable.id, id));
 
     res.status(204).end();
-  } catch {
+  } catch (err) {
+    req.log.error(err, "Failed to delete client");
     res.status(500).json({ error: "Failed to delete client" });
   }
 });
