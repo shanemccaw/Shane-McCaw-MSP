@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 pnpm install --frozen-lockfile
-pnpm --filter db push
+pnpm --filter @workspace/db push-force
 
 # Verify Stripe webhook endpoints are registered for every production domain.
 # This is a check-only pass (no --fix) so it never blocks a deploy.
