@@ -1342,6 +1342,16 @@ router.post("/portal/billing/subscriptions/:id/cancel", requireAuth, async (req:
     clientId: userId,
   });
 
+  const [cancelledSvc] = await db.select({ name: servicesTable.name }).from(servicesTable).where(eq(servicesTable.id, cs.serviceId)).limit(1);
+  const cancelledServiceName = cancelledSvc?.name ?? "their service";
+  const cancelAtDate = sub.cancel_at
+    ? new Date(sub.cancel_at * 1000).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+    : "end of current billing period";
+
+  void sendAdminSms(
+    `Retainer cancelled: ${req.user!.name ?? req.user!.email} has cancelled their ${cancelledServiceName} retainer. Access ends: ${cancelAtDate}.`
+  );
+
   res.json({
     ok: true,
     cancelAtPeriodEnd: sub.cancel_at_period_end,
