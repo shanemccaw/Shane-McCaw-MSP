@@ -48,6 +48,7 @@ interface AutofillData {
   totalSteps: number;
   completedStepsCount: number;
   lastReportDate: string | null;
+  lastReportPeriod: string | null;
   sinceDate: string | null;
 }
 
@@ -204,7 +205,10 @@ export default function StatusReportForm({
           setForm(f => ({
             ...f,
             title: `${data.project.title} — ${now.toLocaleString("default", { month: "long" })} ${now.getFullYear()} Status Report`,
+            ...(isNew && !savedReport && data.lastReportPeriod ? { period: data.lastReportPeriod } : {}),
           }));
+        } else if (isNew && !savedReport && data.lastReportPeriod) {
+          setForm(f => ({ ...f, period: data.lastReportPeriod! }));
         }
         const tasksWithNotes = data.completedTasks.filter(t => t.completionNotes);
         if (tasksWithNotes.length > 0) {

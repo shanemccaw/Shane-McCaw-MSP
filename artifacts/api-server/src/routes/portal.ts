@@ -2801,9 +2801,9 @@ router.get("/admin/projects/:id/report-autofill", requireAdmin, async (req: Requ
         .from(usersTable).where(eq(usersTable.id, project.clientUserId))
     : [null];
 
-  // Find the most recent status report date for this project (to return to the frontend)
+  // Find the most recent status report date + period for this project (to return to the frontend)
   const [lastReport] = await db
-    .select({ reportDate: statusReportsTable.reportDate, sentAt: statusReportsTable.sentAt, createdAt: statusReportsTable.createdAt })
+    .select({ reportDate: statusReportsTable.reportDate, sentAt: statusReportsTable.sentAt, createdAt: statusReportsTable.createdAt, period: statusReportsTable.period })
     .from(statusReportsTable)
     .where(eq(statusReportsTable.projectId, id))
     .orderBy(desc(statusReportsTable.createdAt))
@@ -2812,6 +2812,8 @@ router.get("/admin/projects/:id/report-autofill", requireAdmin, async (req: Requ
   const lastReportDate = lastReport
     ? (lastReport.reportDate ?? lastReport.sentAt ?? lastReport.createdAt).toISOString()
     : null;
+
+  const lastReportPeriod = lastReport?.period ?? null;
 
   const steps = await db.select().from(workflowStepsTable)
     .where(eq(workflowStepsTable.projectId, id))
@@ -2868,6 +2870,7 @@ router.get("/admin/projects/:id/report-autofill", requireAdmin, async (req: Requ
     totalSteps: steps.length,
     completedStepsCount,
     lastReportDate,
+    lastReportPeriod,
     sinceDate: sinceDate ? sinceDate.toISOString() : null,
   });
 });
