@@ -1,9 +1,10 @@
 import { Router, type IRouter, type Request, type Response } from "express";
-import { db, emailsTable } from "@workspace/db";
+import { db, emailsTable, deviceTokensTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { getMailMessage } from "../lib/graph";
 import { matchDomainToUser, extractDomain } from "../lib/email-domain-match";
 import { logger } from "../lib/logger";
+import { sendPushNotifications } from "../lib/push";
 
 const router: IRouter = Router();
 
@@ -105,6 +106,22 @@ async function ingestMessage(messageId: string): Promise<void> {
     }).onConflictDoNothing();
 
     logger.info({ messageId, senderAddress, linkedUserId }, "Email ingested from Graph");
+
+    // Send push notification to all registered admin devices
+    const tokenRows = await db.select({ token: deviceTokensTable.token }).from(deviceTokensTable);
+    const tokens = tokenRows.map(r => r.token);
+    if (tokens.length > 0) {
+      const senderLabel = message.from?.emailAddress?.name || senderAddress;
+      const subject = message.subject ?? "(no subject)";
+      void sendPushNotifications(
+        tokens,
+        "New email received",
+        `${senderLabel}: ${subject}`,
+        { screen: "EmailActivity", messageId },
+        undefined,
+        1,
+      );
+    }
   } catch (err) {
     logger.error({ err, messageId }, "Graph ingestMessage error");
   }

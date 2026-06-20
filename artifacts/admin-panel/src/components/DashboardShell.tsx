@@ -1,4 +1,4 @@
-import { type ReactNode, useState, useEffect, useCallback } from "react";
+import { type ReactNode, useState, useEffect, useCallback, useRef } from "react";
 import { Link, useLocation } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
 import {
@@ -237,26 +237,40 @@ function NavItemLink({
   isActive,
   collapsed,
   onClick,
+  badge,
 }: {
   item: NavItem;
   isActive: boolean;
   collapsed: boolean;
   onClick?: () => void;
+  badge?: number;
 }) {
   const linkEl = (
     <Link
       href={item.path}
       onClick={onClick}
       className={`flex items-center gap-3 rounded-xl text-sm font-medium transition-all ${
-        collapsed ? "px-0 py-2.5 justify-center" : "px-3 py-2.5"
+        collapsed ? "px-0 py-2.5 justify-center relative" : "px-3 py-2.5"
       } ${
         isActive
           ? "bg-[#0078D4] text-white"
           : "text-blue-200 hover:bg-[#1a3a5c] hover:text-white"
       }`}
     >
-      {item.icon}
-      {!collapsed && <span className="truncate">{item.label}</span>}
+      <span className="relative shrink-0">
+        {item.icon}
+        {!!badge && collapsed && (
+          <span className="absolute -top-1 -right-1 min-w-[14px] h-[14px] bg-red-500 text-white text-[9px] font-bold rounded-full flex items-center justify-center px-0.5 leading-none">
+            {badge > 99 ? "99+" : badge}
+          </span>
+        )}
+      </span>
+      {!collapsed && <span className="truncate flex-1">{item.label}</span>}
+      {!collapsed && !!badge && (
+        <span className="ml-auto min-w-[18px] h-[18px] bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center px-1 leading-none shrink-0">
+          {badge > 99 ? "99+" : badge}
+        </span>
+      )}
     </Link>
   );
 
@@ -313,6 +327,7 @@ function SidebarContent({
   user,
   onLogout,
   onClose,
+  unreadEmailCount,
 }: {
   collapsed: boolean;
   collapsedGroups: Set<string>;
@@ -321,6 +336,7 @@ function SidebarContent({
   user: { email?: string } | null;
   onLogout: () => void;
   onClose?: () => void;
+  unreadEmailCount: number;
 }) {
   return (
     <div className="h-full flex flex-col bg-[#0A2540]">
@@ -390,6 +406,7 @@ function SidebarContent({
                 {group.items.map(item => {
                   const isActive =
                     location === item.path || location.startsWith(item.path + "/");
+                  const itemBadge = item.label === "Email Activity" ? unreadEmailCount : 0;
                   return (
                     <NavItemLink
                       key={item.label + item.path}
@@ -397,6 +414,7 @@ function SidebarContent({
                       isActive={isActive}
                       collapsed={collapsed}
                       onClick={onClose}
+                      badge={itemBadge || undefined}
                     />
                   );
                 })}
@@ -471,6 +489,24 @@ function SidebarContent({
   );
 }
 
+const POLL_INTERVAL_MS = 60_000;
+const LS_EMAIL_LAST_VIEWED = "emailActivityLastViewedAt";
+
+function readLastViewedAt(): number | null {
+  try {
+    const raw = localStorage.getItem(LS_EMAIL_LAST_VIEWED);
+    return raw ? parseInt(raw, 10) : null;
+  } catch {
+    return null;
+  }
+}
+
+function saveLastViewedAt(ts: number): void {
+  try {
+    localStorage.setItem(LS_EMAIL_LAST_VIEWED, String(ts));
+  } catch {}
+}
+
 export default function DashboardShell({ children }: { children: ReactNode }) {
   const { user, logout } = useAuth();
   const [location] = useLocation();
@@ -482,6 +518,48 @@ export default function DashboardShell({ children }: { children: ReactNode }) {
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(() =>
     readCollapsedGroups()
   );
+  const [unreadEmailCount, setUnreadEmailCount] = useState(0);
+  const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // When on Email Activity: mark as viewed (watermark) and clear badge.
+  // When away: poll the count using the watermark so already-seen emails stay cleared.
+  useEffect(() => {
+    if (location === "/email-activity") {
+      saveLastViewedAt(Date.now());
+      setUnreadEmailCount(0);
+      if (pollTimerRef.current) {
+        clearInterval(pollTimerRef.current);
+        pollTimerRef.current = null;
+      }
+      return;
+    }
+
+    const fetchCount = async () => {
+      const lastViewed = readLastViewedAt();
+      const url = lastViewed
+        ? `/api/admin/emails/unread-count?since=${lastViewed}`
+        : "/api/admin/emails/unread-count";
+      try {
+        const res = await fetch(url, { credentials: "include" });
+        if (res.ok) {
+          const data = await res.json() as { count: number };
+          setUnreadEmailCount(data.count);
+        }
+      } catch {
+        // non-fatal — silently ignore
+      }
+    };
+
+    void fetchCount();
+    pollTimerRef.current = setInterval(() => void fetchCount(), POLL_INTERVAL_MS);
+
+    return () => {
+      if (pollTimerRef.current) {
+        clearInterval(pollTimerRef.current);
+        pollTimerRef.current = null;
+      }
+    };
+  }, [location]);
 
   useEffect(() => {
     try {
@@ -547,6 +625,7 @@ export default function DashboardShell({ children }: { children: ReactNode }) {
             location={location}
             user={user}
             onLogout={handleLogout}
+            unreadEmailCount={unreadEmailCount}
           />
           <CollapseToggleButton />
         </aside>
@@ -567,6 +646,7 @@ export default function DashboardShell({ children }: { children: ReactNode }) {
                 user={user}
                 onLogout={handleLogout}
                 onClose={() => setMobileOpen(false)}
+                unreadEmailCount={unreadEmailCount}
               />
             </aside>
           </div>

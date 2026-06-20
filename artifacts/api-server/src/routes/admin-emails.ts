@@ -1,9 +1,35 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { db, emailsTable, emailDomainRulesTable, usersTable } from "@workspace/db";
-import { eq, and, isNull, isNotNull, desc, count } from "drizzle-orm";
+import { eq, and, isNull, isNotNull, desc, count, gte } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/requireAuth";
 
 const router: IRouter = Router();
+
+// ─── GET /admin/emails/unread-count ──────────────────────────────────────────
+// Returns count of unlinked emails received after MAX(since, now-24h).
+// Optional `since` query param (ISO 8601 or ms-since-epoch) lets the client
+// pass a "last-viewed-at" watermark so the badge stays clear for already-seen emails.
+router.get("/admin/emails/unread-count", requireAdmin, async (req: Request, res: Response) => {
+  const cutoff24h = new Date(Date.now() - 24 * 60 * 60 * 1000);
+
+  let since = cutoff24h;
+  const sinceParam = req.query["since"];
+  if (sinceParam && typeof sinceParam === "string") {
+    const parsed = new Date(
+      /^\d+$/.test(sinceParam) ? parseInt(sinceParam, 10) : sinceParam
+    );
+    if (!isNaN(parsed.getTime()) && parsed > cutoff24h) {
+      since = parsed;
+    }
+  }
+
+  const [{ total }] = await db
+    .select({ total: count() })
+    .from(emailsTable)
+    .where(and(isNull(emailsTable.linkedUserId), gte(emailsTable.receivedAt, since)));
+
+  res.json({ count: total });
+});
 
 // ─── GET /admin/emails ───────────────────────────────────────────────────────
 router.get("/admin/emails", requireAdmin, async (req: Request, res: Response) => {
