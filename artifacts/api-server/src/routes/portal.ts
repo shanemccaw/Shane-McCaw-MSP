@@ -1840,6 +1840,8 @@ router.get("/portal/messages", requireAuth, async (req: Request, res: Response) 
   if (isAdmin) {
     const clientId = parseInt(String(req.query.clientId ?? ""), 10);
     if (isNaN(clientId)) { res.status(400).json({ error: "clientId required for admin" }); return; }
+    const [clientUser] = await db.select({ id: usersTable.id }).from(usersTable).where(eq(usersTable.id, clientId)).limit(1);
+    if (!clientUser) { res.status(404).json({ error: "Client not found" }); return; }
     const messages = await db.select().from(messagesTable)
       .where(eq(messagesTable.clientUserId, clientId))
       .orderBy(asc(messagesTable.createdAt));
