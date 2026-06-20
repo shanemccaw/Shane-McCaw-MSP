@@ -2611,6 +2611,15 @@ router.get("/admin/clients", requireAdmin, async (_req: Request, res: Response) 
   res.json(clients.map(c => ({ ...c, passwordHash: undefined })));
 });
 
+router.get("/admin/clients/:id", requireAdmin, async (req: Request, res: Response) => {
+  const id = parseInt(String(req.params.id ?? ""), 10);
+  if (isNaN(id)) { res.status(400).json({ error: "Invalid ID" }); return; }
+  const [client] = await db.select().from(usersTable)
+    .where(and(eq(usersTable.id, id), eq(usersTable.role, "client")));
+  if (!client) { res.status(404).json({ error: "Client not found" }); return; }
+  res.json({ ...client, passwordHash: undefined });
+});
+
 router.post("/admin/clients", requireAdmin, async (req: Request, res: Response) => {
   const { email, name, company, phone, password } = req.body as { email?: string; name?: string; company?: string; phone?: string; password?: string };
   if (!email || !password) { res.status(400).json({ error: "email and password are required" }); return; }

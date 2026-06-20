@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import { useAssignEmail } from "@/hooks/useAssignEmail";
@@ -271,9 +271,17 @@ function ClientSharePointPanel({ client, onClose, onUpdate }: {
   onUpdate: (patch: Pick<Client, "sharepointSiteUrl" | "sharepointSiteId">) => void;
 }) {
   const { fetchWithAuth } = useAuth();
+  const { toast } = useToast();
   const [urlInput, setUrlInput] = useState(client.sharepointSiteUrl ?? "");
   const [saving, setSaving] = useState(false);
   const [provisioning, setProvisioning] = useState(false);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (pollRef.current !== null) clearInterval(pollRef.current);
+    };
+  }, []);
 
   async function handleSave() {
     setSaving(true);
@@ -298,13 +306,51 @@ function ClientSharePointPanel({ client, onClose, onUpdate }: {
       const res = await fetchWithAuth(`/api/admin/clients/${client.id}/sharepoint/provision`, {
         method: "POST",
       });
-      if (res.ok) {
-        const data = await res.json() as { alreadyProvisioned?: boolean; sharepointSiteUrl?: string };
-        if (data.alreadyProvisioned && data.sharepointSiteUrl) {
-          onUpdate({ sharepointSiteUrl: data.sharepointSiteUrl, sharepointSiteId: null });
-        }
+
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({} as Record<string, unknown>)) as { error?: string };
+        toast({ title: d.error ?? "Provisioning failed", variant: "destructive" });
+        setProvisioning(false);
+        return;
       }
-    } finally {
+
+      const data = await res.json() as { provisioning?: boolean; alreadyProvisioned?: boolean; sharepointSiteUrl?: string };
+
+      if (data.alreadyProvisioned && data.sharepointSiteUrl) {
+        onUpdate({ sharepointSiteUrl: data.sharepointSiteUrl, sharepointSiteId: null });
+        toast({ title: "Already linked", description: data.sharepointSiteUrl });
+        setProvisioning(false);
+        return;
+      }
+
+      // provisioning: true — start polling
+      toast({ title: "SharePoint provisioning started", description: "This may take up to a minute." });
+
+      let polls = 0;
+      const MAX_POLLS = 20;
+      pollRef.current = setInterval(() => {
+        polls++;
+        void fetchWithAuth(`/api/admin/clients/${client.id}`).then(async r => {
+          if (!r.ok) return;
+          const c = await r.json() as { sharepointSiteUrl?: string | null; sharepointSiteId?: string | null };
+          if (c.sharepointSiteUrl) {
+            if (pollRef.current !== null) clearInterval(pollRef.current);
+            pollRef.current = null;
+            onUpdate({ sharepointSiteUrl: c.sharepointSiteUrl, sharepointSiteId: c.sharepointSiteId ?? null });
+            toast({ title: "SharePoint site ready", description: c.sharepointSiteUrl });
+            setProvisioning(false);
+            return;
+          }
+          if (polls >= MAX_POLLS) {
+            if (pollRef.current !== null) clearInterval(pollRef.current);
+            pollRef.current = null;
+            toast({ title: "Provisioning is taking longer than expected", description: "Refresh this page in a few minutes to see the link.", variant: "destructive" });
+            setProvisioning(false);
+          }
+        });
+      }, 3000);
+    } catch {
+      toast({ title: "Network error", variant: "destructive" });
       setProvisioning(false);
     }
   }
