@@ -55,6 +55,17 @@ interface Client {
   company: string | null;
 }
 
+interface LinkedEmail {
+  id: number;
+  subject: string | null;
+  senderAddress: string;
+  rawFrom: string | null;
+  receivedAt: string;
+  bodyPreview: string | null;
+  clientName: string | null;
+  clientEmail: string | null;
+}
+
 interface WorkflowStep {
   id: number;
   title: string;
@@ -792,6 +803,7 @@ export default function ProjectDetailPage() {
   const [client, setClient] = useState<Client | null>(null);
   const [steps, setSteps] = useState<WorkflowStep[]>([]);
   const [tasks, setTasks] = useState<KanbanTask[]>([]);
+  const [linkedEmails, setLinkedEmails] = useState<LinkedEmail[]>([]);
   const [loading, setLoading] = useState(true);
 
   const completedTaskCount = tasks.filter(t => t.column === "completed").length;
@@ -822,11 +834,12 @@ export default function ProjectDetailPage() {
 
   const reloadAll = useCallback(async () => {
     if (!projectId) return;
-    const [projRes, stepsRes, tasksRes, clientsRes] = await Promise.all([
+    const [projRes, stepsRes, tasksRes, clientsRes, emailsRes] = await Promise.all([
       fetchWithAuth(`/api/admin/projects/${projectId}`),
       fetchWithAuth(`/api/admin/workflow-steps?projectId=${projectId}`),
       fetchWithAuth(`/api/admin/kanban-tasks?projectId=${projectId}`),
       fetchWithAuth("/api/admin/clients"),
+      fetchWithAuth(`/api/admin/projects/${projectId}/emails`),
     ]);
     if (projRes.ok) {
       const proj = await projRes.json() as Project;
@@ -840,6 +853,10 @@ export default function ProjectDetailPage() {
     }
     if (stepsRes.ok) setSteps(await stepsRes.json() as WorkflowStep[]);
     if (tasksRes.ok) setTasks(await tasksRes.json() as KanbanTask[]);
+    if (emailsRes.ok) {
+      const data = await emailsRes.json() as { emails: LinkedEmail[] };
+      setLinkedEmails(data.emails);
+    }
     setLoading(false);
   }, [projectId, fetchWithAuth]);
 
@@ -1414,6 +1431,56 @@ export default function ProjectDetailPage() {
           </div>
         )}
       </section>
+
+      {/* ── Linked Emails ──────────────────────────────────────────────────── */}
+      {linkedEmails.length > 0 && (
+        <section className="mb-8">
+          <h2 className="text-sm font-bold uppercase tracking-wider text-[#0A2540] mb-4">Linked Emails</h2>
+          <div className="bg-white border border-border rounded-xl overflow-hidden divide-y divide-border">
+            {linkedEmails.map(email => {
+              const displayName = email.rawFrom
+                ? email.rawFrom.replace(/^"?(.*?)"?\s*<.*>$/, "$1").trim() || email.senderAddress
+                : email.senderAddress;
+              return (
+                <div key={email.id} className="flex items-start gap-3 px-4 py-3 hover:bg-[#F7F9FC]/60 transition-colors">
+                  <div className="w-8 h-8 rounded-full bg-[#0078D4]/10 flex items-center justify-center flex-shrink-0 mt-0.5">
+                    <svg className="w-4 h-4 text-[#0078D4]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M21.75 6.75v10.5a2.25 2.25 0 01-2.25 2.25h-15a2.25 2.25 0 01-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25m19.5 0v.243a2.25 2.25 0 01-1.07 1.916l-7.5 4.615a2.25 2.25 0 01-2.36 0L3.32 8.91a2.25 2.25 0 01-1.07-1.916V6.75" />
+                    </svg>
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-baseline justify-between gap-2">
+                      <p className="text-sm font-semibold text-[#0A2540] truncate">
+                        {email.subject ?? "(no subject)"}
+                      </p>
+                      <span className="text-[10px] text-muted-foreground whitespace-nowrap flex-shrink-0">
+                        {new Date(email.receivedAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                      </span>
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      {displayName !== email.senderAddress
+                        ? <><span className="font-medium text-[#0A2540]/70">{displayName}</span> &lt;{email.senderAddress}&gt;</>
+                        : email.senderAddress}
+                    </p>
+                    {email.bodyPreview && (
+                      <p className="text-[11px] text-muted-foreground mt-1 line-clamp-1 leading-snug">
+                        {email.bodyPreview}
+                      </p>
+                    )}
+                  </div>
+                  <a
+                    href="/admin-panel/email-activity"
+                    className="flex-shrink-0 self-center text-[11px] font-semibold text-[#0078D4] hover:underline"
+                    title="Open in inbox"
+                  >
+                    View →
+                  </a>
+                </div>
+              );
+            })}
+          </div>
+        </section>
+      )}
 
       {/* ── Closure Sign-Off ────────────────────────────────────────────────── */}
       <ClosureCard projectId={projectId} projectStatus={project?.status} fetchWithAuth={fetchWithAuth} toast={toast} />

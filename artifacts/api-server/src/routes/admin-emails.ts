@@ -7,6 +7,30 @@ import { logger } from "../lib/logger";
 
 const router: IRouter = Router();
 
+// ─── GET /admin/projects/:id/emails ──────────────────────────────────────────
+router.get("/admin/projects/:id/emails", requireAdmin, async (req: Request, res: Response) => {
+  const id = parseInt(String(req.params["id"] ?? ""), 10);
+  if (isNaN(id)) { res.status(400).json({ error: "Invalid project ID" }); return; }
+
+  const rows = await db
+    .select({
+      id: emailsTable.id,
+      subject: emailsTable.subject,
+      senderAddress: emailsTable.senderAddress,
+      rawFrom: emailsTable.rawFrom,
+      receivedAt: emailsTable.receivedAt,
+      bodyPreview: emailsTable.bodyPreview,
+      clientName: usersTable.name,
+      clientEmail: usersTable.email,
+    })
+    .from(emailsTable)
+    .leftJoin(usersTable, eq(emailsTable.linkedUserId, usersTable.id))
+    .where(eq(emailsTable.linkedProjectId, id))
+    .orderBy(desc(emailsTable.receivedAt));
+
+  res.json({ emails: rows });
+});
+
 // ─── GET /admin/emails/unread-count ──────────────────────────────────────────
 router.get("/admin/emails/unread-count", requireAdmin, async (req: Request, res: Response) => {
   const cutoff24h = new Date(Date.now() - 24 * 60 * 60 * 1000);
