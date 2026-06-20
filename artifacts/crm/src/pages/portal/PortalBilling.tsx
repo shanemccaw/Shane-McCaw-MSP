@@ -80,6 +80,9 @@ function SubscriptionCard({
   fetchWithAuth,
   onAlert,
   onUpdate,
+  undoExpiresAt,
+  onUndo,
+  undoLoading,
 }: {
   sub: Subscription;
   onCancel: (sub: Subscription) => void;
@@ -88,9 +91,27 @@ function SubscriptionCard({
   fetchWithAuth: (url: string, opts?: RequestInit) => Promise<Response>;
   onAlert: (a: { type: "success" | "error"; message: string }) => void;
   onUpdate: (id: number, patch: { cancelAtPeriodEnd: boolean; cancelAt: number | null; currentPeriodEnd: number | null }) => void;
+  undoExpiresAt: number | null;
+  onUndo: () => void;
+  undoLoading: boolean;
 }) {
   const [portalLoading, setPortalLoading] = useState(false);
   const [resubLoading, setResubLoading] = useState(false);
+  const [secondsLeft, setSecondsLeft] = useState<number>(0);
+
+  useEffect(() => {
+    if (!undoExpiresAt) {
+      setSecondsLeft(0);
+      return;
+    }
+    const tick = () => {
+      const remaining = Math.max(0, Math.ceil((undoExpiresAt - Date.now()) / 1000));
+      setSecondsLeft(remaining);
+    };
+    tick();
+    const id = setInterval(tick, 250);
+    return () => clearInterval(id);
+  }, [undoExpiresAt]);
 
   const stripe = sub.stripe;
   const isCanceled = stripe?.status === "canceled";
@@ -150,7 +171,35 @@ function SubscriptionCard({
     }
   };
 
+  const showUndoBanner = isCancelPending && undoExpiresAt !== null && secondsLeft > 0;
+
   return (
+    <div className="flex flex-col">
+      {showUndoBanner && (
+        <div className="flex items-center justify-between gap-3 px-5 py-2.5 bg-orange-50 border-b border-orange-200">
+          <p className="text-xs text-orange-800 font-medium">
+            Subscription cancelled — changed your mind?
+          </p>
+          <div className="flex items-center gap-2 flex-shrink-0">
+            <button
+              onClick={onUndo}
+              disabled={undoLoading}
+              className="flex items-center gap-1.5 text-xs font-bold bg-orange-600 text-white px-3 py-1 rounded-lg hover:bg-orange-700 transition-colors disabled:opacity-50"
+            >
+              {undoLoading ? (
+                <span className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
+              ) : (
+                <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 14L4 9l5-5" />
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M4 9h11a5 5 0 010 10h-1" />
+                </svg>
+              )}
+              Undo cancel
+            </button>
+            <span className="text-xs text-orange-500 font-medium tabular-nums w-6 text-right">{secondsLeft}s</span>
+          </div>
+        </div>
+      )}
     <div className="px-5 py-5 flex items-start gap-4 flex-wrap sm:flex-nowrap">
       <div className="w-10 h-10 rounded-xl bg-[#00B4D8]/10 flex items-center justify-center flex-shrink-0 mt-0.5">
         <svg className="w-5 h-5 text-[#00B4D8]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
@@ -245,6 +294,7 @@ function SubscriptionCard({
           </>
         )}
       </div>
+    </div>
     </div>
   );
 }
@@ -397,6 +447,8 @@ export default function PortalBilling() {
   const [cancelling, setCancelling] = useState(false);
   const [resumeTarget, setResumeTarget] = useState<Subscription | null>(null);
   const [resuming, setResuming] = useState(false);
+  const [undoTarget, setUndoTarget] = useState<{ id: number; name: string; expiresAt: number } | null>(null);
+  const [undoLoading, setUndoLoading] = useState(false);
   const [alert, setAlert] = useState<{ type: "success" | "error"; message: string } | null>(null);
 
   useEffect(() => {
@@ -454,6 +506,16 @@ export default function PortalBilling() {
     }
   };
 
+  const UNDO_WINDOW_MS = 30_000;
+
+  useEffect(() => {
+    if (!undoTarget) return;
+    const remaining = undoTarget.expiresAt - Date.now();
+    if (remaining <= 0) { setUndoTarget(null); return; }
+    const id = setTimeout(() => setUndoTarget(null), remaining);
+    return () => clearTimeout(id);
+  }, [undoTarget]);
+
   const handleCancelConfirm = useCallback(async () => {
     if (!cancelTarget) return;
     setCancelling(true);
@@ -464,8 +526,9 @@ export default function PortalBilling() {
       });
       if (res.ok) {
         const data = await res.json() as { cancelAtPeriodEnd: boolean; cancelAt: number | null; billingCycleAnchor: number | null };
+        const cancelled = cancelTarget;
         setSubscriptions(prev => prev.map(s =>
-          s.id === cancelTarget.id
+          s.id === cancelled.id
             ? {
                 ...s,
                 stripe: s.stripe
@@ -475,7 +538,8 @@ export default function PortalBilling() {
             : s
         ));
         setCancelTarget(null);
-        setAlert({ type: "success", message: `Your ${cancelTarget.serviceName} retainer will not renew after the current billing period.` });
+        setUndoTarget({ id: cancelled.id, name: cancelled.serviceName, expiresAt: Date.now() + UNDO_WINDOW_MS });
+        setAlert({ type: "success", message: `Your ${cancelled.serviceName} retainer will not renew after the current billing period.` });
       } else {
         const err = await res.json() as { error: string };
         setAlert({ type: "error", message: err.error ?? "Could not cancel subscription. Please contact support." });
@@ -486,6 +550,35 @@ export default function PortalBilling() {
       setCancelling(false);
     }
   }, [cancelTarget, fetchWithAuth]);
+
+  const handleUndoCancel = useCallback(async () => {
+    if (!undoTarget) return;
+    setUndoLoading(true);
+    const target = undoTarget;
+    try {
+      const res = await fetchWithAuth(`/api/portal/billing/subscriptions/${target.id}/resume`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
+      if (res.ok) {
+        const data = await res.json() as { cancelAtPeriodEnd: boolean; cancelAt: number | null; currentPeriodEnd: number | null };
+        setSubscriptions(prev => prev.map(s =>
+          s.id === target.id
+            ? { ...s, stripe: s.stripe ? { ...s.stripe, cancelAtPeriodEnd: data.cancelAtPeriodEnd, cancelAt: data.cancelAt, currentPeriodEnd: data.currentPeriodEnd } : null }
+            : s
+        ));
+        setUndoTarget(null);
+        setAlert({ type: "success", message: `Cancellation undone — your ${target.name} retainer will keep renewing.` });
+      } else {
+        const err = await res.json() as { error: string };
+        setAlert({ type: "error", message: err.error ?? "Could not undo cancellation. Please contact support." });
+      }
+    } catch {
+      setAlert({ type: "error", message: "Network error. Please try again." });
+    } finally {
+      setUndoLoading(false);
+    }
+  }, [undoTarget, fetchWithAuth]);
 
   const handleResumeConfirm = useCallback(async () => {
     if (!resumeTarget) return;
@@ -572,6 +665,9 @@ export default function PortalBilling() {
                           ? { ...s, stripe: s.stripe ? { ...s.stripe, cancelAtPeriodEnd: patch.cancelAtPeriodEnd, cancelAt: patch.cancelAt, currentPeriodEnd: patch.currentPeriodEnd } : null }
                           : s
                       ))}
+                      undoExpiresAt={undoTarget?.id === sub.id ? undoTarget.expiresAt : null}
+                      onUndo={handleUndoCancel}
+                      undoLoading={undoLoading && undoTarget?.id === sub.id}
                     />
                   ))}
                 </div>
