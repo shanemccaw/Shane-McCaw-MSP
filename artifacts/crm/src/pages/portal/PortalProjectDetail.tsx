@@ -773,27 +773,38 @@ export default function PortalProjectDetail() {
                 <h3 className="text-xs font-bold uppercase tracking-widest text-muted-foreground mb-4">Phase Completion</h3>
 
                 {/* Overall progress */}
-                <div className="mb-4">
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-sm font-semibold text-[#0A2540]">Overall Progress</span>
-                    <span className="text-lg font-extrabold text-[#0078D4]">{project.progress}%</span>
-                  </div>
-                  <div className="w-full bg-gray-100 rounded-full h-2.5">
-                    <div
-                      className="h-2.5 rounded-full transition-all"
-                      style={{
-                        width: `${Math.min(100, project.progress)}%`,
-                        background: "linear-gradient(90deg, #0078D4 0%, #00B4D8 100%)",
-                      }}
-                    />
-                  </div>
-                </div>
+                {(() => {
+                  const allTasks = data.tasks ?? [];
+                  const overallPct = allTasks.length > 0
+                    ? Math.round(allTasks.filter(t => t.column === "completed").length / allTasks.length * 100)
+                    : project.progress;
+                  return (
+                    <div className="mb-4">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-sm font-semibold text-[#0A2540]">Overall Progress</span>
+                        <span className="text-lg font-extrabold text-[#0078D4]">{overallPct}%</span>
+                      </div>
+                      <div className="w-full bg-gray-100 rounded-full h-2.5">
+                        <div
+                          className="h-2.5 rounded-full transition-all"
+                          style={{
+                            width: `${Math.min(100, overallPct)}%`,
+                            background: "linear-gradient(90deg, #0078D4 0%, #00B4D8 100%)",
+                          }}
+                        />
+                      </div>
+                    </div>
+                  );
+                })()}
 
                 {/* Per-step rows */}
                 {steps.length > 0 && (
                   <div className="space-y-2.5 border-t border-border pt-3">
                     {steps.map(s => {
-                      const pct = stepPercent(s.status);
+                      const stepTasks = (data.tasks ?? []).filter(t => t.workflowStepId === s.id);
+                      const pct = stepTasks.length > 0
+                        ? Math.round(stepTasks.filter(t => t.column === "completed").length / stepTasks.length * 100)
+                        : stepPercent(s.status);
                       return (
                         <div key={s.id} className="flex items-center gap-2">
                           <p className="text-xs text-[#0A2540] flex-1 truncate font-medium">{s.title}</p>
