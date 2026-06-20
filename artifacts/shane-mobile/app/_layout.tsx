@@ -10,12 +10,13 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import * as Notifications from "expo-notifications";
 import { Redirect, Stack, useRouter } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
-import React, { useEffect, useRef } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import { ErrorBoundary } from "@/components/ErrorBoundary";
+import { Toast } from "@/components/Toast";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 
 SplashScreen.preventAutoHideAsync();
@@ -45,14 +46,43 @@ function PushSetup() {
   const { user, fetchWithAuth } = useAuth();
   const router = useRouter();
   const registered = useRef(false);
+  const [toastMsg, setToastMsg] = useState("");
+  const [toastKey, setToastKey] = useState(0);
+
+  const showToast = useCallback((msg: string) => {
+    setToastMsg(msg);
+    setToastKey((k) => k + 1);
+  }, []);
 
   useEffect(() => {
     if (!user) return;
 
-    function handleNotificationData(data: Record<string, string | undefined>) {
+    // Check if a resource still exists before navigating to its detail screen.
+    // On 404 redirect to the relevant list and surface a brief toast.
+    async function handleNotificationData(data: Record<string, string | undefined>) {
       if (data.screen === "order" && data.id) {
+        try {
+          const res = await fetchWithAuth(`/api/admin/purchases/${data.id}`);
+          if (res.status === 404) {
+            router.push("/(tabs)/orders");
+            showToast("This order is no longer available");
+            return;
+          }
+        } catch {
+          // Network error — fall through to normal navigation
+        }
         router.push(`/orders/${data.id}`);
       } else if (data.screen === "conversation" && data.clientId) {
+        try {
+          const res = await fetchWithAuth(`/api/portal/messages?clientId=${data.clientId}`);
+          if (res.status === 404) {
+            router.push("/(tabs)/messages");
+            showToast("This conversation is no longer available");
+            return;
+          }
+        } catch {
+          // Network error — fall through to normal navigation
+        }
         router.push(`/messages/${data.clientId}`);
       } else if (data.screen === "orders") {
         router.push("/(tabs)/orders");
@@ -86,7 +116,7 @@ function PushSetup() {
         if (response.actionIdentifier === "REPLY" && response.userText && data.clientId) {
           await handleReply(data.clientId, response.userText);
         } else {
-          handleNotificationData(data);
+          await handleNotificationData(data);
         }
       })
       .catch(() => null);
@@ -97,12 +127,12 @@ function PushSetup() {
       if (response.actionIdentifier === "REPLY" && response.userText && data.clientId) {
         await handleReply(data.clientId, response.userText);
       } else {
-        handleNotificationData(data);
+        await handleNotificationData(data);
       }
     });
 
     return () => tapSub.remove();
-  }, [user, router, fetchWithAuth]);
+  }, [user, router, fetchWithAuth, showToast]);
 
   useEffect(() => {
     if (!user || registered.current) return;
@@ -132,7 +162,7 @@ function PushSetup() {
     })();
   }, [user, fetchWithAuth]);
 
-  return null;
+  return <Toast message={toastMsg} toastKey={toastKey} />;
 }
 
 function RootLayoutNav() {
