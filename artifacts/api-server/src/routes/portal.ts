@@ -1,5 +1,5 @@
 import { Router, type IRouter, type Request, type Response } from "express";
-import { db, projectsTable, clientServicesTable, servicesTable, workflowStepsTable, kanbanTasksTable, documentsTable, reportsTable, invoicesTable, messagesTable, notificationsTable, projectUpdatesTable, usersTable, contractsTable, passwordResetTokensTable, workflowTemplateStepsTable, workflowTemplateStepTasksTable, contractTemplatesTable, impersonationTokensTable, statusReportsTable, deviceTokensTable, projectClosuresTable } from "@workspace/db";
+import { db, projectsTable, clientServicesTable, servicesTable, workflowStepsTable, kanbanTasksTable, documentsTable, reportsTable, invoicesTable, messagesTable, notificationsTable, projectUpdatesTable, usersTable, contractsTable, passwordResetTokensTable, workflowTemplateStepsTable, workflowTemplateStepTasksTable, contractTemplatesTable, impersonationTokensTable, statusReportsTable, deviceTokensTable, projectClosuresTable, auditLogsTable } from "@workspace/db";
 import { eq, and, desc, asc, count, sql, inArray, gte } from "drizzle-orm";
 import { requireAuth, requireAdmin } from "../middlewares/requireAuth";
 import { sendEmail, purchaseConfirmationEmail, onboardingConfirmationEmail, adminPurchaseAlertEmail, closureRequestEmail, statusReportReplyEmail, clientThreadReplyEmail, adminThreadReplyEmail } from "../lib/mailer";
@@ -217,6 +217,32 @@ router.get("/portal/projects/:id", requireAuth, async (req: Request, res: Respon
     .limit(1);
 
   res.json({ project, steps, tasks, previewTasks, documents, updates, statusReports, pendingStatusReport: pendingStatusReport ?? null, contract: contract ?? null });
+});
+
+// ─── CLIENT: Project Recent Activity ─────────────────────────────────────────
+router.get("/portal/projects/:id/audit-logs", requireAuth, async (req: Request, res: Response) => {
+  const userId = req.user!.id;
+  const id = parseInt(String(req.params.id ?? ""), 10);
+  if (isNaN(id)) { res.status(400).json({ error: "Invalid project ID" }); return; }
+
+  const isAdmin = req.user!.role === "admin";
+  const [project] = await db.select().from(projectsTable)
+    .where(isAdmin ? eq(projectsTable.id, id) : and(eq(projectsTable.id, id), eq(projectsTable.clientUserId, userId)));
+  if (!project) { res.status(404).json({ error: "Project not found" }); return; }
+
+  const limit = Math.min(50, Math.max(1, parseInt(String(req.query.limit ?? "10"), 10)));
+
+  const conditions = [eq(auditLogsTable.projectId, id)];
+  if (!isAdmin) {
+    conditions.push(eq(auditLogsTable.clientId, userId));
+  }
+
+  const entries = await db.select().from(auditLogsTable)
+    .where(and(...conditions))
+    .orderBy(desc(auditLogsTable.createdAt))
+    .limit(limit);
+
+  res.json({ entries });
 });
 
 // ─── CLIENT: Project Audit PDF ───────────────────────────────────────────────

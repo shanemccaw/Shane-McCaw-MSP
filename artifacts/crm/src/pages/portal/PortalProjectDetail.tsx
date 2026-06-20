@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback, useRef } from "react";
 import SignatureCanvas from "react-signature-canvas";
 import { useParams, Link } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
+import { formatAuditEntry, type AuditLogEntry } from "@/lib/auditFormatter";
 import PortalLayout from "@/components/PortalLayout";
 import PortalRetainerDetail from "./PortalRetainerDetail";
 import { KanbanCardModal } from "@/components/KanbanCardModal";
@@ -461,6 +462,32 @@ export default function PortalProjectDetail() {
   const [closurePermission, setClosurePermission] = useState(true);
   const [closureSigning, setClosureSigning] = useState(false);
   const sigCanvasRef = useRef<SignatureCanvas>(null);
+
+  // Recent activity state
+  const [activityOpen, setActivityOpen] = useState(false);
+  const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>([]);
+  const [auditLoading, setAuditLoading] = useState(false);
+
+  const loadAuditLogs = useCallback(async () => {
+    if (!params.id) return;
+    setAuditLoading(true);
+    try {
+      const res = await fetchWithAuth(`/api/portal/projects/${params.id}/audit-logs?limit=10`);
+      if (res.ok) {
+        const d = await res.json() as { entries: AuditLogEntry[] };
+        setAuditLogs(d.entries);
+      }
+    } finally {
+      setAuditLoading(false);
+    }
+  }, [params.id, fetchWithAuth]);
+
+  const handleToggleActivity = () => {
+    if (!activityOpen && auditLogs.length === 0) {
+      void loadAuditLogs();
+    }
+    setActivityOpen(o => !o);
+  };
 
   const handleCardClick = useCallback((task: KanbanTask, stepTitle?: string | null) => {
     setSelectedTask(task);
@@ -1616,6 +1643,50 @@ export default function PortalProjectDetail() {
               );
             })}
           </div>
+        )}
+      </div>
+
+      {/* ── Recent Activity ─────────────────────────────────────────────────── */}
+      <div className="px-4 pb-6">
+        <button
+          onClick={handleToggleActivity}
+          className="flex items-center gap-2 mb-3 group"
+        >
+          <h2 className="text-sm font-bold text-[#0A2540]">Recent Activity</h2>
+          <svg
+            className={`w-4 h-4 text-muted-foreground transition-transform flex-shrink-0 ${activityOpen ? "rotate-180" : ""}`}
+            fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+          </svg>
+          {!activityOpen && auditLogs.length === 0 && (
+            <span className="text-[10px] text-muted-foreground font-normal">Click to load</span>
+          )}
+        </button>
+        {activityOpen && (
+          auditLoading ? (
+            <div className="flex items-center gap-2 py-6 justify-center text-muted-foreground text-sm">
+              <div className="w-4 h-4 border-2 border-[#0078D4] border-t-transparent rounded-full animate-spin" />
+              Loading activity…
+            </div>
+          ) : auditLogs.length === 0 ? (
+            <div className="bg-[#F7F9FC] border border-border rounded-xl px-4 py-6 text-center text-sm text-muted-foreground">
+              No activity recorded for this project yet.
+            </div>
+          ) : (
+            <div className="bg-white border border-border rounded-xl overflow-hidden divide-y divide-border">
+              {auditLogs.map((entry, i) => (
+                <div key={entry.id ?? i} className="flex items-start gap-3 px-4 py-3">
+                  <div className="w-7 h-7 rounded-full bg-[#0078D4]/10 flex items-center justify-center flex-shrink-0 mt-0.5">
+                    <svg className="w-3.5 h-3.5 text-[#0078D4]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                  </div>
+                  <p className="text-xs text-[#0A2540] leading-relaxed flex-1 min-w-0">{formatAuditEntry(entry)}</p>
+                </div>
+              ))}
+            </div>
+          )
         )}
       </div>
 

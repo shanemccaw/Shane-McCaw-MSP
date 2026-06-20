@@ -11,11 +11,20 @@ router.get("/audit-logs", requireAdmin, async (req: Request, res: Response) => {
   const page = Math.max(1, parseInt(String(req.query.page ?? "1"), 10));
   const offset = (page - 1) * PAGE_SIZE;
 
+  const limit = req.query.limit
+    ? Math.min(100, Math.max(1, parseInt(String(req.query.limit), 10)))
+    : PAGE_SIZE;
+
   const conditions: SQL[] = [];
 
   if (req.query.clientId) {
     const cid = parseInt(String(req.query.clientId), 10);
     if (!isNaN(cid)) conditions.push(eq(auditLogsTable.clientId, cid));
+  }
+
+  if (req.query.projectId) {
+    const pid = parseInt(String(req.query.projectId), 10);
+    if (!isNaN(pid)) conditions.push(eq(auditLogsTable.projectId, pid));
   }
 
   if (req.query.entityType && req.query.entityType !== "all") {
@@ -41,10 +50,10 @@ router.get("/audit-logs", requireAdmin, async (req: Request, res: Response) => {
   const entries = await db.select().from(auditLogsTable)
     .where(where)
     .orderBy(desc(auditLogsTable.createdAt))
-    .limit(PAGE_SIZE)
+    .limit(limit)
     .offset(offset);
 
-  res.json({ entries, total: totalRow?.count ?? 0, page, pageSize: PAGE_SIZE });
+  res.json({ entries, total: totalRow?.count ?? 0, page, pageSize: limit });
 });
 
 router.get("/audit-logs/me", requireAuth, async (req: Request, res: Response) => {

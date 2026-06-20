@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback, useRef } from "react";
 import { useRoute, useLocation } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
+import { formatAuditEntry, type AuditLogEntry } from "@/lib/auditFormatter";
 import { KanbanCardModal } from "@/components/KanbanCardModal";
 import type { KanbanCardModalTask } from "@/components/KanbanCardModal";
 import { TypedCardContent, TASK_TYPE_CONFIG } from "@/components/kanban/TypedCardContent";
@@ -853,6 +854,10 @@ export default function ProjectDetailPage() {
   const [spSaving, setSpSaving] = useState(false);
   const [spProvisioning, setSpProvisioning] = useState(false);
 
+  const [auditOpen, setAuditOpen] = useState(false);
+  const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>([]);
+  const [auditLoading, setAuditLoading] = useState(false);
+
   const handleSaveSharepointUrl = async () => {
     if (!projectId) return;
     setSpSaving(true);
@@ -900,6 +905,27 @@ export default function ProjectDetailPage() {
     } finally {
       setSpProvisioning(false);
     }
+  };
+
+  const loadAuditLogs = useCallback(async () => {
+    if (!projectId) return;
+    setAuditLoading(true);
+    try {
+      const res = await fetchWithAuth(`/api/audit-logs?projectId=${projectId}&limit=10`);
+      if (res.ok) {
+        const data = await res.json() as { entries: AuditLogEntry[] };
+        setAuditLogs(data.entries);
+      }
+    } finally {
+      setAuditLoading(false);
+    }
+  }, [projectId, fetchWithAuth]);
+
+  const handleToggleAudit = () => {
+    if (!auditOpen && auditLogs.length === 0) {
+      void loadAuditLogs();
+    }
+    setAuditOpen(o => !o);
   };
 
   const reloadAll = useCallback(async () => {
@@ -1851,6 +1877,52 @@ export default function ProjectDetailPage() {
             </div>
           </div>
         </div>
+      </section>
+
+      {/* ── Recent Activity ─────────────────────────────────────────────────── */}
+      <section className="mb-8">
+        <button
+          onClick={handleToggleAudit}
+          className="flex items-center gap-2 w-full text-left group"
+        >
+          <h2 className="text-sm font-bold uppercase tracking-wider text-[#0A2540]">Recent Activity</h2>
+          <svg
+            className={`w-4 h-4 text-muted-foreground transition-transform flex-shrink-0 ${auditOpen ? "rotate-180" : ""}`}
+            fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+          </svg>
+          {!auditOpen && auditLogs.length === 0 && (
+            <span className="text-[10px] text-muted-foreground font-normal normal-case tracking-normal">Click to load</span>
+          )}
+        </button>
+        {auditOpen && (
+          <div className="mt-3">
+            {auditLoading ? (
+              <div className="flex items-center gap-2 py-6 justify-center text-muted-foreground text-sm">
+                <div className="w-4 h-4 border-2 border-[#0078D4] border-t-transparent rounded-full animate-spin" />
+                Loading activity…
+              </div>
+            ) : auditLogs.length === 0 ? (
+              <div className="bg-[#F7F9FC] border border-border rounded-xl px-4 py-6 text-center text-sm text-muted-foreground">
+                No activity recorded for this project yet.
+              </div>
+            ) : (
+              <div className="bg-white border border-border rounded-xl overflow-hidden divide-y divide-border">
+                {auditLogs.map((entry, i) => (
+                  <div key={entry.id ?? i} className="flex items-start gap-3 px-4 py-3 hover:bg-[#F7F9FC]/60 transition-colors">
+                    <div className="w-7 h-7 rounded-full bg-[#0078D4]/10 flex items-center justify-center flex-shrink-0 mt-0.5">
+                      <svg className="w-3.5 h-3.5 text-[#0078D4]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                    </div>
+                    <p className="text-xs text-[#0A2540] leading-relaxed flex-1 min-w-0">{formatAuditEntry(entry)}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
       </section>
 
       {/* ── Closure Sign-Off ────────────────────────────────────────────────── */}
