@@ -817,7 +817,11 @@ export default function PortalProjectDetail() {
 
             {/* Has-Questions Status Report Banner — persists until client accepts */}
             {pendingStatusReport && pendingStatusReport.clientStatus === "has_questions" && (
-              <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 flex flex-col gap-4">
+              <div className={`border rounded-xl p-4 flex flex-col gap-4 ${
+                pendingStatusReport.adminReply
+                  ? "bg-blue-50 border-blue-400 ring-1 ring-blue-200"
+                  : "bg-blue-50 border-blue-200"
+              }`}>
                 <div className="flex items-start gap-3">
                   <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center flex-shrink-0 mt-0.5">
                     <svg className="w-4 h-4 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -1339,7 +1343,11 @@ export default function PortalProjectDetail() {
             ) : statusReports.map(report => {
               const isExpanded = expandedReportId === report.id;
               return (
-                <div key={report.id} className={`bg-white border rounded-xl shadow-sm overflow-hidden ${report.clientStatus === "pending" ? "border-amber-300" : "border-border"}`}>
+                <div key={report.id} className={`bg-white border rounded-xl shadow-sm overflow-hidden ${
+                  report.clientStatus === "pending" ? "border-amber-300" :
+                  (report.clientStatus === "has_questions" && report.adminReply) ? "border-blue-400 ring-1 ring-blue-200" :
+                  "border-border"
+                }`}>
                   {/* Card header */}
                   <button
                     onClick={() => setExpandedReportId(isExpanded ? null : report.id)}
@@ -1351,6 +1359,12 @@ export default function PortalProjectDetail() {
                           {periodLabel(report.period)}
                         </span>
                         <ClientStatusChip status={report.clientStatus} />
+                        {report.clientStatus === "has_questions" && report.adminReply && (
+                          <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full bg-blue-500 text-white animate-pulse">
+                            <svg className="w-2.5 h-2.5" fill="currentColor" viewBox="0 0 8 8"><circle cx="4" cy="4" r="4" /></svg>
+                            New Reply
+                          </span>
+                        )}
                       </div>
                       <p className="text-sm font-bold text-[#0A2540] leading-tight">{report.title}</p>
                       {(report.sentAt ?? report.reportDate) && (

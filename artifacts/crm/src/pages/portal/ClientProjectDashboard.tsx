@@ -592,6 +592,38 @@ export default function ClientProjectDashboard() {
         ) : currentDetail && project ? (
           <div className="space-y-6">
 
+            {/* ── Shane replied to your question banner ────────────────────── */}
+            {pendingStatusReport && pendingStatusReport.clientStatus === "has_questions" && pendingStatusReport.adminReply && (
+              <div className="bg-blue-50 border border-blue-400 ring-1 ring-blue-200 rounded-xl p-4 flex flex-col sm:flex-row sm:items-start gap-3">
+                <div className="flex items-start gap-3 flex-1 min-w-0">
+                  <div className="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5">
+                    <svg className="w-4 h-4 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M8.625 9.75a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H8.25m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H12m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0h-.375m-13.5 3.01c0 1.6 1.123 2.994 2.707 3.227 1.087.16 2.185.283 3.293.369V21l4.184-4.183a1.14 1.14 0 01.778-.332 48.294 48.294 0 005.83-.498c1.585-.233 2.708-1.626 2.708-3.228V6.741c0-1.602-1.123-2.995-2.707-3.228A48.394 48.394 0 0012 3c-2.392 0-4.744.175-7.043.513C3.373 3.746 2.25 5.14 2.25 6.741v6.018z" />
+                    </svg>
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2 mb-0.5">
+                      <p className="text-sm font-semibold text-blue-900">Shane replied to your question</p>
+                      <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full bg-blue-500 text-white animate-pulse">
+                        <svg className="w-2.5 h-2.5" fill="currentColor" viewBox="0 0 8 8"><circle cx="4" cy="4" r="4" /></svg>
+                        New
+                      </span>
+                    </div>
+                    <p className="text-xs text-blue-700 truncate">{pendingStatusReport.title}</p>
+                    <p className="text-xs text-blue-800 mt-1.5 line-clamp-2 italic">"{pendingStatusReport.adminReply}"</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => acknowledgeReport(pendingStatusReport, "accepted")}
+                  disabled={acknowledging}
+                  className="flex items-center gap-1.5 text-xs font-semibold text-white bg-green-600 px-3 py-1.5 rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50 flex-shrink-0 self-start"
+                >
+                  {acknowledging && <div className="w-3 h-3 border-2 border-white/40 border-t-white rounded-full animate-spin" />}
+                  Mark Resolved
+                </button>
+              </div>
+            )}
+
             {/* ── Pending status report banner ─────────────────────────────── */}
             {pendingStatusReport && pendingStatusReport.clientStatus === "pending" && (
               <div className="bg-[#0078D4]/5 border border-[#0078D4]/20 rounded-xl p-4 flex flex-col sm:flex-row sm:items-center gap-3">
@@ -906,16 +938,20 @@ export default function ClientProjectDashboard() {
               <div className="bg-white border border-border rounded-2xl p-5">
                 <h3 className="text-sm font-bold text-[#0A2540] mb-4">Status Reports</h3>
                 <div className="space-y-3">
-                  {statusReports.map(report => (
-                    <div key={report.id} className="border border-border rounded-xl overflow-hidden">
+                  {statusReports.map(report => {
+                    const hasUnreadReply = report.clientStatus === "has_questions" && !!report.adminReply;
+                    return (
+                    <div key={report.id} className={`rounded-xl overflow-hidden border ${
+                      hasUnreadReply ? "border-blue-400 ring-1 ring-blue-200" : "border-border"
+                    }`}>
                       {/* Report header row */}
                       <button
-                        className="w-full flex items-center justify-between gap-3 px-4 py-3 hover:bg-gray-50 transition-colors text-left"
+                        className={`w-full flex items-center justify-between gap-3 px-4 py-3 transition-colors text-left ${hasUnreadReply ? "hover:bg-blue-50/60" : "hover:bg-gray-50"}`}
                         onClick={() => setExpandedReportId(expandedReportId === report.id ? null : report.id)}
                       >
                         <div className="flex items-center gap-3 min-w-0 flex-1">
-                          <div className="w-8 h-8 bg-[#0078D4]/10 rounded-lg flex items-center justify-center flex-shrink-0">
-                            <svg className="w-4 h-4 text-[#0078D4]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                          <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${hasUnreadReply ? "bg-blue-100" : "bg-[#0078D4]/10"}`}>
+                            <svg className={`w-4 h-4 ${hasUnreadReply ? "text-blue-600" : "text-[#0078D4]"}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                               <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h3.75M9 15h3.75M9 18h3.75m3 .75H18a2.25 2.25 0 002.25-2.25V6.108c0-1.135-.845-2.098-1.976-2.192a48.424 48.424 0 00-1.123-.08m-5.801 0c-.065.21-.1.433-.1.664 0 .414.336.75.75.75h4.5a.75.75 0 00.75-.75 2.25 2.25 0 00-.1-.664m-5.8 0A2.251 2.251 0 0113.5 2.25H15c1.012 0 1.867.668 2.15 1.586m-5.8 0c-.376.023-.75.05-1.124.08C9.095 4.01 8.25 4.973 8.25 6.108V8.25m0 0H4.875c-.621 0-1.125.504-1.125 1.125v11.25c0 .621.504 1.125 1.125 1.125h9.75c.621 0 1.125-.504 1.125-1.125V9.375c0-.621-.504-1.125-1.125-1.125H8.25z" />
                             </svg>
                           </div>
@@ -928,6 +964,12 @@ export default function ClientProjectDashboard() {
                           </div>
                         </div>
                         <div className="flex items-center gap-2 flex-shrink-0">
+                          {hasUnreadReply && (
+                            <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full bg-blue-500 text-white animate-pulse">
+                              <svg className="w-2.5 h-2.5" fill="currentColor" viewBox="0 0 8 8"><circle cx="4" cy="4" r="4" /></svg>
+                              New Reply
+                            </span>
+                          )}
                           <ClientStatusChip status={report.clientStatus} />
                           <svg className={`w-4 h-4 text-muted-foreground transition-transform ${expandedReportId === report.id ? "rotate-180" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" /></svg>
                         </div>
@@ -1010,7 +1052,8 @@ export default function ClientProjectDashboard() {
                         </div>
                       )}
                     </div>
-                  ))}
+                  );
+                  })}
                 </div>
               </div>
             )}
