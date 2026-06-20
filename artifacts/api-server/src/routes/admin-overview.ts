@@ -1,5 +1,5 @@
 import { Router, type Request, type Response } from "express";
-import { db, usersTable, leadsTable, projectsTable, invoicesTable, clientServicesTable, servicesTable, projectUpdatesTable, messagesTable } from "@workspace/db";
+import { db, usersTable, leadsTable, projectsTable, invoicesTable, clientServicesTable, servicesTable, projectUpdatesTable, messagesTable, shareEventsTable, checklistDownloadsTable } from "@workspace/db";
 import { eq, desc, count } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/requireAuth";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
@@ -278,7 +278,9 @@ router.post("/admin/insights", requireAdmin, async (req: Request, res: Response)
     const fourteenDaysAgo = new Date(now.getTime() - 14 * 24 * 60 * 60 * 1000);
     const quarterStart = new Date(now.getFullYear(), Math.floor(now.getMonth() / 3) * 3, 1);
 
-    const [clientRows, allLeads, activeProjectCountRows, allInvoices, allClientServices] = await Promise.all([
+    const thirtyDaysAgoInsights = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+
+    const [clientRows, allLeads, activeProjectCountRows, allInvoices, allClientServices, allShareEvents, allDownloads] = await Promise.all([
       db.select({ cnt: count() }).from(usersTable).where(eq(usersTable.role, "client")),
       db.select().from(leadsTable).orderBy(desc(leadsTable.createdAt)),
       db.select({ cnt: count() }).from(projectsTable).where(eq(projectsTable.status, "active")),
@@ -286,6 +288,8 @@ router.post("/admin/insights", requireAdmin, async (req: Request, res: Response)
       db.select({ cs: clientServicesTable, service: servicesTable })
         .from(clientServicesTable)
         .innerJoin(servicesTable, eq(clientServicesTable.serviceId, servicesTable.id)),
+      db.select().from(shareEventsTable).orderBy(desc(shareEventsTable.createdAt)),
+      db.select().from(checklistDownloadsTable).orderBy(desc(checklistDownloadsTable.createdAt)),
     ]);
 
     const clientCount = Number(clientRows[0]?.cnt ?? 0);
@@ -311,11 +315,23 @@ router.post("/admin/insights", requireAdmin, async (req: Request, res: Response)
       ? currQuarterDeals.reduce((s, i) => s + parseFloat(i.amount), 0) / currQuarterDeals.length : 0;
     const fmtN = (n: number) => n >= 1000 ? `$${(n / 1000).toFixed(1)}k` : `$${n.toFixed(0)}`;
 
+    // Content/engagement analytics
+    const totalShares = allShareEvents.length;
+    const sharesLast30 = allShareEvents.filter(e => new Date(e.createdAt) >= thirtyDaysAgoInsights).length;
+    const linkedinShares = allShareEvents.filter(e => e.platform === "linkedin").length;
+    const xShares = allShareEvents.filter(e => e.platform === "x").length;
+    const totalDownloads = allDownloads.length;
+    const downloadsLast30 = allDownloads.filter(d => new Date(d.createdAt) >= thirtyDaysAgoInsights).length;
+    // Top shared article slugs
+    const sharesBySlug: Record<string, number> = {};
+    for (const e of allShareEvents) { sharesBySlug[e.slug] = (sharesBySlug[e.slug] ?? 0) + 1; }
+    const topSharedSlug = Object.entries(sharesBySlug).sort((a, b) => b[1] - a[1])[0];
+
     const context = `BUSINESS METRICS — Shane McCaw Consulting (${now.toLocaleDateString("en-US", { month: "long", year: "numeric" })})
 
 PIPELINE:
-- Open leads: ${openLeads.length} of ${allLeads.length} total (${staleLeads.length} stale >14 days, no follow-up)
-- Clients: ${clientCount}
+- Open leads: ${openLeads.length} of ${allLeads.length} total (${staleLeads.length} stale >14 days without follow-up)
+- Active clients: ${clientCount}
 - Active projects: ${activeProjectCount}
 - Clients without an active project (upsell candidates): ${clientsWithoutProjectsCount}
 
@@ -328,45 +344,69 @@ REVENUE:
 
 SERVICES:
 - Total client service purchases: ${allClientServices.length}
-- Active recurring subscriptions: ${allClientServices.filter(r => r.cs.status === "active" && r.service.billingType === "recurring_monthly").length}`;
+- Active recurring subscriptions: ${allClientServices.filter(r => r.cs.status === "active" && r.service.billingType === "recurring_monthly").length}
+
+CONTENT & ENGAGEMENT:
+- Total article shares (all time): ${totalShares} (${linkedinShares} LinkedIn, ${xShares} X/Twitter)
+- Shares in last 30 days: ${sharesLast30}
+- Top shared article: ${topSharedSlug ? `"${topSharedSlug[0]}" (${topSharedSlug[1]} shares)` : "none yet"}
+- Checklist/resource downloads (all time): ${totalDownloads}
+- Downloads in last 30 days: ${downloadsLast30}`;
 
     const prompt = `You are a senior business analyst for Shane McCaw Consulting, a Microsoft 365 consulting practice run by a solo consultant. Analyze the business metrics below and return exactly 4 insight cards as a JSON array.
 
-Cover these themes in order:
+Cover these themes in this exact order:
 1. Pipeline health — lead velocity, stale follow-ups, conversion rate
 2. Revenue & financial status — MRR, outstanding invoices, deal size
-3. Client engagement — upsell opportunities, active project coverage, retention signals
-4. Recommended next action — the single highest-impact action Shane should take today based on the data
+3. Content & engagement performance — article share velocity, top content, resource downloads, and what this signals about audience growth
+4. Recommended next action — the single highest-impact action Shane should take today, grounded in the data above
 
 Rules:
 - Each narrative must be 2–4 specific, data-driven sentences referencing the actual numbers. No generic advice.
-- The metric field must be a concise string (e.g. "7 stale leads" or "$4.2k overdue") that will be displayed as a callout badge.
-- Return ONLY valid JSON, no markdown fences, no preamble.
+- The metric field must be a concise string highlighting one key figure (e.g. "7 stale leads", "$4.2k overdue", "12 shares / 30d") — this will be shown as a callout badge.
+- Return ONLY a valid JSON array, no markdown fences, no preamble, no trailing text.
 
-Format:
-[{"title":"...","narrative":"...","metric":"..."}]
+Format (exactly 4 objects):
+[{"title":"...","narrative":"...","metric":"..."},{"title":"...","narrative":"...","metric":"..."},{"title":"...","narrative":"...","metric":"..."},{"title":"...","narrative":"...","metric":"..."}]
 
 Business data:
 ${context}`;
 
     const msg = await anthropic.messages.create({
       model: "claude-haiku-4-5",
-      max_tokens: 1024,
+      max_tokens: 1200,
       messages: [{ role: "user", content: prompt }],
     });
 
     const block = msg.content[0];
     if (block.type !== "text") { res.status(500).json({ error: "Unexpected AI response format" }); return; }
 
-    let insights: Array<{ title: string; narrative: string; metric: string }>;
+    type InsightCard = { title: string; narrative: string; metric: string };
+    let rawInsights: InsightCard[];
     try {
       const jsonMatch = block.text.match(/\[[\s\S]*\]/);
       if (!jsonMatch) throw new Error("No JSON array found in AI response");
-      insights = JSON.parse(jsonMatch[0]) as typeof insights;
+      rawInsights = JSON.parse(jsonMatch[0]) as InsightCard[];
     } catch {
       res.status(500).json({ error: "Failed to parse AI response" });
       return;
     }
+
+    // Validate each card has the required shape; fill gaps with deterministic fallbacks
+    const fallbacks: InsightCard[] = [
+      { title: "Pipeline Health", narrative: `You have ${openLeads.length} open leads, ${staleLeads.length} of which are stale (>14 days without follow-up). Consistent outreach cadence is key to keeping the funnel warm.`, metric: `${staleLeads.length} stale leads` },
+      { title: "Revenue Status", narrative: `Total paid revenue stands at ${fmtN(totalRevenuePaid)} with ${fmtN(mrr)} in monthly recurring revenue. Outstanding receivables of ${fmtN(totalRevenueOutstanding)} include ${overdueInvoices.length} overdue invoice(s).`, metric: `${fmtN(mrr)} MRR` },
+      { title: "Content Engagement", narrative: `Your articles have generated ${totalShares} total shares (${sharesLast30} in the last 30 days). Resource downloads total ${totalDownloads}${topSharedSlug ? `, with "${topSharedSlug[0]}" being the top shared piece` : ""}.`, metric: `${totalShares} total shares` },
+      { title: "Recommended Action", narrative: `Based on current data, the highest-impact action is to follow up with your ${staleLeads.length} stale lead(s) and pursue the ${clientsWithoutProjectsCount} client(s) without an active project as upsell opportunities.`, metric: `${clientsWithoutProjectsCount} upsell targets` },
+    ];
+
+    const insights: InsightCard[] = Array.from({ length: 4 }, (_, i) => {
+      const card = rawInsights[i];
+      if (card && typeof card.title === "string" && typeof card.narrative === "string" && typeof card.metric === "string") {
+        return card;
+      }
+      return fallbacks[i];
+    });
 
     res.json({ insights });
   } catch (err) {
