@@ -1395,6 +1395,10 @@ router.post("/portal/billing/subscriptions/:id/resume", requireAuth, async (req:
   const [svc] = await db.select({ name: servicesTable.name }).from(servicesTable).where(eq(servicesTable.id, cs.serviceId)).limit(1);
   const serviceName = svc?.name ?? "your service";
 
+  void sendAdminSms(
+    `Retainer resumed: ${req.user!.name ?? req.user!.email} has un-cancelled their ${serviceName} retainer. Next billing: ${nextBillingDate}.`
+  );
+
   void sendEmail(
     req.user!.email,
     `Your ${serviceName} retainer is back on`,
