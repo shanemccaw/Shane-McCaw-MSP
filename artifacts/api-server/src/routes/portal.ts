@@ -140,6 +140,10 @@ router.get("/portal/projects/:id/audit-pdf", requireAuth, async (req: Request, r
     .where(eq(workflowStepsTable.projectId, id))
     .orderBy(asc(workflowStepsTable.order));
 
+  const tasks = await db.select().from(kanbanTasksTable)
+    .where(eq(kanbanTasksTable.projectId, id))
+    .orderBy(asc(kanbanTasksTable.order));
+
   const updates = await db.select().from(projectUpdatesTable)
     .where(eq(projectUpdatesTable.projectId, id))
     .orderBy(desc(projectUpdatesTable.createdAt));
@@ -306,6 +310,88 @@ router.get("/portal/projects/:id/audit-pdf", requireAuth, async (req: Request, r
     }
 
     y -= 6;
+  }
+
+  // ── Task Summary ────────────────────────────────────────────────────────────
+  if (tasks.length > 0) {
+    ensureSpace(50);
+    y -= 4;
+    text("Task Summary", margin, y, { font: bold, size: 13, color: navy });
+    y -= 6;
+    page.drawLine({ start: { x: margin, y }, end: { x: pageW - margin, y }, thickness: 1, color: teal });
+    y -= 18;
+
+    // ── Overall stats row ────────────────────────────────────────────────────
+    const taskTotals = {
+      backlog:             tasks.filter(t => t.column === "backlog").length,
+      in_progress:         tasks.filter(t => t.column === "in_progress").length,
+      waiting_on_customer: tasks.filter(t => t.column === "waiting_on_customer").length,
+      completed:           tasks.filter(t => t.column === "completed").length,
+    };
+
+    const statsLabels: [string, number, ReturnType<typeof rgb>][] = [
+      ["Backlog",         taskTotals.backlog,             grey],
+      ["In Progress",     taskTotals.in_progress,         blue],
+      ["Waiting on You",  taskTotals.waiting_on_customer, rgb(0.761, 0.490, 0)],
+      ["Completed",       taskTotals.completed,           green],
+    ];
+    const colW = Math.floor(barW / statsLabels.length);
+    let sx = margin;
+    for (const [label, count, color] of statsLabels) {
+      // Card background
+      page.drawRectangle({ x: sx, y: y - 28, width: colW - 6, height: 40, color: rgb(0.96, 0.97, 0.99) });
+      text(String(count), sx + 10, y - 2, { font: bold, size: 16, color });
+      text(label,         sx + 10, y - 18, { size: 8, color: grey });
+      sx += colW;
+    }
+    y -= 44;
+
+    // Total task count
+    text(`${tasks.length} total task${tasks.length !== 1 ? "s" : ""}`, margin, y, { size: 8.5, color: grey });
+    y -= 18;
+
+    // ── Per-step breakdown (tasks grouped by workflowStepId) ─────────────────
+    const stepsWithTasks = steps.filter(s =>
+      tasks.some(t => (t as { workflowStepId?: number | null }).workflowStepId === s.id)
+    );
+
+    if (stepsWithTasks.length > 0) {
+      for (const step of stepsWithTasks) {
+        const stepTasks = tasks.filter(
+          t => (t as { workflowStepId?: number | null }).workflowStepId === step.id
+        );
+        if (stepTasks.length === 0) continue;
+
+        ensureSpace(30);
+        // Step label
+        const stepIdx = steps.indexOf(step) + 1;
+        text(`${stepIdx}. ${step.title}`, margin, y, { font: bold, size: 9, color: navy });
+        const stepDoneCount = stepTasks.filter(t => t.column === "completed").length;
+        text(`${stepDoneCount}/${stepTasks.length} done`, pageW - margin - 60, y, { size: 8.5, color: grey });
+        y -= 14;
+
+        for (const task of stepTasks) {
+          ensureSpace(14);
+          const colColor =
+            task.column === "completed"           ? green :
+            task.column === "in_progress"         ? blue  :
+            task.column === "waiting_on_customer" ? rgb(0.761, 0.490, 0) :
+            grey;
+          const colSymbol =
+            task.column === "completed"           ? "✓" :
+            task.column === "in_progress"         ? "▶" :
+            task.column === "waiting_on_customer" ? "⏳" :
+            "○";
+          text(colSymbol, margin + 8, y, { size: 8, color: colColor });
+          const titleLines = wrap(task.title, 80);
+          text(titleLines[0] ?? task.title, margin + 20, y, { size: 8.5, color: navy });
+          y -= 12;
+        }
+        y -= 4;
+      }
+    }
+
+    y -= 4;
   }
 
   // ── Consultant Updates ──────────────────────────────────────────────────────
