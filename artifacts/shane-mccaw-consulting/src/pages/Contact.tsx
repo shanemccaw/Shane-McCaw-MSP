@@ -126,30 +126,58 @@ export default function Contact() {
 
       if (data.lead) {
         const lead = data.lead;
-        try {
-          await fetch("/api/leads", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              name: lead.name ?? "",
-              email: lead.email ?? "",
-              company: lead.company ?? null,
-              companySize: lead.companySize ?? null,
-              serviceArea: lead.serviceArea ?? null,
-              message: lead.message ?? null,
-              source: "contact_form",
-              howFound: lead.howFound ?? null,
-            }),
-          });
-        } catch {
-          // Lead submission failure is non-fatal — AI already confirmed receipt
+
+        if (!lead.name || !lead.email) {
+          setMessages([
+            ...newMessages,
+            {
+              role: "assistant",
+              content: "I'm missing a couple of details — could you confirm your name and email address so I can send your info to Shane?",
+            },
+          ]);
+        } else {
+          let leadSaved = false;
+          let leadError = "";
+          try {
+            const leadRes = await fetch("/api/leads", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                name: lead.name,
+                email: lead.email,
+                company: lead.company ?? null,
+                companySize: lead.companySize ?? null,
+                serviceArea: lead.serviceArea ?? null,
+                message: lead.message ?? null,
+                source: "contact_form",
+                howFound: lead.howFound ?? null,
+              }),
+            });
+            if (leadRes.ok) {
+              leadSaved = true;
+            } else {
+              const body = await leadRes.json().catch(() => ({})) as { error?: string };
+              leadError = body.error ?? `Server error ${leadRes.status}`;
+            }
+          } catch (networkErr) {
+            leadError = "Network error";
+          }
+
+          if (leadSaved) {
+            const confirmMsg = data.reply ||
+              "Thanks! Your information has been sent to Shane. He'll personally follow up within one business day.";
+            setMessages([...newMessages, { role: "assistant", content: confirmMsg }]);
+            setIsSubmitted(true);
+          } else {
+            setMessages([
+              ...newMessages,
+              {
+                role: "assistant",
+                content: `I wasn't able to save your message right now (${leadError}). Could you try again, or email Shane directly at info@shanemccaw.com?`,
+              },
+            ]);
+          }
         }
-
-        const confirmMsg = data.reply ||
-          "Thanks! Your information has been sent to Shane. He'll personally follow up within one business day.";
-
-        setMessages([...newMessages, { role: "assistant", content: confirmMsg }]);
-        setIsSubmitted(true);
       } else {
         setMessages([...newMessages, { role: "assistant", content: data.reply }]);
       }
