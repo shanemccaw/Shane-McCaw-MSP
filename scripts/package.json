@@ -14,10 +14,12 @@
     "sync-services": "tsx ./src/sync-services-to-prod.ts",
     "seed-prod": "tsx ./src/seed-prod.ts",
     "remove-default-services": "tsx ./src/remove-default-services.ts",
+    "assign-task-types": "tsx ./src/assign-task-types.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
     "@workspace/db": "workspace:*",
+    "@workspace/integrations-anthropic-ai": "workspace:*",
     "drizzle-orm": "catalog:",
     "pg": "^8.20.0"
   },
