@@ -203,6 +203,17 @@ export default function PortalContractDetail() {
       <div className="min-h-screen bg-slate-100 pb-16">
         <div className="max-w-3xl mx-auto px-6 pt-8">
 
+          {/* Back button */}
+          <button
+            onClick={() => window.history.length > 1 ? window.history.back() : window.location.assign("/portal/billing")}
+            className="flex items-center gap-1 text-sm text-muted-foreground hover:text-[#0078D4] transition-colors mb-4"
+          >
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+            </svg>
+            Back
+          </button>
+
           {/* Breadcrumb */}
           <nav className="flex items-center gap-2 text-sm text-muted-foreground mb-4">
             <Link href="/portal/billing">
