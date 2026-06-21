@@ -7,6 +7,9 @@ export interface AuthUser {
   company?: string | null;
   phone?: string | null;
   address?: string | null;
+  addressCity?: string | null;
+  addressState?: string | null;
+  addressZip?: string | null;
   role: "admin" | "client";
   impersonatedBy?: number;
 }

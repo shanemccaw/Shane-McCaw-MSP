@@ -127,13 +127,22 @@ const uploadInvoice = multer({ storage: invoiceStorage, limits: { fileSize: 20 *
 // ─── CLIENT: Profile ─────────────────────────────────────────────────────────
 router.patch("/portal/profile", requireAuth, async (req: Request, res: Response) => {
   const userId = req.user!.id;
-  const { name, company, phone, address } = req.body as { name?: string; company?: string; phone?: string; address?: string };
+  const { name, company, phone, address, addressCity, addressState, addressZip } = req.body as {
+    name?: string; company?: string; phone?: string; address?: string;
+    addressCity?: string; addressState?: string; addressZip?: string;
+  };
 
-  const updates: Partial<{ name: string | null; company: string | null; phone: string | null; address: string | null }> = {};
+  const updates: Partial<{
+    name: string | null; company: string | null; phone: string | null; address: string | null;
+    addressCity: string | null; addressState: string | null; addressZip: string | null;
+  }> = {};
   if (name !== undefined) updates.name = name.trim() || null;
   if (company !== undefined) updates.company = company.trim() || null;
   if (phone !== undefined) updates.phone = phone.trim() || null;
   if (address !== undefined) updates.address = address.trim() || null;
+  if (addressCity !== undefined) updates.addressCity = addressCity.trim() || null;
+  if (addressState !== undefined) updates.addressState = addressState.trim() || null;
+  if (addressZip !== undefined) updates.addressZip = addressZip.trim() || null;
 
   if (Object.keys(updates).length === 0) {
     res.json({ ok: true });

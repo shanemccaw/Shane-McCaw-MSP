@@ -208,9 +208,9 @@ export default function OnboardingContract() {
   const [company, setCompany] = useState(user?.company ?? "");
   const [phone, setPhone] = useState(user?.phone ?? "");
   const [street, setStreet] = useState(user?.address ?? "");
-  const [city, setCity] = useState("");
-  const [addrState, setAddrState] = useState("");
-  const [zip, setZip] = useState("");
+  const [city, setCity] = useState(user?.addressCity ?? "");
+  const [addrState, setAddrState] = useState(user?.addressState ?? "");
+  const [zip, setZip] = useState(user?.addressZip ?? "");
   const [agreed, setAgreed] = useState(false);
   const [signed, setSigned] = useState(false);
   const [stripeError, setStripeError] = useState("");
@@ -307,7 +307,7 @@ export default function OnboardingContract() {
       await fetchWithAuth("/api/portal/profile", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: signerName, company, phone, address: fullAddress }),
+        body: JSON.stringify({ name: signerName, company, phone, address: street, addressCity: city, addressState: addrState, addressZip: zip }),
       });
 
       const canvas = canvasRef.current;

@@ -72,7 +72,7 @@ router.post("/auth/login", loginLimiter, async (req: Request, res: Response) => 
     return;
   }
 
-  const payload = { id: user.id, email: user.email, name: user.name ?? undefined, company: user.company ?? undefined, phone: user.phone ?? undefined, address: user.address ?? undefined, role: user.role };
+  const payload = { id: user.id, email: user.email, name: user.name ?? undefined, company: user.company ?? undefined, phone: user.phone ?? undefined, address: user.address ?? undefined, addressCity: user.addressCity ?? undefined, addressState: user.addressState ?? undefined, addressZip: user.addressZip ?? undefined, role: user.role };
 
   const accessToken = jwt.sign(payload, secret, { expiresIn: ACCESS_TOKEN_TTL });
   const refreshToken = jwt.sign({ id: user.id }, secret, { expiresIn: `${REFRESH_TOKEN_TTL_DAYS}d` });
@@ -108,7 +108,7 @@ router.post("/auth/refresh", async (req: Request, res: Response) => {
     return;
   }
 
-  const payload = { id: user.id, email: user.email, name: user.name ?? undefined, company: user.company ?? undefined, phone: user.phone ?? undefined, address: user.address ?? undefined, role: user.role };
+  const payload = { id: user.id, email: user.email, name: user.name ?? undefined, company: user.company ?? undefined, phone: user.phone ?? undefined, address: user.address ?? undefined, addressCity: user.addressCity ?? undefined, addressState: user.addressState ?? undefined, addressZip: user.addressZip ?? undefined, role: user.role };
   const accessToken = jwt.sign(payload, secret, { expiresIn: ACCESS_TOKEN_TTL });
   const newRefreshToken = jwt.sign({ id: user.id }, secret, { expiresIn: `${REFRESH_TOKEN_TTL_DAYS}d` });
 
@@ -148,7 +148,7 @@ router.post("/auth/register", registerLimiter, async (req: Request, res: Respons
     .values({ email: normalizedEmail, passwordHash, role: "client", name: name?.trim() || null })
     .returning();
 
-  const payload = { id: user.id, email: user.email, name: user.name ?? undefined, company: user.company ?? undefined, phone: user.phone ?? undefined, address: user.address ?? undefined, role: user.role };
+  const payload = { id: user.id, email: user.email, name: user.name ?? undefined, company: user.company ?? undefined, phone: user.phone ?? undefined, address: user.address ?? undefined, addressCity: user.addressCity ?? undefined, addressState: user.addressState ?? undefined, addressZip: user.addressZip ?? undefined, role: user.role };
   const accessToken = jwt.sign(payload, secret, { expiresIn: ACCESS_TOKEN_TTL });
   const refreshToken = jwt.sign({ id: user.id }, secret, { expiresIn: `${REFRESH_TOKEN_TTL_DAYS}d` });
 
