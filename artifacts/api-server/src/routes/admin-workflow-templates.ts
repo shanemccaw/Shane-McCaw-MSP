@@ -2,6 +2,7 @@ import { Router, type IRouter, type Request, type Response } from "express";
 import { db, workflowTemplatesTable, workflowTemplateStepsTable, workflowTemplateStepTasksTable } from "@workspace/db";
 import { eq, asc, inArray } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/requireAuth";
+import { classifyAndUpdateTask } from "../lib/classify-task-type";
 
 const router: IRouter = Router();
 
@@ -210,6 +211,16 @@ router.post("/admin/workflow-templates/:id/steps/:stepId/tasks", requireAdmin, a
       })
       .returning();
     res.status(201).json(task);
+
+    // Fire-and-forget AI classification when no explicit taskType was supplied
+    if (!taskType) {
+      classifyAndUpdateTask({
+        taskId: task.id,
+        title,
+        groupName: groupName ?? null,
+        stepId,
+      }).catch(() => { /* already logged inside helper */ });
+    }
   } catch {
     res.status(500).json({ error: "Failed to create step task" });
   }
