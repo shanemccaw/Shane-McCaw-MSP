@@ -3,10 +3,12 @@ import { Layout } from "@/components/Layout";
 import { SEOMeta } from "@/components/SEOMeta";
 import { CTAButton } from "@/components/CTAButton";
 import { OfferCard } from "@/components/OfferCard";
+import { EngagementProjectCard } from "@/components/EngagementProjectCard";
 import {
   CheckCircle, ArrowRight, Shield, Building2, Rocket, Briefcase,
 } from "lucide-react";
 import { useServices } from "@/hooks/useServices";
+import { useEngagementProjects } from "@/hooks/useEngagementProjects";
 
 const whyPoints = [
   "NASA-grade thinking from 6+ years as Lead M365 Architect — mission-critical standards applied to your business.",
@@ -72,6 +74,8 @@ export default function Home() {
   const { services: dbServiceAreas, loading: serviceAreasLoading } = useServices("service_area");
   const { services: dbRetainers, loading: retainersLoading } = useServices("retainer");
   const { services: dbOffers, loading: offersLoading } = useServices("micro_offer");
+  const { projects: engagementProjects, loading: projectsLoading } = useEngagementProjects();
+  const visibleProjects = engagementProjects.filter(p => p.isVisible);
   const dbServices = [...dbServiceAreas, ...dbRetainers];
   const servicesLoading = serviceAreasLoading || retainersLoading;
   return (
@@ -442,6 +446,39 @@ export default function Home() {
           </div>
         </div>
       </section>
+
+      {/* PROJECT-BASED ENGAGEMENTS */}
+      {(projectsLoading || visibleProjects.length > 0) && (
+        <section className="bg-[#F7F9FC] py-20" data-testid="engagement-projects-section">
+          <div className="max-w-[1200px] mx-auto px-6">
+            <div className="text-center mb-14">
+              <p className="text-[#0078D4] text-sm font-semibold uppercase tracking-[0.1em] mb-3">Track 02 · Core Tier</p>
+              <h2 className="text-3xl md:text-4xl font-extrabold text-[#0A2540]">Project-Based Engagements</h2>
+              <p className="text-muted-foreground mt-4 max-w-2xl mx-auto leading-relaxed">
+                For larger, multi-phase work — tenant migrations, governance overhauls, Copilot deployments, and intranet builds. Fixed-price after a free scoping call.
+              </p>
+            </div>
+            {projectsLoading ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {[...Array(3)].map((_, i) => (
+                  <div key={i} className="h-56 rounded-xl border border-border bg-gray-100 animate-pulse" />
+                ))}
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {visibleProjects.map((p, i) => (
+                  <EngagementProjectCard key={p.id} project={p} index={i} />
+                ))}
+              </div>
+            )}
+            <div className="text-center mt-10">
+              <Link href="/services#track-02" className="inline-flex items-center gap-1.5 text-muted-foreground text-sm hover:text-[#0078D4] transition-colors">
+                See all project types <ArrowRight className="w-3.5 h-3.5" />
+              </Link>
+            </div>
+          </div>
+        </section>
+      )}
 
       {/* FEATURED MICRO-OFFERS */}
       <section className="bg-[#F7F9FC] py-20" data-testid="micro-offers-section">
