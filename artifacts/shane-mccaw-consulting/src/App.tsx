@@ -21,6 +21,7 @@ import CloudMigration from "@/pages/services/CloudMigration";
 import Privacy from "@/pages/Privacy";
 import ArticlePage from "@/pages/ArticlePage";
 import Admin from "@/pages/Admin";
+import CustomerCommandCenter from "@/pages/CustomerCommandCenter";
 
 const queryClient = new QueryClient();
 
@@ -54,6 +55,7 @@ function Router() {
       <Route path="/book" component={Book} />
       <Route path="/privacy" component={Privacy} />
       <Route path="/admin" component={Admin} />
+      <Route path="/customer-command-center" component={CustomerCommandCenter} />
       <Route component={NotFound} />
     </Switch>
     </>

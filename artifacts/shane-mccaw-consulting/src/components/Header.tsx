@@ -25,6 +25,7 @@ export function Header() {
     { label: "Micro-Offers", href: "/micro-offers" },
     { label: "Pricing", href: "/pricing" },
     { label: "Resources", href: "/resources" },
+    { label: "Client Portal", href: "/customer-command-center" },
     { label: "Contact", href: "/contact" },
   ];
 

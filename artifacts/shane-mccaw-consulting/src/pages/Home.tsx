@@ -213,9 +213,17 @@ export default function Home() {
           <p className="text-lg md:text-xl text-white/75 max-w-3xl mx-auto mb-12 leading-relaxed">
             Shane McCaw brings the same mission-critical Microsoft 365 discipline he built at NASA to regulated industries and mid-market companies. No generalists. No offshore handoffs. Senior Microsoft expertise, available to your organization on a fractional basis.
           </p>
-          <CTAButton href="/book" className="text-base px-10 py-4 shadow-lg shadow-[#0078D4]/30" data-testid="hero-cta-primary">
-            Book a Consultation
-          </CTAButton>
+          <div className="flex flex-wrap items-center justify-center gap-4">
+            <CTAButton href="/book" className="text-base px-10 py-4 shadow-lg shadow-[#0078D4]/30" data-testid="hero-cta-primary">
+              Book a Consultation
+            </CTAButton>
+            <a
+              href="/customer-command-center"
+              className="inline-flex items-center gap-2 text-white/80 font-semibold text-base hover:text-white transition-colors"
+            >
+              Explore the Client Portal <ArrowRight className="w-4 h-4" />
+            </a>
+          </div>
           <div className="mt-14 pt-10 border-t border-white/10 flex flex-wrap items-center justify-center gap-x-8 gap-y-3 text-white/50 text-sm font-medium">
             {[
               "Fractional M365 Architecture",
