@@ -622,6 +622,7 @@ export const quizLeadsTable = pgTable("quiz_leads", {
   categoryScores: jsonb("category_scores").$type<QuizCategoryScores>().notNull().default({ infrastructure: 0, data: 0, aiLiteracy: 0, changeManagement: 0, businessProcess: 0 }),
   conversation: jsonb("conversation").$type<QuizConversationEntry[]>().notNull().default([]),
   createdAt: timestamp("created_at").notNull().defaultNow(),
+  contactedAt: timestamp("contacted_at"),
 });
 
 export type InsertQuizLead = typeof quizLeadsTable.$inferInsert;

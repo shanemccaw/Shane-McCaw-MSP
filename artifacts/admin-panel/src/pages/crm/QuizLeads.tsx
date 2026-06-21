@@ -1,0 +1,416 @@
+import { useState, useCallback, useEffect } from "react";
+import { useAuth } from "@/contexts/AuthContext";
+
+type Tier = "Beginner" | "Developing" | "Emerging" | "Advanced" | "Ready";
+
+interface CategoryScores {
+  infrastructure: number;
+  data: number;
+  aiLiteracy: number;
+  changeManagement: number;
+  businessProcess: number;
+}
+
+interface QuizLead {
+  id: number;
+  name: string;
+  email: string;
+  company: string | null;
+  totalScore: number;
+  tier: Tier;
+  recommendedService: string | null;
+  categoryScores: CategoryScores;
+  conversation: { role: "user" | "assistant"; content: string }[];
+  createdAt: string;
+  contactedAt: string | null;
+}
+
+interface QuizLeadList {
+  leads: QuizLead[];
+  total: number;
+  page: number;
+  limit: number;
+}
+
+interface QuizLeadStats {
+  total: number;
+  contacted: number;
+  newThisWeek: number;
+}
+
+const TIER_COLORS: Record<Tier, string> = {
+  Beginner: "bg-red-100 text-red-700",
+  Developing: "bg-orange-100 text-orange-700",
+  Emerging: "bg-yellow-100 text-yellow-700",
+  Advanced: "bg-blue-100 text-blue-700",
+  Ready: "bg-green-100 text-green-700",
+};
+
+const CATEGORY_LABELS: Record<keyof CategoryScores, string> = {
+  infrastructure: "Infrastructure & Identity",
+  data: "Data & Compliance",
+  aiLiteracy: "AI Literacy",
+  changeManagement: "Change Management",
+  businessProcess: "Business Process",
+};
+
+function ScoreBar({ score, max = 10 }: { score: number; max?: number }) {
+  const pct = Math.round((score / max) * 100);
+  const color = pct >= 70 ? "bg-green-500" : pct >= 40 ? "bg-yellow-400" : "bg-red-400";
+  return (
+    <div className="flex items-center gap-2">
+      <div className="flex-1 h-2 bg-gray-100 rounded-full overflow-hidden">
+        <div className={`h-full rounded-full transition-all ${color}`} style={{ width: `${pct}%` }} />
+      </div>
+      <span className="text-xs font-semibold text-[#0A2540] w-6 text-right">{score}</span>
+    </div>
+  );
+}
+
+function StatCard({ label, value, icon }: { label: string; value: number; icon: React.ReactNode }) {
+  return (
+    <div className="bg-white border border-border rounded-xl p-5 flex items-center gap-4">
+      <div className="w-11 h-11 rounded-xl bg-[#0078D4]/10 flex items-center justify-center flex-shrink-0">
+        {icon}
+      </div>
+      <div>
+        <p className="text-2xl font-extrabold text-[#0A2540]">{value}</p>
+        <p className="text-xs text-muted-foreground mt-0.5">{label}</p>
+      </div>
+    </div>
+  );
+}
+
+function SlideOver({ lead, onClose, onRefresh }: {
+  lead: QuizLead;
+  onClose: () => void;
+  onRefresh: () => void;
+}) {
+  const { fetchWithAuth } = useAuth();
+  const [saving, setSaving] = useState(false);
+  const [contacted, setContacted] = useState(!!lead.contactedAt);
+
+  const toggleContacted = async () => {
+    setSaving(true);
+    try {
+      const res = await fetchWithAuth(`/api/admin/quiz-leads/${lead.id}/contacted`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ contacted: !contacted }),
+      });
+      if (res.ok) {
+        setContacted(!contacted);
+        onRefresh();
+      }
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const scores = lead.categoryScores;
+  const totalMax = 50;
+
+  return (
+    <div className="fixed inset-0 z-50 flex">
+      <div className="flex-1 bg-black/40" onClick={onClose} />
+      <div className="w-full sm:max-w-lg bg-white shadow-2xl overflow-y-auto flex flex-col">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-border bg-[#0A2540]">
+          <h2 className="text-white font-bold">Quiz Lead Details</h2>
+          <button onClick={onClose} className="text-white/60 hover:text-white transition-colors text-xl leading-none">×</button>
+        </div>
+
+        <div className="flex-1 px-6 py-6 space-y-6">
+          {/* Contact info */}
+          <div className="space-y-4">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1">Name</p>
+              <p className="text-[#0A2540] font-semibold">{lead.name}</p>
+            </div>
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1">Email</p>
+              <a href={`mailto:${lead.email}`} className="text-[#0078D4] hover:underline text-sm">{lead.email}</a>
+            </div>
+            {lead.company && (
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1">Company</p>
+                <p className="text-[#0A2540] text-sm">{lead.company}</p>
+              </div>
+            )}
+            <div className="flex gap-6">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1">Date</p>
+                <p className="text-sm text-[#0A2540]">{new Date(lead.createdAt).toLocaleDateString()}</p>
+              </div>
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1">Status</p>
+                {contacted ? (
+                  <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-green-100 text-green-700">Contacted</span>
+                ) : (
+                  <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-yellow-100 text-yellow-700">Not contacted</span>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Score overview */}
+          <div className="bg-[#F7F9FC] rounded-xl p-4">
+            <div className="flex items-center justify-between mb-3">
+              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Total Score</p>
+              <span className="text-lg font-extrabold text-[#0A2540]">{lead.totalScore} <span className="text-sm font-normal text-muted-foreground">/ {totalMax}</span></span>
+            </div>
+            <div className="flex items-center gap-3">
+              <span className={`text-xs font-bold px-2.5 py-1 rounded-full ${TIER_COLORS[lead.tier] ?? "bg-gray-100 text-gray-600"}`}>
+                {lead.tier}
+              </span>
+              {lead.recommendedService && (
+                <p className="text-xs text-muted-foreground truncate">{lead.recommendedService}</p>
+              )}
+            </div>
+          </div>
+
+          {/* Category breakdown */}
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">Category Breakdown</p>
+            <div className="space-y-3">
+              {(Object.keys(CATEGORY_LABELS) as (keyof CategoryScores)[]).map(key => (
+                <div key={key}>
+                  <div className="flex items-center justify-between mb-1">
+                    <p className="text-xs text-[#0A2540] font-medium">{CATEGORY_LABELS[key]}</p>
+                  </div>
+                  <ScoreBar score={scores[key] ?? 0} />
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Recommended service */}
+          {lead.recommendedService && (
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1">Recommended Service</p>
+              <p className="text-sm text-[#0A2540] font-medium">{lead.recommendedService}</p>
+            </div>
+          )}
+        </div>
+
+        <div className="px-6 py-4 border-t border-border flex gap-3">
+          <button
+            onClick={toggleContacted}
+            disabled={saving}
+            className={`flex-1 font-semibold rounded-lg py-2.5 text-sm transition-colors disabled:opacity-40 ${
+              contacted
+                ? "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                : "bg-[#0078D4] text-white hover:bg-[#0078D4]/90"
+            }`}
+          >
+            {saving ? "Saving…" : contacted ? "Mark as Not Contacted" : "Mark as Contacted"}
+          </button>
+          <button
+            onClick={onClose}
+            className="px-4 border border-border rounded-lg text-sm font-medium text-muted-foreground hover:bg-[#F7F9FC] transition-colors"
+          >
+            Close
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+const TIER_OPTIONS = ["all", "Beginner", "Developing", "Emerging", "Advanced", "Ready"] as const;
+const LIMIT = 20;
+
+export default function QuizLeadsPage() {
+  const { fetchWithAuth } = useAuth();
+  const [selectedLead, setSelectedLead] = useState<QuizLead | null>(null);
+  const [stats, setStats] = useState<QuizLeadStats | null>(null);
+  const [leads, setLeads] = useState<QuizLead[]>([]);
+  const [total, setTotal] = useState(0);
+  const [loading, setLoading] = useState(false);
+  const [page, setPage] = useState(1);
+  const [tierFilter, setTierFilter] = useState("all");
+  const [contactedFilter, setContactedFilter] = useState("all");
+
+  const fetchStats = useCallback(async () => {
+    const res = await fetchWithAuth("/api/admin/quiz-leads/stats");
+    if (res.ok) setStats(await res.json() as QuizLeadStats);
+  }, [fetchWithAuth]);
+
+  const fetchLeads = useCallback(async (p = 1, tier = "all", contacted = "all") => {
+    setLoading(true);
+    try {
+      const params = new URLSearchParams({ page: String(p), limit: String(LIMIT) });
+      if (tier !== "all") params.set("tier", tier);
+      if (contacted !== "all") params.set("contacted", contacted);
+      const res = await fetchWithAuth(`/api/admin/quiz-leads?${params.toString()}`);
+      if (res.ok) {
+        const data = await res.json() as QuizLeadList;
+        setLeads(data.leads);
+        setTotal(data.total);
+      }
+    } finally {
+      setLoading(false);
+    }
+  }, [fetchWithAuth]);
+
+  useEffect(() => {
+    void Promise.all([fetchStats(), fetchLeads(1, "all", "all")]);
+  }, [fetchStats, fetchLeads]);
+
+  const handleRefresh = () => {
+    void Promise.all([fetchLeads(page, tierFilter, contactedFilter), fetchStats()]);
+  };
+
+  const totalPages = Math.ceil(total / LIMIT);
+
+  return (
+    <div className="p-6 max-w-[1200px]">
+      <div className="mb-6">
+        <h1 className="text-xl font-bold text-[#0A2540]">Quiz Leads</h1>
+        <p className="text-sm text-muted-foreground mt-0.5">Prospects who completed the Copilot Readiness Assessment.</p>
+      </div>
+
+      {/* Stats */}
+      <div className="grid grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
+        <StatCard label="Total Submissions" value={stats?.total ?? 0}
+          icon={<svg viewBox="0 0 24 24" fill="none" className="w-5 h-5 text-[#0078D4]" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" /></svg>}
+        />
+        <StatCard label="New This Week" value={stats?.newThisWeek ?? 0}
+          icon={<svg viewBox="0 0 24 24" fill="none" className="w-5 h-5 text-[#0078D4]" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>}
+        />
+        <StatCard label="Contacted" value={stats?.contacted ?? 0}
+          icon={<svg viewBox="0 0 24 24" fill="none" className="w-5 h-5 text-[#0078D4]" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>}
+        />
+      </div>
+
+      <div className="bg-white border border-border rounded-xl overflow-hidden">
+        {/* Filters */}
+        <div className="px-5 pt-5 pb-4 border-b border-border">
+          <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+            <div className="flex flex-wrap gap-1.5">
+              {TIER_OPTIONS.map(t => (
+                <button key={t} onClick={() => { setTierFilter(t); setPage(1); void fetchLeads(1, t, contactedFilter); }}
+                  className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-colors ${tierFilter === t ? "bg-[#0078D4] text-white" : "bg-[#F7F9FC] text-muted-foreground hover:bg-[#0078D4]/10 hover:text-[#0078D4]"}`}>
+                  {t === "all" ? "All Tiers" : t}
+                </button>
+              ))}
+            </div>
+            <div className="sm:ml-auto">
+              <select value={contactedFilter}
+                onChange={e => { setContactedFilter(e.target.value); setPage(1); void fetchLeads(1, tierFilter, e.target.value); }}
+                className="border border-border rounded-lg px-3 py-1.5 text-xs font-medium bg-white focus:outline-none focus:ring-2 focus:ring-[#0078D4]">
+                <option value="all">All Statuses</option>
+                <option value="no">Not Contacted</option>
+                <option value="yes">Contacted</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        {loading ? (
+          <div className="flex items-center justify-center py-20">
+            <div className="w-8 h-8 border-4 border-[#0078D4] border-t-transparent rounded-full animate-spin" />
+          </div>
+        ) : leads.length === 0 ? (
+          <div className="text-center py-20 text-muted-foreground">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} className="w-10 h-10 mx-auto text-muted-foreground/30 mb-3">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+            </svg>
+            <p className="text-sm">No quiz leads match your current filters.</p>
+          </div>
+        ) : (
+          <>
+            {/* Desktop table */}
+            <div className="hidden sm:block overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-border bg-[#F7F9FC]">
+                    <th className="text-left px-5 py-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Name</th>
+                    <th className="text-left px-5 py-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Email</th>
+                    <th className="text-left px-5 py-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground hidden md:table-cell">Company</th>
+                    <th className="text-left px-5 py-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Score</th>
+                    <th className="text-left px-5 py-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Tier</th>
+                    <th className="text-left px-5 py-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground hidden lg:table-cell">Date</th>
+                    <th className="text-left px-5 py-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Contacted</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {leads.map(lead => (
+                    <tr key={lead.id} onClick={() => setSelectedLead(lead)}
+                      className="border-b border-border last:border-0 hover:bg-[#F7F9FC] cursor-pointer transition-colors">
+                      <td className="px-5 py-3.5 font-semibold text-[#0A2540]">{lead.name}</td>
+                      <td className="px-5 py-3.5 text-muted-foreground">{lead.email}</td>
+                      <td className="px-5 py-3.5 text-muted-foreground hidden md:table-cell">{lead.company ?? "—"}</td>
+                      <td className="px-5 py-3.5 font-semibold text-[#0A2540]">{lead.totalScore}<span className="text-xs font-normal text-muted-foreground">/50</span></td>
+                      <td className="px-5 py-3.5">
+                        <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${TIER_COLORS[lead.tier] ?? "bg-gray-100 text-gray-600"}`}>
+                          {lead.tier}
+                        </span>
+                      </td>
+                      <td className="px-5 py-3.5 text-muted-foreground text-xs hidden lg:table-cell">
+                        {new Date(lead.createdAt).toLocaleDateString()}
+                      </td>
+                      <td className="px-5 py-3.5">
+                        {lead.contactedAt ? (
+                          <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-green-100 text-green-700">Yes</span>
+                        ) : (
+                          <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-gray-100 text-gray-500">No</span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Mobile cards */}
+            <div className="sm:hidden divide-y divide-border">
+              {leads.map(lead => (
+                <div key={lead.id} onClick={() => setSelectedLead(lead)}
+                  className="px-4 py-3 flex items-center gap-3 cursor-pointer hover:bg-[#F7F9FC] transition-colors">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-semibold text-[#0A2540] truncate">{lead.name}</p>
+                    <p className="text-xs text-muted-foreground truncate">{lead.email}</p>
+                    {lead.company && <p className="text-xs text-muted-foreground/70 truncate">{lead.company}</p>}
+                  </div>
+                  <div className="flex flex-col items-end gap-1 flex-shrink-0">
+                    <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${TIER_COLORS[lead.tier] ?? "bg-gray-100 text-gray-600"}`}>{lead.tier}</span>
+                    <span className="text-xs text-muted-foreground font-semibold">{lead.totalScore}/50</span>
+                    {lead.contactedAt && <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-green-100 text-green-700">Contacted</span>}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </>
+        )}
+
+        {totalPages > 1 && (
+          <div className="flex items-center justify-between px-5 py-4 border-t border-border">
+            <p className="text-xs text-muted-foreground">
+              Showing {(page - 1) * LIMIT + 1}–{Math.min(page * LIMIT, total)} of {total}
+            </p>
+            <div className="flex gap-2">
+              <button disabled={page <= 1}
+                onClick={() => { const p = page - 1; setPage(p); void fetchLeads(p, tierFilter, contactedFilter); }}
+                className="px-3 py-1.5 border border-border rounded-lg text-xs font-medium disabled:opacity-40 hover:bg-[#F7F9FC] transition-colors">
+                Prev
+              </button>
+              <button disabled={page >= totalPages}
+                onClick={() => { const p = page + 1; setPage(p); void fetchLeads(p, tierFilter, contactedFilter); }}
+                className="px-3 py-1.5 border border-border rounded-lg text-xs font-medium disabled:opacity-40 hover:bg-[#F7F9FC] transition-colors">
+                Next
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {selectedLead && (
+        <SlideOver
+          lead={selectedLead}
+          onClose={() => setSelectedLead(null)}
+          onRefresh={handleRefresh}
+        />
+      )}
+    </div>
+  );
+}

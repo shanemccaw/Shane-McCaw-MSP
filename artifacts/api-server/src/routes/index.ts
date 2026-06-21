@@ -22,6 +22,7 @@ import auditLogsRouter from "./audit-logs";
 import adminSharepointRouter from "./admin-sharepoint";
 import adminAssetLibraryRouter from "./admin-asset-library";
 import quizRouter from "./quiz";
+import adminQuizLeadsRouter from "./admin-quiz-leads";
 
 const router: IRouter = Router();
 
@@ -48,5 +49,6 @@ router.use(auditLogsRouter);
 router.use(adminSharepointRouter);
 router.use(adminAssetLibraryRouter);
 router.use(quizRouter);
+router.use(adminQuizLeadsRouter);
 
 export default router;
