@@ -189,10 +189,12 @@ export default function PortalContractDetail() {
   const wizardItems = (Array.isArray(data?.wizardSelections) ? data.wizardSelections : []).map(sel => {
     const step = workflowStepMap.get(sel.stepId);
     const option = step?.options.find(o => o.id === sel.optionId);
+    const priceAdjustment = sel.priceAdjustment ?? option?.priceAdjustment ?? null;
     return {
       ...sel,
       stepTitle: sel.stepTitle ?? step?.title,
       optionLabel: sel.optionLabel ?? option?.label,
+      priceAdjustment,
     };
   });
 
@@ -289,18 +291,24 @@ export default function PortalContractDetail() {
                       <tbody>
                         {wizardItems.map(sel => (
                           <tr key={sel.stepId} className="border-b border-slate-100">
-                            <td className="py-1.5 text-muted-foreground pr-4">
+                            <td className="py-1.5 text-muted-foreground pr-4 w-1/3">
                               {sel.stepTitle ?? formatKey(sel.stepId)}
                             </td>
-                            <td className="py-1.5 text-right font-medium text-[#0A2540]">
+                            <td className="py-1.5 font-medium text-[#0A2540]">
                               {sel.optionLabel ?? sel.optionId}
+                            </td>
+                            <td className="py-1.5 text-right font-medium text-[#0A2540] pl-4 whitespace-nowrap">
+                              {sel.priceAdjustment != null
+                                ? formatCurrency(sel.priceAdjustment)
+                                : <span className="text-muted-foreground">—</span>}
                             </td>
                           </tr>
                         ))}
                         {data!.finalPrice && (
-                          <tr>
+                          <tr className="border-t-2 border-slate-300">
                             <td className="pt-2.5 font-bold text-[#0A2540]">Total</td>
-                            <td className="pt-2.5 text-right font-bold text-[#0A2540]">
+                            <td />
+                            <td className="pt-2.5 text-right font-bold text-[#0A2540] pl-4">
                               {formatCurrency(data!.finalPrice)}
                             </td>
                           </tr>
