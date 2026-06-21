@@ -15,6 +15,7 @@ interface Message {
 
 interface QuizResults {
   leadId: number | null;
+  resendToken: string | null;
   totalScore: number;
   tier: string;
   recommendedService: string;
@@ -197,14 +198,14 @@ function QuizModal({ onClose }: { onClose: () => void }) {
   // Resend (or forward) the PDF report to another email
   async function handleResend(e: React.FormEvent) {
     e.preventDefault();
-    if (!results?.leadId || !resendEmail || resendState === "sending") return;
+    if (!results?.leadId || !results?.resendToken || !resendEmail || resendState === "sending") return;
     setResendState("sending");
     try {
       const base = import.meta.env.BASE_URL.replace(/\/$/, "");
       const res = await fetch(`${base}/api/quiz/resend-pdf`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ leadId: results.leadId, email: resendEmail }),
+        body: JSON.stringify({ leadId: results.leadId, resendToken: results.resendToken, email: resendEmail }),
       });
       setResendState(res.ok ? "sent" : "error");
     } catch {

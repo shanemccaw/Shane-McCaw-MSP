@@ -1,3 +1,4 @@
+import { createHmac } from "crypto";
 import { Router } from "express";
 import rateLimit from "express-rate-limit";
 import { z } from "zod";
@@ -5,7 +6,17 @@ import { anthropic } from "@workspace/integrations-anthropic-ai";
 import { db, quizLeadsTable } from "@workspace/db";
 import { logger } from "../lib/logger";
 import { generateQuizPdf } from "../lib/quiz-pdf";
-import { sendEmailWithAttachment, sendEmail, brandedEmail, quizLeadNotificationEmail } from "../lib/mailer";
+import { sendEmailWithAttachment, sendEmailWithAttachmentOrThrow, sendEmail, brandedEmail, quizLeadNotificationEmail } from "../lib/mailer";
+
+/** Generate a short HMAC token that proves the caller completed quiz leadId. */
+function makeResendToken(leadId: number): string {
+  const secret = process.env.JWT_SECRET ?? "quiz-resend-fallback";
+  return createHmac("sha256", secret).update(String(leadId)).digest("hex");
+}
+
+function verifyResendToken(leadId: number, token: string): boolean {
+  return makeResendToken(leadId) === token;
+}
 
 const router = Router();
 
@@ -272,9 +283,12 @@ Respond ONLY with valid JSON in this exact shape:
     }
   })();
 
+  const resendToken = leadId !== null ? makeResendToken(leadId) : null;
+
   return res.json({
     success: true,
     leadId,
+    resendToken,
     totalScore,
     tier,
     recommendedService,
@@ -290,6 +304,7 @@ Respond ONLY with valid JSON in this exact shape:
 const resendSchema = z.object({
   leadId: z.number().int().positive(),
   email: z.string().email(),
+  resendToken: z.string().min(1),
 });
 
 router.post("/quiz/resend-pdf", resendLimiter, async (req, res) => {
@@ -297,7 +312,11 @@ router.post("/quiz/resend-pdf", resendLimiter, async (req, res) => {
   if (!parsed.success) {
     return res.status(400).json({ error: "Invalid request body" });
   }
-  const { leadId, email } = parsed.data;
+  const { leadId, email, resendToken } = parsed.data;
+
+  if (!verifyResendToken(leadId, resendToken)) {
+    return res.status(403).json({ error: "Invalid or expired resend token." });
+  }
 
   const lead = await db.query.quizLeadsTable.findFirst({
     where: (t, { eq }) => eq(t.id, leadId),
@@ -339,7 +358,7 @@ router.post("/quiz/resend-pdf", resendLimiter, async (req, res) => {
       <p style="margin-top:24px;">— Shane McCaw<br/><span style="color:#64748b;font-size:13px;">Lead Microsoft 365 Architect | Shane McCaw Consulting</span></p>
     `;
 
-    await sendEmailWithAttachment(
+    await sendEmailWithAttachmentOrThrow(
       email,
       "Your Microsoft Copilot Readiness Report",
       brandedEmail(bodyHtml),

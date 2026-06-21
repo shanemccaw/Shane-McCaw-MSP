@@ -196,6 +196,24 @@ export async function sendEmailWithAttachment(
   }
 }
 
+/**
+ * Like sendEmailWithAttachment but throws on transport failure or missing configuration.
+ * Use this when the caller needs confirmed delivery (e.g. a user-initiated resend route).
+ */
+export async function sendEmailWithAttachmentOrThrow(
+  to: string,
+  subject: string,
+  html: string,
+  attachments: EmailAttachment[],
+): Promise<void> {
+  const sender = getConnectorSender() ?? getResendSender() ?? getSmtpSender();
+  if (!sender) {
+    throw new Error("No email transport configured — set REPLIT_CONNECTORS_HOSTNAME, RESEND_API_KEY, or SMTP_HOST/SMTP_USER/SMTP_PASS");
+  }
+  await sender(to, subject, html, attachments);
+  logger.info({ to, subject, files: attachments.map((a) => a.filename) }, "Email with attachments sent");
+}
+
 // ─── Named template helpers ───────────────────────────────────────────────────
 
 export function purchaseConfirmationEmail(opts: {
