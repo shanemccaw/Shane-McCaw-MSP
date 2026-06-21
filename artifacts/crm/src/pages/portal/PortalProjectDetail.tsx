@@ -1297,9 +1297,9 @@ export default function PortalProjectDetail() {
                       ) : (
                         <p className="text-white/30 text-xs mb-4">No target date set</p>
                       )}
-                      <button
+                      {nextMilestone.dueDate && <button
                         onClick={() => {
-                          const dateStr = nextMilestone.dueDate ?? project.endDate;
+                          const dateStr = nextMilestone.dueDate;
                           const title = encodeURIComponent(`[SMC] ${nextMilestone.title}`);
                           const details = encodeURIComponent(`Project milestone from Shane McCaw Consulting.`);
                           let dates = "";
@@ -1320,7 +1320,7 @@ export default function PortalProjectDetail() {
                           <path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
                         </svg>
                         Add to Calendar
-                      </button>
+                      </button>}
                     </>
                   ) : (
                     <p className="text-white/50 text-sm">All phases complete — great work!</p>
