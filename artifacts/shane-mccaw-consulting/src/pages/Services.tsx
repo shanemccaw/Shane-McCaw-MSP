@@ -1,3 +1,4 @@
+import { useState, useEffect } from "react";
 import { SEOMeta } from "@/components/SEOMeta";
 import { Link } from "wouter";
 import { Layout } from "@/components/Layout";
@@ -5,9 +6,8 @@ import { CTAButton } from "@/components/CTAButton";
 import {
   Cloud, Bot, Layout as LayoutIcon, Zap, Shield, Server, Users, ArrowRight,
   ShieldCheck, Lock, Globe, Settings, FileText, BarChart2, Award, Sparkles,
-  Briefcase, Target, Code, Database, Monitor, Cpu, BookOpen,
-  MessageSquare, Calendar, Star, CheckCircle, Clock, type LucideIcon,
-  AlertTriangle,
+  Briefcase, Target, Code, Database, Monitor, Cpu, BookOpen, FolderOpen, Calendar,
+  MessageSquare, Star, CheckCircle, Clock, AlertTriangle, type LucideIcon,
 } from "lucide-react";
 import { useServices, formatPriceDisplay, type PublicService } from "@/hooks/useServices";
 
@@ -36,42 +36,30 @@ function badgeClass(badge: string): string {
   return BADGE_COLORS[badge] ?? "bg-[#0078D4]/10 text-[#0078D4]";
 }
 
-const TIER_CONFIG: Record<string, { label: string; slug: string; description: string; accent: string }> = {
-  entry: {
-    label: "Quick-Win Packages",
-    slug: "Entry Tier",
-    description: "Fast, fixed-price engagements that surface what's broken and deliver a prioritized roadmap.",
-    accent: "text-emerald-700",
-  },
-  core: {
-    label: "Governance & Readiness",
-    slug: "Core Tier",
-    description: "Deeper engagements that establish governance foundations and prepare your environment for Copilot AI and organizational scale.",
-    accent: "text-[#0078D4]",
-  },
-  strategic: {
-    label: "Fractional Architecture",
-    slug: "Strategic Tier",
-    description: "Ongoing senior M365 architecture on a monthly retainer — embedded in your operations without full-time overhead.",
-    accent: "text-[#00B4D8]",
-  },
-};
+interface EngagementProject {
+  id: number;
+  title: string;
+  priceRange: string;
+  description: string | null;
+  triggeredBy: string[];
+  sowItems: string[];
+  sortOrder: number;
+  isVisible: boolean;
+}
 
-const TIER_ORDER = ["entry", "core", "strategic"];
+function useEngagementProjects() {
+  const [projects, setProjects] = useState<EngagementProject[]>([]);
+  const [loading, setLoading] = useState(true);
 
-const CATEGORY_TO_TIER: Record<string, string> = {
-  "Microsoft 365": "entry",
-  "Power Platform": "entry",
-  "Migration": "entry",
-  "Training": "entry",
-  "Copilot": "core",
-  "Governance": "core",
-  "Fractional Architecture": "strategic",
-};
+  useEffect(() => {
+    fetch("/api/public/engagement-projects")
+      .then(r => r.ok ? r.json() as Promise<EngagementProject[]> : Promise.resolve([]))
+      .then(data => setProjects(data))
+      .catch(() => setProjects([]))
+      .finally(() => setLoading(false));
+  }, []);
 
-function resolveTier(s: PublicService): string | null {
-  if (s.tier) return s.tier;
-  return s.category ? (CATEGORY_TO_TIER[s.category] ?? null) : null;
+  return { projects, loading };
 }
 
 function ServiceCard({ s, index }: { s: PublicService; index: number }) {
@@ -202,32 +190,88 @@ function ServiceCard({ s, index }: { s: PublicService; index: number }) {
   );
 }
 
-function TierSection({ category, services }: { category: string; services: PublicService[] }) {
-  const config = TIER_CONFIG[category] ?? {
-    slug: category.charAt(0).toUpperCase() + category.slice(1),
-    label: category.charAt(0).toUpperCase() + category.slice(1),
-    description: "",
-    accent: "text-[#0078D4]",
-  };
+function EngagementProjectCard({ project, index }: { project: EngagementProject; index: number }) {
+  return (
+    <div
+      className="bg-white rounded-xl border border-border p-6 flex flex-col hover:border-[#0078D4]/30 hover:shadow-sm transition-all duration-200"
+      data-testid={`project-card-${index}`}
+    >
+      <div className="flex items-start justify-between gap-3 mb-3">
+        <h3 className="font-extrabold text-[#0A2540] text-base leading-snug">{project.title}</h3>
+        <span className="text-[#0078D4] font-extrabold text-sm flex-shrink-0 whitespace-nowrap">{project.priceRange}</span>
+      </div>
+      {project.description && (
+        <p className="text-muted-foreground text-sm leading-relaxed mb-4">{project.description}</p>
+      )}
+      {project.triggeredBy.length > 0 && (
+        <div className="mb-4">
+          <p className="text-xs font-semibold text-[#0A2540] uppercase tracking-wide mb-2">Triggered by</p>
+          <ul className="space-y-1">
+            {project.triggeredBy.map((item, i) => (
+              <li key={i} className="flex items-start gap-2 text-xs text-muted-foreground">
+                <AlertTriangle className="w-3.5 h-3.5 text-[#00B4D8] flex-shrink-0 mt-0.5" />
+                <span>{item}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {project.sowItems.length > 0 && (
+        <div className="mb-4">
+          <p className="text-xs font-semibold text-[#0A2540] uppercase tracking-wide mb-2">Typical SOW includes</p>
+          <ul className="space-y-1">
+            {project.sowItems.map((item, i) => (
+              <li key={i} className="flex items-start gap-2 text-xs text-muted-foreground">
+                <CheckCircle className="w-3.5 h-3.5 text-[#0078D4] flex-shrink-0 mt-0.5" />
+                <span>{item}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+      <div className="mt-auto pt-4 border-t border-border">
+        <a
+          href="/book"
+          className="text-[#0078D4] text-sm font-semibold hover:underline flex items-center gap-1"
+        >
+          Book a free scoping call <ArrowRight className="w-3.5 h-3.5" />
+        </a>
+      </div>
+    </div>
+  );
+}
 
+function TrackSection({
+  trackLabel,
+  trackNumber,
+  title,
+  description,
+  accent,
+  children,
+  isEmpty,
+}: {
+  trackLabel: string;
+  trackNumber: string;
+  title: string;
+  description: string;
+  accent: string;
+  children: React.ReactNode;
+  isEmpty: boolean;
+}) {
+  if (isEmpty) return null;
   return (
     <section className="py-20 border-b border-border last:border-b-0">
       <div className="max-w-[1200px] mx-auto px-6">
         <div className="mb-12">
-          <p className={`text-sm font-bold uppercase tracking-[0.1em] mb-3 ${config.accent}`}>
-            {config.slug}
-          </p>
-          <h2 className="text-2xl md:text-3xl font-extrabold text-[#0A2540] mb-4">
-            {config.label}
-          </h2>
-          {config.description && (
-            <p className="text-muted-foreground max-w-2xl leading-relaxed">{config.description}</p>
-          )}
+          <div className="flex items-center gap-3 mb-3">
+            <span className="text-[#0078D4]/50 text-xs font-bold uppercase tracking-[0.15em]">{trackNumber}</span>
+            <span className={`text-xs font-bold uppercase tracking-[0.1em] ${accent}`}>{trackLabel}</span>
+          </div>
+          <h2 className="text-2xl md:text-3xl font-extrabold text-[#0A2540] mb-4">{title}</h2>
+          <p className="text-muted-foreground max-w-2xl leading-relaxed">{description}</p>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 items-start">
-          {services.map((s, i) => (
-            <ServiceCard key={s.slug ?? s.id} s={s} index={i} />
-          ))}
+          {children}
         </div>
       </div>
     </section>
@@ -238,7 +282,7 @@ function ServicesSkeleton() {
   return (
     <div className="py-20">
       <div className="max-w-[1200px] mx-auto px-6">
-        <div className="h-6 w-32 bg-border rounded animate-pulse mb-4" />
+        <div className="h-4 w-24 bg-border rounded animate-pulse mb-3" />
         <div className="h-8 w-72 bg-border rounded animate-pulse mb-8" />
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {[...Array(3)].map((_, i) => (
@@ -252,34 +296,26 @@ function ServicesSkeleton() {
 
 export default function Services() {
   const { services, loading, error } = useServices();
+  const { projects: engagementProjects, loading: projectsLoading } = useEngagementProjects();
 
-  const grouped = TIER_ORDER.reduce<Record<string, PublicService[]>>((acc, tier) => {
-    acc[tier] = services.filter(s => resolveTier(s) === tier);
-    return acc;
-  }, {});
+  const microOffers = services.filter(s => s.serviceType === "micro_offer");
+  const retainers = services.filter(s => s.serviceType === "retainer");
+  const visibleProjects = engagementProjects.filter(p => p.isVisible);
 
-  const activeTiers = TIER_ORDER.filter(t => grouped[t].length > 0);
+  const isLoading = loading && services.length === 0;
 
   return (
     <Layout>
       <SEOMeta
-        title="Microsoft 365 Consulting Services | Shane McCaw Consulting"
-        description="NASA-proven Microsoft 365 architecture, governance, automation, and AI services for mid-market and regulated organizations. Productized, predictable, and proven."
+        title="All Microsoft 365 Services | Shane McCaw Consulting"
+        description="Complete directory of every Microsoft 365 consulting service offered by Shane McCaw — fixed-price micro-offers, project-based engagements, and fractional architecture retainers."
         jsonLd={{
           "@context": "https://schema.org",
           "@type": "ProfessionalService",
           "name": "Shane McCaw Consulting",
           "url": "https://shanemccaw.com/services",
-          "description": "Microsoft 365 consulting services by Shane McCaw, NASA Lead M365 Architect. Covering Entry, Core, and Strategic tiers for mid-market and regulated organizations.",
+          "description": "Complete directory of Microsoft 365 consulting services by Shane McCaw, NASA Lead M365 Architect.",
           "founder": { "@type": "Person", "name": "Shane McCaw" },
-          "areaServed": [
-            { "@type": "Country", "name": "US" },
-            { "@type": "AdministrativeArea", "name": "Federal Government" }
-          ],
-          "audience": {
-            "@type": "Audience",
-            "audienceType": "Mid-market organizations, regulated industries, government contractors, healthcare, financial services"
-          },
           "hasOfferCatalog": {
             "@type": "OfferCatalog",
             "name": "Microsoft 365 Consulting Services",
@@ -301,38 +337,106 @@ export default function Services() {
           <p className="text-white/70 text-lg mt-6 max-w-2xl leading-relaxed">
             A complete directory of every productized service offered by Shane McCaw Consulting.
           </p>
-          <div className="mt-10">
+          <div className="mt-8 flex flex-wrap gap-4 items-center">
             <CTAButton href="/book" className="text-base px-8 py-3" data-testid="hero-book-cta">
               Book a Free Discovery Call <ArrowRight className="ml-2 w-4 h-4" />
             </CTAButton>
+            <a href="/pricing" className="text-[#00B4D8] text-sm font-semibold hover:text-white transition-colors flex items-center gap-1">
+              View pricing <ArrowRight className="w-4 h-4" />
+            </a>
+          </div>
+
+          {/* Track overview chips */}
+          <div className="mt-12 grid grid-cols-1 sm:grid-cols-3 gap-4">
+            {[
+              { num: "Track 01", tier: "Entry", title: "Fixed-Price Micro-Offers", icon: Zap, anchor: "#track-01" },
+              { num: "Track 02", tier: "Core", title: "Project-Based Engagements", icon: FolderOpen, anchor: "#track-02" },
+              { num: "Track 03", tier: "Strategic", title: "Fractional Architecture", icon: Calendar, anchor: "#track-03" },
+            ].map((t, i) => {
+              const Icon = t.icon;
+              return (
+                <a
+                  key={i}
+                  href={t.anchor}
+                  className="flex items-center gap-3 bg-white/5 border border-white/10 rounded-xl px-5 py-4 hover:bg-white/10 hover:border-white/20 transition-all group"
+                >
+                  <div className="w-9 h-9 rounded-lg bg-[#0078D4]/20 flex items-center justify-center flex-shrink-0">
+                    <Icon className="w-4 h-4 text-[#00B4D8]" />
+                  </div>
+                  <div>
+                    <p className="text-[#0078D4]/60 text-[10px] font-bold uppercase tracking-[0.15em]">{t.num} · {t.tier}</p>
+                    <p className="text-white text-sm font-semibold leading-snug">{t.title}</p>
+                  </div>
+                </a>
+              );
+            })}
           </div>
         </div>
       </section>
 
-      {/* Dynamic Tier Sections */}
-      {loading && services.length === 0 ? (
-        <>
+      {/* Three Track Sections */}
+      {isLoading ? (
+        <div className="bg-[#F7F9FC]">
           <ServicesSkeleton />
           <ServicesSkeleton />
           <ServicesSkeleton />
-        </>
+        </div>
       ) : error ? (
         <section className="py-20">
           <div className="max-w-[1200px] mx-auto px-6 text-center">
-            <p className="text-muted-foreground text-sm">Services are temporarily unavailable. Please try again later or <Link href="/book" className="text-[#0078D4] hover:underline">book a call</Link> directly.</p>
-          </div>
-        </section>
-      ) : activeTiers.length === 0 ? (
-        <section className="py-20">
-          <div className="max-w-[1200px] mx-auto px-6 text-center">
-            <p className="text-muted-foreground text-sm">No services published yet. Check back soon.</p>
+            <p className="text-muted-foreground text-sm">
+              Services are temporarily unavailable. <Link href="/book" className="text-[#0078D4] hover:underline">Book a call</Link> directly.
+            </p>
           </div>
         </section>
       ) : (
         <div className="bg-[#F7F9FC]">
-          {activeTiers.map(tier => (
-            <TierSection key={tier} category={tier} services={grouped[tier]} />
-          ))}
+          {/* Track 01 — Micro-Offers */}
+          <div id="track-01">
+            <TrackSection
+              trackNumber="Track 01"
+              trackLabel="Entry Tier"
+              title="Fixed-Price Micro-Offers"
+              description="Scoped deliverables with a defined price, a defined output, and a defined turnaround. No discovery call required — pick the package that matches your need and get in the queue."
+              accent="text-emerald-700"
+              isEmpty={microOffers.length === 0}
+            >
+              {microOffers.map((s, i) => <ServiceCard key={s.slug ?? s.id} s={s} index={i} />)}
+            </TrackSection>
+          </div>
+
+          {/* Track 02 — Project-Based Engagements */}
+          <div id="track-02">
+            <TrackSection
+              trackNumber="Track 02"
+              trackLabel="Core Tier"
+              title="Project-Based Engagements"
+              description="For larger, multi-phase work — tenant migrations, full governance overhauls, Copilot deployment programs, intranet builds. Priced as a fixed project after a free scoping call."
+              accent="text-[#0078D4]"
+              isEmpty={visibleProjects.length === 0 && !projectsLoading}
+            >
+              {projectsLoading
+                ? [...Array(3)].map((_, i) => (
+                    <div key={i} className="bg-white rounded-xl border border-border p-6 h-48 animate-pulse" />
+                  ))
+                : visibleProjects.map((p, i) => <EngagementProjectCard key={p.id} project={p} index={i} />)
+              }
+            </TrackSection>
+          </div>
+
+          {/* Track 03 — Fractional Architecture */}
+          <div id="track-03">
+            <TrackSection
+              trackNumber="Track 03"
+              trackLabel="Strategic Tier"
+              title="Monthly Fractional Architecture Retainer"
+              description="Consistent, predictable access to Shane's expertise every month — for architecture reviews, ongoing governance, strategic planning, or Copilot rollout support. Cancel with 30 days' notice."
+              accent="text-[#00B4D8]"
+              isEmpty={retainers.length === 0}
+            >
+              {retainers.map((s, i) => <ServiceCard key={s.slug ?? s.id} s={s} index={i} />)}
+            </TrackSection>
+          </div>
         </div>
       )}
 
@@ -351,11 +455,11 @@ export default function Services() {
               Book a Free Discovery Call <ArrowRight className="ml-2 w-4 h-4" />
             </CTAButton>
             <Link
-              href="/services/microsoft-365"
+              href="/pricing"
               className="inline-flex items-center justify-center border border-white/30 text-white font-semibold px-8 py-3 rounded hover:bg-white/10 transition-colors text-base whitespace-nowrap"
-              data-testid="closing-services-link"
+              data-testid="closing-pricing-link"
             >
-              View Individual Services
+              View Pricing
             </Link>
           </div>
         </div>
