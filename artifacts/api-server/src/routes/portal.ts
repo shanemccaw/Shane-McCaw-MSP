@@ -125,6 +125,49 @@ const uploadDoc = multer({ storage: docStorage, limits: { fileSize: 50 * 1024 * 
 const uploadReport = multer({ storage: reportStorage, limits: { fileSize: 100 * 1024 * 1024 } });
 const uploadInvoice = multer({ storage: invoiceStorage, limits: { fileSize: 20 * 1024 * 1024 } });
 
+/**
+ * Resolves a Stripe Customer ID for the given user, creating one if needed.
+ * When the user has a saved address, it is applied to the customer so that
+ * Stripe Checkout pre-fills the billing address form.
+ */
+async function getOrCreateStripeCustomer(
+  stripe: { customers: { search: (p: { query: string; limit: number }) => Promise<{ data: Array<{ id: string; address?: { line1?: string | null } | null; name?: string | null }> }>; create: (p: Record<string, unknown>) => Promise<{ id: string }>; update: (id: string, p: Record<string, unknown>) => Promise<unknown> } },
+  user: { email: string; name: string | null; address: string | null; addressCity: string | null; addressState: string | null; addressZip: string | null },
+): Promise<string | undefined> {
+  try {
+    const hasAddress = !!(user.address || user.addressCity || user.addressState || user.addressZip);
+    const addressObj = hasAddress ? {
+      line1: user.address ?? undefined,
+      city: user.addressCity ?? undefined,
+      state: user.addressState ?? undefined,
+      postal_code: user.addressZip ?? undefined,
+      country: "US",
+    } : undefined;
+
+    const existing = await stripe.customers.search({ query: `email:"${user.email}"`, limit: 1 });
+
+    if (existing.data.length > 0) {
+      const customer = existing.data[0];
+      if (hasAddress && !customer.address?.line1) {
+        await stripe.customers.update(customer.id, {
+          name: user.name ?? undefined,
+          address: addressObj,
+        });
+      }
+      return customer.id;
+    }
+
+    const created = await stripe.customers.create({
+      email: user.email,
+      name: user.name ?? undefined,
+      address: addressObj,
+    });
+    return created.id;
+  } catch {
+    return undefined;
+  }
+}
+
 // ─── CLIENT: Profile ─────────────────────────────────────────────────────────
 router.get("/portal/profile", requireAuth, async (req: Request, res: Response) => {
   const userId = req.user!.id;
@@ -957,11 +1000,26 @@ router.post("/portal/services/checkout", requireAuth, async (req: Request, res: 
   const { default: Stripe } = await import("stripe");
   const stripe = new Stripe(stripeKey);
 
+  const [userProfile] = await db.select({
+    email: usersTable.email,
+    name: usersTable.name,
+    address: usersTable.address,
+    addressCity: usersTable.addressCity,
+    addressState: usersTable.addressState,
+    addressZip: usersTable.addressZip,
+  }).from(usersTable).where(eq(usersTable.id, userId));
+
+  const customerId = userProfile
+    ? await getOrCreateStripeCustomer(stripe, userProfile)
+    : undefined;
+
   const baseUrl = returnUrl ?? `${req.protocol}://${req.hostname}`;
   const encodedName = encodeURIComponent(name);
 
   const session = await stripe.checkout.sessions.create({
     payment_method_types: ["card"],
+    customer: customerId,
+    billing_address_collection: "required",
     line_items: [{
       price_data: {
         currency: "usd",
@@ -1211,11 +1269,26 @@ router.post("/portal/invoices/:id/pay", requireAuth, async (req: Request, res: R
   const { default: Stripe } = await import("stripe");
   const stripe = new Stripe(stripeKey);
 
+  const [invoiceUserProfile] = await db.select({
+    email: usersTable.email,
+    name: usersTable.name,
+    address: usersTable.address,
+    addressCity: usersTable.addressCity,
+    addressState: usersTable.addressState,
+    addressZip: usersTable.addressZip,
+  }).from(usersTable).where(eq(usersTable.id, userId));
+
+  const invoiceCustomerId = invoiceUserProfile
+    ? await getOrCreateStripeCustomer(stripe, invoiceUserProfile)
+    : undefined;
+
   const { returnUrl } = req.body as { returnUrl?: string };
   const baseUrl = returnUrl ?? `${req.protocol}://${req.hostname}`;
 
   const session = await stripe.checkout.sessions.create({
     payment_method_types: ["card"],
+    customer: invoiceCustomerId,
+    billing_address_collection: "required",
     line_items: [{
       price_data: {
         currency: invoice.currency,
@@ -1666,10 +1739,25 @@ router.post("/portal/billing/subscriptions/:id/resubscribe", requireAuth, async 
   const { default: Stripe } = await import("stripe");
   const stripe = new Stripe(stripeKey);
 
+  const [resubUserProfile] = await db.select({
+    email: usersTable.email,
+    name: usersTable.name,
+    address: usersTable.address,
+    addressCity: usersTable.addressCity,
+    addressState: usersTable.addressState,
+    addressZip: usersTable.addressZip,
+  }).from(usersTable).where(eq(usersTable.id, userId));
+
+  const resubCustomerId = resubUserProfile
+    ? await getOrCreateStripeCustomer(stripe, resubUserProfile)
+    : undefined;
+
   const baseUrl = (req.body as { returnUrl?: string }).returnUrl ?? req.headers.origin ?? `${req.protocol}://${req.hostname}`;
 
   const session = await stripe.checkout.sessions.create({
     payment_method_types: ["card"],
+    customer: resubCustomerId,
+    billing_address_collection: "required",
     line_items: [{
       price_data: {
         currency: "usd",
@@ -5102,6 +5190,19 @@ router.post("/portal/checkout/create-session", requireAuth, async (req: Request,
   const { default: Stripe } = await import("stripe");
   const stripe = new Stripe(stripeKey);
 
+  const [sessionUserProfile] = await db.select({
+    email: usersTable.email,
+    name: usersTable.name,
+    address: usersTable.address,
+    addressCity: usersTable.addressCity,
+    addressState: usersTable.addressState,
+    addressZip: usersTable.addressZip,
+  }).from(usersTable).where(eq(usersTable.id, userId));
+
+  const sessionCustomerId = sessionUserProfile
+    ? await getOrCreateStripeCustomer(stripe, sessionUserProfile)
+    : undefined;
+
   const baseUrl = returnUrl ?? `${req.protocol}://${req.hostname}`;
 
   // Map serviceId → contractId for lookup
@@ -5124,6 +5225,8 @@ router.post("/portal/checkout/create-session", requireAuth, async (req: Request,
       const otContractIds = oneTimeServices.map(s => serviceToContract.get(s.id)!);
       const session = await stripe.checkout.sessions.create({
         payment_method_types: ["card"],
+        customer: sessionCustomerId,
+        billing_address_collection: "required",
         line_items: oneTimeServices.map(s => ({
           price_data: {
             currency: "usd",
@@ -5154,6 +5257,8 @@ router.post("/portal/checkout/create-session", requireAuth, async (req: Request,
       const recContractIds = recurringServices.map(s => serviceToContract.get(s.id)!);
       const session = await stripe.checkout.sessions.create({
         payment_method_types: ["card"],
+        customer: sessionCustomerId,
+        billing_address_collection: "required",
         line_items: recurringServices.map(s => ({
           price_data: {
             currency: "usd",
