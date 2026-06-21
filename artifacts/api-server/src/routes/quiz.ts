@@ -1,4 +1,5 @@
 import { Router } from "express";
+import rateLimit from "express-rate-limit";
 import { z } from "zod";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
 import { db, quizLeadsTable } from "@workspace/db";
@@ -7,6 +8,22 @@ import { generateQuizPdf } from "../lib/quiz-pdf";
 import { sendEmailWithAttachment, brandedEmail } from "../lib/mailer";
 
 const router = Router();
+
+const chatLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  limit: 30,
+  standardHeaders: "draft-8",
+  legacyHeaders: false,
+  message: { error: "Too many quiz chat requests from this IP. Please try again in an hour." },
+});
+
+const submitLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  limit: 5,
+  standardHeaders: "draft-8",
+  legacyHeaders: false,
+  message: { error: "Too many quiz submissions from this IP. Please try again in an hour." },
+});
 
 // ─── System prompt for the quiz AI ────────────────────────────────────────────
 const QUIZ_SYSTEM_PROMPT = `You are a Microsoft Copilot readiness assessment specialist working for Shane McCaw Consulting. Your job is to conduct a structured 10-question readiness quiz for organisations considering deploying Microsoft 365 Copilot.
@@ -37,7 +54,7 @@ const chatSchema = z.object({
   })),
 });
 
-router.post("/quiz/chat", async (req, res) => {
+router.post("/quiz/chat", chatLimiter, async (req, res) => {
   const parsed = chatSchema.safeParse(req.body);
   if (!parsed.success) {
     return res.status(400).json({ error: "Invalid request body" });
@@ -86,7 +103,7 @@ const SERVICE_MAP: Record<string, string> = {
   "SharePoint & Teams Modernisation": "Redesign your intranet and collaboration spaces so Copilot has clean, well-structured data to work with.",
 };
 
-router.post("/quiz/submit", async (req, res) => {
+router.post("/quiz/submit", submitLimiter, async (req, res) => {
   const parsed = submitSchema.safeParse(req.body);
   if (!parsed.success) {
     return res.status(400).json({ error: "Invalid request body" });
