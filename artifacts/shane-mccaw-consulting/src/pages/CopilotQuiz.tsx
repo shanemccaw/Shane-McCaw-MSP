@@ -34,6 +34,29 @@ const leadSchema = z.object({
 });
 type LeadForm = z.infer<typeof leadSchema>;
 
+// ─── Fallback questions (used when AI call fails) ──────────────────────────────
+// 10 unique questions, 2 per category, matching the system-prompt category order:
+// Infrastructure & Identity (1-2), Data & Compliance (3-4), AI Literacy (5-6),
+// Change Management (7-8), Business Process (9-10).
+// startQuiz uses index 0; submitAnswer uses Math.min(questionIndex, length-1).
+const FALLBACK_QUESTIONS = [
+  // Infrastructure & Identity
+  "Do you currently have a Microsoft 365 subscription with at least Business Standard or E3 licensing? Please describe your current licensing situation and how many users are covered.",
+  "How would you describe your organisation's Azure Active Directory / Entra ID setup? Are all staff on managed, cloud-synced accounts, or do you have a mix of on-premises and cloud identities?",
+  // Data & Compliance
+  "What data classification or sensitivity labelling is in place today? For example, do you use Microsoft Purview Information Protection or any equivalent system to mark and protect confidential documents?",
+  "How does your organisation currently handle data residency and regulatory compliance — for instance GDPR, ISO 27001, or sector-specific requirements — and are those policies enforced inside Microsoft 365?",
+  // AI Literacy
+  "How familiar are your staff with AI-assisted tools in their day-to-day work? Have any teams already used Copilot, ChatGPT, or similar assistants for tasks like drafting emails or summarising documents?",
+  "Has your organisation run any formal AI literacy training, guidelines, or acceptable-use policies? If so, how widely understood are they across different departments?",
+  // Change Management
+  "When your organisation last introduced a significant new technology, how was adoption managed? Were there dedicated champions, structured training programmes, or did teams largely self-serve?",
+  "What level of executive sponsorship and cross-department buy-in do you currently have for a Copilot rollout? Is there a named project owner, or is this still at the exploratory stage?",
+  // Business Process
+  "Which business processes consume the most time or are most prone to errors today — for example, report generation, meeting follow-ups, customer communications, or data entry?",
+  "Are your key business processes documented and reasonably standardised, or do they vary significantly between teams and individuals? Consistent processes are often the best starting point for AI automation.",
+] as const;
+
 // ─── Category config ───────────────────────────────────────────────────────────
 const CATEGORIES = [
   { key: "infrastructure", label: "Infrastructure & Identity" },
@@ -135,7 +158,7 @@ function QuizModal({ onClose }: { onClose: () => void }) {
       setMessages([{ role: "assistant", content: data.content }]);
       setQuestionIndex(1);
     } catch {
-      setCurrentQuestion("Welcome! Let's begin. Do you currently have a Microsoft 365 subscription with at least Business Standard or E3 licensing? Please describe your current licensing situation.");
+      setCurrentQuestion(FALLBACK_QUESTIONS[0]);
       setQuestionIndex(1);
     } finally {
       setLoading(false);
@@ -166,7 +189,9 @@ function QuizModal({ onClose }: { onClose: () => void }) {
       setCurrentQuestion(data.content);
       setQuestionIndex((q) => q + 1);
     } catch {
-      setCurrentQuestion("Thank you for that. Could you tell me more about your organisation's current approach to AI training and employee readiness?");
+      // Use slot-based fallback: questionIndex is the slot we just answered,
+      // so the next question lives at that same index (0-based).
+      setCurrentQuestion(FALLBACK_QUESTIONS[Math.min(questionIndex, FALLBACK_QUESTIONS.length - 1)]);
       setQuestionIndex((q) => q + 1);
     } finally {
       setLoading(false);
