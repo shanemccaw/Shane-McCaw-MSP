@@ -334,6 +334,41 @@ export async function getSiteByUrl(
   }
 }
 
+/**
+ * Fetch the pre-signed download URL for a specific drive item.
+ * The returned `downloadUrl` is a temporary anonymous URL (valid ~1 hour)
+ * that can be fetched without any auth token — ideal for proxying to clients.
+ */
+export async function getDriveItemDownloadUrl(
+  siteId: string,
+  itemId: string,
+): Promise<{ downloadUrl: string; name: string; mimeType: string | null } | null> {
+  try {
+    const res = await graphFetch(
+      `/sites/${siteId}/drive/items/${itemId}?$select=${encodeURIComponent("@microsoft.graph.downloadUrl")},name,file`,
+    );
+    if (!res.ok) {
+      const text = await res.text();
+      logger.warn({ status: res.status, body: text }, "Graph getDriveItemDownloadUrl failed");
+      return null;
+    }
+    const data = await res.json() as {
+      "@microsoft.graph.downloadUrl"?: string;
+      name: string;
+      file?: { mimeType?: string };
+    };
+    const downloadUrl = data["@microsoft.graph.downloadUrl"];
+    if (!downloadUrl) {
+      logger.warn({ siteId, itemId }, "Graph getDriveItemDownloadUrl: no downloadUrl in response");
+      return null;
+    }
+    return { downloadUrl, name: data.name, mimeType: data.file?.mimeType ?? null };
+  } catch (err) {
+    logger.error({ err }, "Graph getDriveItemDownloadUrl error");
+    return null;
+  }
+}
+
 export async function listDriveItems(
   siteId: string,
   folderPath?: string,

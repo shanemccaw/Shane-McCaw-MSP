@@ -455,6 +455,131 @@ function QuestionDialog({
   );
 }
 
+const OFFICE_MIMES = new Set([
+  "application/msword",
+  "application/vnd.ms-excel",
+  "application/vnd.ms-powerpoint",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+  "application/vnd.oasis.opendocument.text",
+  "application/vnd.oasis.opendocument.spreadsheet",
+]);
+
+function SpFileViewerModal({
+  projectId,
+  file,
+  onClose,
+  fetchWithAuth,
+}: {
+  projectId: number;
+  file: { id: string; name: string; mimeType: string | null };
+  onClose: () => void;
+  fetchWithAuth: (url: string, opts?: RequestInit) => Promise<Response>;
+}) {
+  const proxyUrl = `/api/portal/projects/${projectId}/sharepoint-file/${encodeURIComponent(file.id)}`;
+  const [officeEmbedUrl, setOfficeEmbedUrl] = useState<string | null>(null);
+  const [officeLoading, setOfficeLoading] = useState(false);
+  const [officeError, setOfficeError] = useState<string | null>(null);
+
+  const mimeClean = file.mimeType?.split(";")[0].trim().toLowerCase() ?? "";
+  const isPdf = mimeClean === "application/pdf";
+  const isImage = mimeClean.startsWith("image/");
+  const isOffice = OFFICE_MIMES.has(mimeClean);
+
+  useEffect(() => {
+    if (!isOffice) return;
+    setOfficeLoading(true);
+    fetchWithAuth(`${proxyUrl}?metaOnly=true`)
+      .then(r => r.json() as Promise<{ downloadUrl?: string; error?: string }>)
+      .then(data => {
+        if (data.downloadUrl) {
+          setOfficeEmbedUrl(`https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(data.downloadUrl)}`);
+        } else {
+          setOfficeError(data.error ?? "Could not load file for preview.");
+        }
+      })
+      .catch(() => setOfficeError("Network error loading file preview."))
+      .finally(() => setOfficeLoading(false));
+  }, [file.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    document.addEventListener("keydown", handler);
+    return () => document.removeEventListener("keydown", handler);
+  }, [onClose]);
+
+  return (
+    <div className="fixed inset-0 bg-black/60 z-50 flex flex-col" onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
+      <div className="flex items-center gap-3 px-5 py-3 bg-[#0A2540] text-white flex-shrink-0">
+        <svg className="w-4 h-4 text-[#0078D4] flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+        </svg>
+        <p className="text-sm font-semibold truncate flex-1">{file.name}</p>
+        <button onClick={onClose} className="ml-2 text-white/70 hover:text-white transition-colors flex-shrink-0" aria-label="Close">
+          <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
+      </div>
+      <div className="flex-1 overflow-hidden bg-gray-100">
+        {isPdf && (
+          <iframe src={proxyUrl} className="w-full h-full border-0" title={file.name} />
+        )}
+        {isImage && (
+          <div className="w-full h-full flex items-center justify-center p-6">
+            <img src={proxyUrl} alt={file.name} className="max-w-full max-h-full object-contain rounded-lg shadow-lg" />
+          </div>
+        )}
+        {isOffice && (
+          officeLoading ? (
+            <div className="w-full h-full flex items-center justify-center">
+              <div className="flex flex-col items-center gap-3">
+                <div className="w-8 h-8 border-3 border-[#0078D4] border-t-transparent rounded-full animate-spin" />
+                <p className="text-sm text-gray-600">Loading preview…</p>
+              </div>
+            </div>
+          ) : officeError ? (
+            <div className="w-full h-full flex items-center justify-center p-6">
+              <div className="bg-white rounded-2xl p-6 max-w-sm text-center shadow-lg">
+                <p className="text-sm font-semibold text-red-600 mb-2">Preview unavailable</p>
+                <p className="text-xs text-gray-600 mb-4">{officeError}</p>
+                <a href={proxyUrl} download={file.name}
+                  className="inline-flex items-center gap-2 bg-[#0078D4] text-white text-sm font-semibold px-4 py-2 rounded-lg hover:bg-[#005fa3] transition-colors">
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                  </svg>
+                  Download instead
+                </a>
+              </div>
+            </div>
+          ) : officeEmbedUrl ? (
+            <iframe src={officeEmbedUrl} className="w-full h-full border-0" title={file.name} />
+          ) : null
+        )}
+        {!isPdf && !isImage && !isOffice && (
+          <div className="w-full h-full flex items-center justify-center p-6">
+            <div className="bg-white rounded-2xl p-6 max-w-sm text-center shadow-lg">
+              <svg className="w-12 h-12 text-[#0078D4] mx-auto mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+              </svg>
+              <p className="text-sm font-semibold text-[#0A2540] mb-1">{file.name}</p>
+              <p className="text-xs text-gray-500 mb-4">This file type cannot be previewed. Click below to download it.</p>
+              <a href={proxyUrl} download={file.name}
+                className="inline-flex items-center gap-2 bg-[#0078D4] text-white text-sm font-semibold px-4 py-2 rounded-lg hover:bg-[#005fa3] transition-colors">
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                </svg>
+                Download File
+              </a>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function PortalProjectDetail() {
   const params = useParams<{ id: string }>();
   const { fetchWithAuth } = useAuth();
@@ -488,6 +613,7 @@ export default function PortalProjectDetail() {
   const [spError, setSpError] = useState<string | null>(null);
   const [spNoSite, setSpNoSite] = useState(false);
   const [spFetched, setSpFetched] = useState(false);
+  const [viewerFile, setViewerFile] = useState<{ id: string; name: string; mimeType: string | null } | null>(null);
 
   // Task activity state (auto-loaded on mount)
   const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>([]);
@@ -1509,17 +1635,16 @@ export default function PortalProjectDetail() {
                             {file.lastModifiedDateTime ? ` · ${new Date(file.lastModifiedDateTime).toLocaleDateString()}` : ""}
                           </p>
                         </div>
-                        <a
-                          href={file.webUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
+                        <button
+                          onClick={() => setViewerFile({ id: file.id, name: file.name, mimeType: file.mimeType })}
                           className="flex items-center gap-1.5 text-sm font-semibold text-[#0078D4] hover:text-[#0078D4]/80 transition-colors px-3 py-1.5 border border-[#0078D4]/30 rounded-lg hover:bg-[#0078D4]/5 whitespace-nowrap"
                         >
                           <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
                           </svg>
                           Open
-                        </a>
+                        </button>
                       </div>
                     );
                   })}
@@ -1965,6 +2090,14 @@ export default function PortalProjectDetail() {
             </div>
           </div>
         </div>
+      )}
+      {viewerFile && (
+        <SpFileViewerModal
+          projectId={Number(params.id)}
+          file={viewerFile}
+          onClose={() => setViewerFile(null)}
+          fetchWithAuth={fetchWithAuth}
+        />
       )}
     </PortalLayout>
   );

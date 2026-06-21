@@ -6,7 +6,7 @@ import { sendEmail, purchaseConfirmationEmail, onboardingConfirmationEmail, admi
 import { sendAdminSms } from "../lib/sms";
 import { sendPushNotifications } from "../lib/push";
 import { createAuditLog } from "../lib/audit";
-import { listDriveItems, graphCredentialsPresent, createProjectFolder, uploadFileToClientContracts } from "../lib/graph";
+import { listDriveItems, graphCredentialsPresent, createProjectFolder, uploadFileToClientContracts, getDriveItemDownloadUrl } from "../lib/graph";
 import { uploadInvoiceToSharePoint } from "../lib/invoice-sharepoint";
 import multer from "multer";
 import path from "path";
@@ -389,6 +389,72 @@ router.get("/portal/projects/:id/audit-logs", requireAuth, async (req: Request, 
     .limit(limit);
 
   res.json({ entries });
+});
+
+// ─── CLIENT: Proxy a SharePoint drive item for inline viewing ─────────────────
+// GET /api/portal/projects/:id/sharepoint-file/:itemId
+// ?metaOnly=true  → returns { downloadUrl, mimeType, name } JSON (for Office Online embeds)
+// (default)       → fetches the pre-signed download URL and streams the bytes back
+router.get("/portal/projects/:id/sharepoint-file/:itemId", requireAuth, async (req: Request, res: Response) => {
+  const userId = req.user!.id;
+  const projectId = parseInt(String(req.params.id ?? ""), 10);
+  const itemId = String(req.params.itemId ?? "");
+  if (isNaN(projectId) || !itemId) { res.status(400).json({ error: "Invalid parameters" }); return; }
+
+  const isAdmin = req.user!.role === "admin";
+  const [project] = await db.select().from(projectsTable)
+    .where(isAdmin ? eq(projectsTable.id, projectId) : and(eq(projectsTable.id, projectId), eq(projectsTable.clientUserId, userId)));
+  if (!project) { res.status(404).json({ error: "Project not found" }); return; }
+
+  const clientUserId = project.clientUserId;
+  if (!clientUserId) { res.status(404).json({ error: "Project has no client" }); return; }
+
+  const [clientUser] = await db.select({ sharepointSiteId: usersTable.sharepointSiteId })
+    .from(usersTable).where(eq(usersTable.id, clientUserId));
+
+  if (!clientUser?.sharepointSiteId) {
+    res.status(404).json({ error: "No SharePoint site linked to this client" });
+    return;
+  }
+
+  if (!graphCredentialsPresent()) {
+    res.status(503).json({ error: "Microsoft Graph is not configured on this server." });
+    return;
+  }
+
+  const item = await getDriveItemDownloadUrl(clientUser.sharepointSiteId, itemId);
+  if (!item) {
+    res.status(502).json({ error: "Could not fetch file from SharePoint. Check Graph permissions." });
+    return;
+  }
+
+  if (req.query.metaOnly === "true") {
+    res.json({ downloadUrl: item.downloadUrl, mimeType: item.mimeType, name: item.name });
+    return;
+  }
+
+  // Proxy the file bytes so the client never needs SharePoint credentials
+  const fileRes = await fetch(item.downloadUrl).catch((err: unknown) => {
+    req.log.error({ err }, "Failed to fetch file from SharePoint download URL");
+    return null;
+  });
+  if (!fileRes) {
+    res.status(502).json({ error: "Failed to fetch file from SharePoint" });
+    return;
+  }
+  if (!fileRes.ok) {
+    res.status(502).json({ error: "SharePoint returned an error fetching the file" });
+    return;
+  }
+
+  const contentType = item.mimeType ?? fileRes.headers.get("content-type") ?? "application/octet-stream";
+  const contentLength = fileRes.headers.get("content-length");
+  res.setHeader("Content-Type", contentType);
+  res.setHeader("Content-Disposition", `inline; filename*=UTF-8''${encodeURIComponent(item.name)}`);
+  if (contentLength) res.setHeader("Content-Length", contentLength);
+
+  const buffer = Buffer.from(await fileRes.arrayBuffer());
+  res.send(buffer);
 });
 
 // ─── CLIENT: SharePoint Documents for a project ───────────────────────────────
