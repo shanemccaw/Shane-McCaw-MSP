@@ -58,8 +58,14 @@ export function emailButton(label: string, url: string): string {
   </p>`;
 }
 
+// ─── Attachment type ──────────────────────────────────────────────────────────
+export interface EmailAttachment {
+  filename: string;
+  content: Buffer | string;
+}
+
 // ─── Transport selection ──────────────────────────────────────────────────────
-type Sender = (to: string, subject: string, html: string) => Promise<void>;
+type Sender = (to: string, subject: string, html: string, attachments?: EmailAttachment[]) => Promise<void>;
 
 function getConnectorSender(): Sender | null {
   const hasConnectorEnv =
@@ -67,12 +73,19 @@ function getConnectorSender(): Sender | null {
     process.env.REPL_IDENTITY;
   if (!hasConnectorEnv) return null;
   const from = process.env.RESEND_FROM ?? BRAND_FROM;
-  return async (to, subject, html) => {
+  return async (to, subject, html, attachments) => {
     const connectors = new ReplitConnectors();
+    const body: Record<string, unknown> = { from, to, subject, html };
+    if (attachments && attachments.length > 0) {
+      body.attachments = attachments.map((a) => ({
+        filename: a.filename,
+        content: Buffer.isBuffer(a.content) ? a.content.toString("base64") : a.content,
+      }));
+    }
     const res = await connectors.proxy("resend", "/emails", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ from, to, subject, html }),
+      body: JSON.stringify(body),
     });
     if (!res.ok) {
       const text = await res.text();
@@ -86,8 +99,15 @@ function getResendSender(): Sender | null {
   if (!apiKey) return null;
   const resend = new Resend(apiKey);
   const from = process.env.RESEND_FROM ?? BRAND_FROM;
-  return async (to, subject, html) => {
-    const { error } = await resend.emails.send({ from, to, subject, html });
+  return async (to, subject, html, attachments) => {
+    const payload: Parameters<typeof resend.emails.send>[0] = { from, to, subject, html };
+    if (attachments && attachments.length > 0) {
+      payload.attachments = attachments.map((a) => ({
+        filename: a.filename,
+        content: Buffer.isBuffer(a.content) ? a.content.toString("base64") : a.content,
+      }));
+    }
+    const { error } = await resend.emails.send(payload);
     if (error) throw new Error(error.message);
   };
 }
@@ -100,8 +120,11 @@ function getSmtpSender(): Sender | null {
   const port = parseInt(process.env.SMTP_PORT ?? "587", 10);
   const transporter = nodemailer.createTransport({ host, port, secure: port === 465, auth: { user, pass } });
   const from = process.env.SMTP_FROM ?? `Shane McCaw Consulting <${user}>`;
-  return async (to, subject, html) => {
-    await transporter.sendMail({ from, to, subject, html });
+  return async (to, subject, html, attachments) => {
+    await transporter.sendMail({
+      from, to, subject, html,
+      attachments: attachments?.map((a) => ({ filename: a.filename, content: a.content })),
+    });
   };
 }
 
@@ -148,6 +171,29 @@ export async function sendEmailOrThrow(
   const html = opts?.skipWrapper ? bodyHtml : brandedEmail(bodyHtml);
   await sender(to, subject, html);
   logger.info({ to, subject }, "Email sent");
+}
+
+/**
+ * Send an email with file attachments. Wraps the HTML in the branded template.
+ * Errors are caught and logged (fire-and-forget friendly).
+ */
+export async function sendEmailWithAttachment(
+  to: string,
+  subject: string,
+  html: string,
+  attachments: EmailAttachment[],
+): Promise<void> {
+  const sender = getConnectorSender() ?? getResendSender() ?? getSmtpSender();
+  if (!sender) {
+    logger.warn({ to, subject }, "No email transport configured — attachment email skipped");
+    return;
+  }
+  try {
+    await sender(to, subject, html, attachments);
+    logger.info({ to, subject, files: attachments.map((a) => a.filename) }, "Email with attachments sent");
+  } catch (err) {
+    logger.warn({ err, to, subject }, "Failed to send email with attachment");
+  }
 }
 
 // ─── Named template helpers ───────────────────────────────────────────────────

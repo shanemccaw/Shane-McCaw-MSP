@@ -183,6 +183,13 @@
       "when": 1750917600000,
       "tag": "0025_add_client_m365_profiles",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1750982400000,
+      "tag": "0026_add_quiz_leads",
+      "breakpoints": true
     }
   ]
 }

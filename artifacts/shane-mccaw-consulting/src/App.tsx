@@ -22,6 +22,7 @@ import Privacy from "@/pages/Privacy";
 import ArticlePage from "@/pages/ArticlePage";
 import Admin from "@/pages/Admin";
 import CustomerCommandCenter from "@/pages/CustomerCommandCenter";
+import CopilotQuiz from "@/pages/CopilotQuiz";
 
 const queryClient = new QueryClient();
 
@@ -56,6 +57,7 @@ function Router() {
       <Route path="/privacy" component={Privacy} />
       <Route path="/admin" component={Admin} />
       <Route path="/customer-command-center" component={CustomerCommandCenter} />
+      <Route path="/copilot-quiz" component={CopilotQuiz} />
       <Route component={NotFound} />
     </Switch>
     </>

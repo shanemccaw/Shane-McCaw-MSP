@@ -24,6 +24,7 @@ export function Header() {
     { label: "Services", href: "/services" },
     { label: "Micro-Offers", href: "/micro-offers" },
     { label: "Pricing", href: "/pricing" },
+    { label: "AI Readiness Quiz", href: "/copilot-quiz" },
     { label: "Resources", href: "/resources" },
     { label: "Client Portal", href: "/customer-command-center" },
     { label: "Contact", href: "/contact" },

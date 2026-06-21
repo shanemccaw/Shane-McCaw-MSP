@@ -597,5 +597,35 @@ export const clientM365ProfilesTable = pgTable("client_m365_profiles", {
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
 
+export interface QuizCategoryScores {
+  infrastructure: number;
+  data: number;
+  aiLiteracy: number;
+  changeManagement: number;
+  businessProcess: number;
+}
+
+export interface QuizConversationEntry {
+  role: "assistant" | "user";
+  content: string;
+}
+
+// Quiz Leads — captures visitor lead info and AI-scored Copilot readiness quiz results
+export const quizLeadsTable = pgTable("quiz_leads", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  email: text("email").notNull(),
+  company: text("company"),
+  totalScore: integer("total_score").notNull().default(0),
+  tier: text("tier").notNull().default("Beginner"),
+  recommendedService: text("recommended_service"),
+  categoryScores: jsonb("category_scores").$type<QuizCategoryScores>().notNull().default({ infrastructure: 0, data: 0, aiLiteracy: 0, changeManagement: 0, businessProcess: 0 }),
+  conversation: jsonb("conversation").$type<QuizConversationEntry[]>().notNull().default([]),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export type InsertQuizLead = typeof quizLeadsTable.$inferInsert;
+export type QuizLead = typeof quizLeadsTable.$inferSelect;
+
 export type InsertClientM365Profile = typeof clientM365ProfilesTable.$inferInsert;
 export type ClientM365Profile = typeof clientM365ProfilesTable.$inferSelect;
