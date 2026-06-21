@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { z } from "zod";
 import { useToast } from "@/hooks/use-toast";
-import { useAuth } from "@/contexts/AuthContext";
 import {
   useListArtifactSets,
   useCreateArtifactSet,
@@ -21,6 +20,7 @@ import {
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { exportAsJson } from "@/lib/exportJson";
+import JsonImportModal from "@/components/JsonImportModal";
 
 function StringListEditor({ label, items, onChange, placeholder }: {
   label: string; items: string[]; onChange: (v: string[]) => void; placeholder?: string;
@@ -172,91 +172,10 @@ const ArtifactSetImportSchema = z.object({
   category: z.string().optional(),
 });
 
-type ImportRecord = z.infer<typeof ArtifactSetImportSchema>;
-
-function JsonImportModal({ onClose, onImported }: { onClose: () => void; onImported: () => void }) {
-  const { fetchWithAuth } = useAuth();
-  const { toast } = useToast();
-  const [raw, setRaw] = useState("");
-  const [errors, setErrors] = useState<string[]>([]);
-  const [saving, setSaving] = useState(false);
-
-  const submit = async () => {
-    setErrors([]);
-    let parsed: unknown;
-    try { parsed = JSON.parse(raw); } catch { setErrors(["Invalid JSON — check syntax and try again."]); return; }
-
-    const isBulk = Array.isArray(parsed);
-    const records = isBulk ? (parsed as unknown[]) : [parsed];
-
-    const allErrors: string[] = [];
-    const validatedRecords: ImportRecord[] = [];
-    records.forEach((rec, idx) => {
-      const result = ArtifactSetImportSchema.safeParse(rec);
-      if (!result.success) {
-        result.error.errors.forEach(e => {
-          const path = e.path.length ? e.path.join(".") + ": " : "";
-          allErrors.push(isBulk ? `[${idx}] ${path}${e.message}` : `${path}${e.message}`);
-        });
-      } else {
-        validatedRecords.push(result.data);
-      }
-    });
-
-    if (allErrors.length > 0) { setErrors(allErrors); return; }
-
-    setSaving(true);
-    let created = 0, updated = 0;
-    const networkErrors: string[] = [];
-
-    for (const data of validatedRecords) {
-      const hasId = typeof data.id === "number";
-      const url = hasId ? `/api/admin/asset-library/artifact-sets/${data.id}` : "/api/admin/asset-library/artifact-sets";
-      try {
-        const res = await fetchWithAuth(url, { method: hasId ? "PUT" : "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) });
-        if (!res.ok) { const j = await res.json().catch(()=>({error:"Unknown error"})); networkErrors.push((j as {error?:string}).error ?? "Request failed"); }
-        else if (hasId) { updated++; } else { created++; }
-      } catch { networkErrors.push("Network error — please try again."); }
-    }
-
-    setSaving(false);
-
-    if (networkErrors.length > 0) {
-      setErrors(networkErrors);
-      if (created > 0 || updated > 0) { toast({ title: `Partial import: ${created} created, ${updated} updated` }); onImported(); }
-      return;
-    }
-
-    toast({ title: isBulk ? `${created} created, ${updated} updated` : (validatedRecords[0] && typeof validatedRecords[0].id === "number" ? "Artifact set updated via import" : "Artifact set created via import") });
-    onImported();
-  };
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-      <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg p-6">
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="font-semibold text-gray-900">JSON Import</h2>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600"><X className="w-5 h-5"/></button>
-        </div>
-        <p className="text-sm text-gray-500 mb-3">Paste a single record or an array of records as JSON. Records with an <code className="bg-gray-100 px-1 rounded">id</code> field are updated; without one, a new record is created. Optionally include a <code className="bg-gray-100 px-1 rounded">category</code> field.</p>
-        <textarea value={raw} onChange={e=>setRaw(e.target.value)} rows={10} spellCheck={false}
-          className="w-full border border-gray-200 rounded px-3 py-2 text-sm font-mono resize-none focus:outline-none focus:ring-1 focus:ring-[#0078D4]"
-          placeholder={'[{"title": "Set A", "category": "Governance", "artifacts": ["report.pdf"]}, {"title": "Set B"}]'} />
-        {errors.length > 0 && (
-          <ul className="mt-2 space-y-1 max-h-32 overflow-y-auto">
-            {errors.map((e, i) => <li key={i} className="text-sm text-red-600">{e}</li>)}
-          </ul>
-        )}
-        <div className="flex justify-end gap-2 mt-4">
-          <button onClick={onClose} className="px-4 py-2 text-sm text-gray-600 border border-gray-200 rounded hover:text-gray-900">Cancel</button>
-          <button onClick={submit} disabled={saving || !raw.trim()} className="px-4 py-2 text-sm bg-[#0078D4] text-white rounded hover:bg-[#005fa3] disabled:opacity-50">
-            {saving ? "Importing…" : "Import"}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
+const ARTIFACT_SET_EXAMPLE = JSON.stringify([
+  { title: "Governance Report Artifacts", category: "Governance", artifacts: ["governance-assessment.pdf", "policy-matrix.xlsx", "executive-summary.docx"] },
+  { title: "Migration Handoff Pack", category: "Migration", artifacts: ["migration-runbook.docx", "cutover-checklist.pdf"] },
+], null, 2);
 
 export default function ArtifactSetsPage() {
   const { toast } = useToast();
@@ -382,6 +301,9 @@ export default function ArtifactSetsPage() {
       )}
       {showImport && (
         <JsonImportModal
+          collection="artifact-sets"
+          schema={ArtifactSetImportSchema}
+          exampleJson={ARTIFACT_SET_EXAMPLE}
           onClose={() => setShowImport(false)}
           onImported={() => {
             setShowImport(false);
