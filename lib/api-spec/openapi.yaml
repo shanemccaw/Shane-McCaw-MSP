@@ -14,6 +14,8 @@ tags:
     description: Authentication operations
   - name: leads
     description: Lead management operations
+  - name: services
+    description: Public service catalog operations
 paths:
   /healthz:
     get:
@@ -470,6 +472,27 @@ paths:
               schema:
                 $ref: "#/components/schemas/SuccessResponse"
 
+  /services:
+    get:
+      operationId: listPublicServices
+      tags: [services]
+      summary: List public service offerings
+      parameters:
+        - name: type
+          in: query
+          schema:
+            type: string
+            enum: [micro_offer, retainer, service_area]
+      responses:
+        "200":
+          description: List of public services
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/PublicService"
+
   /leads:
     post:
       operationId: createLead
@@ -903,6 +926,75 @@ components:
           enum: [contact_form, lead_magnet]
         howFound:
           type: ["string", "null"]
+
+    PublicService:
+      type: object
+      required: [id, name, slug, billingType, isPublic, createdAt, updatedAt]
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        slug:
+          type: string
+        description:
+          type: ["string", "null"]
+        category:
+          type: ["string", "null"]
+        serviceType:
+          type: ["string", "null"]
+          enum: [micro_offer, retainer, service_area, null]
+        tagline:
+          type: ["string", "null"]
+        targetAudience:
+          type: ["string", "null"]
+        price:
+          type: ["string", "null"]
+        basePrice:
+          type: ["string", "null"]
+        maxPrice:
+          type: ["string", "null"]
+        durationDays:
+          type: ["integer", "null"]
+        turnaround:
+          type: ["string", "null"]
+        billingType:
+          type: string
+          enum: [one_time, recurring_monthly]
+        isPublic:
+          type: boolean
+        badge:
+          type: ["string", "null"]
+        highlighted:
+          type: boolean
+        hoursPerMonth:
+          type: ["string", "null"]
+        iconName:
+          type: ["string", "null"]
+        sortOrder:
+          type: ["integer", "null"]
+        stripeProductId:
+          type: ["string", "null"]
+        stripePriceId:
+          type: ["string", "null"]
+        deliverables:
+          type: ["array", "null"]
+          items:
+            type: string
+        inclusions:
+          type: ["array", "null"]
+          items:
+            type: string
+        features:
+          type: ["array", "null"]
+          items:
+            type: string
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
 
     Lead:
       type: object

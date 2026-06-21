@@ -380,6 +380,45 @@ export const DeleteDeliverableSetResponse = zod.object({
 
 
 /**
+ * @summary List public service offerings
+ */
+export const ListPublicServicesQueryParams = zod.object({
+  "type": zod.enum(['micro_offer', 'retainer', 'service_area']).optional()
+})
+
+export const ListPublicServicesResponseItem = zod.object({
+  "id": zod.number(),
+  "name": zod.string(),
+  "slug": zod.string(),
+  "description": zod.string().nullish(),
+  "category": zod.string().nullish(),
+  "serviceType": zod.union([zod.literal('micro_offer'),zod.literal('retainer'),zod.literal('service_area'),zod.literal(null)]).nullish(),
+  "tagline": zod.string().nullish(),
+  "targetAudience": zod.string().nullish(),
+  "price": zod.string().nullish(),
+  "basePrice": zod.string().nullish(),
+  "maxPrice": zod.string().nullish(),
+  "durationDays": zod.number().nullish(),
+  "turnaround": zod.string().nullish(),
+  "billingType": zod.enum(['one_time', 'recurring_monthly']),
+  "isPublic": zod.boolean(),
+  "badge": zod.string().nullish(),
+  "highlighted": zod.boolean().optional(),
+  "hoursPerMonth": zod.string().nullish(),
+  "iconName": zod.string().nullish(),
+  "sortOrder": zod.number().nullish(),
+  "stripeProductId": zod.string().nullish(),
+  "stripePriceId": zod.string().nullish(),
+  "deliverables": zod.array(zod.string()).nullish(),
+  "inclusions": zod.array(zod.string()).nullish(),
+  "features": zod.array(zod.string()).nullish(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+export const ListPublicServicesResponse = zod.array(ListPublicServicesResponseItem)
+
+
+/**
  * @summary Submit a lead (public)
  */
 
@@ -582,6 +621,35 @@ export const DeleteEmailDomainRuleParams = zod.object({
 })
 
 export const DeleteEmailDomainRuleResponse = zod.object({
+  "success": zod.boolean()
+})
+
+
+/**
+ * @summary Get M365 environment profile for a client (admin only)
+ */
+export const GetClientM365ProfileParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const GetClientM365ProfileResponse = zod.object({
+  "profile": zod.record(zod.string(), zod.unknown()).nullable(),
+  "updatedAt": zod.coerce.date().nullish()
+})
+
+
+/**
+ * @summary Upsert M365 environment profile for a client (admin only)
+ */
+export const PutClientM365ProfileParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const PutClientM365ProfileBody = zod.object({
+  "profile": zod.record(zod.string(), zod.unknown())
+})
+
+export const PutClientM365ProfileResponse = zod.object({
   "success": zod.boolean()
 })
 

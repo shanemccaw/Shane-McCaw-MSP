@@ -2,11 +2,15 @@ import { Router, type IRouter, type Request, type Response } from "express";
 import { db, servicesTable, clientServicesTable, contractsTable, workflowTemplatesTable, contractTemplatesTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/requireAuth";
+import { z } from "zod";
 
-function toStringArray(v: unknown): string[] | null {
-  if (!Array.isArray(v)) return null;
-  const result = v.filter((item): item is string => typeof item === "string");
-  return result.length > 0 ? result : null;
+const stringArraySchema = z.array(z.string()).nullish();
+
+function parseStringArray(v: unknown): string[] | null {
+  const result = stringArraySchema.safeParse(v);
+  if (!result.success || result.data == null) return null;
+  const trimmed = result.data.map((s) => s.trim()).filter((s) => s.length > 0);
+  return trimmed.length > 0 ? trimmed : null;
 }
 
 const router: IRouter = Router();
@@ -50,7 +54,7 @@ router.put("/admin/services/:id", requireAdmin, async (req: Request, res: Respon
         name: name as string,
         description: (description as string | null) ?? null,
         category: (category as string | null) ?? null,
-        deliverables: toStringArray(deliverables),
+        deliverables: parseStringArray(deliverables),
         price: price != null ? String(price) : null,
         basePrice: basePrice != null ? String(basePrice) : null,
         maxPrice: maxPrice != null ? String(maxPrice) : null,
@@ -62,8 +66,8 @@ router.put("/admin/services/:id", requireAdmin, async (req: Request, res: Respon
         serviceType: (serviceType as string | null) ?? null,
         tagline: (tagline as string | null) ?? null,
         targetAudience: (targetAudience as string | null) ?? null,
-        inclusions: toStringArray(inclusions),
-        features: toStringArray(features),
+        inclusions: parseStringArray(inclusions),
+        features: parseStringArray(features),
         badge: (badge as string | null) ?? null,
         highlighted: highlighted != null ? Boolean(highlighted) : false,
         hoursPerMonth: (hoursPerMonth as string | null) ?? null,
@@ -99,9 +103,9 @@ router.post("/admin/services", requireAdmin, async (req: Request, res: Response)
         name: name.trim(),
         slug: slug.trim(),
         billingType: ((billingType as string) === "recurring_monthly" ? "recurring_monthly" : "one_time") as "one_time" | "recurring_monthly",
-        deliverables: toStringArray(deliverables),
-        inclusions: toStringArray(inclusions),
-        features: toStringArray(features),
+        deliverables: parseStringArray(deliverables),
+        inclusions: parseStringArray(inclusions),
+        features: parseStringArray(features),
       })
       .returning();
     res.status(201).json(created);

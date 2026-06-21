@@ -26,6 +26,8 @@ import type {
   AuthResponse,
   Checklist,
   ChecklistInput,
+  ClientM365ProfileInput,
+  ClientM365ProfileResponse,
   CreateDomainRuleInput,
   DeliverableSet,
   DeliverableSetInput,
@@ -48,7 +50,9 @@ import type {
   ListDeliverableSetsParams,
   ListInstructionSetsParams,
   ListLeadsParams,
+  ListPublicServicesParams,
   LoginInput,
+  PublicService,
   SuccessResponse
 } from './api.schemas';
 
@@ -1849,6 +1853,90 @@ export const useDeleteDeliverableSet = <TError = ErrorType<unknown>,
       return useMutation(getDeleteDeliverableSetMutationOptions(options));
     }
 
+export const getListPublicServicesUrl = (params?: ListPublicServicesParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : value.toString())
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/services?${stringifiedParams}` : `/api/services`
+}
+
+/**
+ * @summary List public service offerings
+ */
+export const listPublicServices = async (params?: ListPublicServicesParams, options?: RequestInit): Promise<PublicService[]> => {
+
+  return customFetch<PublicService[]>(getListPublicServicesUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListPublicServicesQueryKey = (params?: ListPublicServicesParams,) => {
+    return [
+    `/api/services`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getListPublicServicesQueryOptions = <TData = Awaited<ReturnType<typeof listPublicServices>>, TError = ErrorType<unknown>>(params?: ListPublicServicesParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listPublicServices>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListPublicServicesQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listPublicServices>>> = ({ signal }) => listPublicServices(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listPublicServices>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListPublicServicesQueryResult = NonNullable<Awaited<ReturnType<typeof listPublicServices>>>
+export type ListPublicServicesQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List public service offerings
+ */
+
+export function useListPublicServices<TData = Awaited<ReturnType<typeof listPublicServices>>, TError = ErrorType<unknown>>(
+ params?: ListPublicServicesParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listPublicServices>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListPublicServicesQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
 export const getCreateLeadUrl = () => {
 
 
@@ -2595,5 +2683,154 @@ export const useDeleteEmailDomainRule = <TError = ErrorType<ErrorResponse>,
         TContext
       > => {
       return useMutation(getDeleteEmailDomainRuleMutationOptions(options));
+    }
+
+export const getGetClientM365ProfileUrl = (id: number,) => {
+
+
+
+
+  return `/api/admin/clients/${id}/m365-profile`
+}
+
+/**
+ * @summary Get M365 environment profile for a client (admin only)
+ */
+export const getClientM365Profile = async (id: number, options?: RequestInit): Promise<ClientM365ProfileResponse> => {
+
+  return customFetch<ClientM365ProfileResponse>(getGetClientM365ProfileUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetClientM365ProfileQueryKey = (id: number,) => {
+    return [
+    `/api/admin/clients/${id}/m365-profile`
+    ] as const;
+    }
+
+
+export const getGetClientM365ProfileQueryOptions = <TData = Awaited<ReturnType<typeof getClientM365Profile>>, TError = ErrorType<ErrorResponse>>(id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getClientM365Profile>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetClientM365ProfileQueryKey(id);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getClientM365Profile>>> = ({ signal }) => getClientM365Profile(id, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(id), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getClientM365Profile>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetClientM365ProfileQueryResult = NonNullable<Awaited<ReturnType<typeof getClientM365Profile>>>
+export type GetClientM365ProfileQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary Get M365 environment profile for a client (admin only)
+ */
+
+export function useGetClientM365Profile<TData = Awaited<ReturnType<typeof getClientM365Profile>>, TError = ErrorType<ErrorResponse>>(
+ id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getClientM365Profile>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetClientM365ProfileQueryOptions(id,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getPutClientM365ProfileUrl = (id: number,) => {
+
+
+
+
+  return `/api/admin/clients/${id}/m365-profile`
+}
+
+/**
+ * @summary Upsert M365 environment profile for a client (admin only)
+ */
+export const putClientM365Profile = async (id: number,
+    clientM365ProfileInput: ClientM365ProfileInput, options?: RequestInit): Promise<SuccessResponse> => {
+
+  return customFetch<SuccessResponse>(getPutClientM365ProfileUrl(id),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      clientM365ProfileInput,)
+  }
+);}
+
+
+
+
+export const getPutClientM365ProfileMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof putClientM365Profile>>, TError,{id: number;data: BodyType<ClientM365ProfileInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof putClientM365Profile>>, TError,{id: number;data: BodyType<ClientM365ProfileInput>}, TContext> => {
+
+const mutationKey = ['putClientM365Profile'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof putClientM365Profile>>, {id: number;data: BodyType<ClientM365ProfileInput>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  putClientM365Profile(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type PutClientM365ProfileMutationResult = NonNullable<Awaited<ReturnType<typeof putClientM365Profile>>>
+    export type PutClientM365ProfileMutationBody = BodyType<ClientM365ProfileInput>
+    export type PutClientM365ProfileMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Upsert M365 environment profile for a client (admin only)
+ */
+export const usePutClientM365Profile = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof putClientM365Profile>>, TError,{id: number;data: BodyType<ClientM365ProfileInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof putClientM365Profile>>,
+        TError,
+        {id: number;data: BodyType<ClientM365ProfileInput>},
+        TContext
+      > => {
+      return useMutation(getPutClientM365ProfileMutationOptions(options));
     }
 

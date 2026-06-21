@@ -5,6 +5,19 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+export type ClientM365ProfileResponseProfile = { [key: string]: unknown } | null;
+
+export interface ClientM365ProfileResponse {
+  profile: ClientM365ProfileResponseProfile;
+  updatedAt?: string | null;
+}
+
+export type ClientM365ProfileInputProfile = { [key: string]: unknown };
+
+export interface ClientM365ProfileInput {
+  profile: ClientM365ProfileInputProfile;
+}
+
 export interface HealthStatus {
   status: string;
 }
@@ -57,6 +70,75 @@ export interface LeadInput {
   source: LeadInputSource;
   /** @nullable */
   howFound?: string | null;
+}
+
+/**
+ * @nullable
+ */
+export type PublicServiceServiceType = typeof PublicServiceServiceType[keyof typeof PublicServiceServiceType] | null;
+
+
+export const PublicServiceServiceType = {
+  micro_offer: 'micro_offer',
+  retainer: 'retainer',
+  service_area: 'service_area',
+} as const;
+
+export type PublicServiceBillingType = typeof PublicServiceBillingType[keyof typeof PublicServiceBillingType];
+
+
+export const PublicServiceBillingType = {
+  one_time: 'one_time',
+  recurring_monthly: 'recurring_monthly',
+} as const;
+
+export interface PublicService {
+  id: number;
+  name: string;
+  slug: string;
+  /** @nullable */
+  description?: string | null;
+  /** @nullable */
+  category?: string | null;
+  /** @nullable */
+  serviceType?: PublicServiceServiceType;
+  /** @nullable */
+  tagline?: string | null;
+  /** @nullable */
+  targetAudience?: string | null;
+  /** @nullable */
+  price?: string | null;
+  /** @nullable */
+  basePrice?: string | null;
+  /** @nullable */
+  maxPrice?: string | null;
+  /** @nullable */
+  durationDays?: number | null;
+  /** @nullable */
+  turnaround?: string | null;
+  billingType: PublicServiceBillingType;
+  isPublic: boolean;
+  /** @nullable */
+  badge?: string | null;
+  highlighted?: boolean;
+  /** @nullable */
+  hoursPerMonth?: string | null;
+  /** @nullable */
+  iconName?: string | null;
+  /** @nullable */
+  sortOrder?: number | null;
+  /** @nullable */
+  stripeProductId?: string | null;
+  /** @nullable */
+  stripePriceId?: string | null;
+  /** @nullable */
+  deliverables?: string[] | null;
+  /** @nullable */
+  inclusions?: string[] | null;
+  /** @nullable */
+  features?: string[] | null;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface Lead {
@@ -246,6 +328,19 @@ q?: string;
 export type ListDeliverableSetsParams = {
 q?: string;
 };
+
+export type ListPublicServicesParams = {
+type?: ListPublicServicesType;
+};
+
+export type ListPublicServicesType = typeof ListPublicServicesType[keyof typeof ListPublicServicesType];
+
+
+export const ListPublicServicesType = {
+  micro_offer: 'micro_offer',
+  retainer: 'retainer',
+  service_area: 'service_area',
+} as const;
 
 export type ListLeadsParams = {
 status?: string;
