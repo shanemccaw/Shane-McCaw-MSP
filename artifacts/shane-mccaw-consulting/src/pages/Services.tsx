@@ -36,20 +36,23 @@ function badgeClass(badge: string): string {
   return BADGE_COLORS[badge] ?? "bg-[#0078D4]/10 text-[#0078D4]";
 }
 
-const TIER_CONFIG: Record<string, { label: string; description: string; accent: string }> = {
+const TIER_CONFIG: Record<string, { label: string; slug: string; description: string; accent: string }> = {
   entry: {
-    label: "Entry Tier — Quick-Win Packages",
-    description: "Fast, fixed-price engagements that surface what's broken and deliver a prioritized roadmap — ideal for organizations new to working with Shane or those needing immediate clarity.",
+    label: "Quick-Win Packages",
+    slug: "Entry Tier",
+    description: "Fast, fixed-price engagements that surface what's broken and deliver a prioritized roadmap.",
     accent: "text-emerald-700",
   },
   core: {
-    label: "Core Tier — Governance & Readiness",
-    description: "Deeper engagements that remediate architectural debt, establish governance foundations, and prepare your environment for Copilot AI and organizational scale.",
+    label: "Governance & Readiness",
+    slug: "Core Tier",
+    description: "Deeper engagements that establish governance foundations and prepare your environment for Copilot AI and organizational scale.",
     accent: "text-[#0078D4]",
   },
   strategic: {
-    label: "Strategic Tier — Fractional Architecture",
-    description: "Ongoing senior M365 architecture on a monthly retainer — embedded in your operations without full-time overhead. Direct access to Shane, no project managers, no junior staff.",
+    label: "Fractional Architecture",
+    slug: "Strategic Tier",
+    description: "Ongoing senior M365 architecture on a monthly retainer — embedded in your operations without full-time overhead.",
     accent: "text-[#00B4D8]",
   },
 };
@@ -196,6 +199,7 @@ function ServiceCard({ s, index }: { s: PublicService; index: number }) {
 
 function TierSection({ category, services }: { category: string; services: PublicService[] }) {
   const config = TIER_CONFIG[category] ?? {
+    slug: category.charAt(0).toUpperCase() + category.slice(1),
     label: category.charAt(0).toUpperCase() + category.slice(1),
     description: "",
     accent: "text-[#0078D4]",
@@ -206,10 +210,10 @@ function TierSection({ category, services }: { category: string; services: Publi
       <div className="max-w-[1200px] mx-auto px-6">
         <div className="mb-12">
           <p className={`text-sm font-bold uppercase tracking-[0.1em] mb-3 ${config.accent}`}>
-            {config.label.split("—")[0].trim()}
+            {config.slug}
           </p>
           <h2 className="text-2xl md:text-3xl font-extrabold text-[#0A2540] mb-4">
-            {config.label.includes("—") ? config.label.split("—")[1].trim() : config.label}
+            {config.label}
           </h2>
           {config.description && (
             <p className="text-muted-foreground max-w-2xl leading-relaxed">{config.description}</p>
@@ -288,54 +292,17 @@ export default function Services() {
       {/* Hero */}
       <section className="bg-[#0A2540] pt-32 pb-20">
         <div className="max-w-[1200px] mx-auto px-6">
-          <p className="text-[#0078D4] text-sm font-semibold uppercase tracking-[0.1em] mb-4">Microsoft 365 Consulting</p>
+          <p className="text-[#0078D4] text-sm font-semibold uppercase tracking-[0.1em] mb-4">Service Directory</p>
           <h1 className="text-4xl md:text-5xl lg:text-6xl font-extrabold text-white leading-tight max-w-4xl">
-            Microsoft 365 Consulting Services — Productized, Predictable, Proven
+            All Microsoft 365 Services
           </h1>
           <p className="text-white/70 text-lg mt-6 max-w-2xl leading-relaxed">
-            NASA-proven Microsoft 365 architecture, governance, automation, and AI services for mid-market and regulated organizations.
+            A complete directory of every productized service offered by Shane McCaw Consulting.
           </p>
           <div className="mt-10">
             <CTAButton href="/book" className="text-base px-8 py-3" data-testid="hero-book-cta">
               Book a Free Discovery Call <ArrowRight className="ml-2 w-4 h-4" />
             </CTAButton>
-          </div>
-        </div>
-      </section>
-
-      {/* Who I Serve */}
-      <section className="bg-white py-16 border-b border-border">
-        <div className="max-w-[1200px] mx-auto px-6">
-          <div className="grid grid-cols-1 lg:grid-cols-[1fr_auto] gap-10 items-start">
-            <div>
-              <p className="text-[#0078D4] text-sm font-semibold uppercase tracking-[0.1em] mb-3">Who I Serve</p>
-              <h2 className="text-2xl md:text-3xl font-extrabold text-[#0A2540] mb-4 leading-snug">
-                Built for Organizations Where Microsoft 365 Actually Matters
-              </h2>
-              <p className="text-foreground leading-relaxed mb-3">
-                Shane McCaw has spent 30 years inside the Microsoft ecosystem — and the past six serving as Lead Microsoft 365 Architect and Copilot SME at NASA, managing M365 governance and compliance in a FISMA High, FedRAMP-authorized environment under ITAR and GCC/GCC High requirements.
-              </p>
-              <p className="text-muted-foreground leading-relaxed mb-3">
-                Mid-market companies, regulated industries, and government contractors face the same high-stakes decisions Shane navigates daily: Copilot readiness, governance at scale, compliance posture, and migration risk. Every engagement draws from what he is solving in production today.
-              </p>
-              <p className="text-muted-foreground leading-relaxed">
-                Services are structured in three tiers — from fast, fixed-price quick wins to ongoing fractional architecture — so organizations can engage at the right level for their current situation.
-              </p>
-            </div>
-            <div className="flex flex-wrap lg:flex-col gap-3 lg:w-56 flex-shrink-0">
-              {[
-                { label: "Mid-Market Enterprises" },
-                { label: "Regulated Industries" },
-                { label: "Government Contractors" },
-                { label: "Healthcare & Life Sciences" },
-                { label: "Financial Services" },
-                { label: "Defense & Federal" },
-              ].map((tag, i) => (
-                <span key={i} className="inline-flex items-center gap-2 bg-[#0078D4]/8 border border-[#0078D4]/20 text-[#0078D4] text-xs font-semibold px-3 py-1.5 rounded-full whitespace-nowrap">
-                  <Shield className="w-3 h-3 flex-shrink-0" />{tag.label}
-                </span>
-              ))}
-            </div>
           </div>
         </div>
       </section>
