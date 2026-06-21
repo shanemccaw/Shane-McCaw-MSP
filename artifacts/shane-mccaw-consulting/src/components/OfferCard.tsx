@@ -37,9 +37,11 @@ interface OfferCardProps {
   index: number;
   ctaHref?: string;
   ctaLabel?: string;
+  ctaOnClick?: () => void;
+  ctaDisabled?: boolean;
 }
 
-export function OfferCard({ offer, index, ctaHref, ctaLabel = "Get Started" }: OfferCardProps) {
+export function OfferCard({ offer, index, ctaHref, ctaLabel = "Get Started", ctaOnClick, ctaDisabled }: OfferCardProps) {
   const Icon = resolveIcon(offer.iconName);
   const priceDisplay = formatPriceDisplay(offer);
   const inclusions = offer.inclusions ?? [];
@@ -160,13 +162,29 @@ export function OfferCard({ offer, index, ctaHref, ctaLabel = "Get Started" }: O
 
         <div className="flex-grow" />
 
-        <CTAButton
-          href={resolvedHref}
-          className="w-full justify-center text-sm mt-6"
-          data-testid={`offer-cta-${index}`}
-        >
-          {ctaLabel}
-        </CTAButton>
+        {ctaOnClick ? (
+          <button
+            onClick={ctaOnClick}
+            disabled={ctaDisabled}
+            className={`w-full flex items-center justify-center gap-2 text-sm font-semibold px-5 py-2.5 rounded transition-colors mt-6 disabled:opacity-60 disabled:cursor-not-allowed ${hl ? "bg-[#0078D4] hover:bg-[#006BBE] text-white" : "bg-[#0078D4] hover:bg-[#006BBE] text-white"}`}
+            data-testid={`offer-cta-${index}`}
+          >
+            {ctaDisabled ? (
+              <>
+                <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                Processing…
+              </>
+            ) : ctaLabel}
+          </button>
+        ) : (
+          <CTAButton
+            href={resolvedHref}
+            className="w-full justify-center text-sm mt-6"
+            data-testid={`offer-cta-${index}`}
+          >
+            {ctaLabel}
+          </CTAButton>
+        )}
       </div>
     </div>
   );

@@ -4,37 +4,11 @@ import { Link } from "wouter";
 import { Layout } from "@/components/Layout";
 import { CTAButton } from "@/components/CTAButton";
 import {
-  Cloud, Bot, Layout as LayoutIcon, Zap, Shield, Server, Users, ArrowRight,
-  ShieldCheck, Lock, Globe, Settings, FileText, BarChart2, Award, Sparkles,
-  Briefcase, Target, Code, Database, Monitor, Cpu, BookOpen, FolderOpen, Calendar,
-  MessageSquare, Star, CheckCircle, Clock, AlertTriangle, GraduationCap, type LucideIcon,
+  Zap, FolderOpen, Calendar, ArrowRight,
+  CheckCircle, Clock, AlertTriangle, GraduationCap,
 } from "lucide-react";
 import { useServices, formatPriceDisplay, type PublicService } from "@/hooks/useServices";
-
-const ICON_MAP: Record<string, LucideIcon> = {
-  Cloud, Bot, Layout: LayoutIcon, Zap, Shield, Server, Users, Sparkles,
-  ShieldCheck, Lock, Globe, Settings, FileText, BarChart2, Award,
-  Briefcase, Target, Code, Database, Monitor, Cpu, BookOpen,
-  MessageSquare, Calendar, Star, CheckCircle, Clock, AlertTriangle,
-};
-
-function resolveIcon(name: string | null, fallback: LucideIcon = Cloud): LucideIcon {
-  if (!name) return fallback;
-  const pascal = name.split("-").map(w => w.charAt(0).toUpperCase() + w.slice(1)).join("");
-  return ICON_MAP[pascal] ?? ICON_MAP[name] ?? fallback;
-}
-
-const BADGE_COLORS: Record<string, string> = {
-  Popular: "bg-[#0078D4]/10 text-[#0078D4]",
-  "Most Popular": "bg-[#0078D4] text-white",
-  New: "bg-emerald-100 text-emerald-700",
-  "Best Value": "bg-amber-100 text-amber-700",
-  Featured: "bg-purple-100 text-purple-700",
-};
-
-function badgeClass(badge: string): string {
-  return BADGE_COLORS[badge] ?? "bg-[#0078D4]/10 text-[#0078D4]";
-}
+import { OfferCard, resolveIcon, badgeClass } from "@/components/OfferCard";
 
 interface EngagementProject {
   id: number;
@@ -399,7 +373,15 @@ export default function Services() {
               accent="text-emerald-700"
               isEmpty={microOffers.length === 0}
             >
-              {microOffers.map((s, i) => <ServiceCard key={s.slug ?? s.id} s={s} index={i} />)}
+              {microOffers.map((s, i) => (
+                <OfferCard
+                  key={s.slug ?? s.id}
+                  offer={s}
+                  index={i}
+                  ctaHref={s.pageHref ?? "/book"}
+                  ctaLabel={s.pageHref ? "Learn More" : "Book a Discovery Call"}
+                />
+              ))}
             </TrackSection>
           </div>
 

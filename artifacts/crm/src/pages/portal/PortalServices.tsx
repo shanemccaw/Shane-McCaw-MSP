@@ -2,6 +2,27 @@ import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
 import PortalLayout from "@/components/PortalLayout";
+import {
+  CheckCircle, Clock, Sparkles, Cloud, Bot, Shield, Zap, Server, Users,
+  ShieldCheck, Lock, Globe, Settings, FileText, BarChart2, Award, Briefcase,
+  Target, Code, Database, Monitor, Cpu, BookOpen, MessageSquare, Calendar, Star,
+  Gavel, ArrowRightLeft, Compass, Layers, Building, GraduationCap, Hammer,
+  type LucideIcon,
+} from "lucide-react";
+
+const PORTAL_ICON_MAP: Record<string, LucideIcon> = {
+  Cloud, Bot, Shield, Zap, Server, Users, Sparkles,
+  ShieldCheck, Lock, Globe, Settings, FileText, BarChart2, Award,
+  Briefcase, Target, Code, Database, Monitor, Cpu, BookOpen,
+  MessageSquare, Calendar, Star, CheckCircle, Clock,
+  Gavel, ArrowRightLeft, Compass, Layers, Building, GraduationCap, Hammer,
+};
+
+function resolveServiceIcon(name: string | null): LucideIcon {
+  if (!name) return Sparkles;
+  const pascal = name.split("-").map(w => w.charAt(0).toUpperCase() + w.slice(1)).join("");
+  return PORTAL_ICON_MAP[pascal] ?? PORTAL_ICON_MAP[name] ?? Sparkles;
+}
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -41,14 +62,18 @@ interface DbService {
   name: string;
   description: string | null;
   category: string | null;
-  deliverables: string | null;
+  deliverables: string[] | null;
   basePrice: string | null;
+  maxPrice: string | null;
+  price: string | null;
   turnaround: string | null;
   billingType: "one_time" | "recurring_monthly";
   badge: string | null;
   highlighted: boolean;
   hoursPerMonth: string | null;
   tagline: string | null;
+  targetAudience: string | null;
+  iconName: string | null;
   inclusions: string[] | null;
   features: string[] | null;
   orderWorkflow: Array<unknown> | null;
@@ -213,110 +238,136 @@ function MicroOfferCard({
   buying: boolean;
   recommended?: boolean;
 }) {
-  const [expanded, setExpanded] = useState(false);
+  const Icon = resolveServiceIcon(offer.iconName);
   const inclusions = offer.inclusions ?? [];
+  const features = offer.features ?? [];
+  const deliverables = offer.deliverables ?? [];
+  const billingLabel = offer.billingType === "recurring_monthly" ? "Monthly retainer" : "One-time";
+  const hl = recommended ?? false;
 
   return (
-    <div className={`relative bg-white border rounded-xl overflow-hidden flex flex-col transition-all duration-200 ${
-      recommended
-        ? "border-[#0078D4] shadow-lg shadow-[#0078D4]/10 scale-[1.02]"
-        : "border-border hover:shadow-md hover:-translate-y-0.5"
-    }`}>
-      {/* Floating "Recommended" pill */}
-      {recommended && (
-        <div className="absolute -top-3 left-1/2 -translate-x-1/2 z-10">
-          <span className="bg-[#0078D4] text-white text-[10px] font-bold uppercase tracking-wider px-3 py-1 rounded-full shadow-md whitespace-nowrap">
-            Recommended
-          </span>
+    <div className={hl ? "relative mt-4" : undefined}>
+      {hl && (
+        <div className="absolute -top-4 left-1/2 -translate-x-1/2 bg-[#0078D4] text-white text-xs font-bold px-5 py-1.5 rounded-full uppercase tracking-wide whitespace-nowrap z-10">
+          Recommended
         </div>
       )}
-
-      <div className={`p-5 flex-1 flex flex-col ${recommended ? "pt-6" : ""}`}>
-        {/* Top row: badge + clock left, price right */}
-        <div className="flex items-start justify-between gap-3 mb-3">
-          <div className="flex items-center gap-1.5 flex-wrap">
-            {offer.badge && (
-              <span className="text-[10px] font-bold uppercase tracking-wider bg-[#0078D4] text-white px-2.5 py-0.5 rounded-full">
-                {offer.badge}
-              </span>
-            )}
-            {offer.turnaround && (
-              <span className="text-[10px] font-semibold text-muted-foreground bg-slate-50 border border-slate-200 px-2 py-0.5 rounded-full flex items-center gap-1">
-                <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" />
-                </svg>
-                {offer.turnaround}
-              </span>
-            )}
+      <div
+        className={`rounded-xl border p-8 flex flex-col hover:shadow-lg hover:-translate-y-1 transition-all duration-300 h-full ${
+          hl ? "bg-[#0A2540] border-[#0078D4]/60" : "bg-white border-border"
+        }`}
+      >
+        <div className="flex items-start justify-between mb-4">
+          <div className={`w-11 h-11 rounded-lg flex items-center justify-center flex-shrink-0 ${hl ? "bg-white/10" : "bg-[#0078D4]/10"}`}>
+            <Icon className="w-5 h-5 text-[#0078D4]" />
           </div>
-          <span className="text-xl font-extrabold text-[#0078D4] flex-shrink-0 leading-none">
-            {formatPrice(offer.basePrice)}
+          {offer.badge && (
+            <span className={`text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full ${hl ? "bg-[#0078D4] text-white" : "bg-[#0078D4]/10 text-[#0078D4]"}`}>
+              {offer.badge}
+            </span>
+          )}
+        </div>
+
+        {offer.category && (
+          <p className={`text-xs font-medium uppercase tracking-wider mb-2 ${hl ? "text-white/50" : "text-muted-foreground"}`}>
+            {offer.category}
+          </p>
+        )}
+
+        <p className="text-[#0078D4] text-3xl font-extrabold mb-1">
+          {formatPrice(offer.basePrice)}
+        </p>
+
+        {offer.hoursPerMonth && (
+          <p className={`text-sm mb-1 ${hl ? "text-[#00B4D8]" : "text-[#0078D4]"}`}>{offer.hoursPerMonth}/month</p>
+        )}
+
+        <h3 className={`text-xl font-bold mb-1 ${hl ? "text-white" : "text-[#0A2540]"}`}>{offer.name}</h3>
+
+        {offer.tagline && (
+          <p className={`text-sm italic mb-3 ${hl ? "text-white/60" : "text-muted-foreground"}`}>{offer.tagline}</p>
+        )}
+
+        {offer.description && (
+          <p className={`text-sm leading-relaxed mb-4 ${hl ? "text-white/60" : "text-foreground"}`}>{offer.description}</p>
+        )}
+
+        <div className="flex flex-wrap gap-3 mb-4">
+          {offer.turnaround && (
+            <span className={`inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-full border ${hl ? "bg-white/10 text-white/70 border-white/20" : "text-muted-foreground bg-[#F7F9FC] border-border"}`}>
+              <Clock className="w-3.5 h-3.5 text-[#0078D4]" />
+              {offer.turnaround}
+            </span>
+          )}
+          <span className={`inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-full border ${hl ? "bg-white/10 text-white/70 border-white/20" : "text-muted-foreground bg-[#F7F9FC] border-border"}`}>
+            {billingLabel}
           </span>
         </div>
 
-        {/* Title */}
-        <h3 className="text-sm font-bold text-[#0A2540] mb-2 leading-snug">{offer.name}</h3>
-
-        {/* Description */}
-        {offer.description && (
-          <p className="text-xs text-muted-foreground leading-relaxed mb-3">{offer.description}</p>
+        {offer.targetAudience && (
+          <p className={`text-sm italic mb-4 ${hl ? "text-white/60" : "text-muted-foreground"}`}>
+            <span className={`font-semibold not-italic ${hl ? "text-white/80" : "text-[#0A2540]"}`}>Best for:</span> {offer.targetAudience}
+          </p>
         )}
 
-        {/* Deliverable box */}
-        {offer.deliverables && (
-          <div className="bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 mb-3 text-xs">
-            <span className="font-bold text-[#0A2540]">Deliverable: </span>
-            <span className="text-muted-foreground">{offer.deliverables}</span>
+        {deliverables.length > 0 && (
+          <div className="mb-4">
+            <p className={`text-sm font-semibold mb-1.5 ${hl ? "text-white/50" : "text-[#0A2540]"}`}>Deliverables:</p>
+            <ul className="space-y-1">
+              {deliverables.map((line, i) => (
+                <li key={i} className={`flex items-start gap-2 text-sm ${hl ? "text-white/80" : "text-muted-foreground"}`}>
+                  <span className="mt-1.5 w-1.5 h-1.5 rounded-full bg-[#0078D4] flex-shrink-0" />
+                  {line}
+                </li>
+              ))}
+            </ul>
           </div>
         )}
 
-        {/* "See what's included" chevron link */}
         {inclusions.length > 0 && (
-          <>
-            <button
-              onClick={() => setExpanded(!expanded)}
-              className="flex items-center gap-1.5 text-xs font-semibold text-[#0078D4] hover:text-[#0078D4]/80 transition-colors mb-3"
-            >
-              <svg
-                className={`w-3.5 h-3.5 transition-transform duration-150 ${expanded ? "rotate-90" : ""}`}
-                fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}
-              >
-                <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
-              </svg>
-              {expanded ? "Hide" : "See"} what's included
-            </button>
-            {expanded && (
-              <ul className="mb-3 space-y-1.5">
-                {inclusions.map((item, i) => (
-                  <li key={i} className="flex items-start gap-2 text-xs text-[#0A2540]">
-                    <svg className="w-3.5 h-3.5 text-green-500 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                    </svg>
-                    {item}
-                  </li>
-                ))}
-              </ul>
-            )}
-          </>
+          <div className={`border-t pt-4 mb-4 ${hl ? "border-white/10" : "border-border"}`}>
+            <p className={`text-sm font-semibold mb-3 ${hl ? "text-white/50" : "text-[#0A2540]"}`}>What's Included:</p>
+            <ul className="space-y-2">
+              {inclusions.map((item, j) => (
+                <li key={j} className={`flex items-start gap-2 text-sm ${hl ? "text-white/80" : "text-foreground"}`}>
+                  <CheckCircle className="w-4 h-4 text-[#0078D4] flex-shrink-0 mt-0.5" />
+                  {item}
+                </li>
+              ))}
+            </ul>
+          </div>
         )}
 
-        {/* Full-width purchase button */}
-        <div className="mt-auto pt-2">
-          <button
-            onClick={() => onBuy(offer)}
-            disabled={buying}
-            className="w-full bg-[#0078D4] hover:bg-[#0078D4]/90 disabled:opacity-60 disabled:cursor-not-allowed text-white text-sm font-semibold py-2.5 rounded-xl transition-colors flex items-center justify-center gap-2"
-          >
-            {buying ? (
-              <>
-                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                Preparing checkout…
-              </>
-            ) : (
-              `Purchase — ${formatPrice(offer.basePrice)}`
-            )}
-          </button>
-        </div>
+        {features.length > 0 && (
+          <div className={`border-t pt-4 mb-4 ${hl ? "border-white/10" : "border-border"}`}>
+            <p className={`text-sm font-semibold mb-3 ${hl ? "text-white/50" : "text-[#0A2540]"}`}>Features:</p>
+            <ul className="space-y-1.5">
+              {features.map((item, j) => (
+                <li key={j} className={`flex items-start gap-2 text-sm ${hl ? "text-white/80" : "text-muted-foreground"}`}>
+                  <span className="w-1.5 h-1.5 rounded-full bg-[#0078D4] flex-shrink-0 mt-1.5" />
+                  {item}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        <div className="flex-grow" />
+
+        <button
+          onClick={() => onBuy(offer)}
+          disabled={buying}
+          className="w-full flex items-center justify-center gap-2 bg-[#0078D4] hover:bg-[#006BBE] disabled:opacity-60 disabled:cursor-not-allowed text-white text-sm font-semibold py-2.5 rounded transition-colors mt-6"
+        >
+          {buying ? (
+            <>
+              <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+              Preparing checkout…
+            </>
+          ) : (
+            `Purchase — ${formatPrice(offer.basePrice)}`
+          )}
+        </button>
       </div>
     </div>
   );

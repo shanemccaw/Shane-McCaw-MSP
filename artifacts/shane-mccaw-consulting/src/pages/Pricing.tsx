@@ -9,6 +9,7 @@ import {
   Shield, Users, AlertTriangle, DollarSign, Layers, Lightbulb,
 } from "lucide-react";
 import { useServices, formatPriceDisplay, type PublicService } from "@/hooks/useServices";
+import { OfferCard } from "@/components/OfferCard";
 
 interface EngagementProject {
   id: number;
@@ -67,89 +68,6 @@ const faqs = [
   },
 ];
 
-function MicroOfferCard({ offer, index }: { offer: PublicService; index: number }) {
-  const price = formatPriceDisplay(offer);
-  return (
-    <div
-      className="bg-white rounded-xl border border-border p-6 flex flex-col hover:border-[#0078D4]/30 hover:shadow-sm transition-all duration-200 relative"
-      data-testid={`micro-offer-${index}`}
-    >
-      {offer.badge && (
-        <span className="absolute -top-3 left-5 bg-[#0078D4] text-white text-xs font-bold px-3 py-1 rounded-full">
-          {offer.badge}
-        </span>
-      )}
-      <div className="flex items-start justify-between gap-3 mb-3">
-        <h3 className="font-extrabold text-[#0A2540] text-base leading-snug">{offer.name}</h3>
-        <span className="text-[#0078D4] font-extrabold text-lg flex-shrink-0">{price}</span>
-      </div>
-      {offer.tagline && (
-        <p className="text-[#0078D4] text-xs font-semibold mb-1">{offer.tagline}</p>
-      )}
-      <p className="text-muted-foreground text-sm leading-relaxed mb-4">{offer.description}</p>
-      {offer.targetAudience && (
-        <div className="mb-3">
-          <p className="text-xs font-semibold text-[#0A2540] uppercase tracking-wide mb-1">Who it&apos;s for</p>
-          <p className="text-xs text-muted-foreground">{offer.targetAudience}</p>
-        </div>
-      )}
-      {offer.inclusions && offer.inclusions.length > 0 && (
-        <div className="mb-3">
-          <p className="text-xs font-semibold text-[#0A2540] uppercase tracking-wide mb-1">What&apos;s included</p>
-          <ul className="space-y-1">
-            {offer.inclusions.map((item, i) => (
-              <li key={i} className="flex items-start gap-2 text-xs text-muted-foreground">
-                <CheckCircle className="w-3.5 h-3.5 text-[#0078D4] flex-shrink-0 mt-0.5" />
-                <span>{item}</span>
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-      {offer.features && offer.features.length > 0 && (
-        <div className="mb-3">
-          <p className="text-xs font-semibold text-[#0A2540] uppercase tracking-wide mb-1">Features</p>
-          <ul className="space-y-1">
-            {offer.features.map((item, i) => (
-              <li key={i} className="flex items-start gap-2 text-xs text-muted-foreground">
-                <CheckCircle className="w-3.5 h-3.5 text-[#0078D4] flex-shrink-0 mt-0.5" />
-                <span>{item}</span>
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-      <div className="border-t border-border pt-4 space-y-2 mt-auto">
-        {offer.deliverables && offer.deliverables.length > 0 && (
-          <div className="mb-3">
-            <p className="text-xs font-semibold text-[#0A2540] uppercase tracking-wide mb-1">Deliverables</p>
-            <ul className="space-y-1">
-              {offer.deliverables.map((item, i) => (
-                <li key={i} className="flex items-start gap-2 text-xs text-muted-foreground">
-                  <CheckCircle className="w-3.5 h-3.5 text-[#0078D4] flex-shrink-0 mt-0.5" />
-                  <span>{item}</span>
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
-        {offer.turnaround && (
-          <div className="flex items-center gap-2 text-xs">
-            <span className="w-3.5 h-3.5 flex-shrink-0 text-center text-muted-foreground">{"\u23f1"}</span>
-            <span className="text-muted-foreground">Turnaround: {offer.turnaround}</span>
-          </div>
-        )}
-      </div>
-      <a
-        href={`/crm/portal/onboarding/select?service=${offer.slug ?? ""}`}
-        className="mt-4 text-[#0078D4] text-sm font-semibold hover:underline flex items-center gap-1"
-        data-testid={`micro-offer-cta-${index}`}
-      >
-        Get started <ArrowRight className="w-3.5 h-3.5" />
-      </a>
-    </div>
-  );
-}
 
 function RetainerCard({ plan, index }: { plan: PublicService; index: number }) {
   const price = formatPriceDisplay(plan);
@@ -603,7 +521,7 @@ export default function Pricing() {
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
               {microOffers.map((offer, i) => (
-                <MicroOfferCard key={offer.slug} offer={offer} index={i} />
+                <OfferCard key={offer.slug ?? i} offer={offer} index={i} />
               ))}
             </div>
           )}
