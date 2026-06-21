@@ -1,3 +1,6 @@
+// Simpler retainer card used on individual service pages.
+// For the full-featured version with features, inclusions, deliverables, turnaround,
+// and targetAudience, use RetainerCard.tsx instead.
 import { CTAButton } from "@/components/CTAButton";
 
 interface ServiceRetainerCardProps {
