@@ -1,5 +1,5 @@
 import { Router, type IRouter, type Request, type Response } from "express";
-import { db, projectsTable, clientServicesTable, servicesTable, workflowStepsTable, kanbanTasksTable, documentsTable, reportsTable, invoicesTable, messagesTable, notificationsTable, projectUpdatesTable, usersTable, contractsTable, passwordResetTokensTable, workflowTemplateStepsTable, workflowTemplateStepTasksTable, contractTemplatesTable, impersonationTokensTable, statusReportsTable, deviceTokensTable, projectClosuresTable, auditLogsTable, instructionSetsTable, checklistsTable, artifactSetsTable, deliverableSetsTable, emailsTable, emailDomainRulesTable } from "@workspace/db";
+import { db, projectsTable, clientServicesTable, servicesTable, workflowStepsTable, kanbanTasksTable, documentsTable, reportsTable, invoicesTable, messagesTable, notificationsTable, projectUpdatesTable, usersTable, contractsTable, passwordResetTokensTable, workflowTemplateStepsTable, workflowTemplateStepTasksTable, contractTemplatesTable, impersonationTokensTable, statusReportsTable, deviceTokensTable, projectClosuresTable, auditLogsTable, instructionSetsTable, checklistsTable, artifactSetsTable, deliverableSetsTable, emailsTable, emailDomainRulesTable, clientM365ProfilesTable } from "@workspace/db";
 import { eq, and, desc, asc, count, sql, inArray, gte, isNotNull } from "drizzle-orm";
 import { requireAuth, requireAdmin } from "../middlewares/requireAuth";
 import { sendEmail, purchaseConfirmationEmail, onboardingConfirmationEmail, adminPurchaseAlertEmail, closureRequestEmail, statusReportReplyEmail, clientThreadReplyEmail, adminThreadReplyEmail, retainerResumedEmail } from "../lib/mailer";
@@ -3201,6 +3201,27 @@ router.delete("/admin/clients/:id", requireAdmin, async (req: Request, res: Resp
     req.log.error(err, "Failed to delete client");
     res.status(500).json({ error: "Failed to delete client" });
   }
+});
+
+// ─── ADMIN: M365 Environment Profile ─────────────────────────────────────────
+router.get("/admin/clients/:id/m365-profile", requireAdmin, async (req: Request, res: Response) => {
+  const clientId = parseInt(String(req.params.id ?? ""), 10);
+  if (isNaN(clientId)) { res.status(400).json({ error: "Invalid client ID" }); return; }
+  const [row] = await db.select().from(clientM365ProfilesTable).where(eq(clientM365ProfilesTable.clientId, clientId));
+  res.json({ profile: row?.profile ?? null, updatedAt: row?.updatedAt ?? null });
+});
+
+router.put("/admin/clients/:id/m365-profile", requireAdmin, async (req: Request, res: Response) => {
+  const clientId = parseInt(String(req.params.id ?? ""), 10);
+  if (isNaN(clientId)) { res.status(400).json({ error: "Invalid client ID" }); return; }
+  const { profile } = req.body as { profile: Record<string, unknown> };
+  if (!profile || typeof profile !== "object" || Array.isArray(profile)) {
+    res.status(400).json({ error: "profile must be a plain object" }); return;
+  }
+  await db.insert(clientM365ProfilesTable)
+    .values({ clientId, profile })
+    .onConflictDoUpdate({ target: clientM365ProfilesTable.clientId, set: { profile, updatedAt: new Date() } });
+  res.json({ ok: true });
 });
 
 // ─── ADMIN: Impersonation ────────────────────────────────────────────────────

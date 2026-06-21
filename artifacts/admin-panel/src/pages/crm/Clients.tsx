@@ -10,6 +10,7 @@ import {
   DialogDescription,
   DialogFooter,
 } from "@/components/ui/dialog";
+import { M365ProfileWizard } from "@/components/M365ProfileWizard";
 
 interface Client {
   id: number;
@@ -613,6 +614,7 @@ export default function ClientsPage() {
   const [search, setSearch] = useState("");
   const [expandedClientId, setExpandedClientId] = useState<number | null>(null);
   const [expandedSpClientId, setExpandedSpClientId] = useState<number | null>(null);
+  const [m365ClientId, setM365ClientId] = useState<number | null>(null);
 
   const load = async () => {
     const res = await fetchWithAuth("/api/admin/clients");
@@ -876,6 +878,16 @@ export default function ClientsPage() {
                             <span className="w-1.5 h-1.5 rounded-full bg-green-500 inline-block" />
                           )}
                         </button>
+                        <button
+                          onClick={() => setM365ClientId(c.id)}
+                          className="flex items-center gap-1 text-xs font-semibold text-[#0078D4] hover:underline transition-colors"
+                          title="View or edit Microsoft 365 environment profile for this client"
+                        >
+                          <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                          </svg>
+                          M365 Profile
+                        </button>
                         <button onClick={() => setDeleteTarget(c)} className="text-xs font-semibold text-red-500 hover:text-red-700">Delete</button>
                       </div>
                     </td>
@@ -908,6 +920,14 @@ export default function ClientsPage() {
           onClose={() => { if (!deleting) setDeleteTarget(null); }}
           onConfirm={() => void handleDelete()}
           deleting={deleting}
+        />
+      )}
+
+      {m365ClientId !== null && (
+        <M365ProfileWizard
+          clientId={m365ClientId}
+          clientName={clients.find(c => c.id === m365ClientId)?.name ?? clients.find(c => c.id === m365ClientId)?.email ?? "Client"}
+          onClose={() => setM365ClientId(null)}
         />
       )}
     </div>

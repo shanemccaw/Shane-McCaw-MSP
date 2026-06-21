@@ -587,3 +587,15 @@ export const settingsTable = pgTable("settings", {
   value: text("value"),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
+
+// Microsoft 365 Environment Profile — one row per client, persisted as a JSONB blob
+export const clientM365ProfilesTable = pgTable("client_m365_profiles", {
+  id: serial("id").primaryKey(),
+  clientId: integer("client_id").notNull().unique().references(() => usersTable.id, { onDelete: "cascade" }),
+  profile: jsonb("profile").$type<Record<string, unknown>>().notNull().default({}),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export type InsertClientM365Profile = typeof clientM365ProfilesTable.$inferInsert;
+export type ClientM365Profile = typeof clientM365ProfilesTable.$inferSelect;
