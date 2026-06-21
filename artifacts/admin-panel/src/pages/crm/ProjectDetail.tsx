@@ -171,6 +171,7 @@ function DraggableCard({
   onReply: (reportId: number, reply: string) => Promise<void>;
 }) {
   const [expanded, setExpanded] = useState(false);
+  const [customerViewOpen, setCustomerViewOpen] = useState(false);
   const [replyDraft, setReplyDraft] = useState("");
   const [replySending, setReplySending] = useState(false);
   const [replySent, setReplySent] = useState(false);
@@ -193,6 +194,17 @@ function DraggableCard({
     (task.column === "completed" && (task.completionStatus || task.completionNotes));
 
   const isInProgress = task.column === "in_progress";
+
+  const customerMeta = (task.taskMetadata ?? {}) as Record<string, unknown>;
+  const clientDeliverables = (customerMeta.clientDeliverables ?? []) as string[];
+  const hasCustomerContent = Boolean(
+    task.taskType ||
+    clientDeliverables.length > 0 ||
+    task.waitingReason ||
+    task.completionStatus ||
+    task.completionNotes ||
+    task.statusReportId
+  );
 
   return (
     <div
@@ -362,6 +374,76 @@ function DraggableCard({
                   <div>
                     <p className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground mb-0.5">Task Results</p>
                     <pre className="text-[9px] text-[#0A2540] bg-white border border-border rounded px-2 py-1.5 whitespace-pre-wrap font-mono leading-relaxed max-h-40 overflow-y-auto">{task.completionNotes}</pre>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* ── Customer View collapsible ──────────────────────────────── */}
+            {hasCustomerContent && (
+              <div className="mt-2 border-t border-[#0078D4]/20 pt-1.5">
+                <button
+                  onClick={() => setCustomerViewOpen(v => !v)}
+                  className="w-full flex items-center justify-between text-[9px] font-bold text-[#0078D4] hover:text-[#005fa3] transition-colors py-0.5"
+                >
+                  <span className="flex items-center gap-1">
+                    <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                    </svg>
+                    Customer View
+                  </span>
+                  <svg className={`w-3 h-3 transition-transform ${customerViewOpen ? "rotate-180" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+                  </svg>
+                </button>
+                {customerViewOpen && (
+                  <div className="mt-1.5 space-y-2 bg-[#F7F9FC] border border-[#0078D4]/15 rounded-lg px-2.5 py-2">
+                    {task.taskType && (
+                      <TypedCardContent taskType={task.taskType} metadata={task.taskMetadata} />
+                    )}
+                    {clientDeliverables.length > 0 && (
+                      <div>
+                        <p className="text-[9px] font-bold uppercase tracking-wider text-[#0A2540]/50 mb-1">Client Deliverables</p>
+                        <ul className="space-y-0.5">
+                          {clientDeliverables.map((d, i) => (
+                            <li key={i} className="flex items-start gap-1">
+                              <span className="mt-0.5 text-[#0078D4] flex-shrink-0 leading-none">•</span>
+                              <span className="text-[10px] text-[#0A2540] leading-snug">{d}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                    {task.waitingReason && (
+                      <div>
+                        <p className="text-[9px] font-bold uppercase tracking-wider text-amber-600 mb-0.5">Waiting For</p>
+                        <p className="text-[10px] text-amber-800 bg-amber-50 border border-amber-100 rounded px-2 py-1 whitespace-pre-wrap leading-snug">{task.waitingReason}</p>
+                      </div>
+                    )}
+                    {task.completionStatus && (
+                      <div>
+                        <p className="text-[9px] font-bold uppercase tracking-wider text-green-700 mb-0.5">Completion Status</p>
+                        <p className="text-[10px] text-green-800 bg-green-50 border border-green-100 rounded px-2 py-1">{task.completionStatus}</p>
+                      </div>
+                    )}
+                    {task.completionNotes && (
+                      <div>
+                        <p className="text-[9px] font-bold uppercase tracking-wider text-[#0A2540]/50 mb-0.5">Task Results</p>
+                        <pre className="text-[9px] text-[#0A2540] bg-white border border-border rounded px-2 py-1.5 whitespace-pre-wrap font-mono leading-relaxed max-h-32 overflow-y-auto">{task.completionNotes}</pre>
+                      </div>
+                    )}
+                    {task.statusReportId && (
+                      <div>
+                        <p className="text-[9px] font-bold uppercase tracking-wider text-amber-600 mb-0.5">Status Report Q&A</p>
+                        <p className="text-[10px] text-amber-700 bg-amber-50 border border-amber-100 rounded px-2 py-1 flex items-center gap-1">
+                          <svg className="w-3 h-3 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                          </svg>
+                          Client has a pending question (report #{task.statusReportId})
+                        </p>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
