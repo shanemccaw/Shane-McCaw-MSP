@@ -384,41 +384,53 @@ function TaskCard({
         <span className="text-sm text-[#0A2540] leading-snug">{task.title}</span>
         {(hasInlineDetail || hasLibraryLinks) && (
           <div className="flex flex-wrap gap-1 mt-1">
-            {task.instructionSetId && (
-              <span className="text-[9px] bg-indigo-50 text-indigo-600 border border-indigo-100 px-1.5 py-0.5 rounded font-semibold">
-                📚 instructions
-              </span>
-            )}
+            {task.instructionSetId && (() => {
+              const name = instructionSets.find(a => a.id === task.instructionSetId)?.title ?? `#${task.instructionSetId}`;
+              return (
+                <span className="text-[9px] bg-indigo-50 text-indigo-600 border border-indigo-100 px-1.5 py-0.5 rounded font-semibold" title={`Instruction Set: ${name}`}>
+                  📚 {name}
+                </span>
+              );
+            })()}
             {!task.instructionSetId && task.instructions && task.instructions.length > 0 && (
               <span className="text-[9px] bg-purple-50 text-purple-600 border border-purple-100 px-1.5 py-0.5 rounded font-semibold">
                 {task.instructions.length} instruction{task.instructions.length !== 1 ? "s" : ""}
               </span>
             )}
-            {task.checklistId && (
-              <span className="text-[9px] bg-indigo-50 text-indigo-600 border border-indigo-100 px-1.5 py-0.5 rounded font-semibold">
-                📚 checklist
-              </span>
-            )}
+            {task.checklistId && (() => {
+              const name = checklists.find(a => a.id === task.checklistId)?.title ?? `#${task.checklistId}`;
+              return (
+                <span className="text-[9px] bg-indigo-50 text-indigo-600 border border-indigo-100 px-1.5 py-0.5 rounded font-semibold" title={`Checklist: ${name}`}>
+                  ✅ {name}
+                </span>
+              );
+            })()}
             {!task.checklistId && task.checklist && task.checklist.length > 0 && (
               <span className="text-[9px] bg-blue-50 text-blue-600 border border-blue-100 px-1.5 py-0.5 rounded font-semibold">
                 {task.checklist.length} checklist item{task.checklist.length !== 1 ? "s" : ""}
               </span>
             )}
-            {task.artifactsId && (
-              <span className="text-[9px] bg-indigo-50 text-indigo-600 border border-indigo-100 px-1.5 py-0.5 rounded font-semibold">
-                📚 artifacts
-              </span>
-            )}
+            {task.artifactsId && (() => {
+              const name = artifactSets.find(a => a.id === task.artifactsId)?.title ?? `#${task.artifactsId}`;
+              return (
+                <span className="text-[9px] bg-indigo-50 text-indigo-600 border border-indigo-100 px-1.5 py-0.5 rounded font-semibold" title={`Artifact Set: ${name}`}>
+                  🗂 {name}
+                </span>
+              );
+            })()}
             {!task.artifactsId && task.artifactsProduced && task.artifactsProduced.length > 0 && (
               <span className="text-[9px] bg-amber-50 text-amber-600 border border-amber-100 px-1.5 py-0.5 rounded font-semibold">
                 {task.artifactsProduced.length} artifact{task.artifactsProduced.length !== 1 ? "s" : ""}
               </span>
             )}
-            {task.deliverablesId && (
-              <span className="text-[9px] bg-indigo-50 text-indigo-600 border border-indigo-100 px-1.5 py-0.5 rounded font-semibold">
-                📚 deliverables
-              </span>
-            )}
+            {task.deliverablesId && (() => {
+              const name = deliverableSets.find(a => a.id === task.deliverablesId)?.title ?? `#${task.deliverablesId}`;
+              return (
+                <span className="text-[9px] bg-indigo-50 text-indigo-600 border border-indigo-100 px-1.5 py-0.5 rounded font-semibold" title={`Deliverable Set: ${name}`}>
+                  📦 {name}
+                </span>
+              );
+            })()}
             {!task.deliverablesId && task.clientDeliverables && task.clientDeliverables.length > 0 && (
               <span className="text-[9px] bg-green-50 text-green-600 border border-green-100 px-1.5 py-0.5 rounded font-semibold">
                 {task.clientDeliverables.length} deliverable{task.clientDeliverables.length !== 1 ? "s" : ""}
