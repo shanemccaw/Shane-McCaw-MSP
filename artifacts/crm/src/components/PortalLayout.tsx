@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link, useLocation } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
 import PortalTour, { useTour } from "@/components/PortalTour";
@@ -58,7 +58,7 @@ function NavLink({ item, isActive }: { item: NavItem; isActive: boolean }) {
   );
 }
 
-const CLIENT_NAV_ITEMS = (unreadMessages: number): NavItem[] => [
+const CLIENT_NAV_ITEMS = (unreadMessages: number, hasArchivedProjects = false): NavItem[] => [
   {
     label: "Dashboard",
     path: "/portal",
@@ -96,6 +96,11 @@ const CLIENT_NAV_ITEMS = (unreadMessages: number): NavItem[] => [
     dataTour: "documents",
     icon: <svg className="w-4.5 h-4.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0118 18a8.967 8.967 0 00-6 2.292m0-14.25v14.25" /></svg>,
   },
+  ...(hasArchivedProjects ? [{
+    label: "Project Archive",
+    path: "/portal/archive",
+    icon: (<svg className="w-4.5 h-4.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" /></svg>),
+  }] : []),
   {
     label: "Profile",
     path: "/portal/profile",
@@ -103,11 +108,11 @@ const CLIENT_NAV_ITEMS = (unreadMessages: number): NavItem[] => [
   },
 ];
 
-export function ClientSidebar({ unreadNotifications = 0, unreadMessages = 0 }: { unreadNotifications?: number; unreadMessages?: number }) {
+export function ClientSidebar({ unreadNotifications = 0, unreadMessages = 0, hasArchivedProjects = false }: { unreadNotifications?: number; unreadMessages?: number; hasArchivedProjects?: boolean }) {
   const [location] = useLocation();
   const { user, logout } = useAuth();
   const { startTour } = useTour();
-  const navItems = CLIENT_NAV_ITEMS(unreadMessages);
+  const navItems = CLIENT_NAV_ITEMS(unreadMessages, hasArchivedProjects);
 
   return (
     <aside className="hidden md:flex w-60 flex-shrink-0 bg-[#0A2540] flex-col h-screen sticky top-0">
@@ -147,7 +152,7 @@ export function ClientSidebar({ unreadNotifications = 0, unreadMessages = 0 }: {
   );
 }
 
-function MobileBottomNav({ unreadMessages = 0 }: { unreadMessages?: number }) {
+function MobileBottomNav({ unreadMessages = 0, hasArchivedProjects = false }: { unreadMessages?: number; hasArchivedProjects?: boolean }) {
   const [location] = useLocation();
   const { user, logout } = useAuth();
   const [showAccount, setShowAccount] = useState(false);
@@ -186,6 +191,11 @@ function MobileBottomNav({ unreadMessages = 0 }: { unreadMessages?: number }) {
       dataTour: "messages",
       icon: <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" /></svg>,
     },
+    ...(hasArchivedProjects ? [{
+      label: "Archive",
+      path: "/portal/archive",
+      icon: (<svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" /></svg>),
+    }] : []),
   ];
 
   return (
@@ -325,18 +335,28 @@ function ImpersonationBanner({ email }: { email: string }) {
 }
 
 export default function PortalLayout({ children, unreadNotifications = 0, unreadMessages = 0 }: PortalLayoutProps) {
-  const { user } = useAuth();
+  const { user, fetchWithAuth } = useAuth();
+  const [hasArchivedProjects, setHasArchivedProjects] = useState(false);
   const isImpersonating = Boolean(user?.impersonatedBy);
+
+  useEffect(() => {
+    fetchWithAuth("/api/portal/projects")
+      .then(r => r.ok ? r.json() : [])
+      .then((projects: { status: string }[]) => {
+        setHasArchivedProjects(Array.isArray(projects) && projects.some(p => p.status === "completed"));
+      })
+      .catch(() => null);
+  }, [fetchWithAuth]);
 
   return (
     <div className="flex min-h-screen bg-[#F7F9FC]">
       {isImpersonating && <ImpersonationBanner email={user!.email} />}
       <div className={`flex w-full min-h-screen ${isImpersonating ? "pt-[42px]" : ""}`}>
-        <ClientSidebar unreadNotifications={unreadNotifications} unreadMessages={unreadMessages} />
+        <ClientSidebar unreadNotifications={unreadNotifications} unreadMessages={unreadMessages} hasArchivedProjects={hasArchivedProjects} />
         <main className="flex-1 overflow-auto min-w-0 pb-16 md:pb-0">
           {children}
         </main>
-        <MobileBottomNav unreadMessages={unreadMessages} />
+        <MobileBottomNav unreadMessages={unreadMessages} hasArchivedProjects={hasArchivedProjects} />
       </div>
       <PortalTour />
     </div>

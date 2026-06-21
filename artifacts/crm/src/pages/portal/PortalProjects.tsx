@@ -323,11 +323,12 @@ export default function PortalProjects() {
       .finally(() => setLoading(false));
   }, [fetchWithAuth]);
 
-  const retainers = projects.filter(p => p.projectType === "retainer");
-  const engagements = projects.filter(p => p.projectType !== "retainer");
+  const activeProjects = projects.filter(p => p.status !== "completed");
+  const retainers = activeProjects.filter(p => p.projectType === "retainer");
+  const engagements = activeProjects.filter(p => p.projectType !== "retainer");
 
-  const avgProgress = projects.length > 0
-    ? Math.round(projects.reduce((s, p) => s + p.progress, 0) / projects.length)
+  const avgProgress = activeProjects.length > 0
+    ? Math.round(activeProjects.reduce((s, p) => s + p.progress, 0) / activeProjects.length)
     : 0;
 
   return (
@@ -359,7 +360,7 @@ export default function PortalProjects() {
           <div className="flex items-center justify-center py-24">
             <div className="w-8 h-8 border-4 border-[#0078D4] border-t-transparent rounded-full animate-spin" />
           </div>
-        ) : projects.length === 0 ? (
+        ) : activeProjects.length === 0 ? (
           <div className="bg-white border border-gray-100 rounded-xl p-16 text-center"
             style={{ boxShadow: "0 2px 10px rgba(15,23,42,0.04)" }}>
             <div className="w-14 h-14 rounded-xl bg-[#0078D4]/10 flex items-center justify-center mx-auto mb-4">
@@ -413,11 +414,11 @@ export default function PortalProjects() {
         )}
 
         {/* Footer metric bar */}
-        {!loading && projects.length > 0 && (
+        {!loading && activeProjects.length > 0 && (
           <div className="mt-20 grid grid-cols-2 md:grid-cols-4 gap-8 border-t border-gray-100 pt-10 pb-6">
             <div className="flex flex-col">
               <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">Active Engagements</span>
-              <span className="text-2xl font-bold text-[#0A2540]">{String(projects.filter(p => p.status === "active").length).padStart(2, "0")}</span>
+              <span className="text-2xl font-bold text-[#0A2540]">{String(activeProjects.filter(p => p.status === "active").length).padStart(2, "0")}</span>
             </div>
             <div className="flex flex-col">
               <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">Avg. Progress</span>
@@ -426,7 +427,7 @@ export default function PortalProjects() {
             <div className="flex flex-col">
               <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">Total Phases</span>
               <span className="text-2xl font-bold text-[#0A2540]">
-                {String(projects.reduce((s, p) => s + p.stepCount, 0)).padStart(2, "0")}
+                {String(activeProjects.reduce((s, p) => s + p.stepCount, 0)).padStart(2, "0")}
               </span>
             </div>
             <div className="flex flex-col">

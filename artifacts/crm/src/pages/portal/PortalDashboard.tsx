@@ -178,13 +178,13 @@ export default function PortalDashboard() {
                       <span className="text-sm text-[#0078D4] font-semibold hover:underline cursor-pointer">View all →</span>
                     </Link>
                   </div>
-                  {(data?.projects?.length ?? 0) === 0 ? (
+                  {(data?.projects?.filter(p => p.status !== "completed").length ?? 0) === 0 ? (
                     <div className="bg-white border border-border rounded-xl p-8 text-center text-muted-foreground text-sm">
-                      No projects yet — Shane will set them up shortly.
+                      No active projects — Shane will set them up shortly.
                     </div>
                   ) : (
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      {data!.projects.map(p => (
+                      {data!.projects.filter(p => p.status !== "completed").map(p => (
                         <Link key={p.id} href={`/portal/projects/${p.id}`}>
                           <div className="bg-white border border-border rounded-xl p-5 hover:border-[#0078D4]/40 hover:shadow-md transition-all cursor-pointer group">
                             <div className="flex items-start justify-between gap-2 mb-3">

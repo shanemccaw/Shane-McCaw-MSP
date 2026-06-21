@@ -17,6 +17,7 @@ import OnboardingSelect from "@/pages/portal/OnboardingSelect";
 import OnboardingContract from "@/pages/portal/OnboardingContract";
 import OnboardingSuccess from "@/pages/portal/OnboardingSuccess";
 import PortalProfile from "@/pages/portal/PortalProfile";
+import PortalArchive from "@/pages/portal/PortalArchive";
 import ResetPasswordPage from "@/pages/ResetPassword";
 import type { ReactNode } from "react";
 
@@ -102,6 +103,9 @@ function Router() {
       </Route>
       <Route path="/portal/profile">
         <RequireAuth role="client"><PortalProfile /></RequireAuth>
+      </Route>
+      <Route path="/portal/archive">
+        <RequireAuth role="client"><PortalArchive /></RequireAuth>
       </Route>
 
       {/* Public reset-password route — token validated server-side */}
