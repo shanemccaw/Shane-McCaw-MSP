@@ -81,6 +81,30 @@ function StatCard({ label, value, icon }: { label: string; value: number; icon: 
   );
 }
 
+function ConversationTranscript({ messages }: { messages: { role: "user" | "assistant"; content: string }[] }) {
+  if (messages.length === 0) return null;
+  return (
+    <div>
+      <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">Quiz Conversation</p>
+      <div className="space-y-3">
+        {messages.map((msg, i) =>
+          msg.role === "assistant" ? (
+            <div key={i} className="border-l-2 border-[#0078D4] pl-3">
+              <p className="text-[10px] font-bold text-[#0078D4] uppercase tracking-wider mb-0.5">Q</p>
+              <p className="text-sm text-[#0A2540] leading-relaxed">{msg.content}</p>
+            </div>
+          ) : (
+            <div key={i} className="pl-4">
+              <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-0.5">A</p>
+              <p className="text-sm text-[#0A2540] bg-[#F7F9FC] rounded-lg px-3 py-2 leading-relaxed">{msg.content}</p>
+            </div>
+          )
+        )}
+      </div>
+    </div>
+  );
+}
+
 function SlideOver({ lead, onClose, onRefresh }: {
   lead: QuizLead;
   onClose: () => void;
@@ -113,13 +137,13 @@ function SlideOver({ lead, onClose, onRefresh }: {
   return (
     <div className="fixed inset-0 z-50 flex">
       <div className="flex-1 bg-black/40" onClick={onClose} />
-      <div className="w-full sm:max-w-lg bg-white shadow-2xl overflow-y-auto flex flex-col">
-        <div className="flex items-center justify-between px-6 py-4 border-b border-border bg-[#0A2540]">
+      <div className="w-full sm:max-w-lg bg-white shadow-2xl flex flex-col h-full">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-border bg-[#0A2540] flex-shrink-0">
           <h2 className="text-white font-bold">Quiz Lead Details</h2>
           <button onClick={onClose} className="text-white/60 hover:text-white transition-colors text-xl leading-none">×</button>
         </div>
 
-        <div className="flex-1 px-6 py-6 space-y-6">
+        <div className="flex-1 min-h-0 overflow-y-auto px-6 py-6 space-y-6">
           {/* Contact info */}
           <div className="space-y-4">
             <div>
@@ -190,9 +214,12 @@ function SlideOver({ lead, onClose, onRefresh }: {
               <p className="text-sm text-[#0A2540] font-medium">{lead.recommendedService}</p>
             </div>
           )}
+
+          {/* Conversation transcript */}
+          <ConversationTranscript messages={lead.conversation} />
         </div>
 
-        <div className="px-6 py-4 border-t border-border flex gap-3">
+        <div className="px-6 py-4 border-t border-border flex gap-3 flex-shrink-0">
           <button
             onClick={toggleContacted}
             disabled={saving}
