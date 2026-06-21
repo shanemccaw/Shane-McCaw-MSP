@@ -326,25 +326,34 @@ async function generateAssetSetsForTask(opts: {
 } | null> {
   const { templateName, stepTitle, taskTitle } = opts;
 
-  const prompt = `You are an expert Microsoft 365 consulting workflow designer. Generate asset set content for this task:
+  const systemPrompt = `You are an expert Microsoft 365 consulting workflow designer. You always respond with valid JSON only — no markdown fences, no explanation, no preamble. Your output must be a single JSON object with exactly these four keys:
+{
+  "instructionSet": ["string", ...],
+  "checklist": [{"id": "item-1", "label": "string"}, ...],
+  "artifactSet": ["string", ...],
+  "deliverableSet": ["string", ...]
+}`;
+
+  const userPrompt = `Generate asset set content for this workflow task:
 
 Workflow Template: "${templateName}"
 Step: "${stepTitle}"
 Task: "${taskTitle}"
 
-Return a JSON object with exactly these four keys:
-- "instructionSet": array of 5-8 concise step-by-step engineer action strings (imperative, present tense)
-- "checklist": array of 4-6 objects each with "id" (unique string like "item-1") and "label" (verification item the engineer checks before marking done)
-- "artifactSet": array of 2-4 strings naming internal work products produced (e.g. "Audit Report Draft", "Configuration Backup")
-- "deliverableSet": array of 1-3 strings naming client-facing deliverables (what the client receives, e.g. "Governance Policy Document")
+Rules:
+- "instructionSet": 5-8 concise engineer action strings (imperative, present tense)
+- "checklist": 4-6 objects, each with a unique "id" (e.g. "item-1") and "label" (what the engineer verifies before marking done)
+- "artifactSet": 2-4 strings naming internal work products produced
+- "deliverableSet": 1-3 strings naming client-facing deliverables
 
-Keep everything specific to Microsoft 365 / "${templateName}" context. Return only valid JSON with no markdown fences.`;
+Keep content specific to Microsoft 365 / "${templateName}" context.`;
 
   try {
     const msg = await anthropic.messages.create({
       model: "claude-haiku-4-5",
       max_tokens: 1024,
-      messages: [{ role: "user", content: prompt }],
+      system: systemPrompt,
+      messages: [{ role: "user", content: userPrompt }],
     });
 
     const block = msg.content[0];
@@ -438,6 +447,7 @@ router.post("/admin/workflow-templates/:id/generate-asset-sets", requireAdmin, a
 
     let setsCreated = 0;
     let processed = 0;
+    let failed = 0;
 
     // 7. Process each incomplete task sequentially
     for (const task of incompleteTasks) {
@@ -450,7 +460,7 @@ router.post("/admin/workflow-templates/:id/generate-asset-sets", requireAdmin, a
         taskTitle: task.title,
       });
 
-      if (!aiResult) continue;
+      if (!aiResult) { failed++; continue; }
 
       const updates: {
         instructionSetId?: number;
@@ -501,7 +511,7 @@ router.post("/admin/workflow-templates/:id/generate-asset-sets", requireAdmin, a
       processed++;
     }
 
-    res.json({ processed, setsCreated });
+    res.json({ processed, setsCreated, failed });
   } catch (err) {
     logger.error({ err }, "generate-asset-sets: endpoint failed");
     res.status(500).json({ error: "Failed to generate asset sets" });

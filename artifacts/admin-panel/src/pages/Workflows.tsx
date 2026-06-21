@@ -1385,13 +1385,16 @@ export default function WorkflowsPage() {
       if (data.processed === 0) {
         toast({ title: "Nothing to generate", description: "All tasks already have asset sets linked." });
       } else {
+        const failedCount = (data as { failed?: number }).failed ?? 0;
         toast({
-          title: "Asset sets generated",
-          description: `Processed ${data.processed} task${data.processed === 1 ? "" : "s"}, created ${data.setsCreated} set${data.setsCreated === 1 ? "" : "s"}.`,
+          title: failedCount > 0 ? "Asset sets generated (with errors)" : "Asset sets generated",
+          description: [
+            `Processed ${data.processed} task${data.processed === 1 ? "" : "s"}, created ${data.setsCreated} set${data.setsCreated === 1 ? "" : "s"}.`,
+            failedCount > 0 ? `${failedCount} task${failedCount === 1 ? "" : "s"} failed to generate.` : "",
+          ].filter(Boolean).join(" "),
+          variant: failedCount > 0 ? "destructive" : "default",
         });
-        await fetchTemplates();
-        const refreshed = templates.find(t => t.id === selected.id);
-        if (refreshed) setSelected(refreshed);
+        await Promise.all([fetchTemplates(), refreshSelected()]);
       }
     } catch {
       toast({ title: "Generation failed", description: "Network error", variant: "destructive" });
