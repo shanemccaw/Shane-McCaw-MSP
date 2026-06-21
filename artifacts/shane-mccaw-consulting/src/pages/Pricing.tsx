@@ -385,6 +385,14 @@ export default function Pricing() {
           <p className="text-lg text-white/70 leading-relaxed max-w-2xl">
             Every Shane McCaw Consulting engagement is scoped and priced upfront. You know exactly what you're investing before any work begins — and exactly what you'll receive in return.
           </p>
+          <div className="mt-8">
+            <a
+              href="#compare"
+              className="inline-flex items-center gap-2 text-[#00B4D8] font-semibold text-sm hover:text-white transition-colors"
+            >
+              Compare all tiers <ArrowRight className="w-4 h-4" />
+            </a>
+          </div>
         </div>
       </section>
 
@@ -671,7 +679,7 @@ export default function Pricing() {
       </section>
 
       {/* Comparison Table — All Tiers at a Glance */}
-      <section className="bg-white py-20 border-b border-border">
+      <section id="compare" className="bg-white py-20 border-b border-border">
         <div className="max-w-[1200px] mx-auto px-6">
           <p className="text-[#0078D4] text-sm font-semibold uppercase tracking-[0.1em] mb-4">Quick Comparison</p>
           <h2 className="text-3xl md:text-4xl font-extrabold text-[#0A2540] mb-3">Which Engagement Is Right for You?</h2>
