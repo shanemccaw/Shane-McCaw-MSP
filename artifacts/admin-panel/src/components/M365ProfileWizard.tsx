@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback } from "react";
+import { z } from "zod";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
@@ -78,6 +79,99 @@ const EMPTY_PROFILE: M365Profile = {
   businessGoals: "", knownBlockers: "", referralSource: "",
 };
 
+// ─── Per-step Zod schemas ─────────────────────────────────────────────────────
+const optionalEmail = z.string().refine(v => v === "" || z.string().email().safeParse(v).success, "Must be a valid email address");
+const optionalPositiveInt = z.string().refine(v => v === "" || (!isNaN(Number(v)) && Number(v) >= 0), "Must be a non-negative number");
+
+const STEP_SCHEMAS: z.ZodTypeAny[] = [
+  // Step 1 — Organization Overview
+  z.object({
+    orgName: z.string().min(1, "Organization name is required"),
+    itContactEmail: optionalEmail,
+  }),
+  // Step 2 — M365 Licensing & Usage
+  z.object({
+    activeUserPercent: z.string().refine(v => v === "" || (Number(v) >= 0 && Number(v) <= 100), "Must be between 0 and 100"),
+  }),
+  // Step 3 — Environment Structure (all optional)
+  z.object({
+    sharepointSiteCount: optionalPositiveInt,
+    teamCount: optionalPositiveInt,
+    securityGroupCount: optionalPositiveInt,
+  }),
+  // Step 4 — Security & Compliance (boolean toggles — always valid)
+  z.object({}),
+  // Step 5 — Copilot Readiness
+  z.object({
+    copilotLicenseCount: z.string().refine((v) => true, ""),
+    copilotReadinessScore: z.string().refine(
+      v => v === "" || ["1", "2", "3", "4", "5"].includes(v),
+      "Must be between 1 and 5"
+    ),
+  }).superRefine((data, ctx) => {
+    if ((data as { hasCopilotLicenses?: boolean } & typeof data).hasCopilotLicenses) {
+      const n = Number(data.copilotLicenseCount);
+      if (data.copilotLicenseCount === "" || isNaN(n) || n <= 0) {
+        ctx.addIssue({ code: "custom", path: ["copilotLicenseCount"], message: "Enter the number of Copilot licenses" });
+      }
+    }
+  }),
+  // Step 6 — Engagement Metadata
+  z.object({
+    decisionMakerEmail: optionalEmail,
+  }),
+  // Step 7 — Review & Save (no additional validation)
+  z.object({}),
+];
+
+// ─── Wizard state hook ────────────────────────────────────────────────────────
+function useM365ProfileWizard() {
+  const [step, setStep] = useState(0);
+  const [profile, setProfile] = useState<M365Profile>(EMPTY_PROFILE);
+  const [errors, setErrors] = useState<Record<string, string>>({});
+
+  const set = useCallback((k: keyof M365Profile, v: unknown) => {
+    setProfile(prev => ({ ...prev, [k]: v }));
+    setErrors(prev => {
+      const next = { ...prev };
+      delete next[k];
+      return next;
+    });
+  }, []);
+
+  const goNext = useCallback((): boolean => {
+    const schema = STEP_SCHEMAS[step];
+    const result = schema.safeParse(profile);
+    if (!result.success) {
+      const fieldErrors: Record<string, string> = {};
+      for (const issue of result.error.issues) {
+        const key = issue.path[0];
+        if (key && !fieldErrors[String(key)]) {
+          fieldErrors[String(key)] = issue.message;
+        }
+      }
+      setErrors(fieldErrors);
+      return false;
+    }
+    setErrors({});
+    setStep(s => s + 1);
+    return true;
+  }, [step, profile]);
+
+  const goBack = useCallback(() => {
+    setErrors({});
+    setStep(s => s - 1);
+  }, []);
+
+  const jumpToStep = useCallback((target: number) => {
+    setErrors({});
+    setStep(target);
+  }, []);
+
+  return { step, profile, set, errors, goNext, goBack, jumpToStep };
+}
+
+// ─── Step config ──────────────────────────────────────────────────────────────
 const STEPS = [
   { title: "Organization Overview", description: "Basic details about the client's organization and M365 footprint." },
   { title: "M365 Licensing & Usage", description: "What plans are in place and how actively the tenant is used." },
@@ -113,23 +207,27 @@ function YesNoRow({ label, value, onChange }: { label: string; value: boolean; o
   );
 }
 
-function FieldRow({ label, children }: { label: string; children: React.ReactNode }) {
+function FieldRow({ label, children, error }: { label: string; children: React.ReactNode; error?: string }) {
   return (
     <div className="grid grid-cols-1 sm:grid-cols-[180px_1fr] gap-1.5 items-start">
       <label className="text-xs font-semibold text-[#0A2540] pt-2.5 leading-tight">{label}</label>
-      <div>{children}</div>
+      <div>
+        {children}
+        {error && <p className="mt-1 text-xs text-red-600">{error}</p>}
+      </div>
     </div>
   );
 }
 
 const inputCls = "w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4] bg-white";
+const inputErrCls = "w-full border border-red-400 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-400 bg-white";
 
-function TextInput({ value, onChange, placeholder }: { value: string; onChange: (v: string) => void; placeholder?: string }) {
-  return <input type="text" value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder} className={inputCls} />;
+function TextInput({ value, onChange, placeholder, error }: { value: string; onChange: (v: string) => void; placeholder?: string; error?: string }) {
+  return <input type="text" value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder} className={error ? inputErrCls : inputCls} />;
 }
 
-function NumberInput({ value, onChange, placeholder }: { value: string; onChange: (v: string) => void; placeholder?: string }) {
-  return <input type="number" min="0" value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder} className={inputCls} />;
+function NumberInput({ value, onChange, placeholder, error }: { value: string; onChange: (v: string) => void; placeholder?: string; error?: string }) {
+  return <input type="number" min="0" value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder} className={error ? inputErrCls : inputCls} />;
 }
 
 function SelectInput({ value, onChange, options }: { value: string; onChange: (v: string) => void; options: Array<{ value: string; label: string }> }) {
@@ -175,12 +273,12 @@ function ToggleRow({ label, value, onChange }: { label: string; value: boolean; 
 }
 
 // ─── Step components ──────────────────────────────────────────────────────────
-function Step1({ p, set }: { p: M365Profile; set: (k: keyof M365Profile, v: unknown) => void }) {
+function Step1({ p, set, errors }: { p: M365Profile; set: (k: keyof M365Profile, v: unknown) => void; errors: Record<string, string> }) {
   const industries = ["Technology", "Healthcare", "Finance & Banking", "Legal", "Education", "Manufacturing", "Retail", "Government", "Nonprofit", "Real Estate", "Professional Services", "Other"];
   return (
     <div className="space-y-3">
-      <FieldRow label="Organization Name">
-        <TextInput value={p.orgName} onChange={v => set("orgName", v)} placeholder="Contoso Corporation" />
+      <FieldRow label="Organization Name" error={errors.orgName}>
+        <TextInput value={p.orgName} onChange={v => set("orgName", v)} placeholder="Contoso Corporation" error={errors.orgName} />
       </FieldRow>
       <FieldRow label="Primary Industry">
         <SelectInput value={p.industry} onChange={v => set("industry", v)} options={industries.map(i => ({ value: i, label: i }))} />
@@ -194,8 +292,8 @@ function Step1({ p, set }: { p: M365Profile; set: (k: keyof M365Profile, v: unkn
       <FieldRow label="IT Contact Name">
         <TextInput value={p.itContactName} onChange={v => set("itContactName", v)} placeholder="Jane Smith" />
       </FieldRow>
-      <FieldRow label="IT Contact Email">
-        <input type="email" value={p.itContactEmail} onChange={e => set("itContactEmail", e.target.value)} placeholder="it@contoso.com" className={inputCls} />
+      <FieldRow label="IT Contact Email" error={errors.itContactEmail}>
+        <input type="email" value={p.itContactEmail} onChange={e => set("itContactEmail", e.target.value)} placeholder="it@contoso.com" className={errors.itContactEmail ? inputErrCls : inputCls} />
       </FieldRow>
       <FieldRow label="Tenant Domain">
         <TextInput value={p.tenantDomain} onChange={v => set("tenantDomain", v)} placeholder="contoso.onmicrosoft.com" />
@@ -207,15 +305,15 @@ function Step1({ p, set }: { p: M365Profile; set: (k: keyof M365Profile, v: unkn
   );
 }
 
-function Step2({ p, set }: { p: M365Profile; set: (k: keyof M365Profile, v: unknown) => void }) {
+function Step2({ p, set, errors }: { p: M365Profile; set: (k: keyof M365Profile, v: unknown) => void; errors: Record<string, string> }) {
   const skus = ["M365 Business Basic", "M365 Business Standard", "M365 Business Premium", "Office 365 E1", "M365 E3", "M365 E5", "M365 F1", "M365 F3"];
   return (
     <div className="space-y-3">
       <FieldRow label="License SKU(s)">
         <MultiSelect value={p.licenseSKUs} onChange={v => set("licenseSKUs", v)} options={skus} />
       </FieldRow>
-      <FieldRow label="Active User %">
-        <NumberInput value={p.activeUserPercent} onChange={v => set("activeUserPercent", v)} placeholder="85" />
+      <FieldRow label="Active User %" error={errors.activeUserPercent}>
+        <NumberInput value={p.activeUserPercent} onChange={v => set("activeUserPercent", v)} placeholder="85" error={errors.activeUserPercent} />
       </FieldRow>
       <div className="bg-[#F7F9FC] border border-border rounded-xl px-4 pt-3 pb-1 mt-1">
         <SectionTitle>Workload Adoption</SectionTitle>
@@ -230,7 +328,7 @@ function Step2({ p, set }: { p: M365Profile; set: (k: keyof M365Profile, v: unkn
   );
 }
 
-function Step3({ p, set }: { p: M365Profile; set: (k: keyof M365Profile, v: unknown) => void }) {
+function Step3({ p, set, errors }: { p: M365Profile; set: (k: keyof M365Profile, v: unknown) => void; errors: Record<string, string> }) {
   const authOptions = [
     { value: "password", label: "Password only" },
     { value: "mfa", label: "MFA (per-user)" },
@@ -240,14 +338,14 @@ function Step3({ p, set }: { p: M365Profile; set: (k: keyof M365Profile, v: unkn
   ];
   return (
     <div className="space-y-3">
-      <FieldRow label="SharePoint Sites">
-        <NumberInput value={p.sharepointSiteCount} onChange={v => set("sharepointSiteCount", v)} placeholder="15" />
+      <FieldRow label="SharePoint Sites" error={errors.sharepointSiteCount}>
+        <NumberInput value={p.sharepointSiteCount} onChange={v => set("sharepointSiteCount", v)} placeholder="15" error={errors.sharepointSiteCount} />
       </FieldRow>
-      <FieldRow label="Teams (count)">
-        <NumberInput value={p.teamCount} onChange={v => set("teamCount", v)} placeholder="40" />
+      <FieldRow label="Teams (count)" error={errors.teamCount}>
+        <NumberInput value={p.teamCount} onChange={v => set("teamCount", v)} placeholder="40" error={errors.teamCount} />
       </FieldRow>
-      <FieldRow label="Security Groups">
-        <NumberInput value={p.securityGroupCount} onChange={v => set("securityGroupCount", v)} placeholder="25" />
+      <FieldRow label="Security Groups" error={errors.securityGroupCount}>
+        <NumberInput value={p.securityGroupCount} onChange={v => set("securityGroupCount", v)} placeholder="25" error={errors.securityGroupCount} />
       </FieldRow>
       <FieldRow label="Primary Auth Method">
         <SelectInput value={p.authMethod} onChange={v => set("authMethod", v)} options={authOptions} />
@@ -284,7 +382,7 @@ function Step4({ p, set }: { p: M365Profile; set: (k: keyof M365Profile, v: unkn
   );
 }
 
-function Step5({ p, set }: { p: M365Profile; set: (k: keyof M365Profile, v: unknown) => void }) {
+function Step5({ p, set, errors }: { p: M365Profile; set: (k: keyof M365Profile, v: unknown) => void; errors: Record<string, string> }) {
   const blockerOpts = ["None", "Budget", "Licensing", "Security concerns", "Training gaps", "Governance / data readiness", "Leadership buy-in"].map(b => ({ value: b, label: b }));
   const scoreOpts = ["1 – Not ready", "2 – Early stages", "3 – Partially ready", "4 – Mostly ready", "5 – Fully ready"].map((s, i) => ({ value: String(i + 1), label: s }));
   return (
@@ -294,8 +392,8 @@ function Step5({ p, set }: { p: M365Profile; set: (k: keyof M365Profile, v: unkn
         <YesNoRow label="Has M365 Copilot licenses" value={p.hasCopilotLicenses} onChange={v => set("hasCopilotLicenses", v)} />
       </div>
       {p.hasCopilotLicenses && (
-        <FieldRow label="Copilot License Count">
-          <NumberInput value={p.copilotLicenseCount} onChange={v => set("copilotLicenseCount", v)} placeholder="25" />
+        <FieldRow label="Copilot License Count" error={errors.copilotLicenseCount}>
+          <NumberInput value={p.copilotLicenseCount} onChange={v => set("copilotLicenseCount", v)} placeholder="25" error={errors.copilotLicenseCount} />
         </FieldRow>
       )}
       <FieldRow label="Primary Copilot Use Case">
@@ -307,7 +405,7 @@ function Step5({ p, set }: { p: M365Profile; set: (k: keyof M365Profile, v: unkn
       <FieldRow label="Data Governance Concerns">
         <TextArea value={p.dataGovernanceConcerns} onChange={v => set("dataGovernanceConcerns", v)} placeholder="Data sensitivity, oversharing risks, classification gaps…" rows={2} />
       </FieldRow>
-      <FieldRow label="Readiness Score (1–5)">
+      <FieldRow label="Readiness Score (1–5)" error={errors.copilotReadinessScore}>
         <SelectInput value={p.copilotReadinessScore} onChange={v => set("copilotReadinessScore", v)} options={scoreOpts} />
       </FieldRow>
       <FieldRow label="Primary Blocker">
@@ -317,7 +415,7 @@ function Step5({ p, set }: { p: M365Profile; set: (k: keyof M365Profile, v: unkn
   );
 }
 
-function Step6({ p, set }: { p: M365Profile; set: (k: keyof M365Profile, v: unknown) => void }) {
+function Step6({ p, set, errors }: { p: M365Profile; set: (k: keyof M365Profile, v: unknown) => void; errors: Record<string, string> }) {
   const engagementTypes = ["Assessment", "Implementation", "Ongoing Support", "Training & Enablement", "Governance", "Advisory / Strategy"].map(t => ({ value: t, label: t }));
   const budgetRanges = ["< $5K", "$5K – $15K", "$15K – $30K", "$30K – $75K", "$75K – $150K", "> $150K"].map(b => ({ value: b, label: b }));
   return (
@@ -337,8 +435,8 @@ function Step6({ p, set }: { p: M365Profile; set: (k: keyof M365Profile, v: unkn
       <FieldRow label="Decision Maker Name">
         <TextInput value={p.decisionMakerName} onChange={v => set("decisionMakerName", v)} placeholder="John CEO" />
       </FieldRow>
-      <FieldRow label="Decision Maker Email">
-        <input type="email" value={p.decisionMakerEmail} onChange={e => set("decisionMakerEmail", e.target.value)} placeholder="ceo@company.com" className={inputCls} />
+      <FieldRow label="Decision Maker Email" error={errors.decisionMakerEmail}>
+        <input type="email" value={p.decisionMakerEmail} onChange={e => set("decisionMakerEmail", e.target.value)} placeholder="ceo@company.com" className={errors.decisionMakerEmail ? inputErrCls : inputCls} />
       </FieldRow>
       <FieldRow label="Key Business Goals">
         <TextArea value={p.businessGoals} onChange={v => set("businessGoals", v)} placeholder="Reduce IT overhead, improve collaboration, achieve compliance certification…" rows={3} />
@@ -468,9 +566,9 @@ export function M365ProfileWizard({
 }) {
   const { fetchWithAuth } = useAuth();
   const { toast } = useToast();
-  const [step, setStep] = useState(0);
-  const [profile, setProfile] = useState<M365Profile>(EMPTY_PROFILE);
+  const { step, profile, set, errors, goNext, goBack, jumpToStep } = useM365ProfileWizard();
   const [loading, setLoading] = useState(true);
+  const [profileLoaded, setProfileLoaded] = useState(EMPTY_PROFILE);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -479,16 +577,23 @@ export function M365ProfileWizard({
       .then(async res => {
         if (res.ok) {
           const data = await res.json() as { profile: Partial<M365Profile> | null };
-          if (data.profile) setProfile({ ...EMPTY_PROFILE, ...data.profile });
+          if (data.profile) {
+            const merged = { ...EMPTY_PROFILE, ...data.profile };
+            setProfileLoaded(merged);
+          }
         }
       })
       .catch(() => {})
       .finally(() => setLoading(false));
   }, [clientId, fetchWithAuth]);
 
-  const set = useCallback((k: keyof M365Profile, v: unknown) => {
-    setProfile(prev => ({ ...prev, [k]: v }));
-  }, []);
+  useEffect(() => {
+    if (!loading) {
+      Object.entries(profileLoaded).forEach(([k, v]) => {
+        set(k as keyof M365Profile, v);
+      });
+    }
+  }, [loading, profileLoaded, set]);
 
   const handleSave = async () => {
     setSaving(true);
@@ -513,13 +618,13 @@ export function M365ProfileWizard({
 
   const renderStep = () => {
     switch (step) {
-      case 0: return <Step1 p={profile} set={set} />;
-      case 1: return <Step2 p={profile} set={set} />;
-      case 2: return <Step3 p={profile} set={set} />;
+      case 0: return <Step1 p={profile} set={set} errors={errors} />;
+      case 1: return <Step2 p={profile} set={set} errors={errors} />;
+      case 2: return <Step3 p={profile} set={set} errors={errors} />;
       case 3: return <Step4 p={profile} set={set} />;
-      case 4: return <Step5 p={profile} set={set} />;
-      case 5: return <Step6 p={profile} set={set} />;
-      case 6: return <Step7 p={profile} onJump={setStep} />;
+      case 4: return <Step5 p={profile} set={set} errors={errors} />;
+      case 5: return <Step6 p={profile} set={set} errors={errors} />;
+      case 6: return <Step7 p={profile} onJump={jumpToStep} />;
       default: return null;
     }
   };
@@ -553,7 +658,7 @@ export function M365ProfileWizard({
 
         <div className="px-6 py-4 border-t border-border flex-shrink-0 flex items-center justify-between gap-3">
           <button
-            onClick={() => setStep(s => s - 1)}
+            onClick={goBack}
             disabled={step === 0 || saving}
             className="text-sm font-medium text-[#0A2540] border border-border px-4 py-2 rounded-lg hover:bg-[#F7F9FC] disabled:opacity-30 transition-colors"
           >
@@ -578,7 +683,7 @@ export function M365ProfileWizard({
               </button>
             ) : (
               <button
-                onClick={() => setStep(s => s + 1)}
+                onClick={goNext}
                 className="flex items-center gap-2 bg-[#0078D4] text-white text-sm font-semibold px-5 py-2 rounded-lg hover:bg-[#005fa3] transition-colors"
               >
                 Next →

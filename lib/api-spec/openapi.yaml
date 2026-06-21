@@ -750,8 +750,83 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /admin/clients/{id}/m365-profile:
+    get:
+      operationId: getClientM365Profile
+      tags: [admin]
+      summary: Get M365 environment profile for a client (admin only)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: M365 profile data (profile is null if not yet saved)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ClientM365ProfileResponse"
+        "400":
+          description: Invalid client ID
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    put:
+      operationId: putClientM365Profile
+      tags: [admin]
+      summary: Upsert M365 environment profile for a client (admin only)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ClientM365ProfileInput"
+      responses:
+        "200":
+          description: Profile saved successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessResponse"
+        "400":
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
 components:
   schemas:
+    ClientM365ProfileResponse:
+      type: object
+      required: [profile]
+      properties:
+        profile:
+          nullable: true
+          type: object
+          additionalProperties: true
+        updatedAt:
+          type: string
+          format: date-time
+          nullable: true
+
+    ClientM365ProfileInput:
+      type: object
+      required: [profile]
+      properties:
+        profile:
+          type: object
+          additionalProperties: true
+
     HealthStatus:
       type: object
       properties:
