@@ -218,15 +218,17 @@ export default function PortalM365Profile() {
   // ── Load existing profile ────────────────────────────────────────────────
 
   useEffect(() => {
-    fetchWithAuth("/api/portal/m365-profile")
-      .then(r => r.json())
-      .then((data: Record<string, unknown>) => {
+    Promise.all([
+      fetchWithAuth("/api/portal/m365-profile").then(r => r.json() as Promise<Record<string, unknown>>),
+      fetchWithAuth("/api/portal/profile").then(r => r.json() as Promise<{ company?: string | null }>),
+    ])
+      .then(([m365Data, profileData]) => {
         // Build defaults, only overriding keys that actually exist in the response
         // so boolean fields remain `undefined` if not yet answered
         const merged: Partial<FormValues> = { ...m365Schema.parse({}) };
-        for (const key of Object.keys(data)) {
+        for (const key of Object.keys(m365Data)) {
           const k = key as keyof FormValues;
-          const v = data[key];
+          const v = m365Data[key];
           if (v !== null && v !== undefined) {
             if (Array.isArray(v)) {
               (merged as Record<string, unknown>)[k] = v;
@@ -238,6 +240,10 @@ export default function PortalM365Profile() {
           if (typeof v === "boolean") {
             (merged as Record<string, unknown>)[k] = v;
           }
+        }
+        // Pre-fill Organisation Name from checkout company if not already saved
+        if (!merged.orgName && profileData.company) {
+          merged.orgName = profileData.company;
         }
         reset(merged as FormValues);
       })
