@@ -295,6 +295,10 @@ export default function OnboardingContract() {
   const handleSign = async () => {
     if (services.length === 0) return;
     if (!signerName.trim()) { setError("Please enter your full name."); return; }
+    if (!street.trim() || !city.trim() || !addrState.trim() || !zip.trim() || !phone.trim()) {
+      setError("Please fill in all required fields: street address, city, state, ZIP, and phone.");
+      return;
+    }
     if (!agreed) { setError("Please confirm you have read and agree to the terms."); return; }
     if (!signed || !hasDrawn.current) { setError("Please draw your signature in the box above."); return; }
 
@@ -565,7 +569,7 @@ export default function OnboardingContract() {
                 />
               </div>
               <div>
-                <label className="block text-sm font-semibold text-[#0A2540] mb-1.5">Street address</label>
+                <label className="block text-sm font-semibold text-[#0A2540] mb-1.5">Street address <span className="text-red-500">*</span></label>
                 <input
                   type="text"
                   value={street}
@@ -576,7 +580,7 @@ export default function OnboardingContract() {
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-sm font-semibold text-[#0A2540] mb-1.5">City</label>
+                  <label className="block text-sm font-semibold text-[#0A2540] mb-1.5">City <span className="text-red-500">*</span></label>
                   <input
                     type="text"
                     value={city}
@@ -586,7 +590,7 @@ export default function OnboardingContract() {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-semibold text-[#0A2540] mb-1.5">State</label>
+                  <label className="block text-sm font-semibold text-[#0A2540] mb-1.5">State <span className="text-red-500">*</span></label>
                   <input
                     type="text"
                     value={addrState}
@@ -597,7 +601,7 @@ export default function OnboardingContract() {
                 </div>
               </div>
               <div>
-                <label className="block text-sm font-semibold text-[#0A2540] mb-1.5">ZIP code</label>
+                <label className="block text-sm font-semibold text-[#0A2540] mb-1.5">ZIP code <span className="text-red-500">*</span></label>
                 <input
                   type="text"
                   value={zip}
@@ -607,7 +611,7 @@ export default function OnboardingContract() {
                 />
               </div>
               <div>
-                <label className="block text-sm font-semibold text-[#0A2540] mb-1.5">Phone number</label>
+                <label className="block text-sm font-semibold text-[#0A2540] mb-1.5">Phone number <span className="text-red-500">*</span></label>
                 <input
                   type="tel"
                   value={phone}
@@ -693,7 +697,7 @@ export default function OnboardingContract() {
               </button>
               <button
                 onClick={handleSign}
-                disabled={submitting || !agreed || !signed || !signerName.trim()}
+                disabled={submitting || !agreed || !signed || !signerName.trim() || !street.trim() || !city.trim() || !addrState.trim() || !zip.trim() || !phone.trim()}
                 className="flex-1 flex items-center justify-center gap-2 bg-[#0078D4] text-white font-semibold px-5 py-3 rounded-xl hover:bg-[#005A9E] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 {submitting ? (
