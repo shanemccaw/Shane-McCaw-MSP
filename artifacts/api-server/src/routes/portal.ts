@@ -3640,7 +3640,24 @@ router.get("/admin/kanban-tasks", requireAdmin, async (req: Request, res: Respon
   const tasks = await db.select().from(kanbanTasksTable)
     .where(eq(kanbanTasksTable.projectId, projectId))
     .orderBy(asc(kanbanTasksTable.order));
-  res.json(tasks);
+
+  const reportIds = tasks.map(t => t.statusReportId).filter((id): id is number => id !== null);
+  const reports = reportIds.length > 0
+    ? await db.select({
+        id: statusReportsTable.id,
+        clientQuestion: statusReportsTable.clientQuestion,
+        adminReply: statusReportsTable.adminReply,
+        replyThread: statusReportsTable.replyThread,
+      }).from(statusReportsTable).where(inArray(statusReportsTable.id, reportIds))
+    : [];
+  const reportMap = new Map(reports.map(r => [r.id, r]));
+
+  res.json(tasks.map(t => ({
+    ...t,
+    statusReportQuestion: t.statusReportId ? (reportMap.get(t.statusReportId)?.clientQuestion ?? null) : null,
+    statusReportAdminReply: t.statusReportId ? (reportMap.get(t.statusReportId)?.adminReply ?? null) : null,
+    statusReportReplyThread: t.statusReportId ? (reportMap.get(t.statusReportId)?.replyThread ?? []) : [],
+  })));
 });
 
 router.post("/admin/kanban-tasks", requireAdmin, async (req: Request, res: Response) => {

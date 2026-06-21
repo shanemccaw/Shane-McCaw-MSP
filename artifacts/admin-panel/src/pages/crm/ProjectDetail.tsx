@@ -98,6 +98,9 @@ interface KanbanTask {
   createdAt: string;
   updatedAt: string;
   statusReportId: number | null;
+  statusReportQuestion: string | null;
+  statusReportAdminReply: string | null;
+  statusReportReplyThread: Array<{ sender: "client" | "admin"; content: string; timestamp: string }>;
   taskType: string | null;
   taskMetadata: Record<string, unknown> | null;
 }
@@ -433,15 +436,31 @@ function DraggableCard({
                         <pre className="text-[9px] text-[#0A2540] bg-white border border-border rounded px-2 py-1.5 whitespace-pre-wrap font-mono leading-relaxed max-h-32 overflow-y-auto">{task.completionNotes}</pre>
                       </div>
                     )}
-                    {task.statusReportId && (
+                    {task.statusReportId && (task.statusReportQuestion || task.statusReportReplyThread?.length > 0) && (
                       <div>
-                        <p className="text-[9px] font-bold uppercase tracking-wider text-amber-600 mb-0.5">Status Report Q&A</p>
-                        <p className="text-[10px] text-amber-700 bg-amber-50 border border-amber-100 rounded px-2 py-1 flex items-center gap-1">
-                          <svg className="w-3 h-3 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                          </svg>
-                          Client has a pending question (report #{task.statusReportId})
-                        </p>
+                        <p className="text-[9px] font-bold uppercase tracking-wider text-amber-600 mb-1">Status Report Q&amp;A</p>
+                        <div className="space-y-1">
+                          {task.statusReportQuestion && (
+                            <div className="bg-amber-50 border border-amber-100 rounded px-2 py-1.5">
+                              <p className="text-[8px] font-bold text-amber-600 mb-0.5 uppercase tracking-wider">Client question</p>
+                              <p className="text-[10px] text-amber-800 leading-snug whitespace-pre-wrap">{task.statusReportQuestion}</p>
+                            </div>
+                          )}
+                          {task.statusReportReplyThread?.map((msg, i) => (
+                            <div
+                              key={i}
+                              className={`rounded px-2 py-1.5 ${msg.sender === "admin"
+                                ? "bg-[#0078D4]/10 border border-[#0078D4]/20"
+                                : "bg-amber-50 border border-amber-100"}`}
+                            >
+                              <p className={`text-[8px] font-bold mb-0.5 uppercase tracking-wider ${msg.sender === "admin" ? "text-[#0078D4]" : "text-amber-600"}`}>
+                                {msg.sender === "admin" ? "Shane (reply)" : "Client"}
+                              </p>
+                              <p className={`text-[10px] leading-snug whitespace-pre-wrap ${msg.sender === "admin" ? "text-[#0A2540]" : "text-amber-800"}`}>{msg.content}</p>
+                              <p className="text-[8px] text-[#0A2540]/40 mt-0.5">{new Date(msg.timestamp).toLocaleDateString()}</p>
+                            </div>
+                          ))}
+                        </div>
                       </div>
                     )}
                   </div>
