@@ -1,144 +1,452 @@
 import { SEOMeta } from "@/components/SEOMeta";
 import { Layout } from "@/components/Layout";
-import { Shield, CheckCircle, ArrowRight } from "lucide-react";
-import { ConsultationCTA } from "@/components/ConsultationCTA";
+import { CTAButton } from "@/components/CTAButton";
+import { Link } from "wouter";
+import {
+  CheckCircle, ArrowRight, Shield, Tag, Archive,
+  Eye, Key, Users, Building2, Globe, Clock, DollarSign
+} from "lucide-react";
+
+const PACKAGE_INCLUDES = [
+  "Governance maturity assessment across the full M365 tenant",
+  "Naming conventions and site/team lifecycle policies",
+  "Data Loss Prevention (DLP) policy design and implementation",
+  "Microsoft Purview sensitivity labeling taxonomy and auto-labeling",
+  "Retention schedules and records management configuration",
+  "Teams and SharePoint governance model with permission scoping",
+  "Admin roles, privileged access review, and least-privilege remediation",
+  "Change management process design and documentation",
+  "Compliance alignment review (HIPAA, CMMC, SOX, FIN, ITAR, FedRAMP)",
+  "Policy documentation package and governance playbook",
+];
+
+const WHAT_DELIVERS = [
+  {
+    icon: <Shield className="w-5 h-5" />,
+    title: "Data Loss Prevention",
+    desc: "Configure DLP policies that automatically detect and protect sensitive data — SSNs, financial records, health information, and classified content — before it leaves your environment.",
+  },
+  {
+    icon: <Tag className="w-5 h-5" />,
+    title: "Sensitivity Labeling",
+    desc: "Deploy Microsoft Purview sensitivity labels with auto-classification, encryption, and visual marking. Build a labeling taxonomy aligned to your compliance requirements.",
+  },
+  {
+    icon: <Archive className="w-5 h-5" />,
+    title: "Retention & Records Management",
+    desc: "Court-defensible retention schedules built into the platform. Ensure records are retained as long as required and purged when they must not be kept.",
+  },
+  {
+    icon: <Eye className="w-5 h-5" />,
+    title: "Microsoft Purview",
+    desc: "Deploy the full Purview compliance suite — eDiscovery, communication compliance, information barriers, and audit logging configured for your regulatory obligations.",
+  },
+  {
+    icon: <Key className="w-5 h-5" />,
+    title: "Conditional Access & Identity Governance",
+    desc: "Identity-based access policies ensuring only the right people, on the right devices, from the right locations can access sensitive systems and data.",
+  },
+  {
+    icon: <Users className="w-5 h-5" />,
+    title: "Permissions Audits & Privileged Access",
+    desc: "Comprehensive review of who has access to what. Identify and remediate overprivileged accounts, excessive guest access, and admin role sprawl.",
+  },
+  {
+    icon: <Building2 className="w-5 h-5" />,
+    title: "Teams & SharePoint Governance",
+    desc: "Lifecycle policies, naming conventions, guest access controls, and site provisioning governance that prevent data sprawl and keep your environment manageable at scale.",
+  },
+  {
+    icon: <Globe className="w-5 h-5" />,
+    title: "Compliance Framework Alignment",
+    desc: "Governance frameworks explicitly mapped to HIPAA, CMMC, SOX, FIN, ITAR, and FedRAMP requirements — not generic checklists, but defensible controls.",
+  },
+];
+
+const FOLLOW_ON = [
+  {
+    name: "Migration Readiness Assessment",
+    desc: "For organizations planning a legacy migration following governance remediation.",
+    href: "/services/microsoft-365",
+    price: "$3,500–$5,000",
+    duration: "1 week",
+  },
+  {
+    name: "Copilot for M365 Readiness Assessment",
+    desc: "Once governance is in place, evaluate readiness to enable Copilot safely.",
+    href: "/services/copilot-ai",
+    price: "$5,000–$8,000",
+    duration: "2 weeks",
+  },
+];
+
+const RETAINERS = [
+  {
+    name: "Architect Essentials",
+    price: "$2,500",
+    hours: "10 hrs/month",
+    desc: "Advisory, governance reviews, roadmap validation, and escalation support.",
+    highlight: false,
+  },
+  {
+    name: "Architect Growth",
+    price: "$6,000",
+    hours: "25 hrs/month",
+    desc: "Ongoing governance implementation, compliance monitoring, and IT team mentoring.",
+    highlight: true,
+  },
+  {
+    name: "Architect Enterprise",
+    price: "$11,000",
+    hours: "50 hrs/month",
+    desc: "Embedded governance leadership, compliance ownership, and executive reporting.",
+    highlight: false,
+  },
+];
+
+const INDUSTRIES = [
+  "Healthcare (HIPAA)",
+  "Legal & Professional Services",
+  "Financial Services (SOX, FIN)",
+  "Defense Contractors (CMMC, ITAR)",
+  "Government Contractors (FedRAMP)",
+  "Life Sciences (GDPR, CCPA)",
+];
+
+const WHY_SHANE = [
+  {
+    title: "NASA Governance Experience",
+    desc: "Shane built and maintained Microsoft 365 governance frameworks at NASA — one of the most compliance-intensive and security-sensitive federal M365 environments in existence. That methodology applies directly to your organization.",
+  },
+  {
+    title: "Compliance-First Architecture",
+    desc: "Deep expertise in FedRAMP, FISMA High, ITAR, CMMC, HIPAA, and GCC High. Shane designs governance that satisfies the strictest regulatory frameworks without sacrificing usability or adoption.",
+  },
+  {
+    title: "Enterprise-Grade Frameworks, Not Templates",
+    desc: "Shane doesn't hand you a generic policy document. Every governance framework is built for your organization's specific data landscape, regulatory obligations, and operational context.",
+  },
+  {
+    title: "Direct Delivery, Full Accountability",
+    desc: "No subcontracting, no junior team. Shane does the work himself — with direct accountability for every recommendation, policy design, and implementation decision.",
+  },
+];
+
 export default function Governance() {
-  const price = "$2,000";
-  const loading = false;
   return (
     <Layout>
       <SEOMeta
         title="Microsoft 365 Governance, Compliance & Security | Shane McCaw Consulting"
-        description="Microsoft 365 governance, compliance, and security consulting by Shane McCaw. Frameworks that protect your data, pass audits, and hold up over time — built by NASA's M365 Architect."
-        ogImage="/og-image-governance.png"
+        description="NASA-proven Microsoft 365 governance frameworks for regulated organizations. Fixed-price Governance Foundations Package and fractional architect retainers from Lead M365 Architect Shane McCaw."
         ogUrl="https://shanemccawconsulting.com/services/governance"
         jsonLd={{
           "@context": "https://schema.org",
           "@type": "Service",
           "name": "Microsoft 365 Governance, Compliance & Security",
-          "description": "Microsoft 365 governance, compliance, and security consulting by Shane McCaw. Frameworks that protect your data, pass audits, and hold up over time — built by NASA's M365 Architect.",
+          "description": "NASA-proven governance frameworks for organizations that cannot afford to get this wrong.",
           "url": "https://shanemccawconsulting.com/services/governance",
           "serviceType": "Microsoft 365 Governance Consulting",
-          "areaServed": {
-            "@type": "Country",
-            "name": "United States"
-          },
+          "areaServed": { "@type": "Country", "name": "United States" },
           "audience": {
             "@type": "Audience",
-            "audienceType": "Compliance teams and regulated-industry organizations in healthcare, finance, defense contracting, and federal government"
+            "audienceType": "Regulated industries: healthcare, legal, financial, defense contractors, government contractors",
           },
           "provider": {
             "@type": "Person",
             "name": "Shane McCaw",
             "jobTitle": "Lead Microsoft 365 Architect",
-            "url": "https://shanemccawconsulting.com"
+            "url": "https://shanemccawconsulting.com",
           },
           "offers": [
             {
               "@type": "Offer",
-              "name": "M365 Security & Governance Audit",
-              "price": "897",
+              "name": "Governance Foundations Package",
+              "priceRange": "$12,000–$18,000",
               "priceCurrency": "USD",
-              "url": "https://shanemccawconsulting.com/micro-offers"
-            }
-          ]
+              "url": "https://shanemccawconsulting.com/services/governance",
+            },
+          ],
         }}
       />
-      <section className="bg-[#0A2540] pt-32 pb-20">
-        <div className="max-w-[1200px] mx-auto px-6">
-          <Shield className="w-10 h-10 text-[#0078D4] mb-6" />
-          <p className="text-[#0078D4] text-sm font-semibold uppercase tracking-[0.1em] mb-4">Service</p>
+
+      {/* ── HERO ─────────────────────────────────────────────────────────── */}
+      <section className="bg-[#0A2540] pt-32 pb-24 relative overflow-hidden">
+        <div
+          className="absolute inset-0 pointer-events-none"
+          style={{ background: "radial-gradient(ellipse 900px 500px at 60% 0%, rgba(0,120,212,0.12) 0%, transparent 70%)" }}
+        />
+        <div className="max-w-[1200px] mx-auto px-6 relative">
+          <p className="text-[#0078D4] text-sm font-semibold uppercase tracking-[0.12em] mb-4">Governance & Compliance</p>
           <h1 className="text-4xl md:text-5xl lg:text-6xl font-extrabold text-white leading-tight max-w-4xl">
-            Governance, Compliance & Security
+            Microsoft 365 Governance, Compliance & Security — Built for Regulated Organizations
           </h1>
-          <p className="text-white/70 text-lg mt-6 max-w-2xl">
-            For regulated industries and government contractors who can't afford to get this wrong. Shane brings NASA-grade governance discipline to your Microsoft 365 environment.
+          <p className="text-white/65 text-xl mt-6 max-w-2xl leading-relaxed">
+            NASA-proven governance frameworks for organizations that cannot afford to get this wrong.
           </p>
+          <div className="mt-10 flex flex-wrap gap-4">
+            <CTAButton href="/book">Book a Free Discovery Call</CTAButton>
+            <a
+              href="/contact"
+              className="inline-flex items-center gap-2 text-white/80 font-semibold hover:text-white transition-colors text-sm border border-white/20 px-6 py-3 rounded-xl hover:border-white/40"
+            >
+              Schedule a Consultation <ArrowRight className="w-4 h-4" />
+            </a>
+          </div>
         </div>
       </section>
 
+      {/* ── INTRO ────────────────────────────────────────────────────────── */}
+      <section className="bg-white py-20">
+        <div className="max-w-[1200px] mx-auto px-6">
+          <div className="max-w-3xl mx-auto text-center">
+            <p className="text-[#0078D4] text-sm font-semibold uppercase tracking-[0.12em] mb-4">The Stakes</p>
+            <h2 className="text-3xl md:text-4xl font-extrabold text-[#0A2540] mb-6">
+              Regulated Organizations Cannot Run on Default Settings
+            </h2>
+            <p className="text-muted-foreground text-lg leading-relaxed mb-4">
+              Microsoft 365's default configuration is designed for ease of adoption, not regulatory compliance. For organizations operating under HIPAA, CMMC, FedRAMP, SOX, or ITAR, the gap between default settings and defensible governance is where breaches, audit failures, and accreditation loss live.
+            </p>
+            <p className="text-muted-foreground text-lg leading-relaxed">
+              Shane McCaw served as Lead M365 Architect at NASA, where governance wasn't optional — it was a legal and mission-critical requirement. He brings that discipline to your organization through a structured, deliverable-driven engagement that produces real governance frameworks, not templates.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      {/* ── GOVERNANCE FOUNDATIONS PACKAGE ──────────────────────────────── */}
       <section className="bg-[#F7F9FC] py-20">
         <div className="max-w-[1200px] mx-auto px-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-16">
-            {[
-              { title: "Data Loss Prevention", desc: "Configure DLP policies that automatically detect and protect sensitive data — SSNs, financial information, health records, classified content." },
-              { title: "Sensitivity Labels", desc: "Deploy Microsoft Purview sensitivity labels with automatic classification, encryption, and visual marking. Build the labeling taxonomy that matches your compliance requirements." },
-              { title: "Retention Policies", desc: "Ensure records are retained as long as required and deleted when they shouldn't be kept. Court-defensible retention schedules built into the platform." },
-              { title: "Microsoft Purview", desc: "Deploy and configure the full Purview compliance suite — eDiscovery, communication compliance, information barriers, and audit logging." },
-              { title: "Conditional Access", desc: "Identity-based access policies that ensure only the right people, on the right devices, from the right locations can access your sensitive systems." },
-              { title: "Permissions Audit", desc: "Comprehensive review of who has access to what. Identify and remediate overprivileged accounts, excessive guest access, and admin role sprawl." },
-            ].map((item, i) => (
-              <div key={i} className="bg-white border border-border rounded-lg p-6" data-testid={`governance-feature-${i}`}>
-                <Shield className="w-6 h-6 text-[#0078D4] mb-3" />
-                <h3 className="font-bold text-[#0A2540] mb-2">{item.title}</h3>
-                <p className="text-muted-foreground text-sm leading-relaxed">{item.desc}</p>
+          <div className="text-center mb-12">
+            <p className="text-[#0078D4] text-sm font-semibold uppercase tracking-[0.12em] mb-3">Fixed-Price Engagement</p>
+            <h2 className="text-3xl md:text-4xl font-extrabold text-[#0A2540]">Governance Foundations Package</h2>
+          </div>
+
+          <div className="max-w-4xl mx-auto bg-white border border-border rounded-2xl overflow-hidden shadow-sm">
+            <div className="bg-[#0A2540] px-8 py-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+              <div>
+                <p className="text-white font-bold text-xl">Governance Foundations Package</p>
+                <p className="text-white/50 text-sm mt-1">A complete Microsoft 365 governance framework — designed for your organization's regulatory obligations.</p>
+              </div>
+              <div className="flex-shrink-0 text-right">
+                <div className="flex items-center gap-1.5 justify-end">
+                  <DollarSign className="w-4 h-4 text-[#0078D4]" />
+                  <span className="text-white font-extrabold text-2xl">$12,000–$18,000</span>
+                </div>
+                <div className="flex items-center gap-1.5 justify-end mt-1">
+                  <Clock className="w-3.5 h-3.5 text-white/40" />
+                  <span className="text-white/50 text-sm">6 weeks</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="px-8 py-8 border-b border-border">
+              <p className="text-xs font-bold uppercase tracking-widest text-muted-foreground mb-5">What's Included</p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {PACKAGE_INCLUDES.map((item) => (
+                  <div key={item} className="flex items-start gap-3">
+                    <CheckCircle className="w-4 h-4 text-[#0078D4] flex-shrink-0 mt-0.5" />
+                    <span className="text-[#0A2540] text-sm leading-snug">{item}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="px-8 py-7 bg-[#0078D4]/5 flex flex-col sm:flex-row sm:items-center gap-6">
+              <div className="flex-1">
+                <p className="text-xs font-bold uppercase tracking-widest text-[#0078D4] mb-2">Deliverable</p>
+                <p className="text-[#0A2540] font-semibold leading-relaxed">
+                  A complete governance playbook, policy documentation package, and configured Microsoft 365 environment — ready for audit and ongoing operations.
+                </p>
+              </div>
+              <CTAButton href="/book" className="flex-shrink-0 whitespace-nowrap">
+                Book This Package
+              </CTAButton>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ── WHAT SHANE DELIVERS ──────────────────────────────────────────── */}
+      <section className="bg-white py-20">
+        <div className="max-w-[1200px] mx-auto px-6">
+          <div className="text-center mb-12">
+            <p className="text-[#0078D4] text-sm font-semibold uppercase tracking-[0.12em] mb-3">Capabilities</p>
+            <h2 className="text-3xl md:text-4xl font-extrabold text-[#0A2540]">What Shane Delivers</h2>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+            {WHAT_DELIVERS.map((item) => (
+              <div
+                key={item.title}
+                className="flex gap-4 p-6 rounded-2xl border border-border hover:border-[#0078D4]/30 hover:bg-[#F7F9FC] transition-all"
+              >
+                <div className="w-10 h-10 rounded-xl bg-[#0078D4]/10 flex items-center justify-center text-[#0078D4] flex-shrink-0">
+                  {item.icon}
+                </div>
+                <div>
+                  <h3 className="font-bold text-[#0A2540] mb-1.5">{item.title}</h3>
+                  <p className="text-muted-foreground text-sm leading-relaxed">{item.desc}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ── FOLLOW-ON ENGAGEMENTS ────────────────────────────────────────── */}
+      <section className="bg-[#F7F9FC] py-20">
+        <div className="max-w-[1200px] mx-auto px-6">
+          <div className="text-center mb-12">
+            <p className="text-[#0078D4] text-sm font-semibold uppercase tracking-[0.12em] mb-3">Optional Next Steps</p>
+            <h2 className="text-3xl md:text-4xl font-extrabold text-[#0A2540]">Follow-On Engagements</h2>
+            <p className="text-muted-foreground mt-4 max-w-xl mx-auto">
+              Governance is the foundation. Once it's in place, Shane can lead migration planning, Copilot deployment, or ongoing architecture through a monthly retainer.
+            </p>
+          </div>
+
+          <div className="max-w-4xl mx-auto space-y-4 mb-12">
+            {FOLLOW_ON.map((item) => (
+              <div key={item.name} className="bg-white border border-border rounded-2xl p-6 flex flex-col sm:flex-row sm:items-center gap-5">
+                <div className="flex-1">
+                  <p className="font-bold text-[#0A2540] mb-1">{item.name}</p>
+                  <p className="text-muted-foreground text-sm leading-relaxed">{item.desc}</p>
+                </div>
+                <div className="flex-shrink-0 flex items-center gap-6">
+                  <div className="text-right">
+                    <p className="text-[#0A2540] font-bold text-sm">{item.price}</p>
+                    <p className="text-muted-foreground text-xs flex items-center gap-1 justify-end mt-0.5">
+                      <Clock className="w-3 h-3" /> {item.duration}
+                    </p>
+                  </div>
+                  <Link href={item.href} className="inline-flex items-center gap-1.5 text-[#0078D4] font-semibold hover:underline text-sm whitespace-nowrap">
+                    Details <ArrowRight className="w-3.5 h-3.5" />
+                  </Link>
+                </div>
               </div>
             ))}
           </div>
 
-          <div className="bg-white rounded-xl border border-border p-8 md:p-10">
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-10">
-              <div>
-                <p className="text-[#0078D4] text-sm font-semibold uppercase tracking-[0.1em] mb-4">Who This Is For</p>
-                <h2 className="text-2xl font-extrabold text-[#0A2540] mb-4">Regulated Industries & Government Contractors</h2>
-                <p className="text-muted-foreground leading-relaxed mb-4">If you operate in healthcare, financial services, legal, defense contracting, or government — or if you handle data that's regulated under HIPAA, CMMC, FedRAMP, SOX, GDPR, or CCPA — your Microsoft 365 governance posture matters more than you know.</p>
-                <p className="text-muted-foreground leading-relaxed">Shane has worked in the most compliance-sensitive Microsoft 365 environment in existence: NASA. That experience translates directly to understanding what regulated organizations need — and what they're getting wrong.</p>
-              </div>
-              <div>
-                <p className="text-[#0078D4] text-sm font-semibold uppercase tracking-[0.1em] mb-4">Quick Win</p>
-                <div className="bg-[#0078D4]/10 border border-[#0078D4]/30 rounded-xl p-6 mb-4">
-                  <h3 className="font-bold text-[#0A2540] mb-2">M365 Security & Governance Audit — $897</h3>
-                  <p className="text-muted-foreground text-sm mb-4">Comprehensive review delivered in 5 business days. Full prioritized remediation report.</p>
-                  <ul className="space-y-2">
-                    {["DLP policy review", "Sensitivity label assessment", "Retention policy audit", "Admin role and permissions review", "Conditional access evaluation", "Purview compliance posture review"].map((item, i) => (
-                      <li key={i} className="flex items-center gap-2 text-sm text-foreground">
-                        <CheckCircle className="w-4 h-4 text-[#0078D4]" />
-                        {item}
-                      </li>
-                    ))}
-                  </ul>
+          <p className="text-center text-sm font-semibold text-muted-foreground uppercase tracking-widest mb-6">Fractional M365 Architect Retainers</p>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-5 max-w-4xl mx-auto">
+            {RETAINERS.map((tier) => (
+              <div
+                key={tier.name}
+                className={`rounded-2xl p-6 flex flex-col gap-4 border ${
+                  tier.highlight ? "bg-[#0A2540] border-[#0078D4]/40 shadow-xl" : "bg-white border-border"
+                }`}
+              >
+                {tier.highlight && (
+                  <span className="self-start text-[10px] font-bold uppercase tracking-widest bg-[#0078D4] text-white px-2.5 py-1 rounded-full">
+                    Most Popular
+                  </span>
+                )}
+                <div>
+                  <p className={`text-sm font-semibold mb-1 ${tier.highlight ? "text-white/60" : "text-muted-foreground"}`}>{tier.name}</p>
+                  <div className="flex items-end gap-1">
+                    <span className={`text-3xl font-extrabold ${tier.highlight ? "text-white" : "text-[#0A2540]"}`}>{tier.price}</span>
+                    <span className={`text-sm mb-1 ${tier.highlight ? "text-white/50" : "text-muted-foreground"}`}>/mo</span>
+                  </div>
+                  <p className="text-[#0078D4] text-sm font-semibold mt-0.5">{tier.hours}</p>
                 </div>
+                <p className={`text-sm leading-relaxed flex-1 ${tier.highlight ? "text-white/70" : "text-muted-foreground"}`}>{tier.desc}</p>
+                <CTAButton href="/book" className={`w-full justify-center text-sm py-2.5 ${!tier.highlight ? "bg-[#0A2540] hover:bg-[#0A2540]/90" : ""}`}>
+                  Get Started
+                </CTAButton>
               </div>
-            </div>
+            ))}
           </div>
+          <p className="text-center text-sm text-muted-foreground mt-5">
+            All retainers are month-to-month.{" "}
+            <Link href="/pricing" className="text-[#0078D4] hover:underline font-medium">See full pricing →</Link>
+          </p>
         </div>
       </section>
 
-      {/* Get Started CTA */}
-      <section className="bg-white py-16">
+      {/* ── WHO THIS IS FOR ──────────────────────────────────────────────── */}
+      <section className="bg-white py-20">
         <div className="max-w-[1200px] mx-auto px-6">
-          <div className="bg-[#0A2540] rounded-3xl p-10 md:p-14 flex flex-col md:flex-row items-start md:items-center justify-between gap-8">
-            <div className="flex-1">
-              <p className="text-[#0078D4] text-sm font-semibold uppercase tracking-wide mb-3">Monthly Retainer</p>
-              <h2 className="text-2xl md:text-3xl font-extrabold text-white mb-3">Ready to get started?</h2>
-              <p className="text-white/70 text-base max-w-md">
-                Ongoing Microsoft 365 security, compliance, and governance consulting — DLP, sensitivity labels, Purview, and admin hygiene. Cancel any time.
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
+            <div>
+              <p className="text-[#0078D4] text-sm font-semibold uppercase tracking-[0.12em] mb-4">Ideal Clients</p>
+              <h2 className="text-3xl md:text-4xl font-extrabold text-[#0A2540] mb-6">Who This Is For</h2>
+              <p className="text-muted-foreground leading-relaxed mb-6">
+                Shane's governance engagements are designed for organizations where compliance gaps carry real consequences — audit failures, accreditation loss, regulatory fines, or breach liability.
+              </p>
+              <ul className="space-y-3">
+                {INDUSTRIES.map((item) => (
+                  <li key={item} className="flex items-center gap-3">
+                    <CheckCircle className="w-5 h-5 text-[#0078D4] flex-shrink-0" />
+                    <span className="text-[#0A2540] text-sm font-medium">{item}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+            <div className="bg-[#0A2540] rounded-2xl p-8 space-y-5">
+              <p className="text-[#0078D4] text-xs font-bold uppercase tracking-widest">Compliance Frameworks Covered</p>
+              <p className="text-white font-bold text-lg">Built under the strictest requirements in existence.</p>
+              <div className="grid grid-cols-2 gap-3">
+                {["HIPAA", "CMMC", "SOX", "FIN", "GDPR / CCPA", "FedRAMP", "ITAR", "FISMA High"].map((label) => (
+                  <div key={label} className="flex items-center gap-2 bg-white/5 border border-white/10 rounded-lg px-4 py-2.5">
+                    <CheckCircle className="w-4 h-4 text-[#0078D4] flex-shrink-0" />
+                    <span className="text-white text-sm font-semibold">{label}</span>
+                  </div>
+                ))}
+              </div>
+              <p className="text-white/50 text-xs leading-relaxed">
+                Shane's governance methodology was forged under NASA's FedRAMP, FISMA High, and ITAR requirements — the same rigor scales to your organization.
               </p>
             </div>
-            <div className="flex flex-col items-start md:items-end gap-4">
-              <div>
-                <span className="text-3xl font-extrabold text-white">
-                  {loading ? (
-                    <span className="inline-block h-9 w-24 rounded bg-white/20 animate-pulse align-middle" aria-hidden="true" />
-                  ) : (
-                    price
-                  )}
-                </span>
-                <span className="text-lg font-normal text-white/60">/mo</span>
-              </div>
-              <a
-                href="/crm/portal/onboarding/select?service=governance-consulting"
-                className="inline-flex items-center gap-2 bg-[#0078D4] text-white font-semibold px-6 py-3 rounded-xl hover:bg-[#0066B8] transition-colors"
-              >
-                Get Started <ArrowRight className="w-4 h-4" />
-              </a>
-              <p className="text-white/50 text-xs">No long-term commitment required.</p>
-            </div>
           </div>
         </div>
       </section>
 
-      <ConsultationCTA />
+      {/* ── WHY SHANE ────────────────────────────────────────────────────── */}
+      <section className="bg-[#F7F9FC] py-20">
+        <div className="max-w-[1200px] mx-auto px-6">
+          <div className="text-center mb-12">
+            <p className="text-[#0078D4] text-sm font-semibold uppercase tracking-[0.12em] mb-3">Credentials</p>
+            <h2 className="text-3xl md:text-4xl font-extrabold text-[#0A2540]">Why Work With Shane</h2>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {WHY_SHANE.map((item) => (
+              <div key={item.title} className="flex gap-4 p-6 rounded-2xl border border-border bg-white hover:border-[#0078D4]/30 transition-all">
+                <CheckCircle className="w-5 h-5 text-[#0078D4] flex-shrink-0 mt-0.5" />
+                <div>
+                  <h3 className="font-bold text-[#0A2540] mb-2">{item.title}</h3>
+                  <p className="text-muted-foreground text-sm leading-relaxed">{item.desc}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ── FINAL CTA ────────────────────────────────────────────────────── */}
+      <section className="bg-[#0A2540] py-24 relative overflow-hidden">
+        <div
+          className="absolute inset-0 pointer-events-none"
+          style={{ background: "radial-gradient(ellipse 700px 400px at 50% 100%, rgba(0,120,212,0.15) 0%, transparent 70%)" }}
+        />
+        <div className="max-w-[1200px] mx-auto px-6 relative text-center">
+          <p className="text-[#0078D4] text-sm font-semibold uppercase tracking-[0.12em] mb-4">Ready to Start?</p>
+          <h2 className="text-3xl md:text-4xl font-extrabold text-white mb-4">
+            Build a Governance Foundation You Can Defend
+          </h2>
+          <p className="text-white/60 text-lg max-w-xl mx-auto mb-10">
+            A free 30-minute discovery call to assess your current governance posture and identify the highest-risk gaps.
+          </p>
+          <div className="flex flex-wrap justify-center gap-4">
+            <CTAButton href="/book" className="px-8 py-3.5 text-base">
+              Book a Free Discovery Call
+            </CTAButton>
+            <a
+              href="/contact"
+              className="inline-flex items-center gap-2 text-white/80 hover:text-white font-semibold border border-white/20 hover:border-white/40 px-8 py-3.5 rounded-xl transition-colors text-base"
+            >
+              Schedule a Consultation <ArrowRight className="w-4 h-4" />
+            </a>
+          </div>
+        </div>
+      </section>
     </Layout>
   );
 }
