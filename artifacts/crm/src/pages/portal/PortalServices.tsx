@@ -448,6 +448,11 @@ export default function PortalServices() {
   const active = purchasedServices.filter(s => s.status === "active");
   const completed = purchasedServices.filter(s => s.status === "completed");
 
+  // Build a set of already-purchased service IDs so we can hide them from the catalog
+  const purchasedServiceIds = new Set(purchasedServices.map(cs => cs.service.id));
+  const availablePackages = packages.filter(s => !purchasedServiceIds.has(s.id));
+  const availableRetainers = retainers.filter(s => !purchasedServiceIds.has(s.id));
+
   const handleBuy = async (offer: DbService) => {
     const hasWizard =
       Array.isArray(offer.orderWorkflow) &&
@@ -615,14 +620,23 @@ export default function PortalServices() {
               </p>
               {catalogLoading ? (
                 <CatalogSpinner />
-              ) : packages.length === 0 ? (
+              ) : availablePackages.length === 0 ? (
                 <div className="bg-white border border-dashed border-border rounded-xl px-6 py-8 text-center">
-                  <p className="text-[#0A2540] font-semibold text-sm mb-1">No packages available right now</p>
-                  <p className="text-muted-foreground text-xs">Check back soon or contact Shane directly.</p>
+                  <div className="w-12 h-12 rounded-full bg-green-50 flex items-center justify-center mx-auto mb-3">
+                    <svg className="w-6 h-6 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                  </div>
+                  <p className="text-[#0A2540] font-semibold text-sm mb-1">
+                    {packages.length === 0 ? "No packages available right now" : "You already own all available packages"}
+                  </p>
+                  <p className="text-muted-foreground text-xs">
+                    {packages.length === 0 ? "Check back soon or contact Shane directly." : "Your active services are shown above. Contact Shane if you need something new."}
+                  </p>
                 </div>
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6 py-4">
-                  {packages.map((offer) => (
+                  {availablePackages.map((offer) => (
                     <MicroOfferCard
                       key={offer.id}
                       offer={offer}
@@ -646,14 +660,23 @@ export default function PortalServices() {
               </p>
               {catalogLoading ? (
                 <CatalogSpinner />
-              ) : retainers.length === 0 ? (
+              ) : availableRetainers.length === 0 ? (
                 <div className="bg-white border border-dashed border-border rounded-xl px-6 py-8 text-center">
-                  <p className="text-[#0A2540] font-semibold text-sm mb-1">No retainer plans available right now</p>
-                  <p className="text-muted-foreground text-xs">Contact Shane directly to discuss ongoing support.</p>
+                  <div className="w-12 h-12 rounded-full bg-green-50 flex items-center justify-center mx-auto mb-3">
+                    <svg className="w-6 h-6 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                  </div>
+                  <p className="text-[#0A2540] font-semibold text-sm mb-1">
+                    {retainers.length === 0 ? "No retainer plans available right now" : "You already own all available retainer plans"}
+                  </p>
+                  <p className="text-muted-foreground text-xs">
+                    {retainers.length === 0 ? "Contact Shane directly to discuss ongoing support." : "Your active services are shown above. Contact Shane if you'd like to make changes."}
+                  </p>
                 </div>
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  {retainers.map((plan) => (
+                  {availableRetainers.map((plan) => (
                     <RetainerCard key={plan.id} plan={plan} />
                   ))}
                 </div>
