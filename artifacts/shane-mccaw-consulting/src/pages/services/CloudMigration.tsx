@@ -81,21 +81,21 @@ const migrationTypes = [
 
 const retainerTiers = [
   {
-    name: "Architect Essentials",
+    name: "Essentials",
     price: "$2,500",
     hours: "10 hrs/month",
     description: "Ongoing migration oversight and post-migration governance for smaller organizations completing their transition.",
     highlight: false,
   },
   {
-    name: "Architect Growth",
+    name: "Growth",
     price: "$6,000",
     hours: "25 hrs/month",
     description: "Active migration execution support, governance buildout, and stakeholder advisory for mid-market organizations.",
     highlight: true,
   },
   {
-    name: "Architect Enterprise",
+    name: "Enterprise",
     price: "$11,000",
     hours: "50 hrs/month",
     description: "Embedded fractional architect capacity for large-scale, multi-phase migrations and complex compliance environments.",

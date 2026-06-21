@@ -47,24 +47,21 @@ const comparisonRows = [
 
 const RETAINERS = [
   {
-    name: "Architect Essentials",
+    name: "Essentials",
     price: "$2,500",
     hours: "10 hrs/month",
-    description: "Advisory, architecture reviews, SharePoint governance oversight, and escalation support.",
     highlight: false,
   },
   {
-    name: "Architect Growth",
+    name: "Growth",
     price: "$6,000",
     hours: "25 hrs/month",
-    description: "Ongoing governance implementation, intranet development, and IT team mentoring.",
     highlight: true,
   },
   {
-    name: "Architect Enterprise",
+    name: "Enterprise",
     price: "$11,000",
     hours: "50 hrs/month",
-    description: "Embedded SharePoint architecture leadership, governance ownership, and executive reporting.",
     highlight: false,
   },
 ];
@@ -306,7 +303,6 @@ export default function SharePoint() {
                   name={r.name}
                   price={r.price}
                   hours={r.hours}
-                  description={r.description}
                   highlight={r.highlight}
                   index={i}
                 />
