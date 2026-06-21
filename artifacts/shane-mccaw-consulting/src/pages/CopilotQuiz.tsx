@@ -400,8 +400,8 @@ function QuizModal({ onClose }: { onClose: () => void }) {
                 )}
               </div>
 
-              {/* Forward report form */}
-              {results.leadId && (
+              {/* Forward report form — only shown when a valid resend token was issued */}
+              {results.leadId && results.resendToken && (
                 <div className="bg-white/5 border border-white/10 rounded-xl p-4">
                   <p className="text-white/70 text-xs font-semibold uppercase tracking-wider mb-3">Forward Report to Another Address</p>
                   {resendState === "sent" ? (

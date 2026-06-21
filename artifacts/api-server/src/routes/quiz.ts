@@ -8,14 +8,30 @@ import { logger } from "../lib/logger";
 import { generateQuizPdf } from "../lib/quiz-pdf";
 import { sendEmailWithAttachment, sendEmailWithAttachmentOrThrow, sendEmail, brandedEmail, quizLeadNotificationEmail } from "../lib/mailer";
 
-/** Generate a short HMAC token that proves the caller completed quiz leadId. */
+/**
+ * Resend tokens are time-bound HMAC-SHA256 signatures over `leadId:windowSlot`.
+ * windowSlot changes every WINDOW_DAYS days so tokens expire naturally.
+ * Accepts the current window AND the previous one to handle boundary transitions.
+ * Fails closed: throws if JWT_SECRET is not set, and verifyResendToken returns
+ * false instead of throwing so the resend route always returns 403 (not 500).
+ */
+const RESEND_TOKEN_WINDOW_MS = 7 * 24 * 60 * 60 * 1000; // 7-day windows
+
 function makeResendToken(leadId: number): string {
-  const secret = process.env.JWT_SECRET ?? "quiz-resend-fallback";
-  return createHmac("sha256", secret).update(String(leadId)).digest("hex");
+  const secret = process.env.JWT_SECRET;
+  if (!secret) throw new Error("JWT_SECRET must be set — quiz resend tokens cannot be signed without it");
+  const slot = Math.floor(Date.now() / RESEND_TOKEN_WINDOW_MS);
+  return createHmac("sha256", secret).update(`${leadId}:${slot}`).digest("hex");
 }
 
 function verifyResendToken(leadId: number, token: string): boolean {
-  return makeResendToken(leadId) === token;
+  const secret = process.env.JWT_SECRET;
+  if (!secret) return false; // fail closed — no secret means no valid tokens
+  const slot = Math.floor(Date.now() / RESEND_TOKEN_WINDOW_MS);
+  // Accept current window and previous window to handle boundary transitions
+  const current = createHmac("sha256", secret).update(`${leadId}:${slot}`).digest("hex");
+  const previous = createHmac("sha256", secret).update(`${leadId}:${slot - 1}`).digest("hex");
+  return token === current || token === previous;
 }
 
 const router = Router();
@@ -283,7 +299,13 @@ Respond ONLY with valid JSON in this exact shape:
     }
   })();
 
-  const resendToken = leadId !== null ? makeResendToken(leadId) : null;
+  // Generate a time-bound resend token — gracefully degrade if JWT_SECRET is missing
+  let resendToken: string | null = null;
+  try {
+    resendToken = leadId !== null ? makeResendToken(leadId) : null;
+  } catch (err) {
+    logger.warn({ err }, "quiz/submit: could not generate resend token (JWT_SECRET not configured)");
+  }
 
   return res.json({
     success: true,
