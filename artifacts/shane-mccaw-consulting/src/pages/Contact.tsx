@@ -1,75 +1,179 @@
 import { SEOMeta } from "@/components/SEOMeta";
-import { useForm } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
-import { z } from "zod";
+import { useRef, useState, useEffect, type KeyboardEvent } from "react";
 import { Layout } from "@/components/Layout";
 import { CTAButton } from "@/components/CTAButton";
 import { MicrosoftBookingsEmbed } from "@/components/MicrosoftBookingsEmbed";
-import { Mail, MapPin, Clock } from "lucide-react";
-import { useToast } from "@/hooks/use-toast";
+import { Mail, MapPin, Clock, Send } from "lucide-react";
 
-const schema = z.object({
-  firstName: z.string().min(1, "First name is required"),
-  lastName: z.string().min(1, "Last name is required"),
-  email: z.string().email("Valid email required"),
-  company: z.string().min(1, "Company name is required"),
-  companySize: z.string().min(1, "Please select a company size"),
-  service: z.string().min(1, "Please select a service area"),
-  message: z.string().min(10, "Message must be at least 10 characters"),
-  howFound: z.string().min(1, "Please let us know how you found us"),
-});
+interface ChatMessage {
+  role: "user" | "assistant";
+  content: string;
+}
 
-type FormData = z.infer<typeof schema>;
+interface LeadPayload {
+  name?: string;
+  email?: string;
+  company?: string;
+  companySize?: string;
+  serviceArea?: string;
+  howFound?: string;
+  message?: string;
+}
+
+function TypingIndicator() {
+  return (
+    <div className="flex items-end gap-2 mb-4">
+      <div className="w-7 h-7 rounded-full bg-[#0078D4] flex items-center justify-center flex-shrink-0 text-white text-xs font-bold">
+        AI
+      </div>
+      <div className="bg-[#0078D4]/10 border border-[#0078D4]/20 rounded-2xl rounded-bl-sm px-4 py-3">
+        <div className="flex gap-1.5 items-center h-4">
+          <span className="w-1.5 h-1.5 rounded-full bg-[#0078D4] animate-bounce [animation-delay:0ms]" />
+          <span className="w-1.5 h-1.5 rounded-full bg-[#0078D4] animate-bounce [animation-delay:150ms]" />
+          <span className="w-1.5 h-1.5 rounded-full bg-[#0078D4] animate-bounce [animation-delay:300ms]" />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ChatBubble({ message }: { message: ChatMessage }) {
+  const isAI = message.role === "assistant";
+  return (
+    <div className={`flex items-end gap-2 mb-4 ${isAI ? "" : "flex-row-reverse"}`}>
+      {isAI ? (
+        <div className="w-7 h-7 rounded-full bg-[#0078D4] flex items-center justify-center flex-shrink-0 text-white text-xs font-bold">
+          AI
+        </div>
+      ) : (
+        <div className="w-7 h-7 rounded-full bg-[#0A2540] flex items-center justify-center flex-shrink-0 text-white text-xs font-bold">
+          You
+        </div>
+      )}
+      <div
+        className={`max-w-[80%] px-4 py-3 rounded-2xl text-sm leading-relaxed whitespace-pre-wrap ${
+          isAI
+            ? "bg-[#0078D4]/10 border border-[#0078D4]/20 rounded-bl-sm text-[#0A2540]"
+            : "bg-[#0078D4] text-white rounded-br-sm"
+        }`}
+      >
+        {message.content}
+      </div>
+    </div>
+  );
+}
 
 export default function Contact() {
-  const { toast } = useToast();
-  const {
-    register,
-    handleSubmit,
-    reset,
-    formState: { errors, isSubmitting, isSubmitSuccessful },
-  } = useForm<FormData>({ resolver: zodResolver(schema) });
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [input, setInput] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
+  const [isSubmitted, setIsSubmitted] = useState(false);
+  const [initError, setInitError] = useState(false);
+  const bottomRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
 
-  const onSubmit = async (data: FormData) => {
-    let res: Response;
+  const scrollToBottom = () => {
+    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  };
+
+  useEffect(() => {
+    scrollToBottom();
+  }, [messages, isLoading]);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function init() {
+      setIsLoading(true);
+      try {
+        const res = await fetch("/api/contact-chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ messages: [] }),
+        });
+        if (!res.ok) throw new Error("init failed");
+        const data = (await res.json()) as { reply: string };
+        if (!cancelled) {
+          setMessages([{ role: "assistant", content: data.reply }]);
+        }
+      } catch {
+        if (!cancelled) setInitError(true);
+      } finally {
+        if (!cancelled) setIsLoading(false);
+      }
+    }
+    void init();
+    return () => { cancelled = true; };
+  }, []);
+
+  const sendMessage = async () => {
+    const text = input.trim();
+    if (!text || isLoading || isSubmitted) return;
+
+    const newMessages: ChatMessage[] = [...messages, { role: "user", content: text }];
+    setMessages(newMessages);
+    setInput("");
+    setIsLoading(true);
+
     try {
-      res = await fetch("/api/leads", {
+      const res = await fetch("/api/contact-chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: `${data.firstName} ${data.lastName}`,
-          email: data.email,
-          company: data.company,
-          companySize: data.companySize,
-          serviceArea: data.service,
-          message: data.message,
-          source: "contact_form",
-          howFound: data.howFound,
-        }),
+        body: JSON.stringify({ messages: newMessages }),
       });
+
+      if (!res.ok) throw new Error("chat failed");
+      const data = (await res.json()) as { reply: string; lead?: LeadPayload };
+
+      if (data.lead) {
+        const lead = data.lead;
+        try {
+          await fetch("/api/leads", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              name: lead.name ?? "",
+              email: lead.email ?? "",
+              company: lead.company ?? null,
+              companySize: lead.companySize ?? null,
+              serviceArea: lead.serviceArea ?? null,
+              message: lead.message ?? null,
+              source: "contact_form",
+              howFound: lead.howFound ?? null,
+            }),
+          });
+        } catch {
+          // Lead submission failure is non-fatal — AI already confirmed receipt
+        }
+
+        const confirmMsg = data.reply ||
+          "Thanks! Your information has been sent to Shane. He'll personally follow up within one business day.";
+
+        setMessages([...newMessages, { role: "assistant", content: confirmMsg }]);
+        setIsSubmitted(true);
+      } else {
+        setMessages([...newMessages, { role: "assistant", content: data.reply }]);
+      }
     } catch {
-      toast({
-        title: "Something went wrong",
-        description: "Your message couldn't be sent. Please check your connection and try again, or email info@shanemccaw.com directly.",
-        variant: "destructive",
-      });
-      return;
+      setMessages([
+        ...newMessages,
+        {
+          role: "assistant",
+          content: "Sorry, something went wrong on my end. Please try again or email info@shanemccaw.com directly.",
+        },
+      ]);
+    } finally {
+      setIsLoading(false);
+      if (!isSubmitted) {
+        setTimeout(() => inputRef.current?.focus(), 50);
+      }
     }
+  };
 
-    if (!res.ok) {
-      toast({
-        title: "Something went wrong",
-        description: "Your message couldn't be sent. Please try again or email info@shanemccaw.com directly.",
-        variant: "destructive",
-      });
-      return;
+  const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      void sendMessage();
     }
-
-    toast({
-      title: "Message sent!",
-      description: "Thanks! Shane will personally respond within 1 business day.",
-    });
-    reset();
   };
 
   return (
@@ -96,133 +200,82 @@ export default function Contact() {
       <section className="bg-[#F7F9FC] py-20">
         <div className="max-w-[1200px] mx-auto px-6">
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-12">
-            {/* Form */}
-            <div className="lg:col-span-2">
+
+            {/* Chat */}
+            <div className="lg:col-span-2 flex flex-col">
               <p className="text-[#0A2540] text-sm font-medium mb-5">
                 I work with mid&#8209;market organizations (200–2,000 employees), regulated industries, government contractors, and startups scaling into compliance.
               </p>
-              <div className="bg-white rounded-xl border border-border p-8 md:p-10">
-                <h2 className="text-2xl font-extrabold text-[#0A2540] mb-8">Send a Message</h2>
-                <form onSubmit={handleSubmit(onSubmit)} className="space-y-6" data-testid="contact-form">
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-sm font-medium text-foreground mb-1.5">First Name *</label>
-                      <input
-                        {...register("firstName")}
-                        className="w-full border border-border rounded px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4]"
-                        data-testid="input-first-name"
-                      />
-                      {errors.firstName && <p className="text-destructive text-xs mt-1">{errors.firstName.message}</p>}
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-foreground mb-1.5">Last Name *</label>
-                      <input
-                        {...register("lastName")}
-                        className="w-full border border-border rounded px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4]"
-                        data-testid="input-last-name"
-                      />
-                      {errors.lastName && <p className="text-destructive text-xs mt-1">{errors.lastName.message}</p>}
-                    </div>
-                  </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-sm font-medium text-foreground mb-1.5">Email Address *</label>
-                      <input
-                        type="email"
-                        {...register("email")}
-                        className="w-full border border-border rounded px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4]"
-                        data-testid="input-email"
-                      />
-                      {errors.email && <p className="text-destructive text-xs mt-1">{errors.email.message}</p>}
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-foreground mb-1.5">Company Name *</label>
-                      <input
-                        {...register("company")}
-                        className="w-full border border-border rounded px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4]"
-                        data-testid="input-company"
-                      />
-                      {errors.company && <p className="text-destructive text-xs mt-1">{errors.company.message}</p>}
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-sm font-medium text-foreground mb-1.5">Company Size *</label>
-                      <select
-                        {...register("companySize")}
-                        className="w-full border border-border rounded px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4] bg-white"
-                        data-testid="select-company-size"
-                      >
-                        <option value="">Select size...</option>
-                        <option value="1-10">1–10 employees</option>
-                        <option value="11-50">11–50 employees</option>
-                        <option value="51-200">51–200 employees</option>
-                        <option value="201-500">201–500 employees</option>
-                        <option value="500+">500+ employees</option>
-                      </select>
-                      {errors.companySize && <p className="text-destructive text-xs mt-1">{errors.companySize.message}</p>}
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-foreground mb-1.5">How did you find me? *</label>
-                      <select
-                        {...register("howFound")}
-                        className="w-full border border-border rounded px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4] bg-white"
-                        data-testid="select-how-found"
-                      >
-                        <option value="">Select...</option>
-                        <option value="google">Google Search</option>
-                        <option value="linkedin">LinkedIn</option>
-                        <option value="referral">Referral</option>
-                        <option value="microsoft-community">Microsoft Community</option>
-                        <option value="other">Other</option>
-                      </select>
-                      {errors.howFound && <p className="text-destructive text-xs mt-1">{errors.howFound.message}</p>}
-                    </div>
-                  </div>
-
+              <div className="bg-white rounded-xl border border-border flex flex-col" style={{ minHeight: "520px" }}>
+                <div className="border-b border-border px-6 py-4 flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-full bg-[#0078D4] flex items-center justify-center text-white text-xs font-bold">AI</div>
                   <div>
-                    <label className="block text-sm font-medium text-foreground mb-1.5">What do you need help with? *</label>
-                    <select
-                      {...register("service")}
-                      className="w-full border border-border rounded px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4] bg-white"
-                      data-testid="select-service"
-                    >
-                      <option value="">Select a service area...</option>
-                      <option value="m365">M365 Setup/Optimization</option>
-                      <option value="copilot">Copilot AI</option>
-                      <option value="sharepoint">SharePoint</option>
-                      <option value="power-platform">Power Platform</option>
-                      <option value="governance">Governance/Compliance</option>
-                      <option value="migration">Cloud Migration</option>
-                      <option value="retainer">Retainer/Ongoing Support</option>
-                      <option value="not-sure">Not Sure</option>
-                    </select>
-                    {errors.service && <p className="text-destructive text-xs mt-1">{errors.service.message}</p>}
+                    <p className="text-sm font-semibold text-[#0A2540]">Shane's AI Assistant</p>
+                    <p className="text-xs text-muted-foreground">I'll gather your info so Shane can follow up personally</p>
                   </div>
+                  <span className="ml-auto flex items-center gap-1.5 text-xs text-emerald-600 font-medium">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                    Online
+                  </span>
+                </div>
 
-                  <div>
-                    <label className="block text-sm font-medium text-foreground mb-1.5">Message *</label>
-                    <textarea
-                      {...register("message")}
-                      rows={5}
-                      placeholder="Tell me about your situation — what's working, what isn't, and what you're hoping to achieve."
-                      className="w-full border border-border rounded px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4] resize-none"
-                      data-testid="textarea-message"
-                    />
-                    {errors.message && <p className="text-destructive text-xs mt-1">{errors.message.message}</p>}
-                  </div>
+                <div className="flex-1 overflow-y-auto px-6 py-6" style={{ maxHeight: "440px" }}>
+                  {initError && messages.length === 0 && !isLoading && (
+                    <div className="text-sm text-muted-foreground text-center py-8">
+                      Couldn't connect to the assistant.{" "}
+                      <a href="mailto:info@shanemccaw.com" className="text-[#0078D4] hover:underline">
+                        Email Shane directly
+                      </a>{" "}
+                      instead.
+                    </div>
+                  )}
+                  {messages.map((msg, i) => (
+                    <ChatBubble key={i} message={msg} />
+                  ))}
+                  {isLoading && <TypingIndicator />}
+                  <div ref={bottomRef} />
+                </div>
 
-                  <CTAButton
-                    type="submit"
-                    disabled={isSubmitting}
-                    className="w-full justify-center py-3.5"
-                    data-testid="button-submit"
-                  >
-                    {isSubmitting ? "Sending..." : "Send Message"}
-                  </CTAButton>
-                </form>
+                <div className="border-t border-border px-4 py-4">
+                  {isSubmitted ? (
+                    <div className="text-center py-2">
+                      <p className="text-sm text-muted-foreground">
+                        Conversation complete.{" "}
+                        <a href="/book" className="text-[#0078D4] hover:underline font-medium">
+                          Book a call
+                        </a>{" "}
+                        if you'd like to connect sooner.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="flex gap-2 items-end">
+                      <textarea
+                        ref={inputRef}
+                        rows={1}
+                        value={input}
+                        onChange={(e) => setInput(e.target.value)}
+                        onKeyDown={handleKeyDown}
+                        disabled={isLoading || isSubmitted}
+                        placeholder="Type your reply…"
+                        className="flex-1 border border-border rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4] resize-none disabled:opacity-50 disabled:cursor-not-allowed"
+                        style={{ maxHeight: "120px" }}
+                        data-testid="chat-input"
+                      />
+                      <button
+                        onClick={() => void sendMessage()}
+                        disabled={!input.trim() || isLoading || isSubmitted}
+                        className="flex-shrink-0 w-10 h-10 rounded-lg bg-[#0078D4] hover:bg-[#006BBE] disabled:opacity-40 disabled:cursor-not-allowed text-white flex items-center justify-center transition-colors"
+                        data-testid="chat-send"
+                      >
+                        <Send className="w-4 h-4" />
+                      </button>
+                    </div>
+                  )}
+                  <p className="text-[10px] text-muted-foreground mt-2 text-center">
+                    Press <kbd className="font-mono bg-[#F7F9FC] border border-border rounded px-1">Enter</kbd> to send · Shift+Enter for new line
+                  </p>
+                </div>
               </div>
 
               {/* What Happens Next */}
