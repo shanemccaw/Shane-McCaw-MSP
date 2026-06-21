@@ -8,22 +8,6 @@ import PortalRetainerDetail from "./PortalRetainerDetail";
 import { KanbanCardModal } from "@/components/KanbanCardModal";
 import type { KanbanCardModalTask } from "@/components/KanbanCardModal";
 import { TypedCardContent } from "@/components/kanban/TypedCardContent";
-import {
-  DndContext,
-  DragOverlay,
-  PointerSensor,
-  useSensor,
-  useSensors,
-  type DragStartEvent,
-  type DragEndEvent,
-  closestCorners,
-} from "@dnd-kit/core";
-import {
-  SortableContext,
-  useSortable,
-  verticalListSortingStrategy,
-} from "@dnd-kit/sortable";
-import { CSS } from "@dnd-kit/utilities";
 
 interface Project {
   id: number;
@@ -180,16 +164,11 @@ function stepPercent(status: string): number {
   return 0;
 }
 
-function SortableTaskCard({ task, onCardClick }: { task: KanbanTask; onCardClick: (task: KanbanTask) => void }) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: task.id });
-  const style = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-    opacity: isDragging ? 0.4 : 1,
-  };
+function TaskCard({ task, onCardClick }: { task: KanbanTask; onCardClick: (task: KanbanTask) => void }) {
   return (
-    <div ref={setNodeRef} style={style} {...attributes} {...listeners}
-      className="bg-white rounded-lg border border-border p-3 shadow-sm cursor-grab active:cursor-grabbing hover:border-[#0078D4]/30 transition-colors select-none"
+    <div
+      onClick={() => onCardClick(task)}
+      className="bg-white rounded-lg border border-border p-3 shadow-sm cursor-pointer hover:border-[#0078D4]/40 hover:shadow-md transition-all select-none"
     >
       <p className="text-sm font-medium text-[#0A2540] leading-snug">{task.title}</p>
       {task.description && <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{task.description}</p>}
@@ -201,28 +180,18 @@ function SortableTaskCard({ task, onCardClick }: { task: KanbanTask; onCardClick
         {task.dueDate && (
           <span className="text-xs text-muted-foreground">Due {new Date(task.dueDate).toLocaleDateString("en-US", { month: "short", day: "numeric" })}</span>
         )}
-        <button
-          onClick={e => { e.stopPropagation(); onCardClick(task); }}
-          className="ml-auto text-[10px] font-semibold text-[#0078D4] hover:underline flex items-center gap-0.5 flex-shrink-0"
-          title="View details"
-        >
+        <span className="ml-auto text-[10px] font-semibold text-[#0078D4] flex items-center gap-0.5 flex-shrink-0">
           <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
           </svg>
           Details
-        </button>
+        </span>
       </div>
     </div>
   );
 }
 
-function TaskCardOverlay({ task }: { task: KanbanTask }) {
-  return (
-    <div className="bg-white rounded-lg border border-[#0078D4] p-3 shadow-xl opacity-90">
-      <p className="text-sm font-medium text-[#0A2540]">{task.title}</p>
-    </div>
-  );
-}
+
 
 function DocumentUpload({ projectId, onUploaded, fetchWithAuth }: {
   projectId: number;
@@ -458,7 +427,6 @@ export default function PortalProjectDetail() {
   const [secondaryTab, setSecondaryTab] = useState<SecondaryTab | null>(null);
   const [expandedStepId, setExpandedStepId] = useState<number | null>(null);
   const [showAllPhases, setShowAllPhases] = useState(false);
-  const [activeTask, setActiveTask] = useState<KanbanTask | null>(null);
   const [exportingAudit, setExportingAudit] = useState(false);
   const [selectedTask, setSelectedTask] = useState<KanbanCardModalTask | null>(null);
   const [selectedStepTitle, setSelectedStepTitle] = useState<string | null>(null);
@@ -687,33 +655,6 @@ export default function PortalProjectDetail() {
 
   useEffect(() => { loadProject(); }, [loadProject]);
 
-  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
-
-  const handleDragStart = (event: DragStartEvent) => {
-    const task = data?.tasks.find(t => t.id === event.active.id);
-    if (task) setActiveTask(task);
-  };
-
-  const handleDragEnd = async (event: DragEndEvent) => {
-    setActiveTask(null);
-    const { active, over } = event;
-    if (!over || !data) return;
-    const draggedTask = data.tasks.find(t => t.id === active.id);
-    if (!draggedTask) return;
-    const targetColumn = KANBAN_COLUMNS.find(c => c.key === over.id)?.key
-      ?? data.tasks.find(t => t.id === over.id)?.column;
-    if (!targetColumn || targetColumn === draggedTask.column) return;
-    setData(prev => prev ? {
-      ...prev,
-      tasks: prev.tasks.map(t => t.id === draggedTask.id ? { ...t, column: targetColumn } : t),
-    } : null);
-    await fetchWithAuth(`/api/portal/kanban-tasks/${draggedTask.id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ column: targetColumn }),
-    });
-    void loadAuditLogs();
-  };
 
   if (loading) {
     return (
@@ -1389,44 +1330,31 @@ export default function PortalProjectDetail() {
         {/* ── Kanban Board ── */}
         {secondaryTab === "kanban" && (
           <div>
-            <p className="text-sm text-muted-foreground mb-4">Drag cards between columns to update task status.</p>
-            <DndContext
-              sensors={sensors}
-              collisionDetection={closestCorners}
-              onDragStart={handleDragStart}
-              onDragEnd={handleDragEnd}
-            >
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                {KANBAN_COLUMNS.map(col => {
-                  const colTasks = tasks.filter(t => t.column === col.key);
-                  return (
-                    <div key={col.key} id={col.key} className={`rounded-xl border p-3 min-h-[300px] ${col.color}`}>
-                      <div className="flex items-center justify-between mb-3">
-                        <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">{col.label}</h3>
-                        <span className="text-xs bg-white/60 text-muted-foreground font-semibold px-2 py-0.5 rounded-full">{colTasks.length}</span>
-                      </div>
-                      <SortableContext items={colTasks.map(t => t.id)} strategy={verticalListSortingStrategy}>
-                        <div className="space-y-2">
-                          {colTasks.map(task => (
-                            <SortableTaskCard
-                              key={task.id}
-                              task={task}
-                              onCardClick={t => {
-                                const stepTitle = t.workflowStepId ? steps.find(s => s.id === t.workflowStepId)?.title ?? null : null;
-                                handleCardClick(t, stepTitle);
-                              }}
-                            />
-                          ))}
-                        </div>
-                      </SortableContext>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              {KANBAN_COLUMNS.map(col => {
+                const colTasks = tasks.filter(t => t.column === col.key);
+                return (
+                  <div key={col.key} className={`rounded-xl border p-3 min-h-[300px] ${col.color}`}>
+                    <div className="flex items-center justify-between mb-3">
+                      <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">{col.label}</h3>
+                      <span className="text-xs bg-white/60 text-muted-foreground font-semibold px-2 py-0.5 rounded-full">{colTasks.length}</span>
                     </div>
-                  );
-                })}
-              </div>
-              <DragOverlay>
-                {activeTask ? <TaskCardOverlay task={activeTask} /> : null}
-              </DragOverlay>
-            </DndContext>
+                    <div className="space-y-2">
+                      {colTasks.map(task => (
+                        <TaskCard
+                          key={task.id}
+                          task={task}
+                          onCardClick={t => {
+                            const stepTitle = t.workflowStepId ? steps.find(s => s.id === t.workflowStepId)?.title ?? null : null;
+                            handleCardClick(t, stepTitle);
+                          }}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
           </div>
         )}
 
