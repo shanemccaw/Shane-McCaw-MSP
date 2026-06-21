@@ -4,6 +4,7 @@ import {
   CheckCircle, ArrowRight, Clock, DollarSign, Shield, Users, Building2, Zap,
   AlertCircle, Star, Target, BarChart3, Database, Eye, Key, Map, Globe,
   Tag, Archive, Server, Layers, BookOpen, Settings, Cpu, Network,
+  ShieldCheck, Sparkles,
 } from "lucide-react";
 
 const comparisonRows = [
@@ -100,6 +101,10 @@ const ICON_MAP: Record<string, LucideIcon> = {
   DollarSign,
   clock: Clock,
   Clock,
+  shieldCheck: ShieldCheck,
+  ShieldCheck,
+  sparkles: Sparkles,
+  Sparkles,
 };
 
 function getIcon(iconName: string | null): LucideIcon {

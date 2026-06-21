@@ -6,7 +6,7 @@ import {
   CheckCircle, Clock, Sparkles, Cloud, Bot, Shield, Zap, Server, Users,
   Layout as LayoutIcon, ShieldCheck, Lock, Globe, Settings, FileText,
   BarChart2, Award, Briefcase, Target, Code, Database, Monitor, Cpu,
-  BookOpen, MessageSquare, Calendar, Star, type LucideIcon,
+  BookOpen, MessageSquare, Calendar, Star, Layers, type LucideIcon,
 } from "lucide-react";
 import {
   AlertDialog,
@@ -132,8 +132,10 @@ const ICON_MAP: Record<string, LucideIcon> = {
   Cloud, Bot, Shield, Zap, Server, Users, Layout: LayoutIcon, Sparkles,
   ShieldCheck, Lock, Globe, Settings, FileText, BarChart2, Award,
   Briefcase, Target, Code, Database, Monitor, Cpu, BookOpen,
-  MessageSquare, Calendar, Star, CheckCircle, Clock,
+  MessageSquare, Calendar, Star, CheckCircle, Clock, Layers,
 };
+
+const ICON_NAMES = Object.keys(ICON_MAP).sort();
 
 function resolveIcon(name: string | null): LucideIcon {
   if (!name) return Sparkles;
@@ -1044,11 +1046,18 @@ export default function ServicesPage() {
                     </div>
                     <div className="grid grid-cols-2 gap-4">
                       <div>
-                        <label className="block text-xs font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">Icon Name</label>
-                        <input type="text" value={form.iconName ?? ""}
+                        <label className="block text-xs font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">Icon</label>
+                        <select
+                          value={form.iconName ?? ""}
                           onChange={e => setField("iconName", e.target.value || null)}
-                          placeholder="e.g. Cloud, Bot, Shield…"
-                          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4]" />
+                          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4] bg-white"
+                        >
+                          <option value="">— Default (Sparkles) —</option>
+                          {ICON_NAMES.map(name => (
+                            <option key={name} value={name}>{name}</option>
+                          ))}
+                        </select>
+                        <p className="mt-1 text-xs text-gray-400">Preview updates in the card →</p>
                       </div>
                       <div>
                         <label className="block text-xs font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">Sort Order</label>
