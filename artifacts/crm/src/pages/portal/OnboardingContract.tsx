@@ -46,6 +46,10 @@ function computeWizardDisplayPrice(svc: Service, sels: WizardSelection[]): numbe
   return total;
 }
 
+const HEADING_STYLE = "font-size:0.72em;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:#0078D4;border-bottom:2px solid #e2e8f0;padding-bottom:5px;margin:20px 0 8px 0;";
+const PARA_STYLE = "font-size:0.85em;color:#374151;line-height:1.6;margin:0 0 10px 0;";
+const TD_BASE = "padding:9px 12px;vertical-align:top;border-bottom:1px solid #e2e8f0;";
+
 function buildContractHtml(
   services: Service[],
   signerName: string,
@@ -56,80 +60,93 @@ function buildContractHtml(
   const hasRecurring = services.some(s => s.billingType === "recurring_monthly");
   const hasOneTime = services.some(s => s.billingType === "one_time");
 
-  const serviceTable = services.map(s => {
+  const serviceRows = services.map((s, idx) => {
     const effectivePrice = getPrice(s);
     const sels = getSelections(s);
+    const rowBg = idx % 2 === 1 ? "background:#F7F9FC;" : "";
     const selectionsHtml = sels.length > 0
-      ? `<tr><td colspan="2" style="padding:2px 0 8px 0;">
-          <table style="width:100%;border-collapse:collapse;font-size:0.8em;color:#444;">
-            ${sels.map(sel => `
-            <tr>
-              <td style="padding:2px 12px 2px 12px;color:#666;">${sel.stepTitle}: <strong style="color:#333;">${sel.optionLabel}</strong></td>
-              <td style="padding:2px 0;text-align:right;white-space:nowrap;">${sel.priceAdjustment > 0 ? `+$${sel.priceAdjustment.toLocaleString("en-US")}` : "Included"}</td>
-            </tr>`).join("")}
-          </table>
-         </td></tr>`
+      ? `<tr style="${rowBg}">
+          <td colspan="2" style="${TD_BASE}padding-top:2px;padding-bottom:10px;">
+            <table style="width:100%;border-collapse:collapse;font-size:0.9em;">
+              ${sels.map(sel => `
+              <tr>
+                <td style="padding:2px 0 2px 12px;color:#6B7280;">${sel.stepTitle}: <strong style="color:#374151;">${sel.optionLabel}</strong></td>
+                <td style="padding:2px 0;text-align:right;white-space:nowrap;color:#6B7280;">${sel.priceAdjustment > 0 ? `<span style="color:#0078D4;font-weight:600;">+$${sel.priceAdjustment.toLocaleString("en-US")}</span>` : "Included"}</td>
+              </tr>`).join("")}
+            </table>
+          </td>
+        </tr>`
       : "";
+    const deliverableHtml = s.deliverables
+      ? `<ul style="margin:4px 0 0 0;padding-left:16px;font-size:0.85em;color:#6B7280;">${s.deliverables.split("\n").filter((l: string) => l.trim()).map((l: string) => `<li style="margin-bottom:2px;">${l.trim()}</li>`).join("")}</ul>`
+      : `<span style="font-size:0.85em;color:#9CA3AF;">As described on the service page</span>`;
     return `
-    <tr>
-      <td style="padding:6px 12px 6px 0;vertical-align:top;"><strong>${s.name}</strong></td>
-      <td style="padding:6px 0;vertical-align:top;">${effectivePrice}${s.billingType === "recurring_monthly" ? " (billed monthly)" : " (one-time)"}</td>
-    </tr>
-    ${selectionsHtml}
-    <tr>
-      <td colspan="2" style="padding:0 0 10px 0;font-size:0.875em;color:#555;">
-        ${s.deliverables
-          ? `<ul style="margin:4px 0 0 0;padding-left:18px;">${s.deliverables.split("\n").filter((l: string) => l.trim()).map((l: string) => `<li style="margin-bottom:2px;">${l.trim()}</li>`).join("")}</ul>`
-          : "As described on the service page"}
+    <tr style="${rowBg}">
+      <td style="${TD_BASE}font-weight:600;color:#0A2540;">
+        ${s.name}
+        ${deliverableHtml}
       </td>
+      <td style="${TD_BASE}text-align:right;white-space:nowrap;color:#0078D4;font-weight:700;">${effectivePrice}</td>
+      <td style="${TD_BASE}text-align:right;white-space:nowrap;color:#6B7280;font-size:0.8em;">${s.billingType === "recurring_monthly" ? "monthly" : "one-time"}</td>
     </tr>
-  `;
+    ${selectionsHtml}`;
   }).join("");
 
   return `
-    <h2>Service Agreement — Shane McCaw Consulting LLC</h2>
-    <p><strong>Date:</strong> ${today}</p>
-    <p><strong>Service Provider:</strong> Shane McCaw Consulting LLC ("Consultant")</p>
-    <p><strong>Client:</strong> ${signerName} ("Client")</p>
-    <hr/>
+    <div style="background:linear-gradient(135deg,#0A2540 0%,#0d3060 100%);color:#fff;padding:20px 24px 18px;border-radius:10px;margin-bottom:20px;">
+      <div style="font-size:0.7em;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:rgba(255,255,255,0.55);margin-bottom:4px;">Service Agreement</div>
+      <div style="font-size:1.1em;font-weight:800;color:#fff;margin-bottom:12px;">Shane McCaw Consulting LLC</div>
+      <div style="display:flex;flex-wrap:wrap;gap:16px;font-size:0.78em;color:rgba(255,255,255,0.75);">
+        <span><strong style="color:rgba(255,255,255,0.5);font-weight:600;">Date</strong>&nbsp;&nbsp;${today}</span>
+        <span><strong style="color:rgba(255,255,255,0.5);font-weight:600;">Provider</strong>&nbsp;&nbsp;Shane McCaw Consulting LLC</span>
+        <span><strong style="color:rgba(255,255,255,0.5);font-weight:600;">Client</strong>&nbsp;&nbsp;${signerName}</span>
+      </div>
+    </div>
 
-    <h3>1. Services</h3>
-    <p>Consultant agrees to deliver the following service(s) to Client:</p>
-    <table style="width:100%;border-collapse:collapse;margin-bottom:12px;">
-      ${serviceTable}
+    <h3 style="${HEADING_STYLE}">1. Services</h3>
+    <p style="${PARA_STYLE}">Consultant agrees to deliver the following service(s) to Client:</p>
+    <table style="width:100%;border-collapse:collapse;border:1px solid #e2e8f0;border-radius:8px;overflow:hidden;margin-bottom:16px;font-size:0.88em;">
+      <thead>
+        <tr style="background:#F7F9FC;">
+          <th style="padding:8px 12px;text-align:left;font-weight:700;font-size:0.75em;text-transform:uppercase;letter-spacing:0.05em;color:#6B7280;border-bottom:1px solid #e2e8f0;">Service &amp; Deliverables</th>
+          <th style="padding:8px 12px;text-align:right;font-weight:700;font-size:0.75em;text-transform:uppercase;letter-spacing:0.05em;color:#6B7280;border-bottom:1px solid #e2e8f0;">Price</th>
+          <th style="padding:8px 12px;text-align:right;font-weight:700;font-size:0.75em;text-transform:uppercase;letter-spacing:0.05em;color:#6B7280;border-bottom:1px solid #e2e8f0;">Type</th>
+        </tr>
+      </thead>
+      <tbody>${serviceRows}</tbody>
     </table>
 
-    <h3>2. Fees & Payment</h3>
-    ${hasOneTime ? `<p>One-time services are payable in full at checkout before work commences. No additional charges will be incurred for the standard deliverables listed above.</p>` : ""}
-    ${hasRecurring ? `<p>Monthly retainer services are billed at the stated monthly rate, payable in advance on a recurring monthly basis. Either party may cancel a monthly subscription with 30 days written notice. Cancellation takes effect at the end of the current billing period.</p>` : ""}
-    <p>No refunds will be issued for one-time services once work has commenced. Monthly retainer fees for the current period are non-refundable on cancellation.</p>
+    <h3 style="${HEADING_STYLE}">2. Fees &amp; Payment</h3>
+    ${hasOneTime ? `<p style="${PARA_STYLE}">One-time services are payable in full at checkout before work commences. No additional charges will be incurred for the standard deliverables listed above.</p>` : ""}
+    ${hasRecurring ? `<p style="${PARA_STYLE}">Monthly retainer services are billed at the stated monthly rate, payable in advance on a recurring monthly basis. Either party may cancel a monthly subscription with 30 days written notice. Cancellation takes effect at the end of the current billing period.</p>` : ""}
+    <p style="${PARA_STYLE}">No refunds will be issued for one-time services once work has commenced. Monthly retainer fees for the current period are non-refundable on cancellation.</p>
 
-    <h3>3. Scope</h3>
-    <p>This agreement covers only the deliverables specified in Section 1. Any additional work beyond this scope must be agreed in writing and may be subject to additional fees.</p>
+    <h3 style="${HEADING_STYLE}">3. Scope</h3>
+    <p style="${PARA_STYLE}">This agreement covers only the deliverables specified in Section 1. Any additional work beyond this scope must be agreed in writing and may be subject to additional fees.</p>
 
-    <h3>4. Delivery</h3>
-    <p>For one-time services, Consultant will deliver the agreed outputs within the stated turnaround period after receipt of payment and any required access or information from Client. Work will not commence until both payment is confirmed and all necessary access has been granted. For monthly retainers, Consultant will perform the described ongoing services throughout each billing period.</p>
+    <h3 style="${HEADING_STYLE}">4. Delivery</h3>
+    <p style="${PARA_STYLE}">For one-time services, Consultant will deliver the agreed outputs within the stated turnaround period after receipt of payment and any required access or information from Client. Work will not commence until both payment is confirmed and all necessary access has been granted. For monthly retainers, Consultant will perform the described ongoing services throughout each billing period.</p>
 
-    <h3>5. Revisions (One-Time Services)</h3>
-    <p>One round of revisions is included within the scope of each one-time service. Additional revisions are available at Consultant's standard hourly rate.</p>
+    <h3 style="${HEADING_STYLE}">5. Revisions (One-Time Services)</h3>
+    <p style="${PARA_STYLE}">One round of revisions is included within the scope of each one-time service. Additional revisions are available at Consultant's standard hourly rate.</p>
 
-    <h3>6. Confidentiality</h3>
-    <p>Each party agrees to keep the other party's confidential information confidential and not to disclose it to any third party without prior written consent. This obligation survives termination of this agreement.</p>
+    <h3 style="${HEADING_STYLE}">6. Confidentiality</h3>
+    <p style="${PARA_STYLE}">Each party agrees to keep the other party's confidential information confidential and not to disclose it to any third party without prior written consent. This obligation survives termination of this agreement.</p>
 
-    <h3>7. Intellectual Property</h3>
-    <p>Upon receipt of full payment (or, for ongoing retainers, upon payment for the relevant billing period), all deliverables produced by Consultant for Client under this agreement become the sole property of Client.</p>
+    <h3 style="${HEADING_STYLE}">7. Intellectual Property</h3>
+    <p style="${PARA_STYLE}">Upon receipt of full payment (or, for ongoing retainers, upon payment for the relevant billing period), all deliverables produced by Consultant for Client under this agreement become the sole property of Client.</p>
 
-    <h3>8. Limitation of Liability</h3>
-    <p>Consultant's total liability under this agreement shall not exceed the total fees paid in the 12 months prior to any claim. Consultant is not liable for any indirect, incidental, or consequential damages.</p>
+    <h3 style="${HEADING_STYLE}">8. Limitation of Liability</h3>
+    <p style="${PARA_STYLE}">Consultant's total liability under this agreement shall not exceed the total fees paid in the 12 months prior to any claim. Consultant is not liable for any indirect, incidental, or consequential damages.</p>
 
-    <h3>9. Independent Contractor</h3>
-    <p>Consultant is an independent contractor and not an employee of Client. Nothing in this agreement shall create any partnership, joint venture, agency, franchise, or employment relationship between the parties.</p>
+    <h3 style="${HEADING_STYLE}">9. Independent Contractor</h3>
+    <p style="${PARA_STYLE}">Consultant is an independent contractor and not an employee of Client. Nothing in this agreement shall create any partnership, joint venture, agency, franchise, or employment relationship between the parties.</p>
 
-    <h3>10. Governing Law</h3>
-    <p>This agreement is governed by the laws of the State of Virginia, United States. Any disputes shall be resolved in the courts of Virginia.</p>
+    <h3 style="${HEADING_STYLE}">10. Governing Law</h3>
+    <p style="${PARA_STYLE}">This agreement is governed by the laws of the State of Virginia, United States. Any disputes shall be resolved in the courts of Virginia.</p>
 
-    <h3>11. Entire Agreement</h3>
-    <p>This document constitutes the entire agreement between the parties with respect to this engagement and supersedes all prior discussions and representations. Amendments must be made in writing.</p>
+    <h3 style="${HEADING_STYLE}">11. Entire Agreement</h3>
+    <p style="${PARA_STYLE}">This document constitutes the entire agreement between the parties with respect to this engagement and supersedes all prior discussions and representations. Amendments must be made in writing.</p>
   `;
 }
 

@@ -86,6 +86,55 @@ function formatKey(k: string): string {
     .trim();
 }
 
+function AgreementBodyRenderer({ text }: { text: string }) {
+  const numberedHeading = /^\d+\.\s+/;
+  const blocks: { type: "heading" | "para"; text: string }[] = [];
+  let currentPara: string[] = [];
+
+  for (const rawLine of text.split("\n")) {
+    const line = rawLine.trimEnd();
+    if (numberedHeading.test(line.trimStart())) {
+      if (currentPara.length > 0) {
+        const joined = currentPara.join(" ").trim();
+        if (joined) blocks.push({ type: "para", text: joined });
+        currentPara = [];
+      }
+      blocks.push({ type: "heading", text: line.trim() });
+    } else if (line.trim() === "") {
+      if (currentPara.length > 0) {
+        const joined = currentPara.join(" ").trim();
+        if (joined) blocks.push({ type: "para", text: joined });
+        currentPara = [];
+      }
+    } else {
+      currentPara.push(line.trim());
+    }
+  }
+  if (currentPara.length > 0) {
+    const joined = currentPara.join(" ").trim();
+    if (joined) blocks.push({ type: "para", text: joined });
+  }
+
+  return (
+    <div className="space-y-1">
+      {blocks.map((block, i) =>
+        block.type === "heading" ? (
+          <h3
+            key={i}
+            className="text-[0.7rem] font-bold uppercase tracking-widest text-[#0078D4] border-b-2 border-slate-200 pb-1 mt-5 first:mt-0"
+          >
+            {block.text}
+          </h3>
+        ) : (
+          <p key={i} className="text-xs text-[#374151] leading-relaxed">
+            {block.text}
+          </p>
+        )
+      )}
+    </div>
+  );
+}
+
 function SkeletonBlock({ className }: { className?: string }) {
   return <div className={`animate-pulse bg-gray-200 rounded ${className ?? ""}`} />;
 }
@@ -280,15 +329,11 @@ export default function PortalContractDetail() {
             </div>
           ) : data!.agreementBody ? (
             <div className="border border-border rounded-xl bg-[#F7F9FC] p-5 max-h-96 overflow-y-auto">
-              <pre className="text-xs text-[#0A2540] whitespace-pre-wrap font-sans leading-relaxed">
-                {data!.agreementBody}
-              </pre>
+              <AgreementBodyRenderer text={data!.agreementBody} />
             </div>
           ) : (
             <div className="border border-border rounded-xl bg-[#F7F9FC] p-5 max-h-96 overflow-y-auto">
-              <pre className="text-xs text-[#0A2540] whitespace-pre-wrap font-sans leading-relaxed">
-                {DEFAULT_AGREEMENT_BODY}
-              </pre>
+              <AgreementBodyRenderer text={DEFAULT_AGREEMENT_BODY} />
             </div>
           )}
         </div>
