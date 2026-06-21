@@ -1,59 +1,72 @@
 import { SEOMeta } from "@/components/SEOMeta";
 import { Layout } from "@/components/Layout";
-import { CheckCircle, ArrowRight, Clock, DollarSign, Shield, Users, Building2, Zap } from "lucide-react";
+import {
+  CheckCircle, ArrowRight, Clock, DollarSign, Shield, Users, Building2, Zap,
+  AlertCircle, Star, Target, BarChart3, Database, Eye, Key, Map, Globe,
+  Tag, Archive, Server, Layers, BookOpen, Settings, Cpu, Network,
+} from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import { Link } from "wouter";
 import { CTAButton } from "@/components/CTAButton";
+import { useServices, formatPriceDisplay } from "@/hooks/useServices";
 
-const MICRO_OFFERS = [
-  {
-    name: "M365 Tenant Health Audit",
-    price: "$4,500–$7,500",
-    duration: "2 weeks",
-    description:
-      "A full diagnostic of the Microsoft 365 tenant: identity, access, licensing, security, compliance, Teams/SharePoint architecture, and governance maturity. Includes a 20–30 page report and a prioritized remediation roadmap.",
-    icon: <Shield className="w-5 h-5" />,
-  },
-  {
-    name: "Power Platform Quick-Start",
-    price: "$6,000–$10,000",
-    duration: "4 weeks",
-    description:
-      "Build one production-ready Power App or Power Automate flow, complete with documentation, governance guidance, and a handoff training session.",
-    icon: <Zap className="w-5 h-5" />,
-  },
-  {
-    name: "Governance Foundations Package",
-    price: "$12,000–$18,000",
-    duration: "6 weeks",
-    description:
-      "A complete Microsoft 365 governance framework: naming conventions, lifecycle policies, DLP, Teams/SharePoint governance, admin roles, and change management processes.",
-    icon: <Building2 className="w-5 h-5" />,
-  },
-  {
-    name: "Migration Readiness Assessment",
-    price: "$3,500–$5,000",
-    duration: "1 week",
-    description:
-      "A sprint-format assessment of migration blockers, risks, data classification, and network readiness. Includes a go/no-go recommendation and phased migration plan.",
-    icon: <ArrowRight className="w-5 h-5" />,
-  },
-  {
-    name: "Copilot for M365 Readiness Assessment",
-    price: "$5,000–$8,000",
-    duration: "2 weeks",
-    description:
-      "Evaluate data governance, sensitivity labels, SharePoint/OneDrive hygiene, identity sprawl, licensing, and change management readiness. Includes a phased rollout plan.",
-    icon: <CheckCircle className="w-5 h-5" />,
-  },
-  {
-    name: "Microsoft 365 Training & Enablement",
-    price: "$3,000–$7,500",
-    duration: "1–5 days",
-    description:
-      "Live, instructor-led training covering Outlook, Teams, SharePoint, OneDrive, Copilot, and Power Platform fundamentals. Includes recordings and resource packs.",
-    icon: <Users className="w-5 h-5" />,
-  },
-];
+const ICON_MAP: Record<string, LucideIcon> = {
+  shield: Shield,
+  Shield,
+  zap: Zap,
+  Zap,
+  building2: Building2,
+  Building2,
+  arrowRight: ArrowRight,
+  ArrowRight,
+  checkCircle: CheckCircle,
+  CheckCircle,
+  users: Users,
+  Users,
+  alertCircle: AlertCircle,
+  AlertCircle,
+  star: Star,
+  Star,
+  target: Target,
+  Target,
+  barChart3: BarChart3,
+  BarChart3,
+  database: Database,
+  Database,
+  eye: Eye,
+  Eye,
+  key: Key,
+  Key,
+  map: Map,
+  Map,
+  globe: Globe,
+  Globe,
+  tag: Tag,
+  Tag,
+  archive: Archive,
+  Archive,
+  server: Server,
+  Server,
+  layers: Layers,
+  Layers,
+  bookOpen: BookOpen,
+  BookOpen,
+  settings: Settings,
+  Settings,
+  cpu: Cpu,
+  Cpu,
+  network: Network,
+  Network,
+  dollarSign: DollarSign,
+  DollarSign,
+  clock: Clock,
+  Clock,
+};
+
+function getIcon(iconName: string | null): LucideIcon {
+  if (iconName && ICON_MAP[iconName]) return ICON_MAP[iconName];
+  return Zap;
+}
 
 const RETAINERS = [
   {
@@ -109,6 +122,8 @@ const WHY_SHANE = [
 ];
 
 export default function Microsoft365() {
+  const { services, loading, error } = useServices("micro_offer");
+
   return (
     <Layout>
       <SEOMeta
@@ -189,32 +204,68 @@ export default function Microsoft365() {
               Scoped, delivered, and priced upfront. No retainer required to get started.
             </p>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {MICRO_OFFERS.map((offer) => (
-              <div
-                key={offer.name}
-                className="bg-white border border-border rounded-2xl p-6 flex flex-col gap-4 hover:border-[#0078D4]/40 hover:shadow-md transition-all"
-              >
-                <div className="w-10 h-10 rounded-xl bg-[#0078D4]/10 flex items-center justify-center text-[#0078D4]">
-                  {offer.icon}
-                </div>
-                <div>
-                  <h3 className="font-bold text-[#0A2540] text-base mb-1">{offer.name}</h3>
-                  <p className="text-muted-foreground text-sm leading-relaxed">{offer.description}</p>
-                </div>
-                <div className="mt-auto pt-4 border-t border-border flex items-center justify-between gap-3">
-                  <div className="flex items-center gap-1.5 text-[#0A2540] font-bold text-sm">
-                    <DollarSign className="w-3.5 h-3.5 text-[#0078D4]" />
-                    {offer.price}
+
+          {loading && (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {Array.from({ length: 6 }).map((_, i) => (
+                <div key={i} className="bg-white border border-border rounded-2xl p-6 flex flex-col gap-4 animate-pulse">
+                  <div className="w-10 h-10 rounded-xl bg-[#0078D4]/10" />
+                  <div className="space-y-2">
+                    <div className="h-4 bg-muted rounded w-3/4" />
+                    <div className="h-3 bg-muted rounded w-full" />
+                    <div className="h-3 bg-muted rounded w-5/6" />
                   </div>
-                  <div className="flex items-center gap-1.5 text-muted-foreground text-xs font-medium">
-                    <Clock className="w-3.5 h-3.5" />
-                    {offer.duration}
+                  <div className="mt-auto pt-4 border-t border-border flex items-center justify-between">
+                    <div className="h-4 bg-muted rounded w-24" />
+                    <div className="h-3 bg-muted rounded w-16" />
                   </div>
                 </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
+
+          {error && (
+            <div className="flex items-center justify-center gap-3 py-12 text-muted-foreground">
+              <AlertCircle className="w-5 h-5 text-[#0078D4] flex-shrink-0" />
+              <span className="text-sm">Unable to load offers right now. Please try refreshing the page.</span>
+            </div>
+          )}
+
+          {!loading && !error && services.length > 0 && (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {services.map((offer) => {
+                const IconComponent = getIcon(offer.iconName);
+                const price = formatPriceDisplay(offer);
+                return (
+                  <div
+                    key={offer.id}
+                    className="bg-white border border-border rounded-2xl p-6 flex flex-col gap-4 hover:border-[#0078D4]/40 hover:shadow-md transition-all"
+                  >
+                    <div className="w-10 h-10 rounded-xl bg-[#0078D4]/10 flex items-center justify-center text-[#0078D4]">
+                      <IconComponent className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <h3 className="font-bold text-[#0A2540] text-base mb-1">{offer.name}</h3>
+                      <p className="text-muted-foreground text-sm leading-relaxed">{offer.description}</p>
+                    </div>
+                    <div className="mt-auto pt-4 border-t border-border flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-1.5 text-[#0A2540] font-bold text-sm">
+                        <DollarSign className="w-3.5 h-3.5 text-[#0078D4]" />
+                        {price}
+                      </div>
+                      {offer.turnaround && (
+                        <div className="flex items-center gap-1.5 text-muted-foreground text-xs font-medium">
+                          <Clock className="w-3.5 h-3.5" />
+                          {offer.turnaround}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
           <div className="text-center mt-10">
             <Link
               href="/micro-offers"
