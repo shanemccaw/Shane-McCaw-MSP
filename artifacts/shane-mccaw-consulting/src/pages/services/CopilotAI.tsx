@@ -1,7 +1,7 @@
 import { SEOMeta } from "@/components/SEOMeta";
 import { Layout } from "@/components/Layout";
 import { CTAButton } from "@/components/CTAButton";
-import { ServiceRetainerCard } from "@/components/ServiceRetainerCard";
+import { RetainerCard } from "@/components/RetainerCard";
 import { Link } from "wouter";
 import {
   CheckCircle, ArrowRight, Shield, Database, Eye,
@@ -290,13 +290,9 @@ export default function CopilotAI() {
                     </div>
                   ))
                 : retainerServices.map((tier, i) => (
-                    <ServiceRetainerCard
+                    <RetainerCard
                       key={tier.slug ?? tier.name}
-                      name={tier.name}
-                      price={formatPriceDisplay(tier)}
-                      hours={tier.hoursPerMonth ?? ""}
-                      description={tier.description ?? ""}
-                      highlight={tier.highlighted}
+                      plan={tier}
                       index={i}
                     />
                   ))}

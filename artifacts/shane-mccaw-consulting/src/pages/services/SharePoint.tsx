@@ -3,7 +3,7 @@ import { Layout } from "@/components/Layout";
 import { Layout as LayoutIcon, CheckCircle, ArrowRight, Building2, Shield, Users } from "lucide-react";
 import { ConsultationCTA } from "@/components/ConsultationCTA";
 import { CTAButton } from "@/components/CTAButton";
-import { ServiceRetainerCard } from "@/components/ServiceRetainerCard";
+import { RetainerCard } from "@/components/RetainerCard";
 import { useServices, formatPriceDisplay } from "@/hooks/useServices";
 
 const comparisonRows = [
@@ -288,15 +288,7 @@ export default function SharePoint() {
                     </div>
                   ))
                 : retainerServices.map((tier, i) => (
-                    <ServiceRetainerCard
-                      key={tier.slug ?? tier.name}
-                      name={tier.name}
-                      price={formatPriceDisplay(tier)}
-                      hours={tier.hoursPerMonth ?? ""}
-                      description={tier.description ?? ""}
-                      highlight={tier.highlighted}
-                      index={i}
-                    />
+                    <RetainerCard key={tier.slug ?? tier.name} plan={tier} index={i} />
                   ))}
             </div>
             <p className="text-center text-sm text-muted-foreground mt-6">

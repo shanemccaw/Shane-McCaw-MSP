@@ -1,8 +1,8 @@
 import { SEOMeta } from "@/components/SEOMeta";
 import { Layout } from "@/components/Layout";
 import { CTAButton } from "@/components/CTAButton";
-import { ServiceRetainerCard } from "@/components/ServiceRetainerCard";
-import { useServices, formatPriceDisplay } from "@/hooks/useServices";
+import { RetainerCard } from "@/components/RetainerCard";
+import { useServices } from "@/hooks/useServices";
 import { Link } from "wouter";
 import {
   CheckCircle, ArrowRight, Clock, DollarSign,
@@ -372,15 +372,7 @@ export default function M365Training() {
                   </div>
                 ))
               : retainerServices.map((tier, i) => (
-                  <ServiceRetainerCard
-                    key={tier.slug ?? tier.name}
-                    name={tier.name}
-                    price={formatPriceDisplay(tier)}
-                    hours={tier.hoursPerMonth ?? ""}
-                    description={tier.description ?? ""}
-                    highlight={tier.highlighted}
-                    index={i}
-                  />
+                  <RetainerCard key={tier.slug ?? tier.name} plan={tier} index={i} />
                 ))}
           </div>
           <p className="text-center text-sm text-muted-foreground mt-5">

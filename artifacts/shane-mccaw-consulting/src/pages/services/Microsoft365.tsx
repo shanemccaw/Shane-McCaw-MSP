@@ -46,8 +46,8 @@ const comparisonRows = [
 import { Link } from "wouter";
 import { CTAButton } from "@/components/CTAButton";
 import { OfferCard } from "@/components/OfferCard";
-import { ServiceRetainerCard } from "@/components/ServiceRetainerCard";
-import { useServices, formatPriceDisplay } from "@/hooks/useServices";
+import { RetainerCard } from "@/components/RetainerCard";
+import { useServices } from "@/hooks/useServices";
 
 
 const WHO_FOR = [
@@ -289,15 +289,7 @@ export default function Microsoft365() {
                   </div>
                 ))
               : retainerServices.map((tier, i) => (
-                  <ServiceRetainerCard
-                    key={tier.slug ?? tier.name}
-                    name={tier.name}
-                    price={formatPriceDisplay(tier)}
-                    hours={tier.hoursPerMonth ?? ""}
-                    description={tier.description ?? ""}
-                    highlight={tier.highlighted}
-                    index={i}
-                  />
+                  <RetainerCard key={tier.slug ?? tier.name} plan={tier} index={i} />
                 ))}
           </div>
           <p className="text-center text-sm text-muted-foreground mt-6">

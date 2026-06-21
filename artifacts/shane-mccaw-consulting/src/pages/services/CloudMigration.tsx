@@ -1,6 +1,6 @@
 import { SEOMeta } from "@/components/SEOMeta";
 import { Layout } from "@/components/Layout";
-import { ServiceRetainerCard } from "@/components/ServiceRetainerCard";
+import { RetainerCard } from "@/components/RetainerCard";
 import { Server, CheckCircle, Clock, DollarSign, ArrowRight, Users, Shield, Building2 } from "lucide-react";
 import { CTAButton } from "@/components/CTAButton";
 import { useServices, formatPriceDisplay } from "@/hooks/useServices";
@@ -297,15 +297,7 @@ export default function CloudMigration() {
                     </div>
                   ))
                 : retainerServices.map((tier, i) => (
-                    <ServiceRetainerCard
-                      key={tier.slug ?? tier.name}
-                      name={tier.name}
-                      price={formatPriceDisplay(tier)}
-                      hours={tier.hoursPerMonth ?? ""}
-                      description={tier.description ?? ""}
-                      highlight={tier.highlighted}
-                      index={i}
-                    />
+                    <RetainerCard key={tier.slug ?? tier.name} plan={tier} index={i} />
                   ))}
             </div>
           </div>

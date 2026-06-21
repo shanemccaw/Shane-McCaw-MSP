@@ -1,7 +1,7 @@
 import { SEOMeta } from "@/components/SEOMeta";
 import { Layout } from "@/components/Layout";
 import { CTAButton } from "@/components/CTAButton";
-import { ServiceRetainerCard } from "@/components/ServiceRetainerCard";
+import { RetainerCard } from "@/components/RetainerCard";
 import { ConsultationCTA } from "@/components/ConsultationCTA";
 import { CheckCircle, ArrowRight, Zap, Building2, Shield, Users } from "lucide-react";
 import { useServices, formatPriceDisplay } from "@/hooks/useServices";
@@ -320,15 +320,7 @@ export default function PowerPlatform() {
                   </div>
                 ))
               : retainerServices.map((tier, i) => (
-                  <ServiceRetainerCard
-                    key={tier.slug ?? tier.name}
-                    name={tier.name}
-                    price={formatPriceDisplay(tier)}
-                    hours={tier.hoursPerMonth ?? ""}
-                    description={tier.description ?? ""}
-                    highlight={tier.highlighted}
-                    index={i}
-                  />
+                  <RetainerCard key={tier.slug ?? tier.name} plan={tier} index={i} />
                 ))}
           </div>
         </div>
