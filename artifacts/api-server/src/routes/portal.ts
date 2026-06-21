@@ -4750,7 +4750,8 @@ router.post("/admin/services", requireAdmin, async (req: Request, res: Response)
 
   const [service] = await db.insert(servicesTable).values({
     name, description: description ?? null, category: category ?? null,
-    deliverables: deliverables ?? null, price: price ?? null,
+    deliverables: deliverables ? deliverables.split(",").map(s => s.trim()) : null,
+    price: price ?? null,
     basePrice: basePrice ?? null, maxPrice: maxPrice ?? null,
     durationDays: durationDays ?? null,
   }).returning();
@@ -4768,7 +4769,7 @@ router.patch("/admin/services/:id", requireAdmin, async (req: Request, res: Resp
   if (name !== undefined) updates.name = name;
   if (description !== undefined) updates.description = description;
   if (category !== undefined) updates.category = category;
-  if (deliverables !== undefined) updates.deliverables = deliverables;
+  if (deliverables !== undefined) updates.deliverables = deliverables.split(",").map(s => s.trim());
   if (price !== undefined) updates.price = price;
   if (basePrice !== undefined) updates.basePrice = basePrice;
   if (maxPrice !== undefined) updates.maxPrice = maxPrice;
@@ -5159,7 +5160,9 @@ router.post("/portal/onboarding/contract", requireAuth, async (req: Request, res
         serviceName: svc.name,
         servicePrice: effectivePriceStr,
         billingType: svc.billingType as "one_time" | "recurring_monthly",
-        serviceDeliverables: svc.deliverables ?? "as described on the service page",
+        serviceDeliverables: Array.isArray(svc.deliverables) && svc.deliverables.length > 0
+          ? svc.deliverables.join(", ")
+          : "as described on the service page",
         serviceTurnaround: svc.turnaround ?? "see service details",
         signedAt: contract.signedAt ?? new Date(),
         signatureDataUrl: signatureData,

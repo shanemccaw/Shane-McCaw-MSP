@@ -389,7 +389,7 @@ export async function seedPortalDemo(): Promise<void> {
     name: "Microsoft 365 Copilot Deployment",
     description: "Full Copilot rollout including readiness assessment, pilot, training, and go-live.",
     category: "Copilot AI",
-    deliverables: "Readiness Report, Deployment Plan, Training Materials, Go-Live Support",
+    deliverables: ["Readiness Report", "Deployment Plan", "Training Materials", "Go-Live Support"],
     price: "9500.00",
     durationDays: 45,
   }).returning();
@@ -398,7 +398,7 @@ export async function seedPortalDemo(): Promise<void> {
     name: "SharePoint Intranet Redesign",
     description: "Modern SharePoint intranet design and migration from legacy platform.",
     category: "SharePoint",
-    deliverables: "Information Architecture, Page Templates, Migration Script, User Guide",
+    deliverables: ["Information Architecture", "Page Templates", "Migration Script", "User Guide"],
     price: "7200.00",
     durationDays: 30,
   }).returning();
@@ -407,7 +407,7 @@ export async function seedPortalDemo(): Promise<void> {
     name: "M365 Governance Quick-Start",
     description: "Governance framework, DLP policies, and sensitivity labels configured in 5 days.",
     category: "Governance",
-    deliverables: "Governance Policy Doc, DLP Config, Sensitivity Label Schema",
+    deliverables: ["Governance Policy Doc", "DLP Config", "Sensitivity Label Schema"],
     price: "3500.00",
     durationDays: 5,
   }).returning();
