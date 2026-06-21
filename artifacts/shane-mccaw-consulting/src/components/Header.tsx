@@ -7,6 +7,7 @@ import { cn } from "@/lib/utils";
 const SERVICES_ITEMS = [
   { label: "All Services",      href: "/services" },
   { label: "Microsoft 365",     href: "/services/microsoft-365" },
+  { label: "M365 Training",     href: "/services/m365-training" },
   { label: "Copilot & AI",      href: "/services/copilot-ai" },
   { label: "SharePoint",        href: "/services/sharepoint" },
   { label: "Power Platform",    href: "/services/power-platform" },
