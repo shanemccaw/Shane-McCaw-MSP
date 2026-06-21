@@ -599,7 +599,7 @@ export default function WorkflowsPage() {
     toast({ title: "Template deleted" });
   }
 
-  type ImportTask = { title: string; groupName?: string; description?: string; instructions?: string[]; checklist?: ChecklistItem[]; artifactsProduced?: string[]; clientDeliverables?: string[] };
+  type ImportTask = { title: string; groupName?: string; description?: string; instructionSetId?: number | null; checklistId?: number | null; artifactsId?: number | null; deliverablesId?: number | null; instructions?: string[]; checklist?: ChecklistItem[]; artifactsProduced?: string[]; clientDeliverables?: string[] };
   type ImportStep = { title: string; description?: string; tasks?: ImportTask[] };
 
   function parseTemplateSteps(text: string): { parsed: ImportStep[] | null; error: string | null } {
@@ -658,6 +658,10 @@ export default function WorkflowsPage() {
                 description: t.description?.trim() || null,
                 groupName: t.groupName?.trim() || null,
                 order: j,
+                instructionSetId: t.instructionSetId ?? null,
+                checklistId: t.checklistId ?? null,
+                artifactsId: t.artifactsId ?? null,
+                deliverablesId: t.deliverablesId ?? null,
                 instructions: t.instructions ?? null,
                 checklist: t.checklist ?? null,
                 artifactsProduced: t.artifactsProduced ?? null,
@@ -869,6 +873,10 @@ export default function WorkflowsPage() {
         title: t.title,
         ...(t.groupName ? { groupName: t.groupName } : {}),
         ...(t.description ? { description: t.description } : {}),
+        ...(t.instructionSetId != null ? { instructionSetId: t.instructionSetId } : {}),
+        ...(t.checklistId != null ? { checklistId: t.checklistId } : {}),
+        ...(t.artifactsId != null ? { artifactsId: t.artifactsId } : {}),
+        ...(t.deliverablesId != null ? { deliverablesId: t.deliverablesId } : {}),
         ...(t.instructions?.length ? { instructions: t.instructions } : {}),
         ...(t.checklist?.length ? { checklist: t.checklist } : {}),
         ...(t.artifactsProduced?.length ? { artifactsProduced: t.artifactsProduced } : {}),
