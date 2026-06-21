@@ -4,24 +4,29 @@ import { CTAButton } from "@/components/CTAButton";
 import { Link } from "wouter";
 import {
   CheckCircle, ArrowRight, Clock, DollarSign,
-  Mail, MessageSquare, FolderOpen, Bot, Zap, BookOpen
+  Mail, MessageSquare, FolderOpen, Bot, Zap, Server
 } from "lucide-react";
 
 const MODULES = [
   {
     icon: <Mail className="w-5 h-5" />,
-    title: "Outlook & Exchange",
-    desc: "Email organization, calendar management, delegation, shared mailboxes, rules, and mobile configuration.",
+    title: "Outlook",
+    desc: "Email organization, calendar management, delegation, rules, shared mailboxes, and mobile configuration for everyday productivity.",
   },
   {
     icon: <MessageSquare className="w-5 h-5" />,
     title: "Microsoft Teams",
-    desc: "Channels, meetings, chat best practices, app integrations, and governance etiquette for effective collaboration.",
+    desc: "Channels, meetings, chat best practices, app integrations, and governance etiquette for effective team collaboration.",
   },
   {
     icon: <FolderOpen className="w-5 h-5" />,
     title: "SharePoint & OneDrive",
-    desc: "Document storage, sharing, co-authoring, version control, permissions, and intranet navigation.",
+    desc: "Document storage, co-authoring, version control, sharing permissions, and intranet navigation built for your site structure.",
+  },
+  {
+    icon: <Server className="w-5 h-5" />,
+    title: "Exchange",
+    desc: "Exchange Online administration, mailbox management, distribution lists, mail flow rules, and hybrid configuration fundamentals.",
   },
   {
     icon: <Bot className="w-5 h-5" />,
@@ -30,13 +35,8 @@ const MODULES = [
   },
   {
     icon: <Zap className="w-5 h-5" />,
-    title: "Power Platform Fundamentals",
-    desc: "Introduction to Power Automate and Power Apps — how to automate routine tasks and build basic business tools without code.",
-  },
-  {
-    icon: <BookOpen className="w-5 h-5" />,
-    title: "Microsoft 365 Best Practices",
-    desc: "Cross-app workflows, security hygiene, external sharing etiquette, and productivity patterns that make the full suite work together.",
+    title: "Power Platform Basics",
+    desc: "Introduction to Power Automate and Power Apps — how to automate routine tasks and build simple business tools without writing code.",
   },
 ];
 
@@ -176,7 +176,7 @@ export default function M365Training() {
           <div className="mt-10 flex flex-wrap gap-4">
             <CTAButton href="/book">Book a Training Consultation</CTAButton>
             <a
-              href="/contact"
+              href="/contact?intent=training-overview"
               className="inline-flex items-center gap-2 text-white/80 font-semibold hover:text-white transition-colors text-sm border border-white/20 px-6 py-3 rounded-xl hover:border-white/40"
             >
               Download the Training Overview <ArrowRight className="w-4 h-4" />
@@ -435,7 +435,7 @@ export default function M365Training() {
               Book a Training Consultation
             </CTAButton>
             <a
-              href="/contact"
+              href="/contact?intent=training-overview"
               className="inline-flex items-center gap-2 text-white/80 hover:text-white font-semibold border border-white/20 hover:border-white/40 px-8 py-3.5 rounded-xl transition-colors text-base"
             >
               Download the Training Overview <ArrowRight className="w-4 h-4" />
