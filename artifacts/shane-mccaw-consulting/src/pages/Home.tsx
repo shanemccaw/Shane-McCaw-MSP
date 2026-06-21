@@ -242,6 +242,60 @@ export default function Home() {
         <div className="absolute bottom-0 left-0 right-0 h-16 bg-gradient-to-t from-[#F7F9FC] to-transparent" />
       </section>
 
+      {/* COPILOT READINESS QUIZ CTA */}
+      <section className="relative bg-[#0A2540] py-20 overflow-hidden" data-testid="quiz-cta-section">
+        <div
+          className="absolute inset-0 pointer-events-none opacity-[0.07]"
+          style={{
+            backgroundImage:
+              "linear-gradient(#0078D4 1px, transparent 1px), linear-gradient(90deg, #0078D4 1px, transparent 1px)",
+            backgroundSize: "48px 48px",
+          }}
+        />
+        <div
+          className="absolute inset-0 pointer-events-none"
+          style={{
+            background:
+              "radial-gradient(ellipse 80% 70% at 50% 50%, rgba(0,180,216,0.12) 0%, transparent 70%)",
+          }}
+        />
+        <div className="relative max-w-[860px] mx-auto px-6 text-center">
+          <div className="inline-flex items-center gap-2 bg-[#00B4D8]/15 border border-[#00B4D8]/35 rounded-full px-5 py-2 mb-7">
+            <span className="w-2 h-2 rounded-full bg-[#00B4D8] animate-pulse" />
+            <span className="text-[#00B4D8] text-sm font-semibold uppercase tracking-[0.1em]">
+              Free Assessment
+            </span>
+          </div>
+          <h2 className="text-3xl md:text-4xl lg:text-5xl font-extrabold text-white leading-tight mb-5">
+            Is Your Organization Ready for Copilot AI?
+          </h2>
+          <p className="text-white/70 text-lg max-w-2xl mx-auto mb-10 leading-relaxed">
+            Most deployments fail not because of the technology — but because the Microsoft 365 tenant isn't ready for it. Take the Copilot Readiness Quiz and find out exactly where you stand.
+          </p>
+
+          {/* Stat strip */}
+          <div className="flex flex-wrap items-center justify-center gap-6 mb-10">
+            {[
+              { value: "5 min", label: "to complete" },
+              { value: "Free", label: "no cost, no signup" },
+              { value: "Instant", label: "PDF report" },
+            ].map((stat, i) => (
+              <div key={i} className="flex flex-col items-center gap-1">
+                <span className="text-2xl font-extrabold text-[#00B4D8]">{stat.value}</span>
+                <span className="text-white/50 text-xs font-medium uppercase tracking-wider">{stat.label}</span>
+              </div>
+            ))}
+          </div>
+
+          <CTAButton href="/copilot-quiz" className="text-base px-10 py-4 shadow-lg shadow-[#00B4D8]/20" data-testid="quiz-cta-button">
+            Take the Free Quiz
+          </CTAButton>
+          <p className="mt-5 text-white/35 text-sm tracking-wide">
+            Personalized readiness score + actionable next steps delivered instantly.
+          </p>
+        </div>
+      </section>
+
       {/* NASA COMPLIANCE CREDENTIALS */}
       <section className="bg-[#F7F9FC] py-20" data-testid="nasa-compliance-section">
         <div className="max-w-[1200px] mx-auto px-6">
