@@ -141,6 +141,13 @@
       "when": 1750414600000,
       "tag": "0019_add_task_asset_fk_columns",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1750500000000,
+      "tag": "0020_add_template_task_type",
+      "breakpoints": true
     }
   ]
 }
