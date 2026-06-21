@@ -4,6 +4,7 @@ import { RetainerCard } from "@/components/RetainerCard";
 import { Server, CheckCircle, Clock, DollarSign, ArrowRight, Users, Shield, Building2 } from "lucide-react";
 import { CTAButton } from "@/components/CTAButton";
 import { useServices, formatPriceDisplay } from "@/hooks/useServices";
+import { FollowOnProjects } from "@/components/FollowOnProjects";
 
 const comparisonRows = [
   {
@@ -278,6 +279,8 @@ export default function CloudMigration() {
               </div>
             </div>
           </div>
+
+          <FollowOnProjects triggerKeys={["Migration Readiness Assessment"]} />
 
           {/* Fractional Retainers */}
           <div>

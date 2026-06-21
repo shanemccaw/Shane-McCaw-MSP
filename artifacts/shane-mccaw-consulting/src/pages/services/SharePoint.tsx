@@ -5,6 +5,7 @@ import { ConsultationCTA } from "@/components/ConsultationCTA";
 import { CTAButton } from "@/components/CTAButton";
 import { RetainerCard } from "@/components/RetainerCard";
 import { useServices, formatPriceDisplay } from "@/hooks/useServices";
+import { FollowOnProjects } from "@/components/FollowOnProjects";
 
 const comparisonRows = [
   {
@@ -268,6 +269,11 @@ export default function SharePoint() {
               </a>
             </div>
 
+          </div>
+
+          {/* Follow-On Project Engagements */}
+          <div className="mt-12">
+            <FollowOnProjects triggerKeys={["Governance Foundations Package", "Migration Readiness Assessment"]} />
           </div>
 
           {/* Track 03: Fractional Architecture Retainers */}

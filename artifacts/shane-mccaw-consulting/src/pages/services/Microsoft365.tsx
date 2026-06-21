@@ -48,6 +48,7 @@ import { CTAButton } from "@/components/CTAButton";
 import { OfferCard } from "@/components/OfferCard";
 import { RetainerCard } from "@/components/RetainerCard";
 import { useServices } from "@/hooks/useServices";
+import { FollowOnProjects } from "@/components/FollowOnProjects";
 
 
 const WHO_FOR = [
@@ -265,6 +266,20 @@ export default function Microsoft365() {
               View all micro-offer packages <ArrowRight className="w-4 h-4" />
             </Link>
           </div>
+        </div>
+      </section>
+
+      {/* ── FOLLOW-ON PROJECT ENGAGEMENTS ────────────────────────────────── */}
+      <section className="bg-[#F7F9FC] py-20">
+        <div className="max-w-[1200px] mx-auto px-6">
+          <div className="text-center mb-12">
+            <p className="text-[#0078D4] text-sm font-semibold uppercase tracking-[0.12em] mb-3">Optional Next Steps</p>
+            <h2 className="text-3xl md:text-4xl font-extrabold text-[#0A2540]">Follow-On Engagements</h2>
+            <p className="text-muted-foreground mt-4 max-w-xl mx-auto">
+              Most M365 health audits surface deeper work. Shane can lead that work through a scoped project engagement.
+            </p>
+          </div>
+          <FollowOnProjects triggerKeys={["M365 Tenant Health Audit"]} />
         </div>
       </section>
 

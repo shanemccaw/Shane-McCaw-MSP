@@ -8,6 +8,7 @@ import {
   Eye, Key, Users, Building2, Globe, Clock, DollarSign
 } from "lucide-react";
 import { useServices, formatPriceDisplay } from "@/hooks/useServices";
+import { FollowOnProjects } from "@/components/FollowOnProjects";
 
 const comparisonRows = [
   {
@@ -357,6 +358,8 @@ export default function Governance() {
               </div>
             ))}
           </div>
+
+          <FollowOnProjects triggerKeys={["Governance Foundations Package"]} />
 
           <p className="text-center text-sm font-semibold text-muted-foreground uppercase tracking-widest mb-6">Fractional M365 Architect Retainers</p>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-4xl mx-auto">

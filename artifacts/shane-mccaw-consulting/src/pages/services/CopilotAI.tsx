@@ -8,6 +8,7 @@ import {
   Key, Users, Map, Target, BarChart3, Clock, DollarSign
 } from "lucide-react";
 import { useServices, formatPriceDisplay } from "@/hooks/useServices";
+import { FollowOnProjects } from "@/components/FollowOnProjects";
 
 const comparisonRows = [
   {
@@ -274,6 +275,10 @@ export default function CopilotAI() {
                 View Package Details <ArrowRight className="w-4 h-4" />
               </Link>
             </div>
+          </div>
+
+          <div className="max-w-4xl mx-auto mb-2">
+            <FollowOnProjects triggerKeys={["Copilot Readiness Assessment"]} />
           </div>
 
           {/* Retainers */}

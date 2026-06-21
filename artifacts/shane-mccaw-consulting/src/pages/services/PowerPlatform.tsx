@@ -5,6 +5,7 @@ import { RetainerCard } from "@/components/RetainerCard";
 import { ConsultationCTA } from "@/components/ConsultationCTA";
 import { CheckCircle, ArrowRight, Zap, Building2, Shield, Users } from "lucide-react";
 import { useServices, formatPriceDisplay } from "@/hooks/useServices";
+import { FollowOnProjects } from "@/components/FollowOnProjects";
 
 const comparisonRows = [
   {
@@ -298,6 +299,8 @@ export default function PowerPlatform() {
               </div>
             </div>
           </div>
+
+          <FollowOnProjects triggerKeys={["Power Platform Quick\u2011Start"]} />
 
           {/* Retainer Tiers */}
           <div className="text-center mb-8">
