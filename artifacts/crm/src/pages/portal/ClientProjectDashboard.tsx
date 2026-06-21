@@ -237,6 +237,10 @@ export default function ClientProjectDashboard() {
   // Ref to scroll to task board when "Waiting on You" stat is clicked
   const taskBoardRef = useRef<HTMLDivElement>(null);
 
+  // M365 profile completion nudge
+  const [m365Completion, setM365Completion] = useState<number | null>(null);
+  const [m365NudgeDismissed, setM365NudgeDismissed] = useState(false);
+
   // ── Load project list ────────────────────────────────────────────────────
 
   useEffect(() => {
@@ -258,6 +262,38 @@ export default function ClientProjectDashboard() {
     fetchWithAuth("/api/portal/messages")
       .then(r => r.json())
       .then((list: Message[]) => setMessages(list))
+      .catch(() => null);
+
+    fetchWithAuth("/api/portal/m365-profile")
+      .then(r => r.json())
+      .then((data: Record<string, unknown>) => {
+        const stringFields = [
+          "orgName", "industry", "employeeCount", "licensedUserCount",
+          "itContactName", "itContactEmail", "tenantDomain",
+          "activeUserPercent", "sharepointSiteCount", "teamCount",
+          "securityGroupCount", "authMethod",
+          "copilotUseCase", "currentAITools", "dataGovernanceConcerns",
+          "engagementType", "budgetRange", "decisionMakerName", "decisionMakerEmail",
+          "businessGoals", "referralSource",
+        ];
+        const boolFields = [
+          "isMicrosoftPartner", "allUsersLicensed", "usesExchange", "usesTeams",
+          "usesSharePoint", "usesOneDrive", "externalSharingEnabled",
+          "mfaEnforced", "conditionalAccessEnabled", "intuneEnabled",
+          "hasCopilotLicenses",
+        ];
+        const total = stringFields.length + boolFields.length + 1;
+        let filled = 0;
+        for (const k of stringFields) {
+          const v = data[k];
+          if (typeof v === "string" && v.trim() !== "") filled++;
+        }
+        for (const k of boolFields) {
+          if (data[k] !== undefined) filled++;
+        }
+        if (Array.isArray(data.licenseSKUs) && (data.licenseSKUs as unknown[]).length > 0) filled++;
+        setM365Completion(Math.round((filled / total) * 100));
+      })
       .catch(() => null);
   }, [fetchWithAuth]);
 
@@ -550,6 +586,43 @@ export default function ClientProjectDashboard() {
           <h1 className="text-2xl font-bold text-[#0A2540]">My Projects</h1>
           <p className="text-sm text-muted-foreground mt-0.5">Your active engagements with Shane McCaw Consulting</p>
         </div>
+
+        {/* ── M365 Profile nudge ───────────────────────────────────────────── */}
+        {m365Completion !== null && m365Completion < 100 && !m365NudgeDismissed && (
+          <div className="mb-4 bg-gradient-to-r from-[#0078D4]/8 to-[#00B4D8]/8 border border-[#0078D4]/20 rounded-xl p-4 flex flex-col sm:flex-row sm:items-center gap-3">
+            <div className="flex items-start gap-3 flex-1 min-w-0">
+              <div className="w-9 h-9 bg-[#0078D4]/10 rounded-xl flex items-center justify-center flex-shrink-0">
+                <svg className="w-4.5 h-4.5 text-[#0078D4]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+                </svg>
+              </div>
+              <div className="min-w-0">
+                <p className="text-sm font-semibold text-[#0A2540]">Complete your M365 Environment Profile</p>
+                <p className="text-xs text-muted-foreground mt-0.5">Help Shane tailor your engagement — your profile is {m365Completion}% complete.</p>
+                <div className="mt-2 flex items-center gap-2">
+                  <div className="w-32 h-1.5 bg-gray-200 rounded-full overflow-hidden">
+                    <div
+                      className="h-1.5 rounded-full"
+                      style={{ width: `${m365Completion}%`, background: "linear-gradient(90deg, #0078D4 0%, #00B4D8 100%)" }}
+                    />
+                  </div>
+                  <span className="text-xs font-bold text-[#0078D4]">{m365Completion}%</span>
+                </div>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 flex-shrink-0">
+              <Link href="/portal/m365-profile" className="text-xs font-semibold text-white bg-[#0078D4] px-4 py-2 rounded-lg hover:bg-[#0078D4]/90 transition-colors">
+                Complete Profile
+              </Link>
+              <button
+                onClick={() => setM365NudgeDismissed(true)}
+                className="text-xs font-semibold text-muted-foreground px-3 py-2 rounded-lg hover:bg-gray-100 transition-colors"
+              >
+                Dismiss
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* ── Mobile project selector ──────────────────────────────────────── */}
         <div className="md:hidden mb-4">

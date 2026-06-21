@@ -18,6 +18,7 @@ import OnboardingContract from "@/pages/portal/OnboardingContract";
 import OnboardingSuccess from "@/pages/portal/OnboardingSuccess";
 import PortalProfile from "@/pages/portal/PortalProfile";
 import PortalArchive from "@/pages/portal/PortalArchive";
+import PortalM365Profile from "@/pages/portal/PortalM365Profile";
 import ResetPasswordPage from "@/pages/ResetPassword";
 import type { ReactNode } from "react";
 
@@ -106,6 +107,9 @@ function Router() {
       </Route>
       <Route path="/portal/archive">
         <RequireAuth role="client"><PortalArchive /></RequireAuth>
+      </Route>
+      <Route path="/portal/m365-profile">
+        <RequireAuth role="client"><PortalM365Profile /></RequireAuth>
       </Route>
 
       {/* Public reset-password route — token validated server-side */}

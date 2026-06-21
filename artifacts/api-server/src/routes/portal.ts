@@ -215,6 +215,22 @@ router.patch("/portal/profile", requireAuth, async (req: Request, res: Response)
   res.json({ ok: true });
 });
 
+// ─── CLIENT: M365 Profile (self-service) ─────────────────────────────────────
+router.get("/portal/m365-profile", requireAuth, async (req: Request, res: Response) => {
+  const userId = req.user!.id;
+  const [row] = await db.select().from(clientM365ProfilesTable).where(eq(clientM365ProfilesTable.clientId, userId));
+  res.json(row ? row.profile : {});
+});
+
+router.put("/portal/m365-profile", requireAuth, async (req: Request, res: Response) => {
+  const userId = req.user!.id;
+  const profile = req.body as Record<string, unknown>;
+  await db.insert(clientM365ProfilesTable)
+    .values({ clientId: userId, profile })
+    .onConflictDoUpdate({ target: clientM365ProfilesTable.clientId, set: { profile, updatedAt: new Date() } });
+  res.json({ ok: true });
+});
+
 // ─── CLIENT: Dashboard summary ───────────────────────────────────────────────
 router.get("/portal/dashboard", requireAuth, async (req: Request, res: Response) => {
   const userId = req.user!.id;
