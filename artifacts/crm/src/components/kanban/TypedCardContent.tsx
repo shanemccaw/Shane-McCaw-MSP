@@ -448,6 +448,314 @@ export function TypedCardContent({
   );
 }
 
+// ─── Modal-level helpers & components ────────────────────────────────────────
+
+export interface StatusBanner {
+  variant: "error" | "warning" | "success";
+  headline: string;
+  detail?: string;
+}
+
+export function getTypedStatusBanner(
+  taskType: string | null | undefined,
+  metadata: Record<string, unknown> | null | undefined,
+): StatusBanner | null {
+  if (!taskType || !metadata) return null;
+  const m = metadata;
+
+  if (taskType === "environmentHealthCheck") {
+    const s = m.healthStatus as string | undefined;
+    if (s === "critical") return { variant: "error",   headline: "Requires immediate action", detail: m.outputSummary as string | undefined };
+    if (s === "warning")  return { variant: "warning",  headline: "Needs attention",          detail: m.outputSummary as string | undefined };
+    if (s === "healthy")  return { variant: "success",  headline: "All systems healthy" };
+  }
+
+  if (taskType === "automationBuild") {
+    const flows = (m.flows as Array<{ status: string }> | undefined) ?? [];
+    const n = flows.filter(f => f.status === "error").length;
+    if (n > 0) return { variant: "error", headline: `${n} automation${n > 1 ? "s" : ""} need${n === 1 ? "s" : ""} attention` };
+  }
+
+  if (taskType === "documentDelivery") {
+    const docs = (m.documents as Array<{ approvalStatus: string }> | undefined) ?? [];
+    const rev = docs.filter(d => d.approvalStatus === "revision_requested").length;
+    if (rev > 0) return { variant: "warning", headline: rev === 1 ? "A document needs revision" : `${rev} documents need revision` };
+    if (docs.length > 0 && docs.every(d => d.approvalStatus === "approved"))
+      return { variant: "success", headline: "All documents approved" };
+  }
+
+  if (taskType === "discovery") {
+    const r = m.riskScore as string | undefined;
+    if (r === "critical") return { variant: "error",  headline: "Critical risk identified — immediate attention required" };
+    if (r === "high")     return { variant: "warning", headline: "High risk identified — review findings carefully" };
+  }
+
+  return null;
+}
+
+// ── Per-type modal body components (client view) ───────────────────────────────
+
+function ModalClientBtn({ label, onClick }: { label: string; onClick?: () => void }) {
+  return (
+    <button onClick={e => { e.stopPropagation(); onClick?.(); }}
+      className="inline-flex items-center gap-1.5 text-sm font-semibold text-[#0A2540] border border-border bg-white hover:bg-gray-50 px-3 py-1.5 rounded-lg transition-colors">
+      {label}
+    </button>
+  );
+}
+
+function GenericModalBody({ m }: { m: Record<string, unknown> }) {
+  const deliverables = (m.clientDeliverables as string[] | undefined) ?? [];
+  const checklist = (m.checklist as Array<{ id: string; label: string }> | undefined) ?? [];
+  const checklistState = (m.checklistState as Record<string, boolean> | undefined) ?? {};
+  const done = checklist.filter(it => checklistState[it.id]).length;
+  if (deliverables.length === 0 && checklist.length === 0) return null;
+  return (
+    <div className="space-y-4">
+      {checklist.length > 0 && (
+        <div>
+          <div className="flex items-center justify-between mb-1.5">
+            <span className="text-sm font-semibold text-[#0A2540]">{done}/{checklist.length} steps complete</span>
+            <span className="text-xs text-muted-foreground">{Math.round((done / checklist.length) * 100)}%</span>
+          </div>
+          <div className="w-full bg-gray-100 rounded-full h-2.5">
+            <div className="h-2.5 rounded-full bg-[#0078D4] transition-all" style={{ width: `${(done / checklist.length) * 100}%` }} />
+          </div>
+        </div>
+      )}
+      {deliverables.length > 0 && (
+        <div>
+          <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-2">What you&apos;ll receive</p>
+          <div className="space-y-1.5">
+            {deliverables.map((d, i) => (
+              <div key={i} className="flex items-center gap-2.5 bg-blue-50 border border-blue-100 rounded-lg px-3 py-2">
+                <span className="w-2 h-2 rounded-full bg-[#0078D4] flex-shrink-0" />
+                <span className="text-sm text-[#0A2540]">{d}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function TrainingModalBody({ m }: { m: Record<string, unknown> }) {
+  const tm = m as TrainingMetadata;
+  const modules = tm.modules ?? [];
+  if (modules.length === 0) return <GenericModalBody m={m} />;
+  const done = modules.filter(mod => mod.completed).length;
+  const remaining = modules.filter(mod => !mod.completed);
+  const remainingMins = remaining.reduce((s, mod) => s + (mod.durationMins ?? 0), 0);
+  return (
+    <div className="space-y-4">
+      <div>
+        <div className="flex items-center justify-between mb-1.5">
+          <span className="text-sm font-semibold text-[#0A2540]">{done}/{modules.length} modules complete</span>
+          {remainingMins > 0 && <span className="text-xs text-muted-foreground">~{remainingMins >= 60 ? `${Math.round(remainingMins / 60 * 10) / 10}h` : `${remainingMins}m`} remaining</span>}
+        </div>
+        <div className="w-full bg-gray-100 rounded-full h-2.5">
+          <div className="h-2.5 rounded-full bg-purple-500 transition-all" style={{ width: `${modules.length ? (done / modules.length) * 100 : 0}%` }} />
+        </div>
+      </div>
+      <div className="space-y-1.5">
+        {modules.map((mod, i) => (
+          <div key={i} className={`flex items-center gap-3 rounded-lg px-3 py-2.5 ${mod.completed ? "bg-purple-50 border border-purple-100" : "bg-white border border-border"}`}>
+            <div className={`w-5 h-5 rounded-full flex-shrink-0 flex items-center justify-center ${mod.completed ? "bg-purple-500" : "border-2 border-gray-300"}`}>
+              {mod.completed && <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>}
+            </div>
+            <span className={`text-sm flex-1 leading-snug ${mod.completed ? "line-through text-muted-foreground" : "text-[#0A2540] font-medium"}`}>{mod.name}</span>
+            {mod.durationMins && <span className="text-xs text-muted-foreground flex-shrink-0">{mod.durationMins}m</span>}
+          </div>
+        ))}
+      </div>
+      {tm.prerequisites && (
+        <p className="text-xs text-muted-foreground border-l-2 border-purple-300 pl-3">Prerequisites: {tm.prerequisites}</p>
+      )}
+      {(remaining.length > 0 && tm.materialsUrl) && (
+        <a href={tm.materialsUrl} target="_blank" rel="noopener noreferrer"
+          className="inline-flex items-center gap-1.5 bg-purple-600 text-white text-sm font-semibold px-4 py-2 rounded-lg hover:bg-purple-700 transition-colors">
+          Launch Training
+        </a>
+      )}
+    </div>
+  );
+}
+
+function HealthCheckModalBody({ m }: { m: Record<string, unknown> }) {
+  const hm = m as HealthCheckMetadata;
+  if (!hm.healthStatus && !hm.outputSummary && !hm.lastRunDate) return <GenericModalBody m={m} />;
+  return (
+    <div className="space-y-3">
+      {hm.outputSummary && (
+        <div className="bg-[#F7F9FC] border border-border rounded-lg px-4 py-3">
+          <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1.5">Output Summary</p>
+          <p className="text-sm text-[#0A2540] leading-relaxed">{hm.outputSummary}</p>
+        </div>
+      )}
+      {hm.lastRunDate && (
+        <p className="text-xs text-muted-foreground">
+          Last checked: <span className="font-semibold text-[#0A2540]">{new Date(hm.lastRunDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</span>
+        </p>
+      )}
+    </div>
+  );
+}
+
+function GovernanceModalBody({ m }: { m: Record<string, unknown> }) {
+  const gm = m as GovernanceMetadata;
+  const allItems = [
+    ...(gm.sensitivityLabels ?? []),
+    ...(gm.dlpPolicies ?? []),
+    ...(gm.conditionalAccess ?? []),
+    ...(gm.configuredItems ?? []),
+  ];
+  if (!gm.postureSummary && allItems.length === 0) return <GenericModalBody m={m} />;
+  return (
+    <div className="space-y-4">
+      {gm.postureSummary && (
+        <p className="text-sm text-[#0A2540] leading-relaxed bg-blue-50 border border-blue-100 rounded-lg px-4 py-3">{gm.postureSummary}</p>
+      )}
+      {allItems.length > 0 && (
+        <div>
+          <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-2">What&apos;s been configured</p>
+          <div className="space-y-1.5">
+            {allItems.map((item, i) => (
+              <div key={i} className="flex items-center gap-2.5 bg-white border border-border rounded-lg px-3 py-2">
+                <span className="material-symbols-outlined text-blue-600 flex-shrink-0" style={{ fontSize: "16px" }}>check_circle</span>
+                <span className="text-sm text-[#0A2540]">{item}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function AutomationModalBody({ m }: { m: Record<string, unknown> }) {
+  const flows = (m as AutomationMetadata).flows ?? [];
+  if (flows.length === 0) return <GenericModalBody m={m} />;
+  return (
+    <div className="space-y-3">
+      <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Your automations</p>
+      <div className="space-y-1.5">
+        {flows.map((flow, i) => (
+          <div key={i} className={`flex items-center gap-3 rounded-lg px-3 py-2.5 border ${flow.status === "error" ? "bg-orange-50 border-orange-200" : "bg-white border-border"}`}>
+            <span className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${FLOW_DOT[flow.status] ?? "bg-gray-400"}`} />
+            <span className="text-sm font-medium text-[#0A2540] flex-1 truncate">{flow.name}</span>
+            <span className="text-xs text-muted-foreground flex-shrink-0">{FLOW_STATUS_LABEL[flow.status] ?? flow.status}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function DocumentModalBody({ m }: { m: Record<string, unknown> }) {
+  const dm = m as DocumentMetadata;
+  const docs = dm.documents ?? [];
+  if (docs.length === 0) return <GenericModalBody m={m} />;
+  return (
+    <div className="space-y-2">
+      {docs.map((doc, i) => (
+        <div key={i} className={`rounded-lg border px-4 py-3 space-y-2 ${doc.approvalStatus === "revision_requested" ? "bg-amber-50 border-amber-200" : doc.approvalStatus === "approved" ? "bg-green-50 border-green-200" : "bg-white border-border"}`}>
+          <div className="flex items-start justify-between gap-2">
+            <div>
+              <p className="text-sm font-semibold text-[#0A2540]">{doc.name}</p>
+              {doc.version && <p className="text-[10px] text-muted-foreground">v{doc.version}</p>}
+            </div>
+            <span className={`text-xs font-bold px-2 py-0.5 rounded-full flex-shrink-0 ${APPROVAL_CLS[doc.approvalStatus]}`}>
+              {APPROVAL_LABEL[doc.approvalStatus]}
+            </span>
+          </div>
+          <div className="flex items-center gap-2 flex-wrap">
+            {doc.downloadUrl && (
+              <a href={doc.downloadUrl} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()}
+                className="inline-flex items-center gap-1.5 text-xs font-semibold text-[#0078D4] hover:underline">
+                ↓ Download
+              </a>
+            )}
+            {doc.approvalStatus === "pending" && (
+              <button onClick={e => e.stopPropagation()}
+                className="inline-flex items-center gap-1 text-xs font-semibold text-teal-700 border border-teal-400 px-2.5 py-1 rounded-lg hover:bg-teal-50 transition-colors">
+                Approve
+              </button>
+            )}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function DiscoveryModalBody({ m }: { m: Record<string, unknown> }) {
+  const dm = m as DiscoveryMetadata;
+  const recs = dm.recommendations ?? [];
+  const riskCfg = dm.riskScore ? RISK_CFG[dm.riskScore] : null;
+  if (!dm.riskScore && !dm.findingsSummary && recs.length === 0) return <GenericModalBody m={m} />;
+  return (
+    <div className="space-y-4">
+      {riskCfg && (
+        <span className={`inline-flex items-center gap-1.5 text-sm font-bold px-3 py-1.5 rounded-full ${riskCfg.cls}`}>
+          {riskCfg.label}
+        </span>
+      )}
+      {dm.findingsSummary && (
+        <div className={`border-l-4 rounded-r-lg px-4 py-3 ${dm.riskScore === "critical" || dm.riskScore === "high" ? "bg-red-50 border-red-400" : dm.riskScore === "medium" ? "bg-yellow-50 border-yellow-400" : "bg-gray-50 border-gray-300"}`}>
+          <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1.5">Findings</p>
+          <p className="text-sm text-[#0A2540] leading-relaxed">{dm.findingsSummary}</p>
+        </div>
+      )}
+      {recs.length > 0 && (
+        <div>
+          <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-2">Recommended next steps</p>
+          <ol className="space-y-2">
+            {recs.map((r, i) => (
+              <li key={i} className="flex items-start gap-3">
+                <span className="flex-shrink-0 w-5 h-5 rounded-full bg-pink-100 text-pink-700 text-[10px] font-bold flex items-center justify-center mt-0.5">{i + 1}</span>
+                <span className="text-sm text-[#0A2540] leading-relaxed">{r}</span>
+              </li>
+            ))}
+          </ol>
+        </div>
+      )}
+      {dm.assessmentUrl && (
+        <ModalClientBtn label="Export Assessment" onClick={() => window.open(dm.assessmentUrl, "_blank")} />
+      )}
+    </div>
+  );
+}
+
+export function TypedModalSection({
+  taskType,
+  metadata,
+}: {
+  taskType: string | null | undefined;
+  metadata: Record<string, unknown> | null | undefined;
+}) {
+  if (!taskType) return null;
+  const cfg = TASK_TYPE_CONFIG[taskType as TaskType];
+  if (!cfg) return null;
+  const m = metadata ?? {};
+  return (
+    <div className="space-y-4">
+      <div>
+        <span className={`inline-flex items-center gap-1.5 text-xs font-bold px-2.5 py-1 rounded-full ${cfg.badge}`}>
+          <span className="material-symbols-outlined" style={{ fontSize: "14px" }}>{cfg.icon}</span>
+          {cfg.label}
+        </span>
+      </div>
+      {taskType === "training"               && <TrainingModalBody     m={m} />}
+      {taskType === "environmentHealthCheck" && <HealthCheckModalBody  m={m} />}
+      {taskType === "governanceSetup"        && <GovernanceModalBody   m={m} />}
+      {taskType === "automationBuild"        && <AutomationModalBody   m={m} />}
+      {taskType === "documentDelivery"       && <DocumentModalBody     m={m} />}
+      {taskType === "discovery"              && <DiscoveryModalBody    m={m} />}
+    </div>
+  );
+}
+
 export function TypedTaskTypeBadge({ taskType }: { taskType: string | null | undefined }) {
   if (!taskType) return null;
   const cfg = TASK_TYPE_CONFIG[taskType as TaskType];
