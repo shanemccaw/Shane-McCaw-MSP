@@ -1,4 +1,3 @@
-import { useState } from "react";
 import {
   Dialog,
   DialogContent,
@@ -46,18 +45,11 @@ const COLUMN_CONFIG: Record<string, { label: string; cls: string }> = {
 };
 
 export function KanbanCardModal({ task, stepTitle, open, onClose, mode = "client" }: Props) {
-  const [taskDetailsOpen, setTaskDetailsOpen] = useState(false);
-
   if (!task) return null;
 
   const colCfg = COLUMN_CONFIG[task.column] ?? { label: task.column, cls: "bg-gray-100 text-gray-600 border border-gray-200" };
   const banner = getTypedStatusBanner(task.taskType, task.taskMetadata);
   const typeCfg = task.taskType ? TASK_TYPE_CONFIG[task.taskType as TaskType] : null;
-
-  const meta = (task.taskMetadata ?? {}) as Record<string, unknown>;
-  const checklist = (meta.checklist ?? []) as Array<{ id: string; label: string }>;
-  const checklistState = (meta.checklistState ?? {}) as Record<string, boolean>;
-  const checkedCount = checklist.filter(item => checklistState[item.id]).length;
 
   return (
     <Dialog open={open} onOpenChange={o => { if (!o) onClose(); }}>
@@ -101,58 +93,33 @@ export function KanbanCardModal({ task, stepTitle, open, onClose, mode = "client
 
               <TypedModalSection taskType={task.taskType} metadata={task.taskMetadata} />
 
-              <div className="border border-border rounded-lg overflow-hidden">
-                <button
-                  onClick={() => setTaskDetailsOpen(o => !o)}
-                  className="w-full flex items-center justify-between px-4 py-2.5 text-left bg-[#F7F9FC] hover:bg-gray-100 transition-colors"
-                >
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Task Details</p>
-                    <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${colCfg.cls}`}>{colCfg.label}</span>
-                  </div>
-                  <span className="material-symbols-outlined text-muted-foreground flex-shrink-0" style={{ fontSize: "18px" }}>
-                    {taskDetailsOpen ? "expand_less" : "expand_more"}
-                  </span>
-                </button>
-                {taskDetailsOpen && (
-                  <div className="px-4 py-3 border-t border-border space-y-3">
-                    {task.description && (
-                      <div>
-                        <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1">Description</p>
-                        <p className="text-sm text-[#0A2540] leading-relaxed">{task.description}</p>
-                      </div>
-                    )}
-                    {(task.assignedTo || task.dueDate || stepTitle) && (
-                      <div className="flex flex-wrap gap-4 text-xs text-muted-foreground">
-                        {task.assignedTo && (
-                          <div className="flex items-center gap-1.5">
-                            <svg className="w-3.5 h-3.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                              <path strokeLinecap="round" strokeLinejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                            </svg>
-                            <span>{task.assignedTo}</span>
-                          </div>
-                        )}
-                        {task.dueDate && (
-                          <div className="flex items-center gap-1.5">
-                            <svg className="w-3.5 h-3.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                              <path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                            </svg>
-                            <span>Due {new Date(task.dueDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</span>
-                          </div>
-                        )}
-                        {stepTitle && (
-                          <div className="flex items-center gap-1.5">
-                            <svg className="w-3.5 h-3.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                              <path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-                            </svg>
-                            <span>Phase: {stepTitle}</span>
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
+              {task.description && (
+                <div>
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1">Description</p>
+                  <p className="text-sm text-[#0A2540] leading-relaxed">{task.description}</p>
+                </div>
+              )}
+
+              {(task.dueDate || stepTitle) && (
+                <div className="flex flex-wrap gap-4 text-xs text-muted-foreground">
+                  {task.dueDate && (
+                    <div className="flex items-center gap-1.5">
+                      <svg className="w-3.5 h-3.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                      </svg>
+                      <span>Due {new Date(task.dueDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</span>
+                    </div>
+                  )}
+                  {stepTitle && (
+                    <div className="flex items-center gap-1.5">
+                      <svg className="w-3.5 h-3.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                      </svg>
+                      <span>Phase: {stepTitle}</span>
+                    </div>
+                  )}
+                </div>
+              )}
 
               {task.column === "waiting_on_customer" && task.waitingReason && (
                 <div className="bg-amber-50 border border-amber-200 rounded-lg p-3.5">
