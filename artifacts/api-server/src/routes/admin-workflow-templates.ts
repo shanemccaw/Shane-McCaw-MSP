@@ -173,6 +173,7 @@ interface TaskBody {
   title?: string;
   description?: string;
   groupName?: string;
+  taskType?: string | null;
   order?: number;
   instructions?: string[] | null;
   checklist?: Array<{ id: string; label: string }> | null;
@@ -188,7 +189,7 @@ router.post("/admin/workflow-templates/:id/steps/:stepId/tasks", requireAdmin, a
   try {
     const stepId = Number(req.params.stepId);
     if (isNaN(stepId)) { res.status(400).json({ error: "Invalid stepId" }); return; }
-    const { title, description, groupName, order, instructions, checklist, artifactsProduced, clientDeliverables, instructionSetId, checklistId, artifactsId, deliverablesId } = req.body as TaskBody;
+    const { title, description, groupName, taskType, order, instructions, checklist, artifactsProduced, clientDeliverables, instructionSetId, checklistId, artifactsId, deliverablesId } = req.body as TaskBody;
     if (!title) { res.status(400).json({ error: "title is required" }); return; }
     const [task] = await db.insert(workflowTemplateStepTasksTable)
       .values({
@@ -196,6 +197,7 @@ router.post("/admin/workflow-templates/:id/steps/:stepId/tasks", requireAdmin, a
         title,
         description: description ?? null,
         groupName: groupName ?? null,
+        taskType: taskType ?? null,
         order: order ?? 0,
         instructions: instructions ?? null,
         checklist: checklist ?? null,
@@ -217,13 +219,14 @@ router.put("/admin/workflow-templates/:id/steps/:stepId/tasks/:taskId", requireA
   try {
     const taskId = Number(req.params.taskId);
     if (isNaN(taskId)) { res.status(400).json({ error: "Invalid taskId" }); return; }
-    const { title, description, groupName, order, instructions, checklist, artifactsProduced, clientDeliverables, instructionSetId, checklistId, artifactsId, deliverablesId } = req.body as TaskBody;
+    const { title, description, groupName, taskType, order, instructions, checklist, artifactsProduced, clientDeliverables, instructionSetId, checklistId, artifactsId, deliverablesId } = req.body as TaskBody;
     if (!title) { res.status(400).json({ error: "title is required" }); return; }
     const [updated] = await db.update(workflowTemplateStepTasksTable)
       .set({
         title,
         description: description ?? null,
         groupName: groupName ?? null,
+        taskType: taskType ?? null,
         order: order ?? 0,
         instructions: instructions ?? null,
         checklist: checklist ?? null,

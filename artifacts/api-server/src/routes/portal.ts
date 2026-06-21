@@ -2029,6 +2029,7 @@ async function provisionOnboardingProject(
               description: t.description ?? null,
               column: "backlog" as const,
               order: idx,
+              taskType: t.taskType ?? null,
               taskMetadata: resolvedMetadata[idx],
             }))
           );
@@ -2939,6 +2940,7 @@ router.post("/admin/projects", requireAdmin, async (req: Request, res: Response)
                 description: t.description ?? null,
                 column: "backlog" as const,
                 order: idx,
+                taskType: t.taskType ?? null,
                 taskMetadata: resolvedMetadata[idx],
               }))
             );
@@ -3311,6 +3313,7 @@ router.patch("/admin/kanban-tasks/:id", requireAdmin, async (req: Request, res: 
                   description: t.description ?? null,
                   column: "backlog" as const,
                   order: idx,
+                  taskType: t.taskType ?? null,
                   taskMetadata: resolvedMetadata[idx],
                 }))
               );
@@ -4366,6 +4369,7 @@ router.post("/admin/client-services", requireAdmin, async (req: Request, res: Re
               description: t.description ?? null,
               column: "backlog" as const,
               order: idx,
+              taskType: t.taskType ?? null,
               taskMetadata: resolvedMetadata[idx],
             }))
           );

@@ -407,6 +407,7 @@ export const workflowTemplateStepTasksTable = pgTable("workflow_template_step_ta
   checklistId: integer("checklist_id").references(() => checklistsTable.id, { onDelete: "set null" }),
   artifactsId: integer("artifacts_id").references(() => artifactSetsTable.id, { onDelete: "set null" }),
   deliverablesId: integer("deliverables_id").references(() => deliverableSetsTable.id, { onDelete: "set null" }),
+  taskType: text("task_type"),
 });
 
 export type InsertWorkflowTemplateStepTask = typeof workflowTemplateStepTasksTable.$inferInsert;

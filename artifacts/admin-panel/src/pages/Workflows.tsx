@@ -20,6 +20,7 @@ interface StepTask {
   title: string;
   description: string | null;
   groupName: string | null;
+  taskType: string | null;
   order: number;
   workflowTemplateStepId: number | null;
   instructions: string[] | null;
@@ -204,6 +205,7 @@ function ChecklistEditor({
 interface EditingTaskForm {
   title: string;
   groupName: string;
+  taskType: string;
   description: string;
   instructions: string[];
   checklist: ChecklistItem[];
@@ -259,14 +261,24 @@ function TaskCard({
             onKeyDown={e => { if (e.key === "Escape") onCancelEdit(); }}
             className="w-full border border-gray-300 rounded px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4]"
           />
-          <select
-            value={editingTaskForm.groupName}
-            onChange={e => setEditingTaskForm(p => ({ ...p, groupName: e.target.value }))}
-            className="w-full border border-gray-300 rounded px-2.5 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-[#0078D4]"
-          >
-            <option value="">No group</option>
-            {GROUP_OPTIONS.map(o => <option key={o} value={o}>{o}</option>)}
-          </select>
+          <div className="grid grid-cols-2 gap-2">
+            <select
+              value={editingTaskForm.groupName}
+              onChange={e => setEditingTaskForm(p => ({ ...p, groupName: e.target.value }))}
+              className="w-full border border-gray-300 rounded px-2.5 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-[#0078D4]"
+            >
+              <option value="">No group</option>
+              {GROUP_OPTIONS.map(o => <option key={o} value={o}>{o}</option>)}
+            </select>
+            <select
+              value={editingTaskForm.taskType}
+              onChange={e => setEditingTaskForm(p => ({ ...p, taskType: e.target.value }))}
+              className="w-full border border-gray-300 rounded px-2.5 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-[#0078D4]"
+            >
+              <option value="">No task type</option>
+              {TASK_TYPE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+            </select>
+          </div>
         </div>
 
         {/* Asset library links */}
@@ -382,8 +394,13 @@ function TaskCard({
       </svg>
       <div className="flex-1 min-w-0">
         <span className="text-sm text-[#0A2540] leading-snug">{task.title}</span>
-        {(hasInlineDetail || hasLibraryLinks) && (
+        {(hasInlineDetail || hasLibraryLinks || task.taskType) && (
           <div className="flex flex-wrap gap-1 mt-1">
+            {task.taskType && (
+              <span className="text-[9px] bg-cyan-50 text-cyan-700 border border-cyan-200 px-1.5 py-0.5 rounded font-semibold">
+                🏷 {TASK_TYPE_LABELS[task.taskType] ?? task.taskType}
+              </span>
+            )}
             {task.instructionSetId && (() => {
               const name = instructionSets.find(a => a.id === task.instructionSetId)?.title ?? `#${task.instructionSetId}`;
               return (
@@ -455,9 +472,21 @@ function TaskCard({
   );
 }
 
+const TASK_TYPE_OPTIONS: { value: string; label: string }[] = [
+  { value: "discovery", label: "Discovery" },
+  { value: "training", label: "Training" },
+  { value: "environmentHealthCheck", label: "Environment Health Check" },
+  { value: "governanceSetup", label: "Governance Setup" },
+  { value: "automationBuild", label: "Automation Build" },
+  { value: "documentDelivery", label: "Document Delivery" },
+];
+
+const TASK_TYPE_LABELS: Record<string, string> = Object.fromEntries(TASK_TYPE_OPTIONS.map(o => [o.value, o.label]));
+
 const EMPTY_TASK_FORM: EditingTaskForm = {
   title: "",
   groupName: "",
+  taskType: "",
   description: "",
   instructions: [],
   checklist: [],
@@ -849,6 +878,7 @@ export default function WorkflowsPage() {
           title: editingTaskForm.title,
           description: editingTaskForm.description || null,
           groupName: editingTaskForm.groupName || null,
+          taskType: editingTaskForm.taskType || null,
           order: editingTask.order,
           instructions: editingTaskForm.instructions.filter(Boolean).length > 0 ? editingTaskForm.instructions.filter(Boolean) : null,
           checklist: editingTaskForm.checklist.filter(c => c.label.trim()).length > 0 ? editingTaskForm.checklist.filter(c => c.label.trim()) : null,
@@ -1302,6 +1332,7 @@ export default function WorkflowsPage() {
                                           setEditingTaskForm({
                                             title: t.title,
                                             groupName: t.groupName ?? "",
+                                            taskType: t.taskType ?? "",
                                             description: t.description ?? "",
                                             instructions: t.instructions ?? [],
                                             checklist: t.checklist ?? [],
