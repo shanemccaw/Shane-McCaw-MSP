@@ -4854,6 +4854,18 @@ router.get("/admin/contracts", requireAdmin, async (_req: Request, res: Response
   res.json(contracts);
 });
 
+// ─── ADMIN: Delete a contract ─────────────────────────────────────────────────
+router.delete("/admin/contracts/:id", requireAdmin, async (req: Request, res: Response) => {
+  const id = parseInt(String(req.params.id ?? ""), 10);
+  if (isNaN(id)) { res.status(400).json({ error: "Invalid contract ID" }); return; }
+
+  const [existing] = await db.select({ id: contractsTable.id }).from(contractsTable).where(eq(contractsTable.id, id));
+  if (!existing) { res.status(404).json({ error: "Contract not found" }); return; }
+
+  await db.delete(contractsTable).where(eq(contractsTable.id, id));
+  res.status(204).end();
+});
+
 // ─── ADMIN: Purchases (onboarding invoices only) ──────────────────────────────
 router.get("/admin/purchases", requireAdmin, async (_req: Request, res: Response) => {
   const purchases = await db

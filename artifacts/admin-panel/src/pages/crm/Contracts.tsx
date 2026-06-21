@@ -1,5 +1,17 @@
 import { useEffect, useState } from "react";
+import { Trash2 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { useToast } from "@/hooks/use-toast";
 
 interface Contract {
   id: number;
@@ -17,8 +29,11 @@ interface Contract {
 
 export default function ContractsPage() {
   const { fetchWithAuth } = useAuth();
+  const { toast } = useToast();
   const [contracts, setContracts] = useState<Contract[]>([]);
   const [loading, setLoading] = useState(true);
+  const [pendingDeleteId, setPendingDeleteId] = useState<number | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     fetchWithAuth("/api/admin/contracts")
@@ -26,6 +41,28 @@ export default function ContractsPage() {
       .then(data => { setContracts(data); setLoading(false); })
       .catch(() => setLoading(false));
   }, [fetchWithAuth]);
+
+  const handleDelete = async () => {
+    if (pendingDeleteId === null) return;
+    setDeleting(true);
+    try {
+      const res = await fetchWithAuth(`/api/admin/contracts/${pendingDeleteId}`, { method: "DELETE" });
+      if (res.ok) {
+        setContracts(prev => prev.filter(c => c.id !== pendingDeleteId));
+        toast({ title: "Contract deleted" });
+      } else {
+        const body = await res.json().catch(() => ({})) as { error?: string };
+        toast({ title: "Failed to delete contract", description: body.error ?? "Unknown error", variant: "destructive" });
+      }
+    } catch {
+      toast({ title: "Failed to delete contract", description: "Network error", variant: "destructive" });
+    } finally {
+      setDeleting(false);
+      setPendingDeleteId(null);
+    }
+  };
+
+  const contractToDelete = contracts.find(c => c.id === pendingDeleteId);
 
   return (
     <div className="p-6 max-w-[1200px]">
@@ -54,6 +91,7 @@ export default function ContractsPage() {
                   <th className="text-left px-5 py-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Version</th>
                   <th className="text-left px-5 py-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground hidden md:table-cell">Project</th>
                   <th className="text-left px-5 py-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground hidden lg:table-cell">Signed</th>
+                  <th className="px-5 py-3" />
                 </tr>
               </thead>
               <tbody>
@@ -75,6 +113,15 @@ export default function ContractsPage() {
                       )}
                     </td>
                     <td className="px-5 py-3.5 text-muted-foreground text-xs hidden lg:table-cell">{new Date(c.signedAt).toLocaleDateString()}</td>
+                    <td className="px-5 py-3.5 text-right">
+                      <button
+                        onClick={() => setPendingDeleteId(c.id)}
+                        className="p-1.5 rounded hover:bg-red-50 text-muted-foreground hover:text-red-600 transition-colors"
+                        title="Delete contract"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -82,6 +129,29 @@ export default function ContractsPage() {
           </div>
         </div>
       )}
+
+      <AlertDialog open={pendingDeleteId !== null} onOpenChange={open => { if (!open) setPendingDeleteId(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete contract?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {contractToDelete
+                ? `This will permanently delete the ${contractToDelete.contractVersion} contract signed by ${contractToDelete.signerName ?? contractToDelete.clientEmail ?? "this client"}. This action cannot be undone.`
+                : "This action cannot be undone."}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDelete}
+              disabled={deleting}
+              className="bg-red-600 hover:bg-red-700 focus:ring-red-600"
+            >
+              {deleting ? "Deleting…" : "Delete"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
