@@ -76,6 +76,10 @@ onlyBuiltDependencies:
   - unrs-resolver
 
 overrides:
+  # Force a single @types/react instance across all packages (including react-day-picker
+  # which has no @types/react peer dep and otherwise gets its own isolated copy, causing
+  # TS2322 "two different types with this name exist" errors on ref props).
+  "@types/react": "^19.2.0"
   # replit uses linux-x64 only, we can exclude all other platforms
   "esbuild>@esbuild/darwin-arm64": "-"
   "esbuild>@esbuild/darwin-x64": "-"
