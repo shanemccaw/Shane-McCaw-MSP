@@ -1,5 +1,6 @@
 -- Migrate services.deliverables from text → jsonb string[]
 -- Idempotent: skips if the column is already jsonb
+-- Trims each item; rows that were non-null but all-whitespace become '[]'::jsonb
 DO $$
 BEGIN
   IF EXISTS (
@@ -10,10 +11,13 @@ BEGIN
   ) THEN
     ALTER TABLE services ADD COLUMN IF NOT EXISTS deliverables_new jsonb;
     UPDATE services
-    SET deliverables_new = (
-      SELECT jsonb_agg(line)
-      FROM unnest(string_to_array(deliverables, E'\n')) AS line
-      WHERE trim(line) != ''
+    SET deliverables_new = COALESCE(
+      (
+        SELECT jsonb_agg(trim(line))
+        FROM unnest(string_to_array(deliverables, E'\n')) AS line
+        WHERE trim(line) != ''
+      ),
+      '[]'::jsonb
     )
     WHERE deliverables IS NOT NULL;
     ALTER TABLE services DROP COLUMN deliverables;

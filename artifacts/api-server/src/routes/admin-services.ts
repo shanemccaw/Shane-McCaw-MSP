@@ -3,6 +3,12 @@ import { db, servicesTable, clientServicesTable, contractsTable, workflowTemplat
 import { eq } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/requireAuth";
 
+function toStringArray(v: unknown): string[] | null {
+  if (!Array.isArray(v)) return null;
+  const result = v.filter((item): item is string => typeof item === "string");
+  return result.length > 0 ? result : null;
+}
+
 const router: IRouter = Router();
 
 router.get("/admin/services", requireAdmin, async (_req: Request, res: Response) => {
@@ -44,7 +50,7 @@ router.put("/admin/services/:id", requireAdmin, async (req: Request, res: Respon
         name: name as string,
         description: (description as string | null) ?? null,
         category: (category as string | null) ?? null,
-        deliverables: Array.isArray(deliverables) ? (deliverables as string[]) : null,
+        deliverables: toStringArray(deliverables),
         price: price != null ? String(price) : null,
         basePrice: basePrice != null ? String(basePrice) : null,
         maxPrice: maxPrice != null ? String(maxPrice) : null,
@@ -56,8 +62,8 @@ router.put("/admin/services/:id", requireAdmin, async (req: Request, res: Respon
         serviceType: (serviceType as string | null) ?? null,
         tagline: (tagline as string | null) ?? null,
         targetAudience: (targetAudience as string | null) ?? null,
-        inclusions: Array.isArray(inclusions) ? (inclusions as string[]) : null,
-        features: Array.isArray(features) ? (features as string[]) : null,
+        inclusions: toStringArray(inclusions),
+        features: toStringArray(features),
         badge: (badge as string | null) ?? null,
         highlighted: highlighted != null ? Boolean(highlighted) : false,
         hoursPerMonth: (hoursPerMonth as string | null) ?? null,
@@ -93,9 +99,9 @@ router.post("/admin/services", requireAdmin, async (req: Request, res: Response)
         name: name.trim(),
         slug: slug.trim(),
         billingType: ((billingType as string) === "recurring_monthly" ? "recurring_monthly" : "one_time") as "one_time" | "recurring_monthly",
-        deliverables: Array.isArray(deliverables) ? (deliverables as string[]) : null,
-        inclusions: Array.isArray(inclusions) ? (inclusions as string[]) : null,
-        features: Array.isArray(features) ? (features as string[]) : null,
+        deliverables: toStringArray(deliverables),
+        inclusions: toStringArray(inclusions),
+        features: toStringArray(features),
       })
       .returning();
     res.status(201).json(created);
