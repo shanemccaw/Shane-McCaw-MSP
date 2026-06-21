@@ -51,10 +51,6 @@ export interface DiscoveryMetadata {
   findingsSummary?: string;
   recommendations?: string[];
   assessmentUrl?: string;
-  vulnerabilityScore?: number;
-  criticalAlerts?: Array<{ title: string; description: string; severity?: "critical" | "warning" }>;
-  activityLog?: Array<{ event: string; timestamp: string; detail?: string; type?: "primary" | "error" | "neutral" }>;
-  assignedToRole?: string;
 }
 
 export const TASK_TYPE_CONFIG: Record<

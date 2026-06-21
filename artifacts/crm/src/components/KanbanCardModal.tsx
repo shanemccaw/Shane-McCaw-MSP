@@ -5,7 +5,6 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { TypedCardContent } from "@/components/kanban/TypedCardContent";
-import { DiscoveryCardModal } from "@/components/kanban/DiscoveryCardModal";
 
 export interface KanbanCardModalTask {
   id: number;
@@ -43,16 +42,6 @@ const COLUMN_CONFIG: Record<string, { label: string; cls: string }> = {
 export function KanbanCardModal({ task, stepTitle, open, onClose, mode = "client" }: Props) {
   if (!task) return null;
 
-  // Discovery cards get their own rich two-column modal
-  if (task.taskType === "discovery") {
-    return (
-      <DiscoveryCardModal
-        task={task}
-        open={open}
-        onClose={onClose}
-      />
-    );
-  }
   const colCfg = COLUMN_CONFIG[task.column] ?? { label: task.column, cls: "bg-gray-100 text-gray-600 border border-gray-200" };
 
   return (
