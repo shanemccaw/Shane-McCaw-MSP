@@ -240,12 +240,12 @@ export default function Services() {
               </p>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 items-start">
-              <div className="relative rounded-xl border border-border bg-white p-8 flex flex-col hover:shadow-lg hover:-translate-y-1 transition-all duration-300">
+              <div className="rounded-xl border border-border bg-white p-8 flex flex-col hover:shadow-lg hover:-translate-y-1 transition-all duration-300 h-full">
                 <div className="flex items-start justify-between mb-4">
-                  <div className="w-11 h-11 rounded-lg flex items-center justify-center flex-shrink-0 bg-purple-100">
-                    <GraduationCap className="w-5 h-5 text-purple-600" />
+                  <div className="w-11 h-11 rounded-lg flex items-center justify-center flex-shrink-0 bg-[#0078D4]/10">
+                    <GraduationCap className="w-5 h-5 text-[#0078D4]" />
                   </div>
-                  <span className="text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full bg-purple-100 text-purple-700">New</span>
+                  <span className="text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-700">New</span>
                 </div>
                 <h3 className="text-xl font-bold leading-snug mb-2 text-[#0A2540]">M365 Training &amp; Enablement</h3>
                 <p className="text-sm italic mb-3 text-muted-foreground">Real-world training from a practitioner, not a slide deck reader</p>
