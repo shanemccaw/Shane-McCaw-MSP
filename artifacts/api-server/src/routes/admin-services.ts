@@ -80,7 +80,7 @@ router.put("/admin/services/:id", requireAdmin, async (req: Request, res: Respon
 router.post("/admin/services", requireAdmin, async (req: Request, res: Response) => {
   try {
     const body = (req.body ?? {}) as Record<string, unknown>;
-    const { name, slug, billingType } = body;
+    const { name, slug, billingType, deliverables, inclusions, features } = body;
     if (!name || typeof name !== "string" || !name.trim()) {
       res.status(400).json({ error: "name is required" }); return;
     }
@@ -93,6 +93,9 @@ router.post("/admin/services", requireAdmin, async (req: Request, res: Response)
         name: name.trim(),
         slug: slug.trim(),
         billingType: ((billingType as string) === "recurring_monthly" ? "recurring_monthly" : "one_time") as "one_time" | "recurring_monthly",
+        deliverables: Array.isArray(deliverables) ? (deliverables as string[]) : null,
+        inclusions: Array.isArray(inclusions) ? (inclusions as string[]) : null,
+        features: Array.isArray(features) ? (features as string[]) : null,
       })
       .returning();
     res.status(201).json(created);
