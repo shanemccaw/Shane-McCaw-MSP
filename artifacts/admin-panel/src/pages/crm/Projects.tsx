@@ -20,6 +20,12 @@ interface Client {
   company: string | null;
 }
 
+interface WorkflowTemplate {
+  id: number;
+  name: string;
+  description: string | null;
+}
+
 interface WorkflowStep {
   id: number;
   title: string;
@@ -428,10 +434,11 @@ interface ProjectFormState {
   startDate: string;
   endDate: string;
   projectType: string;
+  workflowTemplateId: string;
 }
 
 const EMPTY_FORM: ProjectFormState = {
-  title: "", description: "", status: "active", phase: "", progress: 0, clientUserId: "", startDate: "", endDate: "", projectType: "project",
+  title: "", description: "", status: "active", phase: "", progress: 0, clientUserId: "", startDate: "", endDate: "", projectType: "project", workflowTemplateId: "",
 };
 
 export default function ProjectsPage() {
@@ -442,6 +449,7 @@ export default function ProjectsPage() {
   const [projects, setProjects] = useState<ProjectWithSteps[]>([]);
   const [steps, setSteps] = useState<Record<number, WorkflowStep[]>>({});
   const [clients, setClients] = useState<Client[]>([]);
+  const [workflowTemplates, setWorkflowTemplates] = useState<WorkflowTemplate[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState<ProjectFormState>(EMPTY_FORM);
@@ -452,11 +460,13 @@ export default function ProjectsPage() {
   const [deleting, setDeleting] = useState(false);
 
   const load = async () => {
-    const [projRes, clientRes] = await Promise.all([
+    const [projRes, clientRes, tmplRes] = await Promise.all([
       fetchWithAuth("/api/admin/projects"),
       fetchWithAuth("/api/admin/clients"),
+      fetchWithAuth("/api/admin/workflow-templates"),
     ]);
     if (clientRes.ok) setClients(await clientRes.json() as Client[]);
+    if (tmplRes.ok) setWorkflowTemplates(await tmplRes.json() as WorkflowTemplate[]);
     if (!projRes.ok) { setLoading(false); return; }
 
     const rawProjects = await projRes.json() as Project[];
@@ -488,13 +498,16 @@ export default function ProjectsPage() {
         endDate: form.endDate || null,
         phase: form.phase || null,
         description: form.description || null,
+        workflowTemplateId: form.workflowTemplateId ? Number(form.workflowTemplateId) : null,
       };
       let res: Response;
       if (editingId) {
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        const { workflowTemplateId: _wt, ...editPayload } = payload;
         res = await fetchWithAuth(`/api/admin/projects/${editingId}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
+          body: JSON.stringify(editPayload),
         });
       } else {
         res = await fetchWithAuth("/api/admin/projects", {
@@ -547,6 +560,7 @@ export default function ProjectsPage() {
       startDate: p.startDate ? new Date(p.startDate).toISOString().split("T")[0] : "",
       endDate: p.endDate ? new Date(p.endDate).toISOString().split("T")[0] : "",
       projectType: p.projectType ?? "project",
+      workflowTemplateId: "",
     });
     setShowForm(true);
   };
@@ -606,6 +620,21 @@ export default function ProjectsPage() {
                 <option value="retainer">Monthly Retainer</option>
               </select>
             </div>
+            {!editingId && (
+              <div className="sm:col-span-2">
+                <label className="block text-xs font-semibold text-[#0A2540] mb-1">
+                  Workflow Template
+                  <span className="ml-1.5 text-[10px] font-normal text-muted-foreground">(auto-provisions steps + tasks for the first stage)</span>
+                </label>
+                <select value={form.workflowTemplateId} onChange={e => setForm(f => ({ ...f, workflowTemplateId: e.target.value }))}
+                  className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4] bg-white">
+                  <option value="">— No workflow (blank project) —</option>
+                  {workflowTemplates.map(t => (
+                    <option key={t.id} value={t.id}>{t.name}{t.description ? ` — ${t.description}` : ""}</option>
+                  ))}
+                </select>
+              </div>
+            )}
             <div>
               <label className="block text-xs font-semibold text-[#0A2540] mb-1">Status</label>
               <select value={form.status} onChange={e => setForm(f => ({ ...f, status: e.target.value }))}

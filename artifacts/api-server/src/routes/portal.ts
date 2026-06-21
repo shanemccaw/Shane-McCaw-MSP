@@ -2880,8 +2880,8 @@ router.get("/admin/projects/:id", requireAdmin, async (req: Request, res: Respon
 });
 
 router.post("/admin/projects", requireAdmin, async (req: Request, res: Response) => {
-  const { title, description, status, phase, progress, clientUserId, startDate, endDate, projectType } = req.body as {
-    title?: string; description?: string; status?: string; phase?: string; progress?: number; clientUserId?: number; startDate?: string; endDate?: string; projectType?: string;
+  const { title, description, status, phase, progress, clientUserId, startDate, endDate, projectType, workflowTemplateId } = req.body as {
+    title?: string; description?: string; status?: string; phase?: string; progress?: number; clientUserId?: number; startDate?: string; endDate?: string; projectType?: string; workflowTemplateId?: number;
   };
   if (!title) { res.status(400).json({ error: "title is required" }); return; }
 
@@ -2897,6 +2897,58 @@ router.post("/admin/projects", requireAdmin, async (req: Request, res: Response)
     endDate: endDate ? new Date(endDate) : null,
     projectType: (projectType === "retainer" ? "retainer" : "project") as "project" | "retainer",
   }).returning();
+
+  // ── Provision workflow steps + kanban tasks from template (if selected) ───
+  if (workflowTemplateId) {
+    try {
+      const templateSteps = await db
+        .select()
+        .from(workflowTemplateStepsTable)
+        .where(eq(workflowTemplateStepsTable.workflowTemplateId, workflowTemplateId))
+        .orderBy(asc(workflowTemplateStepsTable.order));
+
+      if (templateSteps.length > 0) {
+        const createdSteps = await db.insert(workflowStepsTable).values(
+          templateSteps.map((s, idx) => ({
+            projectId: project.id,
+            title: s.title,
+            description: s.description ?? "",
+            status: (idx === 0 ? "in_progress" : "pending") as "in_progress" | "pending",
+            order: idx + 1,
+            workflowTemplateStepId: s.id,
+          }))
+        ).returning();
+
+        // Seed kanban tasks for the first step only
+        const firstStep = createdSteps[0];
+        if (firstStep?.workflowTemplateStepId) {
+          const step1Tasks = await db
+            .select()
+            .from(workflowTemplateStepTasksTable)
+            .where(eq(workflowTemplateStepTasksTable.workflowTemplateStepId, firstStep.workflowTemplateStepId))
+            .orderBy(asc(workflowTemplateStepTasksTable.order));
+
+          if (step1Tasks.length > 0) {
+            const resolvedMetadata = await resolveTemplateTaskMetadata(step1Tasks);
+            await db.insert(kanbanTasksTable).values(
+              step1Tasks.map((t, idx) => ({
+                projectId: project.id,
+                workflowStepId: firstStep.id,
+                groupName: t.groupName ?? null,
+                title: t.title,
+                description: t.description ?? null,
+                column: "backlog" as const,
+                order: idx,
+                taskMetadata: resolvedMetadata[idx],
+              }))
+            );
+          }
+        }
+      }
+    } catch (err) {
+      req.log.warn({ err, projectId: project.id }, "Workflow template provisioning failed (non-fatal)");
+    }
+  }
 
   // ── Auto-create SharePoint folder if client has a site ───────────────────
   if (clientUserId) {
