@@ -3919,6 +3919,65 @@ router.patch("/admin/kanban-tasks/:id", requireAdmin, async (req: Request, res: 
   res.json(updated);
 });
 
+// ─── ADMIN: Kanban Task Checklist — AI Completion Schema ─────────────────────
+router.post("/admin/kanban-tasks/:id/checklist/:itemId/completion-schema", requireAdmin, async (req: Request, res: Response) => {
+  const id = parseInt(String(req.params.id ?? ""), 10);
+  const itemId = String(req.params.itemId ?? "");
+  if (isNaN(id)) { res.status(400).json({ error: "Invalid task ID" }); return; }
+  if (!itemId) { res.status(400).json({ error: "Invalid item ID" }); return; }
+
+  const [task] = await db.select().from(kanbanTasksTable).where(eq(kanbanTasksTable.id, id));
+  if (!task) { res.status(404).json({ error: "Task not found" }); return; }
+
+  const meta = (task.taskMetadata ?? {}) as Record<string, unknown>;
+  const checklist = (meta.checklist ?? []) as Array<{ id: string; label: string }>;
+  const checklistItem = checklist.find(c => c.id === itemId);
+  if (!checklistItem) { res.status(404).json({ error: "Checklist item not found" }); return; }
+
+  try {
+    const { anthropic } = await import("@workspace/integrations-anthropic-ai");
+    const systemPrompt = `You are a project knowledge-capture assistant. When an engineer completes a checklist item, your job is to generate a small set of targeted questions to capture meaningful closure details. Return ONLY a valid JSON array (no markdown, no commentary) of field definitions with this exact shape:
+[{"id":"snake_case_id","label":"Human readable label","type":"text"|"textarea"|"date"|"list"|"url","placeholder":"optional hint text","required":true|false,"hint":"optional extra guidance"}]
+Rules:
+- Return 2 to 5 fields maximum.
+- Choose the field type that best fits the expected answer: url for links, date for dates, list for multiple items (attendees, files, etc.), textarea for free-form notes, text for short single values.
+- Make the questions specific to the checklist item label and card context — do not ask generic questions.
+- Do not ask for information already captured in the card title or description.`;
+
+    const userMsg = `Card title: ${task.title}
+${task.description ? `Card description: ${task.description}` : ""}
+Checklist item just completed: ${checklistItem.label}
+
+Generate the closure questions JSON array:`;
+
+    const msg = await anthropic.messages.create({
+      model: "claude-haiku-4-5",
+      max_tokens: 1024,
+      system: systemPrompt,
+      messages: [{ role: "user", content: userMsg }],
+    });
+
+    const block = msg.content[0];
+    if (block.type !== "text") {
+      res.json({ fields: [] });
+      return;
+    }
+
+    const text = block.text.trim();
+    const match = text.match(/\[[\s\S]*\]/);
+    if (!match) { res.json({ fields: [] }); return; }
+
+    const fields = JSON.parse(match[0]) as Array<{
+      id: string; label: string; type: string;
+      placeholder?: string; required?: boolean; hint?: string;
+    }>;
+    res.json({ fields: fields.slice(0, 5) });
+  } catch (err) {
+    req.log.warn({ err }, "AI completion-schema generation failed — returning empty fields");
+    res.json({ fields: [] });
+  }
+});
+
 // ─── ADMIN: Kanban Task Checklist Toggle ──────────────────────────────────────
 router.patch("/admin/kanban-tasks/:id/checklist/:itemId", requireAdmin, async (req: Request, res: Response) => {
   const id = parseInt(String(req.params.id ?? ""), 10);
@@ -3926,7 +3985,7 @@ router.patch("/admin/kanban-tasks/:id/checklist/:itemId", requireAdmin, async (r
   if (isNaN(id)) { res.status(400).json({ error: "Invalid task ID" }); return; }
   if (!itemId) { res.status(400).json({ error: "Invalid item ID" }); return; }
 
-  const { checked } = req.body as { checked?: boolean };
+  const { checked, closureData } = req.body as { checked?: boolean; closureData?: { schema: unknown; answers: unknown } };
   if (typeof checked !== "boolean") { res.status(400).json({ error: "checked (boolean) is required" }); return; }
 
   const [existingTask] = await db.select().from(kanbanTasksTable).where(eq(kanbanTasksTable.id, id));
@@ -3934,14 +3993,26 @@ router.patch("/admin/kanban-tasks/:id/checklist/:itemId", requireAdmin, async (r
 
   const currentMeta = (existingTask.taskMetadata ?? {}) as Record<string, unknown>;
   const currentState = (currentMeta.checklistState ?? {}) as Record<string, boolean>;
+  const currentItemData = (currentMeta.checklistItemData ?? {}) as Record<string, unknown>;
 
-  const updatedMeta = {
+  const updatedMeta: Record<string, unknown> = {
     ...currentMeta,
     checklistState: {
       ...currentState,
       [itemId]: checked,
     },
   };
+
+  if (closureData) {
+    updatedMeta.checklistItemData = {
+      ...currentItemData,
+      [itemId]: {
+        schema: closureData.schema,
+        answers: closureData.answers,
+        capturedAt: new Date().toISOString(),
+      },
+    };
+  }
 
   const [updated] = await db
     .update(kanbanTasksTable)

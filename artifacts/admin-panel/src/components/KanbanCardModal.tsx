@@ -11,6 +11,8 @@ import {
   TASK_TYPE_CONFIG,
   type TaskType,
 } from "@/components/kanban/TypedCardContent";
+import ChecklistClosureDialog from "@/components/kanban/ChecklistClosureDialog";
+import type { ClosureField } from "@/components/kanban/ChecklistClosureForm";
 
 export interface KanbanCardModalTask {
   id: number;
@@ -68,6 +70,49 @@ interface ChecklistItem {
   label: string;
 }
 
+interface StoredClosureData {
+  schema: ClosureField[];
+  answers: Record<string, string | string[]>;
+  capturedAt: string;
+}
+
+function ChecklistClosureDataView({ data }: { data: StoredClosureData }) {
+  return (
+    <div className="mt-2 bg-white border border-[#0078D4]/20 rounded-lg p-3 space-y-2.5">
+      <p className="text-[9px] font-bold uppercase tracking-wider text-[#0078D4] mb-1.5">
+        Captured details · {new Date(data.capturedAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+      </p>
+      {data.schema.map((field) => {
+        const answer = data.answers[field.id];
+        if (!answer || (Array.isArray(answer) && answer.length === 0)) return null;
+        return (
+          <div key={field.id}>
+            <p className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground mb-0.5">{field.label}</p>
+            {Array.isArray(answer) ? (
+              <ul className="space-y-0.5">
+                {answer.map((row, i) => (
+                  <li key={i} className="text-xs text-[#0A2540] flex items-start gap-1">
+                    <span className="text-[#0078D4] flex-shrink-0 mt-0.5">·</span>
+                    {field.type === "url" ? (
+                      <a href={row} target="_blank" rel="noreferrer" className="underline text-[#0078D4] break-all">{row}</a>
+                    ) : (
+                      <span>{row}</span>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            ) : field.type === "url" ? (
+              <a href={answer} target="_blank" rel="noreferrer" className="text-xs text-[#0078D4] underline break-all">{answer}</a>
+            ) : (
+              <p className="text-xs text-[#0A2540] whitespace-pre-wrap leading-snug">{answer}</p>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 function EngineerDetailSection({
   task,
   fetchWithAuth,
@@ -83,21 +128,25 @@ function EngineerDetailSection({
   const artifactsProduced = (meta.artifactsProduced ?? []) as string[];
   const clientDeliverables = (meta.clientDeliverables ?? []) as string[];
   const checklistState = (meta.checklistState ?? {}) as Record<string, boolean>;
+  const checklistItemData = (meta.checklistItemData ?? {}) as Record<string, StoredClosureData>;
   const uploadedArtifacts = (meta.uploadedArtifacts ?? []) as string[];
 
   const [toggling, setToggling] = useState<string | null>(null);
   const [uploadedLocal, setUploadedLocal] = useState<string[]>(uploadedArtifacts);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  const [closureDialog, setClosureDialog] = useState<{ itemId: string; itemLabel: string } | null>(null);
+  const [expandedCaptured, setExpandedCaptured] = useState<Record<string, boolean>>({});
+
   const checkedCount = checklist.filter(item => checklistState[item.id]).length;
 
-  const toggleItem = async (itemId: string, checked: boolean) => {
+  const directUncheck = async (itemId: string) => {
     setToggling(itemId);
     try {
       const res = await fetchWithAuth(`/api/admin/kanban-tasks/${task.id}/checklist/${itemId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ checked }),
+        body: JSON.stringify({ checked: false }),
       });
       if (res.ok) {
         const data = await res.json() as { taskMetadata: Record<string, unknown> };
@@ -105,6 +154,14 @@ function EngineerDetailSection({
       }
     } finally {
       setToggling(null);
+    }
+  };
+
+  const handleCheckboxChange = (itemId: string, itemLabel: string, checked: boolean) => {
+    if (checked) {
+      setClosureDialog({ itemId, itemLabel });
+    } else {
+      void directUncheck(itemId);
     }
   };
 
@@ -175,33 +232,51 @@ function EngineerDetailSection({
             {checklist.map(item => {
               const isChecked = !!checklistState[item.id];
               const isToggling = toggling === item.id;
+              const capturedData = checklistItemData[item.id];
+              const isCapturedExpanded = !!expandedCaptured[item.id];
               return (
-                <label
-                  key={item.id}
-                  className={`flex items-center gap-2.5 cursor-pointer group rounded-lg px-2 py-1.5 transition-colors ${isChecked ? "bg-green-50" : "bg-white hover:bg-gray-50"} border ${isChecked ? "border-green-200" : "border-border"}`}
-                >
-                  <div className="relative flex-shrink-0">
-                    <input
-                      type="checkbox"
-                      checked={isChecked}
+                <div key={item.id}>
+                  <div
+                    className={`flex items-center gap-2.5 rounded-lg px-2 py-1.5 transition-colors ${isChecked ? "bg-green-50" : "bg-white hover:bg-gray-50"} border ${isChecked ? "border-green-200" : "border-border"}`}
+                  >
+                    <button
+                      type="button"
                       disabled={isToggling}
-                      onChange={e => void toggleItem(item.id, e.target.checked)}
-                      className="sr-only"
-                    />
-                    <div className={`w-4 h-4 rounded border-2 flex items-center justify-center transition-colors ${isChecked ? "bg-green-500 border-green-500" : "border-gray-300 bg-white group-hover:border-[#0078D4]"}`}>
-                      {isToggling ? (
-                        <div className="w-2 h-2 border border-white/60 border-t-white rounded-full animate-spin" />
-                      ) : isChecked ? (
-                        <svg className="w-2.5 h-2.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                      onClick={() => handleCheckboxChange(item.id, item.label, !isChecked)}
+                      className="relative flex-shrink-0 focus:outline-none"
+                      aria-label={isChecked ? "Uncheck" : "Check"}
+                    >
+                      <div className={`w-4 h-4 rounded border-2 flex items-center justify-center transition-colors ${isChecked ? "bg-green-500 border-green-500" : "border-gray-300 bg-white hover:border-[#0078D4]"}`}>
+                        {isToggling ? (
+                          <div className="w-2 h-2 border border-white/60 border-t-white rounded-full animate-spin" />
+                        ) : isChecked ? (
+                          <svg className="w-2.5 h-2.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                          </svg>
+                        ) : null}
+                      </div>
+                    </button>
+                    <span className={`text-xs leading-snug flex-1 transition-colors ${isChecked ? "line-through text-muted-foreground" : "text-[#0A2540]"}`}>
+                      {item.label}
+                    </span>
+                    {capturedData && (
+                      <button
+                        type="button"
+                        onClick={() => setExpandedCaptured(e => ({ ...e, [item.id]: !e[item.id] }))}
+                        className="flex-shrink-0 inline-flex items-center gap-0.5 text-[9px] font-semibold text-[#0078D4] bg-blue-50 border border-[#0078D4]/20 hover:bg-blue-100 rounded px-1.5 py-0.5 transition-colors"
+                        title="View captured details"
+                      >
+                        <svg className="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
                         </svg>
-                      ) : null}
-                    </div>
+                        Details captured
+                      </button>
+                    )}
                   </div>
-                  <span className={`text-xs leading-snug transition-colors ${isChecked ? "line-through text-muted-foreground" : "text-[#0A2540]"}`}>
-                    {item.label}
-                  </span>
-                </label>
+                  {capturedData && isCapturedExpanded && (
+                    <ChecklistClosureDataView data={capturedData} />
+                  )}
+                </div>
               );
             })}
           </div>
@@ -265,6 +340,24 @@ function EngineerDetailSection({
             ))}
           </div>
         </div>
+      )}
+
+      {/* AI Closure Dialog */}
+      {closureDialog && (
+        <ChecklistClosureDialog
+          open={!!closureDialog}
+          taskId={task.id}
+          taskTitle={task.title}
+          taskDescription={task.description}
+          itemId={closureDialog.itemId}
+          itemLabel={closureDialog.itemLabel}
+          fetchWithAuth={fetchWithAuth}
+          onSubmitted={(updatedMeta) => {
+            setClosureDialog(null);
+            onMetadataUpdate(updatedMeta);
+          }}
+          onCancel={() => setClosureDialog(null)}
+        />
       )}
     </div>
   );
