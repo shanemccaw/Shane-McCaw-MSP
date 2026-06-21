@@ -3224,6 +3224,27 @@ router.put("/admin/clients/:id/m365-profile", requireAdmin, async (req: Request,
   res.json({ ok: true });
 });
 
+// ─── ADMIN: M365 Intelligence (all profiles) ─────────────────────────────────
+router.get("/admin/m365-profiles", requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const rows = await db
+      .select({
+        clientId: clientM365ProfilesTable.clientId,
+        profile: clientM365ProfilesTable.profile,
+        updatedAt: clientM365ProfilesTable.updatedAt,
+        clientName: usersTable.name,
+        clientEmail: usersTable.email,
+        clientCompany: usersTable.company,
+      })
+      .from(clientM365ProfilesTable)
+      .innerJoin(usersTable, eq(clientM365ProfilesTable.clientId, usersTable.id));
+    res.json({ profiles: rows });
+  } catch (err) {
+    req.log.error(err, "Failed to fetch M365 profiles");
+    res.status(500).json({ error: "Failed to fetch profiles" });
+  }
+});
+
 // ─── ADMIN: Impersonation ────────────────────────────────────────────────────
 router.post("/admin/impersonate/:userId", requireAdmin, async (req: Request, res: Response) => {
   const userId = parseInt(String(req.params.userId ?? ""), 10);

@@ -23,6 +23,7 @@ import PurchaseDetailPage from "@/pages/crm/PurchaseDetail";
 import ContractsPage from "@/pages/crm/Contracts";
 import StatusReportsPage from "@/pages/crm/StatusReports";
 import TestimonialsPage from "@/pages/crm/Testimonials";
+import M365IntelligencePage from "@/pages/crm/M365Intelligence";
 import OverviewPage from "@/pages/Overview";
 import EmailActivityPage from "@/pages/EmailActivity";
 import ActivityLogPage from "@/pages/ActivityLog";
@@ -152,6 +153,9 @@ function Router() {
       </Route>
       <Route path="/crm/testimonials">
         <RequireAdmin><DashboardShell><TestimonialsPage /></DashboardShell></RequireAdmin>
+      </Route>
+      <Route path="/crm/m365-intelligence">
+        <RequireAdmin><DashboardShell><M365IntelligencePage /></DashboardShell></RequireAdmin>
       </Route>
 
       {/* Email Activity */}

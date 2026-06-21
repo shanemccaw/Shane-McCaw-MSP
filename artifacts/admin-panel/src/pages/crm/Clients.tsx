@@ -618,7 +618,18 @@ export default function ClientsPage() {
 
   const load = async () => {
     const res = await fetchWithAuth("/api/admin/clients");
-    if (res.ok) setClients(await res.json() as Client[]);
+    if (res.ok) {
+      const loaded = await res.json() as Client[];
+      setClients(loaded);
+      const params = new URLSearchParams(window.location.search);
+      const m365Param = params.get("m365");
+      if (m365Param) {
+        const targetId = parseInt(m365Param, 10);
+        if (!isNaN(targetId) && loaded.some(c => c.id === targetId)) {
+          setM365ClientId(targetId);
+        }
+      }
+    }
     setLoading(false);
   };
 
