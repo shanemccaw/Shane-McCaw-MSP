@@ -109,11 +109,6 @@ export function KanbanCardModal({ task, stepTitle, open, onClose, mode = "client
                   <div className="flex items-center gap-2 flex-wrap">
                     <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Task Details</p>
                     <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${colCfg.cls}`}>{colCfg.label}</span>
-                    {checklist.length > 0 && (
-                      <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${checkedCount === checklist.length ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-600"}`}>
-                        {checkedCount}/{checklist.length} done
-                      </span>
-                    )}
                   </div>
                   <span className="material-symbols-outlined text-muted-foreground flex-shrink-0" style={{ fontSize: "18px" }}>
                     {taskDetailsOpen ? "expand_less" : "expand_more"}
@@ -153,30 +148,6 @@ export function KanbanCardModal({ task, stepTitle, open, onClose, mode = "client
                             <span>Phase: {stepTitle}</span>
                           </div>
                         )}
-                      </div>
-                    )}
-                    {checklist.length > 0 && (
-                      <div>
-                        <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-2">Work Steps</p>
-                        <div className="space-y-1.5">
-                          {checklist.map(item => {
-                            const isChecked = !!checklistState[item.id];
-                            return (
-                              <div key={item.id} className="flex items-center gap-2">
-                                <div className={`w-3.5 h-3.5 rounded border flex-shrink-0 flex items-center justify-center ${isChecked ? "bg-green-500 border-green-500" : "border-gray-300 bg-white"}`}>
-                                  {isChecked && (
-                                    <svg className="w-2 h-2 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
-                                      <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                                    </svg>
-                                  )}
-                                </div>
-                                <span className={`text-xs leading-snug ${isChecked ? "line-through text-muted-foreground" : "text-[#0A2540]"}`}>
-                                  {item.label}
-                                </span>
-                              </div>
-                            );
-                          })}
-                        </div>
                       </div>
                     )}
                   </div>
