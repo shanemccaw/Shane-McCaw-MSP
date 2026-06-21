@@ -238,6 +238,39 @@ export async function createM365Group(
   }
 }
 
+export async function addGroupOwner(
+  groupId: string,
+  ownerUpn: string,
+): Promise<boolean> {
+  try {
+    // Resolve UPN → object ID via /users/{upn}
+    const userRes = await graphFetch(`/users/${encodeURIComponent(ownerUpn)}?$select=id`);
+    if (!userRes.ok) {
+      const text = await userRes.text();
+      logger.warn({ status: userRes.status, body: text, ownerUpn }, "addGroupOwner: failed to resolve user UPN");
+      return false;
+    }
+    const user = await userRes.json() as { id: string };
+
+    const ref = `https://graph.microsoft.com/v1.0/directoryObjects/${user.id}`;
+    const addRes = await graphFetch(`/groups/${groupId}/owners/$ref`, {
+      method: "POST",
+      body: JSON.stringify({ "@odata.id": ref }),
+    });
+
+    if (addRes.ok || addRes.status === 204) return true;
+    // 400 with "already exists" is fine — treat as success
+    const body = await addRes.text();
+    if (addRes.status === 400 && body.includes("already exist")) return true;
+
+    logger.warn({ status: addRes.status, body, groupId, ownerUpn }, "addGroupOwner: Graph API returned error");
+    return false;
+  } catch (err) {
+    logger.error({ err, groupId, ownerUpn }, "addGroupOwner error");
+    return false;
+  }
+}
+
 export async function getGroupSiteUrl(
   groupId: string,
 ): Promise<{ id: string; webUrl: string } | null> {

@@ -6,6 +6,7 @@ import { logger } from "../lib/logger";
 import {
   graphCredentialsPresent,
   createM365Group,
+  addGroupOwner,
   getGroupSiteUrl,
   createSiteFolder,
   listDriveItems,
@@ -223,7 +224,7 @@ router.post("/admin/clients/:id/sharepoint/provision", requireAdmin, async (req:
 
   void (async () => {
     try {
-      await provisionClientSite(id, client.name ?? client.company ?? client.email, req.log);
+      await provisionClientSite(id, client.company ?? client.name ?? client.email, req.log);
     } catch (err) {
       logger.error({ err, clientId: id }, "Manual SharePoint provisioning failed");
     }
@@ -258,6 +259,17 @@ export async function provisionClientSite(
   if (!group) {
     warn({ clientId, displayName }, "SharePoint provisioning: createM365Group returned null");
     return;
+  }
+
+  // Add Shane as group owner so he has full access from SharePoint/Teams
+  const ownerUpn = process.env.SHAREPOINT_OWNER_UPN;
+  if (ownerUpn) {
+    const added = await addGroupOwner(group.id, ownerUpn);
+    if (!added) {
+      warn({ clientId, groupId: group.id, ownerUpn }, "SharePoint provisioning: addGroupOwner failed (non-fatal, continuing)");
+    }
+  } else {
+    warn({ clientId }, "SharePoint provisioning: SHAREPOINT_OWNER_UPN not set — skipping owner assignment");
   }
 
   // Poll for site URL (M365 can take 15-60 seconds to provision)

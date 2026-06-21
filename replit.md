@@ -73,6 +73,7 @@ _Populate as you build — explicit user instructions worth remembering across s
 - Contact form uses react-hook-form + zod but has no backend submission — shows a toast on success
 - Header is transparent on `/` and solid Deep Navy on all other pages (via scroll + location detection)
 - **SMS order alerts**: When a Stripe payment completes, the server sends Shane an SMS via Twilio. Requires four secrets in Replit Secrets: `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN` (both from console.twilio.com), `TWILIO_FROM_NUMBER` (your Twilio number in E.164 format, e.g. `+12025551234`), and `SHANE_PHONE_NUMBER` (destination in E.164 format). SMS is silently skipped (with a warning log) if any secret is missing. Helper is at `artifacts/api-server/src/lib/sms.ts`; hooked into `processStripeEvent` in `portal.ts` for both `service_purchase` and `onboarding_purchase` event types.
+- **SharePoint owner assignment**: Set `SHAREPOINT_OWNER_UPN` in Replit Secrets to Shane's Microsoft 365 UPN (e.g. `shane@contoso.com`) or Azure AD object ID (found in the M365 admin centre under Users → Shane's profile). When set, every newly-provisioned client SharePoint site automatically adds Shane as a group owner, giving him full access from SharePoint and Teams. If the secret is missing, provisioning continues normally — a warning is logged but no error is thrown.
 
 ## Pointers
 
