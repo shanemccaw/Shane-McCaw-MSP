@@ -222,10 +222,10 @@ export default function SharePoint() {
                 ))}
               </ul>
               <a
-                href="/book"
+                href="/crm/portal/onboarding/select?service=governance-foundations-package"
                 className="inline-flex items-center justify-center gap-2 bg-[#0078D4] text-white font-semibold px-5 py-3 rounded-xl hover:bg-[#0066B8] transition-colors text-sm"
               >
-                Book a Discovery Call <ArrowRight className="w-4 h-4" />
+                Get Started <ArrowRight className="w-4 h-4" />
               </a>
             </div>
 
@@ -261,10 +261,10 @@ export default function SharePoint() {
                 ))}
               </ul>
               <a
-                href="/book"
+                href="/crm/portal/onboarding/select?service=migration-readiness-assessment"
                 className="inline-flex items-center justify-center gap-2 border-2 border-[#0078D4] text-[#0078D4] font-semibold px-5 py-3 rounded-xl hover:bg-[#0078D4]/5 transition-colors text-sm"
               >
-                Book a Discovery Call <ArrowRight className="w-4 h-4" />
+                Get Started <ArrowRight className="w-4 h-4" />
               </a>
             </div>
 
