@@ -6,11 +6,11 @@ import {
   Zap, FolderOpen, Calendar, ArrowRight,
   CheckCircle, Clock, GraduationCap,
 } from "lucide-react";
-import { useServices, formatPriceDisplay, type PublicService } from "@/hooks/useServices";
+import { useServices } from "@/hooks/useServices";
 import { OfferCard } from "@/components/OfferCard";
 import { EngagementProjectCard } from "@/components/EngagementProjectCard";
 import { useEngagementProjects } from "@/hooks/useEngagementProjects";
-import { ServiceRetainerCard } from "@/components/ServiceRetainerCard";
+import { RetainerCard } from "@/components/RetainerCard";
 
 function TrackSection({
   trackLabel,
@@ -214,13 +214,9 @@ export default function Services() {
               isEmpty={retainers.length === 0}
             >
               {retainers.map((tier, i) => (
-                <ServiceRetainerCard
+                <RetainerCard
                   key={tier.slug ?? tier.id}
-                  name={tier.name}
-                  price={formatPriceDisplay(tier)}
-                  hours={tier.hoursPerMonth ?? ""}
-                  description={tier.description ?? ""}
-                  highlight={tier.highlighted}
+                  plan={tier}
                   index={i}
                 />
               ))}

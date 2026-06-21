@@ -1,5 +1,4 @@
-// Full-featured retainer card used on the Pricing page.
-// ServiceRetainerCard.tsx is a simpler variant used on individual service pages.
+// Full-featured retainer card used on the Pricing page and the Services overview.
 import { CheckCircle } from "lucide-react";
 import { CTAButton } from "@/components/CTAButton";
 import { formatPriceDisplay, type PublicService } from "@/hooks/useServices";
