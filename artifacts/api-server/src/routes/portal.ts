@@ -8,6 +8,7 @@ import { sendPushNotifications } from "../lib/push";
 import { createAuditLog } from "../lib/audit";
 import { listDriveItems, graphCredentialsPresent, createProjectFolder, uploadFileToClientContracts, getDriveItemDownloadUrl } from "../lib/graph";
 import { uploadInvoiceToSharePoint } from "../lib/invoice-sharepoint";
+import { generateM365ProfilePdf } from "../lib/m365-profile-pdf";
 import multer from "multer";
 import path from "path";
 import fs from "fs";
@@ -3222,6 +3223,46 @@ router.put("/admin/clients/:id/m365-profile", requireAdmin, async (req: Request,
     .values({ clientId, profile })
     .onConflictDoUpdate({ target: clientM365ProfilesTable.clientId, set: { profile, updatedAt: new Date() } });
   res.json({ ok: true });
+});
+
+// ─── ADMIN: M365 Profile — PDF export ────────────────────────────────────────
+router.get("/admin/clients/:id/m365-profile/pdf", requireAdmin, async (req: Request, res: Response) => {
+  const clientId = parseInt(String(req.params.id ?? ""), 10);
+  if (isNaN(clientId)) { res.status(400).json({ error: "Invalid client ID" }); return; }
+
+  const [profileRow] = await db
+    .select({ profile: clientM365ProfilesTable.profile })
+    .from(clientM365ProfilesTable)
+    .where(eq(clientM365ProfilesTable.clientId, clientId));
+
+  if (!profileRow) { res.status(404).json({ error: "No M365 profile found for this client" }); return; }
+
+  const [clientRow] = await db
+    .select({ name: usersTable.name, email: usersTable.email, company: usersTable.company })
+    .from(usersTable)
+    .where(eq(usersTable.id, clientId));
+
+  try {
+    const pdfBuffer = await generateM365ProfilePdf({
+      clientName: clientRow?.name ?? null,
+      clientEmail: clientRow?.email ?? "",
+      clientCompany: clientRow?.company ?? null,
+      generatedAt: new Date(),
+      profile: profileRow.profile as Record<string, unknown>,
+    });
+
+    const safeName = (clientRow?.company ?? clientRow?.name ?? `client-${clientId}`)
+      .replace(/[^a-z0-9]+/gi, "-")
+      .toLowerCase();
+
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", `attachment; filename="m365-assessment-${safeName}.pdf"`);
+    res.setHeader("Content-Length", String(pdfBuffer.length));
+    res.send(pdfBuffer);
+  } catch (err) {
+    req.log.error(err, "Failed to generate M365 profile PDF");
+    res.status(500).json({ error: "Failed to generate PDF" });
+  }
 });
 
 // ─── ADMIN: M365 Intelligence (all profiles) ─────────────────────────────────

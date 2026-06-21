@@ -451,7 +451,7 @@ function Step6({ p, set, errors }: { p: M365Profile; set: (k: keyof M365Profile,
   );
 }
 
-function Step7({ p, onJump }: { p: M365Profile; onJump: (step: number) => void }) {
+function Step7({ p, onJump, onDownloadPdf, downloading }: { p: M365Profile; onJump: (step: number) => void; onDownloadPdf: () => void; downloading: boolean }) {
   const yn = (v: boolean) => v ? "Yes" : "No";
   const sections: Array<{ title: string; step: number; rows: [string, string][] }> = [
     {
@@ -533,7 +533,20 @@ function Step7({ p, onJump }: { p: M365Profile; onJump: (step: number) => void }
 
   return (
     <div className="space-y-3">
-      <p className="text-xs text-muted-foreground">Review the captured data before saving. Use "Edit" on any section to jump back and make changes.</p>
+      <div className="flex items-center justify-between">
+        <p className="text-xs text-muted-foreground">Review the captured data before saving. Use "Edit" on any section to jump back and make changes.</p>
+        <button
+          onClick={onDownloadPdf}
+          disabled={downloading}
+          className="flex items-center gap-1.5 text-xs font-semibold text-[#0078D4] border border-[#0078D4] px-3 py-1.5 rounded-lg hover:bg-[#0078D4]/10 disabled:opacity-50 transition-colors flex-shrink-0 ml-3"
+        >
+          {downloading
+            ? <span className="w-3 h-3 border-2 border-[#0078D4]/40 border-t-[#0078D4] rounded-full animate-spin" />
+            : <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          }
+          {downloading ? "Generating…" : "Download PDF"}
+        </button>
+      </div>
       {sections.map(section => (
         <div key={section.title} className="bg-[#F7F9FC] border border-border rounded-xl p-4">
           <div className="flex items-center justify-between mb-2">
@@ -570,6 +583,7 @@ export function M365ProfileWizard({
   const [loading, setLoading] = useState(true);
   const [profileLoaded, setProfileLoaded] = useState(EMPTY_PROFILE);
   const [saving, setSaving] = useState(false);
+  const [downloading, setDownloading] = useState(false);
 
   useEffect(() => {
     setLoading(true);
@@ -594,6 +608,30 @@ export function M365ProfileWizard({
       });
     }
   }, [loading, profileLoaded, set]);
+
+  const handleDownloadPdf = async () => {
+    setDownloading(true);
+    try {
+      const res = await fetchWithAuth(`/api/admin/clients/${clientId}/m365-profile/pdf`);
+      if (!res.ok) {
+        toast({ title: "Download failed", description: "Could not generate the PDF report.", variant: "destructive" });
+        return;
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `m365-assessment-${clientName.replace(/[^a-z0-9]+/gi, "-").toLowerCase()}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch {
+      toast({ title: "Download failed", description: "An error occurred while generating the PDF.", variant: "destructive" });
+    } finally {
+      setDownloading(false);
+    }
+  };
 
   const handleSave = async () => {
     setSaving(true);
@@ -624,7 +662,7 @@ export function M365ProfileWizard({
       case 3: return <Step4 p={profile} set={set} />;
       case 4: return <Step5 p={profile} set={set} errors={errors} />;
       case 5: return <Step6 p={profile} set={set} errors={errors} />;
-      case 6: return <Step7 p={profile} onJump={jumpToStep} />;
+      case 6: return <Step7 p={profile} onJump={jumpToStep} onDownloadPdf={() => void handleDownloadPdf()} downloading={downloading} />;
       default: return null;
     }
   };
