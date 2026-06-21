@@ -1,150 +1,477 @@
 import { SEOMeta } from "@/components/SEOMeta";
 import { Layout } from "@/components/Layout";
 import { CTAButton } from "@/components/CTAButton";
-import { Zap, CheckCircle, ArrowRight } from "lucide-react";
 import { ConsultationCTA } from "@/components/ConsultationCTA";
+import { CheckCircle, ArrowRight, Zap, Building2, Shield, Users } from "lucide-react";
+
+const QUICK_START_DELIVERABLES = [
+  "Requirements discovery workshop",
+  "Solution architecture & data model",
+  "One production-ready Power App or Power Automate flow",
+  "Dataverse or SharePoint data structure",
+  "Error handling & monitoring",
+  "Documentation & handoff",
+  "Governance alignment",
+  "Live training session",
+];
+
+const WHAT_SHANE_DELIVERS = [
+  "Power Apps for replacing spreadsheets and manual processes",
+  "Power Automate workflows for approvals, notifications, and system integration",
+  "Dataverse data modeling",
+  "Integration with M365, Dynamics, Salesforce, ServiceNow",
+  "Governance, DLP, and environment strategy",
+  "Automation roadmap development",
+  "Training & enablement",
+];
+
+const WHO_FOR = [
+  {
+    icon: <Building2 className="w-5 h-5 text-[#0078D4]" />,
+    label: "Mid-market organizations (200–2,000 employees)",
+  },
+  {
+    icon: <Shield className="w-5 h-5 text-[#0078D4]" />,
+    label: "Regulated industries requiring enterprise-grade automation",
+  },
+  {
+    icon: <Zap className="w-5 h-5 text-[#0078D4]" />,
+    label: "Companies needing production-ready solutions — not proof-of-concepts",
+  },
+  {
+    icon: <Users className="w-5 h-5 text-[#0078D4]" />,
+    label: "IT leaders who need senior-level expertise without a full-time hire",
+  },
+];
+
+const WHY_SHANE = [
+  {
+    title: "NASA-Proven Experience",
+    desc: "Shane built and governed Power Platform automation at NASA — one of the most complex, compliance-intensive environments in the federal government. That discipline transfers directly to your organization.",
+  },
+  {
+    title: "Enterprise Automation Expertise",
+    desc: "30 years in the Microsoft ecosystem means Shane knows where automation initiatives fail. He designs solutions that survive governance audits, scale with your organization, and actually get adopted.",
+  },
+  {
+    title: "Governance Discipline",
+    desc: "Every engagement includes governance alignment — DLP policies, environment strategy, and admin controls — so your Power Platform investment doesn't create technical debt or compliance exposure.",
+  },
+  {
+    title: "Production-Ready Delivery",
+    desc: "Shane doesn't build demos. Every solution is delivered with error handling, monitoring, documentation, and training — ready for real users on day one.",
+  },
+];
+
+const RETAINERS = [
+  {
+    name: "Architect Essentials",
+    price: "$2,500",
+    hours: "10 hrs/month",
+    description: "For advisory, architecture reviews, roadmap validation, and escalation support.",
+    highlight: false,
+  },
+  {
+    name: "Architect Growth",
+    price: "$6,000",
+    hours: "25 hrs/month",
+    description: "For ongoing roadmap execution, governance implementation, and IT team mentoring.",
+    highlight: true,
+  },
+  {
+    name: "Architect Enterprise",
+    price: "$11,000",
+    hours: "50 hrs/month",
+    description: "For organizations needing embedded architecture leadership, governance ownership, and executive reporting.",
+    highlight: false,
+  },
+];
+
 export default function PowerPlatform() {
-  const price = "$1,500";
-  const loading = false;
   return (
     <Layout>
       <SEOMeta
         title="Power Platform & Automation Consulting | Shane McCaw Consulting"
-        description="Power Platform and automation consulting by Shane McCaw. Build governed, scalable Power Apps and Power Automate solutions that deliver ROI without governance nightmares."
+        description="NASA-proven Power Apps and Power Automate consulting for mid-market and regulated organizations. Build production-ready automation solutions in weeks, not months."
         ogImage="/og-image-power-platform.png"
         ogUrl="https://shanemccawconsulting.com/services/power-platform"
         jsonLd={{
           "@context": "https://schema.org",
           "@type": "Service",
           "name": "Power Platform & Automation Consulting",
-          "description": "Power Platform and automation consulting by Shane McCaw. Build governed, scalable Power Apps and Power Automate solutions that deliver ROI without governance nightmares.",
+          "description": "NASA-proven Power Apps and Power Automate consulting for mid-market and regulated organizations. Build production-ready automation solutions in weeks, not months.",
           "url": "https://shanemccawconsulting.com/services/power-platform",
           "serviceType": "Power Platform Consulting",
           "areaServed": {
             "@type": "Country",
-            "name": "United States"
+            "name": "United States",
           },
           "audience": {
             "@type": "Audience",
-            "audienceType": "IT departments and business operations teams seeking workflow automation with Power Platform"
+            "audienceType": "Mid-market and regulated organizations (200–2,000 employees)",
           },
           "provider": {
             "@type": "Person",
             "name": "Shane McCaw",
             "jobTitle": "Lead Microsoft 365 Architect",
-            "url": "https://shanemccawconsulting.com"
+            "url": "https://shanemccawconsulting.com",
           },
           "offers": [
             {
               "@type": "Offer",
-              "name": "Power Automate Quick Win",
-              "price": "597",
-              "priceCurrency": "USD",
-              "url": "https://shanemccawconsulting.com/micro-offers"
-            }
-          ]
+              "name": "Power Platform Quick-Start",
+              "priceSpecification": {
+                "@type": "PriceSpecification",
+                "minPrice": "6000",
+                "maxPrice": "10000",
+                "priceCurrency": "USD",
+              },
+              "url": "https://shanemccawconsulting.com/services/power-platform",
+            },
+          ],
         }}
       />
-      <section className="bg-[#0A2540] pt-32 pb-20">
-        <div className="max-w-[1200px] mx-auto px-6">
-          <Zap className="w-10 h-10 text-[#0078D4] mb-6" />
-          <p className="text-[#0078D4] text-sm font-semibold uppercase tracking-[0.1em] mb-4">Service</p>
-          <h1 className="text-4xl md:text-5xl lg:text-6xl font-extrabold text-white leading-tight max-w-4xl">
-            Power Platform & Automation
-          </h1>
-          <p className="text-white/70 text-lg mt-6 max-w-2xl">
-            Automate the processes your team spends hours on every week. Shane designs and builds Power Automate workflows and Power Apps that replace manual work at a fraction of custom development cost.
+
+      {/* ── HERO ─────────────────────────────────────────────────────────── */}
+      <section className="bg-[#0A2540] pt-32 pb-24 relative overflow-hidden">
+        <div
+          className="absolute inset-0 pointer-events-none"
+          style={{
+            background:
+              "radial-gradient(ellipse 900px 500px at 60% 0%, rgba(0,120,212,0.12) 0%, transparent 70%)",
+          }}
+        />
+        <div className="max-w-[1200px] mx-auto px-6 relative">
+          <p className="text-[#0078D4] text-sm font-semibold uppercase tracking-[0.12em] mb-4">
+            Power Platform Services
           </p>
+          <h1 className="text-4xl md:text-5xl lg:text-6xl font-extrabold text-white leading-tight max-w-4xl">
+            Power Platform & Automation Consulting — Build Real Business Tools in Weeks
+          </h1>
+          <p className="text-white/65 text-xl mt-6 max-w-2xl leading-relaxed">
+            NASA-proven Power Apps and Power Automate expertise for mid-market and regulated organizations. Production-ready solutions — not proof-of-concepts.
+          </p>
+          <div className="mt-10 flex flex-wrap gap-4">
+            <CTAButton href="/book">Book a Free Discovery Call</CTAButton>
+            <a
+              href="/contact"
+              className="inline-flex items-center gap-2 text-white/80 font-semibold hover:text-white transition-colors text-sm border border-white/20 px-6 py-3 rounded-xl hover:border-white/40"
+            >
+              Schedule a Consultation <ArrowRight className="w-4 h-4" />
+            </a>
+          </div>
         </div>
       </section>
 
+      {/* ── INTRO ────────────────────────────────────────────────────────── */}
+      <section className="bg-white py-20">
+        <div className="max-w-[1200px] mx-auto px-6">
+          <div className="max-w-3xl mx-auto text-center">
+            <p className="text-[#0078D4] text-sm font-semibold uppercase tracking-[0.12em] mb-4">
+              Why It Matters
+            </p>
+            <h2 className="text-3xl md:text-4xl font-extrabold text-[#0A2540] mb-6">
+              Most Organizations Underuse Power Platform — Here's Why
+            </h2>
+            <p className="text-muted-foreground text-lg leading-relaxed">
+              Power Apps and Power Automate are among the most powerful tools in the Microsoft 365 ecosystem. Yet most organizations build fragile proof-of-concepts that never reach production, or create automation sprawl without governance — creating new problems faster than they solve old ones.
+            </p>
+            <p className="text-muted-foreground text-lg leading-relaxed mt-4">
+              The gap isn't enthusiasm — it's architecture and governance expertise. Shane brings 30 years of Microsoft ecosystem experience to every engagement, ensuring every solution is built for real-world scale, compliance, and longevity from day one.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      {/* ── QUICK-START OFFER ────────────────────────────────────────────── */}
       <section className="bg-[#F7F9FC] py-20">
         <div className="max-w-[1200px] mx-auto px-6">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-16">
-            {[
-              { title: "Approval Workflows", desc: "Purchase approvals, leave requests, contract reviews, expense submissions — all automated with audit trails and escalation logic built in." },
-              { title: "Custom Power Apps", desc: "Purpose-built applications that replace spreadsheets, paper forms, and clunky legacy software. Mobile-friendly, SharePoint-connected, and built to scale." },
-              { title: "Cross-System Integration", desc: "Connect M365 with Dynamics 365, Salesforce, ServiceNow, and other enterprise systems. Data flows automatically, without human handoffs." },
-            ].map((item, i) => (
-              <div key={i} className="bg-white border border-border rounded-lg p-6" data-testid={`power-feature-${i}`}>
-                <Zap className="w-6 h-6 text-[#0078D4] mb-3" />
-                <h3 className="font-bold text-[#0A2540] mb-2">{item.title}</h3>
-                <p className="text-muted-foreground text-sm leading-relaxed">{item.desc}</p>
-              </div>
-            ))}
+          <div className="text-center mb-12">
+            <p className="text-[#0078D4] text-sm font-semibold uppercase tracking-[0.12em] mb-3">
+              Fixed-Price Engagement
+            </p>
+            <h2 className="text-3xl md:text-4xl font-extrabold text-[#0A2540]">
+              Power Platform Quick-Start
+            </h2>
+            <p className="text-muted-foreground mt-4 max-w-xl mx-auto">
+              A fully built, production-ready Power Platform solution delivered in 30 days.
+            </p>
           </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-12">
-            <div>
-              <p className="text-[#0078D4] text-sm font-semibold uppercase tracking-[0.1em] mb-4">Process</p>
-              <h2 className="text-3xl font-extrabold text-[#0A2540] mb-8">From Discovery to Delivery</h2>
-              <ul className="space-y-4">
-                {[
-                  "Process discovery workshop to document the current state",
-                  "Future-state process design with automation opportunities identified",
-                  "Power Automate flow design and build",
-                  "Power Apps development (if required)",
-                  "Dataverse data model design (where needed)",
-                  "Testing, error handling, and monitoring setup",
-                  "User training and documentation",
-                  "30-day post-delivery support",
-                ].map((item, i) => (
-                  <li key={i} className="flex items-start gap-3">
+          <div className="max-w-3xl mx-auto bg-white border border-border rounded-2xl overflow-hidden shadow-sm">
+            <div className="bg-[#0A2540] px-8 py-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+              <div>
+                <p className="text-[#0078D4] text-xs font-bold uppercase tracking-widest mb-1">
+                  Quick-Start Package
+                </p>
+                <p className="text-white font-extrabold text-2xl">Power Platform Quick-Start</p>
+              </div>
+              <div className="text-left sm:text-right">
+                <p className="text-white font-extrabold text-3xl">$6,000–$10,000</p>
+                <p className="text-white/60 text-sm mt-0.5">4-week engagement</p>
+              </div>
+            </div>
+            <div className="px-8 py-8">
+              <p className="text-[#0078D4] text-xs font-bold uppercase tracking-widest mb-4">
+                What's Included
+              </p>
+              <ul className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-8">
+                {QUICK_START_DELIVERABLES.map((item) => (
+                  <li key={item} className="flex items-start gap-3">
                     <CheckCircle className="w-5 h-5 text-[#0078D4] flex-shrink-0 mt-0.5" />
-                    <span className="text-foreground">{item}</span>
+                    <span className="text-foreground text-sm">{item}</span>
                   </li>
                 ))}
               </ul>
-            </div>
-            <div className="bg-white rounded-xl border border-border p-8">
-              <h3 className="text-xl font-bold text-[#0A2540] mb-4">Quick Win: Power Automate Quick Win — $597</h3>
-              <p className="text-muted-foreground leading-relaxed mb-6">Have one manual process that's ready to automate? Shane will build it in 5–7 business days. One flow, tested and documented, ready to use.</p>
-              <div className="space-y-3 mb-6">
-                {["Discovery call to document the process", "One complete Power Automate flow", "Error handling and monitoring", "Documentation and knowledge transfer", "30-day post-delivery email support"].map((item, i) => (
-                  <div key={i} className="flex items-center gap-2 text-sm text-foreground">
-                    <CheckCircle className="w-4 h-4 text-[#0078D4]" />
-                    {item}
-                  </div>
-                ))}
+              <div className="bg-[#F7F9FC] border border-border rounded-xl px-6 py-4 mb-8">
+                <p className="text-[#0A2540] font-bold text-sm mb-1">Deliverable</p>
+                <p className="text-muted-foreground text-sm leading-relaxed">
+                  A fully built, production-ready Power Platform solution delivered in 30 days — complete with documentation, governance alignment, and a live handoff training session.
+                </p>
               </div>
-              <CTAButton href="/book" className="w-full justify-center text-sm" data-testid="power-platform-quick-win-cta">
-                Get Started — $597
+              <CTAButton href="/book" className="w-full justify-center">
+                Book a Free Discovery Call
               </CTAButton>
             </div>
           </div>
         </div>
       </section>
 
-      {/* Get Started CTA */}
-      <section className="bg-[#F7F9FC] py-16">
+      {/* ── OPTIONAL FOLLOW-ONS ──────────────────────────────────────────── */}
+      <section className="bg-white py-20">
         <div className="max-w-[1200px] mx-auto px-6">
-          <div className="bg-[#0A2540] rounded-3xl p-10 md:p-14 flex flex-col md:flex-row items-start md:items-center justify-between gap-8">
-            <div className="flex-1">
-              <p className="text-[#0078D4] text-sm font-semibold uppercase tracking-wide mb-3">Monthly Retainer</p>
-              <h2 className="text-2xl md:text-3xl font-extrabold text-white mb-3">Ready to get started?</h2>
-              <p className="text-white/70 text-base max-w-md">
-                Ongoing Power Automate and Power Apps consulting — automation design, build oversight, governance, and continuous improvement. Cancel any time.
-              </p>
-            </div>
-            <div className="flex flex-col items-start md:items-end gap-4">
-              <div>
-                <span className="text-3xl font-extrabold text-white">
-                  {loading ? (
-                    <span className="inline-block h-9 w-24 rounded bg-white/20 animate-pulse align-middle" aria-hidden="true" />
-                  ) : (
-                    price
-                  )}
-                </span>
-                <span className="text-lg font-normal text-white/60">/mo</span>
+          <div className="text-center mb-12">
+            <p className="text-[#0078D4] text-sm font-semibold uppercase tracking-[0.12em] mb-3">
+              Optional Follow-On Engagements
+            </p>
+            <h2 className="text-3xl md:text-4xl font-extrabold text-[#0A2540]">
+              Continue the Partnership
+            </h2>
+            <p className="text-muted-foreground mt-4 max-w-xl mx-auto">
+              After your Quick-Start, organizations that want to scale their Power Platform investment can choose from these follow-on options.
+            </p>
+          </div>
+
+          {/* Governance Foundations */}
+          <div className="max-w-3xl mx-auto mb-8">
+            <div className="bg-[#F7F9FC] border border-border rounded-2xl p-7">
+              <div className="flex items-start gap-4">
+                <div className="w-10 h-10 rounded-xl bg-[#0078D4]/10 flex items-center justify-center text-[#0078D4] flex-shrink-0">
+                  <Shield className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-[#0A2540] text-lg mb-2">Governance Foundations Package</h3>
+                  <p className="text-muted-foreground text-sm leading-relaxed">
+                    A comprehensive Microsoft 365 and Power Platform governance framework — covering naming conventions, lifecycle policies, DLP rules, environment strategy, admin roles, and change management processes. Designed for organizations that need to bring order to their existing Power Platform footprint before scaling further.
+                  </p>
+                </div>
               </div>
-              <a
-                href="/crm/portal/onboarding/select?service=power-platform-consulting"
-                className="inline-flex items-center gap-2 bg-[#0078D4] text-white font-semibold px-6 py-3 rounded-xl hover:bg-[#0066B8] transition-colors"
-              >
-                Get Started <ArrowRight className="w-4 h-4" />
-              </a>
-              <p className="text-white/50 text-xs">No long-term commitment required.</p>
             </div>
+          </div>
+
+          {/* Retainer Tiers */}
+          <div className="text-center mb-8">
+            <p className="text-[#0078D4] text-sm font-semibold uppercase tracking-[0.12em] mb-3">
+              Ongoing Partnership
+            </p>
+            <h3 className="text-2xl font-extrabold text-[#0A2540]">Fractional M365 Architect Retainers</h3>
+            <p className="text-muted-foreground mt-3 max-w-xl mx-auto text-sm">
+              Embedded architecture leadership on a monthly basis — strategy, governance, roadmap execution, and escalation support.
+            </p>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-4xl mx-auto">
+            {RETAINERS.map((tier) => (
+              <div
+                key={tier.name}
+                className={`rounded-2xl p-7 flex flex-col gap-5 border ${
+                  tier.highlight
+                    ? "bg-[#0A2540] border-[#0078D4]/40 shadow-xl"
+                    : "bg-[#F7F9FC] border-border"
+                }`}
+              >
+                {tier.highlight && (
+                  <span className="self-start text-[10px] font-bold uppercase tracking-widest bg-[#0078D4] text-white px-2.5 py-1 rounded-full">
+                    Most Popular
+                  </span>
+                )}
+                <div>
+                  <p
+                    className={`text-sm font-semibold mb-1 ${
+                      tier.highlight ? "text-white/60" : "text-muted-foreground"
+                    }`}
+                  >
+                    {tier.name}
+                  </p>
+                  <div className="flex items-end gap-1">
+                    <span
+                      className={`text-4xl font-extrabold ${
+                        tier.highlight ? "text-white" : "text-[#0A2540]"
+                      }`}
+                    >
+                      {tier.price}
+                    </span>
+                    <span
+                      className={`text-base mb-1 ${
+                        tier.highlight ? "text-white/50" : "text-muted-foreground"
+                      }`}
+                    >
+                      /mo
+                    </span>
+                  </div>
+                  <p className="text-sm font-semibold mt-1 text-[#0078D4]">{tier.hours}</p>
+                </div>
+                <p
+                  className={`text-sm leading-relaxed flex-1 ${
+                    tier.highlight ? "text-white/70" : "text-muted-foreground"
+                  }`}
+                >
+                  {tier.description}
+                </p>
+                <CTAButton
+                  href="/book"
+                  className={`w-full justify-center text-sm py-2.5 ${
+                    !tier.highlight ? "bg-[#0A2540] hover:bg-[#0A2540]/90" : ""
+                  }`}
+                >
+                  Get Started
+                </CTAButton>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ── WHAT SHANE DELIVERS ──────────────────────────────────────────── */}
+      <section className="bg-[#F7F9FC] py-20">
+        <div className="max-w-[1200px] mx-auto px-6">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-start">
+            <div>
+              <p className="text-[#0078D4] text-sm font-semibold uppercase tracking-[0.12em] mb-4">
+                Capabilities
+              </p>
+              <h2 className="text-3xl md:text-4xl font-extrabold text-[#0A2540] mb-6">
+                What Shane Delivers
+              </h2>
+              <p className="text-muted-foreground leading-relaxed mb-8">
+                Every engagement draws on deep, hands-on experience building production Power Platform solutions — not just advising on them.
+              </p>
+              <ul className="space-y-4">
+                {WHAT_SHANE_DELIVERS.map((item) => (
+                  <li key={item} className="flex items-start gap-3">
+                    <CheckCircle className="w-5 h-5 text-[#0078D4] flex-shrink-0 mt-0.5" />
+                    <span className="text-foreground">{item}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+            <div className="bg-[#0A2540] rounded-2xl p-8 space-y-5">
+              <p className="text-[#0078D4] text-xs font-bold uppercase tracking-widest">
+                30-Day Delivery Commitment
+              </p>
+              <p className="text-white font-bold text-lg">
+                A production-ready solution in your hands within 30 days.
+              </p>
+              <p className="text-white/60 text-sm leading-relaxed">
+                Shane's Quick-Start engagement is scoped to deliver one fully functional, production-ready Power App or Power Automate flow within four weeks — including requirements discovery, architecture, build, testing, and handoff. No extended timelines, no scope creep.
+              </p>
+              <div className="border-t border-white/10 pt-5 space-y-3">
+                {["Clear scope defined in week 1", "Build and test in weeks 2–3", "Handoff and training in week 4", "Governance-aligned from day one"].map(
+                  (item) => (
+                    <div key={item} className="flex items-center gap-3">
+                      <CheckCircle className="w-4 h-4 text-[#0078D4] flex-shrink-0" />
+                      <span className="text-white/80 text-sm">{item}</span>
+                    </div>
+                  )
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ── WHO THIS IS FOR ──────────────────────────────────────────────── */}
+      <section className="bg-white py-20">
+        <div className="max-w-[1200px] mx-auto px-6">
+          <div className="text-center mb-12">
+            <p className="text-[#0078D4] text-sm font-semibold uppercase tracking-[0.12em] mb-3">
+              Ideal Clients
+            </p>
+            <h2 className="text-3xl md:text-4xl font-extrabold text-[#0A2540]">Who This Is For</h2>
+            <p className="text-muted-foreground mt-4 max-w-xl mx-auto">
+              Shane works with organizations where automation failure isn't just inconvenient — it's costly.
+            </p>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 max-w-3xl mx-auto">
+            {WHO_FOR.map((item) => (
+              <div
+                key={item.label}
+                className="flex items-center gap-4 bg-[#F7F9FC] border border-border rounded-xl p-5"
+              >
+                <div className="w-10 h-10 rounded-lg bg-[#0078D4]/10 flex items-center justify-center flex-shrink-0">
+                  {item.icon}
+                </div>
+                <span className="text-[#0A2540] font-medium text-sm">{item.label}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ── WHY SHANE ────────────────────────────────────────────────────── */}
+      <section className="bg-[#F7F9FC] py-20">
+        <div className="max-w-[1200px] mx-auto px-6">
+          <div className="text-center mb-12">
+            <p className="text-[#0078D4] text-sm font-semibold uppercase tracking-[0.12em] mb-3">
+              Credentials
+            </p>
+            <h2 className="text-3xl md:text-4xl font-extrabold text-[#0A2540]">Why Work With Shane</h2>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {WHY_SHANE.map((item) => (
+              <div
+                key={item.title}
+                className="flex gap-4 p-6 rounded-2xl border border-border hover:border-[#0078D4]/30 hover:bg-white transition-all"
+              >
+                <CheckCircle className="w-5 h-5 text-[#0078D4] flex-shrink-0 mt-0.5" />
+                <div>
+                  <h3 className="font-bold text-[#0A2540] mb-2">{item.title}</h3>
+                  <p className="text-muted-foreground text-sm leading-relaxed">{item.desc}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ── FINAL CTA ────────────────────────────────────────────────────── */}
+      <section className="bg-[#0A2540] py-24 relative overflow-hidden">
+        <div
+          className="absolute inset-0 pointer-events-none"
+          style={{
+            background:
+              "radial-gradient(ellipse 700px 400px at 50% 100%, rgba(0,120,212,0.15) 0%, transparent 70%)",
+          }}
+        />
+        <div className="max-w-[1200px] mx-auto px-6 relative text-center">
+          <p className="text-[#0078D4] text-sm font-semibold uppercase tracking-[0.12em] mb-4">
+            Ready to Start?
+          </p>
+          <h2 className="text-3xl md:text-4xl font-extrabold text-white mb-4">
+            Let's Build Something Real
+          </h2>
+          <p className="text-white/60 text-lg max-w-xl mx-auto mb-10">
+            A free discovery call takes 30 minutes. You'll leave with clarity on what to automate first and what it will take to deliver it in production.
+          </p>
+          <div className="flex flex-wrap justify-center gap-4">
+            <CTAButton href="/book" className="px-8 py-3.5 text-base">
+              Book a Free Discovery Call
+            </CTAButton>
+            <a
+              href="/contact"
+              className="inline-flex items-center gap-2 text-white/80 hover:text-white font-semibold border border-white/20 hover:border-white/40 px-8 py-3.5 rounded-xl transition-colors text-base"
+            >
+              Schedule a Consultation <ArrowRight className="w-4 h-4" />
+            </a>
           </div>
         </div>
       </section>
