@@ -409,6 +409,36 @@ export function retainerResumedEmail(opts: {
   `;
 }
 
+export function quizLeadNotificationEmail(opts: {
+  name: string;
+  email: string;
+  company?: string | null;
+  totalScore: number;
+  tier: string;
+  recommendedService: string;
+}): string {
+  const name = escapeHtml(opts.name);
+  const email = escapeHtml(opts.email);
+  const company = opts.company ? escapeHtml(opts.company) : "—";
+  const tier = escapeHtml(opts.tier);
+  const service = escapeHtml(opts.recommendedService);
+  return `
+    <p>Hi Shane,</p>
+    <p>A new quiz lead just came in — <strong>${name}</strong> completed the Microsoft Copilot Readiness Assessment. Their results are below.</p>
+    <table cellpadding="0" cellspacing="0" style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:16px 20px;margin:16px 0;width:100%;">
+      <tr><td style="padding:4px 0;color:#64748b;font-size:13px;width:160px;">Name</td><td style="padding:4px 0;font-weight:600;">${name}</td></tr>
+      <tr><td style="padding:4px 0;color:#64748b;font-size:13px;">Email</td><td style="padding:4px 0;"><a href="mailto:${email}" style="color:#0078D4;">${email}</a></td></tr>
+      <tr><td style="padding:4px 0;color:#64748b;font-size:13px;">Company</td><td style="padding:4px 0;">${company}</td></tr>
+      <tr><td style="padding:4px 0;color:#64748b;font-size:13px;">Total Score</td><td style="padding:4px 0;font-weight:600;">${opts.totalScore} / 50</td></tr>
+      <tr><td style="padding:4px 0;color:#64748b;font-size:13px;">Maturity Tier</td><td style="padding:4px 0;font-weight:600;">${tier}</td></tr>
+      <tr><td style="padding:4px 0;color:#64748b;font-size:13px;">Recommended Service</td><td style="padding:4px 0;font-weight:600;">${service}</td></tr>
+    </table>
+    <p>The lead has been saved to the admin panel. Follow up while they're warm — their personalised report was emailed to them moments ago.</p>
+    ${emailButton("Reply to " + name, `mailto:${email}`)}
+    <p style="margin-top:24px;">— Shane McCaw Consulting (automated notification)</p>
+  `;
+}
+
 export function adminPurchaseAlertEmail(opts: {
   clientName: string;
   clientEmail: string;

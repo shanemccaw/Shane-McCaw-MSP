@@ -5,7 +5,7 @@ import { anthropic } from "@workspace/integrations-anthropic-ai";
 import { db, quizLeadsTable } from "@workspace/db";
 import { logger } from "../lib/logger";
 import { generateQuizPdf } from "../lib/quiz-pdf";
-import { sendEmailWithAttachment, brandedEmail } from "../lib/mailer";
+import { sendEmailWithAttachment, sendEmail, brandedEmail, quizLeadNotificationEmail } from "../lib/mailer";
 
 const router = Router();
 
@@ -203,6 +203,18 @@ Respond ONLY with valid JSON in this exact shape:
     logger.error({ err }, "quiz/submit: DB insert failed");
     return res.status(500).json({ error: "Failed to save your results. Please try again." });
   }
+
+  // Notify Shane of the new quiz lead (fire and forget)
+  void (async () => {
+    const shaneEmail = process.env.ADMIN_EMAIL ?? process.env.CRM_ADMIN_EMAIL;
+    if (shaneEmail) {
+      await sendEmail(
+        shaneEmail,
+        `New quiz lead: ${name} (${tier} — ${totalScore}/50)`,
+        quizLeadNotificationEmail({ name, email, company, totalScore, tier, recommendedService }),
+      );
+    }
+  })();
 
   // Generate and email PDF (fire and forget — don't block the response)
   const pdfData = {
