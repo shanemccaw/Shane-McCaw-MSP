@@ -280,6 +280,7 @@ function ClientSharePointPanel({ client, onClose, onUpdate }: {
   const [urlInput, setUrlInput] = useState(client.sharepointSiteUrl ?? "");
   const [saving, setSaving] = useState(false);
   const [provisioning, setProvisioning] = useState(false);
+  const [addingOwner, setAddingOwner] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
@@ -359,6 +360,25 @@ function ClientSharePointPanel({ client, onClose, onUpdate }: {
     }
   }
 
+  async function handleAddOwner() {
+    setAddingOwner(true);
+    try {
+      const res = await fetchWithAuth(`/api/admin/clients/${client.id}/sharepoint/add-owner`, {
+        method: "POST",
+      });
+      if (res.ok) {
+        toast({ title: "Owner added", description: "You have been added as a site owner." });
+      } else {
+        const d = await res.json().catch(() => ({} as Record<string, unknown>)) as { error?: string };
+        toast({ title: "Failed to add owner", description: d.error ?? "Unknown error", variant: "destructive" });
+      }
+    } catch {
+      toast({ title: "Network error", variant: "destructive" });
+    } finally {
+      setAddingOwner(false);
+    }
+  }
+
   const siteUrl = client.sharepointSiteUrl;
 
   return (
@@ -384,6 +404,11 @@ function ClientSharePointPanel({ client, onClose, onUpdate }: {
                 <a href={siteUrl} target="_blank" rel="noopener noreferrer"
                   className="text-[11px] text-[#0078D4] hover:underline truncate block">{siteUrl}</a>
               </div>
+              <button onClick={() => void handleAddOwner()} disabled={addingOwner}
+                className="flex-shrink-0 flex items-center gap-1.5 text-xs font-semibold border border-[#0078D4] text-[#0078D4] px-3 py-1.5 rounded-lg hover:bg-[#0078D4]/10 disabled:opacity-50 transition-colors">
+                {addingOwner ? <span className="w-3 h-3 border-2 border-[#0078D4]/40 border-t-[#0078D4] rounded-full animate-spin inline-block" /> : null}
+                {addingOwner ? "Adding…" : "Add me as owner"}
+              </button>
               <a href={siteUrl} target="_blank" rel="noopener noreferrer"
                 className="flex-shrink-0 text-xs font-semibold bg-[#0078D4] text-white px-3 py-1.5 rounded-lg hover:bg-[#005fa3] transition-colors">
                 Open →

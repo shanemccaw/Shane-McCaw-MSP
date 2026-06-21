@@ -8,6 +8,7 @@ import {
   createM365Group,
   addGroupOwner,
   getGroupSiteUrl,
+  getGroupFromSiteId,
   createSiteFolder,
   listDriveItems,
   getSiteByUrl,
@@ -174,6 +175,45 @@ router.get("/admin/sharepoint/templates/items", requireAdmin, async (req: Reques
   }
 });
 
+// ─── POST add Shane as owner of existing client SharePoint site ───────────────
+router.post("/admin/clients/:id/sharepoint/add-owner", requireAdmin, async (req: Request, res: Response) => {
+  const id = parseInt(String(req.params.id ?? ""), 10);
+  if (isNaN(id)) { res.status(400).json({ error: "Invalid client ID" }); return; }
+
+  const ownerUpn = process.env.SHAREPOINT_OWNER_UPN;
+  if (!ownerUpn) {
+    res.status(503).json({ error: "SHAREPOINT_OWNER_UPN is not configured." });
+    return;
+  }
+
+  if (!graphCredentialsPresent()) {
+    res.status(503).json({ error: "Graph credentials not configured. Set GRAPH_TENANT_ID, GRAPH_CLIENT_ID, and GRAPH_CLIENT_SECRET." });
+    return;
+  }
+
+  const [client] = await db.select().from(usersTable).where(eq(usersTable.id, id));
+  if (!client) { res.status(404).json({ error: "Client not found" }); return; }
+
+  if (!client.sharepointSiteId) {
+    res.status(400).json({ error: "No SharePoint site linked to this client." });
+    return;
+  }
+
+  const group = await getGroupFromSiteId(client.sharepointSiteId);
+  if (!group) {
+    res.status(502).json({ error: "Could not resolve M365 group for this site. The site may not be group-connected." });
+    return;
+  }
+
+  const added = await addGroupOwner(group.id, ownerUpn);
+  if (!added) {
+    res.status(502).json({ error: "addGroupOwner call failed. Check server logs for details." });
+    return;
+  }
+
+  res.json({ ok: true });
+});
+
 // ─── PATCH client SharePoint link (manual override) ───────────────────────────
 router.patch("/admin/clients/:id/sharepoint", requireAdmin, async (req: Request, res: Response) => {
   const id = parseInt(String(req.params.id ?? ""), 10);
@@ -261,12 +301,17 @@ export async function provisionClientSite(
     return;
   }
 
-  // Add Shane as group owner so he has full access from SharePoint/Teams
+  // Add Shane as group owner so he has full access from SharePoint/Teams.
+  // M365 groups are eventually consistent, so retry up to 3 times with 5 s delays.
   const ownerUpn = process.env.SHAREPOINT_OWNER_UPN;
   if (ownerUpn) {
-    const added = await addGroupOwner(group.id, ownerUpn);
+    let added = false;
+    for (let attempt = 1; attempt <= 3 && !added; attempt++) {
+      if (attempt > 1) await new Promise(r => setTimeout(r, 5000));
+      added = await addGroupOwner(group.id, ownerUpn);
+    }
     if (!added) {
-      warn({ clientId, groupId: group.id, ownerUpn }, "SharePoint provisioning: addGroupOwner failed (non-fatal, continuing)");
+      warn({ clientId, groupId: group.id, ownerUpn }, "SharePoint provisioning: addGroupOwner failed after 3 attempts (non-fatal, continuing)");
     }
   } else {
     warn({ clientId }, "SharePoint provisioning: SHAREPOINT_OWNER_UPN not set — skipping owner assignment");

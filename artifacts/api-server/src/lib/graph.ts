@@ -271,6 +271,25 @@ export async function addGroupOwner(
   }
 }
 
+export async function getGroupFromSiteId(
+  siteId: string,
+): Promise<{ id: string } | null> {
+  try {
+    const res = await graphFetch(`/sites/${siteId}/group?$select=id`);
+    if (res.status === 404 || res.status === 400) return null;
+    if (!res.ok) {
+      const text = await res.text();
+      logger.warn({ status: res.status, body: text }, "Graph getGroupFromSiteId failed");
+      return null;
+    }
+    const data = await res.json() as { id: string };
+    return { id: data.id };
+  } catch (err) {
+    logger.error({ err }, "Graph getGroupFromSiteId error");
+    return null;
+  }
+}
+
 export async function getGroupSiteUrl(
   groupId: string,
 ): Promise<{ id: string; webUrl: string } | null> {
