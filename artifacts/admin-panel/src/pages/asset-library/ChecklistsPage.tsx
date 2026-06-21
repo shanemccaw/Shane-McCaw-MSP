@@ -177,15 +177,18 @@ const ChecklistImportSchema = z.object({
   id: z.number().int().positive().optional(),
   title: z.string().min(1, "title is required"),
   items: z.array(
-    z.object({ id: z.string().min(1, "item id must be a non-empty string"), label: z.string().min(1, "item label must be a non-empty string") }),
-    { invalid_type_error: "items must be an array of {id, label} objects" }
+    z.object({
+      id: z.string().optional().transform((v, ctx) => v || `item-${ctx.path[ctx.path.length - 2]}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`),
+      label: z.string().min(1, "item label must be a non-empty string"),
+    }),
+    { invalid_type_error: "items must be an array of objects with a label field" }
   ).optional(),
   category: z.string().optional(),
 });
 
 const CHECKLIST_EXAMPLE = JSON.stringify([
-  { title: "SharePoint Migration Checklist", category: "Migration", items: [{ id: "1", label: "Audit source libraries" }, { id: "2", label: "Map permissions" }, { id: "3", label: "Run pilot migration" }] },
-  { title: "Copilot Readiness", category: "Copilot AI", items: [{ id: "1", label: "Verify M365 licensing" }, { id: "2", label: "Configure data boundaries" }] },
+  { title: "SharePoint Migration Checklist", category: "Migration", items: [{ label: "Audit source libraries" }, { label: "Map permissions" }, { label: "Run pilot migration" }] },
+  { title: "Copilot Readiness", category: "Copilot AI", items: [{ label: "Verify M365 licensing" }, { label: "Configure data boundaries" }] },
 ], null, 2);
 
 export default function ChecklistsPage() {
