@@ -61,29 +61,6 @@ const ASSESSMENT_INCLUDES = [
 
 const COMPLIANCE = ["HIPAA", "SOC 2", "FIN", "CMMC", "ITAR", "FedRAMP"];
 
-const RETAINERS = [
-  {
-    name: "Architect Essentials",
-    price: "$2,500",
-    hours: "10 hrs/month",
-    description: "Advisory, architecture reviews, roadmap validation, and escalation support.",
-    highlight: false,
-  },
-  {
-    name: "Architect Growth",
-    price: "$6,000",
-    hours: "25 hrs/month",
-    description: "Ongoing Copilot governance, adoption monitoring, and IT team mentoring.",
-    highlight: true,
-  },
-  {
-    name: "Architect Enterprise",
-    price: "$11,000",
-    hours: "50 hrs/month",
-    description: "Embedded architecture leadership, governance ownership, and executive reporting.",
-    highlight: false,
-  },
-];
 
 const WHY_SHANE = [
   {
@@ -106,6 +83,7 @@ const WHY_SHANE = [
 
 export default function CopilotAI() {
   const { services, loading } = useServices();
+  const { services: retainerServices, loading: retainerLoading } = useServices("retainer");
   const assessmentSvc = services.find((s) => s.slug === "copilot-for-m365-readiness-assessment");
   const govSvc = services.find((s) => s.slug === "governance-foundations-package");
   const skeleton = <span className="inline-block w-28 h-4 bg-gray-200 rounded animate-pulse align-middle" />;
@@ -302,17 +280,26 @@ export default function CopilotAI() {
           <div className="max-w-4xl mx-auto">
             <p className="text-center text-sm font-semibold text-muted-foreground uppercase tracking-widest mb-6">Fractional M365 Architect Retainers</p>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              {RETAINERS.map((tier, i) => (
-                <ServiceRetainerCard
-                  key={tier.name}
-                  name={tier.name}
-                  price={tier.price}
-                  hours={tier.hours}
-                  description={tier.description}
-                  highlight={tier.highlight}
-                  index={i}
-                />
-              ))}
+              {retainerLoading
+                ? [0, 1, 2].map((i) => (
+                    <div key={i} className="rounded-2xl p-8 border bg-white border-border animate-pulse">
+                      <div className="h-5 w-32 bg-gray-200 rounded mb-4" />
+                      <div className="h-10 w-24 bg-gray-200 rounded mb-2" />
+                      <div className="h-4 w-20 bg-gray-200 rounded mb-4" />
+                      <div className="h-16 bg-gray-100 rounded" />
+                    </div>
+                  ))
+                : retainerServices.map((tier, i) => (
+                    <ServiceRetainerCard
+                      key={tier.slug ?? tier.name}
+                      name={tier.name}
+                      price={formatPriceDisplay(tier)}
+                      hours={tier.hoursPerMonth ?? ""}
+                      description={tier.description ?? ""}
+                      highlight={tier.highlighted}
+                      index={i}
+                    />
+                  ))}
             </div>
             <p className="text-center text-sm text-muted-foreground mt-5">
               All retainers are month-to-month.{" "}

@@ -104,32 +104,10 @@ const WHY_SHANE = [
   },
 ];
 
-const RETAINERS = [
-  {
-    name: "Architect Essentials",
-    price: "$2,500",
-    hours: "10 hrs/month",
-    description: "For advisory, architecture reviews, roadmap validation, and escalation support.",
-    highlight: false,
-  },
-  {
-    name: "Architect Growth",
-    price: "$6,000",
-    hours: "25 hrs/month",
-    description: "For ongoing roadmap execution, governance implementation, and IT team mentoring.",
-    highlight: true,
-  },
-  {
-    name: "Architect Enterprise",
-    price: "$11,000",
-    hours: "50 hrs/month",
-    description: "For organizations needing embedded architecture leadership, governance ownership, and executive reporting.",
-    highlight: false,
-  },
-];
 
 export default function PowerPlatform() {
   const { services, loading } = useServices();
+  const { services: retainerServices, loading: retainerLoading } = useServices("retainer");
   const quickStartSvc = services.find((s) => s.slug === "power-platform-quickstart");
   const govSvc = services.find((s) => s.slug === "governance-foundations-package");
   const skeleton = <span className="inline-block w-28 h-4 bg-gray-200 rounded animate-pulse align-middle" />;
@@ -332,17 +310,26 @@ export default function PowerPlatform() {
             </p>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-4xl mx-auto">
-            {RETAINERS.map((tier, i) => (
-              <ServiceRetainerCard
-                key={tier.name}
-                name={tier.name}
-                price={tier.price}
-                hours={tier.hours}
-                description={tier.description}
-                highlight={tier.highlight}
-                index={i}
-              />
-            ))}
+            {retainerLoading
+              ? [0, 1, 2].map((i) => (
+                  <div key={i} className="rounded-2xl p-8 border bg-white border-border animate-pulse">
+                    <div className="h-5 w-32 bg-gray-200 rounded mb-4" />
+                    <div className="h-10 w-24 bg-gray-200 rounded mb-2" />
+                    <div className="h-4 w-20 bg-gray-200 rounded mb-4" />
+                    <div className="h-16 bg-gray-100 rounded" />
+                  </div>
+                ))
+              : retainerServices.map((tier, i) => (
+                  <ServiceRetainerCard
+                    key={tier.slug ?? tier.name}
+                    name={tier.name}
+                    price={formatPriceDisplay(tier)}
+                    hours={tier.hoursPerMonth ?? ""}
+                    description={tier.description ?? ""}
+                    highlight={tier.highlighted}
+                    index={i}
+                  />
+                ))}
           </div>
         </div>
       </section>

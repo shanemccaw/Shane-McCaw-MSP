@@ -45,29 +45,10 @@ const comparisonRows = [
   },
 ];
 
-const RETAINERS = [
-  {
-    name: "Essentials",
-    price: "$2,500",
-    hours: "10 hrs/month",
-    highlight: false,
-  },
-  {
-    name: "Growth",
-    price: "$6,000",
-    hours: "25 hrs/month",
-    highlight: true,
-  },
-  {
-    name: "Enterprise",
-    price: "$11,000",
-    hours: "50 hrs/month",
-    highlight: false,
-  },
-];
 
 export default function SharePoint() {
   const { services, loading } = useServices();
+  const { services: retainerServices, loading: retainerLoading } = useServices("retainer");
   const govSvc = services.find((s) => s.slug === "governance-foundations-package");
   const migSvc = services.find((s) => s.slug === "migration-readiness-assessment");
   const skeleton = <span className="inline-block w-28 h-4 bg-gray-200 rounded animate-pulse align-middle" />;
@@ -297,16 +278,26 @@ export default function SharePoint() {
               Ongoing strategic access to Shane — your senior SharePoint architect on call without the full-time hire. All tiers include architecture reviews, governance oversight, and direct Slack/Teams access.
             </p>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              {RETAINERS.map((r, i) => (
-                <ServiceRetainerCard
-                  key={r.name}
-                  name={r.name}
-                  price={r.price}
-                  hours={r.hours}
-                  highlight={r.highlight}
-                  index={i}
-                />
-              ))}
+              {retainerLoading
+                ? [0, 1, 2].map((i) => (
+                    <div key={i} className="rounded-2xl p-8 border bg-white border-border animate-pulse">
+                      <div className="h-5 w-32 bg-gray-200 rounded mb-4" />
+                      <div className="h-10 w-24 bg-gray-200 rounded mb-2" />
+                      <div className="h-4 w-20 bg-gray-200 rounded mb-4" />
+                      <div className="h-16 bg-gray-100 rounded" />
+                    </div>
+                  ))
+                : retainerServices.map((tier, i) => (
+                    <ServiceRetainerCard
+                      key={tier.slug ?? tier.name}
+                      name={tier.name}
+                      price={formatPriceDisplay(tier)}
+                      hours={tier.hoursPerMonth ?? ""}
+                      description={tier.description ?? ""}
+                      highlight={tier.highlighted}
+                      index={i}
+                    />
+                  ))}
             </div>
             <p className="text-center text-sm text-muted-foreground mt-6">
               All retainers are month-to-month.{" "}

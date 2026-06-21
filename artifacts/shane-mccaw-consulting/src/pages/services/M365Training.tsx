@@ -2,6 +2,7 @@ import { SEOMeta } from "@/components/SEOMeta";
 import { Layout } from "@/components/Layout";
 import { CTAButton } from "@/components/CTAButton";
 import { ServiceRetainerCard } from "@/components/ServiceRetainerCard";
+import { useServices, formatPriceDisplay } from "@/hooks/useServices";
 import { Link } from "wouter";
 import {
   CheckCircle, ArrowRight, Clock, DollarSign,
@@ -99,31 +100,9 @@ const ADD_ONS = [
   },
 ];
 
-const RETAINERS = [
-  {
-    name: "Architect Essentials",
-    price: "$2,500",
-    hours: "10 hrs/month",
-    desc: "Advisory, architecture reviews, roadmap validation, and ongoing staff support.",
-    highlight: false,
-  },
-  {
-    name: "Architect Growth",
-    price: "$6,000",
-    hours: "25 hrs/month",
-    desc: "Ongoing adoption support, governance implementation, and IT team mentoring.",
-    highlight: true,
-  },
-  {
-    name: "Architect Enterprise",
-    price: "$11,000",
-    hours: "50 hrs/month",
-    desc: "Embedded architecture leadership, governance ownership, and executive reporting.",
-    highlight: false,
-  },
-];
 
 export default function M365Training() {
+  const { services: retainerServices, loading: retainerLoading } = useServices("retainer");
   return (
     <Layout>
       <SEOMeta
@@ -383,17 +362,26 @@ export default function M365Training() {
 
           <p className="text-center text-sm font-semibold text-muted-foreground uppercase tracking-widest mb-6">Fractional M365 Architect Retainers</p>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-4xl mx-auto">
-            {RETAINERS.map((tier, i) => (
-              <ServiceRetainerCard
-                key={tier.name}
-                name={tier.name}
-                price={tier.price}
-                hours={tier.hours}
-                description={tier.desc}
-                highlight={tier.highlight}
-                index={i}
-              />
-            ))}
+            {retainerLoading
+              ? [0, 1, 2].map((i) => (
+                  <div key={i} className="rounded-2xl p-8 border bg-white border-border animate-pulse">
+                    <div className="h-5 w-32 bg-gray-200 rounded mb-4" />
+                    <div className="h-10 w-24 bg-gray-200 rounded mb-2" />
+                    <div className="h-4 w-20 bg-gray-200 rounded mb-4" />
+                    <div className="h-16 bg-gray-100 rounded" />
+                  </div>
+                ))
+              : retainerServices.map((tier, i) => (
+                  <ServiceRetainerCard
+                    key={tier.slug ?? tier.name}
+                    name={tier.name}
+                    price={formatPriceDisplay(tier)}
+                    hours={tier.hoursPerMonth ?? ""}
+                    description={tier.description ?? ""}
+                    highlight={tier.highlighted}
+                    index={i}
+                  />
+                ))}
           </div>
           <p className="text-center text-sm text-muted-foreground mt-5">
             All retainers are month-to-month.{" "}

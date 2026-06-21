@@ -136,32 +136,6 @@ function getIcon(iconName: string | null): LucideIcon {
   return Sparkles;
 }
 
-const RETAINERS = [
-  {
-    name: "Architect Essentials",
-    price: "$2,500",
-    hours: "10 hrs/month",
-    description:
-      "For advisory, architecture reviews, roadmap validation, and escalation support.",
-    highlight: false,
-  },
-  {
-    name: "Architect Growth",
-    price: "$6,000",
-    hours: "25 hrs/month",
-    description:
-      "For ongoing roadmap execution, governance implementation, and IT team mentoring.",
-    highlight: true,
-  },
-  {
-    name: "Architect Enterprise",
-    price: "$11,000",
-    hours: "50 hrs/month",
-    description:
-      "For organizations needing embedded architecture leadership, governance ownership, and executive reporting.",
-    highlight: false,
-  },
-];
 
 const WHO_FOR = [
   { icon: <Building2 className="w-5 h-5 text-[#0078D4]" />, label: "Mid-market companies (200–2,000 employees)" },
@@ -191,6 +165,7 @@ const WHY_SHANE = [
 
 export default function Microsoft365() {
   const { services, loading, error } = useServices("micro_offer");
+  const { services: retainerServices, loading: retainerLoading } = useServices("retainer");
 
   return (
     <Layout>
@@ -356,17 +331,26 @@ export default function Microsoft365() {
             </p>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-4xl mx-auto">
-            {RETAINERS.map((tier, i) => (
-              <ServiceRetainerCard
-                key={tier.name}
-                name={tier.name}
-                price={tier.price}
-                hours={tier.hours}
-                description={tier.description}
-                highlight={tier.highlight}
-                index={i}
-              />
-            ))}
+            {retainerLoading
+              ? [0, 1, 2].map((i) => (
+                  <div key={i} className="rounded-2xl p-8 border bg-white border-border animate-pulse">
+                    <div className="h-5 w-32 bg-gray-200 rounded mb-4" />
+                    <div className="h-10 w-24 bg-gray-200 rounded mb-2" />
+                    <div className="h-4 w-20 bg-gray-200 rounded mb-4" />
+                    <div className="h-16 bg-gray-100 rounded" />
+                  </div>
+                ))
+              : retainerServices.map((tier, i) => (
+                  <ServiceRetainerCard
+                    key={tier.slug ?? tier.name}
+                    name={tier.name}
+                    price={formatPriceDisplay(tier)}
+                    hours={tier.hoursPerMonth ?? ""}
+                    description={tier.description ?? ""}
+                    highlight={tier.highlighted}
+                    index={i}
+                  />
+                ))}
           </div>
           <p className="text-center text-sm text-muted-foreground mt-6">
             All retainers are month-to-month. Cancel anytime.{" "}
