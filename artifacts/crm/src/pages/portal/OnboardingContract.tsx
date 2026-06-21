@@ -56,6 +56,7 @@ function buildContractHtml(
   today: string,
   getPrice: (s: Service) => string,
   getSelections: (s: Service) => WizardSelection[],
+  clientInfo?: { company?: string; address?: string; phone?: string; email?: string },
 ): string {
   const hasRecurring = services.some(s => s.billingType === "recurring_monthly");
   const hasOneTime = services.some(s => s.billingType === "one_time");
@@ -92,16 +93,46 @@ function buildContractHtml(
     ${selectionsHtml}`;
   }).join("");
 
+  const clientAddrLines = clientInfo?.address
+    ? clientInfo.address.split(/\s{2,}|\n/).filter(Boolean)
+    : [];
+
   return `
-    <div style="background:linear-gradient(135deg,#0A2540 0%,#0d3060 100%);color:#fff;padding:20px 24px 18px;border-radius:10px;margin-bottom:20px;">
+    <div style="background:linear-gradient(135deg,#0A2540 0%,#0d3060 100%);color:#fff;padding:20px 24px 18px;border-radius:10px;margin-bottom:16px;">
       <div style="font-size:0.7em;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:rgba(255,255,255,0.55);margin-bottom:4px;">Service Agreement</div>
       <div style="font-size:1.1em;font-weight:800;color:#fff;margin-bottom:12px;">Shane McCaw Consulting LLC</div>
       <div style="display:flex;flex-wrap:wrap;gap:16px;font-size:0.78em;color:rgba(255,255,255,0.75);">
         <span><strong style="color:rgba(255,255,255,0.5);font-weight:600;">Date</strong>&nbsp;&nbsp;${today}</span>
-        <span><strong style="color:rgba(255,255,255,0.5);font-weight:600;">Provider</strong>&nbsp;&nbsp;Shane McCaw Consulting LLC</span>
-        <span><strong style="color:rgba(255,255,255,0.5);font-weight:600;">Client</strong>&nbsp;&nbsp;${signerName}</span>
       </div>
     </div>
+
+    <table style="width:100%;border-collapse:collapse;border:1px solid #e2e8f0;border-radius:8px;overflow:hidden;margin-bottom:16px;font-size:0.85em;">
+      <thead>
+        <tr style="background:#F7F9FC;">
+          <th style="padding:8px 14px;text-align:left;font-weight:700;font-size:0.72em;text-transform:uppercase;letter-spacing:0.06em;color:#6B7280;border-bottom:1px solid #e2e8f0;width:50%;">Provider</th>
+          <th style="padding:8px 14px;text-align:left;font-weight:700;font-size:0.72em;text-transform:uppercase;letter-spacing:0.06em;color:#6B7280;border-bottom:1px solid #e2e8f0;width:50%;">Client</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td style="padding:12px 14px;vertical-align:top;border-right:1px solid #e2e8f0;">
+            <div style="font-weight:700;color:#0A2540;margin-bottom:4px;">Shane McCaw Consulting LLC</div>
+            <div style="color:#6B7280;font-size:0.9em;line-height:1.6;">
+              Shane McCaw<br/>
+              info@shanemccaw.com
+            </div>
+          </td>
+          <td style="padding:12px 14px;vertical-align:top;">
+            <div style="font-weight:700;color:#0A2540;margin-bottom:4px;">${signerName}${clientInfo?.company ? `<span style="font-weight:400;color:#6B7280;"> — ${clientInfo.company}</span>` : ""}</div>
+            <div style="color:#6B7280;font-size:0.9em;line-height:1.6;">
+              ${clientInfo?.email ? `${clientInfo.email}<br/>` : ""}
+              ${clientInfo?.phone ? `${clientInfo.phone}<br/>` : ""}
+              ${clientInfo?.address ? `${clientAddrLines.length > 0 ? clientAddrLines.join("<br/>") : clientInfo.address}` : ""}
+            </div>
+          </td>
+        </tr>
+      </tbody>
+    </table>
 
     <h3 style="${HEADING_STYLE}">1. Services</h3>
     <p style="${PARA_STYLE}">Consultant agrees to deliver the following service(s) to Client:</p>
@@ -176,7 +207,10 @@ export default function OnboardingContract() {
   const [signerName, setSignerName] = useState(user?.name ?? user?.email?.split("@")[0] ?? "");
   const [company, setCompany] = useState(user?.company ?? "");
   const [phone, setPhone] = useState(user?.phone ?? "");
-  const [address, setAddress] = useState(user?.address ?? "");
+  const [street, setStreet] = useState(user?.address ?? "");
+  const [city, setCity] = useState("");
+  const [addrState, setAddrState] = useState("");
+  const [zip, setZip] = useState("");
   const [agreed, setAgreed] = useState(false);
   const [signed, setSigned] = useState(false);
   const [stripeError, setStripeError] = useState("");
@@ -269,10 +303,11 @@ export default function OnboardingContract() {
 
     try {
       // Save profile fields before creating the contract
+      const fullAddress = [street, city && addrState ? `${city}, ${addrState}` : city || addrState, zip].filter(Boolean).join(" ");
       await fetchWithAuth("/api/portal/profile", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: signerName, company, phone, address }),
+        body: JSON.stringify({ name: signerName, company, phone, address: fullAddress }),
       });
 
       const canvas = canvasRef.current;
@@ -494,6 +529,12 @@ export default function OnboardingContract() {
                   return wp != null ? fmtPrice(wp, s.billingType) : fmt(s.price, s.billingType);
                 },
                 (s) => wizardSelectionsData[String(s.id)] ?? [],
+                {
+                  company,
+                  address: [street, city && addrState ? `${city}, ${addrState}` : city || addrState, zip].filter(Boolean).join(" "),
+                  phone,
+                  email: user?.email,
+                },
               ) }}
             />
           </div>
@@ -524,12 +565,44 @@ export default function OnboardingContract() {
                 />
               </div>
               <div>
-                <label className="block text-sm font-semibold text-[#0A2540] mb-1.5">Business address</label>
+                <label className="block text-sm font-semibold text-[#0A2540] mb-1.5">Street address</label>
                 <input
                   type="text"
-                  value={address}
-                  onChange={e => setAddress(e.target.value)}
-                  placeholder="Street, City, State ZIP"
+                  value={street}
+                  onChange={e => setStreet(e.target.value)}
+                  placeholder="123 Main St"
+                  className="w-full border border-border rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4]"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-sm font-semibold text-[#0A2540] mb-1.5">City</label>
+                  <input
+                    type="text"
+                    value={city}
+                    onChange={e => setCity(e.target.value)}
+                    placeholder="Springfield"
+                    className="w-full border border-border rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4]"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-[#0A2540] mb-1.5">State</label>
+                  <input
+                    type="text"
+                    value={addrState}
+                    onChange={e => setAddrState(e.target.value)}
+                    placeholder="VA"
+                    className="w-full border border-border rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4]"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm font-semibold text-[#0A2540] mb-1.5">ZIP code</label>
+                <input
+                  type="text"
+                  value={zip}
+                  onChange={e => setZip(e.target.value)}
+                  placeholder="22150"
                   className="w-full border border-border rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4]"
                 />
               </div>
