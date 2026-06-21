@@ -194,18 +194,42 @@ router.post("/admin/clients/:id/sharepoint/add-owner", requireAdmin, async (req:
   const [client] = await db.select().from(usersTable).where(eq(usersTable.id, id));
   if (!client) { res.status(404).json({ error: "Client not found" }); return; }
 
-  if (!client.sharepointSiteId) {
+  if (!client.sharepointSiteUrl && !client.sharepointSiteId) {
     res.status(400).json({ error: "No SharePoint site linked to this client." });
     return;
   }
 
-  const group = await getGroupFromSiteId(client.sharepointSiteId);
-  if (!group) {
-    res.status(502).json({ error: "Could not resolve M365 group for this site. The site may not be group-connected." });
+  // Resolve the M365 group ID using a three-step fallback chain:
+  // 1. Stored group ID (written during provisioning — fastest, works before site is ready)
+  // 2. Site ID already stored on the client record → Graph group lookup
+  // 3. Site URL → resolve site ID via Graph → Graph group lookup (handles older clients)
+  let groupId: string | null = null;
+
+  const [storedGroupRow] = await db.select().from(settingsTable)
+    .where(eq(settingsTable.key, `m365_group_id_${id}`));
+  if (storedGroupRow?.value) {
+    groupId = storedGroupRow.value;
+  }
+
+  if (!groupId && client.sharepointSiteId) {
+    const g = await getGroupFromSiteId(client.sharepointSiteId);
+    if (g) groupId = g.id;
+  }
+
+  if (!groupId && client.sharepointSiteUrl) {
+    const site = await getSiteByUrl(client.sharepointSiteUrl);
+    if (site) {
+      const g = await getGroupFromSiteId(site.id);
+      if (g) groupId = g.id;
+    }
+  }
+
+  if (!groupId) {
+    res.status(502).json({ error: "Could not resolve M365 group for this client's site. The site may not be group-connected." });
     return;
   }
 
-  const added = await addGroupOwner(group.id, ownerUpn);
+  const added = await addGroupOwner(groupId, ownerUpn);
   if (!added) {
     res.status(502).json({ error: "addGroupOwner call failed. Check server logs for details." });
     return;
@@ -300,6 +324,11 @@ export async function provisionClientSite(
     warn({ clientId, displayName }, "SharePoint provisioning: createM365Group returned null");
     return;
   }
+
+  // Persist group ID in settings so the manual add-owner endpoint can use it
+  // without an extra Graph lookup, even before the SharePoint site is ready.
+  await db.insert(settingsTable).values({ key: `m365_group_id_${clientId}`, value: group.id })
+    .onConflictDoUpdate({ target: settingsTable.key, set: { value: group.id, updatedAt: new Date() } });
 
   // Add Shane as group owner so he has full access from SharePoint/Teams.
   // M365 groups are eventually consistent, so retry up to 3 times with 5 s delays.
