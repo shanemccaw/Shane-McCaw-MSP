@@ -85,6 +85,11 @@ const CLIENT_NAV_ITEMS = (unreadMessages: number): NavItem[] => [
     path: "/portal/activity",
     icon: <svg className="w-4.5 h-4.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0118 18a8.967 8.967 0 00-6 2.292m0-14.25v14.25" /></svg>,
   },
+  {
+    label: "Profile",
+    path: "/portal/profile",
+    icon: <svg className="w-4.5 h-4.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>,
+  },
 ];
 
 export function ClientSidebar({ unreadNotifications = 0, unreadMessages = 0 }: { unreadNotifications?: number; unreadMessages?: number }) {
@@ -162,6 +167,12 @@ function MobileBottomNav({ unreadMessages = 0 }: { unreadMessages?: number }) {
             <div className="bg-white rounded-xl shadow-2xl border border-border p-4">
               <p className="text-xs text-muted-foreground mb-0.5">Signed in as</p>
               <p className="text-sm font-semibold text-[#0A2540] truncate mb-3">{user?.email}</p>
+              <Link href="/portal/profile" onClick={() => setShowAccount(false)}>
+                <div className="w-full text-left text-sm font-semibold text-[#0078D4] hover:text-[#0078D4]/80 py-1.5 transition-colors flex items-center gap-2 mb-1">
+                  <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>
+                  Profile settings
+                </div>
+              </Link>
               <button
                 onClick={() => { setShowAccount(false); logout(); }}
                 className="w-full text-left text-sm font-semibold text-red-600 hover:text-red-700 py-1.5 transition-colors flex items-center gap-2"
