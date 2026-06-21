@@ -5,6 +5,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { formatAuditEntry, formatActivityItem, relativeTime, type AuditLogEntry } from "@/lib/auditFormatter";
 import PortalLayout from "@/components/PortalLayout";
 import PortalRetainerDetail from "./PortalRetainerDetail";
+import PortalProjectCloseOut from "./PortalProjectCloseOut";
 import { KanbanCardModal } from "@/components/KanbanCardModal";
 import type { KanbanCardModalTask } from "@/components/KanbanCardModal";
 import { TypedCardContent } from "@/components/kanban/TypedCardContent";
@@ -674,6 +675,21 @@ export default function PortalProjectDetail() {
     return (
       <PortalLayout>
         <PortalRetainerDetail data={data} projectId={params.id ?? ""} fetchWithAuth={fetchWithAuth} />
+      </PortalLayout>
+    );
+  }
+
+  // Closed-out projects get a dedicated executive close-out view
+  if (closure?.signedAt) {
+    return (
+      <PortalLayout>
+        <PortalProjectCloseOut
+          data={data}
+          closure={closure}
+          auditLogs={auditLogs}
+          projectId={params.id ?? ""}
+          fetchWithAuth={fetchWithAuth}
+        />
       </PortalLayout>
     );
   }
