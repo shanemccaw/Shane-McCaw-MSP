@@ -61,7 +61,7 @@ export const servicesTable = pgTable("services", {
   name: text("name").notNull(),
   description: text("description"),
   category: text("category"),
-  deliverables: text("deliverables"),
+  deliverables: jsonb("deliverables").$type<string[]>(),
   price: numeric("price", { precision: 10, scale: 2 }),
   basePrice: numeric("base_price", { precision: 10, scale: 2 }),
   maxPrice: numeric("max_price", { precision: 10, scale: 2 }),

@@ -120,10 +120,17 @@ function MicroOfferCard({ offer, index }: { offer: PublicService; index: number 
         </div>
       )}
       <div className="border-t border-border pt-4 space-y-2 mt-auto">
-        {offer.deliverables && (
-          <div className="flex items-center gap-2 text-xs">
-            <CheckCircle className="w-3.5 h-3.5 text-[#0078D4] flex-shrink-0" />
-            <span className="text-foreground font-medium">{offer.deliverables}</span>
+        {offer.deliverables && offer.deliverables.length > 0 && (
+          <div className="mb-3">
+            <p className="text-xs font-semibold text-[#0A2540] uppercase tracking-wide mb-1">Deliverables</p>
+            <ul className="space-y-1">
+              {offer.deliverables.map((item, i) => (
+                <li key={i} className="flex items-start gap-2 text-xs text-muted-foreground">
+                  <CheckCircle className="w-3.5 h-3.5 text-[#0078D4] flex-shrink-0 mt-0.5" />
+                  <span>{item}</span>
+                </li>
+              ))}
+            </ul>
           </div>
         )}
         {offer.turnaround && (
@@ -196,10 +203,17 @@ function RetainerCard({ plan, index }: { plan: PublicService; index: number }) {
           </ul>
         </div>
       )}
-      {plan.deliverables && (
+      {plan.deliverables && plan.deliverables.length > 0 && (
         <div className="mb-3">
-          <p className={`text-xs font-semibold uppercase tracking-wide mb-1 ${hl ? "text-white/50" : "text-[#0A2540]"}`}>Deliverable</p>
-          <p className={`text-xs ${hl ? "text-white/60" : "text-muted-foreground"}`}>{plan.deliverables}</p>
+          <p className={`text-xs font-semibold uppercase tracking-wide mb-1 ${hl ? "text-white/50" : "text-[#0A2540]"}`}>Deliverables</p>
+          <ul className="space-y-1">
+            {plan.deliverables.map((item, i) => (
+              <li key={i} className="flex items-start gap-2 text-xs">
+                <CheckCircle className="w-3.5 h-3.5 text-[#0078D4] flex-shrink-0 mt-0.5" />
+                <span className={hl ? "text-white/60" : "text-muted-foreground"}>{item}</span>
+              </li>
+            ))}
+          </ul>
         </div>
       )}
       {plan.turnaround && (

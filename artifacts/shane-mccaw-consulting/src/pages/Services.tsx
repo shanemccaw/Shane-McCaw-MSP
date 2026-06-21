@@ -67,9 +67,7 @@ function ServiceCard({ s, index }: { s: PublicService; index: number }) {
   const inclusions = s.inclusions ?? [];
   const features = s.features ?? [];
   const priceDisplay = formatPriceDisplay(s);
-  const deliverableLines = s.deliverables
-    ? s.deliverables.split("\n").filter(l => l.trim())
-    : [];
+  const deliverableLines = s.deliverables ?? [];
   const isHighlighted = s.highlighted ?? false;
   const href = s.pageHref ?? "/book";
   const ctaLabel = s.pageHref ? "Learn More" : "Book a Discovery Call";

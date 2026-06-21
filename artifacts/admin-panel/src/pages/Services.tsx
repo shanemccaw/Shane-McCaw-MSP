@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
+import { TagInput } from "@/components/TagInput";
 import {
   ChevronDown, ChevronUp, Plus, Trash2, Save, Loader2,
   CheckCircle, Clock, Sparkles, Cloud, Bot, Shield, Zap, Server, Users,
@@ -44,7 +45,7 @@ interface Service {
   name: string;
   description: string | null;
   category: string | null;
-  deliverables: string | null;
+  deliverables: string[] | null;
   price: string | null;
   basePrice: string | null;
   maxPrice: string | null;
@@ -236,14 +237,14 @@ function OfferCardPreview({ form }: { form: Partial<Service> }) {
       )}
 
       {/* Deliverables */}
-      {form.deliverables && (
+      {form.deliverables && form.deliverables.length > 0 && (
         <div className="mb-4">
           <p className="text-sm font-semibold text-[#0A2540] mb-1.5">Deliverables:</p>
           <ul className="space-y-1">
-            {form.deliverables.split("\n").filter(line => line.trim()).map((line, i) => (
+            {form.deliverables.map((line, i) => (
               <li key={i} className="flex items-start gap-2 text-sm text-muted-foreground">
                 <span className="mt-1.5 w-1.5 h-1.5 rounded-full bg-[#0078D4] flex-shrink-0" />
-                {line.trim()}
+                {line}
               </li>
             ))}
           </ul>
@@ -904,10 +905,12 @@ export default function ServicesPage() {
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">Deliverables</label>
-                  <textarea value={form.deliverables ?? ""} rows={3}
-                    onChange={e => setField("deliverables", e.target.value || null)}
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4] resize-none"
-                    placeholder="One per line…" />
+                  <TagInput
+                    value={form.deliverables ?? null}
+                    onChange={v => setField("deliverables", v)}
+                    placeholder="Type a deliverable, press Enter…"
+                  />
+                  <p className="mt-1 text-xs text-gray-400">Press Enter or Tab to add each item.</p>
                 </div>
 
                 {/* Pricing */}
@@ -1030,16 +1033,22 @@ export default function ServicesPage() {
                         className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4] resize-none" />
                     </div>
                     <div>
-                      <label className="block text-xs font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">Inclusions (one per line)</label>
-                      <textarea value={(form.inclusions ?? []).join("\n")} rows={5}
-                        onChange={e => setField("inclusions", e.target.value ? e.target.value.split("\n").filter(Boolean) : null)}
-                        className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-[#0078D4] resize-none" />
+                      <label className="block text-xs font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">Inclusions</label>
+                      <TagInput
+                        value={form.inclusions ?? null}
+                        onChange={v => setField("inclusions", v)}
+                        placeholder="Type an inclusion, press Enter…"
+                      />
+                      <p className="mt-1 text-xs text-gray-400">Press Enter or Tab to add each item.</p>
                     </div>
                     <div>
-                      <label className="block text-xs font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">Features (one per line)</label>
-                      <textarea value={(form.features ?? []).join("\n")} rows={5}
-                        onChange={e => setField("features", e.target.value ? e.target.value.split("\n").filter(Boolean) : null)}
-                        className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-[#0078D4] resize-none" />
+                      <label className="block text-xs font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">Features</label>
+                      <TagInput
+                        value={form.features ?? null}
+                        onChange={v => setField("features", v)}
+                        placeholder="Type a feature, press Enter…"
+                      />
+                      <p className="mt-1 text-xs text-gray-400">Press Enter or Tab to add each item.</p>
                     </div>
                     <div className="grid grid-cols-2 gap-4">
                       <div>

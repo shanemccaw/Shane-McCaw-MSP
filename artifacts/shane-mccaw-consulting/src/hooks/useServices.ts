@@ -6,7 +6,7 @@ export interface PublicService {
   name: string;
   description: string | null;
   category: string | null;
-  deliverables: string | null;
+  deliverables: string[] | null;
   price: string | null;
   basePrice: string | null;
   maxPrice: string | null;

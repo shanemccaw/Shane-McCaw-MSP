@@ -44,7 +44,7 @@ router.put("/admin/services/:id", requireAdmin, async (req: Request, res: Respon
         name: name as string,
         description: (description as string | null) ?? null,
         category: (category as string | null) ?? null,
-        deliverables: (deliverables as string | null) ?? null,
+        deliverables: Array.isArray(deliverables) ? (deliverables as string[]) : null,
         price: price != null ? String(price) : null,
         basePrice: basePrice != null ? String(basePrice) : null,
         maxPrice: maxPrice != null ? String(maxPrice) : null,
