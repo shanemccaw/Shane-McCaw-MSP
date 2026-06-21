@@ -29,6 +29,38 @@ router.post("/admin/workflow-templates", requireAdmin, async (req: Request, res:
   }
 });
 
+router.get("/admin/workflow-templates/export", requireAdmin, async (_req: Request, res: Response) => {
+  try {
+    const templates = await db.select().from(workflowTemplatesTable).orderBy(workflowTemplatesTable.createdAt);
+
+    const allSteps = await db
+      .select()
+      .from(workflowTemplateStepsTable)
+      .orderBy(asc(workflowTemplateStepsTable.workflowTemplateId), asc(workflowTemplateStepsTable.order));
+
+    const stepIds = allSteps.map(s => s.id);
+    const allTasks = stepIds.length > 0
+      ? await db.select().from(workflowTemplateStepTasksTable)
+          .where(inArray(workflowTemplateStepTasksTable.workflowTemplateStepId, stepIds))
+          .orderBy(asc(workflowTemplateStepTasksTable.workflowTemplateStepId), asc(workflowTemplateStepTasksTable.groupName), asc(workflowTemplateStepTasksTable.order))
+      : [];
+
+    const stepsWithTasks = allSteps.map(s => ({
+      ...s,
+      tasks: allTasks.filter(t => t.workflowTemplateStepId === s.id),
+    }));
+
+    const result = templates.map(tmpl => ({
+      ...tmpl,
+      steps: stepsWithTasks.filter(s => s.workflowTemplateId === tmpl.id),
+    }));
+
+    res.json(result);
+  } catch {
+    res.status(500).json({ error: "Failed to export workflow templates" });
+  }
+});
+
 router.get("/admin/workflow-templates/:id", requireAdmin, async (req: Request, res: Response) => {
   try {
     const id = Number(req.params.id);

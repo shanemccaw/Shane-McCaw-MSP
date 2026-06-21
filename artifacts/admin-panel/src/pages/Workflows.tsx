@@ -1320,6 +1320,24 @@ export default function WorkflowsPage() {
     }
   }
 
+  async function handleExportAllTemplates() {
+    try {
+      const res = await fetchWithAuth("/api/admin/workflow-templates/export");
+      if (!res.ok) throw new Error("Export failed");
+      const data = await res.json() as unknown;
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      const date = new Date().toISOString().slice(0, 10);
+      a.download = `workflow-templates-export-${date}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      toast({ title: "Export failed", description: "Could not fetch templates for export.", variant: "destructive" });
+    }
+  }
+
   function exportToJson() {
     if (!selected) return;
     const sorted = (selected.steps ?? []).slice().sort((a, b) => a.order - b.order);
@@ -1375,13 +1393,26 @@ export default function WorkflowsPage() {
             <h2 className="font-semibold text-[#0A2540] text-sm">Workflow Templates</h2>
             <p className="text-xs text-gray-500 mt-0.5">{templates.length} templates</p>
           </div>
-          <button
-            onClick={() => void createTemplate()}
-            disabled={saving}
-            className="bg-[#0078D4] text-white rounded-lg px-3 py-1.5 text-xs font-medium hover:bg-[#006CBE] transition-colors disabled:opacity-60"
-          >
-            + New
-          </button>
+          <div className="flex items-center gap-1.5">
+            <button
+              onClick={() => void handleExportAllTemplates()}
+              disabled={templates.length === 0}
+              title="Download all templates as JSON"
+              className="flex items-center gap-1 text-xs text-gray-600 hover:text-[#0078D4] px-2.5 py-1.5 rounded-lg border border-gray-200 hover:border-[#0078D4] hover:bg-blue-50 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+              </svg>
+              Export All
+            </button>
+            <button
+              onClick={() => void createTemplate()}
+              disabled={saving}
+              className="bg-[#0078D4] text-white rounded-lg px-3 py-1.5 text-xs font-medium hover:bg-[#006CBE] transition-colors disabled:opacity-60"
+            >
+              + New
+            </button>
+          </div>
         </div>
         {loading ? (
           <div className="p-8 text-center text-sm text-gray-400">Loading…</div>
