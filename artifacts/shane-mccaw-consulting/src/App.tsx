@@ -18,6 +18,7 @@ import SharePoint from "@/pages/services/SharePoint";
 import PowerPlatform from "@/pages/services/PowerPlatform";
 import Governance from "@/pages/services/Governance";
 import CloudMigration from "@/pages/services/CloudMigration";
+import M365Training from "@/pages/services/M365Training";
 import Privacy from "@/pages/Privacy";
 import ArticlePage from "@/pages/ArticlePage";
 import Admin from "@/pages/Admin";
@@ -48,6 +49,7 @@ function Router() {
       <Route path="/services/power-platform" component={PowerPlatform} />
       <Route path="/services/governance" component={Governance} />
       <Route path="/services/cloud-migration" component={CloudMigration} />
+      <Route path="/services/m365-training" component={M365Training} />
       <Route path="/micro-offers" component={MicroOffers} />
       <Route path="/pricing" component={Pricing} />
       <Route path="/resources" component={Resources} />
