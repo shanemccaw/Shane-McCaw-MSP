@@ -385,6 +385,67 @@ export async function createProjectFolder(
   }
 }
 
+/**
+ * Ensure the "Contracts" folder exists under the site's default drive root.
+ * Uses conflictBehavior:"rename" which silently resolves if the folder already exists
+ * (it picks a new name only on conflict with a *file*, not another folder).
+ * For true idempotency we catch 409/name-already-exists responses and treat them as success.
+ */
+async function ensureContractsFolder(siteId: string, token: string): Promise<void> {
+  const res = await fetch(`${GRAPH_BASE}/sites/${siteId}/drive/root/children`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ name: "Contracts", folder: {}, "@microsoft.graph.conflictBehavior": "fail" }),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    // 409 nameAlreadyExists means the folder is already there — that's fine
+    if (res.status !== 409 && !text.includes("nameAlreadyExists")) {
+      logger.warn({ status: res.status, body: text }, "Graph ensureContractsFolder: non-fatal creation failure");
+    }
+  }
+}
+
+/**
+ * Upload a file buffer to the client's SharePoint "Contracts" folder.
+ * Creates the Contracts folder first if it doesn't exist.
+ * Returns { webUrl, fileId } on success or null on failure.
+ */
+export async function uploadFileToClientContracts(
+  sharepointSiteId: string,
+  filename: string,
+  buffer: Buffer,
+): Promise<{ webUrl: string; fileId: string } | null> {
+  try {
+    const token = await getAccessToken();
+    // Ensure the Contracts folder exists before uploading
+    await ensureContractsFolder(sharepointSiteId, token);
+    const encodedFilename = encodeURIComponent(filename);
+    const endpoint = `/sites/${sharepointSiteId}/drive/root:/Contracts/${encodedFilename}:/content`;
+    const res = await fetch(`${GRAPH_BASE}${endpoint}`, {
+      method: "PUT",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/pdf",
+      },
+      body: buffer,
+    });
+    if (!res.ok) {
+      const text = await res.text();
+      logger.warn({ status: res.status, body: text }, "Graph uploadFileToClientContracts failed");
+      return null;
+    }
+    const data = await res.json() as { id: string; webUrl: string };
+    return { webUrl: data.webUrl, fileId: data.id };
+  } catch (err) {
+    logger.error({ err }, "Graph uploadFileToClientContracts error");
+    return null;
+  }
+}
+
 export async function createSiteFolder(
   siteId: string,
   parentPath: string,

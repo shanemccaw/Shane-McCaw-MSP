@@ -298,6 +298,9 @@ export const contractsTable = pgTable("contracts", {
   finalPrice: numeric("final_price"),
   wizardSelections: jsonb("wizard_selections"),
   agreementBody: text("agreement_body"),
+  sharepointFileUrl: text("sharepoint_file_url"),
+  sharepointFileId: text("sharepoint_file_id"),
+  localFilePath: text("local_file_path"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 

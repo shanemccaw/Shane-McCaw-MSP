@@ -39,6 +39,18 @@ interface WorkflowStep {
   description: string | null;
 }
 
+interface ContractRef {
+  id: number;
+  signedAt: string | null;
+  signerName: string | null;
+  pdfFilename: string | null;
+  sharepointFileUrl: string | null;
+  sharepointFileId: string | null;
+  localFilePath: string | null;
+  serviceName: string;
+  userId: number;
+}
+
 interface KanbanTask {
   id: number;
   title: string;
@@ -193,7 +205,7 @@ export default function AdminProjects() {
 
   // Expandable project detail state
   const [expandedProjectId, setExpandedProjectId] = useState<number | null>(null);
-  const [projectDetails, setProjectDetails] = useState<Record<number, { steps: WorkflowStep[]; tasks: KanbanTask[] }>>({});
+  const [projectDetails, setProjectDetails] = useState<Record<number, { steps: WorkflowStep[]; tasks: KanbanTask[]; contracts: ContractRef[] }>>({});
   const [detailLoading, setDetailLoading] = useState(false);
 
   // Add step form
@@ -234,13 +246,15 @@ export default function AdminProjects() {
   };
 
   const reloadDetails = useCallback(async (projectId: number) => {
-    const [stepsRes, tasksRes] = await Promise.all([
+    const [stepsRes, tasksRes, contractsRes] = await Promise.all([
       fetchWithAuth(`/api/admin/workflow-steps?projectId=${projectId}`),
       fetchWithAuth(`/api/admin/kanban-tasks?projectId=${projectId}`),
+      fetchWithAuth(`/api/admin/projects/${projectId}/contracts`),
     ]);
     const steps = stepsRes.ok ? await stepsRes.json() as WorkflowStep[] : [];
     const tasks = tasksRes.ok ? await tasksRes.json() as KanbanTask[] : [];
-    setProjectDetails(prev => ({ ...prev, [projectId]: { steps, tasks } }));
+    const contractsData = contractsRes.ok ? await contractsRes.json() as { contracts: ContractRef[] } : { contracts: [] };
+    setProjectDetails(prev => ({ ...prev, [projectId]: { steps, tasks, contracts: contractsData.contracts } }));
   }, [fetchWithAuth]);
 
   const handleExpand = async (projectId: number) => {
@@ -705,6 +719,54 @@ export default function AdminProjects() {
                                   </div>
                                 );
                               })}
+                            </div>
+                          )}
+                        </div>
+
+                        {/* ── Signed Contracts ── */}
+                        <div>
+                          <h4 className="text-xs font-bold uppercase tracking-wider text-[#0A2540] mb-3">Signed Contracts</h4>
+                          {!detail?.contracts.length ? (
+                            <p className="text-xs text-muted-foreground">No signed contracts linked to this project.</p>
+                          ) : (
+                            <div className="space-y-2">
+                              {detail.contracts.map(c => (
+                                <div key={c.id} className="flex items-center gap-3 p-2.5 bg-white border border-border rounded-lg">
+                                  <div className="flex-1 min-w-0">
+                                    <span className="text-sm font-medium text-[#0A2540] truncate block">{c.serviceName}</span>
+                                    <span className="text-xs text-muted-foreground">
+                                      {c.signerName ? `Signed by ${c.signerName}` : "Signed"}
+                                      {c.signedAt ? ` · ${new Date(c.signedAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}` : ""}
+                                    </span>
+                                  </div>
+                                  {c.sharepointFileUrl ? (
+                                    <a
+                                      href={c.sharepointFileUrl}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="flex items-center gap-1 text-xs font-semibold text-[#0078D4] hover:underline flex-shrink-0"
+                                    >
+                                      <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                        <path strokeLinecap="round" strokeLinejoin="round" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                                      </svg>
+                                      SharePoint
+                                    </a>
+                                  ) : c.localFilePath ? (
+                                    <a
+                                      href={`/api/admin/contracts/${c.id}/pdf`}
+                                      download={c.pdfFilename ?? `contract-${c.id}.pdf`}
+                                      className="flex items-center gap-1 text-xs font-semibold text-[#0078D4] hover:underline flex-shrink-0"
+                                    >
+                                      <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                        <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                                      </svg>
+                                      Download PDF
+                                    </a>
+                                  ) : (
+                                    <span className="text-xs text-muted-foreground italic flex-shrink-0">No file</span>
+                                  )}
+                                </div>
+                              ))}
                             </div>
                           )}
                         </div>

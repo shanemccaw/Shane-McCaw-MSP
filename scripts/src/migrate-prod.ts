@@ -59,6 +59,14 @@ const legacyMigrations = [
     `,
   },
   {
+    name: "0007_contracts_sharepoint_columns",
+    sql: `
+      ALTER TABLE "contracts" ADD COLUMN IF NOT EXISTS "sharepoint_file_url" text;
+      ALTER TABLE "contracts" ADD COLUMN IF NOT EXISTS "sharepoint_file_id" text;
+      ALTER TABLE "contracts" ADD COLUMN IF NOT EXISTS "local_file_path" text;
+    `,
+  },
+  {
     name: "0001_services_workflow_template_id",
     sql: `
       ALTER TABLE "services" ADD COLUMN IF NOT EXISTS "workflow_template_id" integer;

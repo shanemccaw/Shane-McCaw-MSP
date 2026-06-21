@@ -6,7 +6,7 @@ import { sendEmail, purchaseConfirmationEmail, onboardingConfirmationEmail, admi
 import { sendAdminSms } from "../lib/sms";
 import { sendPushNotifications } from "../lib/push";
 import { createAuditLog } from "../lib/audit";
-import { listDriveItems, graphCredentialsPresent, createProjectFolder } from "../lib/graph";
+import { listDriveItems, graphCredentialsPresent, createProjectFolder, uploadFileToClientContracts } from "../lib/graph";
 import multer from "multer";
 import path from "path";
 import fs from "fs";
@@ -276,17 +276,24 @@ router.get("/portal/projects/:id", requireAuth, async (req: Request, res: Respon
   // First unacknowledged report = pending banner (pending OR has_questions — only "accepted" clears it)
   const pendingStatusReport = statusReports.find(r => r.clientStatus === "pending" || r.clientStatus === "has_questions") ?? null;
 
-  // Contract for this project (if any)
-  const [contract] = await db.select({
+  // Contracts for this project (with SharePoint URLs, local path, and service names)
+  const contracts = await db.select({
     id: contractsTable.id,
     signedAt: contractsTable.signedAt,
     signerName: contractsTable.signerName,
+    pdfFilename: contractsTable.pdfFilename,
+    sharepointFileUrl: contractsTable.sharepointFileUrl,
+    sharepointFileId: contractsTable.sharepointFileId,
+    localFilePath: contractsTable.localFilePath,
+    serviceName: servicesTable.name,
   }).from(contractsTable)
+    .innerJoin(servicesTable, eq(contractsTable.serviceId, servicesTable.id))
     .where(eq(contractsTable.projectId, id))
-    .orderBy(desc(contractsTable.signedAt))
-    .limit(1);
+    .orderBy(desc(contractsTable.signedAt));
 
-  res.json({ project, steps, tasks, previewTasks, documents, updates, statusReports, pendingStatusReport: pendingStatusReport ?? null, contract: contract ?? null });
+  const contract = contracts[0] ?? null;
+
+  res.json({ project, steps, tasks, previewTasks, documents, updates, statusReports, pendingStatusReport: pendingStatusReport ?? null, contract, contracts });
 });
 
 // ─── CLIENT: Project Recent Activity ─────────────────────────────────────────
@@ -1668,7 +1675,7 @@ interface ContractPdfOptions {
   selectionsSummary?: string;    // Plain-text wizard selection summary, injected after price row
 }
 
-async function generateContractPdf(opts: ContractPdfOptions): Promise<string> {
+async function generateContractPdf(opts: ContractPdfOptions): Promise<{ filename: string; buffer: Buffer; localFilePath: string }> {
   const {
     contractId, signerName, serviceName, servicePrice,
     billingType = "one_time", serviceDeliverables, serviceTurnaround,
@@ -2006,11 +2013,13 @@ async function generateContractPdf(opts: ContractPdfOptions): Promise<string> {
 
   // ── Save to disk ─────────────────────────────────────────────────────────────
   const pdfBytes = await pdfDoc.save();
-  const docsDir  = path.join(UPLOADS_BASE, "documents");
-  fs.mkdirSync(docsDir, { recursive: true });
+  const pdfBuffer = Buffer.from(pdfBytes);
+  const invoicesDir = path.join(UPLOADS_BASE, "invoices");
+  fs.mkdirSync(invoicesDir, { recursive: true });
   const filename = `contract-${contractId}-${Date.now()}.pdf`;
-  fs.writeFileSync(path.join(docsDir, filename), Buffer.from(pdfBytes));
-  return filename;
+  const localFilePath = path.join(invoicesDir, filename);
+  fs.writeFileSync(localFilePath, pdfBuffer);
+  return { filename, buffer: pdfBuffer, localFilePath };
 }
 
 // ─── Onboarding provisioning helper ──────────────────────────────────────────
@@ -3041,6 +3050,76 @@ router.get("/admin/projects/:id", requireAdmin, async (req: Request, res: Respon
   const [project] = await db.select().from(projectsTable).where(eq(projectsTable.id, id));
   if (!project) { res.status(404).json({ error: "Project not found" }); return; }
   res.json(project);
+});
+
+// ─── ADMIN: Get signed contracts for a project ────────────────────────────────
+router.get("/admin/projects/:id/contracts", requireAdmin, async (req: Request, res: Response) => {
+  const id = parseInt(String(req.params.id ?? ""), 10);
+  if (isNaN(id)) { res.status(400).json({ error: "Invalid ID" }); return; }
+
+  const contracts = await db.select({
+    id: contractsTable.id,
+    signedAt: contractsTable.signedAt,
+    signerName: contractsTable.signerName,
+    pdfFilename: contractsTable.pdfFilename,
+    sharepointFileUrl: contractsTable.sharepointFileUrl,
+    sharepointFileId: contractsTable.sharepointFileId,
+    localFilePath: contractsTable.localFilePath,
+    serviceName: servicesTable.name,
+    userId: contractsTable.userId,
+  }).from(contractsTable)
+    .innerJoin(servicesTable, eq(contractsTable.serviceId, servicesTable.id))
+    .where(eq(contractsTable.projectId, id))
+    .orderBy(desc(contractsTable.signedAt));
+
+  res.json({ contracts });
+});
+
+// ─── CLIENT: Download a signed contract PDF (local fallback) ─────────────────
+router.get("/portal/contracts/:id/pdf", requireAuth, async (req: Request, res: Response) => {
+  const id = parseInt(String(req.params.id ?? ""), 10);
+  if (isNaN(id)) { res.status(400).json({ error: "Invalid ID" }); return; }
+  const userId = req.user!.id;
+
+  const [contract] = await db.select({
+    id: contractsTable.id,
+    userId: contractsTable.userId,
+    localFilePath: contractsTable.localFilePath,
+    pdfFilename: contractsTable.pdfFilename,
+  }).from(contractsTable).where(eq(contractsTable.id, id));
+
+  if (!contract) { res.status(404).json({ error: "Contract not found" }); return; }
+  if (contract.userId !== userId) { res.status(403).json({ error: "Forbidden" }); return; }
+  if (!contract.localFilePath || !fs.existsSync(contract.localFilePath)) {
+    res.status(404).json({ error: "PDF file not available" }); return;
+  }
+
+  const filename = contract.pdfFilename ?? path.basename(contract.localFilePath);
+  res.setHeader("Content-Type", "application/pdf");
+  res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+  fs.createReadStream(contract.localFilePath).pipe(res);
+});
+
+// ─── ADMIN: Download a signed contract PDF (local fallback) ──────────────────
+router.get("/admin/contracts/:id/pdf", requireAdmin, async (req: Request, res: Response) => {
+  const id = parseInt(String(req.params.id ?? ""), 10);
+  if (isNaN(id)) { res.status(400).json({ error: "Invalid ID" }); return; }
+
+  const [contract] = await db.select({
+    id: contractsTable.id,
+    localFilePath: contractsTable.localFilePath,
+    pdfFilename: contractsTable.pdfFilename,
+  }).from(contractsTable).where(eq(contractsTable.id, id));
+
+  if (!contract) { res.status(404).json({ error: "Contract not found" }); return; }
+  if (!contract.localFilePath || !fs.existsSync(contract.localFilePath)) {
+    res.status(404).json({ error: "PDF file not available" }); return;
+  }
+
+  const filename = contract.pdfFilename ?? path.basename(contract.localFilePath);
+  res.setHeader("Content-Type", "application/pdf");
+  res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+  fs.createReadStream(contract.localFilePath).pipe(res);
 });
 
 router.post("/admin/projects", requireAdmin, async (req: Request, res: Response) => {
@@ -4757,7 +4836,7 @@ router.post("/portal/onboarding/contract", requireAuth, async (req: Request, res
 
     // ── Generate signed PDF immediately at signing time ──────────────────
     try {
-      const pdfFilename = await generateContractPdf({
+      const { filename: pdfFilename, buffer: pdfBuffer, localFilePath } = await generateContractPdf({
         contractId: contract.id,
         signerName: signerName.trim(),
         serviceName: svc.name,
@@ -4770,10 +4849,33 @@ router.post("/portal/onboarding/contract", requireAuth, async (req: Request, res
         contractTemplateBody: templateBody,
         selectionsSummary: selectionsSummary || undefined,
       });
+
+      // ── Upload to SharePoint Contracts folder ──────────────────────────
+      let sharepointFileUrl: string | null = null;
+      let sharepointFileId: string | null = null;
+
+      const [clientUser] = await db.select({ sharepointSiteId: usersTable.sharepointSiteId })
+        .from(usersTable).where(eq(usersTable.id, userId));
+
+      if (!clientUser?.sharepointSiteId) {
+        req.log.warn({ contractId: contract.id }, "contract signing: client has no SharePoint site — PDF saved locally only");
+      } else if (!graphCredentialsPresent()) {
+        req.log.warn({ contractId: contract.id }, "contract signing: Graph credentials missing — PDF saved locally only");
+      } else {
+        const spResult = await uploadFileToClientContracts(clientUser.sharepointSiteId, pdfFilename, pdfBuffer);
+        if (spResult) {
+          sharepointFileUrl = spResult.webUrl;
+          sharepointFileId = spResult.fileId;
+          req.log.info({ contractId: contract.id, sharepointFileUrl }, "contract PDF uploaded to SharePoint");
+        } else {
+          req.log.warn({ contractId: contract.id }, "contract signing: SharePoint upload failed — PDF saved locally only");
+        }
+      }
+
       await db.update(contractsTable)
-        .set({ pdfFilename })
+        .set({ pdfFilename, sharepointFileUrl, sharepointFileId, localFilePath })
         .where(eq(contractsTable.id, contract.id));
-      createdContracts.push({ ...contract, pdfFilename });
+      createdContracts.push({ ...contract, pdfFilename, sharepointFileUrl, sharepointFileId, localFilePath });
     } catch (pdfErr) {
       req.log.error({ err: pdfErr }, "contract signing: PDF generation failed (non-fatal)");
       createdContracts.push(contract);

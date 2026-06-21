@@ -134,6 +134,11 @@ interface ContractRef {
   id: number;
   signedAt: string | null;
   signerName: string | null;
+  pdfFilename: string | null;
+  sharepointFileUrl: string | null;
+  sharepointFileId: string | null;
+  localFilePath: string | null;
+  serviceName: string;
 }
 
 interface ProjectDetailData {
@@ -146,9 +151,10 @@ interface ProjectDetailData {
   statusReports: StatusReport[];
   pendingStatusReport: StatusReport | null;
   contract: ContractRef | null;
+  contracts: ContractRef[];
 }
 
-type SecondaryTab = "kanban" | "documents" | "status-reports";
+type SecondaryTab = "kanban" | "documents" | "status-reports" | "contracts";
 
 const KANBAN_COLUMNS = [
   { key: "backlog" as const, label: "Backlog", color: "border-gray-200 bg-gray-50" },
@@ -727,7 +733,7 @@ export default function PortalProjectDetail() {
     );
   }
 
-  const { project, steps, tasks, documents, updates, statusReports, pendingStatusReport, contract } = data;
+  const { project, steps, tasks, documents, updates, statusReports, pendingStatusReport, contract, contracts } = data;
 
   // Retainer engagements get an executive dashboard view
   if (project.projectType === "retainer") {
@@ -747,6 +753,7 @@ export default function PortalProjectDetail() {
     { key: "kanban", label: "Kanban Board" },
     { key: "documents", label: "Documents", count: documents.length },
     { key: "status-reports", label: "Status Reports", count: statusReports.length },
+    { key: "contracts", label: "Contracts", count: contracts.length },
   ];
 
   return (
@@ -1796,6 +1803,58 @@ export default function PortalProjectDetail() {
           )
         )}
       </div>
+
+      {/* ── Contracts ── */}
+      {secondaryTab === "contracts" && (
+        <div className="space-y-4">
+          {contracts.length === 0 ? (
+            <div className="bg-white border border-border rounded-xl p-8 text-center text-muted-foreground text-sm">
+              No signed contracts are linked to this project yet.
+            </div>
+          ) : contracts.map(c => (
+            <div key={c.id} className="bg-white border border-border rounded-xl shadow-sm p-5 flex flex-col sm:flex-row sm:items-center gap-4">
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-bold text-[#0A2540]">{c.serviceName}</p>
+                {c.signerName && (
+                  <p className="text-xs text-muted-foreground mt-0.5">Signed by {c.signerName}</p>
+                )}
+                {c.signedAt && (
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    {new Date(c.signedAt).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}
+                  </p>
+                )}
+              </div>
+              <div className="flex items-center gap-2 flex-shrink-0">
+                {c.sharepointFileUrl ? (
+                  <a
+                    href={c.sharepointFileUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-1.5 text-sm font-semibold text-[#0078D4] hover:text-[#0078D4]/80 transition-colors px-3 py-1.5 border border-[#0078D4]/30 rounded-lg hover:bg-[#0078D4]/5"
+                  >
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                    </svg>
+                    Open in SharePoint
+                  </a>
+                ) : null}
+                {!c.sharepointFileUrl && c.localFilePath ? (
+                  <a
+                    href={`/api/portal/contracts/${c.id}/pdf`}
+                    download={c.pdfFilename ?? `contract-${c.id}.pdf`}
+                    className="flex items-center gap-1.5 text-sm font-semibold text-[#0078D4] hover:text-[#0078D4]/80 transition-colors px-3 py-1.5 border border-[#0078D4]/30 rounded-lg hover:bg-[#0078D4]/5"
+                  >
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                    </svg>
+                    Download PDF
+                  </a>
+                ) : null}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* Question Dialog */}
       {questionDialogReportId !== null && (() => {
