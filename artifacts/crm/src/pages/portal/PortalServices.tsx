@@ -324,7 +324,15 @@ function MicroOfferCard({
 
 // ─── Retainer card ────────────────────────────────────────────────────────────
 
-function RetainerCard({ plan }: { plan: DbService }) {
+function RetainerCard({
+  plan,
+  onBuy,
+  buying,
+}: {
+  plan: DbService;
+  onBuy: (plan: DbService) => void;
+  buying: boolean;
+}) {
   const features = plan.features ?? [];
   const highlighted = plan.highlighted;
 
@@ -365,21 +373,41 @@ function RetainerCard({ plan }: { plan: DbService }) {
             ))}
           </ul>
         )}
-        <a
-          href={BOOKINGS_URL ?? "mailto:info@shanemccaw.com?subject=Retainer Inquiry"}
-          target="_blank"
-          rel="noopener noreferrer"
-          className={`w-full text-center text-sm font-semibold py-2.5 rounded-xl transition-colors flex items-center justify-center gap-2 ${
-            highlighted
-              ? "bg-[#0078D4] hover:bg-[#0078D4]/90 text-white"
-              : "border-2 border-[#0078D4] text-[#0078D4] hover:bg-[#0078D4] hover:text-white"
-          }`}
-        >
-          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-          </svg>
-          Schedule a Consultation
-        </a>
+        <div className="flex flex-col gap-2">
+          <a
+            href={BOOKINGS_URL ?? "mailto:info@shanemccaw.com?subject=Retainer Inquiry"}
+            target="_blank"
+            rel="noopener noreferrer"
+            className={`w-full text-center text-sm font-semibold py-2.5 rounded-xl transition-colors flex items-center justify-center gap-2 ${
+              highlighted
+                ? "bg-white/10 hover:bg-white/20 text-white border border-white/20"
+                : "border-2 border-[#0078D4] text-[#0078D4] hover:bg-[#0078D4] hover:text-white"
+            }`}
+          >
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+            </svg>
+            Schedule a Consultation
+          </a>
+          <button
+            onClick={() => onBuy(plan)}
+            disabled={buying}
+            className={`w-full text-sm font-semibold py-2.5 rounded-xl transition-colors flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed ${
+              highlighted
+                ? "bg-[#0078D4] hover:bg-[#0078D4]/90 text-white"
+                : "bg-[#0A2540] hover:bg-[#0A2540]/90 text-white"
+            }`}
+          >
+            {buying ? (
+              <>
+                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                Preparing checkout…
+              </>
+            ) : (
+              `Purchase Now — ${formatPrice(plan.basePrice)}/mo`
+            )}
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -677,7 +705,12 @@ export default function PortalServices() {
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   {availableRetainers.map((plan) => (
-                    <RetainerCard key={plan.id} plan={plan} />
+                    <RetainerCard
+                      key={plan.id}
+                      plan={plan}
+                      onBuy={handleBuy}
+                      buying={buyingOffer === plan.id}
+                    />
                   ))}
                 </div>
               )}
