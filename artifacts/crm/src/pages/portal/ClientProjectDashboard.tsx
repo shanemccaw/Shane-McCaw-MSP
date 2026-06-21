@@ -243,8 +243,9 @@ export default function ClientProjectDashboard() {
     fetchWithAuth("/api/portal/projects")
       .then(r => r.json())
       .then((list: ProjectSummary[]) => {
-        setProjects(list);
-        if (list.length > 0) setSelectedId(list[0].id);
+        const activeList = list.filter((p: ProjectSummary) => p.status !== "completed");
+        setProjects(activeList);
+        if (activeList.length > 0) setSelectedId(activeList[0].id);
       })
       .catch(() => null)
       .finally(() => setProjectsLoading(false));
