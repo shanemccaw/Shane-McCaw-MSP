@@ -7,6 +7,45 @@ import {
   Eye, Key, Users, Building2, Globe, Clock, DollarSign
 } from "lucide-react";
 
+const comparisonRows = [
+  {
+    label: "Best For",
+    foundations: "Regulated organizations that need defensible governance before any migration, AI rollout, or platform build-out",
+    migration: "Organizations planning a legacy migration after governance remediation is complete",
+    retainer: "Organizations needing continuous governance oversight, compliance monitoring, and architecture advisory",
+  },
+  {
+    label: "Scope",
+    foundations: "Full M365 governance framework — DLP, sensitivity labels, retention schedules, permissions, lifecycle policies, compliance alignment",
+    migration: "Discovery, risk analysis, and validated migration plan — no execution included",
+    retainer: "Embedded advisory: governance reviews, compliance monitoring, escalation support, architecture guidance",
+  },
+  {
+    label: "Timeline",
+    foundations: "6 weeks",
+    migration: "1 week",
+    retainer: "Ongoing — month-to-month",
+  },
+  {
+    label: "Price",
+    foundations: "$12,000–$18,000",
+    migration: "$3,500–$5,000",
+    retainer: "$2,500 / $6,000 / $11,000 per month",
+  },
+  {
+    label: "Key Deliverables",
+    foundations: "Governance playbook, DLP policies, sensitivity label taxonomy, retention schedules, compliance alignment review, admin documentation",
+    migration: "Readiness report, risk register, migration blocker analysis, sequenced migration roadmap, go/no-go recommendation",
+    retainer: "Monthly advisory hours, governance reviews, compliance monitoring, architecture guidance, executive reporting",
+  },
+  {
+    label: "Ongoing Support",
+    foundations: "One-time engagement — optionally followed by a retainer or Copilot readiness assessment",
+    migration: "One-time engagement — feeds into a managed migration or ongoing retainer",
+    retainer: "Continuous — cancel or adjust tier with 30-day notice",
+  },
+];
+
 const PACKAGE_INCLUDES = [
   "Governance maturity assessment across the full M365 tenant",
   "Naming conventions and site/team lifecycle policies",
@@ -413,6 +452,117 @@ export default function Governance() {
                 <div>
                   <h3 className="font-bold text-[#0A2540] mb-2">{item.title}</h3>
                   <p className="text-muted-foreground text-sm leading-relaxed">{item.desc}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ── COMPARISON TABLE ────────────────────────────────────────────── */}
+      <section className="bg-white py-20">
+        <div className="max-w-[1200px] mx-auto px-6">
+          <p className="text-[#0078D4] text-sm font-semibold uppercase tracking-[0.12em] mb-4">Quick Comparison</p>
+          <h2 className="text-3xl font-extrabold text-[#0A2540] mb-3">Which Engagement Is Right for You?</h2>
+          <p className="text-muted-foreground mb-10 max-w-2xl leading-relaxed">
+            Not sure where to start? This table maps each offer across the dimensions that matter most — so you can self-select before picking up the phone.
+          </p>
+
+          <div className="hidden md:block overflow-x-auto rounded-2xl border border-border">
+            <table className="w-full text-sm border-collapse">
+              <thead>
+                <tr className="bg-[#0A2540] text-white">
+                  <th className="text-left px-6 py-5 w-[18%] font-semibold text-white/60 text-xs uppercase tracking-widest"></th>
+                  <th className="text-left px-6 py-5 w-[27%]">
+                    <div className="flex items-center gap-2 mb-1">
+                      <Shield className="w-4 h-4 text-[#00B4D8]" />
+                      <span className="text-xs font-semibold text-[#00B4D8] uppercase tracking-widest">Fixed-Scope</span>
+                    </div>
+                    <p className="text-base font-extrabold leading-snug">Governance Foundations Package</p>
+                  </th>
+                  <th className="text-left px-6 py-5 w-[27%] border-l border-white/10">
+                    <div className="flex items-center gap-2 mb-1">
+                      <ArrowRight className="w-4 h-4 text-[#00B4D8]" />
+                      <span className="text-xs font-semibold text-[#00B4D8] uppercase tracking-widest">Fixed-Scope</span>
+                    </div>
+                    <p className="text-base font-extrabold leading-snug">Migration Readiness Assessment</p>
+                  </th>
+                  <th className="text-left px-6 py-5 w-[27%] border-l border-white/10">
+                    <div className="flex items-center gap-2 mb-1">
+                      <Users className="w-4 h-4 text-[#00B4D8]" />
+                      <span className="text-xs font-semibold text-[#00B4D8] uppercase tracking-widest">Ongoing</span>
+                    </div>
+                    <p className="text-base font-extrabold leading-snug">Fractional M365 Architect Retainer</p>
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {comparisonRows.map((row, i) => (
+                  <tr key={row.label} className={i % 2 === 0 ? "bg-white" : "bg-[#F7F9FC]"}>
+                    <td className="px-6 py-5 font-semibold text-[#0A2540] text-xs uppercase tracking-widest align-top whitespace-nowrap border-r border-border">
+                      {row.label}
+                    </td>
+                    <td className="px-6 py-5 text-foreground leading-relaxed align-top">
+                      {row.label === "Price" ? <span className="font-bold text-[#0A2540]">{row.foundations}</span> : row.foundations}
+                    </td>
+                    <td className="px-6 py-5 text-foreground leading-relaxed align-top border-l border-border">
+                      {row.label === "Price" ? <span className="font-bold text-[#0A2540]">{row.migration}</span> : row.migration}
+                    </td>
+                    <td className="px-6 py-5 text-foreground leading-relaxed align-top border-l border-border">
+                      {row.label === "Price" ? <span className="font-bold text-[#0A2540]">{row.retainer}</span> : row.retainer}
+                    </td>
+                  </tr>
+                ))}
+                <tr className="bg-[#0A2540]">
+                  <td className="px-6 py-5 border-r border-white/10"></td>
+                  <td className="px-6 py-5">
+                    <a href="/book" className="inline-flex items-center gap-1.5 text-[#00B4D8] text-sm font-semibold hover:underline">
+                      Book a Call <ArrowRight className="w-3.5 h-3.5" />
+                    </a>
+                  </td>
+                  <td className="px-6 py-5 border-l border-white/10">
+                    <a href="/book" className="inline-flex items-center gap-1.5 text-[#00B4D8] text-sm font-semibold hover:underline">
+                      Book a Call <ArrowRight className="w-3.5 h-3.5" />
+                    </a>
+                  </td>
+                  <td className="px-6 py-5 border-l border-white/10">
+                    <a href="/book" className="inline-flex items-center gap-1.5 text-[#00B4D8] text-sm font-semibold hover:underline">
+                      Book a Call <ArrowRight className="w-3.5 h-3.5" />
+                    </a>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div className="md:hidden space-y-6">
+            {[
+              { icon: <Shield className="w-5 h-5 text-[#0078D4]" />, badge: "Fixed-Scope", title: "Governance Foundations Package", key: "foundations" as const },
+              { icon: <ArrowRight className="w-5 h-5 text-[#0078D4]" />, badge: "Fixed-Scope", title: "Migration Readiness Assessment", key: "migration" as const },
+              { icon: <Users className="w-5 h-5 text-[#0078D4]" />, badge: "Ongoing", title: "Fractional M365 Architect Retainer", key: "retainer" as const },
+            ].map((col) => (
+              <div key={col.key} className="bg-white border border-border rounded-2xl overflow-hidden">
+                <div className="bg-[#0A2540] px-5 py-4 flex items-start gap-3">
+                  {col.icon}
+                  <div>
+                    <p className="text-[#00B4D8] text-xs font-semibold uppercase tracking-widest mb-0.5">{col.badge}</p>
+                    <p className="text-white font-extrabold leading-snug">{col.title}</p>
+                  </div>
+                </div>
+                <div className="divide-y divide-border">
+                  {comparisonRows.map((row) => (
+                    <div key={row.label} className="px-5 py-4">
+                      <p className="text-[#0078D4] text-xs font-semibold uppercase tracking-widest mb-1">{row.label}</p>
+                      <p className={`text-sm leading-relaxed ${row.label === "Price" ? "font-bold text-[#0A2540]" : "text-foreground"}`}>
+                        {row[col.key]}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+                <div className="px-5 py-4 bg-[#F7F9FC] border-t border-border">
+                  <a href="/book" className="inline-flex items-center gap-1.5 text-[#0078D4] text-sm font-semibold hover:underline">
+                    Book a Call <ArrowRight className="w-3.5 h-3.5" />
+                  </a>
                 </div>
               </div>
             ))}

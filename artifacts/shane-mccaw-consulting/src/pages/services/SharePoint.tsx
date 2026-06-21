@@ -4,6 +4,45 @@ import { Layout as LayoutIcon, CheckCircle, ArrowRight, Building2, Shield, Users
 import { ConsultationCTA } from "@/components/ConsultationCTA";
 import { CTAButton } from "@/components/CTAButton";
 
+const comparisonRows = [
+  {
+    label: "Best For",
+    governance: "Organizations building a governed SharePoint foundation before any migration or build-out begins",
+    migration: "Organizations migrating from legacy SharePoint, file servers, or Google Workspace",
+    retainer: "Organizations needing ongoing SharePoint architecture, governance, and advisory support",
+  },
+  {
+    label: "Scope",
+    governance: "Full governance framework — policies, permissions, naming conventions, lifecycle, and DLP",
+    migration: "Discovery, risk analysis, and validated migration plan — no execution",
+    retainer: "Embedded advisory: architecture guidance, governance reviews, and escalation support",
+  },
+  {
+    label: "Timeline",
+    governance: "6 weeks",
+    migration: "1 week",
+    retainer: "Ongoing — month-to-month",
+  },
+  {
+    label: "Price",
+    governance: "$12,000–$18,000",
+    migration: "$3,500–$5,000",
+    retainer: "$2,500 / $6,000 / $11,000 per month",
+  },
+  {
+    label: "Key Deliverables",
+    governance: "Governance playbook, naming conventions, lifecycle policies, DLP configuration, permissions model, training session",
+    migration: "Risk register, migration blocker analysis, phased migration plan, tool recommendations, executive summary",
+    retainer: "Monthly advisory hours, architecture reviews, governance monitoring, escalation access",
+  },
+  {
+    label: "Ongoing Support",
+    governance: "One-time engagement — optionally followed by a retainer for continued governance oversight",
+    migration: "One-time engagement — feeds into a governance package or managed migration engagement",
+    retainer: "Continuous — cancel or adjust tier with 30-day notice",
+  },
+];
+
 export default function SharePoint() {
   return (
     <Layout>
@@ -322,6 +361,117 @@ export default function SharePoint() {
                 </ul>
               </div>
             </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Comparison Table */}
+      <section className="bg-white py-20">
+        <div className="max-w-[1200px] mx-auto px-6">
+          <p className="text-[#0078D4] text-sm font-semibold uppercase tracking-[0.1em] mb-4">Quick Comparison</p>
+          <h2 className="text-3xl font-extrabold text-[#0A2540] mb-3">Which Engagement Is Right for You?</h2>
+          <p className="text-muted-foreground mb-10 max-w-2xl leading-relaxed">
+            Not sure where to start? This table maps each offer across the dimensions that matter most — so you can self-select before picking up the phone.
+          </p>
+
+          <div className="hidden md:block overflow-x-auto rounded-2xl border border-border">
+            <table className="w-full text-sm border-collapse">
+              <thead>
+                <tr className="bg-[#0A2540] text-white">
+                  <th className="text-left px-6 py-5 w-[18%] font-semibold text-white/60 text-xs uppercase tracking-widest"></th>
+                  <th className="text-left px-6 py-5 w-[27%]">
+                    <div className="flex items-center gap-2 mb-1">
+                      <Shield className="w-4 h-4 text-[#00B4D8]" />
+                      <span className="text-xs font-semibold text-[#00B4D8] uppercase tracking-widest">Fixed-Price</span>
+                    </div>
+                    <p className="text-base font-extrabold leading-snug">Governance Foundations Package</p>
+                  </th>
+                  <th className="text-left px-6 py-5 w-[27%] border-l border-white/10">
+                    <div className="flex items-center gap-2 mb-1">
+                      <ArrowRight className="w-4 h-4 text-[#00B4D8]" />
+                      <span className="text-xs font-semibold text-[#00B4D8] uppercase tracking-widest">Fixed-Price</span>
+                    </div>
+                    <p className="text-base font-extrabold leading-snug">Migration Readiness Assessment</p>
+                  </th>
+                  <th className="text-left px-6 py-5 w-[27%] border-l border-white/10">
+                    <div className="flex items-center gap-2 mb-1">
+                      <Users className="w-4 h-4 text-[#00B4D8]" />
+                      <span className="text-xs font-semibold text-[#00B4D8] uppercase tracking-widest">Ongoing</span>
+                    </div>
+                    <p className="text-base font-extrabold leading-snug">Fractional M365 Architect Retainer</p>
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {comparisonRows.map((row, i) => (
+                  <tr key={row.label} className={i % 2 === 0 ? "bg-white" : "bg-[#F7F9FC]"}>
+                    <td className="px-6 py-5 font-semibold text-[#0A2540] text-xs uppercase tracking-widest align-top whitespace-nowrap border-r border-border">
+                      {row.label}
+                    </td>
+                    <td className="px-6 py-5 text-foreground leading-relaxed align-top">
+                      {row.label === "Price" ? <span className="font-bold text-[#0A2540]">{row.governance}</span> : row.governance}
+                    </td>
+                    <td className="px-6 py-5 text-foreground leading-relaxed align-top border-l border-border">
+                      {row.label === "Price" ? <span className="font-bold text-[#0A2540]">{row.migration}</span> : row.migration}
+                    </td>
+                    <td className="px-6 py-5 text-foreground leading-relaxed align-top border-l border-border">
+                      {row.label === "Price" ? <span className="font-bold text-[#0A2540]">{row.retainer}</span> : row.retainer}
+                    </td>
+                  </tr>
+                ))}
+                <tr className="bg-[#0A2540]">
+                  <td className="px-6 py-5 border-r border-white/10"></td>
+                  <td className="px-6 py-5">
+                    <a href="/book" className="inline-flex items-center gap-1.5 text-[#00B4D8] text-sm font-semibold hover:underline">
+                      Book a Call <ArrowRight className="w-3.5 h-3.5" />
+                    </a>
+                  </td>
+                  <td className="px-6 py-5 border-l border-white/10">
+                    <a href="/book" className="inline-flex items-center gap-1.5 text-[#00B4D8] text-sm font-semibold hover:underline">
+                      Book a Call <ArrowRight className="w-3.5 h-3.5" />
+                    </a>
+                  </td>
+                  <td className="px-6 py-5 border-l border-white/10">
+                    <a href="/book" className="inline-flex items-center gap-1.5 text-[#00B4D8] text-sm font-semibold hover:underline">
+                      Book a Call <ArrowRight className="w-3.5 h-3.5" />
+                    </a>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div className="md:hidden space-y-6">
+            {[
+              { icon: <Shield className="w-5 h-5 text-[#0078D4]" />, badge: "Fixed-Price", title: "Governance Foundations Package", key: "governance" as const },
+              { icon: <ArrowRight className="w-5 h-5 text-[#0078D4]" />, badge: "Fixed-Price", title: "Migration Readiness Assessment", key: "migration" as const },
+              { icon: <Users className="w-5 h-5 text-[#0078D4]" />, badge: "Ongoing", title: "Fractional M365 Architect Retainer", key: "retainer" as const },
+            ].map((col) => (
+              <div key={col.key} className="bg-white border border-border rounded-2xl overflow-hidden">
+                <div className="bg-[#0A2540] px-5 py-4 flex items-start gap-3">
+                  {col.icon}
+                  <div>
+                    <p className="text-[#00B4D8] text-xs font-semibold uppercase tracking-widest mb-0.5">{col.badge}</p>
+                    <p className="text-white font-extrabold leading-snug">{col.title}</p>
+                  </div>
+                </div>
+                <div className="divide-y divide-border">
+                  {comparisonRows.map((row) => (
+                    <div key={row.label} className="px-5 py-4">
+                      <p className="text-[#0078D4] text-xs font-semibold uppercase tracking-widest mb-1">{row.label}</p>
+                      <p className={`text-sm leading-relaxed ${row.label === "Price" ? "font-bold text-[#0A2540]" : "text-foreground"}`}>
+                        {row[col.key]}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+                <div className="px-5 py-4 bg-[#F7F9FC] border-t border-border">
+                  <a href="/book" className="inline-flex items-center gap-1.5 text-[#0078D4] text-sm font-semibold hover:underline">
+                    Book a Call <ArrowRight className="w-3.5 h-3.5" />
+                  </a>
+                </div>
+              </div>
+            ))}
           </div>
         </div>
       </section>

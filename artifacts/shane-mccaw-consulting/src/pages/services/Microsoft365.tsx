@@ -5,6 +5,45 @@ import {
   AlertCircle, Star, Target, BarChart3, Database, Eye, Key, Map, Globe,
   Tag, Archive, Server, Layers, BookOpen, Settings, Cpu, Network,
 } from "lucide-react";
+
+const comparisonRows = [
+  {
+    label: "Best For",
+    fixedPrice: "Organizations with a specific, scoped problem to solve — audit, assessment, or configuration",
+    essentials: "Organizations needing regular advisory, architecture reviews, and escalation support",
+    growth: "Organizations running active M365 programs that need embedded senior architect capacity",
+  },
+  {
+    label: "Scope",
+    fixedPrice: "Discrete deliverable defined upfront — one scoped project, one clear output",
+    essentials: "10 hrs/mo advisory, architecture reviews, roadmap validation, and escalation support",
+    growth: "25–50 hrs/mo roadmap execution, governance implementation, and IT team mentoring",
+  },
+  {
+    label: "Timeline",
+    fixedPrice: "1–4 weeks (project-specific)",
+    essentials: "Ongoing — month-to-month",
+    growth: "Ongoing — month-to-month",
+  },
+  {
+    label: "Price",
+    fixedPrice: "Varies by micro-offer — see the pricing page",
+    essentials: "$2,500/mo",
+    growth: "$6,000–$11,000/mo",
+  },
+  {
+    label: "Key Deliverables",
+    fixedPrice: "Defined deliverable per offer: readiness report, governance playbook, or configured environment",
+    essentials: "Advisory hours, architecture reviews, escalation access, monthly progress check-in",
+    growth: "Roadmap execution, governance implementation, IT team mentoring, executive reporting",
+  },
+  {
+    label: "Ongoing Support",
+    fixedPrice: "One-time engagement — can roll directly into a retainer for continued partnership",
+    essentials: "Continuous — cancel or adjust with 30-day notice",
+    growth: "Continuous — cancel or adjust with 30-day notice",
+  },
+];
 import type { LucideIcon } from "lucide-react";
 import { Link } from "wouter";
 import { CTAButton } from "@/components/CTAButton";
@@ -388,6 +427,117 @@ export default function Microsoft365() {
                 <div>
                   <h3 className="font-bold text-[#0A2540] mb-2">{item.title}</h3>
                   <p className="text-muted-foreground text-sm leading-relaxed">{item.desc}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ── COMPARISON TABLE ────────────────────────────────────────────── */}
+      <section className="bg-[#F7F9FC] py-20">
+        <div className="max-w-[1200px] mx-auto px-6">
+          <p className="text-[#0078D4] text-sm font-semibold uppercase tracking-[0.12em] mb-4">Quick Comparison</p>
+          <h2 className="text-3xl font-extrabold text-[#0A2540] mb-3">Which Engagement Is Right for You?</h2>
+          <p className="text-muted-foreground mb-10 max-w-2xl leading-relaxed">
+            Not sure whether to start with a fixed-price project or a retainer? This table maps both engagement models across the dimensions that matter most — so you can self-select before picking up the phone.
+          </p>
+
+          <div className="hidden md:block overflow-x-auto rounded-2xl border border-border">
+            <table className="w-full text-sm border-collapse">
+              <thead>
+                <tr className="bg-[#0A2540] text-white">
+                  <th className="text-left px-6 py-5 w-[18%] font-semibold text-white/60 text-xs uppercase tracking-widest"></th>
+                  <th className="text-left px-6 py-5 w-[27%]">
+                    <div className="flex items-center gap-2 mb-1">
+                      <Zap className="w-4 h-4 text-[#00B4D8]" />
+                      <span className="text-xs font-semibold text-[#00B4D8] uppercase tracking-widest">Fixed-Price</span>
+                    </div>
+                    <p className="text-base font-extrabold leading-snug">Micro-Offer (Project)</p>
+                  </th>
+                  <th className="text-left px-6 py-5 w-[27%] border-l border-white/10">
+                    <div className="flex items-center gap-2 mb-1">
+                      <Shield className="w-4 h-4 text-[#00B4D8]" />
+                      <span className="text-xs font-semibold text-[#00B4D8] uppercase tracking-widest">Retainer</span>
+                    </div>
+                    <p className="text-base font-extrabold leading-snug">Architect Essentials — $2,500/mo</p>
+                  </th>
+                  <th className="text-left px-6 py-5 w-[27%] border-l border-white/10">
+                    <div className="flex items-center gap-2 mb-1">
+                      <Users className="w-4 h-4 text-[#00B4D8]" />
+                      <span className="text-xs font-semibold text-[#00B4D8] uppercase tracking-widest">Retainer</span>
+                    </div>
+                    <p className="text-base font-extrabold leading-snug">Architect Growth & Enterprise</p>
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {comparisonRows.map((row, i) => (
+                  <tr key={row.label} className={i % 2 === 0 ? "bg-white" : "bg-[#F7F9FC]"}>
+                    <td className="px-6 py-5 font-semibold text-[#0A2540] text-xs uppercase tracking-widest align-top whitespace-nowrap border-r border-border">
+                      {row.label}
+                    </td>
+                    <td className="px-6 py-5 text-foreground leading-relaxed align-top">
+                      {row.label === "Price" ? <span className="font-bold text-[#0A2540]">{row.fixedPrice}</span> : row.fixedPrice}
+                    </td>
+                    <td className="px-6 py-5 text-foreground leading-relaxed align-top border-l border-border">
+                      {row.label === "Price" ? <span className="font-bold text-[#0A2540]">{row.essentials}</span> : row.essentials}
+                    </td>
+                    <td className="px-6 py-5 text-foreground leading-relaxed align-top border-l border-border">
+                      {row.label === "Price" ? <span className="font-bold text-[#0A2540]">{row.growth}</span> : row.growth}
+                    </td>
+                  </tr>
+                ))}
+                <tr className="bg-[#0A2540]">
+                  <td className="px-6 py-5 border-r border-white/10"></td>
+                  <td className="px-6 py-5">
+                    <a href="/micro-offers" className="inline-flex items-center gap-1.5 text-[#00B4D8] text-sm font-semibold hover:underline">
+                      View Micro-Offers <ArrowRight className="w-3.5 h-3.5" />
+                    </a>
+                  </td>
+                  <td className="px-6 py-5 border-l border-white/10">
+                    <a href="/book" className="inline-flex items-center gap-1.5 text-[#00B4D8] text-sm font-semibold hover:underline">
+                      Book a Call <ArrowRight className="w-3.5 h-3.5" />
+                    </a>
+                  </td>
+                  <td className="px-6 py-5 border-l border-white/10">
+                    <a href="/book" className="inline-flex items-center gap-1.5 text-[#00B4D8] text-sm font-semibold hover:underline">
+                      Book a Call <ArrowRight className="w-3.5 h-3.5" />
+                    </a>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div className="md:hidden space-y-6">
+            {[
+              { icon: <Zap className="w-5 h-5 text-[#0078D4]" />, badge: "Fixed-Price", title: "Micro-Offer (Project)", key: "fixedPrice" as const },
+              { icon: <Shield className="w-5 h-5 text-[#0078D4]" />, badge: "Retainer", title: "Architect Essentials — $2,500/mo", key: "essentials" as const },
+              { icon: <Users className="w-5 h-5 text-[#0078D4]" />, badge: "Retainer", title: "Architect Growth & Enterprise", key: "growth" as const },
+            ].map((col) => (
+              <div key={col.key} className="bg-white border border-border rounded-2xl overflow-hidden">
+                <div className="bg-[#0A2540] px-5 py-4 flex items-start gap-3">
+                  {col.icon}
+                  <div>
+                    <p className="text-[#00B4D8] text-xs font-semibold uppercase tracking-widest mb-0.5">{col.badge}</p>
+                    <p className="text-white font-extrabold leading-snug">{col.title}</p>
+                  </div>
+                </div>
+                <div className="divide-y divide-border">
+                  {comparisonRows.map((row) => (
+                    <div key={row.label} className="px-5 py-4">
+                      <p className="text-[#0078D4] text-xs font-semibold uppercase tracking-widest mb-1">{row.label}</p>
+                      <p className={`text-sm leading-relaxed ${row.label === "Price" ? "font-bold text-[#0A2540]" : "text-foreground"}`}>
+                        {row[col.key]}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+                <div className="px-5 py-4 bg-[#F7F9FC] border-t border-border">
+                  <a href="/book" className="inline-flex items-center gap-1.5 text-[#0078D4] text-sm font-semibold hover:underline">
+                    Book a Call <ArrowRight className="w-3.5 h-3.5" />
+                  </a>
                 </div>
               </div>
             ))}

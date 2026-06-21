@@ -7,6 +7,45 @@ import {
   Key, Users, Map, Target, BarChart3, Clock, DollarSign
 } from "lucide-react";
 
+const comparisonRows = [
+  {
+    label: "Best For",
+    assessment: "Organizations evaluating Copilot readiness before enabling any licenses",
+    governance: "Organizations needing governance remediation before a safe Copilot rollout can proceed",
+    retainer: "Organizations that have deployed Copilot and need ongoing oversight and adoption support",
+  },
+  {
+    label: "Scope",
+    assessment: "Readiness audit across data governance, identity, sensitivity labeling, licensing, and change management",
+    governance: "Full M365 governance framework — DLP, sensitivity labels, lifecycle policies, permissions, compliance alignment",
+    retainer: "Embedded advisory: Copilot governance, adoption monitoring, architecture guidance, escalation support",
+  },
+  {
+    label: "Timeline",
+    assessment: "2 weeks",
+    governance: "6 weeks",
+    retainer: "Ongoing — month-to-month",
+  },
+  {
+    label: "Price",
+    assessment: "$5,000–$8,000",
+    governance: "$12,000–$18,000",
+    retainer: "$2,500 / $6,000 / $11,000 per month",
+  },
+  {
+    label: "Key Deliverables",
+    assessment: "Readiness report, rollout roadmap, pilot group recommendations, quick-win remediation actions",
+    governance: "Governance playbook, DLP policies, sensitivity label taxonomy, lifecycle rules, compliance alignment documentation",
+    retainer: "Monthly advisory hours, adoption reviews, architecture guidance, governance monitoring, executive reporting",
+  },
+  {
+    label: "Ongoing Support",
+    assessment: "One-time engagement — can feed directly into a governance package or deployment retainer",
+    governance: "One-time engagement — optionally followed by a Copilot deployment retainer",
+    retainer: "Continuous — cancel or adjust tier with 30-day notice",
+  },
+];
+
 const ASSESSMENT_INCLUDES = [
   { icon: <Database className="w-4 h-4" />,    text: "Assessment of data governance and sensitivity labeling maturity" },
   { icon: <Shield className="w-4 h-4" />,      text: "SharePoint & OneDrive hygiene review" },
@@ -342,6 +381,117 @@ export default function CopilotAI() {
                 <div>
                   <h3 className="font-bold text-[#0A2540] mb-2">{item.title}</h3>
                   <p className="text-muted-foreground text-sm leading-relaxed">{item.desc}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ── COMPARISON TABLE ────────────────────────────────────────────── */}
+      <section className="bg-[#F7F9FC] py-20">
+        <div className="max-w-[1200px] mx-auto px-6">
+          <p className="text-[#0078D4] text-sm font-semibold uppercase tracking-[0.12em] mb-4">Quick Comparison</p>
+          <h2 className="text-3xl font-extrabold text-[#0A2540] mb-3">Which Engagement Is Right for You?</h2>
+          <p className="text-muted-foreground mb-10 max-w-2xl leading-relaxed">
+            Not sure where to start? This table maps each offer across the dimensions that matter most — so you can self-select before picking up the phone.
+          </p>
+
+          <div className="hidden md:block overflow-x-auto rounded-2xl border border-border">
+            <table className="w-full text-sm border-collapse">
+              <thead>
+                <tr className="bg-[#0A2540] text-white">
+                  <th className="text-left px-6 py-5 w-[18%] font-semibold text-white/60 text-xs uppercase tracking-widest"></th>
+                  <th className="text-left px-6 py-5 w-[27%]">
+                    <div className="flex items-center gap-2 mb-1">
+                      <Target className="w-4 h-4 text-[#00B4D8]" />
+                      <span className="text-xs font-semibold text-[#00B4D8] uppercase tracking-widest">Fixed-Scope</span>
+                    </div>
+                    <p className="text-base font-extrabold leading-snug">Copilot Readiness Assessment</p>
+                  </th>
+                  <th className="text-left px-6 py-5 w-[27%] border-l border-white/10">
+                    <div className="flex items-center gap-2 mb-1">
+                      <Shield className="w-4 h-4 text-[#00B4D8]" />
+                      <span className="text-xs font-semibold text-[#00B4D8] uppercase tracking-widest">Fixed-Scope</span>
+                    </div>
+                    <p className="text-base font-extrabold leading-snug">Governance Foundations Package</p>
+                  </th>
+                  <th className="text-left px-6 py-5 w-[27%] border-l border-white/10">
+                    <div className="flex items-center gap-2 mb-1">
+                      <Users className="w-4 h-4 text-[#00B4D8]" />
+                      <span className="text-xs font-semibold text-[#00B4D8] uppercase tracking-widest">Ongoing</span>
+                    </div>
+                    <p className="text-base font-extrabold leading-snug">Fractional M365 Architect Retainer</p>
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {comparisonRows.map((row, i) => (
+                  <tr key={row.label} className={i % 2 === 0 ? "bg-white" : "bg-[#F7F9FC]"}>
+                    <td className="px-6 py-5 font-semibold text-[#0A2540] text-xs uppercase tracking-widest align-top whitespace-nowrap border-r border-border">
+                      {row.label}
+                    </td>
+                    <td className="px-6 py-5 text-foreground leading-relaxed align-top">
+                      {row.label === "Price" ? <span className="font-bold text-[#0A2540]">{row.assessment}</span> : row.assessment}
+                    </td>
+                    <td className="px-6 py-5 text-foreground leading-relaxed align-top border-l border-border">
+                      {row.label === "Price" ? <span className="font-bold text-[#0A2540]">{row.governance}</span> : row.governance}
+                    </td>
+                    <td className="px-6 py-5 text-foreground leading-relaxed align-top border-l border-border">
+                      {row.label === "Price" ? <span className="font-bold text-[#0A2540]">{row.retainer}</span> : row.retainer}
+                    </td>
+                  </tr>
+                ))}
+                <tr className="bg-[#0A2540]">
+                  <td className="px-6 py-5 border-r border-white/10"></td>
+                  <td className="px-6 py-5">
+                    <a href="/book" className="inline-flex items-center gap-1.5 text-[#00B4D8] text-sm font-semibold hover:underline">
+                      Book a Call <ArrowRight className="w-3.5 h-3.5" />
+                    </a>
+                  </td>
+                  <td className="px-6 py-5 border-l border-white/10">
+                    <a href="/book" className="inline-flex items-center gap-1.5 text-[#00B4D8] text-sm font-semibold hover:underline">
+                      Book a Call <ArrowRight className="w-3.5 h-3.5" />
+                    </a>
+                  </td>
+                  <td className="px-6 py-5 border-l border-white/10">
+                    <a href="/book" className="inline-flex items-center gap-1.5 text-[#00B4D8] text-sm font-semibold hover:underline">
+                      Book a Call <ArrowRight className="w-3.5 h-3.5" />
+                    </a>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div className="md:hidden space-y-6">
+            {[
+              { icon: <Target className="w-5 h-5 text-[#0078D4]" />, badge: "Fixed-Scope", title: "Copilot Readiness Assessment", key: "assessment" as const },
+              { icon: <Shield className="w-5 h-5 text-[#0078D4]" />, badge: "Fixed-Scope", title: "Governance Foundations Package", key: "governance" as const },
+              { icon: <Users className="w-5 h-5 text-[#0078D4]" />, badge: "Ongoing", title: "Fractional M365 Architect Retainer", key: "retainer" as const },
+            ].map((col) => (
+              <div key={col.key} className="bg-white border border-border rounded-2xl overflow-hidden">
+                <div className="bg-[#0A2540] px-5 py-4 flex items-start gap-3">
+                  {col.icon}
+                  <div>
+                    <p className="text-[#00B4D8] text-xs font-semibold uppercase tracking-widest mb-0.5">{col.badge}</p>
+                    <p className="text-white font-extrabold leading-snug">{col.title}</p>
+                  </div>
+                </div>
+                <div className="divide-y divide-border">
+                  {comparisonRows.map((row) => (
+                    <div key={row.label} className="px-5 py-4">
+                      <p className="text-[#0078D4] text-xs font-semibold uppercase tracking-widest mb-1">{row.label}</p>
+                      <p className={`text-sm leading-relaxed ${row.label === "Price" ? "font-bold text-[#0A2540]" : "text-foreground"}`}>
+                        {row[col.key]}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+                <div className="px-5 py-4 bg-[#F7F9FC] border-t border-border">
+                  <a href="/book" className="inline-flex items-center gap-1.5 text-[#0078D4] text-sm font-semibold hover:underline">
+                    Book a Call <ArrowRight className="w-3.5 h-3.5" />
+                  </a>
                 </div>
               </div>
             ))}

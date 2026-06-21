@@ -4,6 +4,45 @@ import { CTAButton } from "@/components/CTAButton";
 import { ConsultationCTA } from "@/components/ConsultationCTA";
 import { CheckCircle, ArrowRight, Zap, Building2, Shield, Users } from "lucide-react";
 
+const comparisonRows = [
+  {
+    label: "Best For",
+    quickStart: "Organizations with a specific automation or app use case ready to scope and build",
+    governance: "Organizations needing governance structure before scaling Power Platform across the business",
+    retainer: "Organizations running ongoing Power Platform programs that need embedded senior architect oversight",
+  },
+  {
+    label: "Scope",
+    quickStart: "One fully built, production-ready Power App or Power Automate flow — scoped in week 1",
+    governance: "M365 and Power Platform governance framework — DLP, environment strategy, lifecycle policies, naming conventions",
+    retainer: "Embedded advisory: roadmap execution, governance monitoring, IT team mentoring, escalation support",
+  },
+  {
+    label: "Timeline",
+    quickStart: "4 weeks (30-day delivery)",
+    governance: "6 weeks",
+    retainer: "Ongoing — month-to-month",
+  },
+  {
+    label: "Price",
+    quickStart: "$6,000–$10,000",
+    governance: "$12,000–$18,000",
+    retainer: "$2,500 / $6,000 / $11,000 per month",
+  },
+  {
+    label: "Key Deliverables",
+    quickStart: "Production-ready solution, architecture documentation, error handling, monitoring, training session, governance alignment",
+    governance: "Governance playbook, DLP rules, environment strategy, naming conventions, lifecycle policies, change management process",
+    retainer: "Monthly advisory hours, architecture reviews, governance monitoring, roadmap execution, executive reporting",
+  },
+  {
+    label: "Ongoing Support",
+    quickStart: "One-time engagement — can follow up with a governance package or retainer to scale further",
+    governance: "One-time engagement — positions the organization to scale Power Platform safely and sustainably",
+    retainer: "Continuous — cancel or adjust tier with 30-day notice",
+  },
+];
+
 const QUICK_START_DELIVERABLES = [
   "Requirements discovery workshop",
   "Solution architecture & data model",
@@ -436,6 +475,117 @@ export default function PowerPlatform() {
                 <div>
                   <h3 className="font-bold text-[#0A2540] mb-2">{item.title}</h3>
                   <p className="text-muted-foreground text-sm leading-relaxed">{item.desc}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ── COMPARISON TABLE ────────────────────────────────────────────── */}
+      <section className="bg-white py-20">
+        <div className="max-w-[1200px] mx-auto px-6">
+          <p className="text-[#0078D4] text-sm font-semibold uppercase tracking-[0.12em] mb-4">Quick Comparison</p>
+          <h2 className="text-3xl font-extrabold text-[#0A2540] mb-3">Which Engagement Is Right for You?</h2>
+          <p className="text-muted-foreground mb-10 max-w-2xl leading-relaxed">
+            Not sure where to start? This table maps each offer across the dimensions that matter most — so you can self-select before picking up the phone.
+          </p>
+
+          <div className="hidden md:block overflow-x-auto rounded-2xl border border-border">
+            <table className="w-full text-sm border-collapse">
+              <thead>
+                <tr className="bg-[#0A2540] text-white">
+                  <th className="text-left px-6 py-5 w-[18%] font-semibold text-white/60 text-xs uppercase tracking-widest"></th>
+                  <th className="text-left px-6 py-5 w-[27%]">
+                    <div className="flex items-center gap-2 mb-1">
+                      <Zap className="w-4 h-4 text-[#00B4D8]" />
+                      <span className="text-xs font-semibold text-[#00B4D8] uppercase tracking-widest">Fixed-Scope</span>
+                    </div>
+                    <p className="text-base font-extrabold leading-snug">Power Platform Quick-Start</p>
+                  </th>
+                  <th className="text-left px-6 py-5 w-[27%] border-l border-white/10">
+                    <div className="flex items-center gap-2 mb-1">
+                      <Shield className="w-4 h-4 text-[#00B4D8]" />
+                      <span className="text-xs font-semibold text-[#00B4D8] uppercase tracking-widest">Fixed-Scope</span>
+                    </div>
+                    <p className="text-base font-extrabold leading-snug">Governance Foundations Package</p>
+                  </th>
+                  <th className="text-left px-6 py-5 w-[27%] border-l border-white/10">
+                    <div className="flex items-center gap-2 mb-1">
+                      <Users className="w-4 h-4 text-[#00B4D8]" />
+                      <span className="text-xs font-semibold text-[#00B4D8] uppercase tracking-widest">Ongoing</span>
+                    </div>
+                    <p className="text-base font-extrabold leading-snug">Fractional M365 Architect Retainer</p>
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {comparisonRows.map((row, i) => (
+                  <tr key={row.label} className={i % 2 === 0 ? "bg-white" : "bg-[#F7F9FC]"}>
+                    <td className="px-6 py-5 font-semibold text-[#0A2540] text-xs uppercase tracking-widest align-top whitespace-nowrap border-r border-border">
+                      {row.label}
+                    </td>
+                    <td className="px-6 py-5 text-foreground leading-relaxed align-top">
+                      {row.label === "Price" ? <span className="font-bold text-[#0A2540]">{row.quickStart}</span> : row.quickStart}
+                    </td>
+                    <td className="px-6 py-5 text-foreground leading-relaxed align-top border-l border-border">
+                      {row.label === "Price" ? <span className="font-bold text-[#0A2540]">{row.governance}</span> : row.governance}
+                    </td>
+                    <td className="px-6 py-5 text-foreground leading-relaxed align-top border-l border-border">
+                      {row.label === "Price" ? <span className="font-bold text-[#0A2540]">{row.retainer}</span> : row.retainer}
+                    </td>
+                  </tr>
+                ))}
+                <tr className="bg-[#0A2540]">
+                  <td className="px-6 py-5 border-r border-white/10"></td>
+                  <td className="px-6 py-5">
+                    <a href="/book" className="inline-flex items-center gap-1.5 text-[#00B4D8] text-sm font-semibold hover:underline">
+                      Book a Call <ArrowRight className="w-3.5 h-3.5" />
+                    </a>
+                  </td>
+                  <td className="px-6 py-5 border-l border-white/10">
+                    <a href="/book" className="inline-flex items-center gap-1.5 text-[#00B4D8] text-sm font-semibold hover:underline">
+                      Book a Call <ArrowRight className="w-3.5 h-3.5" />
+                    </a>
+                  </td>
+                  <td className="px-6 py-5 border-l border-white/10">
+                    <a href="/book" className="inline-flex items-center gap-1.5 text-[#00B4D8] text-sm font-semibold hover:underline">
+                      Book a Call <ArrowRight className="w-3.5 h-3.5" />
+                    </a>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div className="md:hidden space-y-6">
+            {[
+              { icon: <Zap className="w-5 h-5 text-[#0078D4]" />, badge: "Fixed-Scope", title: "Power Platform Quick-Start", key: "quickStart" as const },
+              { icon: <Shield className="w-5 h-5 text-[#0078D4]" />, badge: "Fixed-Scope", title: "Governance Foundations Package", key: "governance" as const },
+              { icon: <Users className="w-5 h-5 text-[#0078D4]" />, badge: "Ongoing", title: "Fractional M365 Architect Retainer", key: "retainer" as const },
+            ].map((col) => (
+              <div key={col.key} className="bg-white border border-border rounded-2xl overflow-hidden">
+                <div className="bg-[#0A2540] px-5 py-4 flex items-start gap-3">
+                  {col.icon}
+                  <div>
+                    <p className="text-[#00B4D8] text-xs font-semibold uppercase tracking-widest mb-0.5">{col.badge}</p>
+                    <p className="text-white font-extrabold leading-snug">{col.title}</p>
+                  </div>
+                </div>
+                <div className="divide-y divide-border">
+                  {comparisonRows.map((row) => (
+                    <div key={row.label} className="px-5 py-4">
+                      <p className="text-[#0078D4] text-xs font-semibold uppercase tracking-widest mb-1">{row.label}</p>
+                      <p className={`text-sm leading-relaxed ${row.label === "Price" ? "font-bold text-[#0A2540]" : "text-foreground"}`}>
+                        {row[col.key]}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+                <div className="px-5 py-4 bg-[#F7F9FC] border-t border-border">
+                  <a href="/book" className="inline-flex items-center gap-1.5 text-[#0078D4] text-sm font-semibold hover:underline">
+                    Book a Call <ArrowRight className="w-3.5 h-3.5" />
+                  </a>
                 </div>
               </div>
             ))}
