@@ -1,4 +1,3 @@
-import { useState, useEffect } from "react";
 import { Link } from "wouter";
 import { Layout } from "@/components/Layout";
 import { SEOMeta } from "@/components/SEOMeta";
@@ -68,69 +67,6 @@ const whoIServe = [
   },
 ];
 
-interface PublicTestimonial {
-  id: number;
-  feedback: string;
-  signedAt: string;
-  projectType: string;
-  clientFirstName: string | null;
-}
-
-function LiveTestimonialsSection() {
-  const [testimonials, setTestimonials] = useState<PublicTestimonial[]>([]);
-  const [loaded, setLoaded] = useState(false);
-
-  useEffect(() => {
-    fetch("/api/testimonials")
-      .then(r => r.ok ? r.json() : [])
-      .then(d => { setTestimonials(d as PublicTestimonial[]); setLoaded(true); })
-      .catch(() => setLoaded(true));
-  }, []);
-
-  const PLACEHOLDER_TESTIMONIALS = [
-    { id: -1, feedback: "Shane completely transformed how our team works in Microsoft 365. The Copilot rollout alone saved us hours every week.", clientFirstName: "David", projectType: "retainer" },
-    { id: -2, feedback: "Practical, structured, and delivered exactly on time. Our SharePoint migration was seamless — no disruption to the business at all.", clientFirstName: "Karen", projectType: "project" },
-    { id: -3, feedback: "We got more done in a 30-day sprint than in the previous year. Shane's Power Platform build gave us automation we didn't think was possible.", clientFirstName: "Marcus", projectType: "micro-offer" },
-  ];
-
-  const displayList = loaded && testimonials.length > 0 ? testimonials : PLACEHOLDER_TESTIMONIALS;
-
-  return (
-    <section className="py-20 bg-white">
-      <div className="max-w-[1200px] mx-auto px-6">
-        <div className="text-center mb-12">
-          <p className="text-[#0078D4] text-sm font-semibold uppercase tracking-[0.1em] mb-3">Client Success</p>
-          <h2 className="text-3xl md:text-4xl font-extrabold text-[#0A2540]">What Clients Say</h2>
-          <p className="text-muted-foreground mt-4 max-w-xl mx-auto">Real feedback from real engagements — collected at project close.</p>
-        </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {displayList.map(t => (
-            <div key={t.id} className="bg-[#F7F9FC] border border-border rounded-2xl p-6 flex flex-col gap-4">
-              <div className="flex items-center gap-1">
-                {[...Array(5)].map((_, i) => (
-                  <svg key={i} className="w-4 h-4 text-[#0078D4]" viewBox="0 0 20 20" fill="currentColor">
-                    <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
-                  </svg>
-                ))}
-              </div>
-              <blockquote className="text-[#0A2540] text-sm leading-relaxed flex-1">
-                "{t.feedback}"
-              </blockquote>
-              <div className="flex items-center justify-between gap-2 pt-2 border-t border-border">
-                <p className="text-xs font-semibold text-[#0A2540]">
-                  {t.clientFirstName ? `— ${t.clientFirstName}` : "— Verified Client"}
-                </p>
-                <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
-                  {t.projectType === "micro-offer" ? "Quick Win" : t.projectType.charAt(0).toUpperCase() + t.projectType.slice(1)}
-                </span>
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-    </section>
-  );
-}
 
 export default function Home() {
   const { services: dbServiceAreas, loading: serviceAreasLoading } = useServices("service_area");
@@ -533,9 +469,6 @@ export default function Home() {
           </div>
         </div>
       </section>
-
-      {/* TESTIMONIALS */}
-      <LiveTestimonialsSection />
 
       {/* CONSULTATION CTA SECTION */}
       <section className="relative bg-[#0A2540] py-28 overflow-hidden" data-testid="final-cta-section">
