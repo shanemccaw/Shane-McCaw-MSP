@@ -857,6 +857,9 @@ export default function WorkflowsPage() {
   // Bulk Tools
   const [bulkOpen, setBulkOpen] = useState(false);
   const [jsonImportOpen, setJsonImportOpen] = useState(false);
+
+  // AI asset generation
+  const [generating, setGenerating] = useState(false);
   const [jsonImportText, setJsonImportText] = useState("");
   const [jsonImporting, setJsonImporting] = useState(false);
   const [engImportOpen, setEngImportOpen] = useState(false);
@@ -1367,11 +1370,46 @@ export default function WorkflowsPage() {
     URL.revokeObjectURL(url);
   }
 
+  // ── AI: Generate asset sets ────────────────────────────────────────────────
+
+  async function handleGenerateAssetSets() {
+    if (!selected || generating) return;
+    setGenerating(true);
+    try {
+      const res = await fetchWithAuth(`/api/admin/workflow-templates/${selected.id}/generate-asset-sets`, { method: "POST" });
+      const data = await res.json() as { processed?: number; setsCreated?: number; error?: string };
+      if (!res.ok) {
+        toast({ title: "Generation failed", description: data.error ?? "Unknown error", variant: "destructive" });
+        return;
+      }
+      if (data.processed === 0) {
+        toast({ title: "Nothing to generate", description: "All tasks already have asset sets linked." });
+      } else {
+        toast({
+          title: "Asset sets generated",
+          description: `Processed ${data.processed} task${data.processed === 1 ? "" : "s"}, created ${data.setsCreated} set${data.setsCreated === 1 ? "" : "s"}.`,
+        });
+        await fetchTemplates();
+        const refreshed = templates.find(t => t.id === selected.id);
+        if (refreshed) setSelected(refreshed);
+      }
+    } catch {
+      toast({ title: "Generation failed", description: "Network error", variant: "destructive" });
+    } finally {
+      setGenerating(false);
+    }
+  }
+
   // ── Derived values ─────────────────────────────────────────────────────────
 
   const steps = (selected?.steps ?? []).slice().sort((a, b) => a.order - b.order);
   const selectedStep = steps.find(s => s.id === selectedStepId) ?? null;
   const stepTasks = (selectedStep?.tasks ?? []).slice().sort((a, b) => a.order - b.order);
+
+  const tasksMissingAssets = (selected?.steps ?? [])
+    .flatMap(s => s.tasks ?? [])
+    .filter(t => t.instructionSetId == null || t.checklistId == null || t.artifactsId == null || t.deliverablesId == null)
+    .length;
 
   // Group tasks for display
   const tasksByGroup: Record<string, StepTask[]> = {};
@@ -1489,6 +1527,33 @@ export default function WorkflowsPage() {
                 </div>
               </div>
               <div className="flex items-center gap-2 flex-shrink-0">
+                {tasksMissingAssets > 0 && (
+                  <button
+                    type="button"
+                    onClick={handleGenerateAssetSets}
+                    disabled={generating}
+                    title={`Generate asset sets for ${tasksMissingAssets} task${tasksMissingAssets === 1 ? "" : "s"} missing sets`}
+                    className="flex items-center gap-1.5 text-xs text-purple-700 hover:text-purple-900 px-3 py-1.5 border border-purple-200 rounded-lg hover:bg-purple-50 transition-colors disabled:opacity-60"
+                  >
+                    {generating ? (
+                      <>
+                        <svg className="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                        </svg>
+                        Generating…
+                      </>
+                    ) : (
+                      <>
+                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                        </svg>
+                        Generate Asset Sets
+                        <span className="ml-0.5 text-[9px] bg-purple-100 text-purple-700 rounded-full px-1.5 py-0.5 font-semibold">{tasksMissingAssets}</span>
+                      </>
+                    )}
+                  </button>
+                )}
                 <button
                   type="button"
                   onClick={deleteTemplate}
