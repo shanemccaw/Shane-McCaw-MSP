@@ -3,6 +3,7 @@ import { createContext, useContext, useState, useEffect, useCallback, useRef, ty
 export interface AuthUser {
   id: number;
   email: string;
+  name?: string | null;
   role: "admin" | "client";
   impersonatedBy?: number;
 }

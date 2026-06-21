@@ -156,7 +156,7 @@ export default function OnboardingContract() {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
-  const [signerName, setSignerName] = useState(user?.email?.split("@")[0] ?? "");
+  const [signerName, setSignerName] = useState(user?.name ?? user?.email?.split("@")[0] ?? "");
   const [agreed, setAgreed] = useState(false);
   const [signed, setSigned] = useState(false);
   const [stripeError, setStripeError] = useState("");
