@@ -56,6 +56,16 @@ const TIER_CONFIG: Record<string, { label: string; description: string; accent: 
 
 const TIER_ORDER = ["entry", "core", "strategic"];
 
+const CATEGORY_TO_TIER: Record<string, string> = {
+  "Microsoft 365": "entry",
+  "Power Platform": "entry",
+  "Migration": "entry",
+  "Training": "entry",
+  "Copilot": "core",
+  "Governance": "core",
+  "Fractional Architecture": "strategic",
+};
+
 function ServiceCard({ s, index }: { s: PublicService; index: number }) {
   const Icon = resolveIcon(s.iconName);
   const inclusions = s.inclusions ?? [];
@@ -235,7 +245,10 @@ export default function Services() {
   const { services, loading, error } = useServices();
 
   const grouped = TIER_ORDER.reduce<Record<string, PublicService[]>>((acc, tier) => {
-    acc[tier] = services.filter(s => s.category === tier);
+    acc[tier] = services.filter(s => {
+      const mappedTier = s.category ? (CATEGORY_TO_TIER[s.category] ?? s.category) : null;
+      return mappedTier === tier;
+    });
     return acc;
   }, {});
 
