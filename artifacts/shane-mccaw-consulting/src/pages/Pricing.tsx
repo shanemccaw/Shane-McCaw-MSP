@@ -670,6 +670,195 @@ export default function Pricing() {
         </div>
       </section>
 
+      {/* Comparison Table — All Tiers at a Glance */}
+      <section className="bg-white py-20 border-b border-border">
+        <div className="max-w-[1200px] mx-auto px-6">
+          <p className="text-[#0078D4] text-sm font-semibold uppercase tracking-[0.1em] mb-4">Quick Comparison</p>
+          <h2 className="text-3xl md:text-4xl font-extrabold text-[#0A2540] mb-3">Which Engagement Is Right for You?</h2>
+          <p className="text-muted-foreground mb-10 max-w-2xl leading-relaxed">
+            Not sure which track fits your situation? This table maps all three tiers across the dimensions that matter most — so you can self-select before picking up the phone.
+          </p>
+
+          {/* Desktop table */}
+          <div className="hidden md:block overflow-x-auto rounded-2xl border border-border">
+            <table className="w-full text-sm border-collapse">
+              <thead>
+                <tr className="bg-[#0A2540] text-white">
+                  <th className="text-left px-6 py-5 w-[16%] font-semibold text-white/60 text-xs uppercase tracking-widest"></th>
+                  <th className="text-left px-6 py-5 w-[28%]">
+                    <div className="flex items-center gap-2 mb-1">
+                      <Zap className="w-4 h-4 text-[#00B4D8]" />
+                      <span className="text-xs font-semibold text-[#00B4D8] uppercase tracking-widest">Track 01 — Entry</span>
+                    </div>
+                    <p className="text-base font-extrabold leading-snug">Fixed-Price Micro-Offers</p>
+                  </th>
+                  <th className="text-left px-6 py-5 w-[28%] border-l border-white/10">
+                    <div className="flex items-center gap-2 mb-1">
+                      <FolderOpen className="w-4 h-4 text-[#00B4D8]" />
+                      <span className="text-xs font-semibold text-[#00B4D8] uppercase tracking-widest">Track 02 — Core</span>
+                    </div>
+                    <p className="text-base font-extrabold leading-snug">Project-Based Engagements</p>
+                  </th>
+                  <th className="text-left px-6 py-5 w-[28%] border-l border-white/10">
+                    <div className="flex items-center gap-2 mb-1">
+                      <Calendar className="w-4 h-4 text-[#00B4D8]" />
+                      <span className="text-xs font-semibold text-[#00B4D8] uppercase tracking-widest">Track 03 — Strategic</span>
+                    </div>
+                    <p className="text-base font-extrabold leading-snug">Monthly Fractional Retainer</p>
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {[
+                  {
+                    label: "Best For",
+                    entry: "Organizations that need a fast, low-risk diagnostic or a defined point solution before committing to a larger engagement",
+                    core: "Organizations with a clear multi-phase problem — migrations, governance overhauls, Copilot deployments — that need a fixed-scope project with defined deliverables",
+                    strategic: "Organizations that need continuous senior architect oversight, governance guidance, and a standing escalation resource month-to-month",
+                  },
+                  {
+                    label: "Scope",
+                    entry: "One scoped deliverable per package — defined in advance, no discovery call required",
+                    core: "Multi-phase project work scoped after a free discovery call — fixed fee, fixed deliverables, fixed timeline",
+                    strategic: "Embedded fractional advisory: architecture reviews, execution guidance, policy decisions, and escalation support",
+                  },
+                  {
+                    label: "Timeline",
+                    entry: "5–15 business days per package",
+                    core: "4–12 weeks depending on complexity",
+                    strategic: "Ongoing — month-to-month, cancel with 30 days' notice",
+                  },
+                  {
+                    label: "Price",
+                    entry: "$3,000 – $18,000 fixed",
+                    core: "$7,500 – $35,000+ fixed project fee",
+                    strategic: "$2,500 / $6,000 / $11,000 per month",
+                  },
+                  {
+                    label: "Key Deliverables",
+                    entry: "Diagnostic report, risk register, remediation roadmap, or configured environment — depending on the package selected",
+                    core: "Detailed proposal before commitment, fixed SOW, defined milestones, change orders for any scope changes",
+                    strategic: "Monthly advisory hours, architecture reviews, escalation access, and a written end-of-month summary",
+                  },
+                  {
+                    label: "Commitment",
+                    entry: "One-time engagement — can feed directly into a Core project or retainer",
+                    core: "One-time project — optionally followed by a retainer for ongoing governance and oversight",
+                    strategic: "Continuous — adjust tier or cancel with 30 days' notice at any time",
+                  },
+                ].map((row, i) => (
+                  <tr key={row.label} className={i % 2 === 0 ? "bg-white" : "bg-[#F7F9FC]"}>
+                    <td className="px-6 py-5 font-semibold text-[#0A2540] text-xs uppercase tracking-widest align-top whitespace-nowrap border-r border-border">
+                      {row.label}
+                    </td>
+                    <td className="px-6 py-5 text-foreground leading-relaxed align-top">
+                      {row.label === "Price" ? (
+                        <span className="font-bold text-[#0A2540]">{row.entry}</span>
+                      ) : (
+                        row.entry
+                      )}
+                    </td>
+                    <td className="px-6 py-5 text-foreground leading-relaxed align-top border-l border-border">
+                      {row.label === "Price" ? (
+                        <span className="font-bold text-[#0A2540]">{row.core}</span>
+                      ) : (
+                        row.core
+                      )}
+                    </td>
+                    <td className="px-6 py-5 text-foreground leading-relaxed align-top border-l border-border">
+                      {row.label === "Price" ? (
+                        <span className="font-bold text-[#0A2540]">{row.strategic}</span>
+                      ) : (
+                        row.strategic
+                      )}
+                    </td>
+                  </tr>
+                ))}
+                <tr className="bg-[#0A2540]">
+                  <td className="px-6 py-5 border-r border-white/10"></td>
+                  <td className="px-6 py-5">
+                    <a href="/book" className="inline-flex items-center gap-1.5 text-[#00B4D8] text-sm font-semibold hover:underline">
+                      Book a Call <ArrowRight className="w-3.5 h-3.5" />
+                    </a>
+                  </td>
+                  <td className="px-6 py-5 border-l border-white/10">
+                    <a href="/book" className="inline-flex items-center gap-1.5 text-[#00B4D8] text-sm font-semibold hover:underline">
+                      Book a Call <ArrowRight className="w-3.5 h-3.5" />
+                    </a>
+                  </td>
+                  <td className="px-6 py-5 border-l border-white/10">
+                    <a href="/book" className="inline-flex items-center gap-1.5 text-[#00B4D8] text-sm font-semibold hover:underline">
+                      Book a Call <ArrowRight className="w-3.5 h-3.5" />
+                    </a>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          {/* Mobile cards */}
+          <div className="md:hidden space-y-6">
+            {[
+              {
+                icon: <Zap className="w-5 h-5 text-[#0078D4]" />,
+                badge: "Track 01 — Entry",
+                title: "Fixed-Price Micro-Offers",
+                price: "$3,000 – $18,000 fixed",
+                timeline: "5–15 business days",
+                bestFor: "Fast, low-risk diagnostics or defined point solutions",
+                commitment: "One-time — can feed into a project or retainer",
+              },
+              {
+                icon: <FolderOpen className="w-5 h-5 text-[#0078D4]" />,
+                badge: "Track 02 — Core",
+                title: "Project-Based Engagements",
+                price: "$7,500 – $35,000+ fixed",
+                timeline: "4–12 weeks",
+                bestFor: "Multi-phase problems requiring a defined SOW and fixed deliverables",
+                commitment: "One-time project — optionally followed by a retainer",
+              },
+              {
+                icon: <Calendar className="w-5 h-5 text-[#0078D4]" />,
+                badge: "Track 03 — Strategic",
+                title: "Monthly Fractional Retainer",
+                price: "$2,500 – $11,000/month",
+                timeline: "Ongoing — month-to-month",
+                bestFor: "Continuous senior architect oversight and governance",
+                commitment: "Cancel with 30 days' notice at any time",
+              },
+            ].map((col, i) => (
+              <div key={i} className="rounded-2xl border border-border overflow-hidden">
+                <div className="bg-[#0A2540] px-5 py-4">
+                  <div className="flex items-center gap-2 mb-1">
+                    {col.icon}
+                    <span className="text-xs font-semibold text-[#00B4D8] uppercase tracking-widest">{col.badge}</span>
+                  </div>
+                  <p className="text-white font-extrabold text-base">{col.title}</p>
+                </div>
+                <div className="divide-y divide-border">
+                  {[
+                    { label: "Price", value: col.price, bold: true },
+                    { label: "Timeline", value: col.timeline, bold: false },
+                    { label: "Best For", value: col.bestFor, bold: false },
+                    { label: "Commitment", value: col.commitment, bold: false },
+                  ].map((row) => (
+                    <div key={row.label} className="px-5 py-4">
+                      <p className="text-xs font-semibold text-[#0A2540] uppercase tracking-widest mb-1">{row.label}</p>
+                      <p className={`text-sm leading-relaxed ${row.bold ? "font-bold text-[#0A2540]" : "text-foreground"}`}>{row.value}</p>
+                    </div>
+                  ))}
+                  <div className="px-5 py-4 bg-[#0A2540]">
+                    <a href="/book" className="inline-flex items-center gap-1.5 text-[#00B4D8] text-sm font-semibold hover:underline">
+                      Book a Call <ArrowRight className="w-3.5 h-3.5" />
+                    </a>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
       {/* Why Fractional Beats Full-Time */}
       <section className="bg-white py-20 border-b border-border">
         <div className="max-w-[1200px] mx-auto px-6">
