@@ -93,7 +93,7 @@ export function SharedOfferCard({
   const hl = data.highlighted;
 
   return (
-    <div className={hl ? "relative mt-4" : undefined}>
+    <div className={hl ? "relative mt-4 h-full" : "h-full"}>
       {hl && (
         <div className="absolute -top-4 left-1/2 -translate-x-1/2 bg-[#0078D4] text-white text-xs font-bold px-5 py-1.5 rounded-full uppercase tracking-wide whitespace-nowrap z-10">
           {popLabel}
