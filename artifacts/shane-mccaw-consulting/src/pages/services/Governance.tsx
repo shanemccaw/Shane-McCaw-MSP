@@ -6,6 +6,7 @@ import {
   CheckCircle, ArrowRight, Shield, Tag, Archive,
   Eye, Key, Users, Building2, Globe, Clock, DollarSign
 } from "lucide-react";
+import { useServices, formatPriceDisplay } from "@/hooks/useServices";
 
 const comparisonRows = [
   {
@@ -107,14 +108,16 @@ const FOLLOW_ON = [
     name: "Migration Readiness Assessment",
     desc: "For organizations planning a legacy migration following governance remediation.",
     href: "/services/microsoft-365",
-    price: "$3,500–$5,000",
+    slug: "migration-readiness-assessment",
+    fallbackPrice: "$3,500–$5,000",
     duration: "1 week",
   },
   {
     name: "Copilot for M365 Readiness Assessment",
     desc: "Once governance is in place, evaluate readiness to enable Copilot safely.",
     href: "/services/copilot-ai",
-    price: "$5,000–$8,000",
+    slug: "copilot-for-m365-readiness-assessment",
+    fallbackPrice: "$5,000–$8,000",
     duration: "2 weeks",
   },
 ];
@@ -172,6 +175,18 @@ const WHY_SHANE = [
 ];
 
 export default function Governance() {
+  const { services, loading } = useServices();
+  const govSvc = services.find((s) => s.slug === "governance-foundations-package");
+  const migSvc = services.find((s) => s.slug === "migration-readiness-assessment");
+  const copilotSvc = services.find((s) => s.slug === "copilot-for-m365-readiness-assessment");
+  const skeleton = <span className="inline-block w-28 h-4 bg-gray-200 rounded animate-pulse align-middle" />;
+  const livePrice = (svc: typeof services[0] | undefined, fallback: string) =>
+    loading ? skeleton : svc ? formatPriceDisplay(svc) : fallback;
+  const tablePrices = {
+    foundations: livePrice(govSvc, "$12,000–$18,000"),
+    migration: livePrice(migSvc, "$3,500–$5,000"),
+    retainer: "$2,500 / $6,000 / $11,000 per month",
+  };
   return (
     <Layout>
       <SEOMeta
@@ -269,7 +284,7 @@ export default function Governance() {
               <div className="flex-shrink-0 text-right">
                 <div className="flex items-center gap-1.5 justify-end">
                   <DollarSign className="w-4 h-4 text-[#0078D4]" />
-                  <span className="text-white font-extrabold text-2xl">$12,000–$18,000</span>
+                  <span className="text-white font-extrabold text-2xl">{livePrice(govSvc, "$12,000–$18,000")}</span>
                 </div>
                 <div className="flex items-center gap-1.5 justify-end mt-1">
                   <Clock className="w-3.5 h-3.5 text-white/40" />
@@ -351,7 +366,7 @@ export default function Governance() {
                 </div>
                 <div className="flex-shrink-0 flex items-center gap-6">
                   <div className="text-right">
-                    <p className="text-[#0A2540] font-bold text-sm">{item.price}</p>
+                    <p className="text-[#0A2540] font-bold text-sm">{livePrice(services.find((s) => s.slug === item.slug), item.fallbackPrice)}</p>
                     <p className="text-muted-foreground text-xs flex items-center gap-1 justify-end mt-0.5">
                       <Clock className="w-3 h-3" /> {item.duration}
                     </p>
@@ -503,13 +518,13 @@ export default function Governance() {
                       {row.label}
                     </td>
                     <td className="px-6 py-5 text-foreground leading-relaxed align-top">
-                      {row.label === "Price" ? <span className="font-bold text-[#0A2540]">{row.foundations}</span> : row.foundations}
+                      {row.label === "Price" ? <span className="font-bold text-[#0A2540]">{tablePrices.foundations}</span> : row.foundations}
                     </td>
                     <td className="px-6 py-5 text-foreground leading-relaxed align-top border-l border-border">
-                      {row.label === "Price" ? <span className="font-bold text-[#0A2540]">{row.migration}</span> : row.migration}
+                      {row.label === "Price" ? <span className="font-bold text-[#0A2540]">{tablePrices.migration}</span> : row.migration}
                     </td>
                     <td className="px-6 py-5 text-foreground leading-relaxed align-top border-l border-border">
-                      {row.label === "Price" ? <span className="font-bold text-[#0A2540]">{row.retainer}</span> : row.retainer}
+                      {row.label === "Price" ? <span className="font-bold text-[#0A2540]">{tablePrices.retainer}</span> : row.retainer}
                     </td>
                   </tr>
                 ))}
@@ -554,7 +569,7 @@ export default function Governance() {
                     <div key={row.label} className="px-5 py-4">
                       <p className="text-[#0078D4] text-xs font-semibold uppercase tracking-widest mb-1">{row.label}</p>
                       <p className={`text-sm leading-relaxed ${row.label === "Price" ? "font-bold text-[#0A2540]" : "text-foreground"}`}>
-                        {row[col.key]}
+                        {row.label === "Price" ? tablePrices[col.key] : row[col.key]}
                       </p>
                     </div>
                   ))}

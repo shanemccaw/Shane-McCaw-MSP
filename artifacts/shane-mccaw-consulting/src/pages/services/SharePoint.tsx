@@ -3,6 +3,7 @@ import { Layout } from "@/components/Layout";
 import { Layout as LayoutIcon, CheckCircle, ArrowRight, Building2, Shield, Users } from "lucide-react";
 import { ConsultationCTA } from "@/components/ConsultationCTA";
 import { CTAButton } from "@/components/CTAButton";
+import { useServices, formatPriceDisplay } from "@/hooks/useServices";
 
 const comparisonRows = [
   {
@@ -44,6 +45,17 @@ const comparisonRows = [
 ];
 
 export default function SharePoint() {
+  const { services, loading } = useServices();
+  const govSvc = services.find((s) => s.slug === "governance-foundations-package");
+  const migSvc = services.find((s) => s.slug === "migration-readiness-assessment");
+  const skeleton = <span className="inline-block w-28 h-4 bg-gray-200 rounded animate-pulse align-middle" />;
+  const livePrice = (svc: typeof services[0] | undefined, fallback: string) =>
+    loading ? skeleton : svc ? formatPriceDisplay(svc) : fallback;
+  const tablePrices = {
+    governance: livePrice(govSvc, "$12,000–$18,000"),
+    migration: livePrice(migSvc, "$3,500–$5,000"),
+    retainer: "$2,500 / $6,000 / $11,000 per month",
+  };
   return (
     <Layout>
       <SEOMeta
@@ -183,7 +195,7 @@ export default function SharePoint() {
               </div>
               <h3 className="text-xl font-extrabold text-[#0A2540] mb-2">Governance Foundations Package</h3>
               <div className="mb-1">
-                <span className="text-2xl font-extrabold text-[#0A2540]">$12,000–$18,000</span>
+                <span className="text-2xl font-extrabold text-[#0A2540]">{livePrice(govSvc, "$12,000–$18,000")}</span>
               </div>
               <p className="text-sm text-muted-foreground mb-6">6 weeks · Fixed scope</p>
               <p className="text-muted-foreground text-sm leading-relaxed mb-6">
@@ -224,7 +236,7 @@ export default function SharePoint() {
               </div>
               <h3 className="text-xl font-extrabold text-[#0A2540] mb-2">Migration Readiness Assessment</h3>
               <div className="mb-1">
-                <span className="text-2xl font-extrabold text-[#0A2540]">$3,500–$5,000</span>
+                <span className="text-2xl font-extrabold text-[#0A2540]">{livePrice(migSvc, "$3,500–$5,000")}</span>
               </div>
               <p className="text-sm text-muted-foreground mb-6">1 week · Fixed scope</p>
               <p className="text-muted-foreground text-sm leading-relaxed mb-6">
@@ -409,13 +421,13 @@ export default function SharePoint() {
                       {row.label}
                     </td>
                     <td className="px-6 py-5 text-foreground leading-relaxed align-top">
-                      {row.label === "Price" ? <span className="font-bold text-[#0A2540]">{row.governance}</span> : row.governance}
+                      {row.label === "Price" ? <span className="font-bold text-[#0A2540]">{tablePrices.governance}</span> : row.governance}
                     </td>
                     <td className="px-6 py-5 text-foreground leading-relaxed align-top border-l border-border">
-                      {row.label === "Price" ? <span className="font-bold text-[#0A2540]">{row.migration}</span> : row.migration}
+                      {row.label === "Price" ? <span className="font-bold text-[#0A2540]">{tablePrices.migration}</span> : row.migration}
                     </td>
                     <td className="px-6 py-5 text-foreground leading-relaxed align-top border-l border-border">
-                      {row.label === "Price" ? <span className="font-bold text-[#0A2540]">{row.retainer}</span> : row.retainer}
+                      {row.label === "Price" ? <span className="font-bold text-[#0A2540]">{tablePrices.retainer}</span> : row.retainer}
                     </td>
                   </tr>
                 ))}
@@ -460,7 +472,7 @@ export default function SharePoint() {
                     <div key={row.label} className="px-5 py-4">
                       <p className="text-[#0078D4] text-xs font-semibold uppercase tracking-widest mb-1">{row.label}</p>
                       <p className={`text-sm leading-relaxed ${row.label === "Price" ? "font-bold text-[#0A2540]" : "text-foreground"}`}>
-                        {row[col.key]}
+                        {row.label === "Price" ? tablePrices[col.key] : row[col.key]}
                       </p>
                     </div>
                   ))}

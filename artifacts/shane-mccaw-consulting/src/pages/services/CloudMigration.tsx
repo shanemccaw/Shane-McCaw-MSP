@@ -2,6 +2,7 @@ import { SEOMeta } from "@/components/SEOMeta";
 import { Layout } from "@/components/Layout";
 import { Server, CheckCircle, Clock, DollarSign, ArrowRight, Users, Shield, Building2 } from "lucide-react";
 import { CTAButton } from "@/components/CTAButton";
+import { useServices, formatPriceDisplay } from "@/hooks/useServices";
 
 const comparisonRows = [
   {
@@ -99,6 +100,17 @@ const retainerTiers = [
 ];
 
 export default function CloudMigration() {
+  const { services, loading } = useServices();
+  const migSvc = services.find((s) => s.slug === "migration-readiness-assessment");
+  const govSvc = services.find((s) => s.slug === "governance-foundations-package");
+  const skeleton = <span className="inline-block w-28 h-4 bg-gray-200 rounded animate-pulse align-middle" />;
+  const livePrice = (svc: typeof services[0] | undefined, fallback: string) =>
+    loading ? skeleton : svc ? formatPriceDisplay(svc) : fallback;
+  const tablePrices = {
+    assessment: livePrice(migSvc, "$3,500–$5,000"),
+    governance: livePrice(govSvc, "$12,000–$18,000"),
+    retainer: "$2,500 / $6,000 / $11,000 per month",
+  };
   return (
     <Layout>
       <SEOMeta
@@ -204,7 +216,7 @@ export default function CloudMigration() {
               <div className="flex items-center gap-4 mb-4">
                 <div className="flex items-center gap-1.5 text-[#0A2540] font-bold">
                   <DollarSign className="w-4 h-4 text-[#0078D4]" />
-                  <span>$3,500–$5,000</span>
+                  <span>{livePrice(migSvc, "$3,500–$5,000")}</span>
                 </div>
                 <div className="flex items-center gap-1.5 text-muted-foreground text-sm">
                   <Clock className="w-4 h-4" />
@@ -250,7 +262,7 @@ export default function CloudMigration() {
               <div className="flex items-center gap-4 mb-4">
                 <div className="flex items-center gap-1.5 text-[#0A2540] font-bold">
                   <DollarSign className="w-4 h-4 text-[#0078D4]" />
-                  <span>$12,000–$18,000</span>
+                  <span>{livePrice(govSvc, "$12,000–$18,000")}</span>
                 </div>
                 <div className="flex items-center gap-1.5 text-muted-foreground text-sm">
                   <Clock className="w-4 h-4" />
@@ -358,21 +370,21 @@ export default function CloudMigration() {
                       </td>
                       <td className="px-6 py-5 text-foreground leading-relaxed align-top">
                         {row.label === "Price" ? (
-                          <span className="font-bold text-[#0A2540]">{row.assessment}</span>
+                          <span className="font-bold text-[#0A2540]">{tablePrices.assessment}</span>
                         ) : (
                           row.assessment
                         )}
                       </td>
                       <td className="px-6 py-5 text-foreground leading-relaxed align-top border-l border-border">
                         {row.label === "Price" ? (
-                          <span className="font-bold text-[#0A2540]">{row.governance}</span>
+                          <span className="font-bold text-[#0A2540]">{tablePrices.governance}</span>
                         ) : (
                           row.governance
                         )}
                       </td>
                       <td className="px-6 py-5 text-foreground leading-relaxed align-top border-l border-border">
                         {row.label === "Price" ? (
-                          <span className="font-bold text-[#0A2540]">{row.retainer}</span>
+                          <span className="font-bold text-[#0A2540]">{tablePrices.retainer}</span>
                         ) : (
                           row.retainer
                         )}
@@ -445,7 +457,7 @@ export default function CloudMigration() {
                       <div key={row.label} className="px-5 py-4">
                         <p className="text-[#0078D4] text-xs font-semibold uppercase tracking-widest mb-1">{row.label}</p>
                         <p className={`text-sm leading-relaxed ${row.label === "Price" ? "font-bold text-[#0A2540]" : "text-foreground"}`}>
-                          {row[col.key]}
+                          {row.label === "Price" ? tablePrices[col.key] : row[col.key]}
                         </p>
                       </div>
                     ))}

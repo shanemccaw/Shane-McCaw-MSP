@@ -3,6 +3,7 @@ import { Layout } from "@/components/Layout";
 import { CTAButton } from "@/components/CTAButton";
 import { ConsultationCTA } from "@/components/ConsultationCTA";
 import { CheckCircle, ArrowRight, Zap, Building2, Shield, Users } from "lucide-react";
+import { useServices, formatPriceDisplay } from "@/hooks/useServices";
 
 const comparisonRows = [
   {
@@ -127,6 +128,17 @@ const RETAINERS = [
 ];
 
 export default function PowerPlatform() {
+  const { services, loading } = useServices();
+  const quickStartSvc = services.find((s) => s.slug === "power-platform-quickstart");
+  const govSvc = services.find((s) => s.slug === "governance-foundations-package");
+  const skeleton = <span className="inline-block w-28 h-4 bg-gray-200 rounded animate-pulse align-middle" />;
+  const livePrice = (svc: typeof services[0] | undefined, fallback: string) =>
+    loading ? skeleton : svc ? formatPriceDisplay(svc) : fallback;
+  const tablePrices = {
+    quickStart: livePrice(quickStartSvc, "$6,000–$10,000"),
+    governance: livePrice(govSvc, "$12,000–$18,000"),
+    retainer: "$2,500 / $6,000 / $11,000 per month",
+  };
   return (
     <Layout>
       <SEOMeta
@@ -246,7 +258,7 @@ export default function PowerPlatform() {
                 <p className="text-white font-extrabold text-2xl">Power Platform Quick-Start</p>
               </div>
               <div className="text-left sm:text-right">
-                <p className="text-white font-extrabold text-3xl">$6,000–$10,000</p>
+                <p className="text-white font-extrabold text-3xl">{livePrice(quickStartSvc, "$6,000–$10,000")}</p>
                 <p className="text-white/60 text-sm mt-0.5">4-week engagement</p>
               </div>
             </div>
@@ -526,13 +538,13 @@ export default function PowerPlatform() {
                       {row.label}
                     </td>
                     <td className="px-6 py-5 text-foreground leading-relaxed align-top">
-                      {row.label === "Price" ? <span className="font-bold text-[#0A2540]">{row.quickStart}</span> : row.quickStart}
+                      {row.label === "Price" ? <span className="font-bold text-[#0A2540]">{tablePrices.quickStart}</span> : row.quickStart}
                     </td>
                     <td className="px-6 py-5 text-foreground leading-relaxed align-top border-l border-border">
-                      {row.label === "Price" ? <span className="font-bold text-[#0A2540]">{row.governance}</span> : row.governance}
+                      {row.label === "Price" ? <span className="font-bold text-[#0A2540]">{tablePrices.governance}</span> : row.governance}
                     </td>
                     <td className="px-6 py-5 text-foreground leading-relaxed align-top border-l border-border">
-                      {row.label === "Price" ? <span className="font-bold text-[#0A2540]">{row.retainer}</span> : row.retainer}
+                      {row.label === "Price" ? <span className="font-bold text-[#0A2540]">{tablePrices.retainer}</span> : row.retainer}
                     </td>
                   </tr>
                 ))}
@@ -577,7 +589,7 @@ export default function PowerPlatform() {
                     <div key={row.label} className="px-5 py-4">
                       <p className="text-[#0078D4] text-xs font-semibold uppercase tracking-widest mb-1">{row.label}</p>
                       <p className={`text-sm leading-relaxed ${row.label === "Price" ? "font-bold text-[#0A2540]" : "text-foreground"}`}>
-                        {row[col.key]}
+                        {row.label === "Price" ? tablePrices[col.key] : row[col.key]}
                       </p>
                     </div>
                   ))}
