@@ -310,6 +310,49 @@ function DocumentBody({ m, onMarkApproved }: { m: DocumentMetadata; onMarkApprov
   );
 }
 
+function GenericBody({ m }: { m: Record<string, unknown> }) {
+  const deliverables = (m.clientDeliverables as string[] | undefined) ?? [];
+  const checklist = (m.checklist as Array<{ id: string; label: string }> | undefined) ?? [];
+  const checklistState = (m.checklistState as Record<string, boolean> | undefined) ?? {};
+  const done = checklist.filter(item => checklistState[item.id]).length;
+
+  if (deliverables.length === 0 && checklist.length === 0) return null;
+
+  return (
+    <div className="space-y-2">
+      {checklist.length > 0 && (
+        <div>
+          <div className="flex items-center justify-between mb-1">
+            <p className="text-[10px] font-semibold text-[#0A2540]">{done}/{checklist.length} steps complete</p>
+          </div>
+          <div className="w-full bg-gray-100 rounded-full h-1.5">
+            <div
+              className="h-1.5 rounded-full bg-[#0078D4] transition-all"
+              style={{ width: `${checklist.length ? (done / checklist.length) * 100 : 0}%` }}
+            />
+          </div>
+        </div>
+      )}
+      {deliverables.length > 0 && (
+        <div>
+          <p className="text-[10px] font-semibold text-[#0A2540] mb-0.5">You&apos;ll receive:</p>
+          <div className="space-y-0.5">
+            {deliverables.slice(0, 3).map((d, i) => (
+              <div key={i} className="flex items-center gap-1.5">
+                <span className="w-1.5 h-1.5 rounded-full bg-[#0078D4]/50 flex-shrink-0" />
+                <span className="text-[10px] text-muted-foreground">{d}</span>
+              </div>
+            ))}
+            {deliverables.length > 3 && (
+              <p className="text-[10px] text-muted-foreground pl-3">+{deliverables.length - 3} more</p>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function DiscoveryBody({ m }: { m: DiscoveryMetadata }) {
   const recs = m.recommendations ?? [];
   const riskCfg = m.riskScore ? RISK_CFG[m.riskScore] : null;
@@ -381,14 +424,24 @@ export function TypedCardContent({
 
       {hasDetail && (
         <div>
-          {taskType === "training" && <TrainingBody m={metadata as TrainingMetadata} />}
-          {taskType === "environmentHealthCheck" && <HealthCheckBody m={metadata as HealthCheckMetadata} />}
-          {taskType === "governanceSetup" && <GovernanceBody m={metadata as GovernanceMetadata} />}
-          {taskType === "automationBuild" && <AutomationBody m={metadata as AutomationMetadata} />}
-          {taskType === "documentDelivery" && (
-            <DocumentBody m={metadata as DocumentMetadata} onMarkApproved={onMarkDocumentApproved} />
-          )}
-          {taskType === "discovery" && <DiscoveryBody m={metadata as DiscoveryMetadata} />}
+          {taskType === "training" && (metadata as TrainingMetadata).modules?.length
+            ? <TrainingBody m={metadata as TrainingMetadata} />
+            : taskType === "training" && <GenericBody m={metadata} />}
+          {taskType === "environmentHealthCheck" && (metadata as HealthCheckMetadata).healthStatus
+            ? <HealthCheckBody m={metadata as HealthCheckMetadata} />
+            : taskType === "environmentHealthCheck" && <GenericBody m={metadata} />}
+          {taskType === "governanceSetup" && ((metadata as GovernanceMetadata).postureSummary || (metadata as GovernanceMetadata).configuredItems?.length)
+            ? <GovernanceBody m={metadata as GovernanceMetadata} />
+            : taskType === "governanceSetup" && <GenericBody m={metadata} />}
+          {taskType === "automationBuild" && (metadata as AutomationMetadata).flows?.length
+            ? <AutomationBody m={metadata as AutomationMetadata} />
+            : taskType === "automationBuild" && <GenericBody m={metadata} />}
+          {taskType === "documentDelivery" && (metadata as DocumentMetadata).documents?.length
+            ? <DocumentBody m={metadata as DocumentMetadata} onMarkApproved={onMarkDocumentApproved} />
+            : taskType === "documentDelivery" && <GenericBody m={metadata} />}
+          {taskType === "discovery" && ((metadata as DiscoveryMetadata).riskScore || (metadata as DiscoveryMetadata).findingsSummary)
+            ? <DiscoveryBody m={metadata as DiscoveryMetadata} />
+            : taskType === "discovery" && <GenericBody m={metadata} />}
         </div>
       )}
     </div>
