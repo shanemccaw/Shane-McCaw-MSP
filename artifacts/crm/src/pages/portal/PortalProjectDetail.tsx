@@ -308,6 +308,40 @@ function StatusBadge({ status }: { status: string }) {
   );
 }
 
+const MIME_LABELS: Record<string, string> = {
+  "application/pdf": "PDF",
+  "application/msword": "DOC",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document": "DOCX",
+  "application/vnd.ms-excel": "XLS",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": "XLSX",
+  "application/vnd.ms-powerpoint": "PPT",
+  "application/vnd.openxmlformats-officedocument.presentationml.presentation": "PPTX",
+  "application/vnd.oasis.opendocument.text": "ODT",
+  "application/vnd.oasis.opendocument.spreadsheet": "ODS",
+  "application/zip": "ZIP",
+  "text/plain": "TXT",
+  "text/csv": "CSV",
+  "text/html": "HTML",
+  "image/jpeg": "JPG",
+  "image/png": "PNG",
+  "image/gif": "GIF",
+  "image/webp": "WEBP",
+  "image/svg+xml": "SVG",
+  "video/mp4": "MP4",
+  "audio/mpeg": "MP3",
+};
+
+function mimeToLabel(mimeType: string | null | undefined, filename?: string): string {
+  if (mimeType) {
+    const clean = mimeType.split(";")[0].trim().toLowerCase();
+    if (MIME_LABELS[clean]) return MIME_LABELS[clean];
+  }
+  if (filename && filename.includes(".")) {
+    return filename.split(".").pop()!.toUpperCase();
+  }
+  return "FILE";
+}
+
 function GradientProgressBar({ value }: { value: number }) {
   return (
     <div className="w-full bg-white/10 rounded-full h-2.5">
@@ -1459,10 +1493,7 @@ export default function PortalProjectDetail() {
               ) : (
                 <div className="bg-white border border-border rounded-xl divide-y divide-border">
                   {spFiles.map(file => {
-                    const ext = file.name.includes(".") ? file.name.split(".").pop()?.toUpperCase() : null;
-                    const typeLabel = file.mimeType
-                      ? file.mimeType.split("/")[1]?.split(";")[0]?.toUpperCase()
-                      : ext ?? "FILE";
+                    const typeLabel = mimeToLabel(file.mimeType, file.name);
                     return (
                       <div key={file.id} className="flex items-center gap-4 px-5 py-4">
                         <div className="w-10 h-10 rounded-xl bg-[#0078D4]/10 flex items-center justify-center flex-shrink-0">
@@ -1519,7 +1550,7 @@ export default function PortalProjectDetail() {
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-semibold text-[#0A2540] truncate">{doc.name}</p>
                       <p className="text-xs text-muted-foreground mt-0.5">
-                        {doc.sizeBytes ? formatBytes(doc.sizeBytes) : ""}{doc.mimeType ? ` · ${doc.mimeType.split("/")[1]?.toUpperCase()}` : ""} · {new Date(doc.createdAt).toLocaleDateString()}
+                        {doc.sizeBytes ? formatBytes(doc.sizeBytes) : ""}{doc.mimeType ? ` · ${mimeToLabel(doc.mimeType)}` : ""} · {new Date(doc.createdAt).toLocaleDateString()}
                       </p>
                     </div>
                     <button
