@@ -502,8 +502,8 @@ export default function OnboardingContract() {
           )}
         </div>
 
-        <div className="grid md:grid-cols-2 gap-6 md:items-stretch">
-          <div className="bg-white border border-border rounded-2xl overflow-hidden flex flex-col h-full">
+        <div className="grid md:grid-cols-2 gap-6 md:items-start">
+          <div className="bg-white border border-border rounded-2xl overflow-hidden flex flex-col md:sticky md:top-6">
             <div className="px-5 py-4 border-b border-border bg-[#F7F9FC] shrink-0">
               <h2 className="font-bold text-[#0A2540] text-sm">Service Agreement</h2>
               <p className="text-xs text-muted-foreground">Please read before signing</p>
@@ -518,7 +518,7 @@ export default function OnboardingContract() {
             <div
               ref={contractScrollRef}
               onScroll={handleContractScroll}
-              className="px-5 py-4 prose prose-sm flex-1 min-h-0 overflow-y-auto text-[#0A2540]"
+              className="px-5 py-4 prose prose-sm overflow-y-auto text-[#0A2540]" style={{ maxHeight: "calc(100vh - 220px)" }}
               dangerouslySetInnerHTML={{ __html: buildContractHtml(
                 services,
                 signerName || "Client",
