@@ -22,6 +22,16 @@ interface Project {
   title: string;
 }
 
+interface ClientInfo {
+  name: string | null;
+  company: string | null;
+  phone: string | null;
+  address: string | null;
+  addressCity: string | null;
+  addressState: string | null;
+  addressZip: string | null;
+}
+
 interface WizardOption {
   id: string;
   label: string;
@@ -56,6 +66,7 @@ interface InvoiceDetailData {
   invoice: Invoice;
   project: Project | null;
   contracts: ContractSummary[];
+  client: ClientInfo | null;
 }
 
 const STATUS_CONFIG: Record<string, { label: string; classes: string }> = {
@@ -77,6 +88,13 @@ function formatDate(d: string | Date): string {
 function SkeletonBlock({ className }: { className?: string }) {
   return <div className={`animate-pulse bg-gray-200 rounded ${className ?? ""}`} />;
 }
+
+const BILL_FROM = {
+  name: "Shane McCaw Consulting",
+  tagline: "Lead Microsoft 365 Architect",
+  email: "shane@shanemccaw.com",
+  website: "shanemccawconsulting.com",
+};
 
 export default function PortalInvoiceDetail() {
   const { id } = useParams<{ id: string }>();
@@ -154,6 +172,30 @@ export default function PortalInvoiceDetail() {
   const config = inv ? (STATUS_CONFIG[inv.status] ?? STATUS_CONFIG.draft) : null;
   const canPay = inv?.status === "due" || inv?.status === "overdue";
   const contract = data?.contracts[0] ?? null;
+
+  // Build line items from wizard selections
+  const lineItems: Array<{ stepTitle: string; optionLabel: string; adjustment: number }> = [];
+  if (contract?.wizardSelections && contract.orderWorkflow) {
+    for (const sel of contract.wizardSelections) {
+      const step = contract.orderWorkflow.find(s => s.id === sel.stepId);
+      const option = step?.options.find(o => o.id === sel.optionId);
+      if (step && option && option.priceAdjustment !== 0) {
+        lineItems.push({ stepTitle: step.title, optionLabel: option.label, adjustment: option.priceAdjustment });
+      }
+    }
+  }
+
+  const totalAmount = inv ? parseFloat(inv.amount) : 0;
+  const totalAdj = lineItems.reduce((sum, li) => sum + li.adjustment, 0);
+  const baseAmount = totalAmount - totalAdj;
+  const serviceName = contract?.serviceName ?? inv?.description ?? "Consulting Services";
+
+  // Build client address string parts
+  const client = data?.client ?? null;
+  const addressParts: string[] = [];
+  if (client?.address) addressParts.push(client.address);
+  const cityStateZip = [client?.addressCity, client?.addressState, client?.addressZip].filter(Boolean).join(", ");
+  if (cityStateZip) addressParts.push(cityStateZip);
 
   return (
     <PortalLayout>
@@ -242,6 +284,49 @@ export default function PortalInvoiceDetail() {
           )}
         </div>
 
+        {/* Bill From / Bill To */}
+        <div className="bg-white border border-border rounded-2xl p-6 mb-5 shadow-sm">
+          {loading ? (
+            <div className="grid grid-cols-2 gap-6">
+              <div className="space-y-2">
+                <SkeletonBlock className="h-3 w-20" />
+                <SkeletonBlock className="h-4 w-40" />
+                <SkeletonBlock className="h-3 w-32" />
+              </div>
+              <div className="space-y-2">
+                <SkeletonBlock className="h-3 w-20" />
+                <SkeletonBlock className="h-4 w-40" />
+                <SkeletonBlock className="h-3 w-32" />
+              </div>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+              {/* Bill From */}
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">Bill From</p>
+                <p className="text-sm font-bold text-[#0A2540]">{BILL_FROM.name}</p>
+                <p className="text-xs text-muted-foreground mt-0.5">{BILL_FROM.tagline}</p>
+                <p className="text-xs text-[#0078D4] mt-1">{BILL_FROM.email}</p>
+                <p className="text-xs text-muted-foreground">{BILL_FROM.website}</p>
+              </div>
+
+              {/* Bill To */}
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">Bill To</p>
+                {client?.name && <p className="text-sm font-bold text-[#0A2540]">{client.name}</p>}
+                {client?.company && <p className="text-xs text-muted-foreground mt-0.5">{client.company}</p>}
+                {addressParts.map((line, i) => (
+                  <p key={i} className="text-xs text-muted-foreground">{line}</p>
+                ))}
+                {client?.phone && <p className="text-xs text-muted-foreground mt-1">{client.phone}</p>}
+                {!client?.name && !client?.company && !client?.phone && addressParts.length === 0 && (
+                  <p className="text-xs text-muted-foreground italic">No contact details on file.</p>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+
         {/* Amount summary */}
         <div className="bg-white border border-border rounded-2xl p-6 mb-5 shadow-sm">
           <h2 className="text-sm font-bold text-[#0A2540] mb-4">Amount Summary</h2>
@@ -271,16 +356,38 @@ export default function PortalInvoiceDetail() {
                 )}
               </div>
 
-              {/* Line item */}
+              {/* Line items table */}
               <div className="border border-border rounded-xl overflow-hidden">
                 <div className="px-4 py-3 bg-[#F7F9FC] border-b border-border flex items-center justify-between text-xs font-semibold text-muted-foreground uppercase tracking-wider">
                   <span>Description</span>
                   <span>Amount</span>
                 </div>
-                <div className="px-4 py-3 flex items-center justify-between">
-                  <p className="text-sm text-[#0A2540]">{inv!.description ?? `Invoice ${inv!.invoiceNumber}`}</p>
-                  <p className="text-sm font-bold text-[#0A2540]">{formatCurrency(inv!.amount, inv!.currency)}</p>
+
+                {/* Base service row */}
+                <div className="px-4 py-3 flex items-center justify-between border-b border-border/60">
+                  <p className="text-sm font-semibold text-[#0A2540]">{serviceName}</p>
+                  <p className="text-sm font-semibold text-[#0A2540]">{formatCurrency(baseAmount, inv!.currency)}</p>
                 </div>
+
+                {/* Wizard add-on sub-rows */}
+                {lineItems.map((li, i) => (
+                  <div key={i} className="px-4 py-2.5 flex items-center justify-between border-b border-border/40 bg-[#F7F9FC]/50">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className="text-muted-foreground/50 select-none ml-3">↳</span>
+                      <div className="min-w-0">
+                        <span className="text-xs text-muted-foreground">{li.stepTitle}: </span>
+                        <span className="text-xs font-medium text-[#0A2540]">{li.optionLabel}</span>
+                      </div>
+                    </div>
+                    <span className={`text-xs font-semibold flex-shrink-0 ml-4 ${li.adjustment > 0 ? "text-[#0078D4]" : "text-green-700"}`}>
+                      {li.adjustment > 0
+                        ? `+${formatCurrency(li.adjustment, inv!.currency)}`
+                        : `−${formatCurrency(Math.abs(li.adjustment), inv!.currency)}`}
+                    </span>
+                  </div>
+                ))}
+
+                {/* Total row */}
                 <div className="px-4 py-3 bg-[#F7F9FC] border-t border-border flex items-center justify-between">
                   <p className="text-sm font-bold text-[#0A2540]">Total</p>
                   <p className="text-base font-extrabold text-[#0A2540]">{formatCurrency(inv!.amount, inv!.currency)}</p>

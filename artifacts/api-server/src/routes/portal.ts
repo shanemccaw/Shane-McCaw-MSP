@@ -1129,6 +1129,17 @@ router.get("/portal/invoices/:id", requireAuth, async (req: Request, res: Respon
     project = p ?? null;
   }
 
+  const [clientUser] = await db.select({
+    name: usersTable.name,
+    company: usersTable.company,
+    phone: usersTable.phone,
+    address: usersTable.address,
+    addressCity: usersTable.addressCity,
+    addressState: usersTable.addressState,
+    addressZip: usersTable.addressZip,
+  }).from(usersTable).where(eq(usersTable.id, invoice.clientUserId));
+  const client = clientUser ?? null;
+
   let contracts: Array<{
     id: number;
     serviceId: number;
@@ -1162,7 +1173,7 @@ router.get("/portal/invoices/:id", requireAuth, async (req: Request, res: Respon
     contracts = rows;
   }
 
-  res.json({ invoice, project, contracts });
+  res.json({ invoice, project, contracts, client });
 });
 
 router.post("/portal/invoices/:id/pay", requireAuth, async (req: Request, res: Response) => {
