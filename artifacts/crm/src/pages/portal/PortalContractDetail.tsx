@@ -33,9 +33,7 @@ interface ContractDetail {
   createdAt: string;
 }
 
-const DEFAULT_AGREEMENT_BODY = `SHANE McCAW CONSULTING — STANDARD SERVICE AGREEMENT
-
-1. SCOPE OF SERVICES
+const DEFAULT_AGREEMENT_BODY = `1. SCOPE OF SERVICES
 Shane McCaw Consulting ("Consultant") agrees to provide the Microsoft 365 and related technology consulting services described in the applicable service order or statement of work accepted by the Client. Services are performed remotely unless otherwise agreed in writing.
 
 2. PAYMENT TERMS
@@ -116,17 +114,17 @@ function AgreementBodyRenderer({ text }: { text: string }) {
   }
 
   return (
-    <div className="space-y-1">
+    <div>
       {blocks.map((block, i) =>
         block.type === "heading" ? (
           <h3
             key={i}
-            className="text-[0.7rem] font-bold uppercase tracking-widest text-[#0078D4] border-b-2 border-slate-200 pb-1 mt-5 first:mt-0"
+            className="text-[0.7rem] font-bold uppercase tracking-widest text-[#0A2540] mt-6 mb-1.5 first:mt-0"
           >
             {block.text}
           </h3>
         ) : (
-          <p key={i} className="text-xs text-[#374151] leading-relaxed">
+          <p key={i} className="text-[0.8rem] text-[#374151] leading-relaxed mb-2">
             {block.text}
           </p>
         )
@@ -184,8 +182,6 @@ export default function PortalContractDetail() {
     );
   }
 
-  // Build a lookup map from the service's order_workflow so that old contracts
-  // that only stored stepId/optionId (no labels) still display human-readable text.
   const workflowStepMap = new Map<string, WizardStep>(
     (data?.orderWorkflow ?? []).map(s => [s.id, s])
   );
@@ -202,172 +198,190 @@ export default function PortalContractDetail() {
 
   return (
     <PortalLayout>
-      <div className="px-6 py-8 max-w-3xl mx-auto">
-        {/* Breadcrumb */}
-        <nav className="flex items-center gap-2 text-sm text-muted-foreground mb-6">
-          <Link href="/portal/billing">
-            <span className="hover:text-[#0078D4] cursor-pointer">Billing</span>
-          </Link>
-          <span>/</span>
-          <span className="text-[#0A2540] font-medium">
-            {loading ? "Loading…" : `${data?.serviceName ?? "Contract"} — ${data?.contractVersion ?? ""}`}
-          </span>
-        </nav>
+      <div className="min-h-screen bg-slate-100 pb-16">
+        <div className="max-w-3xl mx-auto px-6 pt-8">
 
-        {/* Header */}
-        <div className="bg-white border border-border rounded-2xl p-6 mb-5 shadow-sm">
-          {loading ? (
-            <div className="space-y-3">
-              <SkeletonBlock className="h-7 w-64" />
-              <SkeletonBlock className="h-4 w-32" />
-            </div>
-          ) : (
-            <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
-              <div className="flex items-start gap-4">
-                <div className="w-12 h-12 rounded-xl bg-[#00B4D8]/10 flex items-center justify-center flex-shrink-0">
-                  <svg className="w-6 h-6 text-[#00B4D8]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
-                  </svg>
-                </div>
-                <div>
-                  <div className="flex items-center gap-2 flex-wrap mb-1">
-                    <h1 className="text-xl font-extrabold text-[#0A2540]">{data!.serviceName}</h1>
-                    <span className="text-xs font-semibold px-2 py-0.5 rounded-full border bg-[#0078D4]/10 text-[#0078D4] border-[#0078D4]/20">
-                      {data!.contractVersion}
-                    </span>
-                  </div>
-                  <p className="text-xs text-muted-foreground">Service Agreement</p>
-                </div>
-              </div>
-              {data!.pdfFilename && (
-                <button
-                  onClick={() => void handleDownloadPdf()}
-                  className="flex items-center gap-1.5 border border-border text-sm font-semibold px-3 py-2 rounded-lg hover:border-[#0078D4]/40 hover:text-[#0078D4] transition-colors flex-shrink-0"
-                >
-                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-                  </svg>
-                  Download PDF
-                </button>
-              )}
-            </div>
-          )}
-        </div>
+          {/* Breadcrumb */}
+          <nav className="flex items-center gap-2 text-sm text-muted-foreground mb-4">
+            <Link href="/portal/billing">
+              <span className="hover:text-[#0078D4] cursor-pointer">Billing</span>
+            </Link>
+            <span>/</span>
+            <span className="text-[#0A2540] font-medium">
+              {loading ? "Loading…" : `${data?.serviceName ?? "Contract"} — ${data?.contractVersion ?? ""}`}
+            </span>
+          </nav>
 
-        {/* Metadata grid */}
-        <div className="bg-white border border-border rounded-2xl p-6 mb-5 shadow-sm">
-          <h2 className="text-sm font-bold text-[#0A2540] mb-4">Contract Details</h2>
-          {loading ? (
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
-              {Array.from({ length: 3 }).map((_, i) => (
-                <div key={i} className="space-y-1">
-                  <SkeletonBlock className="h-3 w-20" />
-                  <SkeletonBlock className="h-4 w-32" />
-                </div>
-              ))}
+          {/* Toolbar — outside the paper */}
+          <div className="flex items-center justify-between mb-5">
+            <div className="flex items-center gap-2">
+              <div className="w-2 h-2 rounded-full bg-green-500" />
+              <span className="text-xs font-semibold text-green-700">
+                {loading ? "" : `Signed ${data ? formatDate(data.signedAt) : ""}`}
+              </span>
             </div>
-          ) : (
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1">Signed Date</p>
-                <p className="text-sm font-semibold text-[#0A2540]">{formatDate(data!.signedAt)}</p>
-              </div>
-              {data!.signerName && (
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1">Signer</p>
-                  <p className="text-sm font-semibold text-[#0A2540]">{data!.signerName}</p>
-                </div>
-              )}
-              {data!.finalPrice && (
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1">Final Price</p>
-                  <p className="text-sm font-semibold text-[#0A2540]">{formatCurrency(data!.finalPrice)}</p>
-                </div>
-              )}
-            </div>
-          )}
-        </div>
+            {(loading || data?.pdfFilename) && (
+              <button
+                onClick={() => void handleDownloadPdf()}
+                disabled={loading || !data?.pdfFilename}
+                className="flex items-center gap-1.5 bg-white border border-border text-sm font-semibold px-3 py-2 rounded-lg hover:border-[#0078D4]/40 hover:text-[#0078D4] transition-colors shadow-sm disabled:opacity-40"
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                </svg>
+                Download PDF
+              </button>
+            )}
+          </div>
 
-        {/* Wizard selections */}
-        {(loading || wizardItems.length > 0) && (
-          <div className="bg-white border border-border rounded-2xl p-6 mb-5 shadow-sm">
-            <h2 className="text-sm font-bold text-[#0A2540] mb-4">Selected Options</h2>
+          {/* ── PAPER DOCUMENT ── */}
+          <div className="bg-white shadow-lg rounded-sm px-14 py-12 mb-8">
+
             {loading ? (
-              <div className="space-y-3">
-                {Array.from({ length: 4 }).map((_, i) => (
-                  <div key={i} className="flex items-center justify-between">
-                    <SkeletonBlock className="h-3 w-32" />
-                    <SkeletonBlock className="h-3 w-24" />
-                  </div>
+              <div className="space-y-4">
+                <SkeletonBlock className="h-8 w-48 mx-auto" />
+                <SkeletonBlock className="h-1 w-full" />
+                <SkeletonBlock className="h-6 w-64 mx-auto" />
+                <SkeletonBlock className="h-4 w-full mt-6" />
+                <SkeletonBlock className="h-4 w-5/6" />
+                {Array.from({ length: 12 }).map((_, i) => (
+                  <SkeletonBlock key={i} className={`h-3 ${i % 4 === 3 ? "w-3/4" : "w-full"}`} />
                 ))}
               </div>
             ) : (
-              <div className="divide-y divide-border rounded-xl border border-border overflow-hidden">
-                {wizardItems.map((sel) => (
-                  <div key={sel.stepId} className="flex items-start justify-between gap-4 px-4 py-3">
-                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-                      {sel.stepTitle ?? formatKey(sel.stepId)}
-                    </p>
-                    <p className="text-sm text-[#0A2540] font-medium text-right max-w-[60%]">
-                      {sel.optionLabel ?? sel.optionId}
-                    </p>
+              <>
+                {/* ── LETTERHEAD ── */}
+                <div className="text-center mb-2">
+                  <p className="text-xl font-extrabold tracking-tight text-[#0A2540] leading-none">
+                    Shane McCaw Consulting
+                  </p>
+                  <p className="text-[0.7rem] font-medium text-[#0078D4] uppercase tracking-widest mt-1">
+                    Lead Microsoft 365 Architect
+                  </p>
+                </div>
+                <div className="h-[2px] bg-[#0078D4] w-full mb-6" />
+
+                {/* ── TITLE ── */}
+                <div className="text-center mb-6">
+                  <h1 className="text-base font-extrabold uppercase tracking-widest text-[#0A2540]">
+                    Service Agreement
+                  </h1>
+                  <p className="text-[0.7rem] text-muted-foreground mt-1 tracking-wide">
+                    {data!.contractVersion}
+                  </p>
+                </div>
+
+                {/* ── PARTIES BLOCK ── */}
+                <div className="bg-slate-50 border border-slate-200 rounded px-5 py-4 mb-6 text-[0.8rem] text-[#374151] leading-relaxed">
+                  This Agreement is entered into as of{" "}
+                  <strong className="text-[#0A2540]">{formatDate(data!.signedAt)}</strong>, between{" "}
+                  <strong className="text-[#0A2540]">Shane McCaw Consulting</strong> (&ldquo;Consultant&rdquo;) and{" "}
+                  <strong className="text-[#0A2540]">{data!.signerName ?? "Client"}</strong> (&ldquo;Client&rdquo;).
+                </div>
+
+                {/* ── SERVICE ORDER DETAILS ── */}
+                {wizardItems.length > 0 && (
+                  <div className="mb-6">
+                    <h2 className="text-[0.65rem] font-bold uppercase tracking-widest text-[#0A2540] mb-3">
+                      Service Order Details
+                    </h2>
+                    <table className="w-full text-[0.8rem] border-collapse">
+                      <tbody>
+                        {wizardItems.map(sel => (
+                          <tr key={sel.stepId} className="border-b border-slate-100">
+                            <td className="py-1.5 text-muted-foreground pr-4">
+                              {sel.stepTitle ?? formatKey(sel.stepId)}
+                            </td>
+                            <td className="py-1.5 text-right font-medium text-[#0A2540]">
+                              {sel.optionLabel ?? sel.optionId}
+                            </td>
+                          </tr>
+                        ))}
+                        {data!.finalPrice && (
+                          <tr>
+                            <td className="pt-2.5 font-bold text-[#0A2540]">Total</td>
+                            <td className="pt-2.5 text-right font-bold text-[#0A2540]">
+                              {formatCurrency(data!.finalPrice)}
+                            </td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
                   </div>
-                ))}
-              </div>
+                )}
+
+                {/* ── DIVIDER ── */}
+                <div className="border-t border-slate-200 mb-6" />
+
+                {/* ── AGREEMENT BODY ── */}
+                <AgreementBodyRenderer text={data!.agreementBody ?? DEFAULT_AGREEMENT_BODY} />
+
+                {/* ── DIVIDER ── */}
+                <div className="border-t border-slate-200 mt-8 mb-8" />
+
+                {/* ── SIGNATURE BLOCK ── */}
+                <div className="grid grid-cols-2 gap-10">
+                  {/* Consultant column */}
+                  <div>
+                    <p className="text-[0.65rem] font-bold uppercase tracking-widest text-muted-foreground mb-6">
+                      Consultant
+                    </p>
+                    {/* Signature line */}
+                    <div className="flex items-end h-14 mb-1">
+                      <p className="text-lg italic font-bold text-[#0A2540]" style={{ fontFamily: "Georgia, serif" }}>
+                        Shane McCaw
+                      </p>
+                    </div>
+                    <div className="border-t-2 border-[#0A2540] pt-1.5">
+                      <p className="text-[0.7rem] text-[#0A2540] font-semibold">Shane McCaw</p>
+                      <p className="text-[0.65rem] text-muted-foreground">Shane McCaw Consulting</p>
+                    </div>
+                  </div>
+
+                  {/* Client column */}
+                  <div>
+                    <p className="text-[0.65rem] font-bold uppercase tracking-widest text-muted-foreground mb-6">
+                      Client
+                    </p>
+                    {/* Signature image or blank line */}
+                    <div className="flex items-end h-14 mb-1">
+                      {data!.signatureData ? (
+                        <img
+                          src={data!.signatureData}
+                          alt="Client signature"
+                          className="max-h-14 max-w-full object-contain"
+                        />
+                      ) : (
+                        <div className="w-full h-px border-b border-dashed border-slate-300" />
+                      )}
+                    </div>
+                    <div className="border-t-2 border-[#0A2540] pt-1.5">
+                      <p className="text-[0.7rem] text-[#0A2540] font-semibold">
+                        {data!.signerName ?? "—"}
+                      </p>
+                      {data!.signedAt && (
+                        <p className="text-[0.65rem] text-muted-foreground">
+                          {formatDateTime(data!.signedAt)}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* ── Electronic signature notice ── */}
+                <div className="mt-8 flex items-start gap-2 text-[0.65rem] text-muted-foreground border-t border-slate-100 pt-4">
+                  <svg className="w-3.5 h-3.5 flex-shrink-0 text-green-600 mt-px" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+                  </svg>
+                  <span>
+                    Signed electronically on {formatDateTime(data!.signedAt)}
+                    {data!.signerName && <> by <strong className="text-[#0A2540]">{data!.signerName}</strong></>}.
+                    This electronic signature has the same legal effect as a handwritten signature.
+                  </span>
+                </div>
+              </>
             )}
           </div>
-        )}
-
-        {/* Agreement body */}
-        <div className="bg-white border border-border rounded-2xl p-6 mb-5 shadow-sm">
-          <h2 className="text-sm font-bold text-[#0A2540] mb-4">Agreement Terms</h2>
-          {loading ? (
-            <div className="space-y-2">
-              {Array.from({ length: 8 }).map((_, i) => (
-                <SkeletonBlock key={i} className={`h-3 ${i % 3 === 2 ? "w-3/4" : "w-full"}`} />
-              ))}
-            </div>
-          ) : data!.agreementBody ? (
-            <div className="border border-border rounded-xl bg-[#F7F9FC] p-5 max-h-96 overflow-y-auto">
-              <AgreementBodyRenderer text={data!.agreementBody} />
-            </div>
-          ) : (
-            <div className="border border-border rounded-xl bg-[#F7F9FC] p-5 max-h-96 overflow-y-auto">
-              <AgreementBodyRenderer text={DEFAULT_AGREEMENT_BODY} />
-            </div>
-          )}
-        </div>
-
-        {/* Signature */}
-        <div className="bg-white border border-border rounded-2xl p-6 mb-5 shadow-sm">
-          <h2 className="text-sm font-bold text-[#0A2540] mb-4">Electronic Signature</h2>
-          {loading ? (
-            <SkeletonBlock className="h-24 w-full" />
-          ) : data!.signatureData ? (
-            <div>
-              <div className="border border-border rounded-xl bg-[#F7F9FC] p-4 mb-4 flex items-center justify-center">
-                <img
-                  src={data!.signatureData}
-                  alt="Electronic signature"
-                  className="max-h-28 max-w-full object-contain"
-                />
-              </div>
-              <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                <svg className="w-4 h-4 flex-shrink-0 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
-                </svg>
-                <span>
-                  This document was signed electronically on{" "}
-                  <strong className="text-[#0A2540]">{formatDateTime(data!.signedAt)}</strong>
-                  {data!.signerName && (
-                    <> by <strong className="text-[#0A2540]">{data!.signerName}</strong></>
-                  )}.
-                </span>
-              </div>
-            </div>
-          ) : (
-            <p className="text-sm text-muted-foreground">No signature on file.</p>
-          )}
         </div>
       </div>
     </PortalLayout>
