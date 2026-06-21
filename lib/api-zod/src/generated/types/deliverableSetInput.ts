@@ -9,4 +9,5 @@
 export interface DeliverableSetInput {
   title: string;
   deliverables?: string[];
+  category?: string;
 }

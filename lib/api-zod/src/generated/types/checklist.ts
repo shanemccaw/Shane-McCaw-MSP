@@ -11,6 +11,7 @@ export interface Checklist {
   id: number;
   title: string;
   items: ChecklistItem[];
+  category: string;
   createdAt: Date;
   updatedAt: Date;
 }

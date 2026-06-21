@@ -8,4 +8,5 @@
 
 export type ListChecklistsParams = {
 q?: string;
+category?: string;
 };

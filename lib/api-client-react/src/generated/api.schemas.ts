@@ -253,12 +253,23 @@ export interface CreateDomainRuleInput {
   userId: number;
 }
 
+export interface AssetLibraryCategory {
+  id: number;
+  name: string;
+  createdAt: string;
+}
+
+export interface AssetLibraryCategoryInput {
+  name: string;
+}
+
 export interface InstructionSet {
   id: number;
   title: string;
   /** @nullable */
   description?: string | null;
   instructions: string[];
+  category: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -267,6 +278,7 @@ export interface InstructionSetInput {
   title: string;
   description?: string;
   instructions?: string[];
+  category?: string;
 }
 
 export interface ChecklistItem {
@@ -278,6 +290,7 @@ export interface Checklist {
   id: number;
   title: string;
   items: ChecklistItem[];
+  category: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -285,12 +298,14 @@ export interface Checklist {
 export interface ChecklistInput {
   title: string;
   items?: ChecklistItem[];
+  category?: string;
 }
 
 export interface ArtifactSet {
   id: number;
   title: string;
   artifacts: string[];
+  category: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -298,12 +313,14 @@ export interface ArtifactSet {
 export interface ArtifactSetInput {
   title: string;
   artifacts?: string[];
+  category?: string;
 }
 
 export interface DeliverableSet {
   id: number;
   title: string;
   deliverables: string[];
+  category: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -311,22 +328,27 @@ export interface DeliverableSet {
 export interface DeliverableSetInput {
   title: string;
   deliverables?: string[];
+  category?: string;
 }
 
 export type ListInstructionSetsParams = {
 q?: string;
+category?: string;
 };
 
 export type ListChecklistsParams = {
 q?: string;
+category?: string;
 };
 
 export type ListArtifactSetsParams = {
 q?: string;
+category?: string;
 };
 
 export type ListDeliverableSetsParams = {
 q?: string;
+category?: string;
 };
 
 export type ListPublicServicesParams = {

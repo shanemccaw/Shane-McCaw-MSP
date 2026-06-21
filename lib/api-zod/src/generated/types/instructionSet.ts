@@ -12,6 +12,7 @@ export interface InstructionSet {
   /** @nullable */
   description?: string | null;
   instructions: string[];
+  category: string;
   createdAt: Date;
   updatedAt: Date;
 }

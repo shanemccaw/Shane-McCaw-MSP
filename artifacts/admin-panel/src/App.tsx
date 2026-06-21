@@ -34,6 +34,7 @@ import InstructionSetsPage from "@/pages/asset-library/InstructionSetsPage";
 import ChecklistsPage from "@/pages/asset-library/ChecklistsPage";
 import ArtifactSetsPage from "@/pages/asset-library/ArtifactSetsPage";
 import DeliverableSetsPage from "@/pages/asset-library/DeliverableSetsPage";
+import CategoriesPage from "@/pages/asset-library/CategoriesPage";
 import type { ReactNode } from "react";
 
 const queryClient = new QueryClient({
@@ -194,6 +195,9 @@ function Router() {
       </Route>
       <Route path="/asset-library/deliverable-sets">
         <RequireAdmin><DashboardShell><DeliverableSetsPage /></DashboardShell></RequireAdmin>
+      </Route>
+      <Route path="/asset-library/categories">
+        <RequireAdmin><DashboardShell><CategoriesPage /></DashboardShell></RequireAdmin>
       </Route>
 
       <Route>

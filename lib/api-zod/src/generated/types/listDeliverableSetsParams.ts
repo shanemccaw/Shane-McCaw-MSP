@@ -8,4 +8,5 @@
 
 export type ListDeliverableSetsParams = {
 q?: string;
+category?: string;
 };

@@ -22,6 +22,8 @@ import type {
 import type {
   ArtifactSet,
   ArtifactSetInput,
+  AssetLibraryCategory,
+  AssetLibraryCategoryInput,
   AssignEmailInput,
   AuthResponse,
   Checklist,
@@ -355,6 +357,296 @@ export const useAuthLogout = <TError = ErrorType<unknown>,
         TContext
       > => {
       return useMutation(getAuthLogoutMutationOptions(options));
+    }
+
+export const getListAssetLibraryCategoriesUrl = () => {
+
+
+
+
+  return `/api/admin/asset-library/categories`
+}
+
+/**
+ * @summary List asset library categories
+ */
+export const listAssetLibraryCategories = async ( options?: RequestInit): Promise<AssetLibraryCategory[]> => {
+
+  return customFetch<AssetLibraryCategory[]>(getListAssetLibraryCategoriesUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListAssetLibraryCategoriesQueryKey = () => {
+    return [
+    `/api/admin/asset-library/categories`
+    ] as const;
+    }
+
+
+export const getListAssetLibraryCategoriesQueryOptions = <TData = Awaited<ReturnType<typeof listAssetLibraryCategories>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listAssetLibraryCategories>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListAssetLibraryCategoriesQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listAssetLibraryCategories>>> = ({ signal }) => listAssetLibraryCategories({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listAssetLibraryCategories>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListAssetLibraryCategoriesQueryResult = NonNullable<Awaited<ReturnType<typeof listAssetLibraryCategories>>>
+export type ListAssetLibraryCategoriesQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List asset library categories
+ */
+
+export function useListAssetLibraryCategories<TData = Awaited<ReturnType<typeof listAssetLibraryCategories>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listAssetLibraryCategories>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListAssetLibraryCategoriesQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getCreateAssetLibraryCategoryUrl = () => {
+
+
+
+
+  return `/api/admin/asset-library/categories`
+}
+
+/**
+ * @summary Create a category
+ */
+export const createAssetLibraryCategory = async (assetLibraryCategoryInput: AssetLibraryCategoryInput, options?: RequestInit): Promise<AssetLibraryCategory> => {
+
+  return customFetch<AssetLibraryCategory>(getCreateAssetLibraryCategoryUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      assetLibraryCategoryInput,)
+  }
+);}
+
+
+
+
+export const getCreateAssetLibraryCategoryMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createAssetLibraryCategory>>, TError,{data: BodyType<AssetLibraryCategoryInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createAssetLibraryCategory>>, TError,{data: BodyType<AssetLibraryCategoryInput>}, TContext> => {
+
+const mutationKey = ['createAssetLibraryCategory'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createAssetLibraryCategory>>, {data: BodyType<AssetLibraryCategoryInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  createAssetLibraryCategory(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateAssetLibraryCategoryMutationResult = NonNullable<Awaited<ReturnType<typeof createAssetLibraryCategory>>>
+    export type CreateAssetLibraryCategoryMutationBody = BodyType<AssetLibraryCategoryInput>
+    export type CreateAssetLibraryCategoryMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Create a category
+ */
+export const useCreateAssetLibraryCategory = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createAssetLibraryCategory>>, TError,{data: BodyType<AssetLibraryCategoryInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createAssetLibraryCategory>>,
+        TError,
+        {data: BodyType<AssetLibraryCategoryInput>},
+        TContext
+      > => {
+      return useMutation(getCreateAssetLibraryCategoryMutationOptions(options));
+    }
+
+export const getUpdateAssetLibraryCategoryUrl = (id: number,) => {
+
+
+
+
+  return `/api/admin/asset-library/categories/${id}`
+}
+
+/**
+ * @summary Rename a category (propagates to all assets)
+ */
+export const updateAssetLibraryCategory = async (id: number,
+    assetLibraryCategoryInput: AssetLibraryCategoryInput, options?: RequestInit): Promise<AssetLibraryCategory> => {
+
+  return customFetch<AssetLibraryCategory>(getUpdateAssetLibraryCategoryUrl(id),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      assetLibraryCategoryInput,)
+  }
+);}
+
+
+
+
+export const getUpdateAssetLibraryCategoryMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateAssetLibraryCategory>>, TError,{id: number;data: BodyType<AssetLibraryCategoryInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateAssetLibraryCategory>>, TError,{id: number;data: BodyType<AssetLibraryCategoryInput>}, TContext> => {
+
+const mutationKey = ['updateAssetLibraryCategory'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateAssetLibraryCategory>>, {id: number;data: BodyType<AssetLibraryCategoryInput>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  updateAssetLibraryCategory(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateAssetLibraryCategoryMutationResult = NonNullable<Awaited<ReturnType<typeof updateAssetLibraryCategory>>>
+    export type UpdateAssetLibraryCategoryMutationBody = BodyType<AssetLibraryCategoryInput>
+    export type UpdateAssetLibraryCategoryMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Rename a category (propagates to all assets)
+ */
+export const useUpdateAssetLibraryCategory = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateAssetLibraryCategory>>, TError,{id: number;data: BodyType<AssetLibraryCategoryInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateAssetLibraryCategory>>,
+        TError,
+        {id: number;data: BodyType<AssetLibraryCategoryInput>},
+        TContext
+      > => {
+      return useMutation(getUpdateAssetLibraryCategoryMutationOptions(options));
+    }
+
+export const getDeleteAssetLibraryCategoryUrl = (id: number,) => {
+
+
+
+
+  return `/api/admin/asset-library/categories/${id}`
+}
+
+/**
+ * @summary Delete a category (only if no assets use it)
+ */
+export const deleteAssetLibraryCategory = async (id: number, options?: RequestInit): Promise<SuccessResponse> => {
+
+  return customFetch<SuccessResponse>(getDeleteAssetLibraryCategoryUrl(id),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+export const getDeleteAssetLibraryCategoryMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteAssetLibraryCategory>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteAssetLibraryCategory>>, TError,{id: number}, TContext> => {
+
+const mutationKey = ['deleteAssetLibraryCategory'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteAssetLibraryCategory>>, {id: number}> = (props) => {
+          const {id} = props ?? {};
+
+          return  deleteAssetLibraryCategory(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeleteAssetLibraryCategoryMutationResult = NonNullable<Awaited<ReturnType<typeof deleteAssetLibraryCategory>>>
+
+    export type DeleteAssetLibraryCategoryMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Delete a category (only if no assets use it)
+ */
+export const useDeleteAssetLibraryCategory = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteAssetLibraryCategory>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof deleteAssetLibraryCategory>>,
+        TError,
+        {id: number},
+        TContext
+      > => {
+      return useMutation(getDeleteAssetLibraryCategoryMutationOptions(options));
     }
 
 export const getListInstructionSetsUrl = (params?: ListInstructionSetsParams,) => {

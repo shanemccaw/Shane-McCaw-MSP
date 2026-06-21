@@ -524,11 +524,22 @@ export type InsertAuditLog = typeof auditLogsTable.$inferInsert;
 export type AuditLog = typeof auditLogsTable.$inferSelect;
 
 // Asset Library — reusable workflow building blocks
+
+export const assetLibraryCategoriesTable = pgTable("asset_library_categories", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull().unique(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export type InsertAssetLibraryCategory = typeof assetLibraryCategoriesTable.$inferInsert;
+export type AssetLibraryCategory = typeof assetLibraryCategoriesTable.$inferSelect;
+
 export const instructionSetsTable = pgTable("instruction_sets", {
   id: serial("id").primaryKey(),
   title: text("title").notNull(),
   description: text("description"),
   instructions: jsonb("instructions").$type<string[]>().notNull().default([]),
+  category: text("category").notNull().default("Generic"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
@@ -540,6 +551,7 @@ export const checklistsTable = pgTable("checklists", {
   id: serial("id").primaryKey(),
   title: text("title").notNull(),
   items: jsonb("items").$type<Array<{ id: string; label: string }>>().notNull().default([]),
+  category: text("category").notNull().default("Generic"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
@@ -551,6 +563,7 @@ export const artifactSetsTable = pgTable("artifact_sets", {
   id: serial("id").primaryKey(),
   title: text("title").notNull(),
   artifacts: jsonb("artifacts").$type<string[]>().notNull().default([]),
+  category: text("category").notNull().default("Generic"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
@@ -562,6 +575,7 @@ export const deliverableSetsTable = pgTable("deliverable_sets", {
   id: serial("id").primaryKey(),
   title: text("title").notNull(),
   deliverables: jsonb("deliverables").$type<string[]>().notNull().default([]),
+  category: text("category").notNull().default("Generic"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });

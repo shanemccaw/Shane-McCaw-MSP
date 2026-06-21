@@ -6,7 +6,6 @@
  * OpenAPI spec version: 0.1.0
  */
 
-export type ListInstructionSetsParams = {
-q?: string;
-category?: string;
-};
+export interface AssetLibraryCategoryInput {
+  name: string;
+}

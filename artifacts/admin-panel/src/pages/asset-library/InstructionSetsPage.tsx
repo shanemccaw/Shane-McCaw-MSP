@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { z } from "zod";
 import { useToast } from "@/hooks/use-toast";
@@ -8,11 +8,14 @@ import {
   useCreateInstructionSet,
   useUpdateInstructionSet,
   useDeleteInstructionSet,
+  useListAssetLibraryCategories,
+  useCreateAssetLibraryCategory,
   getListInstructionSetsQueryKey,
+  getListAssetLibraryCategoriesQueryKey,
   type InstructionSet,
   type InstructionSetInput,
 } from "@workspace/api-client-react";
-import { Plus, Pencil, Trash2, Download, Upload, Search, X, ChevronUp, ChevronDown } from "lucide-react";
+import { Plus, Pencil, Trash2, Download, Upload, Search, X, ChevronUp, ChevronDown, Tag } from "lucide-react";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
@@ -61,6 +64,70 @@ function StringListEditor({ label, items, onChange, placeholder }: {
   );
 }
 
+function CategoryPicker({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const queryClient = useQueryClient();
+  const { data: cats = [] } = useListAssetLibraryCategories();
+  const createMutation = useCreateAssetLibraryCategory({
+    mutation: {
+      onSuccess: () => queryClient.invalidateQueries({ queryKey: getListAssetLibraryCategoriesQueryKey() }),
+    },
+  });
+  const [showNew, setShowNew] = useState(false);
+  const [newName, setNewName] = useState("");
+
+  const allNames = cats.map(c => c.name);
+  if (!allNames.includes(value) && value) allNames.push(value);
+
+  const handleCreate = async () => {
+    const name = newName.trim();
+    if (!name) return;
+    try {
+      await createMutation.mutateAsync({ data: { name } });
+      onChange(name);
+      setShowNew(false);
+      setNewName("");
+    } catch {
+      /* error toast handled above */
+    }
+  };
+
+  return (
+    <div>
+      <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wide mb-1">Category</label>
+      {!showNew ? (
+        <div className="flex gap-2">
+          <select
+            value={value}
+            onChange={e => {
+              if (e.target.value === "__new__") { setShowNew(true); }
+              else { onChange(e.target.value); }
+            }}
+            className="flex-1 border border-gray-200 rounded px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-[#0078D4] bg-white"
+          >
+            {allNames.map(n => <option key={n} value={n}>{n}</option>)}
+            <option value="__new__">+ New category…</option>
+          </select>
+        </div>
+      ) : (
+        <div className="flex gap-2">
+          <input
+            autoFocus
+            value={newName}
+            onChange={e => setNewName(e.target.value)}
+            onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); void handleCreate(); } if (e.key === "Escape") { setShowNew(false); setNewName(""); } }}
+            placeholder="New category name…"
+            className="flex-1 border border-gray-200 rounded px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-[#0078D4]"
+          />
+          <button type="button" onClick={() => void handleCreate()} disabled={createMutation.isPending || !newName.trim()} className="px-3 py-2 bg-[#0078D4] text-white text-sm rounded hover:bg-[#005fa3] disabled:opacity-50">
+            {createMutation.isPending ? "…" : "Create"}
+          </button>
+          <button type="button" onClick={() => { setShowNew(false); setNewName(""); }} className="px-3 py-2 text-sm text-gray-600 border border-gray-200 rounded hover:bg-gray-50">Cancel</button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function EditorSheet({ record, onClose }: {
   record: Partial<InstructionSet> | null; onClose: () => void;
 }) {
@@ -71,6 +138,7 @@ function EditorSheet({ record, onClose }: {
     title: record?.title ?? "",
     description: record?.description ?? "",
     instructions: record?.instructions ?? ([] as string[]),
+    category: record?.category ?? "Generic",
   });
 
   const invalidate = () => queryClient.invalidateQueries({ queryKey: getListInstructionSetsQueryKey() });
@@ -97,6 +165,7 @@ function EditorSheet({ record, onClose }: {
       title: form.title,
       description: form.description || undefined,
       instructions: form.instructions,
+      category: form.category || "Generic",
     };
     if (isEdit) {
       updateMutation.mutate({ id: (record as InstructionSet).id, data });
@@ -123,6 +192,7 @@ function EditorSheet({ record, onClose }: {
             <textarea value={form.description} onChange={e=>setForm(f=>({...f,description:e.target.value}))} rows={2}
               className="w-full border border-gray-200 rounded px-3 py-2 text-sm resize-none focus:outline-none focus:ring-1 focus:ring-[#0078D4]" placeholder="Optional description" />
           </div>
+          <CategoryPicker value={form.category} onChange={v => setForm(f => ({ ...f, category: v }))} />
           <StringListEditor label="Instructions" items={form.instructions} onChange={v=>setForm(f=>({...f,instructions:v}))} placeholder="Add instruction step…" />
         </div>
         <div className="px-6 py-4 border-t flex justify-end gap-2">
@@ -141,6 +211,7 @@ const InstructionSetImportSchema = z.object({
   title: z.string().min(1, "title is required"),
   description: z.string().optional().nullable(),
   instructions: z.array(z.string(), { invalid_type_error: "instructions must be an array of strings" }).optional(),
+  category: z.string().optional(),
 });
 
 type ImportRecord = z.infer<typeof InstructionSetImportSchema>;
@@ -211,10 +282,10 @@ function JsonImportModal({ onClose, onImported, collection }: {
           <h2 className="font-semibold text-gray-900">JSON Import</h2>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600"><X className="w-5 h-5"/></button>
         </div>
-        <p className="text-sm text-gray-500 mb-3">Paste a single record or an array of records as JSON. Records with an <code className="bg-gray-100 px-1 rounded">id</code> field are updated; without one, a new record is created.</p>
+        <p className="text-sm text-gray-500 mb-3">Paste a single record or an array of records as JSON. Records with an <code className="bg-gray-100 px-1 rounded">id</code> field are updated; without one, a new record is created. Optionally include a <code className="bg-gray-100 px-1 rounded">category</code> field.</p>
         <textarea value={raw} onChange={e=>setRaw(e.target.value)} rows={10} spellCheck={false}
           className="w-full border border-gray-200 rounded px-3 py-2 text-sm font-mono resize-none focus:outline-none focus:ring-1 focus:ring-[#0078D4]"
-          placeholder={'[{"title": "Set A", "instructions": ["Step 1"]}, {"title": "Set B"}]'} />
+          placeholder={'[{"title": "Set A", "category": "Governance", "instructions": ["Step 1"]}, {"title": "Set B"}]'} />
         {errors.length > 0 && (
           <ul className="mt-2 space-y-1 max-h-32 overflow-y-auto">
             {errors.map((e, i) => <li key={i} className="text-sm text-red-600">{e}</li>)}
@@ -246,6 +317,21 @@ export default function InstructionSetsPage() {
   }, [q]);
 
   const { data: rows = [], isLoading } = useListInstructionSets(debouncedQ ? { q: debouncedQ } : undefined);
+
+  const grouped = useMemo(() => {
+    const map = new Map<string, typeof rows>();
+    for (const row of rows) {
+      const cat = row.category ?? "Generic";
+      if (!map.has(cat)) map.set(cat, []);
+      map.get(cat)!.push(row);
+    }
+    const keys = Array.from(map.keys()).sort((a, b) => {
+      if (a === "Generic") return 1;
+      if (b === "Generic") return -1;
+      return a.localeCompare(b);
+    });
+    return keys.map(k => ({ category: k, items: map.get(k)! }));
+  }, [rows]);
 
   const deleteMutation = useDeleteInstructionSet({
     mutation: {
@@ -292,44 +378,55 @@ export default function InstructionSetsPage() {
           <p className="text-sm mt-1">Click "New" to create your first one.</p>
         </div>
       ) : (
-        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-gray-100 bg-gray-50">
-                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide w-12">ID</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Title</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide w-24">Steps</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide w-36">Created</th>
-                <th className="px-4 py-3 w-28"/>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-50">
-              {rows.map(row => (
-                <tr key={row.id} className="hover:bg-gray-50/50">
-                  <td className="px-4 py-3 text-gray-400 font-mono text-xs">#{row.id}</td>
-                  <td className="px-4 py-3">
-                    <div className="font-medium text-gray-900">{row.title}</div>
-                    {row.description && <div className="text-xs text-gray-400 mt-0.5 truncate max-w-sm">{row.description}</div>}
-                  </td>
-                  <td className="px-4 py-3 text-gray-500">{row.instructions.length}</td>
-                  <td className="px-4 py-3 text-gray-400 text-xs">{new Date(row.createdAt).toLocaleDateString()}</td>
-                  <td className="px-4 py-3">
-                    <div className="flex items-center justify-end gap-1">
-                      <button onClick={() => setEditorRecord(row)} className="p-1.5 text-gray-400 hover:text-[#0078D4] rounded" title="Edit">
-                        <Pencil className="w-3.5 h-3.5"/>
-                      </button>
-                      <button onClick={() => exportAsJson(row, `instruction-set-${row.id}.json`)} className="p-1.5 text-gray-400 hover:text-[#0078D4] rounded" title="Export JSON">
-                        <Download className="w-3.5 h-3.5"/>
-                      </button>
-                      <button onClick={() => setDeleteTarget(row)} className="p-1.5 text-gray-400 hover:text-red-500 rounded" title="Delete">
-                        <Trash2 className="w-3.5 h-3.5"/>
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <div className="space-y-6">
+          {grouped.map(group => (
+            <div key={group.category}>
+              <div className="flex items-center gap-2 mb-2">
+                <Tag className="w-3.5 h-3.5 text-gray-400"/>
+                <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">{group.category}</span>
+                <span className="text-xs text-gray-400">({group.items.length})</span>
+              </div>
+              <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-gray-100 bg-gray-50">
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide w-12">ID</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Title</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide w-24">Steps</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide w-36">Created</th>
+                      <th className="px-4 py-3 w-28"/>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-50">
+                    {group.items.map(row => (
+                      <tr key={row.id} className="hover:bg-gray-50/50">
+                        <td className="px-4 py-3 text-gray-400 font-mono text-xs">#{row.id}</td>
+                        <td className="px-4 py-3">
+                          <div className="font-medium text-gray-900">{row.title}</div>
+                          {row.description && <div className="text-xs text-gray-400 mt-0.5 truncate max-w-sm">{row.description}</div>}
+                        </td>
+                        <td className="px-4 py-3 text-gray-500">{row.instructions.length}</td>
+                        <td className="px-4 py-3 text-gray-400 text-xs">{new Date(row.createdAt).toLocaleDateString()}</td>
+                        <td className="px-4 py-3">
+                          <div className="flex items-center justify-end gap-1">
+                            <button onClick={() => setEditorRecord(row)} className="p-1.5 text-gray-400 hover:text-[#0078D4] rounded" title="Edit">
+                              <Pencil className="w-3.5 h-3.5"/>
+                            </button>
+                            <button onClick={() => exportAsJson(row, `instruction-set-${row.id}.json`)} className="p-1.5 text-gray-400 hover:text-[#0078D4] rounded" title="Export JSON">
+                              <Download className="w-3.5 h-3.5"/>
+                            </button>
+                            <button onClick={() => setDeleteTarget(row)} className="p-1.5 text-gray-400 hover:text-red-500 rounded" title="Delete">
+                              <Trash2 className="w-3.5 h-3.5"/>
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          ))}
         </div>
       )}
 

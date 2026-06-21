@@ -1,7 +1,7 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { z } from "zod";
-import { db, instructionSetsTable, checklistsTable, artifactSetsTable, deliverableSetsTable } from "@workspace/db";
-import { eq, ilike, or, desc } from "drizzle-orm";
+import { db, instructionSetsTable, checklistsTable, artifactSetsTable, deliverableSetsTable, assetLibraryCategoriesTable } from "@workspace/db";
+import { eq, ilike, or, desc, asc } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/requireAuth";
 import { createAuditLog } from "../lib/audit";
 
@@ -13,6 +13,7 @@ const InstructionSetInputSchema = z.object({
   title: z.string().min(1, "title is required").max(255),
   description: z.string().max(2000).optional(),
   instructions: z.array(z.string().max(4000)).optional().default([]),
+  category: z.string().min(1).max(255).optional().default("Generic"),
 });
 
 const ChecklistItemSchema = z.object({
@@ -23,16 +24,23 @@ const ChecklistItemSchema = z.object({
 const ChecklistInputSchema = z.object({
   title: z.string().min(1, "title is required").max(255),
   items: z.array(ChecklistItemSchema).optional().default([]),
+  category: z.string().min(1).max(255).optional().default("Generic"),
 });
 
 const ArtifactSetInputSchema = z.object({
   title: z.string().min(1, "title is required").max(255),
   artifacts: z.array(z.string().max(2000)).optional().default([]),
+  category: z.string().min(1).max(255).optional().default("Generic"),
 });
 
 const DeliverableSetInputSchema = z.object({
   title: z.string().min(1, "title is required").max(255),
   deliverables: z.array(z.string().max(2000)).optional().default([]),
+  category: z.string().min(1).max(255).optional().default("Generic"),
+});
+
+const CategoryInputSchema = z.object({
+  name: z.string().min(1, "name is required").max(255),
 });
 
 function validationError(res: Response, error: z.ZodError): void {
@@ -40,16 +48,138 @@ function validationError(res: Response, error: z.ZodError): void {
   res.status(400).json({ error: first?.message ?? "Validation failed", fields: error.errors });
 }
 
+// ─── Asset Library Categories ────────────────────────────────────────────────
+
+router.get("/admin/asset-library/categories", requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const rows = await db.select().from(assetLibraryCategoriesTable).orderBy(asc(assetLibraryCategoriesTable.name));
+    res.json(rows);
+  } catch {
+    res.status(500).json({ error: "Failed to fetch categories" });
+  }
+});
+
+router.post("/admin/asset-library/categories", requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const parsed = CategoryInputSchema.safeParse(req.body);
+    if (!parsed.success) { validationError(res, parsed.error); return; }
+    const name = parsed.data.name.trim();
+    const [created] = await db.insert(assetLibraryCategoriesTable).values({ name }).returning();
+    void createAuditLog({
+      actorUserId: req.user?.id ?? null,
+      actorName: req.user?.email ?? "admin",
+      actorRole: "admin",
+      actionType: "create",
+      entityType: "asset_library_category",
+      entityId: created.id,
+      entityLabel: created.name,
+    });
+    res.status(201).json(created);
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "";
+    if (msg.includes("unique") || msg.includes("duplicate")) {
+      res.status(409).json({ error: "A category with that name already exists" });
+    } else {
+      res.status(500).json({ error: "Failed to create category" });
+    }
+  }
+});
+
+router.put("/admin/asset-library/categories/:id", requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const id = Number(req.params.id);
+    if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
+    const parsed = CategoryInputSchema.safeParse(req.body);
+    if (!parsed.success) { validationError(res, parsed.error); return; }
+    const newName = parsed.data.name.trim();
+
+    const [existing] = await db.select().from(assetLibraryCategoriesTable).where(eq(assetLibraryCategoriesTable.id, id)).limit(1);
+    if (!existing) { res.status(404).json({ error: "Not found" }); return; }
+    const oldName = existing.name;
+
+    const [updated] = await db.update(assetLibraryCategoriesTable).set({ name: newName }).where(eq(assetLibraryCategoriesTable.id, id)).returning();
+    if (!updated) { res.status(404).json({ error: "Not found" }); return; }
+
+    // Propagate rename to all asset tables
+    if (oldName !== newName) {
+      await db.update(instructionSetsTable).set({ category: newName }).where(eq(instructionSetsTable.category, oldName));
+      await db.update(checklistsTable).set({ category: newName }).where(eq(checklistsTable.category, oldName));
+      await db.update(artifactSetsTable).set({ category: newName }).where(eq(artifactSetsTable.category, oldName));
+      await db.update(deliverableSetsTable).set({ category: newName }).where(eq(deliverableSetsTable.category, oldName));
+    }
+
+    void createAuditLog({
+      actorUserId: req.user?.id ?? null,
+      actorName: req.user?.email ?? "admin",
+      actorRole: "admin",
+      actionType: "update",
+      entityType: "asset_library_category",
+      entityId: id,
+      entityLabel: newName,
+      metadata: { oldName },
+    });
+    res.json(updated);
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "";
+    if (msg.includes("unique") || msg.includes("duplicate")) {
+      res.status(409).json({ error: "A category with that name already exists" });
+    } else {
+      res.status(500).json({ error: "Failed to rename category" });
+    }
+  }
+});
+
+router.delete("/admin/asset-library/categories/:id", requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const id = Number(req.params.id);
+    if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
+
+    const [cat] = await db.select().from(assetLibraryCategoriesTable).where(eq(assetLibraryCategoriesTable.id, id)).limit(1);
+    if (!cat) { res.status(404).json({ error: "Not found" }); return; }
+
+    // Check usage across all asset tables
+    const [isBusy] = await Promise.all([
+      db.select({ id: instructionSetsTable.id }).from(instructionSetsTable).where(eq(instructionSetsTable.category, cat.name)).limit(1),
+    ]);
+    const checklistBusy = await db.select({ id: checklistsTable.id }).from(checklistsTable).where(eq(checklistsTable.category, cat.name)).limit(1);
+    const artifactBusy = await db.select({ id: artifactSetsTable.id }).from(artifactSetsTable).where(eq(artifactSetsTable.category, cat.name)).limit(1);
+    const deliverableBusy = await db.select({ id: deliverableSetsTable.id }).from(deliverableSetsTable).where(eq(deliverableSetsTable.category, cat.name)).limit(1);
+
+    if (isBusy.length > 0 || checklistBusy.length > 0 || artifactBusy.length > 0 || deliverableBusy.length > 0) {
+      res.status(409).json({ error: "Cannot delete a category that is still in use by assets. Reassign or delete those assets first." });
+      return;
+    }
+
+    const [deleted] = await db.delete(assetLibraryCategoriesTable).where(eq(assetLibraryCategoriesTable.id, id)).returning();
+    if (!deleted) { res.status(404).json({ error: "Not found" }); return; }
+    void createAuditLog({
+      actorUserId: req.user?.id ?? null,
+      actorName: req.user?.email ?? "admin",
+      actorRole: "admin",
+      actionType: "delete",
+      entityType: "asset_library_category",
+      entityId: id,
+      entityLabel: deleted.name,
+    });
+    res.json({ success: true });
+  } catch {
+    res.status(500).json({ error: "Failed to delete category" });
+  }
+});
+
 // ─── Instruction Sets ────────────────────────────────────────────────────────
 
 router.get("/admin/asset-library/instruction-sets", requireAdmin, async (req: Request, res: Response) => {
   try {
     const q = typeof req.query.q === "string" ? req.query.q.trim() : "";
-    const rows = q
-      ? await db.select().from(instructionSetsTable)
-          .where(or(ilike(instructionSetsTable.title, `%${q}%`), ilike(instructionSetsTable.description, `%${q}%`)))
-          .orderBy(desc(instructionSetsTable.createdAt))
-      : await db.select().from(instructionSetsTable).orderBy(desc(instructionSetsTable.createdAt));
+    const category = typeof req.query.category === "string" ? req.query.category.trim() : "";
+    let query = db.select().from(instructionSetsTable).$dynamic();
+    if (q) {
+      query = query.where(or(ilike(instructionSetsTable.title, `%${q}%`), ilike(instructionSetsTable.description, `%${q}%`)));
+    } else if (category) {
+      query = query.where(eq(instructionSetsTable.category, category));
+    }
+    const rows = await query.orderBy(asc(instructionSetsTable.category), asc(instructionSetsTable.title));
     res.json(rows);
   } catch {
     res.status(500).json({ error: "Failed to fetch instruction sets" });
@@ -86,11 +216,12 @@ router.post("/admin/asset-library/instruction-sets", requireAdmin, async (req: R
   try {
     const parsed = InstructionSetInputSchema.safeParse(req.body);
     if (!parsed.success) { validationError(res, parsed.error); return; }
-    const { title, description, instructions } = parsed.data;
+    const { title, description, instructions, category } = parsed.data;
     const [created] = await db.insert(instructionSetsTable).values({
       title: title.trim(),
       description: description?.trim() || null,
       instructions,
+      category,
     }).returning();
     void createAuditLog({
       actorUserId: req.user?.id ?? null,
@@ -113,11 +244,12 @@ router.put("/admin/asset-library/instruction-sets/:id", requireAdmin, async (req
     if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
     const parsed = InstructionSetInputSchema.safeParse(req.body);
     if (!parsed.success) { validationError(res, parsed.error); return; }
-    const { title, description, instructions } = parsed.data;
+    const { title, description, instructions, category } = parsed.data;
     const [updated] = await db.update(instructionSetsTable).set({
       title: title.trim(),
       description: description?.trim() || null,
       instructions,
+      category,
       updatedAt: new Date(),
     }).where(eq(instructionSetsTable.id, id)).returning();
     if (!updated) { res.status(404).json({ error: "Not found" }); return; }
@@ -162,11 +294,14 @@ router.delete("/admin/asset-library/instruction-sets/:id", requireAdmin, async (
 router.get("/admin/asset-library/checklists", requireAdmin, async (req: Request, res: Response) => {
   try {
     const q = typeof req.query.q === "string" ? req.query.q.trim() : "";
-    const rows = q
-      ? await db.select().from(checklistsTable)
-          .where(ilike(checklistsTable.title, `%${q}%`))
-          .orderBy(desc(checklistsTable.createdAt))
-      : await db.select().from(checklistsTable).orderBy(desc(checklistsTable.createdAt));
+    const category = typeof req.query.category === "string" ? req.query.category.trim() : "";
+    let query = db.select().from(checklistsTable).$dynamic();
+    if (q) {
+      query = query.where(ilike(checklistsTable.title, `%${q}%`));
+    } else if (category) {
+      query = query.where(eq(checklistsTable.category, category));
+    }
+    const rows = await query.orderBy(asc(checklistsTable.category), asc(checklistsTable.title));
     res.json(rows);
   } catch {
     res.status(500).json({ error: "Failed to fetch checklists" });
@@ -203,8 +338,8 @@ router.post("/admin/asset-library/checklists", requireAdmin, async (req: Request
   try {
     const parsed = ChecklistInputSchema.safeParse(req.body);
     if (!parsed.success) { validationError(res, parsed.error); return; }
-    const { title, items } = parsed.data;
-    const [created] = await db.insert(checklistsTable).values({ title: title.trim(), items }).returning();
+    const { title, items, category } = parsed.data;
+    const [created] = await db.insert(checklistsTable).values({ title: title.trim(), items, category }).returning();
     void createAuditLog({
       actorUserId: req.user?.id ?? null,
       actorName: req.user?.email ?? "admin",
@@ -226,8 +361,8 @@ router.put("/admin/asset-library/checklists/:id", requireAdmin, async (req: Requ
     if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
     const parsed = ChecklistInputSchema.safeParse(req.body);
     if (!parsed.success) { validationError(res, parsed.error); return; }
-    const { title, items } = parsed.data;
-    const [updated] = await db.update(checklistsTable).set({ title: title.trim(), items, updatedAt: new Date() })
+    const { title, items, category } = parsed.data;
+    const [updated] = await db.update(checklistsTable).set({ title: title.trim(), items, category, updatedAt: new Date() })
       .where(eq(checklistsTable.id, id)).returning();
     if (!updated) { res.status(404).json({ error: "Not found" }); return; }
     void createAuditLog({
@@ -271,11 +406,14 @@ router.delete("/admin/asset-library/checklists/:id", requireAdmin, async (req: R
 router.get("/admin/asset-library/artifact-sets", requireAdmin, async (req: Request, res: Response) => {
   try {
     const q = typeof req.query.q === "string" ? req.query.q.trim() : "";
-    const rows = q
-      ? await db.select().from(artifactSetsTable)
-          .where(ilike(artifactSetsTable.title, `%${q}%`))
-          .orderBy(desc(artifactSetsTable.createdAt))
-      : await db.select().from(artifactSetsTable).orderBy(desc(artifactSetsTable.createdAt));
+    const category = typeof req.query.category === "string" ? req.query.category.trim() : "";
+    let query = db.select().from(artifactSetsTable).$dynamic();
+    if (q) {
+      query = query.where(ilike(artifactSetsTable.title, `%${q}%`));
+    } else if (category) {
+      query = query.where(eq(artifactSetsTable.category, category));
+    }
+    const rows = await query.orderBy(asc(artifactSetsTable.category), asc(artifactSetsTable.title));
     res.json(rows);
   } catch {
     res.status(500).json({ error: "Failed to fetch artifact sets" });
@@ -312,8 +450,8 @@ router.post("/admin/asset-library/artifact-sets", requireAdmin, async (req: Requ
   try {
     const parsed = ArtifactSetInputSchema.safeParse(req.body);
     if (!parsed.success) { validationError(res, parsed.error); return; }
-    const { title, artifacts } = parsed.data;
-    const [created] = await db.insert(artifactSetsTable).values({ title: title.trim(), artifacts }).returning();
+    const { title, artifacts, category } = parsed.data;
+    const [created] = await db.insert(artifactSetsTable).values({ title: title.trim(), artifacts, category }).returning();
     void createAuditLog({
       actorUserId: req.user?.id ?? null,
       actorName: req.user?.email ?? "admin",
@@ -335,8 +473,8 @@ router.put("/admin/asset-library/artifact-sets/:id", requireAdmin, async (req: R
     if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
     const parsed = ArtifactSetInputSchema.safeParse(req.body);
     if (!parsed.success) { validationError(res, parsed.error); return; }
-    const { title, artifacts } = parsed.data;
-    const [updated] = await db.update(artifactSetsTable).set({ title: title.trim(), artifacts, updatedAt: new Date() })
+    const { title, artifacts, category } = parsed.data;
+    const [updated] = await db.update(artifactSetsTable).set({ title: title.trim(), artifacts, category, updatedAt: new Date() })
       .where(eq(artifactSetsTable.id, id)).returning();
     if (!updated) { res.status(404).json({ error: "Not found" }); return; }
     void createAuditLog({
@@ -380,11 +518,14 @@ router.delete("/admin/asset-library/artifact-sets/:id", requireAdmin, async (req
 router.get("/admin/asset-library/deliverable-sets", requireAdmin, async (req: Request, res: Response) => {
   try {
     const q = typeof req.query.q === "string" ? req.query.q.trim() : "";
-    const rows = q
-      ? await db.select().from(deliverableSetsTable)
-          .where(ilike(deliverableSetsTable.title, `%${q}%`))
-          .orderBy(desc(deliverableSetsTable.createdAt))
-      : await db.select().from(deliverableSetsTable).orderBy(desc(deliverableSetsTable.createdAt));
+    const category = typeof req.query.category === "string" ? req.query.category.trim() : "";
+    let query = db.select().from(deliverableSetsTable).$dynamic();
+    if (q) {
+      query = query.where(ilike(deliverableSetsTable.title, `%${q}%`));
+    } else if (category) {
+      query = query.where(eq(deliverableSetsTable.category, category));
+    }
+    const rows = await query.orderBy(asc(deliverableSetsTable.category), asc(deliverableSetsTable.title));
     res.json(rows);
   } catch {
     res.status(500).json({ error: "Failed to fetch deliverable sets" });
@@ -421,8 +562,8 @@ router.post("/admin/asset-library/deliverable-sets", requireAdmin, async (req: R
   try {
     const parsed = DeliverableSetInputSchema.safeParse(req.body);
     if (!parsed.success) { validationError(res, parsed.error); return; }
-    const { title, deliverables } = parsed.data;
-    const [created] = await db.insert(deliverableSetsTable).values({ title: title.trim(), deliverables }).returning();
+    const { title, deliverables, category } = parsed.data;
+    const [created] = await db.insert(deliverableSetsTable).values({ title: title.trim(), deliverables, category }).returning();
     void createAuditLog({
       actorUserId: req.user?.id ?? null,
       actorName: req.user?.email ?? "admin",
@@ -444,8 +585,8 @@ router.put("/admin/asset-library/deliverable-sets/:id", requireAdmin, async (req
     if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
     const parsed = DeliverableSetInputSchema.safeParse(req.body);
     if (!parsed.success) { validationError(res, parsed.error); return; }
-    const { title, deliverables } = parsed.data;
-    const [updated] = await db.update(deliverableSetsTable).set({ title: title.trim(), deliverables, updatedAt: new Date() })
+    const { title, deliverables, category } = parsed.data;
+    const [updated] = await db.update(deliverableSetsTable).set({ title: title.trim(), deliverables, category, updatedAt: new Date() })
       .where(eq(deliverableSetsTable.id, id)).returning();
     if (!updated) { res.status(404).json({ error: "Not found" }); return; }
     void createAuditLog({

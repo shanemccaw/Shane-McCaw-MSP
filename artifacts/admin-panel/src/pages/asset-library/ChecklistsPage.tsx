@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { z } from "zod";
 import { useToast } from "@/hooks/use-toast";
@@ -8,11 +8,14 @@ import {
   useCreateChecklist,
   useUpdateChecklist,
   useDeleteChecklist,
+  useListAssetLibraryCategories,
+  useCreateAssetLibraryCategory,
   getListChecklistsQueryKey,
+  getListAssetLibraryCategoriesQueryKey,
   type Checklist,
   type ChecklistInput,
 } from "@workspace/api-client-react";
-import { Plus, Pencil, Trash2, Download, Upload, Search, X } from "lucide-react";
+import { Plus, Pencil, Trash2, Download, Upload, Search, X, Tag } from "lucide-react";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
@@ -53,6 +56,56 @@ function ChecklistItemsEditor({ items, onChange }: { items: ChecklistItem[]; onC
   );
 }
 
+function CategoryPicker({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const queryClient = useQueryClient();
+  const { data: cats = [] } = useListAssetLibraryCategories();
+  const createMutation = useCreateAssetLibraryCategory({
+    mutation: {
+      onSuccess: () => queryClient.invalidateQueries({ queryKey: getListAssetLibraryCategoriesQueryKey() }),
+    },
+  });
+  const [showNew, setShowNew] = useState(false);
+  const [newName, setNewName] = useState("");
+
+  const allNames = cats.map(c => c.name);
+  if (!allNames.includes(value) && value) allNames.push(value);
+
+  const handleCreate = async () => {
+    const name = newName.trim();
+    if (!name) return;
+    try {
+      await createMutation.mutateAsync({ data: { name } });
+      onChange(name);
+      setShowNew(false);
+      setNewName("");
+    } catch { /* noop */ }
+  };
+
+  return (
+    <div>
+      <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wide mb-1">Category</label>
+      {!showNew ? (
+        <select
+          value={value}
+          onChange={e => { if (e.target.value === "__new__") setShowNew(true); else onChange(e.target.value); }}
+          className="w-full border border-gray-200 rounded px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-[#0078D4] bg-white"
+        >
+          {allNames.map(n => <option key={n} value={n}>{n}</option>)}
+          <option value="__new__">+ New category…</option>
+        </select>
+      ) : (
+        <div className="flex gap-2">
+          <input autoFocus value={newName} onChange={e => setNewName(e.target.value)}
+            onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); void handleCreate(); } if (e.key === "Escape") { setShowNew(false); setNewName(""); } }}
+            placeholder="New category name…" className="flex-1 border border-gray-200 rounded px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-[#0078D4]" />
+          <button type="button" onClick={() => void handleCreate()} disabled={createMutation.isPending || !newName.trim()} className="px-3 py-2 bg-[#0078D4] text-white text-sm rounded hover:bg-[#005fa3] disabled:opacity-50">{createMutation.isPending ? "…" : "Create"}</button>
+          <button type="button" onClick={() => { setShowNew(false); setNewName(""); }} className="px-3 py-2 text-sm text-gray-600 border border-gray-200 rounded hover:bg-gray-50">Cancel</button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function EditorSheet({ record, onClose }: {
   record: Partial<Checklist> | null; onClose: () => void;
 }) {
@@ -62,6 +115,7 @@ function EditorSheet({ record, onClose }: {
   const [form, setForm] = useState({
     title: record?.title ?? "",
     items: (record?.items ?? []) as ChecklistItem[],
+    category: record?.category ?? "Generic",
   });
 
   const invalidate = () => queryClient.invalidateQueries({ queryKey: getListChecklistsQueryKey() });
@@ -84,7 +138,7 @@ function EditorSheet({ record, onClose }: {
 
   const save = () => {
     if (!form.title.trim()) { toast({ title: "Title is required", variant: "destructive" }); return; }
-    const data: ChecklistInput = { title: form.title, items: form.items };
+    const data: ChecklistInput = { title: form.title, items: form.items, category: form.category || "Generic" };
     if (isEdit) {
       updateMutation.mutate({ id: (record as Checklist).id, data });
     } else {
@@ -105,6 +159,7 @@ function EditorSheet({ record, onClose }: {
             <input value={form.title} onChange={e=>setForm(f=>({...f,title:e.target.value}))}
               className="w-full border border-gray-200 rounded px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-[#0078D4]" placeholder="e.g. SharePoint Migration Checklist" />
           </div>
+          <CategoryPicker value={form.category} onChange={v => setForm(f => ({ ...f, category: v }))} />
           <ChecklistItemsEditor items={form.items} onChange={v=>setForm(f=>({...f,items:v}))} />
         </div>
         <div className="px-6 py-4 border-t flex justify-end gap-2">
@@ -125,6 +180,7 @@ const ChecklistImportSchema = z.object({
     z.object({ id: z.string().min(1, "item id must be a non-empty string"), label: z.string().min(1, "item label must be a non-empty string") }),
     { invalid_type_error: "items must be an array of {id, label} objects" }
   ).optional(),
+  category: z.string().optional(),
 });
 
 type ImportRecord = z.infer<typeof ChecklistImportSchema>;
@@ -193,10 +249,10 @@ function JsonImportModal({ onClose, onImported }: { onClose: () => void; onImpor
           <h2 className="font-semibold text-gray-900">JSON Import</h2>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600"><X className="w-5 h-5"/></button>
         </div>
-        <p className="text-sm text-gray-500 mb-3">Paste a single record or an array of records as JSON. Records with an <code className="bg-gray-100 px-1 rounded">id</code> field are updated; without one, a new record is created.</p>
+        <p className="text-sm text-gray-500 mb-3">Paste a single record or an array of records as JSON. Records with an <code className="bg-gray-100 px-1 rounded">id</code> field are updated; without one, a new record is created. Optionally include a <code className="bg-gray-100 px-1 rounded">category</code> field.</p>
         <textarea value={raw} onChange={e=>setRaw(e.target.value)} rows={10} spellCheck={false}
           className="w-full border border-gray-200 rounded px-3 py-2 text-sm font-mono resize-none focus:outline-none focus:ring-1 focus:ring-[#0078D4]"
-          placeholder={'[{"title": "Checklist A", "items": [{"id": "1", "label": "Item 1"}]}, {"title": "Checklist B"}]'} />
+          placeholder={'[{"title": "Checklist A", "category": "Migration", "items": [{"id": "1", "label": "Item 1"}]}]'} />
         {errors.length > 0 && (
           <ul className="mt-2 space-y-1 max-h-32 overflow-y-auto">
             {errors.map((e, i) => <li key={i} className="text-sm text-red-600">{e}</li>)}
@@ -228,6 +284,21 @@ export default function ChecklistsPage() {
   }, [q]);
 
   const { data: rows = [], isLoading } = useListChecklists(debouncedQ ? { q: debouncedQ } : undefined);
+
+  const grouped = useMemo(() => {
+    const map = new Map<string, typeof rows>();
+    for (const row of rows) {
+      const cat = row.category ?? "Generic";
+      if (!map.has(cat)) map.set(cat, []);
+      map.get(cat)!.push(row);
+    }
+    const keys = Array.from(map.keys()).sort((a, b) => {
+      if (a === "Generic") return 1;
+      if (b === "Generic") return -1;
+      return a.localeCompare(b);
+    });
+    return keys.map(k => ({ category: k, items: map.get(k)! }));
+  }, [rows]);
 
   const deleteMutation = useDeleteChecklist({
     mutation: {
@@ -274,35 +345,46 @@ export default function ChecklistsPage() {
           <p className="text-sm mt-1">Click "New" to create your first one.</p>
         </div>
       ) : (
-        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-gray-100 bg-gray-50">
-                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide w-12">ID</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Title</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide w-24">Items</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide w-36">Created</th>
-                <th className="px-4 py-3 w-28"/>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-50">
-              {rows.map(row => (
-                <tr key={row.id} className="hover:bg-gray-50/50">
-                  <td className="px-4 py-3 text-gray-400 font-mono text-xs">#{row.id}</td>
-                  <td className="px-4 py-3 font-medium text-gray-900">{row.title}</td>
-                  <td className="px-4 py-3 text-gray-500">{row.items.length}</td>
-                  <td className="px-4 py-3 text-gray-400 text-xs">{new Date(row.createdAt).toLocaleDateString()}</td>
-                  <td className="px-4 py-3">
-                    <div className="flex items-center justify-end gap-1">
-                      <button onClick={() => setEditorRecord(row)} className="p-1.5 text-gray-400 hover:text-[#0078D4] rounded" title="Edit"><Pencil className="w-3.5 h-3.5"/></button>
-                      <button onClick={() => exportAsJson(row, `checklist-${row.id}.json`)} className="p-1.5 text-gray-400 hover:text-[#0078D4] rounded" title="Export JSON"><Download className="w-3.5 h-3.5"/></button>
-                      <button onClick={() => setDeleteTarget(row)} className="p-1.5 text-gray-400 hover:text-red-500 rounded" title="Delete"><Trash2 className="w-3.5 h-3.5"/></button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <div className="space-y-6">
+          {grouped.map(group => (
+            <div key={group.category}>
+              <div className="flex items-center gap-2 mb-2">
+                <Tag className="w-3.5 h-3.5 text-gray-400"/>
+                <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">{group.category}</span>
+                <span className="text-xs text-gray-400">({group.items.length})</span>
+              </div>
+              <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-gray-100 bg-gray-50">
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide w-12">ID</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Title</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide w-24">Items</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide w-36">Created</th>
+                      <th className="px-4 py-3 w-28"/>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-50">
+                    {group.items.map(row => (
+                      <tr key={row.id} className="hover:bg-gray-50/50">
+                        <td className="px-4 py-3 text-gray-400 font-mono text-xs">#{row.id}</td>
+                        <td className="px-4 py-3 font-medium text-gray-900">{row.title}</td>
+                        <td className="px-4 py-3 text-gray-500">{row.items.length}</td>
+                        <td className="px-4 py-3 text-gray-400 text-xs">{new Date(row.createdAt).toLocaleDateString()}</td>
+                        <td className="px-4 py-3">
+                          <div className="flex items-center justify-end gap-1">
+                            <button onClick={() => setEditorRecord(row)} className="p-1.5 text-gray-400 hover:text-[#0078D4] rounded" title="Edit"><Pencil className="w-3.5 h-3.5"/></button>
+                            <button onClick={() => exportAsJson(row, `checklist-${row.id}.json`)} className="p-1.5 text-gray-400 hover:text-[#0078D4] rounded" title="Export JSON"><Download className="w-3.5 h-3.5"/></button>
+                            <button onClick={() => setDeleteTarget(row)} className="p-1.5 text-gray-400 hover:text-red-500 rounded" title="Delete"><Trash2 className="w-3.5 h-3.5"/></button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          ))}
         </div>
       )}
 

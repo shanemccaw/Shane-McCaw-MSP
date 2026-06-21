@@ -10,4 +10,5 @@ import type { ChecklistItem } from './checklistItem';
 export interface ChecklistInput {
   title: string;
   items?: ChecklistItem[];
+  category?: string;
 }

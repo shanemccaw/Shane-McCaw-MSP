@@ -10,4 +10,5 @@ export interface InstructionSetInput {
   title: string;
   description?: string;
   instructions?: string[];
+  category?: string;
 }

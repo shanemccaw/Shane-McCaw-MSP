@@ -8,6 +8,8 @@
 
 export * from './artifactSet';
 export * from './artifactSetInput';
+export * from './assetLibraryCategory';
+export * from './assetLibraryCategoryInput';
 export * from './assignEmailInput';
 export * from './authResponse';
 export * from './authUser';

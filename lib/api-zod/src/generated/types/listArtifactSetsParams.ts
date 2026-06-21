@@ -8,4 +8,5 @@
 
 export type ListArtifactSetsParams = {
 q?: string;
+category?: string;
 };

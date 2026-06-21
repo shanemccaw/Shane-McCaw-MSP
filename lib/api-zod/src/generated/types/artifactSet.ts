@@ -10,6 +10,7 @@ export interface ArtifactSet {
   id: number;
   title: string;
   artifacts: string[];
+  category: string;
   createdAt: Date;
   updatedAt: Date;
 }

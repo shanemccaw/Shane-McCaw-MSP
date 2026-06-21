@@ -60,10 +60,60 @@ export const AuthLogoutResponse = zod.object({
 
 
 /**
+ * @summary List asset library categories
+ */
+export const ListAssetLibraryCategoriesResponseItem = zod.object({
+  "id": zod.number(),
+  "name": zod.string(),
+  "createdAt": zod.coerce.date()
+})
+export const ListAssetLibraryCategoriesResponse = zod.array(ListAssetLibraryCategoriesResponseItem)
+
+
+/**
+ * @summary Create a category
+ */
+export const CreateAssetLibraryCategoryBody = zod.object({
+  "name": zod.string()
+})
+
+
+/**
+ * @summary Rename a category (propagates to all assets)
+ */
+export const UpdateAssetLibraryCategoryParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const UpdateAssetLibraryCategoryBody = zod.object({
+  "name": zod.string()
+})
+
+export const UpdateAssetLibraryCategoryResponse = zod.object({
+  "id": zod.number(),
+  "name": zod.string(),
+  "createdAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Delete a category (only if no assets use it)
+ */
+export const DeleteAssetLibraryCategoryParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const DeleteAssetLibraryCategoryResponse = zod.object({
+  "success": zod.boolean()
+})
+
+
+/**
  * @summary List instruction sets
  */
 export const ListInstructionSetsQueryParams = zod.object({
-  "q": zod.coerce.string().optional()
+  "q": zod.coerce.string().optional(),
+  "category": zod.coerce.string().optional()
 })
 
 export const ListInstructionSetsResponseItem = zod.object({
@@ -71,6 +121,7 @@ export const ListInstructionSetsResponseItem = zod.object({
   "title": zod.string(),
   "description": zod.string().nullish(),
   "instructions": zod.array(zod.string()),
+  "category": zod.string(),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })
@@ -83,7 +134,8 @@ export const ListInstructionSetsResponse = zod.array(ListInstructionSetsResponse
 export const CreateInstructionSetBody = zod.object({
   "title": zod.string(),
   "description": zod.string().optional(),
-  "instructions": zod.array(zod.string()).optional()
+  "instructions": zod.array(zod.string()).optional(),
+  "category": zod.string().optional()
 })
 
 
@@ -99,6 +151,7 @@ export const GetInstructionSetResponse = zod.object({
   "title": zod.string(),
   "description": zod.string().nullish(),
   "instructions": zod.array(zod.string()),
+  "category": zod.string(),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })
@@ -114,7 +167,8 @@ export const UpdateInstructionSetParams = zod.object({
 export const UpdateInstructionSetBody = zod.object({
   "title": zod.string(),
   "description": zod.string().optional(),
-  "instructions": zod.array(zod.string()).optional()
+  "instructions": zod.array(zod.string()).optional(),
+  "category": zod.string().optional()
 })
 
 export const UpdateInstructionSetResponse = zod.object({
@@ -122,6 +176,7 @@ export const UpdateInstructionSetResponse = zod.object({
   "title": zod.string(),
   "description": zod.string().nullish(),
   "instructions": zod.array(zod.string()),
+  "category": zod.string(),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })
@@ -143,7 +198,8 @@ export const DeleteInstructionSetResponse = zod.object({
  * @summary List checklists
  */
 export const ListChecklistsQueryParams = zod.object({
-  "q": zod.coerce.string().optional()
+  "q": zod.coerce.string().optional(),
+  "category": zod.coerce.string().optional()
 })
 
 export const ListChecklistsResponseItem = zod.object({
@@ -153,6 +209,7 @@ export const ListChecklistsResponseItem = zod.object({
   "id": zod.string(),
   "label": zod.string()
 })),
+  "category": zod.string(),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })
@@ -167,7 +224,8 @@ export const CreateChecklistBody = zod.object({
   "items": zod.array(zod.object({
   "id": zod.string(),
   "label": zod.string()
-})).optional()
+})).optional(),
+  "category": zod.string().optional()
 })
 
 
@@ -185,6 +243,7 @@ export const GetChecklistResponse = zod.object({
   "id": zod.string(),
   "label": zod.string()
 })),
+  "category": zod.string(),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })
@@ -202,7 +261,8 @@ export const UpdateChecklistBody = zod.object({
   "items": zod.array(zod.object({
   "id": zod.string(),
   "label": zod.string()
-})).optional()
+})).optional(),
+  "category": zod.string().optional()
 })
 
 export const UpdateChecklistResponse = zod.object({
@@ -212,6 +272,7 @@ export const UpdateChecklistResponse = zod.object({
   "id": zod.string(),
   "label": zod.string()
 })),
+  "category": zod.string(),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })
@@ -233,13 +294,15 @@ export const DeleteChecklistResponse = zod.object({
  * @summary List artifact sets
  */
 export const ListArtifactSetsQueryParams = zod.object({
-  "q": zod.coerce.string().optional()
+  "q": zod.coerce.string().optional(),
+  "category": zod.coerce.string().optional()
 })
 
 export const ListArtifactSetsResponseItem = zod.object({
   "id": zod.number(),
   "title": zod.string(),
   "artifacts": zod.array(zod.string()),
+  "category": zod.string(),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })
@@ -251,7 +314,8 @@ export const ListArtifactSetsResponse = zod.array(ListArtifactSetsResponseItem)
  */
 export const CreateArtifactSetBody = zod.object({
   "title": zod.string(),
-  "artifacts": zod.array(zod.string()).optional()
+  "artifacts": zod.array(zod.string()).optional(),
+  "category": zod.string().optional()
 })
 
 
@@ -266,6 +330,7 @@ export const GetArtifactSetResponse = zod.object({
   "id": zod.number(),
   "title": zod.string(),
   "artifacts": zod.array(zod.string()),
+  "category": zod.string(),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })
@@ -280,13 +345,15 @@ export const UpdateArtifactSetParams = zod.object({
 
 export const UpdateArtifactSetBody = zod.object({
   "title": zod.string(),
-  "artifacts": zod.array(zod.string()).optional()
+  "artifacts": zod.array(zod.string()).optional(),
+  "category": zod.string().optional()
 })
 
 export const UpdateArtifactSetResponse = zod.object({
   "id": zod.number(),
   "title": zod.string(),
   "artifacts": zod.array(zod.string()),
+  "category": zod.string(),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })
@@ -308,13 +375,15 @@ export const DeleteArtifactSetResponse = zod.object({
  * @summary List deliverable sets
  */
 export const ListDeliverableSetsQueryParams = zod.object({
-  "q": zod.coerce.string().optional()
+  "q": zod.coerce.string().optional(),
+  "category": zod.coerce.string().optional()
 })
 
 export const ListDeliverableSetsResponseItem = zod.object({
   "id": zod.number(),
   "title": zod.string(),
   "deliverables": zod.array(zod.string()),
+  "category": zod.string(),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })
@@ -326,7 +395,8 @@ export const ListDeliverableSetsResponse = zod.array(ListDeliverableSetsResponse
  */
 export const CreateDeliverableSetBody = zod.object({
   "title": zod.string(),
-  "deliverables": zod.array(zod.string()).optional()
+  "deliverables": zod.array(zod.string()).optional(),
+  "category": zod.string().optional()
 })
 
 
@@ -341,6 +411,7 @@ export const GetDeliverableSetResponse = zod.object({
   "id": zod.number(),
   "title": zod.string(),
   "deliverables": zod.array(zod.string()),
+  "category": zod.string(),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })
@@ -355,13 +426,15 @@ export const UpdateDeliverableSetParams = zod.object({
 
 export const UpdateDeliverableSetBody = zod.object({
   "title": zod.string(),
-  "deliverables": zod.array(zod.string()).optional()
+  "deliverables": zod.array(zod.string()).optional(),
+  "category": zod.string().optional()
 })
 
 export const UpdateDeliverableSetResponse = zod.object({
   "id": zod.number(),
   "title": zod.string(),
   "deliverables": zod.array(zod.string()),
+  "category": zod.string(),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })

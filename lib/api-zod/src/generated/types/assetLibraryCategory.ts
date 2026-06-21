@@ -6,11 +6,8 @@
  * OpenAPI spec version: 0.1.0
  */
 
-export interface DeliverableSet {
+export interface AssetLibraryCategory {
   id: number;
-  title: string;
-  deliverables: string[];
-  category: string;
+  name: string;
   createdAt: Date;
-  updatedAt: Date;
 }
