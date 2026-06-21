@@ -3,6 +3,7 @@ import { Layout } from "@/components/Layout";
 import { Layout as LayoutIcon, CheckCircle, ArrowRight, Building2, Shield, Users } from "lucide-react";
 import { ConsultationCTA } from "@/components/ConsultationCTA";
 import { CTAButton } from "@/components/CTAButton";
+import { ServiceRetainerCard } from "@/components/ServiceRetainerCard";
 import { useServices, formatPriceDisplay } from "@/hooks/useServices";
 
 const comparisonRows = [
@@ -41,6 +42,30 @@ const comparisonRows = [
     governance: "One-time engagement — optionally followed by a retainer for continued governance oversight",
     migration: "One-time engagement — feeds into a governance package or managed migration engagement",
     retainer: "Continuous — cancel or adjust tier with 30-day notice",
+  },
+];
+
+const RETAINERS = [
+  {
+    name: "Architect Essentials",
+    price: "$2,500",
+    hours: "10 hrs/month",
+    description: "Advisory, architecture reviews, SharePoint governance oversight, and escalation support.",
+    highlight: false,
+  },
+  {
+    name: "Architect Growth",
+    price: "$6,000",
+    hours: "25 hrs/month",
+    description: "Ongoing governance implementation, intranet development, and IT team mentoring.",
+    highlight: true,
+  },
+  {
+    name: "Architect Enterprise",
+    price: "$11,000",
+    hours: "50 hrs/month",
+    description: "Embedded SharePoint architecture leadership, governance ownership, and executive reporting.",
+    highlight: false,
   },
 ];
 
@@ -184,7 +209,7 @@ export default function SharePoint() {
             <h2 className="text-3xl md:text-4xl font-extrabold text-[#0A2540]">Three Ways to Work With Shane</h2>
           </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
             {/* Offer 1: Governance Foundations */}
             <div className="bg-white rounded-2xl border border-border p-8 flex flex-col">
               <div className="flex items-center gap-3 mb-5">
@@ -265,41 +290,32 @@ export default function SharePoint() {
               </a>
             </div>
 
-            {/* Offer 3: Retainer */}
-            <div className="bg-[#0A2540] rounded-2xl p-8 flex flex-col">
-              <div className="flex items-center gap-3 mb-5">
-                <div className="w-10 h-10 rounded-xl bg-white/10 flex items-center justify-center flex-shrink-0">
-                  <Users className="w-5 h-5 text-white" />
-                </div>
-                <p className="text-[#00B4D8] text-xs font-semibold uppercase tracking-wide">Monthly Retainer</p>
-              </div>
-              <h3 className="text-xl font-extrabold text-white mb-2">Fractional M365 Architect</h3>
-              <p className="text-white/60 text-sm leading-relaxed mb-6">
-                Ongoing strategic access to Shane — your senior architect on call without the full-time hire.
-              </p>
-              <div className="space-y-4 mb-8 flex-1">
-                {[
-                  { tier: "Essentials", price: "$2,500/mo", hours: "10 hrs/month" },
-                  { tier: "Growth", price: "$6,000/mo", hours: "25 hrs/month" },
-                  { tier: "Enterprise", price: "$11,000/mo", hours: "50 hrs/month" },
-                ].map((t) => (
-                  <div key={t.tier} className="bg-white/10 rounded-xl p-4">
-                    <div className="flex items-center justify-between mb-1">
-                      <span className="font-bold text-white text-sm">{t.tier}</span>
-                      <span className="font-extrabold text-white">{t.price}</span>
-                    </div>
-                    <span className="text-white/50 text-xs">{t.hours}</span>
-                  </div>
-                ))}
-              </div>
-              <p className="text-white/40 text-xs mb-4">All retainer tiers include strategic planning, architecture reviews, and direct Slack/Teams access.</p>
-              <a
-                href="/book"
-                className="inline-flex items-center justify-center gap-2 bg-[#0078D4] text-white font-semibold px-5 py-3 rounded-xl hover:bg-[#0066B8] transition-colors text-sm"
-              >
-                Book a Discovery Call <ArrowRight className="w-4 h-4" />
-              </a>
+          </div>
+
+          {/* Track 03: Fractional Architecture Retainers */}
+          <div className="mt-12">
+            <p className="text-center text-sm font-semibold text-muted-foreground uppercase tracking-widest mb-2">Track 03 · Strategic Tier</p>
+            <h3 className="text-center text-2xl font-extrabold text-[#0A2540] mb-3">Fractional M365 Architect Retainers</h3>
+            <p className="text-center text-muted-foreground text-sm mb-10 max-w-2xl mx-auto">
+              Ongoing strategic access to Shane — your senior SharePoint architect on call without the full-time hire. All tiers include architecture reviews, governance oversight, and direct Slack/Teams access.
+            </p>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              {RETAINERS.map((r, i) => (
+                <ServiceRetainerCard
+                  key={r.name}
+                  name={r.name}
+                  price={r.price}
+                  hours={r.hours}
+                  description={r.description}
+                  highlight={r.highlight}
+                  index={i}
+                />
+              ))}
             </div>
+            <p className="text-center text-sm text-muted-foreground mt-6">
+              All retainers are month-to-month.{" "}
+              <a href="/pricing" className="text-[#0078D4] hover:underline font-medium">See full pricing →</a>
+            </p>
           </div>
         </div>
       </section>

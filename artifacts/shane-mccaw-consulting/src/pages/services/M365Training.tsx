@@ -1,6 +1,7 @@
 import { SEOMeta } from "@/components/SEOMeta";
 import { Layout } from "@/components/Layout";
 import { CTAButton } from "@/components/CTAButton";
+import { ServiceRetainerCard } from "@/components/ServiceRetainerCard";
 import { Link } from "wouter";
 import {
   CheckCircle, ArrowRight, Clock, DollarSign,
@@ -381,32 +382,17 @@ export default function M365Training() {
           </div>
 
           <p className="text-center text-sm font-semibold text-muted-foreground uppercase tracking-widest mb-6">Fractional M365 Architect Retainers</p>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-5 max-w-4xl mx-auto">
-            {RETAINERS.map((tier) => (
-              <div
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-4xl mx-auto">
+            {RETAINERS.map((tier, i) => (
+              <ServiceRetainerCard
                 key={tier.name}
-                className={`rounded-2xl p-6 flex flex-col gap-4 border ${
-                  tier.highlight ? "bg-[#0A2540] border-[#0078D4]/40 shadow-xl" : "bg-white border-border"
-                }`}
-              >
-                {tier.highlight && (
-                  <span className="self-start text-[10px] font-bold uppercase tracking-widest bg-[#0078D4] text-white px-2.5 py-1 rounded-full">
-                    Most Popular
-                  </span>
-                )}
-                <div>
-                  <p className={`text-sm font-semibold mb-1 ${tier.highlight ? "text-white/60" : "text-muted-foreground"}`}>{tier.name}</p>
-                  <div className="flex items-end gap-1">
-                    <span className={`text-3xl font-extrabold ${tier.highlight ? "text-white" : "text-[#0A2540]"}`}>{tier.price}</span>
-                    <span className={`text-sm mb-1 ${tier.highlight ? "text-white/50" : "text-muted-foreground"}`}>/mo</span>
-                  </div>
-                  <p className="text-[#0078D4] text-sm font-semibold mt-0.5">{tier.hours}</p>
-                </div>
-                <p className={`text-sm leading-relaxed flex-1 ${tier.highlight ? "text-white/70" : "text-muted-foreground"}`}>{tier.desc}</p>
-                <CTAButton href="/book" className={`w-full justify-center text-sm py-2.5 ${!tier.highlight ? "bg-[#0A2540] hover:bg-[#0A2540]/90" : ""}`}>
-                  Get Started
-                </CTAButton>
-              </div>
+                name={tier.name}
+                price={tier.price}
+                hours={tier.hours}
+                description={tier.desc}
+                highlight={tier.highlight}
+                index={i}
+              />
             ))}
           </div>
           <p className="text-center text-sm text-muted-foreground mt-5">

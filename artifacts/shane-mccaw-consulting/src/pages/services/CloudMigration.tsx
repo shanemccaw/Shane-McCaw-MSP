@@ -1,5 +1,6 @@
 import { SEOMeta } from "@/components/SEOMeta";
 import { Layout } from "@/components/Layout";
+import { ServiceRetainerCard } from "@/components/ServiceRetainerCard";
 import { Server, CheckCircle, Clock, DollarSign, ArrowRight, Users, Shield, Building2 } from "lucide-react";
 import { CTAButton } from "@/components/CTAButton";
 import { useServices, formatPriceDisplay } from "@/hooks/useServices";
@@ -80,22 +81,25 @@ const migrationTypes = [
 
 const retainerTiers = [
   {
-    name: "Essentials",
+    name: "Architect Essentials",
     price: "$2,500",
-    hours: "10 hrs/mo",
+    hours: "10 hrs/month",
     description: "Ongoing migration oversight and post-migration governance for smaller organizations completing their transition.",
+    highlight: false,
   },
   {
-    name: "Growth",
+    name: "Architect Growth",
     price: "$6,000",
-    hours: "25 hrs/mo",
+    hours: "25 hrs/month",
     description: "Active migration execution support, governance buildout, and stakeholder advisory for mid-market organizations.",
+    highlight: true,
   },
   {
-    name: "Enterprise",
+    name: "Architect Enterprise",
     price: "$11,000",
-    hours: "50 hrs/mo",
+    hours: "50 hrs/month",
     description: "Embedded fractional architect capacity for large-scale, multi-phase migrations and complex compliance environments.",
+    highlight: false,
   },
 ];
 
@@ -298,26 +302,23 @@ export default function CloudMigration() {
           </div>
 
           {/* Fractional Retainers */}
-          <div className="bg-white border border-border rounded-2xl p-8">
-            <div className="flex items-center gap-3 mb-2">
-              <Users className="w-6 h-6 text-[#0078D4]" />
-              <span className="text-[#0078D4] text-sm font-semibold uppercase tracking-wide">Ongoing Retainer</span>
-            </div>
-            <h3 className="text-2xl font-extrabold text-[#0A2540] mb-2">Fractional M365 Architect Retainers</h3>
-            <p className="text-muted-foreground mb-8 max-w-2xl">
+          <div>
+            <p className="text-center text-sm font-semibold text-muted-foreground uppercase tracking-widest mb-2">Track 03 · Strategic Tier</p>
+            <h3 className="text-center text-2xl font-extrabold text-[#0A2540] mb-3">Fractional M365 Architect Retainers</h3>
+            <p className="text-center text-muted-foreground mb-10 max-w-2xl mx-auto">
               For ongoing migration oversight, post-migration governance, and continuous Microsoft 365 architectural advisory. Shane embedded as your senior architect — without the full-time hire.
             </p>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              {retainerTiers.map((tier) => (
-                <div key={tier.name} className="bg-[#F7F9FC] border border-border rounded-xl p-6 flex flex-col">
-                  <p className="text-sm font-semibold text-[#0078D4] uppercase tracking-wide mb-2">{tier.name}</p>
-                  <div className="flex items-baseline gap-1 mb-1">
-                    <span className="text-3xl font-extrabold text-[#0A2540]">{tier.price}</span>
-                    <span className="text-muted-foreground text-sm">/mo</span>
-                  </div>
-                  <p className="text-sm text-[#0078D4] font-medium mb-4">{tier.hours}</p>
-                  <p className="text-sm text-muted-foreground leading-relaxed">{tier.description}</p>
-                </div>
+              {retainerTiers.map((tier, i) => (
+                <ServiceRetainerCard
+                  key={tier.name}
+                  name={tier.name}
+                  price={tier.price}
+                  hours={tier.hours}
+                  description={tier.description}
+                  highlight={tier.highlight}
+                  index={i}
+                />
               ))}
             </div>
           </div>

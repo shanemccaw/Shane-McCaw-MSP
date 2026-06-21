@@ -49,6 +49,7 @@ const comparisonRows = [
 import type { LucideIcon } from "lucide-react";
 import { Link } from "wouter";
 import { CTAButton } from "@/components/CTAButton";
+import { ServiceRetainerCard } from "@/components/ServiceRetainerCard";
 import { useServices, formatPriceDisplay } from "@/hooks/useServices";
 
 const ICON_MAP: Record<string, LucideIcon> = {
@@ -355,41 +356,16 @@ export default function Microsoft365() {
             </p>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-4xl mx-auto">
-            {RETAINERS.map((tier) => (
-              <div
+            {RETAINERS.map((tier, i) => (
+              <ServiceRetainerCard
                 key={tier.name}
-                className={`rounded-2xl p-7 flex flex-col gap-5 border ${
-                  tier.highlight
-                    ? "bg-[#0A2540] border-[#0078D4]/40 shadow-xl"
-                    : "bg-[#F7F9FC] border-border"
-                }`}
-              >
-                {tier.highlight && (
-                  <span className="self-start text-[10px] font-bold uppercase tracking-widest bg-[#0078D4] text-white px-2.5 py-1 rounded-full">
-                    Most Popular
-                  </span>
-                )}
-                <div>
-                  <p className={`text-sm font-semibold mb-1 ${tier.highlight ? "text-white/60" : "text-muted-foreground"}`}>
-                    {tier.name}
-                  </p>
-                  <div className="flex items-end gap-1">
-                    <span className={`text-4xl font-extrabold ${tier.highlight ? "text-white" : "text-[#0A2540]"}`}>
-                      {tier.price}
-                    </span>
-                    <span className={`text-base mb-1 ${tier.highlight ? "text-white/50" : "text-muted-foreground"}`}>/mo</span>
-                  </div>
-                  <p className={`text-sm font-semibold mt-1 ${tier.highlight ? "text-[#0078D4]" : "text-[#0078D4]"}`}>
-                    {tier.hours}
-                  </p>
-                </div>
-                <p className={`text-sm leading-relaxed flex-1 ${tier.highlight ? "text-white/70" : "text-muted-foreground"}`}>
-                  {tier.description}
-                </p>
-                <CTAButton href="/book" className={`w-full justify-center text-sm py-2.5 ${!tier.highlight ? "bg-[#0A2540] hover:bg-[#0A2540]/90" : ""}`}>
-                  Get Started
-                </CTAButton>
-              </div>
+                name={tier.name}
+                price={tier.price}
+                hours={tier.hours}
+                description={tier.description}
+                highlight={tier.highlight}
+                index={i}
+              />
             ))}
           </div>
           <p className="text-center text-sm text-muted-foreground mt-6">
