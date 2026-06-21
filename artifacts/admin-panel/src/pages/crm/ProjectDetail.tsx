@@ -206,7 +206,9 @@ function DraggableCard({
     task.waitingReason ||
     task.completionStatus ||
     task.completionNotes ||
-    task.statusReportId
+    task.statusReportQuestion ||
+    task.statusReportAdminReply ||
+    task.statusReportReplyThread?.length > 0
   );
 
   return (
@@ -436,7 +438,7 @@ function DraggableCard({
                         <pre className="text-[9px] text-[#0A2540] bg-white border border-border rounded px-2 py-1.5 whitespace-pre-wrap font-mono leading-relaxed max-h-32 overflow-y-auto">{task.completionNotes}</pre>
                       </div>
                     )}
-                    {task.statusReportId && (task.statusReportQuestion || task.statusReportReplyThread?.length > 0) && (
+                    {(task.statusReportQuestion || task.statusReportAdminReply || task.statusReportReplyThread?.length > 0) && (
                       <div>
                         <p className="text-[9px] font-bold uppercase tracking-wider text-amber-600 mb-1">Status Report Q&amp;A</p>
                         <div className="space-y-1">
@@ -444,6 +446,12 @@ function DraggableCard({
                             <div className="bg-amber-50 border border-amber-100 rounded px-2 py-1.5">
                               <p className="text-[8px] font-bold text-amber-600 mb-0.5 uppercase tracking-wider">Client question</p>
                               <p className="text-[10px] text-amber-800 leading-snug whitespace-pre-wrap">{task.statusReportQuestion}</p>
+                            </div>
+                          )}
+                          {task.statusReportAdminReply && (
+                            <div className="bg-[#0078D4]/10 border border-[#0078D4]/20 rounded px-2 py-1.5">
+                              <p className="text-[8px] font-bold text-[#0078D4] mb-0.5 uppercase tracking-wider">Shane (reply)</p>
+                              <p className="text-[10px] text-[#0A2540] leading-snug whitespace-pre-wrap">{task.statusReportAdminReply}</p>
                             </div>
                           )}
                           {task.statusReportReplyThread?.map((msg, i) => (
@@ -454,7 +462,7 @@ function DraggableCard({
                                 : "bg-amber-50 border border-amber-100"}`}
                             >
                               <p className={`text-[8px] font-bold mb-0.5 uppercase tracking-wider ${msg.sender === "admin" ? "text-[#0078D4]" : "text-amber-600"}`}>
-                                {msg.sender === "admin" ? "Shane (reply)" : "Client"}
+                                {msg.sender === "admin" ? "Shane (thread reply)" : "Client"}
                               </p>
                               <p className={`text-[10px] leading-snug whitespace-pre-wrap ${msg.sender === "admin" ? "text-[#0A2540]" : "text-amber-800"}`}>{msg.content}</p>
                               <p className="text-[8px] text-[#0A2540]/40 mt-0.5">{new Date(msg.timestamp).toLocaleDateString()}</p>
