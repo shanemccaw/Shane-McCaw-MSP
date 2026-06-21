@@ -12,6 +12,7 @@ import multer from "multer";
 import path from "path";
 import fs from "fs";
 import { PDFDocument, rgb, StandardFonts } from "pdf-lib";
+import { Readable } from "stream";
 
 const router: IRouter = Router();
 
@@ -453,8 +454,14 @@ router.get("/portal/projects/:id/sharepoint-file/:itemId", requireAuth, async (r
   res.setHeader("Content-Disposition", `inline; filename*=UTF-8''${encodeURIComponent(item.name)}`);
   if (contentLength) res.setHeader("Content-Length", contentLength);
 
-  const buffer = Buffer.from(await fileRes.arrayBuffer());
-  res.send(buffer);
+  // Stream the response body to avoid buffering large files in memory
+  if (fileRes.body) {
+    const nodeReadable = Readable.fromWeb(fileRes.body as Parameters<typeof Readable.fromWeb>[0]);
+    nodeReadable.on("error", (err) => req.log.error({ err }, "Error streaming SharePoint file to client"));
+    nodeReadable.pipe(res);
+  } else {
+    res.status(502).json({ error: "No response body from SharePoint" });
+  }
 });
 
 // ─── CLIENT: SharePoint Documents for a project ───────────────────────────────

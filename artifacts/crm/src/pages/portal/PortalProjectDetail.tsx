@@ -466,6 +466,38 @@ const OFFICE_MIMES = new Set([
   "application/vnd.oasis.opendocument.spreadsheet",
 ]);
 
+function ViewerErrorCard({ message, downloadUrl, filename }: { message: string; downloadUrl: string; filename: string }) {
+  return (
+    <div className="w-full h-full flex items-center justify-center p-6">
+      <div className="bg-white rounded-2xl p-6 max-w-sm text-center shadow-lg">
+        <svg className="w-10 h-10 text-red-400 mx-auto mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
+        </svg>
+        <p className="text-sm font-semibold text-red-600 mb-2">Preview unavailable</p>
+        <p className="text-xs text-gray-600 mb-4">{message}</p>
+        <a href={downloadUrl} download={filename}
+          className="inline-flex items-center gap-2 bg-[#0078D4] text-white text-sm font-semibold px-4 py-2 rounded-lg hover:bg-[#005fa3] transition-colors">
+          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+          </svg>
+          Download instead
+        </a>
+      </div>
+    </div>
+  );
+}
+
+function ViewerSpinner() {
+  return (
+    <div className="w-full h-full flex items-center justify-center">
+      <div className="flex flex-col items-center gap-3">
+        <div className="w-8 h-8 border-3 border-[#0078D4] border-t-transparent rounded-full animate-spin" />
+        <p className="text-sm text-gray-600">Loading preview…</p>
+      </div>
+    </div>
+  );
+}
+
 function SpFileViewerModal({
   projectId,
   file,
@@ -478,18 +510,47 @@ function SpFileViewerModal({
   fetchWithAuth: (url: string, opts?: RequestInit) => Promise<Response>;
 }) {
   const proxyUrl = `/api/portal/projects/${projectId}/sharepoint-file/${encodeURIComponent(file.id)}`;
-  const [officeEmbedUrl, setOfficeEmbedUrl] = useState<string | null>(null);
-  const [officeLoading, setOfficeLoading] = useState(false);
-  const [officeError, setOfficeError] = useState<string | null>(null);
 
   const mimeClean = file.mimeType?.split(";")[0].trim().toLowerCase() ?? "";
   const isPdf = mimeClean === "application/pdf";
   const isImage = mimeClean.startsWith("image/");
   const isOffice = OFFICE_MIMES.has(mimeClean);
 
+  // PDF / image: preflight via fetchWithAuth to catch proxy errors before showing iframe/img
+  const [blobUrl, setBlobUrl] = useState<string | null>(null);
+  const [blobLoading, setBlobLoading] = useState(false);
+  const [blobError, setBlobError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!isPdf && !isImage) return;
+    let objectUrl: string | null = null;
+    setBlobLoading(true);
+    setBlobError(null);
+    fetchWithAuth(proxyUrl)
+      .then(async r => {
+        if (!r.ok) {
+          const d = await r.json().catch(() => ({})) as { error?: string };
+          setBlobError(d.error ?? `Could not load file (HTTP ${r.status}).`);
+        } else {
+          const blob = await r.blob();
+          objectUrl = URL.createObjectURL(blob);
+          setBlobUrl(objectUrl);
+        }
+      })
+      .catch(() => setBlobError("Network error loading file."))
+      .finally(() => setBlobLoading(false));
+    return () => { if (objectUrl) URL.revokeObjectURL(objectUrl); };
+  }, [file.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Office: fetch metaOnly to get download URL for Office Online viewer
+  const [officeEmbedUrl, setOfficeEmbedUrl] = useState<string | null>(null);
+  const [officeLoading, setOfficeLoading] = useState(false);
+  const [officeError, setOfficeError] = useState<string | null>(null);
+
   useEffect(() => {
     if (!isOffice) return;
     setOfficeLoading(true);
+    setOfficeError(null);
     fetchWithAuth(`${proxyUrl}?metaOnly=true`)
       .then(r => r.json() as Promise<{ downloadUrl?: string; error?: string }>)
       .then(data => {
@@ -524,38 +585,23 @@ function SpFileViewerModal({
       </div>
       <div className="flex-1 overflow-hidden bg-gray-100">
         {isPdf && (
-          <iframe src={proxyUrl} className="w-full h-full border-0" title={file.name} />
+          blobLoading ? <ViewerSpinner /> :
+          blobError ? <ViewerErrorCard message={blobError} downloadUrl={proxyUrl} filename={file.name} /> :
+          blobUrl ? <iframe src={blobUrl} className="w-full h-full border-0" title={file.name} /> : null
         )}
         {isImage && (
-          <div className="w-full h-full flex items-center justify-center p-6">
-            <img src={proxyUrl} alt={file.name} className="max-w-full max-h-full object-contain rounded-lg shadow-lg" />
-          </div>
+          blobLoading ? <ViewerSpinner /> :
+          blobError ? <ViewerErrorCard message={blobError} downloadUrl={proxyUrl} filename={file.name} /> :
+          blobUrl ? (
+            <div className="w-full h-full flex items-center justify-center p-6">
+              <img src={blobUrl} alt={file.name} className="max-w-full max-h-full object-contain rounded-lg shadow-lg" />
+            </div>
+          ) : null
         )}
         {isOffice && (
-          officeLoading ? (
-            <div className="w-full h-full flex items-center justify-center">
-              <div className="flex flex-col items-center gap-3">
-                <div className="w-8 h-8 border-3 border-[#0078D4] border-t-transparent rounded-full animate-spin" />
-                <p className="text-sm text-gray-600">Loading preview…</p>
-              </div>
-            </div>
-          ) : officeError ? (
-            <div className="w-full h-full flex items-center justify-center p-6">
-              <div className="bg-white rounded-2xl p-6 max-w-sm text-center shadow-lg">
-                <p className="text-sm font-semibold text-red-600 mb-2">Preview unavailable</p>
-                <p className="text-xs text-gray-600 mb-4">{officeError}</p>
-                <a href={proxyUrl} download={file.name}
-                  className="inline-flex items-center gap-2 bg-[#0078D4] text-white text-sm font-semibold px-4 py-2 rounded-lg hover:bg-[#005fa3] transition-colors">
-                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-                  </svg>
-                  Download instead
-                </a>
-              </div>
-            </div>
-          ) : officeEmbedUrl ? (
-            <iframe src={officeEmbedUrl} className="w-full h-full border-0" title={file.name} />
-          ) : null
+          officeLoading ? <ViewerSpinner /> :
+          officeError ? <ViewerErrorCard message={officeError} downloadUrl={proxyUrl} filename={file.name} /> :
+          officeEmbedUrl ? <iframe src={officeEmbedUrl} className="w-full h-full border-0" title={file.name} /> : null
         )}
         {!isPdf && !isImage && !isOffice && (
           <div className="w-full h-full flex items-center justify-center p-6">
