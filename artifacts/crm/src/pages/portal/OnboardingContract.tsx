@@ -231,7 +231,7 @@ export default function OnboardingContract() {
     if (serviceIds.length === 0) { setLocation("/portal/onboarding/select"); return; }
     if (!user) { setLocation("/"); return; }
 
-    fetch("/api/portal/onboarding/services")
+    const servicesReq = fetch("/api/portal/onboarding/services")
       .then(r => r.json() as Promise<Service[]>)
       .then(all => {
         const matched = serviceIds.map(id => all.find(s => s.id === id)).filter(Boolean) as Service[];
@@ -240,6 +240,27 @@ export default function OnboardingContract() {
         setLoading(false);
       })
       .catch(() => setLoading(false));
+
+    const profileReq = fetchWithAuth("/api/portal/profile")
+      .then(r => r.ok ? r.json() as Promise<{
+        name?: string | null; company?: string | null; phone?: string | null;
+        address?: string | null; addressCity?: string | null;
+        addressState?: string | null; addressZip?: string | null;
+      }> : null)
+      .then(profile => {
+        if (!profile) return;
+        if (profile.name) setSignerName(profile.name);
+        if (profile.company) setCompany(profile.company);
+        if (profile.phone) setPhone(profile.phone);
+        if (profile.address) setStreet(profile.address);
+        if (profile.addressCity) setCity(profile.addressCity);
+        if (profile.addressState) setAddrState(profile.addressState);
+        if (profile.addressZip) setZip(profile.addressZip);
+      })
+      .catch(() => { /* silently ignore — fields remain at auth-context defaults */ });
+
+    void servicesReq;
+    void profileReq;
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
 

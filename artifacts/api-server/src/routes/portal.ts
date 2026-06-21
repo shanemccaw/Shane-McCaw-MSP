@@ -126,6 +126,22 @@ const uploadReport = multer({ storage: reportStorage, limits: { fileSize: 100 * 
 const uploadInvoice = multer({ storage: invoiceStorage, limits: { fileSize: 20 * 1024 * 1024 } });
 
 // ─── CLIENT: Profile ─────────────────────────────────────────────────────────
+router.get("/portal/profile", requireAuth, async (req: Request, res: Response) => {
+  const userId = req.user!.id;
+  const [profile] = await db.select({
+    name: usersTable.name,
+    email: usersTable.email,
+    company: usersTable.company,
+    phone: usersTable.phone,
+    address: usersTable.address,
+    addressCity: usersTable.addressCity,
+    addressState: usersTable.addressState,
+    addressZip: usersTable.addressZip,
+  }).from(usersTable).where(eq(usersTable.id, userId));
+  if (!profile) { res.status(404).json({ error: "User not found" }); return; }
+  res.json(profile);
+});
+
 router.patch("/portal/profile", requireAuth, async (req: Request, res: Response) => {
   const userId = req.user!.id;
   const { name, company, phone, address, addressCity, addressState, addressZip } = req.body as {
