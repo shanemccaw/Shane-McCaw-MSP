@@ -20,6 +20,7 @@ interface Project {
   startDate: string | null;
   endDate: string | null;
   projectType: string;
+  sharepointFolderUrl: string | null;
 }
 
 interface WorkflowStep {

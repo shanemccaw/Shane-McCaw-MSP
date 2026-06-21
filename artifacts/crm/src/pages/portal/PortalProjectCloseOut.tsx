@@ -12,6 +12,7 @@ interface Project {
   startDate: string | null;
   endDate: string | null;
   projectType: string;
+  sharepointFolderUrl: string | null;
 }
 
 interface WorkflowStep {
@@ -134,20 +135,30 @@ export default function PortalProjectCloseOut({
             <h1 className="text-2xl font-extrabold text-white leading-tight">{project.title}</h1>
             <p className="text-white/50 text-sm mt-1">Shane McCaw Consulting · Lead Microsoft 365 Architect</p>
           </div>
-          <button
-            onClick={() => void handleExportAudit()}
-            disabled={exportingAudit}
-            className="flex items-center gap-2 bg-white/10 border border-white/20 text-white text-sm font-semibold px-4 py-2.5 rounded-xl hover:bg-white/20 transition-colors disabled:opacity-50 flex-shrink-0"
-          >
-            {exportingAudit ? (
-              <div className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
-            ) : (
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-              </svg>
-            )}
-            Export Report
-          </button>
+          <div className="flex items-center gap-3 flex-shrink-0">
+            <Link href="/portal/messages">
+              <span className="inline-flex items-center gap-2 bg-white/10 border border-white/20 text-white text-sm font-semibold px-4 py-2.5 rounded-xl hover:bg-white/20 transition-colors cursor-pointer">
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
+                </svg>
+                Message Advisor
+              </span>
+            </Link>
+            <button
+              onClick={() => void handleExportAudit()}
+              disabled={exportingAudit}
+              className="flex items-center gap-2 bg-white text-[#0A2540] text-sm font-semibold px-4 py-2.5 rounded-xl hover:bg-gray-100 transition-colors disabled:opacity-50"
+            >
+              {exportingAudit ? (
+                <div className="w-4 h-4 border-2 border-[#0A2540]/40 border-t-[#0A2540] rounded-full animate-spin" />
+              ) : (
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+              )}
+              Export Report
+            </button>
+          </div>
         </header>
 
         {/* ── Executive Summary + Final Approval ── */}
@@ -251,11 +262,26 @@ export default function PortalProjectCloseOut({
               style={{ width: "100%", background: "linear-gradient(90deg, #0078D4 0%, #00B4D8 100%)" }}
             />
           </div>
-          <div className="flex items-center gap-2">
-            <svg className="w-4 h-4 text-green-600 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-            </svg>
-            <p className="text-xs text-muted-foreground">All strategic gates verified — engagement successfully concluded</p>
+          <div className="flex items-center justify-between flex-wrap gap-3">
+            <div className="flex items-center gap-2">
+              <svg className="w-4 h-4 text-green-600 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+              </svg>
+              <p className="text-xs text-muted-foreground">All strategic gates verified — engagement successfully concluded</p>
+            </div>
+            {project.sharepointFolderUrl && (
+              <a
+                href={project.sharepointFolderUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1.5 text-xs font-semibold text-[#0078D4] hover:text-[#0078D4]/80 transition-colors"
+              >
+                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+                </svg>
+                View SharePoint Folder
+              </a>
+            )}
           </div>
         </div>
 
