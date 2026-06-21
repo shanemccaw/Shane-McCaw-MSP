@@ -23,6 +23,7 @@ export interface PublicService {
   iconName: string | null;
   pageHref: string | null;
   sortOrder: number;
+  tier: string | null;
 }
 
 export function formatPrice(price: string | null): string | null {

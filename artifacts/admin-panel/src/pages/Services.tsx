@@ -64,6 +64,7 @@ interface Service {
   iconName: string | null;
   pageHref: string | null;
   sortOrder: number;
+  tier: string | null;
   orderWorkflow: WizardStep[] | null;
   workflowTemplateId: number | null;
 }
@@ -1003,6 +1004,18 @@ export default function ServicesPage() {
                         <option value="retainer">retainer</option>
                         <option value="service_area">service_area</option>
                       </select>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">Service Tier</label>
+                      <select value={form.tier ?? ""}
+                        onChange={e => setField("tier", e.target.value || null)}
+                        className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4] bg-white">
+                        <option value="">— none —</option>
+                        <option value="entry">Entry Tier</option>
+                        <option value="core">Core Tier</option>
+                        <option value="strategic">Strategic Tier</option>
+                      </select>
+                      <p className="mt-1 text-xs text-gray-400">Controls which group this service appears in on the Services page.</p>
                     </div>
                     <div>
                       <label className="block text-xs font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">Tagline</label>

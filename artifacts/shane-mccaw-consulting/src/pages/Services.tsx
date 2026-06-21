@@ -69,6 +69,11 @@ const CATEGORY_TO_TIER: Record<string, string> = {
   "Fractional Architecture": "strategic",
 };
 
+function resolveTier(s: PublicService): string | null {
+  if (s.tier) return s.tier;
+  return s.category ? (CATEGORY_TO_TIER[s.category] ?? null) : null;
+}
+
 function ServiceCard({ s, index }: { s: PublicService; index: number }) {
   const Icon = resolveIcon(s.iconName);
   const inclusions = s.inclusions ?? [];
@@ -249,10 +254,7 @@ export default function Services() {
   const { services, loading, error } = useServices();
 
   const grouped = TIER_ORDER.reduce<Record<string, PublicService[]>>((acc, tier) => {
-    acc[tier] = services.filter(s => {
-      const mappedTier = s.category ? (CATEGORY_TO_TIER[s.category] ?? s.category) : null;
-      return mappedTier === tier;
-    });
+    acc[tier] = services.filter(s => resolveTier(s) === tier);
     return acc;
   }, {});
 

@@ -83,6 +83,7 @@ export const servicesTable = pgTable("services", {
   iconName: text("icon_name"),
   pageHref: text("page_href"),
   sortOrder: integer("sort_order").notNull().default(0),
+  tier: text("tier"),
   // Direct link to workflow template (replaces the project_templates join table).
   // FK to workflow_templates(id) ON DELETE SET NULL is enforced at the DB level only
   // (via migrate-prod.ts) to avoid a circular TypeScript inference loop — both tables

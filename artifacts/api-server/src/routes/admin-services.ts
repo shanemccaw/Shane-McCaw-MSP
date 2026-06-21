@@ -35,7 +35,7 @@ router.put("/admin/services/:id", requireAdmin, async (req: Request, res: Respon
       name, description, category, deliverables, price, basePrice, maxPrice, durationDays, turnaround,
       billingType, isPublic, slug,
       serviceType, tagline, targetAudience, inclusions, features, badge,
-      highlighted, hoursPerMonth, iconName, pageHref, sortOrder, workflowTemplateId,
+      highlighted, hoursPerMonth, iconName, pageHref, sortOrder, workflowTemplateId, tier,
     } = body;
     if (!name) { res.status(400).json({ error: "name is required" }); return; }
     const [updated] = await db
@@ -64,6 +64,7 @@ router.put("/admin/services/:id", requireAdmin, async (req: Request, res: Respon
         iconName: (iconName as string | null) ?? null,
         pageHref: (pageHref as string | null) ?? null,
         sortOrder: sortOrder != null ? Number(sortOrder) : 0,
+        tier: (tier as string | null) ?? null,
         workflowTemplateId: workflowTemplateId != null ? Number(workflowTemplateId) : null,
       })
       .where(eq(servicesTable.id, id))
