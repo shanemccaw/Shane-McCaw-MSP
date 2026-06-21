@@ -291,7 +291,7 @@ export async function provisionClientSite(
     .where(eq(usersTable.id, clientId));
 
   // Pre-create standard folders
-  const folders = ["Deliverables", "Meetings", "Contracts", "Scripts"];
+  const folders = ["Deliverables", "Meetings", "Contracts", "Scripts", "Invoices"];
   for (const folder of folders) {
     try {
       await createSiteFolder(siteInfo.id, "/", folder);

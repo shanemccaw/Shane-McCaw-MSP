@@ -446,6 +446,45 @@ export async function uploadFileToClientContracts(
   }
 }
 
+/**
+ * Upload any file buffer to an arbitrary folder path within a site's document library.
+ * Returns the webUrl of the uploaded item on success, or null on failure (non-fatal).
+ */
+export async function uploadFileToSharePoint(
+  siteId: string,
+  folderPath: string,
+  filename: string,
+  buffer: Buffer,
+  mimeType: string,
+): Promise<string | null> {
+  try {
+    const token = await getAccessToken();
+    const cleanFolder = folderPath.replace(/^\/|\/$/g, "");
+    const encodedPath = cleanFolder
+      ? cleanFolder.split("/").filter(Boolean).map(encodeURIComponent).join("/") + "/" + encodeURIComponent(filename)
+      : encodeURIComponent(filename);
+    const endpoint = `/sites/${siteId}/drive/root:/${encodedPath}:/content`;
+    const res = await fetch(`${GRAPH_BASE}${endpoint}`, {
+      method: "PUT",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": mimeType,
+      },
+      body: buffer,
+    });
+    if (!res.ok) {
+      const text = await res.text();
+      logger.warn({ status: res.status, body: text }, "Graph uploadFileToSharePoint failed");
+      return null;
+    }
+    const data = await res.json() as { webUrl: string };
+    return data.webUrl ?? null;
+  } catch (err) {
+    logger.error({ err }, "Graph uploadFileToSharePoint error");
+    return null;
+  }
+}
+
 export async function createSiteFolder(
   siteId: string,
   parentPath: string,

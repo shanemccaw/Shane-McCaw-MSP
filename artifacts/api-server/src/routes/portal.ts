@@ -7,6 +7,7 @@ import { sendAdminSms } from "../lib/sms";
 import { sendPushNotifications } from "../lib/push";
 import { createAuditLog } from "../lib/audit";
 import { listDriveItems, graphCredentialsPresent, createProjectFolder, uploadFileToClientContracts } from "../lib/graph";
+import { uploadInvoiceToSharePoint } from "../lib/invoice-sharepoint";
 import multer from "multer";
 import path from "path";
 import fs from "fs";
@@ -2245,7 +2246,7 @@ async function provisionOnboardingProject(
 
     // Create paid invoice for this service.
     // Only the first invoice gets stripeSessionId (idempotency guard reads it).
-    await db.insert(invoicesTable).values({
+    const [onbInvoice] = await db.insert(invoicesTable).values({
       clientUserId: uid,
       projectId: project.id,
       invoiceNumber: `ONB-${Date.now()}-${i}`,
@@ -2255,7 +2256,8 @@ async function provisionOnboardingProject(
       status: "paid",
       paidAt: new Date(),
       stripeSessionId: i === 0 ? session.id : null,
-    });
+    }).returning({ id: invoicesTable.id });
+    void uploadInvoiceToSharePoint(onbInvoice.id);
   }
 
   // ── Notify admins ─────────────────────────────────────────────────────────
@@ -2579,6 +2581,7 @@ async function processStripeEvent(req: Request, event: import("stripe").Stripe.E
         paidAt: new Date(),
         stripeSessionId: session.id,
       }).returning({ id: invoicesTable.id });
+      void uploadInvoiceToSharePoint(newInvoice.id);
 
       // Notify the admin user(s)
       const admins = await db.select().from(usersTable).where(eq(usersTable.role, "admin"));
@@ -4371,6 +4374,7 @@ router.post("/admin/invoices", requireAdmin, uploadInvoice.single("pdf"), async 
     dueDate: dueDate ? new Date(dueDate) : null,
     pdfFilename: req.file?.filename ?? null,
   }).returning();
+  void uploadInvoiceToSharePoint(invoice.id);
 
   await db.insert(notificationsTable).values({
     userId: parseInt(clientUserId, 10),

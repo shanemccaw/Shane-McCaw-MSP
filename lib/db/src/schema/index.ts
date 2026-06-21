@@ -223,6 +223,7 @@ export const invoicesTable = pgTable("invoices", {
   paidAt: timestamp("paid_at"),
   pdfFilename: text("pdf_filename"),
   stripeSessionId: text("stripe_session_id"),
+  sharepointFileUrl: text("sharepoint_file_url"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
