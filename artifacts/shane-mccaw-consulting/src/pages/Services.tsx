@@ -7,135 +7,10 @@ import {
   CheckCircle, Clock, GraduationCap,
 } from "lucide-react";
 import { useServices, formatPriceDisplay, type PublicService } from "@/hooks/useServices";
-import { OfferCard, resolveIcon, badgeClass } from "@/components/OfferCard";
+import { OfferCard } from "@/components/OfferCard";
 import { EngagementProjectCard } from "@/components/EngagementProjectCard";
 import { useEngagementProjects } from "@/hooks/useEngagementProjects";
-
-function ServiceCard({ s, index }: { s: PublicService; index: number }) {
-  const Icon = resolveIcon(s.iconName);
-  const inclusions = s.inclusions ?? [];
-  const features = s.features ?? [];
-  const priceDisplay = formatPriceDisplay(s);
-  const deliverableLines = s.deliverables ?? [];
-  const isHighlighted = s.highlighted ?? false;
-  const href = s.pageHref ?? "/book";
-  const ctaLabel = s.pageHref ? "Learn More" : "Book a Discovery Call";
-
-  return (
-    <div
-      className={`relative rounded-xl border p-8 flex flex-col hover:shadow-lg hover:-translate-y-1 transition-all duration-300 ${isHighlighted ? "bg-[#0A2540] border-[#0078D4]/60" : "bg-white border-border"}`}
-      data-testid={`service-card-${index}`}
-    >
-      {isHighlighted && s.badge && (
-        <div className="absolute -top-4 left-0 right-0 flex justify-center">
-          <span className="bg-[#0078D4] text-white text-xs font-bold uppercase tracking-wider px-4 py-1.5 rounded-full">
-            {s.badge}
-          </span>
-        </div>
-      )}
-
-      <div className="flex items-start justify-between mb-4">
-        <div className={`w-11 h-11 rounded-lg flex items-center justify-center flex-shrink-0 ${isHighlighted ? "bg-white/10" : "bg-[#0078D4]/10"}`}>
-          <Icon className={`w-5 h-5 ${isHighlighted ? "text-[#00B4D8]" : "text-[#0078D4]"}`} />
-        </div>
-        {s.badge && !isHighlighted && (
-          <span className={`text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full ${badgeClass(s.badge)}`}>
-            {s.badge}
-          </span>
-        )}
-      </div>
-
-      {priceDisplay !== "Contact for pricing" && (
-        <p className={`text-2xl font-extrabold mb-2 ${isHighlighted ? "text-[#00B4D8]" : "text-[#0078D4]"}`}>{priceDisplay}</p>
-      )}
-
-      <h3 className={`text-xl font-bold leading-snug mb-2 ${isHighlighted ? "text-white" : "text-[#0A2540]"}`}>{s.name}</h3>
-
-      {s.tagline && (
-        <p className={`text-sm italic mb-3 ${isHighlighted ? "text-white/60" : "text-muted-foreground"}`}>{s.tagline}</p>
-      )}
-
-      {s.description && (
-        <p className={`text-sm leading-relaxed mb-4 ${isHighlighted ? "text-white/70" : "text-muted-foreground"}`}>{s.description}</p>
-      )}
-
-      {(s.turnaround || s.billingType || s.hoursPerMonth) && (
-        <div className="flex flex-wrap gap-2 mb-4">
-          {s.turnaround && (
-            <span className={`inline-flex items-center gap-1 text-xs font-medium rounded-full px-2.5 py-1 ${isHighlighted ? "bg-white/10 border border-white/20 text-[#00B4D8]" : "bg-[#F7F9FC] border border-border text-muted-foreground"}`}>
-              <Clock className="w-3 h-3" /> {s.turnaround}
-            </span>
-          )}
-          {s.hoursPerMonth && (
-            <span className={`inline-flex items-center gap-1 text-xs font-medium rounded-full px-2.5 py-1 ${isHighlighted ? "bg-white/10 border border-white/20 text-[#00B4D8]" : "bg-[#F7F9FC] border border-border text-muted-foreground"}`}>
-              {s.hoursPerMonth}/mo
-            </span>
-          )}
-          <span className={`inline-flex items-center gap-1 text-xs font-medium rounded-full px-2.5 py-1 ${isHighlighted ? "bg-white/10 border border-white/20 text-white/70" : "bg-[#F7F9FC] border border-border text-muted-foreground"}`}>
-            {s.billingType === "recurring_monthly" ? "Monthly retainer" : "One-time"}
-          </span>
-        </div>
-      )}
-
-      {s.targetAudience && (
-        <p className={`text-sm mb-4 ${isHighlighted ? "text-white/70" : "text-muted-foreground"}`}>
-          <span className={`font-semibold ${isHighlighted ? "text-white" : "text-[#0A2540]"}`}>Best for:</span> {s.targetAudience}
-        </p>
-      )}
-
-      {inclusions.length > 0 && (
-        <div className={`border-t pt-4 mb-4 ${isHighlighted ? "border-white/10" : "border-border"}`}>
-          <p className={`text-sm font-semibold mb-3 ${isHighlighted ? "text-white" : "text-[#0A2540]"}`}>What's Included:</p>
-          <ul className="space-y-2">
-            {inclusions.map((item, i) => (
-              <li key={i} className={`flex items-start gap-2 text-sm ${isHighlighted ? "text-white/80" : "text-muted-foreground"}`}>
-                <CheckCircle className={`w-4 h-4 flex-shrink-0 mt-0.5 ${isHighlighted ? "text-[#00B4D8]" : "text-[#0078D4]"}`} />
-                {item}
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-
-      {features.length > 0 && (
-        <div className="mb-4">
-          <ul className="space-y-1">
-            {features.map((f, i) => (
-              <li key={i} className={`flex items-start gap-2 text-sm ${isHighlighted ? "text-white/70" : "text-muted-foreground"}`}>
-                <span className="mt-1.5 w-1.5 h-1.5 rounded-full flex-shrink-0 bg-[#00B4D8]" />
-                {f}
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-
-      {deliverableLines.length > 0 && (
-        <div className="mb-4">
-          <p className={`text-sm font-semibold mb-1.5 ${isHighlighted ? "text-white" : "text-[#0A2540]"}`}>Deliverables:</p>
-          <ul className="space-y-1">
-            {deliverableLines.map((line, i) => (
-              <li key={i} className={`flex items-start gap-2 text-sm ${isHighlighted ? "text-white/70" : "text-muted-foreground"}`}>
-                <span className="mt-1.5 w-1.5 h-1.5 rounded-full bg-[#0078D4] flex-shrink-0" />
-                {line.trim()}
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-
-      <div className="mt-auto pt-4">
-        <CTAButton
-          href={href}
-          className="w-full justify-center text-sm"
-          data-testid={`service-cta-${index}`}
-        >
-          {ctaLabel}
-        </CTAButton>
-      </div>
-    </div>
-  );
-}
+import { ServiceRetainerCard } from "@/components/ServiceRetainerCard";
 
 function TrackSection({
   trackLabel,
@@ -338,7 +213,17 @@ export default function Services() {
               accent="text-[#00B4D8]"
               isEmpty={retainers.length === 0}
             >
-              {retainers.map((s, i) => <ServiceCard key={s.slug ?? s.id} s={s} index={i} />)}
+              {retainers.map((tier, i) => (
+                <ServiceRetainerCard
+                  key={tier.slug ?? tier.id}
+                  name={tier.name}
+                  price={formatPriceDisplay(tier)}
+                  hours={tier.hoursPerMonth ?? ""}
+                  description={tier.description ?? ""}
+                  highlight={tier.highlighted}
+                  index={i}
+                />
+              ))}
             </TrackSection>
           </div>
         </div>
