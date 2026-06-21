@@ -611,6 +611,12 @@ export interface QuizConversationEntry {
 }
 
 // Quiz Leads — captures visitor lead info and AI-scored Copilot readiness quiz results
+export interface QuizAnalysisText {
+  whatThisMeans: string;
+  whyThisFits: string;
+  roiProjection: string;
+}
+
 export const quizLeadsTable = pgTable("quiz_leads", {
   id: serial("id").primaryKey(),
   name: text("name").notNull(),
@@ -620,6 +626,7 @@ export const quizLeadsTable = pgTable("quiz_leads", {
   tier: text("tier").notNull().default("Beginner"),
   recommendedService: text("recommended_service"),
   categoryScores: jsonb("category_scores").$type<QuizCategoryScores>().notNull().default({ infrastructure: 0, data: 0, aiLiteracy: 0, changeManagement: 0, businessProcess: 0 }),
+  analysisText: jsonb("analysis_text").$type<QuizAnalysisText>().default({ whatThisMeans: "", whyThisFits: "", roiProjection: "" }),
   conversation: jsonb("conversation").$type<QuizConversationEntry[]>().notNull().default([]),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   contactedAt: timestamp("contacted_at"),

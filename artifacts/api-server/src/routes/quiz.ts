@@ -17,6 +17,14 @@ const chatLimiter = rateLimit({
   message: { error: "Too many quiz chat requests from this IP. Please try again in an hour." },
 });
 
+const resendLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 5,
+  standardHeaders: "draft-8",
+  legacyHeaders: false,
+  message: { error: "Too many resend requests from this IP. Please try again in an hour." },
+});
+
 const submitLimiter = rateLimit({
   windowMs: 60 * 60 * 1000,
   limit: 5,
@@ -188,8 +196,9 @@ Respond ONLY with valid JSON in this exact shape:
     totalScore >= 16 ? "Developing" : "Beginner";
 
   // Persist to DB — fail the request if this doesn't succeed so leads are never silently dropped
+  let leadId: number | null = null;
   try {
-    await db.insert(quizLeadsTable).values({
+    const [inserted] = await db.insert(quizLeadsTable).values({
       name,
       email,
       company: company ?? null,
@@ -197,8 +206,10 @@ Respond ONLY with valid JSON in this exact shape:
       tier,
       recommendedService,
       categoryScores: scores,
+      analysisText: { whatThisMeans, whyThisFits, roiProjection },
       conversation,
-    });
+    }).returning({ id: quizLeadsTable.id });
+    leadId = inserted?.id ?? null;
   } catch (err) {
     logger.error({ err }, "quiz/submit: DB insert failed");
     return res.status(500).json({ error: "Failed to save your results. Please try again." });
@@ -263,6 +274,7 @@ Respond ONLY with valid JSON in this exact shape:
 
   return res.json({
     success: true,
+    leadId,
     totalScore,
     tier,
     recommendedService,
@@ -272,6 +284,73 @@ Respond ONLY with valid JSON in this exact shape:
     whyThisFits,
     roiProjection,
   });
+});
+
+// ─── POST /api/quiz/resend-pdf ─────────────────────────────────────────────────
+const resendSchema = z.object({
+  leadId: z.number().int().positive(),
+  email: z.string().email(),
+});
+
+router.post("/quiz/resend-pdf", resendLimiter, async (req, res) => {
+  const parsed = resendSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ error: "Invalid request body" });
+  }
+  const { leadId, email } = parsed.data;
+
+  const lead = await db.query.quizLeadsTable.findFirst({
+    where: (t, { eq }) => eq(t.id, leadId),
+  });
+
+  if (!lead) {
+    return res.status(404).json({ error: "Quiz result not found." });
+  }
+
+  const analysis = lead.analysisText ?? { whatThisMeans: "", whyThisFits: "", roiProjection: "" };
+
+  try {
+    const pdfBuffer = await generateQuizPdf({
+      name: lead.name,
+      email: lead.email,
+      company: lead.company ?? undefined,
+      totalScore: lead.totalScore,
+      tier: lead.tier,
+      recommendedService: lead.recommendedService ?? "",
+      categoryScores: lead.categoryScores as unknown as Record<string, number>,
+      whatThisMeans: analysis.whatThisMeans,
+      whyThisFits: analysis.whyThisFits,
+      roiProjection: analysis.roiProjection,
+    });
+
+    const firstName = lead.name.split(" ")[0] || "there";
+    const bodyHtml = `
+      <p>Hi ${firstName},</p>
+      <p>As requested, your <strong>Microsoft Copilot Readiness Assessment</strong> report is attached to this email.</p>
+      <table cellpadding="0" cellspacing="0" style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:16px 20px;margin:16px 0;width:100%;">
+        <tr><td style="padding:4px 0;color:#64748b;font-size:13px;width:160px;">Total Score</td><td style="padding:4px 0;font-weight:600;">${lead.totalScore} / 50</td></tr>
+        <tr><td style="padding:4px 0;color:#64748b;font-size:13px;">Maturity Tier</td><td style="padding:4px 0;font-weight:600;">${lead.tier}</td></tr>
+        <tr><td style="padding:4px 0;color:#64748b;font-size:13px;">Recommended Service</td><td style="padding:4px 0;font-weight:600;">${lead.recommendedService ?? ""}</td></tr>
+      </table>
+      <p>Ready to discuss your results and plan your next steps? Book a complimentary 30-minute strategy call with Shane.</p>
+      <p style="margin:24px 0 0;">
+        <a href="https://shanemccaw.consulting/contact" style="display:inline-block;background:#0078D4;color:#ffffff;text-decoration:none;font-weight:600;font-size:14px;padding:12px 24px;border-radius:6px;">Book a Strategy Call →</a>
+      </p>
+      <p style="margin-top:24px;">— Shane McCaw<br/><span style="color:#64748b;font-size:13px;">Lead Microsoft 365 Architect | Shane McCaw Consulting</span></p>
+    `;
+
+    await sendEmailWithAttachment(
+      email,
+      "Your Microsoft Copilot Readiness Report",
+      brandedEmail(bodyHtml),
+      [{ filename: "copilot-readiness-report.pdf", content: pdfBuffer }],
+    );
+
+    return res.json({ success: true });
+  } catch (err) {
+    logger.warn({ err }, "quiz/resend-pdf: failed");
+    return res.status(500).json({ error: "Failed to send the report. Please try again." });
+  }
 });
 
 export default router;

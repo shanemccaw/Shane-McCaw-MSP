@@ -14,6 +14,7 @@ interface Message {
 }
 
 interface QuizResults {
+  leadId: number | null;
   totalScore: number;
   tier: string;
   recommendedService: string;
@@ -110,6 +111,9 @@ function QuizModal({ onClose }: { onClose: () => void }) {
   const [loading, setLoading] = useState(false);
   const [results, setResults] = useState<QuizResults | null>(null);
   const [submitError, setSubmitError] = useState("");
+  const [submittedEmail, setSubmittedEmail] = useState("");
+  const [resendEmail, setResendEmail] = useState("");
+  const [resendState, setResendState] = useState<"idle" | "sending" | "sent" | "error">("idle");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const {
@@ -180,11 +184,31 @@ function QuizModal({ onClose }: { onClose: () => void }) {
         company: lead.company,
         conversation: messages,
       });
+      setSubmittedEmail(lead.email);
+      setResendEmail(lead.email);
       setResults(data);
       setState("results");
     } catch {
       setSubmitError("Something went wrong. Please try again.");
       setState("lead-capture");
+    }
+  }
+
+  // Resend (or forward) the PDF report to another email
+  async function handleResend(e: React.FormEvent) {
+    e.preventDefault();
+    if (!results?.leadId || !resendEmail || resendState === "sending") return;
+    setResendState("sending");
+    try {
+      const base = import.meta.env.BASE_URL.replace(/\/$/, "");
+      const res = await fetch(`${base}/api/quiz/resend-pdf`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ leadId: results.leadId, email: resendEmail }),
+      });
+      setResendState(res.ok ? "sent" : "error");
+    } catch {
+      setResendState("error");
     }
   }
 
@@ -368,8 +392,48 @@ function QuizModal({ onClose }: { onClose: () => void }) {
               <div className="text-center">
                 <CheckCircle className="w-10 h-10 text-teal-400 mx-auto mb-3" />
                 <h3 className="text-xl font-bold text-white">Your Readiness Report</h3>
-                <p className="text-white/50 text-sm mt-1">Check your inbox — your full PDF report has been emailed to you.</p>
+                {submittedEmail ? (
+                  <p className="text-white/50 text-sm mt-1">PDF report sent to <span className="text-teal-400 font-medium">{submittedEmail}</span></p>
+                ) : (
+                  <p className="text-white/50 text-sm mt-1">Check your inbox — your full PDF report has been emailed to you.</p>
+                )}
               </div>
+
+              {/* Forward report form */}
+              {results.leadId && (
+                <div className="bg-white/5 border border-white/10 rounded-xl p-4">
+                  <p className="text-white/70 text-xs font-semibold uppercase tracking-wider mb-3">Forward Report to Another Address</p>
+                  {resendState === "sent" ? (
+                    <div className="flex items-center gap-2 text-teal-400 text-sm">
+                      <CheckCircle className="w-4 h-4 flex-shrink-0" />
+                      <span>Report sent to <span className="font-medium">{resendEmail}</span></span>
+                    </div>
+                  ) : (
+                    <form onSubmit={(e) => { void handleResend(e); }} className="flex gap-2">
+                      <input
+                        type="email"
+                        value={resendEmail}
+                        onChange={(e) => { setResendEmail(e.target.value); setResendState("idle"); }}
+                        placeholder="colleague@company.com"
+                        required
+                        className="flex-1 min-w-0 bg-white/10 border border-white/20 rounded-lg px-3 py-2 text-sm text-white placeholder-white/30 focus:outline-none focus:border-primary"
+                      />
+                      <button
+                        type="submit"
+                        disabled={resendState === "sending" || !resendEmail}
+                        className="flex items-center gap-1.5 bg-primary hover:bg-primary/90 disabled:opacity-50 text-white text-sm font-semibold px-4 py-2 rounded-lg transition-colors whitespace-nowrap flex-shrink-0"
+                      >
+                        {resendState === "sending" ? (
+                          <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Sending…</>
+                        ) : "Send PDF"}
+                      </button>
+                    </form>
+                  )}
+                  {resendState === "error" && (
+                    <p className="text-red-400 text-xs mt-2">Failed to send. Please try again.</p>
+                  )}
+                </div>
+              )}
 
               {/* Score + Tier */}
               <div className="grid grid-cols-2 gap-3">
