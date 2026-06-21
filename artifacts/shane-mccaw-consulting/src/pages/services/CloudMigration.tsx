@@ -1,28 +1,65 @@
 import { SEOMeta } from "@/components/SEOMeta";
 import { Layout } from "@/components/Layout";
-import { Server, CheckCircle, ArrowRight } from "lucide-react";
-import { ConsultationCTA } from "@/components/ConsultationCTA";
+import { Server, CheckCircle, Clock, DollarSign, ArrowRight, Users, Shield, Building2 } from "lucide-react";
+import { CTAButton } from "@/components/CTAButton";
 
-const migrationSteps = [
-  { step: "01", title: "Discovery", desc: "Inventory all source systems, data volumes, user counts, and dependencies. Identify risks before they become problems." },
-  { step: "02", title: "Planning", desc: "Define the migration approach, sequencing, rollback plan, and communication strategy. Complete project plan with clear milestones." },
-  { step: "03", title: "Pilot", desc: "Migrate a representative subset of users and data. Validate the process, identify edge cases, and confirm cutover readiness." },
-  { step: "04", title: "Production Migration", desc: "Execute the full migration with Shane overseeing every step. Zero data loss. Minimal disruption to productivity." },
-  { step: "05", title: "Post-Migration Support", desc: "30 days of dedicated support post-cutover. Address stragglers, clean up source systems, confirm everything is working." },
+const migrationTypes = [
+  {
+    title: "Exchange → Exchange Online",
+    identity: "On-premises Active Directory synced to Azure AD via AAD Connect with MFA enforcement at cutover.",
+    permissions: "Full mailbox permissions, shared mailboxes, resource calendars, and distribution group memberships preserved.",
+    coexistence: "Hybrid Exchange coexistence configured for phased cutover — no forced big-bang migrations.",
+    cutover: "Batched cutover plan with per-department sequencing and rollback triggers at each phase gate.",
+    zeroLoss: "Dual-delivery coexistence and mail flow validation before final DNS cutover to guarantee zero message loss.",
+  },
+  {
+    title: "SharePoint → SharePoint Online",
+    identity: "Identity and group memberships remapped to Azure AD equivalents before content migration begins.",
+    permissions: "Site collection permissions, unique item-level permissions, and inherited permission chains fully preserved.",
+    coexistence: "Parallel access maintained during migration — users can access both environments during transition.",
+    cutover: "Site-by-site cutover with stakeholder sign-off gates between departments and business units.",
+    zeroLoss: "SPMT-based migration with checksum validation and delta sync passes before decommission.",
+  },
+  {
+    title: "Google Workspace → Microsoft 365",
+    identity: "Google accounts mapped to Microsoft 365 identities with Azure AD SSO and MFA configured pre-migration.",
+    permissions: "Drive sharing permissions translated to SharePoint/OneDrive equivalents; shared drives mapped to team sites.",
+    coexistence: "Mail coexistence via MX split routing during transition so no email is lost regardless of which platform receives it.",
+    cutover: "App-by-app cutover starting with lower-risk workloads (Calendar, Contacts) before Gmail and Drive.",
+    zeroLoss: "Google Takeout + migration tooling with reconciliation reports confirming 100% item count parity post-migration.",
+  },
+  {
+    title: "Tenant → Tenant (Mergers & Acquisitions)",
+    identity: "Full identity merge strategy — new UPNs, MFA re-enrollment, and cross-tenant access policies configured first.",
+    permissions: "Group memberships, Teams ownership, SharePoint permissions, and mailbox delegates remapped to target tenant.",
+    coexistence: "Cross-tenant mail flow and Teams federation enabled so both organizations communicate during transition.",
+    cutover: "Business-unit-level cutover sequencing aligned with M&A integration milestones and legal entity timelines.",
+    zeroLoss: "Cross-tenant migration tooling with pre/post item count audits and a 30-day reconciliation window post-cutover.",
+  },
 ];
 
-const riskChecklist = [
-  "Shared mailboxes or distribution groups with complex permissions",
-  "Legacy public folders or on-premises SharePoint content",
-  "Custom email domains or hybrid Active Directory environments",
-  "Large mailboxes (50GB+) or extensive SharePoint site collections",
-  "Strict regulatory retention requirements on migrated data",
-  "Employees in multiple time zones requiring coordinated cutover",
+const retainerTiers = [
+  {
+    name: "Essentials",
+    price: "$2,500",
+    hours: "10 hrs/mo",
+    description: "Ongoing migration oversight and post-migration governance for smaller organizations completing their transition.",
+  },
+  {
+    name: "Growth",
+    price: "$6,000",
+    hours: "25 hrs/mo",
+    description: "Active migration execution support, governance buildout, and stakeholder advisory for mid-market organizations.",
+  },
+  {
+    name: "Enterprise",
+    price: "$11,000",
+    hours: "50 hrs/mo",
+    description: "Embedded fractional architect capacity for large-scale, multi-phase migrations and complex compliance environments.",
+  },
 ];
 
 export default function CloudMigration() {
-  const price = "$2,500";
-  const loading = false;
   return (
     <Layout>
       <SEOMeta
@@ -53,140 +90,334 @@ export default function CloudMigration() {
           }
         }}
       />
+
+      {/* Hero */}
       <section className="bg-[#0A2540] pt-32 pb-20">
         <div className="max-w-[1200px] mx-auto px-6">
           <Server className="w-10 h-10 text-[#0078D4] mb-6" />
-          <p className="text-[#0078D4] text-sm font-semibold uppercase tracking-[0.1em] mb-4">Service</p>
+          <p className="text-[#0078D4] text-sm font-semibold uppercase tracking-[0.1em] mb-4">Cloud Migration</p>
           <h1 className="text-4xl md:text-5xl lg:text-6xl font-extrabold text-white leading-tight max-w-4xl">
-            Cloud Migration Services
+            Microsoft 365 Cloud Migration — Zero-Drama, Zero-Data-Loss Execution
           </h1>
-          <p className="text-white/70 text-lg mt-6 max-w-2xl">
-            Exchange, SharePoint, M365, and Google Workspace migrations executed with zero-drama precision. Shane has migrated organizations of every size — safely, efficiently, and without data loss.
+          <p className="text-white/70 text-lg mt-6 max-w-2xl leading-relaxed">
+            Exchange, SharePoint, Google Workspace, and tenant-to-tenant migrations planned and executed with the discipline of a NASA-level architect. Every mailbox, file, and permission — accounted for.
           </p>
-        </div>
-      </section>
-
-      {/* Migration Types */}
-      <section className="bg-[#F7F9FC] py-20">
-        <div className="max-w-[1200px] mx-auto px-6">
-          <p className="text-[#0078D4] text-sm font-semibold uppercase tracking-[0.1em] mb-4">Supported Migrations</p>
-          <h2 className="text-3xl font-extrabold text-[#0A2540] mb-8">What We Migrate</h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-16">
-            {[
-              { title: "Exchange → Exchange Online", desc: "On-premises Exchange to Microsoft 365, including hybrid coexistence configurations." },
-              { title: "SharePoint → SharePoint Online", desc: "On-premises SharePoint to SharePoint Online, preserving permissions, metadata, and content structure." },
-              { title: "Google Workspace → M365", desc: "Full migration from Google Workspace — Gmail, Drive, Calendar, Contacts — to the Microsoft 365 ecosystem." },
-              { title: "M365 Tenant → Tenant", desc: "Business acquisitions, mergers, or tenant consolidations requiring one M365 tenant to migrate to another." },
-            ].map((item, i) => (
-              <div key={i} className="bg-white border border-border rounded-lg p-6" data-testid={`migration-type-${i}`}>
-                <Server className="w-6 h-6 text-[#0078D4] mb-3" />
-                <h3 className="font-bold text-[#0A2540] mb-2">{item.title}</h3>
-                <p className="text-muted-foreground text-sm leading-relaxed">{item.desc}</p>
-              </div>
-            ))}
-          </div>
-
-          {/* Migration Steps */}
-          <p className="text-[#0078D4] text-sm font-semibold uppercase tracking-[0.1em] mb-4">Process</p>
-          <h2 className="text-3xl font-extrabold text-[#0A2540] mb-8">The Migration Process</h2>
-          <div className="space-y-4">
-            {migrationSteps.map((item, i) => (
-              <div key={i} className="bg-white border border-border rounded-lg p-6 flex items-start gap-6" data-testid={`migration-step-${i}`}>
-                <div className="flex-shrink-0 w-12 h-12 rounded-full bg-[#0078D4]/10 border-2 border-[#0078D4] flex items-center justify-center">
-                  <span className="text-[#0078D4] font-extrabold text-sm">{item.step}</span>
-                </div>
-                <div>
-                  <h3 className="font-bold text-[#0A2540] mb-1">{item.title}</h3>
-                  <p className="text-muted-foreground leading-relaxed">{item.desc}</p>
-                </div>
-                {i < migrationSteps.length - 1 && <ArrowRight className="w-5 h-5 text-[#0078D4]/40 flex-shrink-0 mt-3 hidden md:block" />}
-              </div>
-            ))}
+          <div className="mt-10">
+            <CTAButton href="/book" className="px-8 py-4 text-base">
+              Book a Free Discovery Call
+            </CTAButton>
           </div>
         </div>
       </section>
 
-      {/* Risk Checklist */}
+      {/* Why Migrations Fail */}
       <section className="bg-white py-20">
         <div className="max-w-[1200px] mx-auto px-6">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-12">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-16 items-start">
             <div>
-              <p className="text-[#0078D4] text-sm font-semibold uppercase tracking-[0.1em] mb-4">Self-Assessment</p>
-              <h2 className="text-3xl font-extrabold text-[#0A2540] mb-4">Migration Risk Factors</h2>
-              <p className="text-muted-foreground leading-relaxed mb-8">If any of these apply to your environment, your migration requires careful planning. They're not blockers — but they're factors that need to be addressed before you move a single mailbox.</p>
-              <div className="space-y-3">
-                {riskChecklist.map((item, i) => (
-                  <div key={i} className="flex items-start gap-3 bg-[#F7F9FC] border border-border rounded-lg p-4" data-testid={`risk-item-${i}`}>
-                    <div className="flex-shrink-0 w-5 h-5 rounded border-2 border-[#0078D4] mt-0.5" />
-                    <span className="text-foreground text-sm">{item}</span>
-                  </div>
-                ))}
-              </div>
-              <p className="text-muted-foreground text-sm mt-6">If you checked 3 or more, book a discovery call before doing anything else.</p>
+              <p className="text-[#0078D4] text-sm font-semibold uppercase tracking-[0.1em] mb-4">The Problem</p>
+              <h2 className="text-3xl font-extrabold text-[#0A2540] mb-6">Why Cloud Migrations Fail</h2>
+              <p className="text-muted-foreground leading-relaxed mb-6">
+                Most cloud migrations fail not because of technical complexity — but because of poor planning, skipped readiness assessments, and a lack of governance discipline before the first mailbox moves. Organizations rush to lift-and-shift without understanding what they actually have, and they pay for it in data loss, productivity outages, and expensive remediation work after the fact.
+              </p>
+              <p className="text-muted-foreground leading-relaxed">
+                A successful migration starts with an honest inventory of your environment — identity, data, permissions, compliance requirements — and a sequenced plan that accounts for every dependency before anyone touches a production system.
+              </p>
             </div>
             <div>
-              <div className="bg-[#F7F9FC] rounded-xl border border-border p-8 mb-6">
-                <h3 className="text-xl font-bold text-[#0A2540] mb-4">Why Migration Fails</h3>
-                <ul className="space-y-3">
+              <p className="text-[#0078D4] text-sm font-semibold uppercase tracking-[0.1em] mb-4">Shane's Credentials</p>
+              <h2 className="text-3xl font-extrabold text-[#0A2540] mb-6">30 Years. NASA Scale. Zero Data Loss.</h2>
+              <p className="text-muted-foreground leading-relaxed mb-6">
+                Shane McCaw has spent 30 years architecting Microsoft ecosystem environments — from early Exchange deployments to complex Microsoft 365 tenant migrations at NASA, one of the most security-sensitive and compliance-heavy IT environments on the planet.
+              </p>
+              <ul className="space-y-3">
+                {[
+                  "Lead Microsoft 365 Architect at NASA",
+                  "30+ years in the Microsoft ecosystem",
+                  "Enterprise-scale migration execution across regulated industries",
+                  "Proven zero-data-loss methodology on every engagement",
+                ].map((item, i) => (
+                  <li key={i} className="flex items-start gap-3 text-foreground">
+                    <CheckCircle className="w-5 h-5 text-[#0078D4] flex-shrink-0 mt-0.5" />
+                    <span>{item}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Official Offers */}
+      <section className="bg-[#F7F9FC] py-20">
+        <div className="max-w-[1200px] mx-auto px-6">
+          <p className="text-[#0078D4] text-sm font-semibold uppercase tracking-[0.1em] mb-4">Services & Pricing</p>
+          <h2 className="text-3xl font-extrabold text-[#0A2540] mb-12">Fixed-Scope Migration Engagements</h2>
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-12">
+            {/* Migration Readiness Assessment */}
+            <div className="bg-white border border-border rounded-2xl p-8 flex flex-col">
+              <div className="flex items-center gap-3 mb-4">
+                <Shield className="w-6 h-6 text-[#0078D4]" />
+                <span className="text-[#0078D4] text-sm font-semibold uppercase tracking-wide">Fixed-Scope Offer</span>
+              </div>
+              <h3 className="text-2xl font-extrabold text-[#0A2540] mb-2">Migration Readiness Assessment</h3>
+              <div className="flex items-center gap-4 mb-4">
+                <div className="flex items-center gap-1.5 text-[#0A2540] font-bold">
+                  <DollarSign className="w-4 h-4 text-[#0078D4]" />
+                  <span>$3,500–$5,000</span>
+                </div>
+                <div className="flex items-center gap-1.5 text-muted-foreground text-sm">
+                  <Clock className="w-4 h-4" />
+                  <span>1 week</span>
+                </div>
+              </div>
+              <p className="text-muted-foreground leading-relaxed mb-6">
+                Before you move a single mailbox, know exactly what you're dealing with. This structured assessment identifies every risk, dependency, and sequencing requirement in your environment — so your migration has a validated plan, not assumptions.
+              </p>
+              <div className="mb-6">
+                <p className="text-sm font-semibold text-[#0A2540] mb-3 uppercase tracking-wide">Deliverables</p>
+                <ul className="space-y-2">
                   {[
-                    "Skipping the discovery phase and underestimating complexity",
-                    "No pilot migration to validate the process",
-                    "Poor communication planning — users caught by surprise",
-                    "No rollback plan when things don't go as expected",
-                    "Ignoring post-migration support needs",
+                    "Source environment inventory (mailboxes, sites, identities, data volumes)",
+                    "Identity review and Azure AD readiness assessment",
+                    "Data classification and retention requirements analysis",
+                    "Network readiness and bandwidth impact analysis",
+                    "Risk analysis with mitigation recommendations",
+                    "Migration sequencing plan with dependency mapping",
+                    "Go/no-go recommendation with clear criteria",
+                    "Phased migration roadmap with milestones",
                   ].map((item, i) => (
                     <li key={i} className="flex items-start gap-2 text-sm text-foreground">
                       <CheckCircle className="w-4 h-4 text-[#0078D4] flex-shrink-0 mt-0.5" />
-                      {item}
+                      <span>{item}</span>
                     </li>
                   ))}
                 </ul>
               </div>
-              <div className="bg-[#0078D4]/10 border border-[#0078D4]/30 rounded-xl p-6">
-                <p className="text-[#0078D4] text-sm font-semibold uppercase tracking-wide mb-2">Commitment</p>
-                <h4 className="font-bold text-[#0A2540] mb-2">30-Day Post-Migration Support</h4>
-                <p className="text-muted-foreground text-sm">Every migration engagement includes 30 days of dedicated post-migration support. Shane stays with you through the transition, not just the cutover.</p>
+              <div className="mt-auto bg-[#0078D4]/8 border border-[#0078D4]/20 rounded-xl p-4">
+                <p className="text-sm font-semibold text-[#0A2540] mb-1">You Walk Away With</p>
+                <p className="text-sm text-muted-foreground">A complete migration readiness report with a validated migration plan — ready to hand to your IT team or use as the foundation for a managed migration engagement.</p>
               </div>
             </div>
-          </div>
-        </div>
-      </section>
 
-      {/* Get Started CTA */}
-      <section className="bg-[#F7F9FC] py-16">
-        <div className="max-w-[1200px] mx-auto px-6">
-          <div className="bg-[#0A2540] rounded-3xl p-10 md:p-14 flex flex-col md:flex-row items-start md:items-center justify-between gap-8">
-            <div className="flex-1">
-              <p className="text-[#0078D4] text-sm font-semibold uppercase tracking-wide mb-3">Monthly Retainer</p>
-              <h2 className="text-2xl md:text-3xl font-extrabold text-white mb-3">Ready to get started?</h2>
-              <p className="text-white/70 text-base max-w-md">
-                Ongoing cloud migration planning, execution oversight, and post-migration support — Exchange, SharePoint, and full M365 migrations. Cancel any time.
+            {/* Governance Foundations Package */}
+            <div className="bg-white border border-border rounded-2xl p-8 flex flex-col">
+              <div className="flex items-center gap-3 mb-4">
+                <Building2 className="w-6 h-6 text-[#0078D4]" />
+                <span className="text-[#0078D4] text-sm font-semibold uppercase tracking-wide">Fixed-Scope Offer</span>
+              </div>
+              <h3 className="text-2xl font-extrabold text-[#0A2540] mb-2">Governance Foundations Package</h3>
+              <div className="flex items-center gap-4 mb-4">
+                <div className="flex items-center gap-1.5 text-[#0A2540] font-bold">
+                  <DollarSign className="w-4 h-4 text-[#0078D4]" />
+                  <span>$12,000–$18,000</span>
+                </div>
+                <div className="flex items-center gap-1.5 text-muted-foreground text-sm">
+                  <Clock className="w-4 h-4" />
+                  <span>6 weeks</span>
+                </div>
+              </div>
+              <p className="text-muted-foreground leading-relaxed mb-6">
+                For organizations that need governance cleanup before migration begins. Migrating into a chaotic Microsoft 365 environment creates compounding debt — this package establishes the policies, naming conventions, lifecycle rules, and security baselines your new environment needs before the first workload arrives.
               </p>
-            </div>
-            <div className="flex flex-col items-start md:items-end gap-4">
-              <div>
-                <span className="text-3xl font-extrabold text-white">
-                  {loading ? (
-                    <span className="inline-block h-9 w-24 rounded bg-white/20 animate-pulse align-middle" aria-hidden="true" />
-                  ) : (
-                    price
-                  )}
-                </span>
-                <span className="text-lg font-normal text-white/60">/mo</span>
+              <div className="mb-6">
+                <p className="text-sm font-semibold text-[#0A2540] mb-3 uppercase tracking-wide">What's Included</p>
+                <ul className="space-y-2">
+                  {[
+                    "Microsoft 365 governance framework design",
+                    "Identity and access management policies",
+                    "Group lifecycle and naming convention enforcement",
+                    "Data retention and sensitivity label architecture",
+                    "Teams and SharePoint governance policies",
+                    "Security baseline and Conditional Access review",
+                  ].map((item, i) => (
+                    <li key={i} className="flex items-start gap-2 text-sm text-foreground">
+                      <CheckCircle className="w-4 h-4 text-[#0078D4] flex-shrink-0 mt-0.5" />
+                      <span>{item}</span>
+                    </li>
+                  ))}
+                </ul>
               </div>
-              <a
-                href="/crm/portal/onboarding/select?service=cloud-migration-consulting"
-                className="inline-flex items-center gap-2 bg-[#0078D4] text-white font-semibold px-6 py-3 rounded-xl hover:bg-[#0066B8] transition-colors"
-              >
-                Get Started <ArrowRight className="w-4 h-4" />
-              </a>
-              <p className="text-white/50 text-xs">No long-term commitment required.</p>
+              <div className="mt-auto bg-[#0078D4]/8 border border-[#0078D4]/20 rounded-xl p-4">
+                <p className="text-sm font-semibold text-[#0A2540] mb-1">Prerequisite Value</p>
+                <p className="text-sm text-muted-foreground">Organizations that complete governance foundations before migrating avoid the most expensive post-migration remediation work — especially in regulated industries.</p>
+              </div>
+            </div>
+          </div>
+
+          {/* Fractional Retainers */}
+          <div className="bg-white border border-border rounded-2xl p-8">
+            <div className="flex items-center gap-3 mb-2">
+              <Users className="w-6 h-6 text-[#0078D4]" />
+              <span className="text-[#0078D4] text-sm font-semibold uppercase tracking-wide">Ongoing Retainer</span>
+            </div>
+            <h3 className="text-2xl font-extrabold text-[#0A2540] mb-2">Fractional M365 Architect Retainers</h3>
+            <p className="text-muted-foreground mb-8 max-w-2xl">
+              For ongoing migration oversight, post-migration governance, and continuous Microsoft 365 architectural advisory. Shane embedded as your senior architect — without the full-time hire.
+            </p>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              {retainerTiers.map((tier) => (
+                <div key={tier.name} className="bg-[#F7F9FC] border border-border rounded-xl p-6 flex flex-col">
+                  <p className="text-sm font-semibold text-[#0078D4] uppercase tracking-wide mb-2">{tier.name}</p>
+                  <div className="flex items-baseline gap-1 mb-1">
+                    <span className="text-3xl font-extrabold text-[#0A2540]">{tier.price}</span>
+                    <span className="text-muted-foreground text-sm">/mo</span>
+                  </div>
+                  <p className="text-sm text-[#0078D4] font-medium mb-4">{tier.hours}</p>
+                  <p className="text-sm text-muted-foreground leading-relaxed">{tier.description}</p>
+                </div>
+              ))}
             </div>
           </div>
         </div>
       </section>
 
-      <ConsultationCTA />
+      {/* Supported Migration Types */}
+      <section className="bg-white py-20">
+        <div className="max-w-[1200px] mx-auto px-6">
+          <p className="text-[#0078D4] text-sm font-semibold uppercase tracking-[0.1em] mb-4">Supported Migrations</p>
+          <h2 className="text-3xl font-extrabold text-[#0A2540] mb-4">Every Migration Type, Covered</h2>
+          <p className="text-muted-foreground max-w-2xl mb-12 leading-relaxed">
+            Each migration type has its own complexity profile. Shane's approach accounts for all five critical dimensions — identity, permissions, coexistence, cutover, and data integrity — for every workload.
+          </p>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+            {migrationTypes.map((m, i) => (
+              <div key={i} className="bg-[#F7F9FC] border border-border rounded-2xl p-8">
+                <div className="flex items-center gap-3 mb-6">
+                  <Server className="w-5 h-5 text-[#0078D4] flex-shrink-0" />
+                  <h3 className="text-xl font-bold text-[#0A2540]">{m.title}</h3>
+                </div>
+                <div className="space-y-4">
+                  {[
+                    { label: "Identity & Authentication", value: m.identity },
+                    { label: "Permissions & Metadata", value: m.permissions },
+                    { label: "Coexistence Strategy", value: m.coexistence },
+                    { label: "Cutover Planning", value: m.cutover },
+                    { label: "Zero-Data-Loss Execution", value: m.zeroLoss },
+                  ].map((dim) => (
+                    <div key={dim.label} className="border-l-2 border-[#0078D4]/30 pl-4">
+                      <p className="text-xs font-semibold text-[#0078D4] uppercase tracking-wide mb-1">{dim.label}</p>
+                      <p className="text-sm text-foreground leading-relaxed">{dim.value}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* What Shane Delivers */}
+      <section className="bg-[#F7F9FC] py-20">
+        <div className="max-w-[1200px] mx-auto px-6">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-12">
+            {/* What Shane Delivers */}
+            <div>
+              <p className="text-[#0078D4] text-sm font-semibold uppercase tracking-[0.1em] mb-4">Scope of Work</p>
+              <h2 className="text-2xl font-extrabold text-[#0A2540] mb-6">What Shane Delivers</h2>
+              <ul className="space-y-3">
+                {[
+                  "Migration architecture and workload sequencing",
+                  "Identity and authentication strategy",
+                  "Permissions mapping and access continuity",
+                  "Coexistence and cutover planning",
+                  "Pilot migrations with validation checkpoints",
+                  "Full production migration oversight",
+                  "Governance alignment post-migration",
+                ].map((item, i) => (
+                  <li key={i} className="flex items-start gap-3 text-foreground text-sm">
+                    <CheckCircle className="w-4 h-4 text-[#0078D4] flex-shrink-0 mt-0.5" />
+                    <span>{item}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+
+            {/* Who This Is For */}
+            <div>
+              <p className="text-[#0078D4] text-sm font-semibold uppercase tracking-[0.1em] mb-4">Ideal Client</p>
+              <h2 className="text-2xl font-extrabold text-[#0A2540] mb-6">Who This Is For</h2>
+              <ul className="space-y-3">
+                {[
+                  "Mid-market organizations (200–2,000 employees)",
+                  "Regulated industries: healthcare, finance, government, defense",
+                  "Complex identity environments (hybrid AD, federated SSO)",
+                  "Organizations with strict compliance and data retention requirements",
+                  "IT teams needing senior-level oversight without a full-time hire",
+                  "M&A scenarios requiring tenant consolidation under deadline pressure",
+                ].map((item, i) => (
+                  <li key={i} className="flex items-start gap-3 text-foreground text-sm">
+                    <CheckCircle className="w-4 h-4 text-[#0078D4] flex-shrink-0 mt-0.5" />
+                    <span>{item}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+
+            {/* Why Work With Shane */}
+            <div>
+              <p className="text-[#0078D4] text-sm font-semibold uppercase tracking-[0.1em] mb-4">Differentiators</p>
+              <h2 className="text-2xl font-extrabold text-[#0A2540] mb-6">Why Work With Shane</h2>
+              <ul className="space-y-3">
+                {[
+                  "NASA migration experience — the most security-sensitive environment in the world",
+                  "Enterprise-scale execution across hundreds of complex migrations",
+                  "Proven zero-data-loss methodology on every engagement",
+                  "Direct senior-architect access — no account managers, no junior handoffs",
+                  "Governance-first approach that prevents post-migration technical debt",
+                  "30 years of deep Microsoft ecosystem expertise, not generalist cloud knowledge",
+                ].map((item, i) => (
+                  <li key={i} className="flex items-start gap-3 text-foreground text-sm">
+                    <CheckCircle className="w-4 h-4 text-[#0078D4] flex-shrink-0 mt-0.5" />
+                    <span>{item}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* CTA */}
+      <section className="bg-[#0A2540] py-24 relative overflow-hidden">
+        <div
+          className="absolute inset-0 pointer-events-none"
+          style={{
+            background: "radial-gradient(ellipse 70% 60% at 50% 50%, rgba(0,120,212,0.18) 0%, transparent 75%)",
+          }}
+        />
+        <div
+          className="absolute inset-0 pointer-events-none opacity-[0.04]"
+          style={{
+            backgroundImage:
+              "linear-gradient(rgba(255,255,255,0.6) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.6) 1px, transparent 1px)",
+            backgroundSize: "40px 40px",
+          }}
+        />
+        <div className="relative max-w-[860px] mx-auto px-6 text-center">
+          <p className="text-[#00B4D8] text-sm font-semibold uppercase tracking-widest mb-4">
+            Start With a Conversation
+          </p>
+          <h2 className="text-4xl md:text-5xl font-extrabold text-white leading-tight mb-6">
+            Ready to Plan Your Migration the Right Way?
+          </h2>
+          <p className="text-white/70 text-lg max-w-2xl mx-auto mb-10 leading-relaxed">
+            Book a free 30-minute discovery call with Shane. Walk away with a clear picture of what your migration actually involves — and what it will take to do it without drama or data loss.
+          </p>
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
+            <CTAButton href="/book" className="px-10 py-4 text-base">
+              Book a Free Discovery Call
+            </CTAButton>
+            <a
+              href="/contact"
+              className="inline-flex items-center gap-2 border border-white/30 text-white font-semibold px-10 py-4 rounded-xl hover:bg-white/10 transition-colors text-base"
+            >
+              Schedule a Consultation <ArrowRight className="w-4 h-4" />
+            </a>
+          </div>
+        </div>
+      </section>
     </Layout>
   );
 }
