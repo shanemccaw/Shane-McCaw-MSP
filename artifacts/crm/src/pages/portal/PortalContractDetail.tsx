@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useParams, Link } from "wouter";
+import { useParams, Link, useLocation } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
 import PortalLayout from "@/components/PortalLayout";
 
@@ -140,6 +140,7 @@ function SkeletonBlock({ className }: { className?: string }) {
 export default function PortalContractDetail() {
   const { id } = useParams<{ id: string }>();
   const { fetchWithAuth } = useAuth();
+  const [, navigate] = useLocation();
   const [data, setData] = useState<ContractDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
@@ -205,7 +206,7 @@ export default function PortalContractDetail() {
 
           {/* Back button */}
           <button
-            onClick={() => window.history.length > 1 ? window.history.back() : window.location.assign("/portal/billing")}
+            onClick={() => window.history.length > 1 ? window.history.back() : navigate("/portal/billing")}
             className="flex items-center gap-1 text-sm text-muted-foreground hover:text-[#0078D4] transition-colors mb-4"
           >
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
