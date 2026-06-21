@@ -707,10 +707,15 @@ export default function Pricing() {
                     </div>
                     <p className="text-base font-extrabold leading-snug">Project-Based Engagements</p>
                   </th>
-                  <th className="text-left px-6 py-5 w-[28%] border-l border-white/10">
-                    <div className="flex items-center gap-2 mb-1">
-                      <Calendar className="w-4 h-4 text-[#00B4D8]" />
-                      <span className="text-xs font-semibold text-[#00B4D8] uppercase tracking-widest">Track 03 — Strategic</span>
+                  <th className="text-left px-6 py-5 w-[28%] border-l border-[#0078D4]/50 bg-[#0078D4]/10">
+                    <div className="flex items-center justify-between gap-2 mb-2">
+                      <div className="flex items-center gap-2">
+                        <Calendar className="w-4 h-4 text-[#00B4D8]" />
+                        <span className="text-xs font-semibold text-[#00B4D8] uppercase tracking-widest">Track 03 — Strategic</span>
+                      </div>
+                      <span className="text-[10px] font-bold uppercase tracking-widest bg-[#0078D4] text-white px-2 py-0.5 rounded-full whitespace-nowrap">
+                        Most Popular
+                      </span>
                     </div>
                     <p className="text-base font-extrabold leading-snug">Monthly Fractional Retainer</p>
                   </th>
@@ -833,13 +838,21 @@ export default function Pricing() {
                 timeline: "Ongoing — month-to-month",
                 bestFor: "Continuous senior architect oversight and governance",
                 commitment: "Cancel with 30 days' notice at any time",
+                recommended: true,
               },
             ].map((col, i) => (
-              <div key={i} className="rounded-2xl border border-border overflow-hidden">
+              <div key={i} className={`rounded-2xl overflow-hidden ${col.recommended ? "border-2 border-[#0078D4]" : "border border-border"}`}>
                 <div className="bg-[#0A2540] px-5 py-4">
-                  <div className="flex items-center gap-2 mb-1">
-                    {col.icon}
-                    <span className="text-xs font-semibold text-[#00B4D8] uppercase tracking-widest">{col.badge}</span>
+                  <div className="flex items-center justify-between gap-2 mb-1">
+                    <div className="flex items-center gap-2">
+                      {col.icon}
+                      <span className="text-xs font-semibold text-[#00B4D8] uppercase tracking-widest">{col.badge}</span>
+                    </div>
+                    {col.recommended && (
+                      <span className="text-[10px] font-bold uppercase tracking-widest bg-[#0078D4] text-white px-2 py-0.5 rounded-full whitespace-nowrap">
+                        Most Popular
+                      </span>
+                    )}
                   </div>
                   <p className="text-white font-extrabold text-base">{col.title}</p>
                 </div>
