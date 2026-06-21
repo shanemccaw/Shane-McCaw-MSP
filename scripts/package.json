@@ -15,6 +15,7 @@
     "seed-prod": "tsx ./src/seed-prod.ts",
     "remove-default-services": "tsx ./src/remove-default-services.ts",
     "assign-task-types": "tsx ./src/assign-task-types.ts",
+    "seed-icon-names": "tsx ./src/seed-icon-names.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {

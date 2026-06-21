@@ -4,7 +4,8 @@ import {
   CheckCircle, ArrowRight, Clock, DollarSign, Shield, Users, Building2, Zap,
   AlertCircle, Star, Target, BarChart3, Database, Eye, Key, Map, Globe,
   Tag, Archive, Server, Layers, BookOpen, Settings, Cpu, Network,
-  ShieldCheck, Sparkles,
+  ShieldCheck, Sparkles, Bot, Cloud, Lock, FileText, BarChart2, Award,
+  Briefcase, Monitor, MessageSquare, Calendar, Layout as LayoutIcon,
 } from "lucide-react";
 
 const comparisonRows = [
@@ -105,11 +106,33 @@ const ICON_MAP: Record<string, LucideIcon> = {
   ShieldCheck,
   sparkles: Sparkles,
   Sparkles,
+  bot: Bot,
+  Bot,
+  cloud: Cloud,
+  Cloud,
+  lock: Lock,
+  Lock,
+  fileText: FileText,
+  FileText,
+  barChart2: BarChart2,
+  BarChart2,
+  award: Award,
+  Award,
+  briefcase: Briefcase,
+  Briefcase,
+  monitor: Monitor,
+  Monitor,
+  messageSquare: MessageSquare,
+  MessageSquare,
+  calendar: Calendar,
+  Calendar,
+  layout: LayoutIcon,
+  Layout: LayoutIcon,
 };
 
 function getIcon(iconName: string | null): LucideIcon {
   if (iconName && ICON_MAP[iconName]) return ICON_MAP[iconName];
-  return Zap;
+  return Sparkles;
 }
 
 const RETAINERS = [
