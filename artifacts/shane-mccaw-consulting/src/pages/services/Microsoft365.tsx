@@ -1,11 +1,7 @@
 import { SEOMeta } from "@/components/SEOMeta";
 import { Layout } from "@/components/Layout";
 import {
-  CheckCircle, ArrowRight, Clock, DollarSign, Shield, Users, Building2, Zap,
-  AlertCircle, Star, Target, BarChart3, Database, Eye, Key, Map, Globe,
-  Tag, Archive, Server, Layers, BookOpen, Settings, Cpu, Network,
-  ShieldCheck, Sparkles, Bot, Cloud, Lock, FileText, BarChart2, Award,
-  Briefcase, Monitor, MessageSquare, Calendar, Layout as LayoutIcon,
+  CheckCircle, ArrowRight, Shield, Users, Building2, Zap, AlertCircle,
 } from "lucide-react";
 
 const comparisonRows = [
@@ -46,95 +42,11 @@ const comparisonRows = [
     growth: "Continuous — cancel or adjust with 30-day notice",
   },
 ];
-import type { LucideIcon } from "lucide-react";
 import { Link } from "wouter";
 import { CTAButton } from "@/components/CTAButton";
+import { OfferCard } from "@/components/OfferCard";
 import { ServiceRetainerCard } from "@/components/ServiceRetainerCard";
 import { useServices, formatPriceDisplay } from "@/hooks/useServices";
-
-const ICON_MAP: Record<string, LucideIcon> = {
-  shield: Shield,
-  Shield,
-  zap: Zap,
-  Zap,
-  building2: Building2,
-  Building2,
-  arrowRight: ArrowRight,
-  ArrowRight,
-  checkCircle: CheckCircle,
-  CheckCircle,
-  users: Users,
-  Users,
-  alertCircle: AlertCircle,
-  AlertCircle,
-  star: Star,
-  Star,
-  target: Target,
-  Target,
-  barChart3: BarChart3,
-  BarChart3,
-  database: Database,
-  Database,
-  eye: Eye,
-  Eye,
-  key: Key,
-  Key,
-  map: Map,
-  Map,
-  globe: Globe,
-  Globe,
-  tag: Tag,
-  Tag,
-  archive: Archive,
-  Archive,
-  server: Server,
-  Server,
-  layers: Layers,
-  Layers,
-  bookOpen: BookOpen,
-  BookOpen,
-  settings: Settings,
-  Settings,
-  cpu: Cpu,
-  Cpu,
-  network: Network,
-  Network,
-  dollarSign: DollarSign,
-  DollarSign,
-  clock: Clock,
-  Clock,
-  shieldCheck: ShieldCheck,
-  ShieldCheck,
-  sparkles: Sparkles,
-  Sparkles,
-  bot: Bot,
-  Bot,
-  cloud: Cloud,
-  Cloud,
-  lock: Lock,
-  Lock,
-  fileText: FileText,
-  FileText,
-  barChart2: BarChart2,
-  BarChart2,
-  award: Award,
-  Award,
-  briefcase: Briefcase,
-  Briefcase,
-  monitor: Monitor,
-  Monitor,
-  messageSquare: MessageSquare,
-  MessageSquare,
-  calendar: Calendar,
-  Calendar,
-  layout: LayoutIcon,
-  Layout: LayoutIcon,
-};
-
-function getIcon(iconName: string | null): LucideIcon {
-  if (iconName && ICON_MAP[iconName]) return ICON_MAP[iconName];
-  return Sparkles;
-}
 
 
 const WHO_FOR = [
@@ -276,36 +188,9 @@ export default function Microsoft365() {
 
           {!loading && !error && services.length > 0 && (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {services.map((offer) => {
-                const IconComponent = getIcon(offer.iconName);
-                const price = formatPriceDisplay(offer);
-                return (
-                  <div
-                    key={offer.id}
-                    className="bg-white border border-border rounded-2xl p-6 flex flex-col gap-4 hover:border-[#0078D4]/40 hover:shadow-md transition-all"
-                  >
-                    <div className="w-10 h-10 rounded-xl bg-[#0078D4]/10 flex items-center justify-center text-[#0078D4]">
-                      <IconComponent className="w-5 h-5" />
-                    </div>
-                    <div>
-                      <h3 className="font-bold text-[#0A2540] text-base mb-1">{offer.name}</h3>
-                      <p className="text-muted-foreground text-sm leading-relaxed">{offer.description}</p>
-                    </div>
-                    <div className="mt-auto pt-4 border-t border-border flex items-center justify-between gap-3">
-                      <div className="flex items-center gap-1.5 text-[#0A2540] font-bold text-sm">
-                        <DollarSign className="w-3.5 h-3.5 text-[#0078D4]" />
-                        {price}
-                      </div>
-                      {offer.turnaround && (
-                        <div className="flex items-center gap-1.5 text-muted-foreground text-xs font-medium">
-                          <Clock className="w-3.5 h-3.5" />
-                          {offer.turnaround}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
+              {services.map((offer, i) => (
+                <OfferCard key={offer.slug ?? offer.id} offer={offer} index={i} />
+              ))}
             </div>
           )}
 
