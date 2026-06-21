@@ -789,16 +789,16 @@ export default function ClientProjectDashboard() {
                 </div>
 
                 {/* Desktop: horizontal layout */}
-                <div className="hidden sm:block overflow-x-auto -mx-1 px-1 pb-1">
-                  <div className="flex items-start gap-0 min-w-max">
+                <div className="hidden sm:block -mx-1 px-1 pb-1">
+                  <div className="flex items-start gap-0">
                     {steps.map((step, idx) => {
                       const isCompleted = step.status === "completed";
                       const isActive = step.status === "in_progress";
                       const isBlocked = step.status === "blocked";
                       const isLast = idx === steps.length - 1;
                       return (
-                        <div key={step.id} className="flex items-start">
-                          <div className="flex flex-col items-center w-24 lg:w-28">
+                        <div key={step.id} className="flex items-start flex-1 min-w-0">
+                          <div className="flex flex-col items-center flex-1 min-w-0">
                             <div className="flex items-center w-full">
                               <div className={`flex-1 h-0.5 ${idx === 0 ? "invisible" : isCompleted || isActive ? "bg-[#0078D4]" : "bg-gray-200"}`} />
                               <div className={`w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 border-2 transition-colors ${
