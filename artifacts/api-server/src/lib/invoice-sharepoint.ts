@@ -4,10 +4,17 @@ import { logger } from "./logger";
 import { graphCredentialsPresent, createSiteFolder, uploadFileToSharePoint } from "./graph";
 import { generateInvoicePdf } from "./invoice-pdf";
 
+const SITE_POLL_ATTEMPTS = 20;
+const SITE_POLL_INTERVAL_MS = 6_000;
+
 /**
  * Fire-and-forget: generate a PDF for the given invoice and upload it to the
- * client's SharePoint Invoices folder. Silently skips if Graph is not configured
- * or the client has no linked SharePoint site.
+ * client's SharePoint Invoices folder. Silently skips if Graph is not configured.
+ *
+ * For newly-onboarded clients whose SharePoint site is still being provisioned,
+ * the function polls the DB (up to ~2 minutes) until the site ID becomes
+ * available before proceeding — this resolves the race where invoices are
+ * inserted before provisionClientSite completes.
  */
 export async function uploadInvoiceToSharePoint(invoiceId: number): Promise<void> {
   if (!graphCredentialsPresent()) {
@@ -16,29 +23,50 @@ export async function uploadInvoiceToSharePoint(invoiceId: number): Promise<void
   }
 
   try {
-    // ── Fetch invoice + client user + optional project ──────────────────────
+    // ── Fetch invoice ────────────────────────────────────────────────────────
     const [invoice] = await db.select().from(invoicesTable).where(eq(invoicesTable.id, invoiceId)).limit(1);
     if (!invoice) {
       logger.warn({ invoiceId }, "uploadInvoiceToSharePoint: invoice not found");
       return;
     }
 
-    const [client] = await db.select().from(usersTable).where(eq(usersTable.id, invoice.clientUserId)).limit(1);
+    // ── Fetch client, polling until SharePoint site is provisioned ───────────
+    // New clients won't have a site ID yet when the invoice is first created
+    // (provisioning runs asynchronously and can take 15-60 seconds). We poll
+    // the DB until the column is populated or we time out.
+    let client: typeof usersTable.$inferSelect | undefined;
+    for (let attempt = 0; attempt < SITE_POLL_ATTEMPTS; attempt++) {
+      if (attempt > 0) {
+        await new Promise(r => setTimeout(r, SITE_POLL_INTERVAL_MS));
+      }
+      const [row] = await db.select().from(usersTable).where(eq(usersTable.id, invoice.clientUserId)).limit(1);
+      client = row;
+      if (client?.sharepointSiteId) break;
+    }
+
     if (!client?.sharepointSiteId) {
-      logger.warn({ invoiceId, clientUserId: invoice.clientUserId }, "uploadInvoiceToSharePoint: client has no SharePoint site — skipping");
+      logger.warn(
+        { invoiceId, clientUserId: invoice.clientUserId, attempts: SITE_POLL_ATTEMPTS },
+        "uploadInvoiceToSharePoint: client has no SharePoint site after polling — skipping",
+      );
       return;
     }
 
+    // ── Resolve optional project title ───────────────────────────────────────
     let projectTitle: string | null = null;
     if (invoice.projectId) {
-      const [project] = await db.select({ title: projectsTable.title }).from(projectsTable).where(eq(projectsTable.id, invoice.projectId)).limit(1);
+      const [project] = await db
+        .select({ title: projectsTable.title })
+        .from(projectsTable)
+        .where(eq(projectsTable.id, invoice.projectId))
+        .limit(1);
       projectTitle = project?.title ?? null;
     }
 
     // ── Determine folder path ────────────────────────────────────────────────
     const folderPath = projectTitle ? `${projectTitle}/Invoices` : "Invoices";
 
-    // ── Ensure the Invoices subfolder exists ─────────────────────────────────
+    // ── Ensure the Invoices subfolder exists (idempotent) ────────────────────
     if (projectTitle) {
       await createSiteFolder(client.sharepointSiteId, projectTitle, "Invoices");
     } else {
@@ -77,7 +105,8 @@ export async function uploadInvoiceToSharePoint(invoiceId: number): Promise<void
     }
 
     // ── Persist the SharePoint URL back on the invoice ───────────────────────
-    await db.update(invoicesTable)
+    await db
+      .update(invoicesTable)
       .set({ sharepointFileUrl: webUrl })
       .where(eq(invoicesTable.id, invoiceId));
 
