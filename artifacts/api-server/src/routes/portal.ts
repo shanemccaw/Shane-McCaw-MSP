@@ -124,6 +124,26 @@ const uploadDoc = multer({ storage: docStorage, limits: { fileSize: 50 * 1024 * 
 const uploadReport = multer({ storage: reportStorage, limits: { fileSize: 100 * 1024 * 1024 } });
 const uploadInvoice = multer({ storage: invoiceStorage, limits: { fileSize: 20 * 1024 * 1024 } });
 
+// ─── CLIENT: Profile ─────────────────────────────────────────────────────────
+router.patch("/portal/profile", requireAuth, async (req: Request, res: Response) => {
+  const userId = req.user!.id;
+  const { name, company, phone, address } = req.body as { name?: string; company?: string; phone?: string; address?: string };
+
+  const updates: Partial<{ name: string | null; company: string | null; phone: string | null; address: string | null }> = {};
+  if (name !== undefined) updates.name = name.trim() || null;
+  if (company !== undefined) updates.company = company.trim() || null;
+  if (phone !== undefined) updates.phone = phone.trim() || null;
+  if (address !== undefined) updates.address = address.trim() || null;
+
+  if (Object.keys(updates).length === 0) {
+    res.json({ ok: true });
+    return;
+  }
+
+  await db.update(usersTable).set(updates).where(eq(usersTable.id, userId));
+  res.json({ ok: true });
+});
+
 // ─── CLIENT: Dashboard summary ───────────────────────────────────────────────
 router.get("/portal/dashboard", requireAuth, async (req: Request, res: Response) => {
   const userId = req.user!.id;

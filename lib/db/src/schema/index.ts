@@ -22,6 +22,7 @@ export const usersTable = pgTable("users", {
   name: text("name"),
   company: text("company"),
   phone: text("phone"),
+  address: text("address"),
   sharepointSiteUrl: text("sharepoint_site_url"),
   sharepointSiteId: text("sharepoint_site_id"),
   createdAt: timestamp("created_at").notNull().defaultNow(),

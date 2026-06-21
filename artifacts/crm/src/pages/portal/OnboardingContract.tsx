@@ -157,6 +157,9 @@ export default function OnboardingContract() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
   const [signerName, setSignerName] = useState(user?.name ?? user?.email?.split("@")[0] ?? "");
+  const [company, setCompany] = useState(user?.company ?? "");
+  const [phone, setPhone] = useState(user?.phone ?? "");
+  const [address, setAddress] = useState(user?.address ?? "");
   const [agreed, setAgreed] = useState(false);
   const [signed, setSigned] = useState(false);
   const [stripeError, setStripeError] = useState("");
@@ -248,6 +251,13 @@ export default function OnboardingContract() {
     setSubmitting(true);
 
     try {
+      // Save profile fields before creating the contract
+      await fetchWithAuth("/api/portal/profile", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: signerName, company, phone, address }),
+      });
+
       const canvas = canvasRef.current;
       const signatureData = canvas?.toDataURL("image/png") ?? null;
 
@@ -472,17 +482,50 @@ export default function OnboardingContract() {
           </div>
 
           <div className="space-y-4">
-            <div className="bg-white border border-border rounded-2xl p-5">
-              <label className="block text-sm font-semibold text-[#0A2540] mb-2">
-                Full name (as it will appear on the agreement)
-              </label>
-              <input
-                type="text"
-                value={signerName}
-                onChange={e => setSignerName(e.target.value)}
-                placeholder="Your full name"
-                className="w-full border border-border rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4]"
-              />
+            <div className="bg-white border border-border rounded-2xl p-5 space-y-4">
+              <div>
+                <label className="block text-sm font-semibold text-[#0A2540] mb-1.5">
+                  Full name <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={signerName}
+                  onChange={e => setSignerName(e.target.value)}
+                  placeholder="Your full name"
+                  className="w-full border border-border rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4]"
+                />
+                <p className="text-xs text-muted-foreground mt-1">As it will appear on the agreement</p>
+              </div>
+              <div>
+                <label className="block text-sm font-semibold text-[#0A2540] mb-1.5">Company name</label>
+                <input
+                  type="text"
+                  value={company}
+                  onChange={e => setCompany(e.target.value)}
+                  placeholder="Your company or organization"
+                  className="w-full border border-border rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4]"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-semibold text-[#0A2540] mb-1.5">Business address</label>
+                <input
+                  type="text"
+                  value={address}
+                  onChange={e => setAddress(e.target.value)}
+                  placeholder="Street, City, State ZIP"
+                  className="w-full border border-border rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4]"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-semibold text-[#0A2540] mb-1.5">Phone number</label>
+                <input
+                  type="tel"
+                  value={phone}
+                  onChange={e => setPhone(e.target.value)}
+                  placeholder="+1 (555) 000-0000"
+                  className="w-full border border-border rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4]"
+                />
+              </div>
             </div>
 
             <div className="bg-white border border-border rounded-2xl p-5">

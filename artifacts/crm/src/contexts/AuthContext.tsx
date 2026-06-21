@@ -4,6 +4,9 @@ export interface AuthUser {
   id: number;
   email: string;
   name?: string | null;
+  company?: string | null;
+  phone?: string | null;
+  address?: string | null;
   role: "admin" | "client";
   impersonatedBy?: number;
 }
