@@ -59,11 +59,12 @@ interface CreateJobBody {
   credentialId: number;
   runbookName: string;
   kanbanTaskId?: number;
+  governanceAreas?: string[];
 }
 
 router.post("/admin/runbook-jobs", requireAdmin, async (req: Request, res: Response) => {
   try {
-    const { credentialId, runbookName, kanbanTaskId } = req.body as CreateJobBody;
+    const { credentialId, runbookName, kanbanTaskId, governanceAreas } = req.body as CreateJobBody;
 
     if (!credentialId || !runbookName) {
       res.status(400).json({ error: "credentialId and runbookName are required" });
@@ -83,6 +84,8 @@ router.post("/admin/runbook-jobs", requireAdmin, async (req: Request, res: Respo
 
     const credentialValue = await getCredential(cred.keyVaultSecretName, cred.credentialType);
 
+    const hasAreas = Array.isArray(governanceAreas) && governanceAreas.length > 0;
+
     const { jobId, status } = await createRunbookJob({
       runbookName,
       parameters: {
@@ -91,6 +94,7 @@ router.post("/admin/runbook-jobs", requireAdmin, async (req: Request, res: Respo
         ...(cred.credentialType === "secret"
           ? { ClientSecret: credentialValue }
           : { CertificatePem: credentialValue }),
+        ...(hasAreas ? { GovernanceAreas: governanceAreas!.join(",") } : {}),
       },
     });
 

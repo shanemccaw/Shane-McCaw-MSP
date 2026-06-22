@@ -807,7 +807,8 @@ export const ListRunbooksResponse = zod.array(ListRunbooksResponseItem)
 export const CreateRunbookJobBody = zod.object({
   "credentialId": zod.number(),
   "runbookName": zod.string(),
-  "kanbanTaskId": zod.number().optional()
+  "kanbanTaskId": zod.number().optional(),
+  "governanceAreas": zod.array(zod.string()).optional().describe('Microsoft product areas to scope the Runbook to. When absent or empty, the GovernanceAreas parameter is omitted from the Runbook call (meaning ALL).\n')
 })
 
 

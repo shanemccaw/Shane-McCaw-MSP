@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
+import { GovernanceAreasPicker } from "@/components/kanban/TypedCardContent";
 
 interface AzureCredential {
   id: number;
@@ -52,6 +53,7 @@ export default function ScriptRunnerPage() {
   const [jobStatus, setJobStatus] = useState("Never run");
   const [logLines, setLogLines] = useState<string[]>([]);
   const logEndRef = useRef<HTMLDivElement>(null);
+  const [governanceAreas, setGovernanceAreas] = useState<string[] | null>(null);
 
   const [manageOpen, setManageOpen] = useState(false);
   const [editingCred, setEditingCred] = useState<AzureCredential | null>(null);
@@ -132,10 +134,15 @@ export default function ScriptRunnerPage() {
     setJobStatus("New");
 
     try {
+      const areasPayload = governanceAreas !== null && governanceAreas.length > 0 ? governanceAreas : undefined;
       const res = await fetchWithAuth("/api/admin/runbook-jobs", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ credentialId: selectedCredId, runbookName: selectedRunbook }),
+        body: JSON.stringify({
+          credentialId: selectedCredId,
+          runbookName: selectedRunbook,
+          ...(areasPayload ? { governanceAreas: areasPayload } : {}),
+        }),
       });
 
       if (!res.ok) {
@@ -251,7 +258,7 @@ export default function ScriptRunnerPage() {
   };
 
   const statusCfg = JOB_STATUS_CFG[jobStatus] ?? { cls: "bg-gray-100 text-gray-600" };
-  const canRun = !!selectedCredId && !!selectedRunbook && !running;
+  const canRun = !!selectedCredId && !!selectedRunbook && !running && (governanceAreas === null || governanceAreas.length > 0);
 
   return (
     <div className="p-6 max-w-5xl mx-auto space-y-6">
@@ -352,6 +359,14 @@ export default function ScriptRunnerPage() {
                   {runbooks.find(r => r.name === selectedRunbook)?.description}
                 </p>
               )}
+            </div>
+
+            <div className="border-t border-border pt-3">
+              <GovernanceAreasPicker
+                value={governanceAreas}
+                onChange={setGovernanceAreas}
+                disabled={running}
+              />
             </div>
 
             <button

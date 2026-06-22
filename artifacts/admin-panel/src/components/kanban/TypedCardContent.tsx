@@ -830,12 +830,91 @@ function DiscoveryModalBody({ m, mode }: { m: Record<string, unknown>; mode: "ad
   );
 }
 
+export const GOVERNANCE_AREAS = [
+  "Teams",
+  "SharePoint",
+  "Exchange",
+  "EntraID",
+  "Licensing",
+  "SecureScore",
+  "DLP",
+  "Retention",
+  "SensitivityLabels",
+] as const;
+
+export type GovernanceArea = (typeof GOVERNANCE_AREAS)[number];
+
+export function GovernanceAreasPicker({
+  value,
+  onChange,
+  disabled = false,
+}: {
+  value: string[] | null;
+  onChange: (areas: string[] | null) => void;
+  disabled?: boolean;
+}) {
+  const isAll = value === null;
+
+  const toggleAll = () => {
+    if (!isAll) onChange(null);
+  };
+
+  const toggleArea = (area: string) => {
+    if (isAll) {
+      onChange([area]);
+    } else {
+      const current = value ?? [];
+      if (current.includes(area)) {
+        const next = current.filter(a => a !== area);
+        onChange(next.length === 0 ? null : next);
+      } else {
+        onChange([...current, area]);
+      }
+    }
+  };
+
+  return (
+    <div className="space-y-2">
+      <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Microsoft Product Areas</p>
+      <label className={`flex items-center gap-2 cursor-pointer ${disabled ? "opacity-50 pointer-events-none" : ""}`}>
+        <input
+          type="checkbox"
+          checked={isAll}
+          onChange={toggleAll}
+          disabled={disabled}
+          className="accent-[#0078D4]"
+        />
+        <span className="text-sm font-semibold text-[#0A2540]">ALL</span>
+        <span className="text-[10px] text-muted-foreground">(runs across all areas)</span>
+      </label>
+      <div className={`grid grid-cols-2 gap-y-1.5 gap-x-2 pl-2 ${isAll ? "opacity-40" : ""}`}>
+        {GOVERNANCE_AREAS.map(area => (
+          <label
+            key={area}
+            className={`flex items-center gap-2 cursor-pointer ${(disabled || isAll) ? "pointer-events-none" : ""}`}
+          >
+            <input
+              type="checkbox"
+              checked={!isAll && (value?.includes(area) ?? false)}
+              onChange={() => toggleArea(area)}
+              disabled={disabled || isAll}
+              className="accent-[#0078D4]"
+            />
+            <span className="text-xs text-[#0A2540]">{area}</span>
+          </label>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export interface ScriptMetadata {
   runbookName?: string;
   credentialId?: number;
   credentialName?: string;
   lastJobId?: string;
   lastJobStatus?: string;
+  governanceAreas?: string[] | null;
 }
 
 const JOB_STATUS_CFG: Record<string, { cls: string; label: string }> = {
@@ -868,6 +947,11 @@ function ScriptModalBody({
   const [liveStatus, setLiveStatus] = useState<string>(sm.lastJobStatus ?? "Never run");
   const logEndRef = useRef<HTMLDivElement>(null);
 
+  const initAreas = (sm.governanceAreas !== undefined ? sm.governanceAreas : null) as string[] | null;
+  const [governanceAreas, setGovernanceAreas] = useState<string[] | null>(initAreas);
+
+  const canRun = !!sm.runbookName && !!sm.credentialId && !running && (governanceAreas === null || governanceAreas.length > 0);
+
   useEffect(() => {
     logEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [logLines]);
@@ -878,6 +962,17 @@ function ScriptModalBody({
     setLogLines(["[Starting job…]"]);
     setLiveStatus("New");
 
+    const areasPayload = governanceAreas !== null && governanceAreas.length > 0 ? governanceAreas : undefined;
+
+    try {
+      await fetchWithAuth(`/api/admin/kanban-tasks/${taskId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ taskMetadata: { ...m, governanceAreas: governanceAreas } }),
+      });
+    } catch {
+    }
+
     try {
       const res = await fetchWithAuth("/api/admin/runbook-jobs", {
         method: "POST",
@@ -886,6 +981,7 @@ function ScriptModalBody({
           credentialId: sm.credentialId,
           runbookName: sm.runbookName,
           kanbanTaskId: taskId,
+          ...(areasPayload ? { governanceAreas: areasPayload } : {}),
         }),
       });
 
@@ -959,25 +1055,34 @@ function ScriptModalBody({
             </div>
           )}
         </div>
-        <div className="flex items-center gap-2">
-          <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${statusCfg.cls}`}>{statusCfg.label}</span>
-          {mode === "admin" && fetchWithAuth && sm.runbookName && sm.credentialId && (
-            <button
-              type="button"
-              disabled={running}
-              onClick={() => void handleRun()}
-              className="inline-flex items-center gap-1.5 text-sm font-semibold text-white bg-[#0078D4] hover:bg-[#0078D4]/90 disabled:opacity-50 rounded-lg px-4 py-2 transition-colors"
-            >
-              {running ? (
-                <div className="w-3.5 h-3.5 border-2 border-white/40 border-t-white rounded-full animate-spin" />
-              ) : (
-                <span className="material-symbols-outlined" style={{ fontSize: "16px" }}>play_arrow</span>
-              )}
-              {running ? "Running…" : "Run"}
-            </button>
-          )}
-        </div>
+        <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${statusCfg.cls}`}>{statusCfg.label}</span>
       </div>
+
+      {mode === "admin" && (
+        <div className="bg-[#F7F9FC] border border-border rounded-lg p-3">
+          <GovernanceAreasPicker
+            value={governanceAreas}
+            onChange={setGovernanceAreas}
+            disabled={running}
+          />
+        </div>
+      )}
+
+      {mode === "admin" && sm.runbookName && sm.credentialId && (
+        <button
+          type="button"
+          disabled={!canRun}
+          onClick={() => void handleRun()}
+          className="inline-flex items-center gap-1.5 text-sm font-semibold text-white bg-[#0078D4] hover:bg-[#0078D4]/90 disabled:opacity-40 rounded-lg px-4 py-2 transition-colors"
+        >
+          {running ? (
+            <div className="w-3.5 h-3.5 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+          ) : (
+            <span className="material-symbols-outlined" style={{ fontSize: "16px" }}>play_arrow</span>
+          )}
+          {running ? "Running…" : "Run"}
+        </button>
+      )}
 
       {logLines.length > 0 && (
         <div className="bg-gray-900 rounded-lg p-3 max-h-60 overflow-y-auto">
