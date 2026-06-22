@@ -305,7 +305,13 @@ export default function MicroOfferDetail({ params }: MicroOfferDetailProps) {
       {(features.length > 0 || inclusions.length > 0) && (
         <section className="bg-white py-20 border-t border-border">
           <div className="max-w-[1200px] mx-auto px-6">
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-12">
+            <div
+              className={
+                features.length > 0 && inclusions.length > 0
+                  ? "grid grid-cols-1 lg:grid-cols-2 gap-12"
+                  : "max-w-[760px] mx-auto"
+              }
+            >
               {features.length > 0 && (
                 <div>
                   <p className="text-[#0078D4] text-xs font-bold uppercase tracking-widest mb-4">
@@ -407,7 +413,7 @@ export default function MicroOfferDetail({ params }: MicroOfferDetailProps) {
       {/* ── WHY SHANE ─────────────────────────────────────────────────────── */}
       <section className="bg-[#F7F9FC] py-20 border-t border-border">
         <div className="max-w-[1200px] mx-auto px-6">
-          <div className="max-w-[760px]">
+          <div className="max-w-[760px] mx-auto">
             <p className="text-[#0078D4] text-sm font-semibold uppercase tracking-[0.12em] mb-4">
               Why Shane
             </p>
