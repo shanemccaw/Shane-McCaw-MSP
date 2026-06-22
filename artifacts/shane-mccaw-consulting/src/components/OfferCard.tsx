@@ -22,12 +22,26 @@ export function OfferCard({
 }: OfferCardProps) {
   const resolvedHref = ctaHref ?? `/crm/portal/onboarding/select?service=${offer.slug ?? ""}`;
   const priceDisplay = formatOfferPrice(offer.basePrice, offer.maxPrice);
+  const hl = offer.highlighted;
 
-  const cta = ctaOnClick ? (
+  const learnMoreBtn = offer.pageHref ? (
+    <a
+      href={offer.pageHref}
+      className={`w-full flex items-center justify-center gap-2 text-sm font-semibold py-2.5 rounded border transition-colors ${
+        hl
+          ? "border-white/30 text-white/80 hover:bg-white/10"
+          : "border-[#0078D4] text-[#0078D4] hover:bg-[#0078D4]/5"
+      }`}
+    >
+      Learn More
+    </a>
+  ) : null;
+
+  const primaryBtn = ctaOnClick ? (
     <button
       onClick={ctaOnClick}
       disabled={ctaDisabled}
-      className="w-full flex items-center justify-center gap-2 bg-[#0078D4] hover:bg-[#006BBE] disabled:opacity-60 disabled:cursor-not-allowed text-white text-sm font-semibold py-2.5 rounded transition-colors mt-6"
+      className="w-full flex items-center justify-center gap-2 bg-[#0078D4] hover:bg-[#006BBE] disabled:opacity-60 disabled:cursor-not-allowed text-white text-sm font-semibold py-2.5 rounded transition-colors"
       data-testid={`offer-cta-${index}`}
     >
       {ctaDisabled ? (
@@ -42,11 +56,18 @@ export function OfferCard({
   ) : (
     <CTAButton
       href={resolvedHref}
-      className="w-full justify-center text-sm mt-6"
+      className="w-full justify-center text-sm"
       data-testid={`offer-cta-${index}`}
     >
       {ctaLabel}
     </CTAButton>
+  );
+
+  const cta = (
+    <div className="flex flex-col gap-2 mt-6">
+      {primaryBtn}
+      {learnMoreBtn}
+    </div>
   );
 
   return (
