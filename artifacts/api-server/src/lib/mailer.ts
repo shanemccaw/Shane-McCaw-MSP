@@ -2,6 +2,7 @@ import nodemailer from "nodemailer";
 import { Resend } from "resend";
 import { ReplitConnectors } from "@replit/connectors-sdk";
 import { logger } from "./logger";
+import { graphCredentialsPresent, sendMailViaGraph } from "./graph";
 
 // ─── Brand constants ──────────────────────────────────────────────────────────
 const BRAND_FROM = "Shane McCaw Consulting <noreply@shanemccaw.com>";
@@ -66,6 +67,24 @@ export interface EmailAttachment {
 
 // ─── Transport selection ──────────────────────────────────────────────────────
 type Sender = (to: string, subject: string, html: string, attachments?: EmailAttachment[]) => Promise<void>;
+
+function getGraphSender(): Sender | null {
+  const userId = process.env.GRAPH_MAIL_USER_ID;
+  if (!userId || !graphCredentialsPresent()) return null;
+  return async (to, subject, html, attachments) => {
+    await sendMailViaGraph({
+      fromUserId: userId,
+      to,
+      subject,
+      htmlBody: html,
+      attachments: attachments?.map((a) => ({
+        filename: a.filename,
+        content: a.content,
+        contentType: "text/html",
+      })),
+    });
+  };
+}
 
 function getConnectorSender(): Sender | null {
   const hasConnectorEnv =
@@ -164,7 +183,7 @@ export async function sendEmailOrThrow(
   bodyHtml: string,
   opts?: { skipWrapper?: boolean },
 ): Promise<void> {
-  const sender = getConnectorSender() ?? getResendSender() ?? getSmtpSender();
+  const sender = getGraphSender() ?? getConnectorSender() ?? getResendSender() ?? getSmtpSender();
   if (!sender) {
     throw new Error("No email transport configured — set REPLIT_CONNECTORS_HOSTNAME, RESEND_API_KEY, or SMTP_HOST/SMTP_USER/SMTP_PASS");
   }
@@ -183,7 +202,7 @@ export async function sendEmailWithAttachment(
   html: string,
   attachments: EmailAttachment[],
 ): Promise<void> {
-  const sender = getConnectorSender() ?? getResendSender() ?? getSmtpSender();
+  const sender = getGraphSender() ?? getConnectorSender() ?? getResendSender() ?? getSmtpSender();
   if (!sender) {
     logger.warn({ to, subject }, "No email transport configured — attachment email skipped");
     return;
@@ -206,7 +225,7 @@ export async function sendEmailWithAttachmentOrThrow(
   html: string,
   attachments: EmailAttachment[],
 ): Promise<void> {
-  const sender = getConnectorSender() ?? getResendSender() ?? getSmtpSender();
+  const sender = getGraphSender() ?? getConnectorSender() ?? getResendSender() ?? getSmtpSender();
   if (!sender) {
     throw new Error("No email transport configured — set REPLIT_CONNECTORS_HOSTNAME, RESEND_API_KEY, or SMTP_HOST/SMTP_USER/SMTP_PASS");
   }

@@ -197,6 +197,66 @@ export async function listSubscriptions(): Promise<GraphSubscription[]> {
   }
 }
 
+// ─── Mail / Exchange Online ───────────────────────────────────────────────────
+
+export interface GraphMailRecipient {
+  emailAddress: { address: string; name?: string };
+}
+
+export interface GraphMailAttachment {
+  "@odata.type": "#microsoft.graph.fileAttachment";
+  name: string;
+  contentType: string;
+  contentBytes: string;
+}
+
+/**
+ * Send an email via Exchange Online using the Graph sendMail API.
+ * Requires Mail.Send application permission granted in Azure AD.
+ * `fromUserId` should be the UPN or object ID of the sending mailbox.
+ */
+export async function sendMailViaGraph(opts: {
+  fromUserId: string;
+  fromDisplayName?: string;
+  to: string;
+  subject: string;
+  htmlBody: string;
+  attachments?: Array<{ filename: string; content: Buffer | string; contentType?: string }>;
+}): Promise<void> {
+  const toRecipients: GraphMailRecipient[] = [
+    { emailAddress: { address: opts.to } },
+  ];
+
+  const attachments: GraphMailAttachment[] = (opts.attachments ?? []).map((a) => ({
+    "@odata.type": "#microsoft.graph.fileAttachment",
+    name: a.filename,
+    contentType: a.contentType ?? "application/octet-stream",
+    contentBytes: Buffer.isBuffer(a.content)
+      ? a.content.toString("base64")
+      : Buffer.from(a.content).toString("base64"),
+  }));
+
+  const body: Record<string, unknown> = {
+    message: {
+      subject: opts.subject,
+      body: { contentType: "HTML", content: opts.htmlBody },
+      toRecipients,
+      ...(attachments.length > 0 ? { attachments } : {}),
+    },
+    saveToSentItems: false,
+  };
+
+  const res = await graphFetch(`/users/${encodeURIComponent(opts.fromUserId)}/sendMail`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+
+  if (!res.ok && res.status !== 202) {
+    const text = await res.text();
+    throw new Error(`Graph sendMail failed: ${res.status} ${text}`);
+  }
+}
+
 // ─── SharePoint / Groups ───────────────────────────────────────────────────────
 
 export interface GraphDriveItem {
