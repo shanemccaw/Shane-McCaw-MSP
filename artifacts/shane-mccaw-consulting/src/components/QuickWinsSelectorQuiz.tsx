@@ -1,6 +1,6 @@
 import { useState } from "react";
-import { Link } from "wouter";
-import { CheckCircle, ChevronRight, RotateCcw, ArrowRight } from "lucide-react";
+import { Link, useLocation } from "wouter";
+import { CheckCircle, ChevronRight, RotateCcw, ArrowRight, Loader2 } from "lucide-react";
 import { CTAButton } from "./CTAButton";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
@@ -297,20 +297,24 @@ const QUESTIONS: Question[] = [
 
 // ── Component ──────────────────────────────────────────────────────────────────
 
-type Phase = "intro" | "quiz" | "results";
+type Phase = "intro" | "quiz" | "submitting" | "error";
+
+const INITIAL_SCORES: Record<Slug, number> = {
+  "tenant-health-audit": 0,
+  "power-platform-quick-start": 0,
+  "governance-foundations": 0,
+  "migration-readiness-assessment": 0,
+  "copilot-readiness-assessment": 0,
+  "m365-training-enablement": 0,
+};
 
 export function QuickWinsSelectorQuiz() {
   const [phase, setPhase] = useState<Phase>("intro");
   const [currentQ, setCurrentQ] = useState(0);
-  const [scores, setScores] = useState<Record<Slug, number>>({
-    "tenant-health-audit": 0,
-    "power-platform-quick-start": 0,
-    "governance-foundations": 0,
-    "migration-readiness-assessment": 0,
-    "copilot-readiness-assessment": 0,
-    "m365-training-enablement": 0,
-  });
+  const [scores, setScores] = useState<Record<Slug, number>>({ ...INITIAL_SCORES });
+  const [answers, setAnswers] = useState<Record<string, number>>({});
   const [selected, setSelected] = useState<number | null>(null);
+  const [, navigate] = useLocation();
 
   const total = QUESTIONS.length;
   const question = QUESTIONS[currentQ];
@@ -319,21 +323,41 @@ export function QuickWinsSelectorQuiz() {
     setSelected(answerIdx);
   }
 
-  function handleNext() {
+  async function handleNext() {
     if (selected === null) return;
     const answer = question.answers[selected];
-    setScores((prev) => {
-      const next = { ...prev };
-      for (const [slug, pts] of Object.entries(answer.scores) as [Slug, number][]) {
-        next[slug] = (next[slug] ?? 0) + pts;
-      }
-      return next;
-    });
+
+    const nextScores = { ...scores };
+    for (const [slug, pts] of Object.entries(answer.scores) as [Slug, number][]) {
+      nextScores[slug] = (nextScores[slug] ?? 0) + pts;
+    }
+    const nextAnswers = { ...answers, [String(question.id)]: selected };
+
+    setScores(nextScores);
+    setAnswers(nextAnswers);
     setSelected(null);
+
     if (currentQ < total - 1) {
       setCurrentQ((q) => q + 1);
     } else {
-      setPhase("results");
+      const rankedSlugs = (Object.entries(nextScores) as [Slug, number][])
+        .sort(([, a], [, b]) => b - a)
+        .filter(([, s]) => s > 0)
+        .map(([slug]) => slug);
+
+      setPhase("submitting");
+      try {
+        const res = await fetch("/api/quiz/quick-win/submit", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ answers: nextAnswers, scores: nextScores, rankedSlugs }),
+        });
+        if (!res.ok) throw new Error("Submit failed");
+        const data = (await res.json()) as { resultId: number };
+        navigate(`/quick-win/results/${data.resultId}`);
+      } catch {
+        setPhase("error");
+      }
     }
   }
 
@@ -341,21 +365,9 @@ export function QuickWinsSelectorQuiz() {
     setPhase("intro");
     setCurrentQ(0);
     setSelected(null);
-    setScores({
-      "tenant-health-audit": 0,
-      "power-platform-quick-start": 0,
-      "governance-foundations": 0,
-      "migration-readiness-assessment": 0,
-      "copilot-readiness-assessment": 0,
-      "m365-training-enablement": 0,
-    });
+    setScores({ ...INITIAL_SCORES });
+    setAnswers({});
   }
-
-  const topSlugs = (Object.entries(scores) as [Slug, number][])
-    .sort(([, a], [, b]) => b - a)
-    .slice(0, 3)
-    .filter(([, s]) => s > 0)
-    .map(([slug]) => slug);
 
   // ── Intro ──────────────────────────────────────────────────────────────────
   if (phase === "intro") {
@@ -387,72 +399,29 @@ export function QuickWinsSelectorQuiz() {
     );
   }
 
-  // ── Results ────────────────────────────────────────────────────────────────
-  if (phase === "results") {
+  // ── Submitting ─────────────────────────────────────────────────────────────
+  if (phase === "submitting") {
     return (
-      <div className="max-w-3xl mx-auto">
-        <div className="text-center mb-10">
-          <div className="inline-flex items-center gap-2 bg-[#0078D4]/10 text-[#0078D4] px-4 py-1.5 rounded-full text-sm font-semibold mb-4">
-            <CheckCircle className="w-4 h-4" />
-            Quiz complete
-          </div>
-          <h2 className="text-2xl md:text-3xl font-extrabold text-[#0A2540] mb-3">
-            Your Recommended Quick Wins
-          </h2>
-          <p className="text-muted-foreground max-w-xl mx-auto leading-relaxed">
-            Based on your answers, these packages are the best match for your current situation.
+      <div className="max-w-2xl mx-auto">
+        <div className="bg-white rounded-2xl border border-border shadow-sm p-12 text-center">
+          <Loader2 className="w-10 h-10 text-[#0078D4] animate-spin mx-auto mb-5" />
+          <p className="text-[#0A2540] font-semibold text-base">Preparing your results…</p>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Error ──────────────────────────────────────────────────────────────────
+  if (phase === "error") {
+    return (
+      <div className="max-w-2xl mx-auto">
+        <div className="bg-white rounded-2xl border border-border shadow-sm p-10 text-center">
+          <p className="text-[#0A2540] font-semibold text-base mb-4">
+            Something went wrong saving your results.
           </p>
-        </div>
-
-        <div className="space-y-4 mb-10">
-          {topSlugs.map((slug, i) => {
-            const pkg = PACKAGES[slug];
-            return (
-              <div
-                key={slug}
-                className={`bg-white rounded-2xl border shadow-sm p-6 flex flex-col sm:flex-row sm:items-start gap-5 ${
-                  i === 0 ? "border-[#0078D4]/40 ring-1 ring-[#0078D4]/20" : "border-border"
-                }`}
-              >
-                <div className="flex-shrink-0 flex items-center justify-center w-10 h-10 rounded-xl bg-[#0A2540] text-white font-extrabold text-sm">
-                  {i + 1}
-                </div>
-                <div className="flex-1 min-w-0">
-                  {i === 0 && (
-                    <span className="inline-block text-xs font-bold uppercase tracking-wider px-2.5 py-1 rounded-full bg-[#0078D4]/10 text-[#0078D4] border border-[#0078D4]/20 mb-2">
-                      Best Match
-                    </span>
-                  )}
-                  <h3 className="font-extrabold text-[#0A2540] text-base mb-1">{pkg.name}</h3>
-                  <p className="text-muted-foreground text-sm leading-relaxed mb-4">{pkg.tagline}</p>
-                  <Link
-                    href={pkg.href}
-                    className="inline-flex items-center gap-1.5 text-[#0078D4] font-semibold text-sm hover:underline"
-                  >
-                    View package details <ArrowRight className="w-3.5 h-3.5" />
-                  </Link>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-
-        <div className="flex flex-col sm:flex-row gap-3 justify-center mb-8">
-          <CTAButton href="/micro-offers" className="px-7 py-3 text-sm">
-            View All Quick Wins
-          </CTAButton>
-          <a
-            href="/book"
-            className="inline-flex items-center justify-center gap-2 text-[#0A2540] font-semibold hover:text-[#0078D4] transition-colors text-sm border border-border px-7 py-3 rounded-xl hover:border-[#0078D4]/40"
-          >
-            Book a Discovery Call <ArrowRight className="w-4 h-4" />
-          </a>
-        </div>
-
-        <div className="text-center">
           <button
             onClick={restart}
-            className="inline-flex items-center gap-2 text-muted-foreground hover:text-[#0A2540] text-sm transition-colors"
+            className="inline-flex items-center gap-2 text-[#0078D4] font-semibold text-sm hover:underline"
           >
             <RotateCcw className="w-3.5 h-3.5" />
             Start over

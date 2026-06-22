@@ -40,6 +40,7 @@ import RetainersOverview from "@/pages/retainers/RetainersOverview";
 import RetainerQuiz from "@/pages/retainers/RetainerQuiz";
 import MicroOfferDetail from "@/pages/micro-offers/MicroOfferDetail";
 import QuickWinQuiz from "@/pages/QuickWinQuiz";
+import QuickWinResultsPage from "@/pages/QuickWinResultsPage";
 
 const queryClient = new QueryClient();
 
@@ -105,6 +106,7 @@ function Router() {
       <Route path="/quiz/results/:leadId" component={QuizResultsPage} />
       <Route path="/retainers" component={RetainersOverview} />
       <Route path="/quick-win-quiz" component={QuickWinQuiz} />
+      <Route path="/quick-win/results/:resultId" component={QuickWinResultsPage} />
       <Route path="/retainer-quiz" component={RetainerQuiz} />
       <Route path="/retainers/architect-essentials" component={ArchitectEssentials} />
       <Route path="/retainers/architect-growth" component={ArchitectGrowth} />

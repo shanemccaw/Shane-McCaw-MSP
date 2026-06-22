@@ -720,3 +720,15 @@ export const emailTemplatesTable = pgTable("email_templates", {
 
 export type InsertEmailTemplate = typeof emailTemplatesTable.$inferInsert;
 export type EmailTemplate = typeof emailTemplatesTable.$inferSelect;
+
+// Quick Win Quiz Results — persisted quiz submissions for shareable results pages
+export const quickWinQuizResultsTable = pgTable("quick_win_quiz_results", {
+  id: serial("id").primaryKey(),
+  answers: jsonb("answers").$type<Record<string, number>>().notNull(),
+  scores: jsonb("scores").$type<Record<string, number>>().notNull(),
+  rankedSlugs: jsonb("ranked_slugs").$type<string[]>().notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export type InsertQuickWinQuizResult = typeof quickWinQuizResultsTable.$inferInsert;
+export type QuickWinQuizResult = typeof quickWinQuizResultsTable.$inferSelect;
