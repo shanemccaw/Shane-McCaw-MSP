@@ -6,144 +6,42 @@ import { CTAButton } from "@/components/CTAButton";
 import {
   Zap, FolderOpen, Calendar, ArrowRight,
   CheckCircle, ClipboardList, GraduationCap, Settings, Shield, Cloud,
+  type LucideIcon,
 } from "lucide-react";
-import { useServices, formatPriceDisplay, type PublicService } from "@/hooks/useServices";
-import { type EngagementProject } from "@/hooks/useEngagementProjects";
+import { useServices, type PublicService } from "@/hooks/useServices";
 import { OfferCard } from "@/components/OfferCard";
-import { EngagementProjectCard } from "@/components/EngagementProjectCard";
+import { ServiceProjectCard } from "@/components/ServiceProjectCard";
 import { RetainerCard } from "@/components/RetainerCard";
 import { CopilotQuizCTA } from "@/components/CopilotQuizCTA";
 
 type CardType = "offer" | "project" | "retainer";
 
-interface SectionConfig {
-  title: string;
-  description: string;
-  trackLabel: string;
-  accent: string;
+interface CategoryDisplay {
   cardType: CardType;
-  icon: React.ElementType;
-  chipLabel: string;
+  accent: string;
+  icon: LucideIcon;
 }
 
-const CATEGORY_CONFIG: Record<string, SectionConfig> = {
-  micro_offer: {
-    title: "Fixed-Price Quick Wins",
-    description:
-      "Scoped deliverables with a defined price, a defined output, and a defined turnaround. No discovery call required — pick the package that matches your need and get in the queue.",
-    trackLabel: "Entry Tier",
-    accent: "text-emerald-700",
-    cardType: "offer",
-    icon: Zap,
-    chipLabel: "Fixed-Price Quick Wins",
-  },
-  "quick-win": {
-    title: "Fixed-Price Quick Wins",
-    description:
-      "Scoped deliverables with a defined price, a defined output, and a defined turnaround. No discovery call required — pick the package that matches your need and get in the queue.",
-    trackLabel: "Entry Tier",
-    accent: "text-emerald-700",
-    cardType: "offer",
-    icon: Zap,
-    chipLabel: "Fixed-Price Quick Wins",
-  },
-  project: {
-    title: "Project-Based Engagements",
-    description:
-      "For larger, multi-phase work — tenant migrations, full governance overhauls, Copilot deployment programs, intranet builds. Priced as a fixed project after a free scoping call.",
-    trackLabel: "Core Tier",
-    accent: "text-[#0078D4]",
-    cardType: "project",
-    icon: FolderOpen,
-    chipLabel: "Project-Based Engagements",
-  },
-  retainer: {
-    title: "Monthly Fractional Architecture Retainer",
-    description:
-      "Consistent, predictable access to Shane's expertise every month — for architecture reviews, ongoing governance, strategic planning, or Copilot rollout support. Cancel with 30 days' notice.",
-    trackLabel: "Strategic Tier",
-    accent: "text-[#00B4D8]",
-    cardType: "retainer",
-    icon: Calendar,
-    chipLabel: "Fractional Architecture",
-  },
-  assessment: {
-    title: "Assessments & Diagnostics",
-    description:
-      "Independent evaluations of your Microsoft 365 environment — identifying gaps, risks, and opportunities before you commit to a larger program.",
-    trackLabel: "Diagnostic",
-    accent: "text-violet-700",
-    cardType: "offer",
-    icon: ClipboardList,
-    chipLabel: "Assessments",
-  },
-  training: {
-    title: "Training & Enablement",
-    description:
-      "Structured, role-based training programs that turn passive Microsoft 365 users into confident, productive adopters.",
-    trackLabel: "Enablement",
-    accent: "text-amber-700",
-    cardType: "offer",
-    icon: GraduationCap,
-    chipLabel: "Training",
-  },
-  "power-platform": {
-    title: "Power Platform",
-    description:
-      "Low-code automation and application development with Power Apps, Power Automate, and Dataverse — governed, secure, and enterprise-ready.",
-    trackLabel: "Automation",
-    accent: "text-purple-700",
-    cardType: "offer",
-    icon: Settings,
-    chipLabel: "Power Platform",
-  },
-  governance: {
-    title: "Governance & Compliance",
-    description:
-      "Policy frameworks, lifecycle management, and compliance controls that keep your Microsoft 365 tenant secure, organized, and audit-ready.",
-    trackLabel: "Governance",
-    accent: "text-rose-700",
-    cardType: "offer",
-    icon: Shield,
-    chipLabel: "Governance",
-  },
-  migration: {
-    title: "Cloud Migration",
-    description:
-      "End-to-end migration planning and execution — from Exchange on-premises to Exchange Online, from file shares to SharePoint, and from legacy identity to Azure AD.",
-    trackLabel: "Migration",
-    accent: "text-sky-700",
-    cardType: "offer",
-    icon: Cloud,
-    chipLabel: "Cloud Migration",
-  },
+const CATEGORY_DISPLAY: Record<string, CategoryDisplay> = {
+  micro_offer:    { cardType: "offer",    accent: "text-emerald-700", icon: Zap },
+  "quick-win":   { cardType: "offer",    accent: "text-emerald-700", icon: Zap },
+  project:       { cardType: "project",  accent: "text-[#0078D4]",   icon: FolderOpen },
+  retainer:      { cardType: "retainer", accent: "text-[#00B4D8]",   icon: Calendar },
+  assessment:    { cardType: "offer",    accent: "text-violet-700",  icon: ClipboardList },
+  training:      { cardType: "offer",    accent: "text-amber-700",   icon: GraduationCap },
+  "power-platform": { cardType: "offer", accent: "text-purple-700",  icon: Settings },
+  governance:    { cardType: "offer",    accent: "text-rose-700",    icon: Shield },
+  migration:     { cardType: "offer",    accent: "text-sky-700",     icon: Cloud },
 };
 
-const PRIMARY_CATEGORIES = ["micro_offer", "quick-win", "project", "retainer"];
-const CATEGORY_ORDER = [
-  "micro_offer",
-  "quick-win",
-  "project",
-  "retainer",
-  "assessment",
-  "training",
-  "power-platform",
-  "governance",
-  "migration",
-];
-
-function serviceToEngagementProject(s: PublicService): EngagementProject {
-  return {
-    id: s.id,
-    title: s.name,
-    priceRange: formatPriceDisplay(s),
-    description: s.description ?? null,
-    triggeredBy: s.triggers ?? [],
-    sowItems: s.deliverables ?? [],
-    sortOrder: s.sortOrder,
-    isVisible: true,
-  };
+function toSectionTitle(cat: string): string {
+  return cat
+    .replace(/_/g, " ")
+    .replace(/-/g, " ")
+    .replace(/\b\w/g, (c) => c.toUpperCase());
 }
+
+const PRIMARY_CATEGORIES = ["micro_offer", "quick-win", "project", "retainer"];
 
 function TrackSection({
   trackLabel,
@@ -152,7 +50,6 @@ function TrackSection({
   description,
   accent,
   children,
-  isEmpty,
   anchorId,
   headerExtra,
   footerExtra,
@@ -160,15 +57,13 @@ function TrackSection({
   trackLabel: string;
   trackNumber: string;
   title: string;
-  description: string;
+  description?: string;
   accent: string;
   children: React.ReactNode;
-  isEmpty: boolean;
   anchorId: string;
   headerExtra?: React.ReactNode;
   footerExtra?: React.ReactNode;
 }) {
-  if (isEmpty) return null;
   return (
     <section id={anchorId} className="py-20 border-b border-border last:border-b-0">
       <div className="max-w-[1200px] mx-auto px-6">
@@ -178,7 +73,9 @@ function TrackSection({
             <span className={`text-xs font-bold uppercase tracking-[0.1em] ${accent}`}>{trackLabel}</span>
           </div>
           <h2 className="text-2xl md:text-3xl font-extrabold text-[#0A2540] mb-4">{title}</h2>
-          <p className="text-muted-foreground max-w-2xl leading-relaxed">{description}</p>
+          {description && (
+            <p className="text-muted-foreground max-w-2xl leading-relaxed">{description}</p>
+          )}
           {headerExtra && <div className="mt-6">{headerExtra}</div>}
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 items-stretch">
@@ -215,6 +112,22 @@ const COMMON_TRIGGERS = [
   "New CISO or CTO who needs an independent architecture review before committing to a roadmap",
 ];
 
+function renderCards(items: PublicService[], cardType: CardType) {
+  if (cardType === "retainer") {
+    return items.map((plan, i) => (
+      <RetainerCard key={plan.slug ?? plan.id} plan={plan} index={i} />
+    ));
+  }
+  if (cardType === "project") {
+    return items.map((svc, i) => (
+      <ServiceProjectCard key={svc.id} service={svc} index={i} />
+    ));
+  }
+  return items.map((svc, i) => (
+    <OfferCard key={svc.slug ?? svc.id} offer={svc} index={i} />
+  ));
+}
+
 export default function Services() {
   const { services, loading, error } = useServices();
 
@@ -230,8 +143,12 @@ export default function Services() {
 
   const orderedCategories = useMemo(() => {
     const present = Object.keys(grouped);
-    const known = CATEGORY_ORDER.filter((c) => present.includes(c));
-    const unknown = present.filter((c) => !CATEGORY_ORDER.includes(c) && c !== "other");
+    const knownOrder = [
+      "micro_offer", "quick-win", "project", "retainer",
+      "assessment", "training", "power-platform", "governance", "migration",
+    ];
+    const known = knownOrder.filter((c) => present.includes(c));
+    const unknown = present.filter((c) => !knownOrder.includes(c) && c !== "other");
     const other = present.includes("other") ? ["other"] : [];
     return [...known, ...unknown, ...other];
   }, [grouped]);
@@ -241,14 +158,14 @@ export default function Services() {
       .filter((cat) => PRIMARY_CATEGORIES.includes(cat))
       .slice(0, 3)
       .map((cat, i) => {
-        const config = CATEGORY_CONFIG[cat];
-        const Icon = config?.icon ?? Zap;
+        const display = CATEGORY_DISPLAY[cat];
+        const Icon = display?.icon ?? Zap;
         const trackNum = String(i + 1).padStart(2, "0");
         return {
           cat,
           num: `Track ${trackNum}`,
-          tier: config?.trackLabel ?? cat,
-          title: config?.chipLabel ?? config?.title ?? cat,
+          tier: toSectionTitle(cat),
+          title: toSectionTitle(cat),
           icon: Icon,
           anchor: `#section-${cat}`,
         };
@@ -302,7 +219,7 @@ export default function Services() {
             </a>
           </div>
 
-          {/* Dynamic track overview chips */}
+          {/* Dynamic track overview chips — derived from actual DB categories */}
           {heroChips.length > 0 && (
             <div className="mt-12 grid grid-cols-1 sm:grid-cols-3 gap-4">
               {heroChips.map((t) => {
@@ -380,16 +297,15 @@ export default function Services() {
             const items = grouped[cat] ?? [];
             if (items.length === 0) return null;
 
-            const config = CATEGORY_CONFIG[cat];
+            const display = CATEGORY_DISPLAY[cat];
+            const cardType: CardType = display?.cardType ?? "offer";
+            const accent = display?.accent ?? "text-[#0078D4]";
             const trackNum = String(sectionIndex + 1).padStart(2, "0");
-            const title = config?.title ?? cat;
-            const description = config?.description ?? "";
-            const trackLabel = config?.trackLabel ?? cat;
-            const accent = config?.accent ?? "text-[#0078D4]";
-            const cardType: CardType = config?.cardType ?? "offer";
+            const title = toSectionTitle(cat);
 
             const isMicroOffer = cat === "micro_offer" || cat === "quick-win";
-            const isRetainer = cat === "retainer";
+            const isProject = cardType === "project";
+            const isRetainer = cardType === "retainer";
 
             const entryItems = isMicroOffer ? items.filter((s) => s.tier === "Entry") : [];
 
@@ -398,11 +314,9 @@ export default function Services() {
                 key={cat}
                 anchorId={`section-${cat}`}
                 trackNumber={`Track ${trackNum}`}
-                trackLabel={trackLabel}
+                trackLabel={toSectionTitle(cat)}
                 title={title}
-                description={description}
                 accent={accent}
-                isEmpty={false}
                 headerExtra={
                   isMicroOffer ? (
                     <div className="space-y-4">
@@ -429,9 +343,9 @@ export default function Services() {
                         Early clients may receive discounted entry-point engagements in exchange for a testimonial or case study.
                       </p>
                     </div>
-                  ) : cat === "project" ? (
+                  ) : isProject ? (
                     <p className="text-sm text-muted-foreground leading-relaxed border-l-2 border-[#0078D4]/40 pl-4">
-                      Track 02 projects are always triggered by Track 01 Quick Wins. Each project is scoped only after the initial assessment is complete.
+                      Project engagements are scoped after an initial assessment. Each project is priced as a fixed-fee engagement with a defined SOW.
                     </p>
                   ) : isRetainer ? (
                     <p className="text-sm text-muted-foreground leading-relaxed">
@@ -447,21 +361,7 @@ export default function Services() {
                   ) : undefined
                 }
               >
-                {cardType === "retainer"
-                  ? items.map((plan, i) => (
-                      <RetainerCard key={plan.slug ?? plan.id} plan={plan} index={i} />
-                    ))
-                  : cardType === "project"
-                  ? items.map((svc, i) => (
-                      <EngagementProjectCard
-                        key={svc.id}
-                        project={serviceToEngagementProject(svc)}
-                        index={i}
-                      />
-                    ))
-                  : items.map((svc, i) => (
-                      <OfferCard key={svc.slug ?? svc.id} offer={svc} index={i} />
-                    ))}
+                {renderCards(items, cardType)}
               </TrackSection>
             );
           })}

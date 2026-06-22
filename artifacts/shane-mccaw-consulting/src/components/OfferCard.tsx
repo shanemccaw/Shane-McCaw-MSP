@@ -2,7 +2,7 @@ import { SharedOfferCard, formatOfferPrice, type OfferCardData } from "@workspac
 export { resolveIcon, badgeClass, BADGE_COLORS, type OfferCardData } from "@workspace/offer-card";
 import { CTAButton } from "@/components/CTAButton";
 import { type PublicService } from "@/hooks/useServices";
-import { Download } from "lucide-react";
+import { AlertTriangle, Download } from "lucide-react";
 
 interface OfferCardProps {
   offer: PublicService;
@@ -26,6 +26,7 @@ export function OfferCard({
   const resolvedHref = ctaHref ?? `/crm/portal/onboarding/select?service=${offer.slug ?? ""}`;
   const priceDisplay = formatOfferPrice(offer.basePrice, offer.maxPrice);
   const hl = offer.highlighted;
+  const triggers = offer.triggers ?? [];
 
   const learnMoreBtn = offer.pageHref ? (
     <div className="text-center">
@@ -77,17 +78,45 @@ export function OfferCard({
       </button>
     ) : null;
 
+  const triggersSection =
+    triggers.length > 0 ? (
+      <div className={`border-t pt-4 mb-4 ${hl ? "border-white/10" : "border-border"}`}>
+        <p className={`text-sm font-semibold mb-2 ${hl ? "text-white/50" : "text-[#0A2540]"}`}>
+          Triggered by
+        </p>
+        <ul className="space-y-1.5">
+          {triggers.map((t, i) => (
+            <li
+              key={i}
+              className={`flex items-start gap-2 text-sm ${hl ? "text-white/70" : "text-muted-foreground"}`}
+            >
+              <AlertTriangle className="w-4 h-4 text-[#00B4D8] flex-shrink-0 mt-0.5" />
+              {t}
+            </li>
+          ))}
+        </ul>
+      </div>
+    ) : null;
+
   const cta = (
-    <div className="flex flex-col gap-2 mt-6">
-      {primaryBtn}
-      {downloadBtn}
-      {learnMoreBtn}
+    <div>
+      {triggersSection}
+      <div className="flex flex-col gap-2 mt-2">
+        {primaryBtn}
+        {downloadBtn}
+        {learnMoreBtn}
+      </div>
     </div>
   );
 
+  const cardData: OfferCardData = {
+    ...offer,
+    targetAudience: offer.bestFor ?? offer.targetAudience,
+  };
+
   return (
     <SharedOfferCard
-      data={offer as OfferCardData}
+      data={cardData}
       priceDisplay={priceDisplay}
       index={index}
       popLabel="Most Popular"
