@@ -1,3 +1,5 @@
+import { useState } from "react";
+import { ServiceOverviewModal } from "@/components/ServiceOverviewModal";
 import { SEOMeta } from "@/components/SEOMeta";
 import { Layout } from "@/components/Layout";
 import { CTAButton } from "@/components/CTAButton";
@@ -168,6 +170,8 @@ export default function Governance() {
     migration: livePrice(migSvc, "$3,500–$5,000"),
     retainer: "$2,500 / $6,000 / $11,000 per month",
   };
+  const [modalOpen, setModalOpen] = useState(false);
+
   return (
     <Layout>
       <SEOMeta
@@ -218,14 +222,20 @@ export default function Governance() {
           <p className="text-white/65 text-xl mt-6 max-w-2xl leading-relaxed">
             NASA-proven governance frameworks for organizations that cannot afford to get this wrong.
           </p>
-          <div className="mt-10 flex flex-wrap gap-4">
+          <div className="mt-10 flex flex-wrap gap-4 items-center">
             <CTAButton href="/book">Book a Free Discovery Call</CTAButton>
             <a
-              href="/contact"
+              href="/crm/portal/onboarding/select?service=governance-foundations-package"
               className="inline-flex items-center gap-2 text-white/80 font-semibold hover:text-white transition-colors text-sm border border-white/20 px-6 py-3 rounded-xl hover:border-white/40"
             >
-              Schedule a Consultation <ArrowRight className="w-4 h-4" />
+              Get Started <ArrowRight className="w-4 h-4" />
             </a>
+            <button
+              onClick={() => setModalOpen(true)}
+              className="inline-flex items-center gap-2 text-white/50 hover:text-white/80 transition-colors text-sm"
+            >
+              Download M365 Governance Overview <ArrowRight className="w-4 h-4" />
+            </button>
           </div>
         </div>
       </section>
@@ -539,6 +549,11 @@ export default function Governance() {
           </div>
         </div>
       </section>
+      <ServiceOverviewModal
+        serviceName="M365 Governance"
+        isOpen={modalOpen}
+        onClose={() => setModalOpen(false)}
+      />
     </Layout>
   );
 }

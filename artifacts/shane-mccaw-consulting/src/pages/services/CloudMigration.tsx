@@ -1,3 +1,5 @@
+import { useState } from "react";
+import { ServiceOverviewModal } from "@/components/ServiceOverviewModal";
 import { SEOMeta } from "@/components/SEOMeta";
 import { Layout } from "@/components/Layout";
 import { RetainerCard } from "@/components/RetainerCard";
@@ -95,6 +97,8 @@ export default function CloudMigration() {
     governance: livePrice(govSvc, "$12,000–$18,000"),
     retainer: "$2,500 / $6,000 / $11,000 per month",
   };
+  const [modalOpen, setModalOpen] = useState(false);
+
   return (
     <Layout>
       <SEOMeta
@@ -137,10 +141,20 @@ export default function CloudMigration() {
           <p className="text-white/70 text-lg mt-6 max-w-2xl leading-relaxed">
             Exchange, SharePoint, Google Workspace, and tenant-to-tenant migrations planned and executed with the discipline of a NASA-level architect. Every mailbox, file, and permission — accounted for.
           </p>
-          <div className="mt-10">
-            <CTAButton href="/book" className="px-8 py-4 text-base">
-              Book a Free Discovery Call
-            </CTAButton>
+          <div className="mt-10 flex flex-wrap gap-4 items-center">
+            <CTAButton href="/book">Book a Free Discovery Call</CTAButton>
+            <a
+              href="/crm/portal/onboarding/select?service=migration-readiness-assessment"
+              className="inline-flex items-center gap-2 text-white/80 font-semibold hover:text-white transition-colors text-sm border border-white/20 px-6 py-3 rounded-xl hover:border-white/40"
+            >
+              Get Started <ArrowRight className="w-4 h-4" />
+            </a>
+            <button
+              onClick={() => setModalOpen(true)}
+              className="inline-flex items-center gap-2 text-white/50 hover:text-white/80 transition-colors text-sm"
+            >
+              Download Cloud Migration Overview <ArrowRight className="w-4 h-4" />
+            </button>
           </div>
         </div>
       </section>
@@ -526,6 +540,11 @@ export default function CloudMigration() {
           </div>
         </div>
       </section>
+      <ServiceOverviewModal
+        serviceName="Cloud Migration"
+        isOpen={modalOpen}
+        onClose={() => setModalOpen(false)}
+      />
     </Layout>
   );
 }

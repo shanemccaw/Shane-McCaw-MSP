@@ -1,3 +1,5 @@
+import { useState } from "react";
+import { ServiceOverviewModal } from "@/components/ServiceOverviewModal";
 import { SEOMeta } from "@/components/SEOMeta";
 import { Layout } from "@/components/Layout";
 import { CTAButton } from "@/components/CTAButton";
@@ -120,6 +122,8 @@ export default function PowerPlatform() {
     governance: livePrice(govSvc, "$12,000–$18,000"),
     retainer: "$2,500 / $6,000 / $11,000 per month",
   };
+  const [modalOpen, setModalOpen] = useState(false);
+
   return (
     <Layout>
       <SEOMeta
@@ -183,14 +187,20 @@ export default function PowerPlatform() {
           <p className="text-white/65 text-xl mt-6 max-w-2xl leading-relaxed">
             NASA-proven Power Apps and Power Automate expertise for mid-market and regulated organizations. Production-ready solutions — not proof-of-concepts.
           </p>
-          <div className="mt-10 flex flex-wrap gap-4">
+          <div className="mt-10 flex flex-wrap gap-4 items-center">
             <CTAButton href="/book">Book a Free Discovery Call</CTAButton>
             <a
-              href="/contact"
+              href="/crm/portal/onboarding/select?service=power-platform-quickstart"
               className="inline-flex items-center gap-2 text-white/80 font-semibold hover:text-white transition-colors text-sm border border-white/20 px-6 py-3 rounded-xl hover:border-white/40"
             >
-              Schedule a Consultation <ArrowRight className="w-4 h-4" />
+              Get Started <ArrowRight className="w-4 h-4" />
             </a>
+            <button
+              onClick={() => setModalOpen(true)}
+              className="inline-flex items-center gap-2 text-white/50 hover:text-white/80 transition-colors text-sm"
+            >
+              Download Power Platform Overview <ArrowRight className="w-4 h-4" />
+            </button>
           </div>
         </div>
       </section>
@@ -538,6 +548,11 @@ export default function PowerPlatform() {
       </section>
 
       <ConsultationCTA />
+      <ServiceOverviewModal
+        serviceName="Power Platform"
+        isOpen={modalOpen}
+        onClose={() => setModalOpen(false)}
+      />
     </Layout>
   );
 }

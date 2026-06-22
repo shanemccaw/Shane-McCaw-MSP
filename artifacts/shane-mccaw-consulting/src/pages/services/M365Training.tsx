@@ -1,3 +1,5 @@
+import { useState } from "react";
+import { ServiceOverviewModal } from "@/components/ServiceOverviewModal";
 import { SEOMeta } from "@/components/SEOMeta";
 import { Layout } from "@/components/Layout";
 import { CTAButton } from "@/components/CTAButton";
@@ -104,6 +106,8 @@ const ADD_ONS = [
 
 export default function M365Training() {
   const { services: retainerServices, loading: retainerLoading } = useServices("retainer");
+  const [modalOpen, setModalOpen] = useState(false);
+
   return (
     <Layout>
       <SEOMeta
@@ -154,14 +158,20 @@ export default function M365Training() {
           <p className="text-white/65 text-xl mt-6 max-w-2xl leading-relaxed">
             Live, instructor-led training built on NASA methodology — tailored to your tools, your configuration, and your team.
           </p>
-          <div className="mt-10 flex flex-wrap gap-4">
-            <CTAButton href="/book">Book a Training Consultation</CTAButton>
+          <div className="mt-10 flex flex-wrap gap-4 items-center">
+            <CTAButton href="/book">Book a Free Discovery Call</CTAButton>
             <a
-              href="/contact?intent=training-overview"
+              href="/crm/portal/onboarding/select?service=microsoft-365-training--enablement"
               className="inline-flex items-center gap-2 text-white/80 font-semibold hover:text-white transition-colors text-sm border border-white/20 px-6 py-3 rounded-xl hover:border-white/40"
             >
-              Download the Training Overview <ArrowRight className="w-4 h-4" />
+              Get Started <ArrowRight className="w-4 h-4" />
             </a>
+            <button
+              onClick={() => setModalOpen(true)}
+              className="inline-flex items-center gap-2 text-white/50 hover:text-white/80 transition-colors text-sm"
+            >
+              Download M365 Training Overview <ArrowRight className="w-4 h-4" />
+            </button>
           </div>
         </div>
       </section>
@@ -368,6 +378,11 @@ export default function M365Training() {
           </div>
         </div>
       </section>
+      <ServiceOverviewModal
+        serviceName="M365 Training & Enablement"
+        isOpen={modalOpen}
+        onClose={() => setModalOpen(false)}
+      />
     </Layout>
   );
 }

@@ -1,3 +1,5 @@
+import { useState } from "react";
+import { ServiceOverviewModal } from "@/components/ServiceOverviewModal";
 import { SEOMeta } from "@/components/SEOMeta";
 import { Layout } from "@/components/Layout";
 import {
@@ -82,6 +84,8 @@ export default function Microsoft365() {
   const { services, loading, error } = useServices("micro_offer");
   const { services: retainerServices, loading: retainerLoading } = useServices("retainer");
 
+  const [modalOpen, setModalOpen] = useState(false);
+
   return (
     <Layout>
       <SEOMeta
@@ -122,14 +126,20 @@ export default function Microsoft365() {
           <p className="text-white/65 text-xl mt-6 max-w-2xl leading-relaxed">
             NASA-proven Microsoft 365 expertise for mid-market and regulated organizations.
           </p>
-          <div className="mt-10 flex flex-wrap gap-4">
+          <div className="mt-10 flex flex-wrap gap-4 items-center">
             <CTAButton href="/book">Book a Free Discovery Call</CTAButton>
             <a
-              href="/contact"
+              href="/crm/portal/onboarding/select?service=m365-tenant-health-audit"
               className="inline-flex items-center gap-2 text-white/80 font-semibold hover:text-white transition-colors text-sm border border-white/20 px-6 py-3 rounded-xl hover:border-white/40"
             >
-              Download M365 Services Overview <ArrowRight className="w-4 h-4" />
+              Get Started <ArrowRight className="w-4 h-4" />
             </a>
+            <button
+              onClick={() => setModalOpen(true)}
+              className="inline-flex items-center gap-2 text-white/50 hover:text-white/80 transition-colors text-sm"
+            >
+              Download Microsoft 365 Overview <ArrowRight className="w-4 h-4" />
+            </button>
           </div>
         </div>
       </section>
@@ -464,6 +474,11 @@ export default function Microsoft365() {
           </div>
         </div>
       </section>
+      <ServiceOverviewModal
+        serviceName="Microsoft 365"
+        isOpen={modalOpen}
+        onClose={() => setModalOpen(false)}
+      />
     </Layout>
   );
 }

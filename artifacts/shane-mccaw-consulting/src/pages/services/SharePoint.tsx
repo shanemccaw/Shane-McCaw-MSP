@@ -1,3 +1,5 @@
+import { useState } from "react";
+import { ServiceOverviewModal } from "@/components/ServiceOverviewModal";
 import { SEOMeta } from "@/components/SEOMeta";
 import { Layout } from "@/components/Layout";
 import { Layout as LayoutIcon, CheckCircle, ArrowRight, Building2, Shield, Users } from "lucide-react";
@@ -61,6 +63,8 @@ export default function SharePoint() {
     migration: livePrice(migSvc, "$3,500–$5,000"),
     retainer: "$2,500 / $6,000 / $11,000 per month",
   };
+  const [modalOpen, setModalOpen] = useState(false);
+
   return (
     <Layout>
       <SEOMeta
@@ -140,8 +144,20 @@ export default function SharePoint() {
           <p className="text-white/70 text-lg mt-6 max-w-2xl">
             NASA-proven architecture. 30 years of Microsoft expertise. Intranets your employees will actually use — and your IT team can govern.
           </p>
-          <div className="mt-10">
+          <div className="mt-10 flex flex-wrap gap-4 items-center">
             <CTAButton href="/book">Book a Free Discovery Call</CTAButton>
+            <a
+              href="/crm/portal/onboarding/select?service=governance-foundations-package"
+              className="inline-flex items-center gap-2 text-white/80 font-semibold hover:text-white transition-colors text-sm border border-white/20 px-6 py-3 rounded-xl hover:border-white/40"
+            >
+              Get Started <ArrowRight className="w-4 h-4" />
+            </a>
+            <button
+              onClick={() => setModalOpen(true)}
+              className="inline-flex items-center gap-2 text-white/50 hover:text-white/80 transition-colors text-sm"
+            >
+              Download SharePoint Architecture Overview <ArrowRight className="w-4 h-4" />
+            </button>
           </div>
         </div>
       </section>
@@ -458,6 +474,11 @@ export default function SharePoint() {
       </section>
 
       <ConsultationCTA />
+      <ServiceOverviewModal
+        serviceName="SharePoint Architecture"
+        isOpen={modalOpen}
+        onClose={() => setModalOpen(false)}
+      />
     </Layout>
   );
 }
