@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { SEOMeta } from "@/components/SEOMeta";
 import { Layout } from "@/components/Layout";
 import { CTAButton } from "@/components/CTAButton";
@@ -31,6 +32,16 @@ const TIERS = [
 
 export default function MicroOffers() {
   const { services: offers, loading } = useServices("micro_offer");
+
+  useEffect(() => {
+    if (loading || offers.length === 0) return;
+    const hash = window.location.hash.slice(1);
+    if (!hash) return;
+    const el = document.getElementById(hash);
+    if (el) {
+      el.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  }, [loading, offers]);
 
   return (
     <Layout>
@@ -99,7 +110,9 @@ export default function MicroOffers() {
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {offers.map((offer, i) => (
-                <OfferCard key={offer.slug ?? i} offer={offer} index={i} />
+                <div key={offer.slug ?? i} id={offer.slug ?? undefined}>
+                  <OfferCard offer={offer} index={i} />
+                </div>
               ))}
             </div>
           )}
