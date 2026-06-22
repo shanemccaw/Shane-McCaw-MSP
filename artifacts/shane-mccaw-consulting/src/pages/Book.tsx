@@ -52,7 +52,7 @@ export default function Book() {
       {/* ── Main content + Bookings embed ── */}
       <section className="bg-[#F7F9FC] py-20">
         <div className="max-w-[1200px] mx-auto px-6">
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-12 items-start">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-12">
 
             {/* ── Left column: all copy sections ── */}
             <div className="space-y-12">
@@ -112,7 +112,7 @@ export default function Book() {
             </div>
 
             {/* ── Right column: Bookings embed ── */}
-            <div className="lg:col-span-2 lg:sticky lg:top-24" data-testid="bookings-embed">
+            <div className="lg:col-span-2" data-testid="bookings-embed">
               <MicrosoftBookingsEmbed minHeight={700} />
             </div>
 
