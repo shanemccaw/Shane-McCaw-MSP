@@ -95,8 +95,8 @@ export function RetainerCard({ plan, index }: RetainerCardProps) {
       )}
 
       <div className="mt-auto space-y-3">
-        <CTAButton href={`/book?plan=${plan.slug}`} className="w-full justify-center text-sm" data-testid={`retainer-cta-${index}`}>
-          Start a Retainer
+        <CTAButton href={`/crm/portal/onboarding/select?service=${plan.slug}`} className="w-full justify-center text-sm" data-testid={`retainer-cta-${index}`}>
+          Get Started
         </CTAButton>
         <div className="text-center">
           <Link href={`/retainers/${plan.slug}`} className={`text-sm font-medium hover:underline transition-colors ${hl ? "text-[#00B4D8] hover:text-white" : "text-[#0078D4] hover:text-[#005A9E]"}`}>

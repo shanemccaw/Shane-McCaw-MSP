@@ -96,8 +96,8 @@ export default function ArchitectGrowth() {
             Right for organizations actively modernizing their M365 environment or planning a Copilot deployment. You get 25 dedicated hours, two strategy calls, priority 4-hour response, and proactive monitoring of your tenant — so nothing falls through the cracks.
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
-            <CTAButton href="/book?plan=architect-growth" className="px-8 py-4 text-base">
-              Start This Plan
+            <CTAButton href="/crm/portal/onboarding/select?service=architect-growth" className="px-8 py-4 text-base">
+              Get Started
             </CTAButton>
             <Link
               href="/contact"

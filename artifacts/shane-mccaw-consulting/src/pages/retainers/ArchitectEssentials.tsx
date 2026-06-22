@@ -89,8 +89,8 @@ export default function ArchitectEssentials() {
             Right for organizations that need a senior M365 resource on call — without the overhead of a full-time hire. You get 10 dedicated hours each month, a strategy call, async support, and a written summary of everything accomplished.
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
-            <CTAButton href="/book?plan=architect-essentials" className="px-8 py-4 text-base">
-              Start This Plan
+            <CTAButton href="/crm/portal/onboarding/select?service=architect-essentials" className="px-8 py-4 text-base">
+              Get Started
             </CTAButton>
             <Link
               href="/contact"

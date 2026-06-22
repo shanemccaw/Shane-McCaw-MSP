@@ -97,8 +97,8 @@ export default function ArchitectEnterprise() {
             Right for organizations that need a dedicated senior architect embedded in their operations every week. 50 hours per month, weekly strategy calls, same-day emergency response, a custom technology roadmap, and a quarterly strategic review — the full weight of 30 years of Microsoft ecosystem expertise applied consistently to your environment.
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
-            <CTAButton href="/book?plan=architect-enterprise" className="px-8 py-4 text-base">
-              Start This Plan
+            <CTAButton href="/crm/portal/onboarding/select?service=architect-enterprise" className="px-8 py-4 text-base">
+              Get Started
             </CTAButton>
             <Link
               href="/contact"

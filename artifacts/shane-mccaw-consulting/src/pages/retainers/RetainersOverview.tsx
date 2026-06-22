@@ -21,7 +21,7 @@ const PLANS = [
       "Monthly written summary",
     ],
     href: "/retainers/architect-essentials",
-    bookHref: "/book?plan=architect-essentials",
+    bookHref: "/crm/portal/onboarding/select?service=architect-essentials",
     highlight: false,
     badge: null,
   },
@@ -40,7 +40,7 @@ const PLANS = [
       "Monthly written summary + roadmap",
     ],
     href: "/retainers/architect-growth",
-    bookHref: "/book?plan=architect-growth",
+    bookHref: "/crm/portal/onboarding/select?service=architect-growth",
     highlight: true,
     badge: "Most Popular",
   },
@@ -59,7 +59,7 @@ const PLANS = [
       "Quarterly executive briefing",
     ],
     href: "/retainers/architect-enterprise",
-    bookHref: "/book?plan=architect-enterprise",
+    bookHref: "/crm/portal/onboarding/select?service=architect-enterprise",
     highlight: false,
     badge: "Most Comprehensive",
   },
@@ -192,7 +192,7 @@ export default function RetainersOverview() {
 
                   <div className="mt-8 flex flex-col gap-3">
                     <CTAButton href={plan.bookHref} className={`w-full justify-center ${plan.highlight ? "" : "bg-[#0A2540] hover:bg-[#0A2540]/90"}`}>
-                      Start This Plan
+                      Get Started
                     </CTAButton>
                     <Link
                       href={plan.href}
@@ -349,17 +349,17 @@ export default function RetainersOverview() {
                 <tr className="bg-white">
                   <td className="px-6 py-5 text-muted-foreground text-xs italic">All plans: no minimum term · cancel with 30 days' notice</td>
                   <td className="px-4 py-5 text-center">
-                    <Link href="/book?plan=architect-essentials" className="inline-flex items-center justify-center gap-1 text-xs font-bold text-[#0078D4] hover:text-[#005A9E] transition-colors">
+                    <Link href="/crm/portal/onboarding/select?service=architect-essentials" className="inline-flex items-center justify-center gap-1 text-xs font-bold text-[#0078D4] hover:text-[#005A9E] transition-colors">
                       Get started <ArrowRight className="w-3 h-3" />
                     </Link>
                   </td>
                   <td className="px-4 py-5 text-center bg-[#0078D4]/5">
-                    <Link href="/book?plan=architect-growth" className="inline-flex items-center justify-center gap-1 text-xs font-bold text-white bg-[#0078D4] hover:bg-[#005A9E] transition-colors px-3 py-1.5 rounded-full">
+                    <Link href="/crm/portal/onboarding/select?service=architect-growth" className="inline-flex items-center justify-center gap-1 text-xs font-bold text-white bg-[#0078D4] hover:bg-[#005A9E] transition-colors px-3 py-1.5 rounded-full">
                       Get started <ArrowRight className="w-3 h-3" />
                     </Link>
                   </td>
                   <td className="px-4 py-5 text-center">
-                    <Link href="/book?plan=architect-enterprise" className="inline-flex items-center justify-center gap-1 text-xs font-bold text-[#0078D4] hover:text-[#005A9E] transition-colors">
+                    <Link href="/crm/portal/onboarding/select?service=architect-enterprise" className="inline-flex items-center justify-center gap-1 text-xs font-bold text-[#0078D4] hover:text-[#005A9E] transition-colors">
                       Get started <ArrowRight className="w-3 h-3" />
                     </Link>
                   </td>
