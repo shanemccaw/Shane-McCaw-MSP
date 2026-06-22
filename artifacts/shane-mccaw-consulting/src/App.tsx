@@ -32,6 +32,7 @@ import SecurityQuiz from "@/pages/quizzes/SecurityQuiz";
 import TeamsQuiz from "@/pages/quizzes/TeamsQuiz";
 import MigrationQuiz from "@/pages/quizzes/MigrationQuiz";
 import GovernanceQuiz from "@/pages/quizzes/GovernanceQuiz";
+import QuizResultsPage from "@/pages/QuizResultsPage";
 import ArchitectEssentials from "@/pages/retainers/ArchitectEssentials";
 import ArchitectGrowth from "@/pages/retainers/ArchitectGrowth";
 import ArchitectEnterprise from "@/pages/retainers/ArchitectEnterprise";
@@ -97,6 +98,7 @@ function Router() {
       <Route path="/teams-maturity-quiz" component={TeamsQuiz} />
       <Route path="/migration-readiness-quiz" component={MigrationQuiz} />
       <Route path="/governance-maturity-quiz" component={GovernanceQuiz} />
+      <Route path="/quiz/results/:leadId" component={QuizResultsPage} />
       <Route path="/retainers" component={RetainersOverview} />
       <Route path="/retainers/architect-essentials" component={ArchitectEssentials} />
       <Route path="/retainers/architect-growth" component={ArchitectGrowth} />

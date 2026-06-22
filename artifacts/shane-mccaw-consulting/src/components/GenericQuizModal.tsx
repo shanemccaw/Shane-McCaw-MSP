@@ -2,7 +2,7 @@ import { useState, useRef } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { X, ChevronRight, CheckCircle, Loader2, BarChart3, Award, Zap, ArrowRight } from "lucide-react";
+import { X, ChevronRight, CheckCircle, Loader2, BarChart3, Award, Zap, ArrowRight, Link2, Check } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { trackEvent } from "@/lib/analytics";
 
@@ -123,6 +123,7 @@ export function GenericQuizModal({ config, onClose }: { config: QuizConfig; onCl
   const [submittedEmail, setSubmittedEmail] = useState("");
   const [resendEmail, setResendEmail] = useState("");
   const [resendState, setResendState] = useState<"idle" | "sending" | "sent" | "error">("idle");
+  const [shareCopied, setShareCopied] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const { register, handleSubmit, formState: { errors } } = useForm<LeadForm>({ resolver: zodResolver(leadSchema) });
@@ -192,6 +193,21 @@ export function GenericQuizModal({ config, onClose }: { config: QuizConfig; onCl
       setSubmitError("Something went wrong. Please try again.");
       setState("lead-capture");
     }
+  }
+
+  function copyShareLink() {
+    if (!results?.leadId || !results?.resendToken) return;
+    const url = `${window.location.origin}/quiz/results/${results.leadId}?token=${results.resendToken}`;
+    navigator.clipboard.writeText(url).catch(() => {
+      const ta = document.createElement("textarea");
+      ta.value = url;
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand("copy");
+      document.body.removeChild(ta);
+    });
+    setShareCopied(true);
+    setTimeout(() => setShareCopied(false), 2500);
   }
 
   async function handleResend(e: React.FormEvent) {
@@ -396,6 +412,24 @@ export function GenericQuizModal({ config, onClose }: { config: QuizConfig; onCl
                     </form>
                   )}
                   {resendState === "error" && <p className="text-red-400 text-xs mt-2">Failed to send. Please try again.</p>}
+                </div>
+              )}
+
+              {/* Share link */}
+              {results.leadId && results.resendToken && (
+                <div className="flex justify-center">
+                  <button
+                    onClick={copyShareLink}
+                    className={cn(
+                      "flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all border",
+                      shareCopied
+                        ? "bg-teal-500/10 border-teal-500/30 text-teal-400"
+                        : "bg-white/5 border-white/20 text-white/70 hover:bg-white/10 hover:text-white"
+                    )}
+                  >
+                    {shareCopied ? <Check className="w-4 h-4" /> : <Link2 className="w-4 h-4" />}
+                    {shareCopied ? "Link copied!" : "Share your results"}
+                  </button>
                 </div>
               )}
 

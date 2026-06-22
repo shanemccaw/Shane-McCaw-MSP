@@ -722,6 +722,41 @@ const analyticsEventSchema = z.object({
   properties: z.record(z.union([z.string(), z.number(), z.boolean()])).optional(),
 });
 
+// ─── GET /api/quiz/results/:leadId ────────────────────────────────────────────
+const resultsLimiter = rateLimit({ windowMs: 60 * 60 * 1000, max: 60, standardHeaders: "draft-8", legacyHeaders: false, message: { error: "Too many requests. Please try again later." } });
+
+router.get("/quiz/results/:leadId", resultsLimiter, async (req, res) => {
+  const leadId = Number(req.params.leadId);
+  if (!Number.isInteger(leadId) || leadId <= 0) return res.status(400).json({ error: "Invalid lead ID." });
+
+  const token = req.query.token as string | undefined;
+  if (!token) return res.status(401).json({ error: "Token required." });
+
+  if (!verifyResendToken(leadId, token)) return res.status(403).json({ error: "Invalid or expired token." });
+
+  const lead = await db.query.quizLeadsTable.findFirst({ where: (t, { eq }) => eq(t.id, leadId) });
+  if (!lead) return res.status(404).json({ error: "Results not found." });
+
+  const qt = lead.quizType ?? "copilot";
+  const cfg = SCORING_CONFIGS[qt] ?? SCORING_CONFIGS.copilot;
+  const analysis = (lead.analysisText ?? {}) as { whatThisMeans?: string; whyThisFits?: string; roiProjection?: string };
+
+  return res.json({
+    name: lead.name,
+    totalScore: lead.totalScore,
+    tier: lead.tier,
+    quizType: qt,
+    categoryScores: lead.categoryScores as Record<string, number>,
+    categoryConfig: cfg.categoryConfig,
+    recommendedService: lead.recommendedService ?? null,
+    reportName: cfg.reportName,
+    whatThisMeans: analysis.whatThisMeans ?? "",
+    whyThisFits: analysis.whyThisFits ?? "",
+    roiProjection: analysis.roiProjection ?? "",
+    createdAt: lead.createdAt,
+  });
+});
+
 const analyticsLimiter = rateLimit({ windowMs: 60_000, max: 120, standardHeaders: true, legacyHeaders: false });
 
 router.post("/quiz/analytics-event", analyticsLimiter, async (req, res) => {
