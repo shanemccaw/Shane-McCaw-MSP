@@ -1,8 +1,9 @@
-import { CheckCircle, Clock, ArrowRight, ChevronRight, Zap, Minus } from "lucide-react";
+import { CheckCircle, Clock, ArrowRight, ChevronRight, Zap, Minus, Info } from "lucide-react";
 import { Link } from "wouter";
 import { Layout } from "@/components/Layout";
 import { SEOMeta } from "@/components/SEOMeta";
 import { CTAButton } from "@/components/CTAButton";
+import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
 
 const PLANS = [
   {
@@ -242,6 +243,7 @@ export default function RetainersOverview() {
                 {[
                   {
                     feature: "Hours / month",
+                    tooltip: "The total consulting hours reserved for your organization each calendar month, used across calls, async Q&A, reviews, and hands-on configuration.",
                     essentials: "10 hrs",
                     growth: "25 hrs",
                     enterprise: "60 hrs",
@@ -249,6 +251,7 @@ export default function RetainersOverview() {
                   },
                   {
                     feature: "Response time",
+                    tooltip: "How quickly Shane acknowledges and begins working on your request during business hours after it's received.",
                     essentials: "1 business day",
                     growth: "4 hours",
                     enterprise: "Same day",
@@ -256,6 +259,7 @@ export default function RetainersOverview() {
                   },
                   {
                     feature: "Strategy calls",
+                    tooltip: "Scheduled video calls where Shane reviews your M365 environment, priorities, and roadmap with your team.",
                     essentials: "1 call / month",
                     growth: "2 calls / month",
                     enterprise: "Weekly",
@@ -263,6 +267,7 @@ export default function RetainersOverview() {
                   },
                   {
                     feature: "Proactive tenant monitoring",
+                    tooltip: "Shane periodically reviews your Microsoft 365 tenant health, security alerts, and service advisories so issues are flagged before they affect users.",
                     essentials: false,
                     growth: true,
                     enterprise: true,
@@ -270,6 +275,7 @@ export default function RetainersOverview() {
                   },
                   {
                     feature: "Dedicated Slack / Teams channel",
+                    tooltip: "A private workspace channel for real-time communication with Shane, keeping all project context in one searchable thread.",
                     essentials: false,
                     growth: false,
                     enterprise: true,
@@ -277,6 +283,7 @@ export default function RetainersOverview() {
                   },
                   {
                     feature: "Quarterly executive briefing",
+                    tooltip: "A structured presentation for leadership summarizing M365 progress, risk posture, upcoming changes, and strategic recommendations.",
                     essentials: false,
                     growth: false,
                     enterprise: true,
@@ -284,6 +291,7 @@ export default function RetainersOverview() {
                   },
                   {
                     feature: "Monthly written summary",
+                    tooltip: "A written report delivered at month-end covering completed work, observations, and recommended next steps.",
                     essentials: true,
                     growth: true,
                     enterprise: true,
@@ -291,6 +299,7 @@ export default function RetainersOverview() {
                   },
                   {
                     feature: "Full M365 service area access",
+                    tooltip: "Shane can apply his hours to any Microsoft 365 workload — Teams, SharePoint, Exchange, Copilot, Power Platform, governance, security, and more.",
                     essentials: true,
                     growth: true,
                     enterprise: true,
@@ -298,7 +307,21 @@ export default function RetainersOverview() {
                   },
                 ].map((row, i) => (
                   <tr key={row.feature} className={i % 2 === 0 ? "bg-white" : "bg-[#F7F9FC]/50"}>
-                    <td className="px-6 py-4 font-medium text-[#0A2540] border-b border-border/60">{row.feature}</td>
+                    <td className="px-6 py-4 font-medium text-[#0A2540] border-b border-border/60">
+                      <span className="flex items-center gap-1.5">
+                        {row.feature}
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <button type="button" className="text-muted-foreground/50 hover:text-[#0078D4] transition-colors focus:outline-none" aria-label={`About ${row.feature}`}>
+                              <Info className="w-3.5 h-3.5" />
+                            </button>
+                          </TooltipTrigger>
+                          <TooltipContent side="right" className="max-w-[220px] text-center leading-relaxed">
+                            {row.tooltip}
+                          </TooltipContent>
+                        </Tooltip>
+                      </span>
+                    </td>
                     <td className="px-4 py-4 text-center border-b border-border/60">
                       {row.type === "bool"
                         ? row.essentials
