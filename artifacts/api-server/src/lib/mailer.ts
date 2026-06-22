@@ -449,13 +449,18 @@ export function retainerResumedEmail(opts: {
 export function serviceOverviewConfirmationEmail(opts: {
   name: string;
   serviceName: string;
+  pdfAttached?: boolean;
 }): string {
   const name = escapeHtml(opts.name.split(" ")[0] ?? opts.name);
   const service = escapeHtml(opts.serviceName);
+  const pdfAttached = opts.pdfAttached ?? true;
+  const overviewLine = pdfAttached
+    ? `<p>Thanks for your interest in Shane's <strong>${service}</strong> services. Your overview document is attached to this email. Shane personally reviews every request and will follow up within <strong>one business day</strong>.</p>`
+    : `<p>Thanks for your interest in Shane's <strong>${service}</strong> services. The overview for this service is not yet available for automated download — Shane will send it to you personally and follow up within <strong>one business day</strong>. If you need it sooner, reach out directly at <a href="mailto:info@shanemccaw.com" style="color:${BLUE};">info@shanemccaw.com</a>.</p>`;
   return `
     <p>Hi ${name},</p>
-    <p>Thanks for your interest in Shane's <strong>${service}</strong> services. Shane personally reviews every request and will send you the overview document and follow up within <strong>one business day</strong>.</p>
-    <p>In the meantime, if you have any urgent questions you can reach Shane directly at <a href="mailto:info@shanemccaw.com" style="color:${BLUE};">info@shanemccaw.com</a> or book a free discovery call below.</p>
+    ${overviewLine}
+    <p>In the meantime, you can book a free discovery call with Shane below.</p>
     ${emailButton("Book a Free Discovery Call", "https://shanemccaw.consulting/book")}
     <p style="margin-top:24px;">— Shane McCaw</p>
   `;

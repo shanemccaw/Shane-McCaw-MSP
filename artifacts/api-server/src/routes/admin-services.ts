@@ -13,10 +13,19 @@ const UPLOADS_BASE = process.env.UPLOADS_DIR
 
 const SERVICE_PDF_DIR = path.join(UPLOADS_BASE, "service-pdfs");
 
-function ensureServicePdfDir() {
+/**
+ * Persists a PDF buffer to disk under a deterministic key derived from the
+ * service ID (service-pdfs/{serviceId}.pdf) and returns the storage key.
+ * Re-uses the same local-disk pattern as invoice PDF storage in portal.ts.
+ */
+function storePdfToDisk(serviceId: number, pdfBuffer: Buffer): string {
   if (!fs.existsSync(SERVICE_PDF_DIR)) {
     fs.mkdirSync(SERVICE_PDF_DIR, { recursive: true });
   }
+  const filename = `${serviceId}.pdf`;
+  const filePath = path.join(SERVICE_PDF_DIR, filename);
+  fs.writeFileSync(filePath, pdfBuffer);
+  return `service-pdfs/${filename}`;
 }
 
 const stringArraySchema = z.array(z.string()).nullish();
@@ -192,12 +201,7 @@ router.post("/admin/services/:id/generate-pdf", requireAdmin, async (req: Reques
       return;
     }
 
-    ensureServicePdfDir();
-    const filename = `${id}.pdf`;
-    const filePath = path.join(SERVICE_PDF_DIR, filename);
-    fs.writeFileSync(filePath, pdfBuffer);
-
-    const pdfKey = `service-pdfs/${filename}`;
+    const pdfKey = storePdfToDisk(id, pdfBuffer);
     const generatedAt = new Date();
 
     const [updated] = await db
@@ -206,11 +210,39 @@ router.post("/admin/services/:id/generate-pdf", requireAdmin, async (req: Reques
       .where(eq(servicesTable.id, id))
       .returning();
 
+    const pdfUrl = `/api/admin/services/${id}/overview-pdf`;
     req.log.info({ serviceId: id, pdfKey }, "Service overview PDF generated");
-    res.json({ overviewPdfKey: updated.overviewPdfKey, overviewPdfGeneratedAt: updated.overviewPdfGeneratedAt });
+    res.json({ overviewPdfKey: updated.overviewPdfKey, overviewPdfGeneratedAt: updated.overviewPdfGeneratedAt, pdfUrl });
   } catch (err: unknown) {
     req.log.error({ err }, "Failed to generate service overview PDF");
     res.status(500).json({ error: "Failed to generate PDF" });
+  }
+});
+
+router.get("/admin/services/:id/pdf-url", requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const id = Number(req.params.id);
+    if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
+
+    const [service] = await db
+      .select({ id: servicesTable.id, overviewPdfKey: servicesTable.overviewPdfKey })
+      .from(servicesTable)
+      .where(eq(servicesTable.id, id))
+      .limit(1);
+
+    if (!service) { res.status(404).json({ error: "Service not found" }); return; }
+    if (!service.overviewPdfKey) { res.status(404).json({ error: "No PDF generated yet" }); return; }
+
+    const filePath = path.join(UPLOADS_BASE, service.overviewPdfKey);
+    if (!fs.existsSync(filePath)) {
+      res.status(404).json({ error: "PDF file not found on disk — regenerate it" });
+      return;
+    }
+
+    res.json({ url: `/api/admin/services/${id}/overview-pdf` });
+  } catch (err: unknown) {
+    req.log.error({ err }, "Failed to look up service overview PDF URL");
+    res.status(500).json({ error: "Failed to retrieve PDF URL" });
   }
 });
 

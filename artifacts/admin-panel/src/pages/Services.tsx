@@ -636,7 +636,7 @@ export default function ServicesPage() {
     setGeneratingPdf(true);
     try {
       const res = await fetchWithAuth(`/api/admin/services/${selected.id}/generate-pdf`, { method: "POST" });
-      const body = await res.json() as { overviewPdfKey?: string; overviewPdfGeneratedAt?: string; error?: string };
+      const body = await res.json() as { overviewPdfKey?: string; overviewPdfGeneratedAt?: string; pdfUrl?: string; error?: string };
       if (!res.ok) {
         toast({ title: body.error ?? "PDF generation failed", variant: "destructive" });
         return;
@@ -652,6 +652,29 @@ export default function ServicesPage() {
       await fetchAll();
     } finally {
       setGeneratingPdf(false);
+    }
+  }
+
+  async function handleViewPdf() {
+    if (!selected?.id) return;
+    try {
+      const urlRes = await fetchWithAuth(`/api/admin/services/${selected.id}/pdf-url`);
+      if (!urlRes.ok) {
+        toast({ title: "PDF not available — generate it first", variant: "destructive" });
+        return;
+      }
+      const { url } = await urlRes.json() as { url: string };
+      const fileRes = await fetchWithAuth(url);
+      if (!fileRes.ok) {
+        toast({ title: "Could not download PDF", variant: "destructive" });
+        return;
+      }
+      const blob = await fileRes.blob();
+      const objectUrl = URL.createObjectURL(blob);
+      window.open(objectUrl, "_blank");
+      setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
+    } catch {
+      toast({ title: "Failed to open PDF", variant: "destructive" });
     }
   }
 
@@ -1171,15 +1194,14 @@ export default function ServicesPage() {
                 </div>
                 <div className="flex items-center gap-2">
                   {form.overviewPdfKey && (
-                    <a
-                      href={`/api/admin/services/${selected?.id}/overview-pdf`}
-                      target="_blank"
-                      rel="noopener noreferrer"
+                    <button
+                      type="button"
+                      onClick={() => void handleViewPdf()}
                       className="flex items-center gap-1.5 text-xs font-semibold text-[#0078D4] border border-[#0078D4]/30 px-3 py-1.5 rounded-lg hover:bg-[#0078D4]/5 transition-colors"
                     >
                       <FileText className="w-3.5 h-3.5" />
                       View PDF
-                    </a>
+                    </button>
                   )}
                   <button
                     type="button"

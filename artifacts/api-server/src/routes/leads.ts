@@ -78,20 +78,26 @@ router.post("/leads", async (req: Request, res: Response) => {
         const matchedService = matchedServices[0] ?? null;
 
         const subject = `Your ${serviceName} Overview — Shane McCaw Consulting`;
-        const html = serviceOverviewConfirmationEmail({ name: trimmedName, serviceName });
+
+        let pdfAttached = false;
+        let attachments: { filename: string; content: Buffer }[] | undefined;
 
         if (matchedService?.overviewPdfKey) {
           const filePath = path.join(UPLOADS_BASE, matchedService.overviewPdfKey);
           if (fs.existsSync(filePath)) {
             const pdfBuffer = fs.readFileSync(filePath);
             const safeName = serviceName.replace(/[^a-z0-9]/gi, "-").toLowerCase();
-            await sendEmailWithAttachment(trimmedEmail, subject, html, [
-              { filename: `${safeName}-overview.pdf`, content: pdfBuffer },
-            ]);
+            attachments = [{ filename: `${safeName}-overview.pdf`, content: pdfBuffer }];
+            pdfAttached = true;
           } else {
             req.log.warn({ serviceId: matchedService.id, overviewPdfKey: matchedService.overviewPdfKey }, "Service overview PDF key set but file missing on disk");
-            await sendEmail(trimmedEmail, subject, html);
           }
+        }
+
+        const html = serviceOverviewConfirmationEmail({ name: trimmedName, serviceName, pdfAttached });
+
+        if (attachments) {
+          await sendEmailWithAttachment(trimmedEmail, subject, html, attachments);
         } else {
           await sendEmail(trimmedEmail, subject, html);
         }
