@@ -43,6 +43,11 @@ interface DownloadStats {
   byQuizType: { quizType: string | null; total: number }[];
 }
 
+interface SelectorStats {
+  total: number;
+  bySlugs: { slug: string; count: number }[];
+}
+
 const TIER_COLORS: Record<Tier, string> = {
   Beginner: "bg-red-100 text-red-700",
   Developing: "bg-orange-100 text-orange-700",
@@ -302,6 +307,7 @@ export default function QuizLeadsPage() {
   const [selectedLead, setSelectedLead] = useState<QuizLead | null>(null);
   const [stats, setStats] = useState<QuizLeadStats | null>(null);
   const [downloadStats, setDownloadStats] = useState<DownloadStats | null>(null);
+  const [selectorStats, setSelectorStats] = useState<SelectorStats | null>(null);
   const [leads, setLeads] = useState<QuizLead[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(false);
@@ -311,12 +317,14 @@ export default function QuizLeadsPage() {
   const [quizTypeFilter, setQuizTypeFilter] = useState("all");
 
   const fetchStats = useCallback(async () => {
-    const [statsRes, dlRes] = await Promise.all([
+    const [statsRes, dlRes, selectorRes] = await Promise.all([
       fetchWithAuth("/api/admin/quiz-leads/stats"),
       fetchWithAuth("/api/admin/quiz-leads/download-stats"),
+      fetchWithAuth("/api/admin/quiz-selector/stats"),
     ]);
     if (statsRes.ok) setStats(await statsRes.json() as QuizLeadStats);
     if (dlRes.ok) setDownloadStats(await dlRes.json() as DownloadStats);
+    if (selectorRes.ok) setSelectorStats(await selectorRes.json() as SelectorStats);
   }, [fetchWithAuth]);
 
   const fetchLeads = useCallback(async (p = 1, tier = "all", contacted = "all", quizType = "all") => {
@@ -384,6 +392,56 @@ export default function QuizLeadsPage() {
           </div>
         </div>
       )}
+
+      {/* Quick Wins Selector results */}
+      <div className="bg-white border border-border rounded-xl p-5 mb-6">
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <p className="text-sm font-bold text-[#0A2540]">Quick Wins Selector</p>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              Packages most frequently recommended by the micro-site quiz
+              {selectorStats ? ` · ${selectorStats.total} completion${selectorStats.total !== 1 ? "s" : ""}` : ""}
+            </p>
+          </div>
+        </div>
+        {!selectorStats || selectorStats.bySlugs.length === 0 ? (
+          <p className="text-xs text-muted-foreground">No completions recorded yet.</p>
+        ) : (
+          <div className="space-y-2.5">
+            {selectorStats.bySlugs.map(({ slug, count: cnt }, i) => {
+              const maxCount = selectorStats.bySlugs[0]?.count ?? 1;
+              const pct = Math.round((cnt / maxCount) * 100);
+              const SLUG_LABELS: Record<string, string> = {
+                "tenant-health-audit": "M365 Tenant Health Audit",
+                "power-platform-quick-start": "Power Platform Quick-Start",
+                "governance-foundations": "Governance Foundations Package",
+                "migration-readiness-assessment": "Migration Readiness Assessment",
+                "copilot-readiness-assessment": "Copilot for M365 Readiness Assessment",
+                "m365-training-enablement": "Microsoft 365 Training & Enablement",
+              };
+              return (
+                <div key={slug} className="flex items-center gap-3">
+                  <span className="w-5 text-xs font-bold text-muted-foreground text-right flex-shrink-0">{i + 1}</span>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-xs font-medium text-[#0A2540] truncate">
+                        {SLUG_LABELS[slug] ?? slug}
+                      </span>
+                      <span className="text-xs font-extrabold text-[#0078D4] ml-2 flex-shrink-0">{cnt}</span>
+                    </div>
+                    <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                      <div
+                        className="h-full rounded-full bg-[#0078D4] transition-all"
+                        style={{ width: `${pct}%` }}
+                      />
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
 
       <div className="bg-white border border-border rounded-xl overflow-hidden">
         {/* Filters */}

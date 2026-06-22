@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Link, useLocation } from "wouter";
 import { CheckCircle, ChevronRight, RotateCcw, ArrowRight, Loader2 } from "lucide-react";
 import { CTAButton } from "./CTAButton";
@@ -381,6 +381,21 @@ export function QuickWinsSelectorQuiz() {
     .slice(0, 3)
     .filter(([, s]) => s > 0)
     .map(([slug]) => slug);
+
+  // Fire-and-forget: record recommended slugs when results phase first renders
+  const recordedRef = useRef(false);
+  useEffect(() => {
+    if (phase !== "results" || topSlugs.length === 0 || recordedRef.current) return;
+    recordedRef.current = true;
+    const base = import.meta.env.BASE_URL.replace(/\/$/, "");
+    fetch(`${base}/api/quiz-selector/result`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ slugs: topSlugs }),
+    }).catch(() => {
+      // silently ignore — analytics failure must not affect UX
+    });
+  }, [phase, topSlugs]);
 
   // ── Intro ──────────────────────────────────────────────────────────────────
   if (phase === "intro") {

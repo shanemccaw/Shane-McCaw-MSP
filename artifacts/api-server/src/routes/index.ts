@@ -28,6 +28,7 @@ import analyticsRouter from "./analytics";
 import adminGenerateArtifactsRouter from "./admin-generate-artifacts";
 import adminEmailTemplatesRouter from "./admin-email-templates";
 import quizQuickWinRouter from "./quiz-quick-win";
+import quizSelectorRouter from "./quiz-selector";
 
 const router: IRouter = Router();
 
@@ -60,5 +61,6 @@ router.use(analyticsRouter);
 router.use(adminGenerateArtifactsRouter);
 router.use(adminEmailTemplatesRouter);
 router.use(quizQuickWinRouter);
+router.use(quizSelectorRouter);
 
 export default router;
