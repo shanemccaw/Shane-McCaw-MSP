@@ -428,6 +428,27 @@ export default function ArchitectGrowth() {
         </div>
       </section>
 
+      {/* Not sure? CTA */}
+      <section className="bg-[#F7F9FC] py-12 px-6">
+        <div className="max-w-[900px] mx-auto">
+          <div className="bg-white border border-[#0078D4]/20 rounded-2xl p-8 flex flex-col md:flex-row items-center justify-between gap-6 text-center md:text-left shadow-sm">
+            <div>
+              <p className="text-xs font-bold uppercase tracking-wider text-[#0078D4] mb-1">Not sure which plan is right?</p>
+              <h3 className="text-xl font-extrabold text-[#0A2540] mb-2">Find your best-fit retainer in 2 minutes</h3>
+              <p className="text-muted-foreground text-sm max-w-md">
+                Answer 10 questions about your M365 environment and support needs — get an instant recommendation for Essentials, Growth, or Enterprise.
+              </p>
+            </div>
+            <Link
+              href="/retainer-quiz"
+              className="inline-flex items-center gap-2 bg-[#0078D4] hover:bg-[#0066B8] text-white font-semibold px-6 py-3 rounded-xl transition-colors whitespace-nowrap flex-shrink-0 text-sm"
+            >
+              Take the Retainer Quiz <ArrowRight className="w-4 h-4" />
+            </Link>
+          </div>
+        </div>
+      </section>
+
       {/* Bottom CTA */}
       <section className="bg-[#0A2540] py-20 px-6 text-center">
         <div className="max-w-[700px] mx-auto">

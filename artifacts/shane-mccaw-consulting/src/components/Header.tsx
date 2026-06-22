@@ -5,7 +5,7 @@ import {
   LayoutGrid, Building2, GraduationCap, Sparkles, FolderOpen, Zap,
   Shield, ShieldCheck, Cloud, Activity, ArrowLeftRight, Users,
   Star, TrendingUp, Award,
-  Info, Tag, Mail, ScanSearch,
+  Info, Tag, Mail, ScanSearch, ClipboardList,
 } from "lucide-react";
 import { CTAButton } from "./CTAButton";
 import { cn } from "@/lib/utils";
@@ -29,6 +29,7 @@ function getNavIcon(label: string): React.ReactNode {
   if (l.includes("growth"))                                   return <TrendingUp  className="w-5 h-5" aria-hidden="true" />;
   if (l.includes("enterprise"))                               return <Award       className="w-5 h-5" aria-hidden="true" />;
   if (l.includes("retainer") || l.includes("all ") || l.includes("overview") || l.includes("service")) return <LayoutGrid className="w-5 h-5" aria-hidden="true" />;
+  if (l.includes("quiz"))                                     return <ClipboardList className="w-5 h-5" aria-hidden="true" />;
   if (l.includes("about"))                                    return <Info        className="w-5 h-5" aria-hidden="true" />;
   if (l.includes("pric"))                                     return <Tag         className="w-5 h-5" aria-hidden="true" />;
   if (l.includes("contact"))                                  return <Mail        className="w-5 h-5" aria-hidden="true" />;
@@ -68,6 +69,7 @@ const RETAINER_ITEMS: NavItem[] = withIcons([
   { label: "Architect Essentials", href: "/retainers/architect-essentials" },
   { label: "Architect Growth",     href: "/retainers/architect-growth" },
   { label: "Architect Enterprise", href: "/retainers/architect-enterprise" },
+  { label: "Retainer Quiz",        href: "/retainer-quiz" },
 ]);
 
 const ASSESSMENTS_ITEMS: NavItem[] = withIcons([
@@ -258,7 +260,7 @@ export function Header() {
 
   const isServicesActive    = location.startsWith("/services");
   const isMicroActive       = location.startsWith("/micro-offers");
-  const isRetainersActive   = location.startsWith("/retainers");
+  const isRetainersActive   = location.startsWith("/retainers") || location === "/retainer-quiz";
   const isAssessmentsActive = ASSESSMENTS_ITEMS.some((i) => location === i.href);
   const isResourcesActive   = location.startsWith("/resources");
   const isCompanyActive     = ["/about", "/pricing", "/contact"].includes(location);
