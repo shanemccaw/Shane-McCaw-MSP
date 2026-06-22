@@ -351,14 +351,32 @@ export default function MicroOfferDetail({ params }: MicroOfferDetailProps) {
             <h2 className="text-3xl md:text-4xl font-extrabold text-[#0A2540] mb-3">
               {priceDisplay}
             </h2>
-            {service.turnaround && (
-              <p className="text-muted-foreground text-base mb-2">
-                Delivered in {service.turnaround}. Fixed price — no hourly surprises.
-              </p>
-            )}
+            <div className="flex flex-wrap justify-center gap-6 mt-4 mb-4">
+              {service.turnaround && (
+                <div className="text-center">
+                  <p className="text-xs uppercase tracking-widest font-semibold text-muted-foreground mb-1">
+                    Turnaround
+                  </p>
+                  <p className="text-[#0A2540] font-bold">{service.turnaround}</p>
+                </div>
+              )}
+              {service.durationDays != null && (
+                <div className="text-center">
+                  <p className="text-xs uppercase tracking-widest font-semibold text-muted-foreground mb-1">
+                    Duration
+                  </p>
+                  <p className="text-[#0A2540] font-bold">
+                    {service.durationDays % 7 === 0
+                      ? `${service.durationDays / 7} ${service.durationDays / 7 === 1 ? "week" : "weeks"}`
+                      : service.durationDays === 1
+                      ? "1 day"
+                      : `${service.durationDays} days`}
+                  </p>
+                </div>
+              )}
+            </div>
             <p className="text-muted-foreground text-sm">
-              Final price depends on tenant size and complexity. Exact scope confirmed before any
-              payment.
+              Fixed price — no hourly surprises. Exact scope confirmed before any payment.
             </p>
           </div>
         </section>
