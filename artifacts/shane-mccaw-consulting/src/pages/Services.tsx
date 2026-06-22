@@ -13,7 +13,7 @@ import { OfferCard } from "@/components/OfferCard";
 import { ServiceProjectCard } from "@/components/ServiceProjectCard";
 import { RetainerCard } from "@/components/RetainerCard";
 import { EngagementProjectCard } from "@/components/EngagementProjectCard";
-import { CopilotQuizCTA } from "@/components/CopilotQuizCTA";
+import { AssessmentSelector } from "@/components/AssessmentSelector";
 
 // ─── Tier configuration ───────────────────────────────────────────────────────
 // Keys must be lowercase to match the normalised tier value from the DB.
@@ -420,7 +420,7 @@ export default function Services() {
         </div>
       )}
 
-      <CopilotQuizCTA />
+      <AssessmentSelector />
 
       {/* Closing CTA */}
       <section className="bg-[#0A2540] py-20">
