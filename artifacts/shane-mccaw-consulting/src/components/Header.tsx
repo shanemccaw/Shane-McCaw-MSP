@@ -7,13 +7,6 @@ import { cn } from "@/lib/utils";
 // ─── Nav data ─────────────────────────────────────────────────────────────────
 interface NavItem { label: string; href: string; icon?: React.ReactNode; }
 
-const START_HERE_ITEMS: NavItem[] = [
-  { label: "Copilot Readiness Assessment", href: "/copilot-quiz" },
-  { label: "M365 Health Assessment",       href: "/m365-health-quiz" },
-  { label: "Tenant Health Audit",          href: "/micro-offers" },
-  { label: "Book a Call",                  href: "/book" },
-];
-
 const SERVICES_ITEMS: NavItem[] = [
   { label: "Service Overview",              href: "/services" },
   { label: "M365 Architecture & Strategy",  href: "/services/microsoft-365" },
@@ -60,14 +53,14 @@ const RESOURCES_ITEMS: NavItem[] = [
   { label: "Tools",            href: "/resources" },
 ];
 
-const PLAIN_LINKS: NavItem[] = [
+const COMPANY_ITEMS: NavItem[] = [
   { label: "About",   href: "/about" },
   { label: "Pricing", href: "/pricing" },
   { label: "Contact", href: "/contact" },
 ];
 
 // ─── Menu key type ─────────────────────────────────────────────────────────────
-type MenuKey = "startHere" | "services" | "microOffers" | "retainers" | "assessments" | "resources";
+type MenuKey = "services" | "microOffers" | "retainers" | "assessments" | "resources" | "company";
 
 // ─── Dropdown trigger ──────────────────────────────────────────────────────────
 function DropdownTrigger({
@@ -183,12 +176,12 @@ export function Header() {
 
   // Per-trigger refs so Escape can return focus to the button that opened the menu
   const triggerRefs: Record<MenuKey, React.RefObject<HTMLButtonElement | null>> = {
-    startHere:   useRef<HTMLButtonElement>(null),
     services:    useRef<HTMLButtonElement>(null),
     microOffers: useRef<HTMLButtonElement>(null),
     retainers:   useRef<HTMLButtonElement>(null),
     assessments: useRef<HTMLButtonElement>(null),
     resources:   useRef<HTMLButtonElement>(null),
+    company:     useRef<HTMLButtonElement>(null),
   };
 
   useEffect(() => {
@@ -236,12 +229,12 @@ export function Header() {
     setMobileExpanded((prev) => ({ ...prev, [key]: !prev[key] }));
   }
 
-  const isStartHereActive   = START_HERE_ITEMS.some((i) => location === i.href);
   const isServicesActive    = location.startsWith("/services");
   const isMicroActive       = location === "/micro-offers";
   const isRetainersActive   = location.startsWith("/retainers");
   const isAssessmentsActive = ASSESSMENTS_ITEMS.some((i) => location === i.href);
   const isResourcesActive   = location.startsWith("/resources");
+  const isCompanyActive     = ["/about", "/pricing", "/contact"].includes(location);
 
   const headerClasses = cn(
     "fixed top-0 left-0 right-0 z-50 transition-all duration-300",
@@ -251,12 +244,12 @@ export function Header() {
   );
 
   const MOBILE_SECTIONS = [
-    { key: "startHere",   label: "Start Here",   items: START_HERE_ITEMS },
     { key: "services",    label: "Services",      items: SERVICES_ITEMS },
     { key: "microOffers", label: "Micro-Offers",  items: MICRO_OFFERS_ITEMS },
     { key: "retainers",   label: "Retainers",     items: RETAINER_ITEMS },
     { key: "assessments", label: "Assessments",   items: ASSESSMENTS_ITEMS },
     { key: "resources",   label: "Resources",     items: RESOURCES_ITEMS },
+    { key: "company",     label: "Company",        items: COMPANY_ITEMS },
   ];
 
   return (
@@ -271,14 +264,6 @@ export function Header() {
         {/* Desktop nav */}
         <nav className="hidden lg:flex flex-1 items-center justify-between" aria-label="Main navigation" role="navigation">
           <ul ref={navRef} className="flex items-center gap-0.5">
-
-            {/* Start Here */}
-            <li className="relative">
-              <DropdownTrigger menuKey="startHere" label="Start Here" isActive={isStartHereActive} isOpen={openMenu === "startHere"} onToggle={toggle} triggerRef={triggerRefs.startHere} />
-              {openMenu === "startHere" && (
-                <DropdownPanel items={START_HERE_ITEMS} location={location} width="w-64" onClose={closeAll} triggerRef={triggerRefs.startHere} />
-              )}
-            </li>
 
             {/* Services */}
             <li className="relative">
@@ -312,22 +297,6 @@ export function Header() {
               )}
             </li>
 
-            {/* About */}
-            <li>
-              <Link href="/about" data-track="nav"
-                className={cn("block px-3 py-2 rounded-md text-sm font-medium transition-colors whitespace-nowrap",
-                  location === "/about" ? "text-primary" : "text-white/80 hover:text-white hover:bg-white/5")}
-              >About</Link>
-            </li>
-
-            {/* Pricing */}
-            <li>
-              <Link href="/pricing" data-track="nav"
-                className={cn("block px-3 py-2 rounded-md text-sm font-medium transition-colors whitespace-nowrap",
-                  location === "/pricing" ? "text-primary" : "text-white/80 hover:text-white hover:bg-white/5")}
-              >Pricing</Link>
-            </li>
-
             {/* Resources dropdown */}
             <li className="relative">
               <DropdownTrigger menuKey="resources" label="Resources" isActive={isResourcesActive} isOpen={openMenu === "resources"} onToggle={toggle} triggerRef={triggerRefs.resources} />
@@ -336,12 +305,12 @@ export function Header() {
               )}
             </li>
 
-            {/* Contact */}
-            <li>
-              <Link href="/contact" data-track="nav"
-                className={cn("block px-3 py-2 rounded-md text-sm font-medium transition-colors whitespace-nowrap",
-                  location === "/contact" ? "text-primary" : "text-white/80 hover:text-white hover:bg-white/5")}
-              >Contact</Link>
+            {/* Company dropdown (About / Pricing / Contact) */}
+            <li className="relative">
+              <DropdownTrigger menuKey="company" label="Company" isActive={isCompanyActive} isOpen={openMenu === "company"} onToggle={toggle} triggerRef={triggerRefs.company} />
+              {openMenu === "company" && (
+                <DropdownPanel items={COMPANY_ITEMS} location={location} width="w-44" onClose={closeAll} triggerRef={triggerRefs.company} />
+              )}
             </li>
 
           </ul>
@@ -410,22 +379,6 @@ export function Header() {
                 <div className="border-t border-white/10 mx-3" />
               </div>
             ))}
-
-            <div className="pt-1">
-              {PLAIN_LINKS.map((link) => (
-                <Link
-                  key={link.href}
-                  href={link.href}
-                  onClick={() => setMobileMenuOpen(false)}
-                  className={cn(
-                    "block px-3 py-2.5 rounded-lg text-sm font-medium transition-colors",
-                    location === link.href ? "text-primary" : "text-white/80 hover:text-white hover:bg-white/5"
-                  )}
-                >
-                  {link.label}
-                </Link>
-              ))}
-            </div>
 
           </div>
 
