@@ -38,6 +38,11 @@ interface QuizLeadStats {
   newThisWeek: number;
 }
 
+interface DownloadStats {
+  total: number;
+  byQuizType: { quizType: string | null; total: number }[];
+}
+
 const TIER_COLORS: Record<Tier, string> = {
   Beginner: "bg-red-100 text-red-700",
   Developing: "bg-orange-100 text-orange-700",
@@ -296,6 +301,7 @@ export default function QuizLeadsPage() {
   const { fetchWithAuth } = useAuth();
   const [selectedLead, setSelectedLead] = useState<QuizLead | null>(null);
   const [stats, setStats] = useState<QuizLeadStats | null>(null);
+  const [downloadStats, setDownloadStats] = useState<DownloadStats | null>(null);
   const [leads, setLeads] = useState<QuizLead[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(false);
@@ -305,8 +311,12 @@ export default function QuizLeadsPage() {
   const [quizTypeFilter, setQuizTypeFilter] = useState("all");
 
   const fetchStats = useCallback(async () => {
-    const res = await fetchWithAuth("/api/admin/quiz-leads/stats");
-    if (res.ok) setStats(await res.json() as QuizLeadStats);
+    const [statsRes, dlRes] = await Promise.all([
+      fetchWithAuth("/api/admin/quiz-leads/stats"),
+      fetchWithAuth("/api/admin/quiz-leads/download-stats"),
+    ]);
+    if (statsRes.ok) setStats(await statsRes.json() as QuizLeadStats);
+    if (dlRes.ok) setDownloadStats(await dlRes.json() as DownloadStats);
   }, [fetchWithAuth]);
 
   const fetchLeads = useCallback(async (p = 1, tier = "all", contacted = "all", quizType = "all") => {
@@ -345,7 +355,7 @@ export default function QuizLeadsPage() {
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
         <StatCard label="Total Submissions" value={stats?.total ?? 0}
           icon={<svg viewBox="0 0 24 24" fill="none" className="w-5 h-5 text-[#0078D4]" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" /></svg>}
         />
@@ -355,7 +365,25 @@ export default function QuizLeadsPage() {
         <StatCard label="Contacted" value={stats?.contacted ?? 0}
           icon={<svg viewBox="0 0 24 24" fill="none" className="w-5 h-5 text-[#0078D4]" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>}
         />
+        <StatCard label="Sample Report Downloads" value={downloadStats?.total ?? 0}
+          icon={<svg viewBox="0 0 24 24" fill="none" className="w-5 h-5 text-[#0078D4]" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>}
+        />
       </div>
+
+      {/* Download breakdown by quiz type */}
+      {downloadStats && downloadStats.byQuizType.length > 0 && (
+        <div className="bg-white border border-border rounded-xl p-5 mb-6">
+          <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">Sample Report Downloads by Quiz</p>
+          <div className="flex flex-wrap gap-2">
+            {downloadStats.byQuizType.map(({ quizType, total: cnt }) => (
+              <span key={quizType ?? "unknown"} className="inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full bg-[#0078D4]/10 text-[#0078D4]">
+                {QUIZ_TYPE_LABELS[quizType ?? ""] ?? quizType ?? "Unknown"}
+                <span className="font-extrabold">{cnt}</span>
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div className="bg-white border border-border rounded-xl overflow-hidden">
         {/* Filters */}

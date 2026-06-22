@@ -478,6 +478,13 @@ export default function M365HealthQuiz() {
                 target="_blank"
                 rel="noopener noreferrer"
                 className="mt-3 flex items-center justify-center gap-2 w-full rounded-lg border border-white/20 py-2.5 text-sm font-semibold text-white/80 hover:bg-white/10 hover:text-white transition-colors"
+                onClick={() => {
+                  fetch("/api/quiz/analytics-event", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ name: "sample_report_download", properties: { quizType: "m365-health" } }),
+                  }).catch(() => undefined);
+                }}
               >
                 <Download className="w-4 h-4" />
                 View Sample Report (PDF)

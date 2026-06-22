@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { db, quizLeadsTable } from "@workspace/db";
+import { db, quizLeadsTable, quizAnalyticsEventsTable } from "@workspace/db";
 import { requireAdmin } from "../middlewares/requireAuth";
 import { desc, eq, count, sql, and, isNull, isNotNull } from "drizzle-orm";
 import type { SQL } from "drizzle-orm";
@@ -67,6 +67,32 @@ router.get("/admin/quiz-leads/stats", requireAdmin, async (req, res) => {
   } catch (err) {
     req.log.error({ err }, "admin/quiz-leads/stats GET failed");
     return res.status(500).json({ error: "Failed to fetch quiz lead stats" });
+  }
+});
+
+// GET /api/admin/quiz-leads/download-stats — sample report download counts
+router.get("/admin/quiz-leads/download-stats", requireAdmin, async (req, res) => {
+  try {
+    const [totalRows, byTypeRows] = await Promise.all([
+      db.select({ total: count() })
+        .from(quizAnalyticsEventsTable)
+        .where(eq(quizAnalyticsEventsTable.eventName, "sample_report_download")),
+      db.select({
+        quizType: sql<string>`(${quizAnalyticsEventsTable.properties}->>'quizType')`,
+        total: count(),
+      })
+        .from(quizAnalyticsEventsTable)
+        .where(eq(quizAnalyticsEventsTable.eventName, "sample_report_download"))
+        .groupBy(sql`(${quizAnalyticsEventsTable.properties}->>'quizType')`),
+    ]);
+
+    return res.json({
+      total: totalRows[0]?.total ?? 0,
+      byQuizType: byTypeRows,
+    });
+  } catch (err) {
+    req.log.error({ err }, "admin/quiz-leads/download-stats GET failed");
+    return res.status(500).json({ error: "Failed to fetch download stats" });
   }
 });
 
