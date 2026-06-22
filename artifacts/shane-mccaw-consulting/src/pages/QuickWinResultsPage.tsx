@@ -13,6 +13,7 @@ import {
   AlertCircle,
   TrendingUp,
   Star,
+  RefreshCw,
 } from "lucide-react";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -29,6 +30,7 @@ interface ServiceData {
   name: string;
   tagline: string | null;
   description: string | null;
+  targetAudience: string | null;
   price: string | null;
   turnaround: string | null;
   durationDays: number | null;
@@ -56,16 +58,9 @@ interface QuizResult {
   createdAt: string;
 }
 
-// ── Static fallback labels (display-only when service record is absent) ───────
+type FetchError = "not_found" | "server_error";
 
-const SLUG_LABELS: Record<QuizSlug, string> = {
-  "tenant-health-audit": "M365 Tenant Health Audit",
-  "power-platform-quick-start": "Power Platform Quick-Start",
-  "governance-foundations": "Governance Foundations Package",
-  "migration-readiness-assessment": "Migration Readiness Assessment",
-  "copilot-readiness-assessment": "Copilot for M365 Readiness Assessment",
-  "m365-training-enablement": "Microsoft 365 Training & Enablement",
-};
+// ── Dimension labels (UI only — no product names) ─────────────────────────────
 
 const DIMENSION_LABELS: Record<QuizSlug, string> = {
   "tenant-health-audit": "M365 Tenant Health",
@@ -85,17 +80,24 @@ const ALL_SLUGS: QuizSlug[] = [
   "m365-training-enablement",
 ];
 
-// Max possible score per dimension across all questions
 const MAX_SCORE = 12;
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
+
+/** Converts a kebab-case slug to Title Case as a neutral fallback label. */
+function slugToLabel(slug: string): string {
+  return slug
+    .split("-")
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(" ");
+}
 
 function getScorePct(slug: string, scores: Record<string, number>): number {
   return Math.min(100, Math.round(((scores[slug] ?? 0) / MAX_SCORE) * 100));
 }
 
 function getPackageName(rec: Recommendation): string {
-  return rec.service?.name ?? SLUG_LABELS[rec.slug as QuizSlug] ?? rec.slug;
+  return rec.service?.name ?? slugToLabel(rec.slug);
 }
 
 function getPackageHref(rec: Recommendation): string {
@@ -109,7 +111,7 @@ function buildPrimarySummary(
   scores: Record<string, number>
 ): string {
   const topPct = getScorePct(primary.slug, scores);
-  const topLabel = DIMENSION_LABELS[primary.slug as QuizSlug] ?? primary.slug;
+  const topLabel = DIMENSION_LABELS[primary.slug as QuizSlug] ?? slugToLabel(primary.slug);
   const topName = getPackageName(primary);
 
   let strength: string;
@@ -141,11 +143,11 @@ function buildPrimaryReasoning(
   scores: Record<string, number>
 ): string {
   const topPct = getScorePct(primary.slug, scores);
-  const topLabel = DIMENSION_LABELS[primary.slug as QuizSlug] ?? primary.slug;
+  const topLabel = DIMENSION_LABELS[primary.slug as QuizSlug] ?? slugToLabel(primary.slug);
   const rawScore = scores[primary.slug] ?? 0;
 
   if (rawScore === 0) {
-    return `This package was your closest match given your answers.`;
+    return "This package was your closest match given your answers.";
   }
 
   return `You scored ${rawScore} out of a possible ${MAX_SCORE} in ${topLabel} (${topPct}%) — the highest of all six dimensions. This is where your environment has the most immediate, actionable gap that a time-boxed engagement can close.`;
@@ -156,7 +158,7 @@ function buildSecondaryReasoning(
   primary: Recommendation,
   scores: Record<string, number>
 ): string {
-  const label = DIMENSION_LABELS[rec.slug as QuizSlug] ?? rec.slug;
+  const label = DIMENSION_LABELS[rec.slug as QuizSlug] ?? slugToLabel(rec.slug);
   const pct = getScorePct(rec.slug, scores);
   const primaryPct = getScorePct(primary.slug, scores);
   const gap = primaryPct - pct;
@@ -167,10 +169,7 @@ function buildSecondaryReasoning(
   return `${label} scored ${pct}% — a secondary signal worth addressing once the primary quick win is delivered.`;
 }
 
-function getReadingIndicator(
-  slug: QuizSlug,
-  recommendations: Recommendation[]
-): string {
+function getReadingIndicator(slug: QuizSlug, recommendations: Recommendation[]): string {
   const rank = recommendations.findIndex((r) => r.slug === slug) + 1;
   if (rank === 1) return "Highest priority";
   if (rank === 2) return "Worth considering next";
@@ -178,14 +177,20 @@ function getReadingIndicator(
   return "Low signal at this time";
 }
 
-// ── Bar fill class — no inline style for colour ───────────────────────────────
-
 function barFillClass(slug: string, recommendations: Recommendation[]): string {
   const isPrimary = recommendations[0]?.slug === slug;
-  const pct = recommendations.find((r) => r.slug === slug)?.score ?? 0;
+  const rec = recommendations.find((r) => r.slug === slug);
   if (isPrimary) return "bg-[#0078D4]";
-  if (pct >= 5) return "bg-[#00B4D8]";
+  if (rec && rec.score >= 5) return "bg-[#00B4D8]";
   return "bg-gray-300";
+}
+
+// ── Bold renderer ─────────────────────────────────────────────────────────────
+
+function renderBold(text: string) {
+  return text.split(/\*\*(.+?)\*\*/g).map((part, i) =>
+    i % 2 === 1 ? <strong key={i}>{part}</strong> : <span key={i}>{part}</span>
+  );
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
@@ -196,26 +201,27 @@ export default function QuickWinResultsPage() {
 
   const [result, setResult] = useState<QuizResult | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(false);
+  const [fetchError, setFetchError] = useState<FetchError | null>(null);
 
   useEffect(() => {
     if (!resultId) {
-      setError(true);
+      setFetchError("not_found");
       setLoading(false);
       return;
     }
 
     fetch(`/api/quiz/quick-win/results/${resultId}`)
       .then((r) => {
-        if (!r.ok) throw new Error("Not found");
+        if (r.status === 404) throw Object.assign(new Error("not_found"), { type: "not_found" });
+        if (!r.ok) throw Object.assign(new Error("server_error"), { type: "server_error" });
         return r.json() as Promise<QuizResult>;
       })
       .then((data) => {
         setResult(data);
         setLoading(false);
       })
-      .catch(() => {
-        setError(true);
+      .catch((err: Error & { type?: string }) => {
+        setFetchError(err.type === "not_found" ? "not_found" : "server_error");
         setLoading(false);
       });
   }, [resultId]);
@@ -229,23 +235,59 @@ export default function QuickWinResultsPage() {
         />
         <section className="bg-[#0A2540] pt-32 pb-20">
           <div className="max-w-[1200px] mx-auto px-6 text-center">
-            <Loader2 className="w-10 h-10 text-[#0078D4] animate-spin mx-auto" />
+            <Loader2 className="w-10 h-10 text-[#0078D4] animate-spin mx-auto mb-4" />
+            <p className="text-white/60 text-sm">Loading your results…</p>
           </div>
         </section>
       </Layout>
     );
   }
 
-  if (error || !result) {
+  if (fetchError === "not_found" || !result) {
     return (
       <Layout>
         <SEOMeta title="Results Not Found | Shane McCaw Consulting" description="" />
         <section className="bg-[#0A2540] pt-32 pb-20">
-          <div className="max-w-[1200px] mx-auto px-6 text-center">
-            <AlertCircle className="w-12 h-12 text-red-400 mx-auto mb-4" />
+          <div className="max-w-[760px] mx-auto px-6 text-center">
+            <AlertCircle className="w-12 h-12 text-yellow-400 mx-auto mb-4" />
             <h1 className="text-2xl font-extrabold text-white mb-3">Results not found</h1>
-            <p className="text-white/60 mb-8">This results link may have expired or is invalid.</p>
+            <p className="text-white/60 mb-2">
+              This results link doesn't match any saved quiz session.
+            </p>
+            <p className="text-white/40 text-sm mb-8">
+              Results are stored permanently — double-check the link or retake the quiz to get a
+              fresh set of recommendations.
+            </p>
             <CTAButton href="/quick-win-quiz">Retake the Quiz</CTAButton>
+          </div>
+        </section>
+      </Layout>
+    );
+  }
+
+  if (fetchError === "server_error") {
+    return (
+      <Layout>
+        <SEOMeta title="Error Loading Results | Shane McCaw Consulting" description="" />
+        <section className="bg-[#0A2540] pt-32 pb-20">
+          <div className="max-w-[760px] mx-auto px-6 text-center">
+            <RefreshCw className="w-12 h-12 text-red-400 mx-auto mb-4" />
+            <h1 className="text-2xl font-extrabold text-white mb-3">
+              Something went wrong loading your results
+            </h1>
+            <p className="text-white/60 mb-8">
+              There was a server error. Your results are saved — refresh the page or try the link
+              again.
+            </p>
+            <div className="flex flex-col sm:flex-row gap-3 justify-center">
+              <CTAButton href={`/quick-win/results/${resultId}`}>Try Again</CTAButton>
+              <CTAButton
+                href="/quick-win-quiz"
+                className="!bg-white !text-[#0A2540] hover:!bg-[#F7F9FC]"
+              >
+                Retake the Quiz
+              </CTAButton>
+            </div>
           </div>
         </section>
       </Layout>
@@ -256,17 +298,10 @@ export default function QuickWinResultsPage() {
 
   const topRecs = recommendations.filter((r) => r.score > 0);
   const primary = topRecs[0] ?? null;
-  const secondaryRecs = topRecs.slice(1, 3);
+  const secondaryRecs = topRecs.slice(1); // All remaining ranked recs, not capped
 
   const primarySummary = primary ? buildPrimarySummary(primary, scores) : "";
   const lowestNote = buildLowestDimensionNote(scores);
-
-  // Split **...** for bold rendering
-  function renderBold(text: string) {
-    return text.split(/\*\*(.+?)\*\*/g).map((part, i) =>
-      i % 2 === 1 ? <strong key={i}>{part}</strong> : <span key={i}>{part}</span>
-    );
-  }
 
   return (
     <Layout>
@@ -337,8 +372,13 @@ export default function QuickWinResultsPage() {
                     {getPackageName(primary)}
                   </h2>
                   {primary.service?.tagline && (
-                    <p className="text-muted-foreground text-sm leading-relaxed mb-4">
+                    <p className="text-muted-foreground text-sm leading-relaxed mb-3">
                       {primary.service.tagline}
+                    </p>
+                  )}
+                  {primary.service?.description && (
+                    <p className="text-[#0A2540]/80 text-sm leading-relaxed mb-4">
+                      {primary.service.description}
                     </p>
                   )}
                   {/* Why this was ranked first */}
@@ -346,26 +386,25 @@ export default function QuickWinResultsPage() {
                     <span className="font-semibold text-[#0078D4]">Why this?</span>{" "}
                     {buildPrimaryReasoning(primary, scores)}
                   </p>
-                  {/* Service meta */}
-                  {(primary.service?.turnaround || primary.service?.durationDays) && (
-                    <div className="flex flex-wrap gap-3 mb-6">
-                      {primary.service.turnaround && (
-                        <span className="inline-flex items-center gap-1.5 text-xs font-semibold bg-[#0A2540]/5 text-[#0A2540] px-3 py-1.5 rounded-full border border-[#0A2540]/10">
-                          ⏱ {primary.service.turnaround}
-                        </span>
-                      )}
-                      {primary.service.durationDays && (
-                        <span className="inline-flex items-center gap-1.5 text-xs font-semibold bg-[#0A2540]/5 text-[#0A2540] px-3 py-1.5 rounded-full border border-[#0A2540]/10">
-                          📅 {primary.service.durationDays} day{primary.service.durationDays !== 1 ? "s" : ""}
-                        </span>
-                      )}
-                      {primary.service.price && (
-                        <span className="inline-flex items-center gap-1.5 text-xs font-semibold bg-[#0078D4]/10 text-[#0078D4] px-3 py-1.5 rounded-full border border-[#0078D4]/20">
-                          From ${parseFloat(primary.service.price).toLocaleString()}
-                        </span>
-                      )}
-                    </div>
-                  )}
+                  {/* Service meta — turnaround, duration, price */}
+                  <div className="flex flex-wrap gap-3 mb-5">
+                    {primary.service?.turnaround && (
+                      <span className="inline-flex items-center gap-1.5 text-xs font-semibold bg-[#0A2540]/5 text-[#0A2540] px-3 py-1.5 rounded-full border border-[#0A2540]/10">
+                        ⏱ {primary.service.turnaround}
+                      </span>
+                    )}
+                    {primary.service?.durationDays && (
+                      <span className="inline-flex items-center gap-1.5 text-xs font-semibold bg-[#0A2540]/5 text-[#0A2540] px-3 py-1.5 rounded-full border border-[#0A2540]/10">
+                        📅 {primary.service.durationDays} day
+                        {primary.service.durationDays !== 1 ? "s" : ""}
+                      </span>
+                    )}
+                    {primary.service?.price && (
+                      <span className="inline-flex items-center gap-1.5 text-xs font-semibold bg-[#0078D4]/10 text-[#0078D4] px-3 py-1.5 rounded-full border border-[#0078D4]/20">
+                        From ${parseFloat(primary.service.price).toLocaleString()}
+                      </span>
+                    )}
+                  </div>
                   {/* Deliverables */}
                   {primary.service?.deliverables && primary.service.deliverables.length > 0 && (
                     <div className="mb-6">
@@ -400,7 +439,7 @@ export default function QuickWinResultsPage() {
         </section>
       )}
 
-      {/* ── Secondary Recommendations ─────────────────────────────────────────── */}
+      {/* ── All remaining ranked recommendations ─────────────────────────────── */}
       {secondaryRecs.length > 0 && (
         <section className="bg-[#F7F9FC] pb-16">
           <div className="max-w-[900px] mx-auto px-6">
@@ -421,11 +460,16 @@ export default function QuickWinResultsPage() {
                       {getPackageName(rec)}
                     </h3>
                     {rec.service?.tagline && (
-                      <p className="text-muted-foreground text-sm leading-relaxed mb-3">
+                      <p className="text-muted-foreground text-sm leading-relaxed mb-2">
                         {rec.service.tagline}
                       </p>
                     )}
-                    {/* Per-secondary reasoning */}
+                    {rec.service?.description && (
+                      <p className="text-[#0A2540]/70 text-sm leading-relaxed mb-3">
+                        {rec.service.description}
+                      </p>
+                    )}
+                    {/* Per-secondary score-derived reasoning */}
                     {primary && (
                       <p className="text-xs text-muted-foreground bg-[#F7F9FC] rounded-lg px-3 py-2 border border-border mb-4 leading-relaxed">
                         {buildSecondaryReasoning(rec, primary, scores)}
@@ -465,7 +509,7 @@ export default function QuickWinResultsPage() {
             <p className="text-sm text-muted-foreground mb-7 pl-12">
               Strongest area:{" "}
               <strong className="text-[#0A2540]">
-                {DIMENSION_LABELS[primary.slug as QuizSlug] ?? primary.slug}
+                {DIMENSION_LABELS[primary.slug as QuizSlug] ?? slugToLabel(primary.slug)}
               </strong>{" "}
               at {getScorePct(primary.slug, scores)}%. {lowestNote}
             </p>
@@ -505,7 +549,7 @@ export default function QuickWinResultsPage() {
         </div>
       </section>
 
-      {/* ── Next Steps — fully ranked dynamic sequence from recommendations ────── */}
+      {/* ── Next Steps — fully ranked dynamic sequence from all recommendations ── */}
       <section className="bg-[#F7F9FC] border-t border-border py-16">
         <div className="max-w-[760px] mx-auto px-6">
           <div className="flex items-center gap-3 mb-6">
@@ -517,8 +561,8 @@ export default function QuickWinResultsPage() {
             </p>
           </div>
           <div className="space-y-4">
-            {/* Step per ranked recommendation */}
-            {topRecs.slice(0, 3).map((rec, i) => (
+            {/* One step per ranked recommendation */}
+            {topRecs.map((rec, i) => (
               <div
                 key={rec.slug}
                 className="bg-white rounded-2xl border border-border p-6 flex gap-5"
@@ -528,19 +572,22 @@ export default function QuickWinResultsPage() {
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="font-bold text-[#0A2540] text-sm mb-1">
-                    {i === 0 ? "Start with: " : i === 1 ? "Then consider: " : "Finally: "}
-                    {getPackageName(rec)}
+                    {i === 0
+                      ? `Start with: ${getPackageName(rec)}`
+                      : i === 1
+                      ? `Then consider: ${getPackageName(rec)}`
+                      : `Next: ${getPackageName(rec)}`}
                   </p>
                   <p className="text-muted-foreground text-sm leading-relaxed mb-3">
                     {i === 0
-                      ? `This is your highest-scoring area. ${
+                      ? `This is your highest-scoring area.${
                           rec.service?.turnaround
-                            ? `Turnaround: ${rec.service.turnaround}.`
+                            ? ` Turnaround: ${rec.service.turnaround}.`
                             : ""
                         } See exactly what's included and what your environment will look like when we're done.`
-                      : `${buildSecondaryReasoning(rec, topRecs[0], scores)} ${
+                      : `${buildSecondaryReasoning(rec, topRecs[0], scores)}${
                           rec.service?.turnaround
-                            ? `Turnaround: ${rec.service.turnaround}.`
+                            ? ` Turnaround: ${rec.service.turnaround}.`
                             : ""
                         }`}
                   </p>
