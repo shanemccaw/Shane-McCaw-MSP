@@ -577,10 +577,16 @@ export default function Home() {
               ))}
             </div>
           )}
-          <div className="text-center">
+          <div className="text-center space-y-3">
             <Link href="/micro-offers" className="text-[#0078D4] font-semibold hover:underline flex items-center justify-center gap-1" data-testid="view-all-offers">
               View All Quick Win Packages <ArrowRight className="w-4 h-4" />
             </Link>
+            <p className="text-muted-foreground text-sm">
+              Not sure which package fits?{" "}
+              <Link href="/quick-win-quiz" className="text-[#0078D4] hover:underline font-medium">
+                Take the 2-minute quiz →
+              </Link>
+            </p>
           </div>
         </div>
       </section>
