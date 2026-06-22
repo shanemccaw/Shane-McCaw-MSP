@@ -46,19 +46,8 @@ export function MicrosoftBookingsEmbed({
     );
   }
 
-  const isDev = import.meta.env.DEV;
-
   return (
     <div className="w-full">
-      {isDev && (
-        <div
-          className="flex items-center gap-2 mb-3 px-3 py-1.5 rounded-full bg-green-50 border border-green-200 w-fit text-sm font-medium text-green-700"
-          data-testid="bookings-active-badge"
-        >
-          <span className="w-2 h-2 rounded-full bg-green-500 shrink-0" />
-          Booking calendar active — VITE_BOOKINGS_URL is set
-        </div>
-      )}
       <iframe
         src={bookingsUrl}
         width="100%"
