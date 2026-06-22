@@ -521,6 +521,10 @@ export default function ServicesPage() {
 
   const [generatingPdf, setGeneratingPdf] = useState(false);
 
+  const [bulkGenerating, setBulkGenerating] = useState(false);
+  const [bulkProgress, setBulkProgress] = useState<{ done: number; total: number } | null>(null);
+  const [bulkResults, setBulkResults] = useState<{ succeeded: number; failed: number; failures: string[] } | null>(null);
+
   const [showCreate, setShowCreate] = useState(false);
   const [createForm, setCreateForm] = useState({ name: "", slug: "", billingType: "one_time" as "one_time" | "recurring_monthly" });
   const [creating, setCreating] = useState(false);
@@ -655,6 +659,48 @@ export default function ServicesPage() {
     }
   }
 
+  async function handleGenerateAllPdfs() {
+    setBulkGenerating(true);
+    setBulkProgress(null);
+    setBulkResults(null);
+    try {
+      const res = await fetchWithAuth("/api/admin/services/generate-all-pdfs", { method: "POST" });
+      if (!res.ok || !res.body) {
+        toast({ title: "Failed to start bulk PDF generation", variant: "destructive" });
+        return;
+      }
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() ?? "";
+        for (const line of lines) {
+          if (!line.trim()) continue;
+          try {
+            const evt = JSON.parse(line) as { type: string; total?: number; done?: number; succeeded?: number; failed?: number; failures?: string[] };
+            if (evt.type === "start") {
+              setBulkProgress({ done: 0, total: evt.total ?? 0 });
+            } else if (evt.type === "progress") {
+              setBulkProgress({ done: evt.done ?? 0, total: evt.total ?? 0 });
+            } else if (evt.type === "done") {
+              setBulkResults({ succeeded: evt.succeeded ?? 0, failed: evt.failed ?? 0, failures: evt.failures ?? [] });
+              setBulkProgress(null);
+            }
+          } catch { /* ignore malformed lines */ }
+        }
+      }
+      await fetchAll();
+    } catch {
+      toast({ title: "Bulk PDF generation failed", variant: "destructive" });
+    } finally {
+      setBulkGenerating(false);
+    }
+  }
+
   async function handleViewPdf() {
     if (!selected?.id) return;
     try {
@@ -711,20 +757,38 @@ export default function ServicesPage() {
     <div className="flex h-full">
       {/* Service list */}
       <div className="w-72 flex-shrink-0 border-r border-gray-200 bg-white overflow-y-auto flex flex-col">
-        <div className="p-4 border-b border-gray-100 flex items-center justify-between gap-2">
-          <div>
-            <h2 className="font-semibold text-[#0A2540] text-sm">Service Offerings</h2>
-            <p className="text-xs text-gray-500 mt-0.5">{services.length} services</p>
+        <div className="p-4 border-b border-gray-100 space-y-2">
+          <div className="flex items-center justify-between gap-2">
+            <div>
+              <h2 className="font-semibold text-[#0A2540] text-sm">Service Offerings</h2>
+              <p className="text-xs text-gray-500 mt-0.5">{services.length} services</p>
+            </div>
+            <button
+              onClick={() => { setShowCreate(true); setSelected(null); setForm({}); setShowWorkflow(false); setShowAssign(false); }}
+              className="flex items-center gap-1.5 bg-[#0078D4] text-white rounded-lg px-3 py-1.5 text-xs font-medium hover:bg-[#006CBE] transition-colors whitespace-nowrap"
+            >
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+              </svg>
+              New
+            </button>
           </div>
           <button
-            onClick={() => { setShowCreate(true); setSelected(null); setForm({}); setShowWorkflow(false); setShowAssign(false); }}
-            className="flex items-center gap-1.5 bg-[#0078D4] text-white rounded-lg px-3 py-1.5 text-xs font-medium hover:bg-[#006CBE] transition-colors whitespace-nowrap"
+            onClick={() => void handleGenerateAllPdfs()}
+            disabled={bulkGenerating || loading}
+            className="w-full flex items-center justify-center gap-1.5 border border-gray-200 text-gray-600 hover:bg-gray-50 hover:text-[#0A2540] disabled:opacity-50 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors"
           >
-            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-            </svg>
-            New
+            {bulkGenerating
+              ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> {bulkProgress ? `${bulkProgress.done} / ${bulkProgress.total} done` : "Starting…"}</>
+              : <><Sparkles className="w-3.5 h-3.5" /> Regenerate All PDFs</>
+            }
           </button>
+          {bulkResults && (
+            <p className={`text-xs text-center ${bulkResults.failed > 0 ? "text-amber-600" : "text-green-600"}`}>
+              {bulkResults.succeeded} PDF{bulkResults.succeeded !== 1 ? "s" : ""} generated
+              {bulkResults.failed > 0 && ` · ${bulkResults.failed} failed`}
+            </p>
+          )}
         </div>
         {loading ? (
           <div className="p-8 text-center text-sm text-gray-400">Loading…</div>

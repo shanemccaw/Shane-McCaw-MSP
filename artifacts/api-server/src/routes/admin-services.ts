@@ -187,6 +187,52 @@ router.delete("/admin/services/:id", requireAdmin, async (req: Request, res: Res
   }
 });
 
+router.post("/admin/services/generate-all-pdfs", requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const allServices = await db.select({ id: servicesTable.id, name: servicesTable.name }).from(servicesTable);
+
+    res.setHeader("Content-Type", "application/x-ndjson");
+    res.setHeader("Cache-Control", "no-cache");
+    res.flushHeaders();
+
+    res.write(JSON.stringify({ type: "start", total: allServices.length }) + "\n");
+
+    let succeeded = 0;
+    let failed = 0;
+    const failures: string[] = [];
+
+    for (let i = 0; i < allServices.length; i++) {
+      const service = allServices[i];
+      if (!service) continue;
+      try {
+        const pdfBuffer = await generateServiceOverviewPdf(service.name);
+        if (!pdfBuffer) throw new Error("No PDF generated");
+        const pdfKey = storePdfToDisk(service.id, pdfBuffer);
+        const generatedAt = new Date();
+        await db.update(servicesTable).set({ overviewPdfKey: pdfKey, overviewPdfGeneratedAt: generatedAt }).where(eq(servicesTable.id, service.id));
+        succeeded++;
+        res.write(JSON.stringify({ type: "progress", done: i + 1, total: allServices.length, name: service.name, success: true }) + "\n");
+      } catch (err) {
+        failed++;
+        failures.push(service.name);
+        req.log.warn({ err, serviceId: service.id }, "bulk PDF: failed for service");
+        res.write(JSON.stringify({ type: "progress", done: i + 1, total: allServices.length, name: service.name, success: false }) + "\n");
+      }
+    }
+
+    res.write(JSON.stringify({ type: "done", succeeded, failed, failures }) + "\n");
+    res.end();
+  } catch (err) {
+    req.log.error({ err }, "Failed to bulk generate service overview PDFs");
+    if (!res.headersSent) {
+      res.status(500).json({ error: "Failed to generate PDFs" });
+    } else {
+      res.write(JSON.stringify({ type: "error", message: "Unexpected error during bulk generation" }) + "\n");
+      res.end();
+    }
+  }
+});
+
 router.post("/admin/services/:id/generate-pdf", requireAdmin, async (req: Request, res: Response) => {
   try {
     const id = Number(req.params.id);
