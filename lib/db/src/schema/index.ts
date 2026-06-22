@@ -771,6 +771,22 @@ export const quickWinQuizResultsTable = pgTable("quick_win_quiz_results", {
 export type InsertQuickWinQuizResult = typeof quickWinQuizResultsTable.$inferInsert;
 export type QuickWinQuizResult = typeof quickWinQuizResultsTable.$inferSelect;
 
+// Azure Tenant Credentials — per-customer Azure app registrations for script runner
+export const azureTenantCredentialsTable = pgTable("azure_tenant_credentials", {
+  id: serial("id").primaryKey(),
+  clientUserId: integer("client_user_id").references(() => usersTable.id, { onDelete: "set null" }),
+  displayName: text("display_name").notNull(),
+  tenantId: text("tenant_id").notNull(),
+  clientId: text("client_id").notNull(),
+  credentialType: text("credential_type", { enum: ["secret", "certificate"] }).notNull().default("secret"),
+  keyVaultSecretName: text("key_vault_secret_name").notNull(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export type InsertAzureTenantCredential = typeof azureTenantCredentialsTable.$inferInsert;
+export type AzureTenantCredential = typeof azureTenantCredentialsTable.$inferSelect;
+
 // Service page trigger key mappings — which engagement project trigger keys each service page shows
 export const servicePageTriggerKeysTable = pgTable("service_page_trigger_keys", {
   id: serial("id").primaryKey(),

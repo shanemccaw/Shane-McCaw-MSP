@@ -32,6 +32,8 @@ import quizQuickWinRouter from "./quiz-quick-win";
 import quizSelectorRouter from "./quiz-selector";
 import adminServicePageTriggersRouter from "./admin-service-page-triggers";
 import publicServicePageTriggersRouter from "./public-service-page-triggers";
+import adminAzureCredentialsRouter from "./admin-azure-credentials";
+import adminScriptRunnerRouter from "./admin-script-runner";
 
 const router: IRouter = Router();
 
@@ -68,5 +70,7 @@ router.use(adminCouponsRouter);
 router.use(quizQuickWinRouter);
 router.use(quizSelectorRouter);
 router.use(adminServicePageTriggersRouter);
+router.use(adminAzureCredentialsRouter);
+router.use(adminScriptRunnerRouter);
 
 export default router;

@@ -582,7 +582,14 @@ function GenericKanbanCardModal({ task, stepTitle, open, onClose, mode = "client
 
               {typeCfg && <div className={`h-0.5 w-full rounded-full opacity-60 ${typeCfg.bar}`} />}
 
-              <TypedModalSection taskType={localTask.taskType} metadata={localTask.taskMetadata} mode={mode} />
+              <TypedModalSection
+                taskType={localTask.taskType}
+                metadata={localTask.taskMetadata}
+                mode={mode}
+                taskId={localTask.id}
+                fetchWithAuth={fetchWithAuth}
+                onMetadataUpdate={handleMetadataUpdate}
+              />
 
               <div className="border border-border rounded-lg overflow-hidden">
                 <button

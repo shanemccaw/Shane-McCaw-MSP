@@ -1,10 +1,13 @@
+import { useState, useRef, useEffect } from "react";
+
 export type TaskType =
   | "training"
   | "environmentHealthCheck"
   | "governanceSetup"
   | "automationBuild"
   | "documentDelivery"
-  | "discovery";
+  | "discovery"
+  | "script";
 
 export interface TrainingMetadata {
   modules?: Array<{ name: string; completed?: boolean; durationMins?: number }>;
@@ -95,6 +98,12 @@ export const TASK_TYPE_CONFIG: Record<
     badge: "bg-pink-100 text-pink-700 border border-pink-200",
     bar: "bg-pink-500",
     icon: "microwave",
+  },
+  script: {
+    label: "Script",
+    badge: "bg-slate-100 text-slate-700 border border-slate-200",
+    bar: "bg-slate-500",
+    icon: "terminal",
   },
 };
 
@@ -364,6 +373,33 @@ function DocumentBody({ m }: { m: DocumentMetadata }) {
   );
 }
 
+const CARD_JOB_STATUS_CFG: Record<string, { cls: string; dot: string; label: string }> = {
+  "Never run": { cls: "bg-gray-100 text-gray-500",   dot: "bg-gray-400",   label: "Never run" },
+  "New":       { cls: "bg-blue-100 text-blue-700",   dot: "bg-blue-500 animate-pulse", label: "Queued" },
+  "Activating":{ cls: "bg-blue-100 text-blue-700",   dot: "bg-blue-500 animate-pulse", label: "Activating" },
+  "Running":   { cls: "bg-yellow-100 text-yellow-700", dot: "bg-yellow-400 animate-pulse", label: "Running" },
+  "Completed": { cls: "bg-green-100 text-green-700", dot: "bg-green-500",  label: "Completed" },
+  "Failed":    { cls: "bg-red-100 text-red-700",     dot: "bg-red-500",    label: "Failed" },
+  "Stopped":   { cls: "bg-gray-100 text-gray-500",   dot: "bg-gray-400",   label: "Stopped" },
+  "Suspended": { cls: "bg-orange-100 text-orange-700", dot: "bg-orange-400", label: "Suspended" },
+};
+
+function ScriptCardBody({ m }: { m: ScriptMetadata }) {
+  const jobStatus = m.lastJobStatus ?? "Never run";
+  const cfg = CARD_JOB_STATUS_CFG[jobStatus] ?? CARD_JOB_STATUS_CFG["Never run"];
+  return (
+    <div className="space-y-1">
+      {m.runbookName && (
+        <p className="text-[10px] font-mono text-muted-foreground truncate">{m.runbookName}</p>
+      )}
+      <span className={`inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full ${cfg.cls}`}>
+        <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${cfg.dot}`} />
+        {cfg.label}
+      </span>
+    </div>
+  );
+}
+
 function DiscoveryBody({ m }: { m: DiscoveryMetadata }) {
   const recs = m.recommendations ?? [];
   const riskCfg = m.riskScore ? RISK_CFG[m.riskScore] : null;
@@ -434,6 +470,7 @@ export function TypedCardContent({
           {taskType === "automationBuild" && <AutomationBody m={metadata as AutomationMetadata} />}
           {taskType === "documentDelivery" && <DocumentBody m={metadata as DocumentMetadata} />}
           {taskType === "discovery" && <DiscoveryBody m={metadata as DiscoveryMetadata} />}
+          {taskType === "script" && <ScriptCardBody m={metadata as ScriptMetadata} />}
         </div>
       )}
     </div>
@@ -793,14 +830,201 @@ function DiscoveryModalBody({ m, mode }: { m: Record<string, unknown>; mode: "ad
   );
 }
 
+export interface ScriptMetadata {
+  runbookName?: string;
+  credentialId?: number;
+  credentialName?: string;
+  lastJobId?: string;
+  lastJobStatus?: string;
+}
+
+const JOB_STATUS_CFG: Record<string, { cls: string; label: string }> = {
+  "Never run":  { cls: "bg-gray-100 text-gray-600 border border-gray-200", label: "Never run" },
+  "New":        { cls: "bg-blue-100 text-blue-700 border border-blue-200", label: "Queued" },
+  "Activating": { cls: "bg-blue-100 text-blue-700 border border-blue-200", label: "Activating" },
+  "Running":    { cls: "bg-yellow-100 text-yellow-700 border border-yellow-200", label: "Running" },
+  "Completed":  { cls: "bg-green-100 text-green-700 border border-green-200", label: "Completed" },
+  "Failed":     { cls: "bg-red-100 text-red-700 border border-red-200", label: "Failed" },
+  "Stopped":    { cls: "bg-gray-100 text-gray-600 border border-gray-200", label: "Stopped" },
+  "Suspended":  { cls: "bg-orange-100 text-orange-700 border border-orange-200", label: "Suspended" },
+};
+
+function ScriptModalBody({
+  taskId,
+  m,
+  mode,
+  fetchWithAuth,
+  onMetadataUpdate,
+}: {
+  taskId: number;
+  m: Record<string, unknown>;
+  mode: "admin" | "client";
+  fetchWithAuth?: (url: string, options?: RequestInit) => Promise<Response>;
+  onMetadataUpdate?: (meta: Record<string, unknown>) => void;
+}) {
+  const sm = m as ScriptMetadata;
+  const [running, setRunning] = useState(false);
+  const [logLines, setLogLines] = useState<string[]>([]);
+  const [liveStatus, setLiveStatus] = useState<string>(sm.lastJobStatus ?? "Never run");
+  const logEndRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    logEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [logLines]);
+
+  const handleRun = async () => {
+    if (!fetchWithAuth || !sm.credentialId || !sm.runbookName) return;
+    setRunning(true);
+    setLogLines(["[Starting job…]"]);
+    setLiveStatus("New");
+
+    try {
+      const res = await fetchWithAuth("/api/admin/runbook-jobs", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          credentialId: sm.credentialId,
+          runbookName: sm.runbookName,
+          kanbanTaskId: taskId,
+        }),
+      });
+
+      if (!res.ok) {
+        const err = await res.json() as { error?: string };
+        setLogLines(prev => [...prev, `[Error: ${err.error ?? "Failed to start job"}]`]);
+        setRunning(false);
+        return;
+      }
+
+      const { jobId } = await res.json() as { jobId: string; status: string };
+
+      let lastSeq = -1;
+      let aborted = false;
+
+      const poll = async (): Promise<void> => {
+        if (aborted) return;
+        try {
+          const url = `/api/admin/runbook-jobs/output?jobId=${encodeURIComponent(jobId)}&since=${lastSeq}&kanbanTaskId=${taskId}`;
+          const pollRes = await fetchWithAuth(url);
+          if (!pollRes.ok) throw new Error("poll failed");
+          const data = await pollRes.json() as {
+            status: string;
+            terminal: boolean;
+            lines: Array<{ sequence: number; text: string; streamType?: string }>;
+          };
+
+          setLiveStatus(data.status);
+          if (data.lines.length > 0) {
+            setLogLines(prev => [...prev, ...data.lines.map(l => l.text)]);
+            lastSeq = Math.max(...data.lines.map(l => l.sequence));
+          }
+
+          if (data.terminal) {
+            setLogLines(prev => [...prev, `[Job ${data.status}]`]);
+            setRunning(false);
+            onMetadataUpdate?.({ ...m, lastJobId: jobId, lastJobStatus: data.status });
+            return;
+          }
+
+          setTimeout(() => void poll(), 3000);
+        } catch {
+          if (!aborted) {
+            setLogLines(prev => [...prev, "[Polling error — job may still be running in Azure]"]);
+            setRunning(false);
+          }
+        }
+      };
+
+      void poll();
+    } catch {
+      setLogLines(prev => [...prev, "[Network error — could not start job]"]);
+      setRunning(false);
+    }
+  };
+
+  const statusCfg = JOB_STATUS_CFG[liveStatus] ?? { cls: "bg-gray-100 text-gray-600 border border-gray-200", label: liveStatus };
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-start gap-3 flex-wrap">
+        <div className="flex-1 space-y-1 min-w-0">
+          <div>
+            <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Runbook</p>
+            <p className="text-sm font-semibold text-[#0A2540] font-mono truncate">{sm.runbookName ?? <span className="italic font-normal text-muted-foreground">Not configured</span>}</p>
+          </div>
+          {sm.credentialName && (
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Customer</p>
+              <p className="text-sm text-[#0A2540]">{sm.credentialName}</p>
+            </div>
+          )}
+        </div>
+        <div className="flex items-center gap-2">
+          <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${statusCfg.cls}`}>{statusCfg.label}</span>
+          {mode === "admin" && fetchWithAuth && sm.runbookName && sm.credentialId && (
+            <button
+              type="button"
+              disabled={running}
+              onClick={() => void handleRun()}
+              className="inline-flex items-center gap-1.5 text-sm font-semibold text-white bg-[#0078D4] hover:bg-[#0078D4]/90 disabled:opacity-50 rounded-lg px-4 py-2 transition-colors"
+            >
+              {running ? (
+                <div className="w-3.5 h-3.5 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+              ) : (
+                <span className="material-symbols-outlined" style={{ fontSize: "16px" }}>play_arrow</span>
+              )}
+              {running ? "Running…" : "Run"}
+            </button>
+          )}
+        </div>
+      </div>
+
+      {logLines.length > 0 && (
+        <div className="bg-gray-900 rounded-lg p-3 max-h-60 overflow-y-auto">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Output</span>
+            {!running && (
+              <button
+                type="button"
+                onClick={() => setLogLines([])}
+                className="text-[9px] font-semibold text-gray-400 hover:text-white transition-colors"
+              >
+                Clear
+              </button>
+            )}
+          </div>
+          <div className="font-mono text-xs text-gray-100 space-y-0.5">
+            {logLines.map((line, i) => (
+              <div key={i} className="whitespace-pre-wrap break-all leading-relaxed">{line}</div>
+            ))}
+          </div>
+          <div ref={logEndRef} />
+        </div>
+      )}
+
+      {(!sm.runbookName || !sm.credentialId) && mode === "admin" && (
+        <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+          This task is not fully configured. Set a Runbook and Customer via task metadata to enable execution.
+        </p>
+      )}
+    </div>
+  );
+}
+
 export function TypedModalSection({
   taskType,
   metadata,
   mode = "client",
+  taskId,
+  fetchWithAuth,
+  onMetadataUpdate,
 }: {
   taskType: string | null | undefined;
   metadata: Record<string, unknown> | null | undefined;
   mode?: "admin" | "client";
+  taskId?: number;
+  fetchWithAuth?: (url: string, options?: RequestInit) => Promise<Response>;
+  onMetadataUpdate?: (meta: Record<string, unknown>) => void;
 }) {
   if (!taskType) return null;
   const cfg = TASK_TYPE_CONFIG[taskType as TaskType];
@@ -821,6 +1045,15 @@ export function TypedModalSection({
       {taskType === "automationBuild" && <AutomationModalBody m={m} mode={mode} />}
       {taskType === "documentDelivery" && <DocumentModalBody m={m} mode={mode} />}
       {taskType === "discovery" && <DiscoveryModalBody m={m} mode={mode} />}
+      {taskType === "script" && taskId !== undefined && (
+        <ScriptModalBody
+          taskId={taskId}
+          m={m}
+          mode={mode}
+          fetchWithAuth={fetchWithAuth}
+          onMetadataUpdate={onMetadataUpdate}
+        />
+      )}
     </div>
   );
 }

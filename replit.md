@@ -78,3 +78,19 @@ _Populate as you build — explicit user instructions worth remembering across s
 ## Pointers
 
 - See the `pnpm-workspace` skill for workspace structure, TypeScript setup, and package details
+
+## Azure Script Runner Secrets
+
+Required to enable the Script Runner (PowerShell Runbook execution) in the Admin Panel:
+
+| Secret | Description |
+|--------|-------------|
+| `AZURE_CLIENT_ID` | App Registration (service principal) client ID used to authenticate with Azure Key Vault and Automation |
+| `AZURE_CLIENT_SECRET` | App Registration client secret |
+| `AZURE_TENANT_ID` | The Azure AD tenant ID for the service principal |
+| `AZURE_KEY_VAULT_URL` | Full URL of the Key Vault (e.g. `https://my-vault.vault.azure.net`) — customer credentials are stored here by name, never in the DB |
+| `AZURE_SUBSCRIPTION_ID` | Azure subscription ID containing the Automation account |
+| `AZURE_AUTOMATION_RESOURCE_GROUP` | Resource group name containing the Azure Automation account |
+| `AZURE_AUTOMATION_ACCOUNT_NAME` | Name of the Azure Automation account |
+
+The service principal needs: **Key Vault Secrets User** and **Key Vault Certificates User** on the vault, and **Automation Operator** on the Automation account.

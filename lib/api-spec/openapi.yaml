@@ -917,6 +917,154 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /admin/azure-credentials:
+    get:
+      operationId: listAzureCredentials
+      tags: [admin]
+      summary: List Azure tenant credentials
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: List of Azure tenant credentials
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AzureCredential"
+    post:
+      operationId: createAzureCredential
+      tags: [admin]
+      summary: Create Azure tenant credential
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AzureCredentialInput"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AzureCredential"
+
+  /admin/azure-credentials/{id}:
+    put:
+      operationId: updateAzureCredential
+      tags: [admin]
+      summary: Update Azure tenant credential
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AzureCredentialInput"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AzureCredential"
+    delete:
+      operationId: deleteAzureCredential
+      tags: [admin]
+      summary: Delete Azure tenant credential
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
+  /admin/runbooks:
+    get:
+      operationId: listRunbooks
+      tags: [admin]
+      summary: List Azure Automation Runbooks
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: List of runbooks
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/RunbookSummary"
+
+  /admin/runbook-jobs:
+    post:
+      operationId: createRunbookJob
+      tags: [admin]
+      summary: Create and trigger a runbook job
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateRunbookJobInput"
+      responses:
+        "201":
+          description: Job created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RunbookJobCreated"
+
+  /admin/runbook-jobs/output:
+    get:
+      operationId: getRunbookJobOutput
+      tags: [admin]
+      summary: Poll runbook job output (use since=N for incremental fetch)
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: jobId
+          in: query
+          required: true
+          schema:
+            type: string
+          description: Azure Automation job ID to poll
+        - name: since
+          in: query
+          schema:
+            type: integer
+          description: Return only lines with sequence > since
+        - name: kanbanTaskId
+          in: query
+          schema:
+            type: integer
+          description: If set, updates kanban task metadata on terminal status
+      responses:
+        "200":
+          description: Current job status and output lines
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RunbookJobOutput"
+
 components:
   schemas:
     ClientM365ProfileResponse:
@@ -1418,3 +1566,102 @@ components:
             type: string
         category:
           type: string
+
+    AzureCredential:
+      type: object
+      required: [id, displayName, tenantId, clientId, credentialType, keyVaultSecretName]
+      properties:
+        id:
+          type: integer
+        displayName:
+          type: string
+        tenantId:
+          type: string
+        clientId:
+          type: string
+        credentialType:
+          type: string
+          enum: [secret, certificate]
+        keyVaultSecretName:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    AzureCredentialInput:
+      type: object
+      required: [displayName, tenantId, clientId, credentialType, keyVaultSecretName]
+      properties:
+        displayName:
+          type: string
+        tenantId:
+          type: string
+        clientId:
+          type: string
+        credentialType:
+          type: string
+          enum: [secret, certificate]
+        keyVaultSecretName:
+          type: string
+
+    RunbookSummary:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        state:
+          type: string
+
+    CreateRunbookJobInput:
+      type: object
+      required: [credentialId, runbookName]
+      properties:
+        credentialId:
+          type: integer
+        runbookName:
+          type: string
+        kanbanTaskId:
+          type: integer
+
+    RunbookJobCreated:
+      type: object
+      required: [jobId, status]
+      properties:
+        jobId:
+          type: string
+        status:
+          type: string
+
+    RunbookOutputLine:
+      type: object
+      required: [sequence, text]
+      properties:
+        sequence:
+          type: integer
+        streamType:
+          type: string
+        text:
+          type: string
+
+    RunbookJobOutput:
+      type: object
+      required: [status, terminal, lines]
+      properties:
+        status:
+          type: string
+        statusDetails:
+          type: string
+        terminal:
+          type: boolean
+        lines:
+          type: array
+          items:
+            $ref: "#/components/schemas/RunbookOutputLine"
+        kanbanMetaUpdated:
+          type: boolean

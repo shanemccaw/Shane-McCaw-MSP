@@ -331,6 +331,72 @@ export interface DeliverableSetInput {
   category?: string;
 }
 
+export type AzureCredentialCredentialType = typeof AzureCredentialCredentialType[keyof typeof AzureCredentialCredentialType];
+
+
+export const AzureCredentialCredentialType = {
+  secret: 'secret',
+  certificate: 'certificate',
+} as const;
+
+export interface AzureCredential {
+  id: number;
+  displayName: string;
+  tenantId: string;
+  clientId: string;
+  credentialType: AzureCredentialCredentialType;
+  keyVaultSecretName: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export type AzureCredentialInputCredentialType = typeof AzureCredentialInputCredentialType[keyof typeof AzureCredentialInputCredentialType];
+
+
+export const AzureCredentialInputCredentialType = {
+  secret: 'secret',
+  certificate: 'certificate',
+} as const;
+
+export interface AzureCredentialInput {
+  displayName: string;
+  tenantId: string;
+  clientId: string;
+  credentialType: AzureCredentialInputCredentialType;
+  keyVaultSecretName: string;
+}
+
+export interface RunbookSummary {
+  name: string;
+  description?: string;
+  state?: string;
+}
+
+export interface CreateRunbookJobInput {
+  credentialId: number;
+  runbookName: string;
+  kanbanTaskId?: number;
+}
+
+export interface RunbookJobCreated {
+  jobId: string;
+  status: string;
+}
+
+export interface RunbookOutputLine {
+  sequence: number;
+  streamType?: string;
+  text: string;
+}
+
+export interface RunbookJobOutput {
+  status: string;
+  statusDetails?: string;
+  terminal: boolean;
+  lines: RunbookOutputLine[];
+  kanbanMetaUpdated?: boolean;
+}
+
 export type ListInstructionSetsParams = {
 q?: string;
 category?: string;
@@ -377,5 +443,20 @@ limit?: number;
 userId?: number;
 linked?: boolean;
 unlinked?: boolean;
+};
+
+export type GetRunbookJobOutputParams = {
+/**
+ * Azure Automation job ID to poll
+ */
+jobId: string;
+/**
+ * Return only lines with sequence > since
+ */
+since?: number;
+/**
+ * If set, updates kanban task metadata on terminal status
+ */
+kanbanTaskId?: number;
 };
 

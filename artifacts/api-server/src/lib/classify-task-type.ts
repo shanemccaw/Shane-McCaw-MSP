@@ -23,6 +23,7 @@ const VALID_TYPES = [
   "governanceSetup",
   "automationBuild",
   "documentDelivery",
+  "script",
 ] as const;
 
 type TaskType = (typeof VALID_TYPES)[number];
@@ -47,6 +48,7 @@ Rules:
 - Tasks about configuring SharePoint, Teams, DLP, policies → governanceSetup
 - Tasks about Power Automate, Power Apps, flows → automationBuild
 - Tasks about discovery workshops, requirements gathering → discovery
+- Tasks about running PowerShell scripts, Azure Automation Runbooks → script
 
 Return ONLY a JSON array of objects with exactly these keys: id (number) and taskType (string).
 Example: [{"id": 1, "taskType": "discovery"}]

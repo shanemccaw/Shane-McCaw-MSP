@@ -727,3 +727,109 @@ export const PutClientM365ProfileResponse = zod.object({
 })
 
 
+/**
+ * @summary List Azure tenant credentials
+ */
+export const ListAzureCredentialsResponseItem = zod.object({
+  "id": zod.number(),
+  "displayName": zod.string(),
+  "tenantId": zod.string(),
+  "clientId": zod.string(),
+  "credentialType": zod.enum(['secret', 'certificate']),
+  "keyVaultSecretName": zod.string(),
+  "createdAt": zod.coerce.date().optional(),
+  "updatedAt": zod.coerce.date().optional()
+})
+export const ListAzureCredentialsResponse = zod.array(ListAzureCredentialsResponseItem)
+
+
+/**
+ * @summary Create Azure tenant credential
+ */
+export const CreateAzureCredentialBody = zod.object({
+  "displayName": zod.string(),
+  "tenantId": zod.string(),
+  "clientId": zod.string(),
+  "credentialType": zod.enum(['secret', 'certificate']),
+  "keyVaultSecretName": zod.string()
+})
+
+
+/**
+ * @summary Update Azure tenant credential
+ */
+export const UpdateAzureCredentialParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const UpdateAzureCredentialBody = zod.object({
+  "displayName": zod.string(),
+  "tenantId": zod.string(),
+  "clientId": zod.string(),
+  "credentialType": zod.enum(['secret', 'certificate']),
+  "keyVaultSecretName": zod.string()
+})
+
+export const UpdateAzureCredentialResponse = zod.object({
+  "id": zod.number(),
+  "displayName": zod.string(),
+  "tenantId": zod.string(),
+  "clientId": zod.string(),
+  "credentialType": zod.enum(['secret', 'certificate']),
+  "keyVaultSecretName": zod.string(),
+  "createdAt": zod.coerce.date().optional(),
+  "updatedAt": zod.coerce.date().optional()
+})
+
+
+/**
+ * @summary Delete Azure tenant credential
+ */
+export const DeleteAzureCredentialParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+
+/**
+ * @summary List Azure Automation Runbooks
+ */
+export const ListRunbooksResponseItem = zod.object({
+  "name": zod.string(),
+  "description": zod.string().optional(),
+  "state": zod.string().optional()
+})
+export const ListRunbooksResponse = zod.array(ListRunbooksResponseItem)
+
+
+/**
+ * @summary Create and trigger a runbook job
+ */
+export const CreateRunbookJobBody = zod.object({
+  "credentialId": zod.number(),
+  "runbookName": zod.string(),
+  "kanbanTaskId": zod.number().optional()
+})
+
+
+/**
+ * @summary Poll runbook job output (use since=N for incremental fetch)
+ */
+export const GetRunbookJobOutputQueryParams = zod.object({
+  "jobId": zod.coerce.string().describe('Azure Automation job ID to poll'),
+  "since": zod.coerce.number().optional().describe('Return only lines with sequence > since'),
+  "kanbanTaskId": zod.coerce.number().optional().describe('If set, updates kanban task metadata on terminal status')
+})
+
+export const GetRunbookJobOutputResponse = zod.object({
+  "status": zod.string(),
+  "statusDetails": zod.string().optional(),
+  "terminal": zod.boolean(),
+  "lines": zod.array(zod.object({
+  "sequence": zod.number(),
+  "streamType": zod.string().optional(),
+  "text": zod.string()
+})),
+  "kanbanMetaUpdated": zod.boolean().optional()
+})
+
+

@@ -39,6 +39,7 @@ import CategoriesPage from "@/pages/asset-library/CategoriesPage";
 import EmailTemplatesPage from "@/pages/EmailTemplates";
 import CouponsPage from "@/pages/Coupons";
 import ServicePageTriggersPage from "@/pages/ServicePageTriggers";
+import ScriptRunnerPage from "@/pages/ScriptRunner";
 import type { ReactNode } from "react";
 
 const queryClient = new QueryClient({
@@ -216,6 +217,9 @@ function Router() {
       </Route>
       <Route path="/service-page-triggers">
         <RequireAdmin><DashboardShell><ServicePageTriggersPage /></DashboardShell></RequireAdmin>
+      </Route>
+      <Route path="/script-runner">
+        <RequireAdmin><DashboardShell><ScriptRunnerPage /></DashboardShell></RequireAdmin>
       </Route>
 
       <Route>

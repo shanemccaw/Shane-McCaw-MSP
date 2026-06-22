@@ -26,16 +26,20 @@ import type {
   AssetLibraryCategoryInput,
   AssignEmailInput,
   AuthResponse,
+  AzureCredential,
+  AzureCredentialInput,
   Checklist,
   ChecklistInput,
   ClientM365ProfileInput,
   ClientM365ProfileResponse,
   CreateDomainRuleInput,
+  CreateRunbookJobInput,
   DeliverableSet,
   DeliverableSetInput,
   EmailDomainRule,
   EmailDomainRuleRow,
   ErrorResponse,
+  GetRunbookJobOutputParams,
   HealthStatus,
   IngestedEmail,
   IngestedEmailList,
@@ -55,6 +59,9 @@ import type {
   ListPublicServicesParams,
   LoginInput,
   PublicService,
+  RunbookJobCreated,
+  RunbookJobOutput,
+  RunbookSummary,
   SuccessResponse
 } from './api.schemas';
 
@@ -3125,4 +3132,526 @@ export const usePutClientM365Profile = <TError = ErrorType<ErrorResponse>,
       > => {
       return useMutation(getPutClientM365ProfileMutationOptions(options));
     }
+
+export const getListAzureCredentialsUrl = () => {
+
+
+
+
+  return `/api/admin/azure-credentials`
+}
+
+/**
+ * @summary List Azure tenant credentials
+ */
+export const listAzureCredentials = async ( options?: RequestInit): Promise<AzureCredential[]> => {
+
+  return customFetch<AzureCredential[]>(getListAzureCredentialsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListAzureCredentialsQueryKey = () => {
+    return [
+    `/api/admin/azure-credentials`
+    ] as const;
+    }
+
+
+export const getListAzureCredentialsQueryOptions = <TData = Awaited<ReturnType<typeof listAzureCredentials>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listAzureCredentials>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListAzureCredentialsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listAzureCredentials>>> = ({ signal }) => listAzureCredentials({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listAzureCredentials>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListAzureCredentialsQueryResult = NonNullable<Awaited<ReturnType<typeof listAzureCredentials>>>
+export type ListAzureCredentialsQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List Azure tenant credentials
+ */
+
+export function useListAzureCredentials<TData = Awaited<ReturnType<typeof listAzureCredentials>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listAzureCredentials>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListAzureCredentialsQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getCreateAzureCredentialUrl = () => {
+
+
+
+
+  return `/api/admin/azure-credentials`
+}
+
+/**
+ * @summary Create Azure tenant credential
+ */
+export const createAzureCredential = async (azureCredentialInput: AzureCredentialInput, options?: RequestInit): Promise<AzureCredential> => {
+
+  return customFetch<AzureCredential>(getCreateAzureCredentialUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      azureCredentialInput,)
+  }
+);}
+
+
+
+
+export const getCreateAzureCredentialMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createAzureCredential>>, TError,{data: BodyType<AzureCredentialInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createAzureCredential>>, TError,{data: BodyType<AzureCredentialInput>}, TContext> => {
+
+const mutationKey = ['createAzureCredential'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createAzureCredential>>, {data: BodyType<AzureCredentialInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  createAzureCredential(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateAzureCredentialMutationResult = NonNullable<Awaited<ReturnType<typeof createAzureCredential>>>
+    export type CreateAzureCredentialMutationBody = BodyType<AzureCredentialInput>
+    export type CreateAzureCredentialMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Create Azure tenant credential
+ */
+export const useCreateAzureCredential = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createAzureCredential>>, TError,{data: BodyType<AzureCredentialInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createAzureCredential>>,
+        TError,
+        {data: BodyType<AzureCredentialInput>},
+        TContext
+      > => {
+      return useMutation(getCreateAzureCredentialMutationOptions(options));
+    }
+
+export const getUpdateAzureCredentialUrl = (id: number,) => {
+
+
+
+
+  return `/api/admin/azure-credentials/${id}`
+}
+
+/**
+ * @summary Update Azure tenant credential
+ */
+export const updateAzureCredential = async (id: number,
+    azureCredentialInput: AzureCredentialInput, options?: RequestInit): Promise<AzureCredential> => {
+
+  return customFetch<AzureCredential>(getUpdateAzureCredentialUrl(id),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      azureCredentialInput,)
+  }
+);}
+
+
+
+
+export const getUpdateAzureCredentialMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateAzureCredential>>, TError,{id: number;data: BodyType<AzureCredentialInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateAzureCredential>>, TError,{id: number;data: BodyType<AzureCredentialInput>}, TContext> => {
+
+const mutationKey = ['updateAzureCredential'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateAzureCredential>>, {id: number;data: BodyType<AzureCredentialInput>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  updateAzureCredential(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateAzureCredentialMutationResult = NonNullable<Awaited<ReturnType<typeof updateAzureCredential>>>
+    export type UpdateAzureCredentialMutationBody = BodyType<AzureCredentialInput>
+    export type UpdateAzureCredentialMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Update Azure tenant credential
+ */
+export const useUpdateAzureCredential = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateAzureCredential>>, TError,{id: number;data: BodyType<AzureCredentialInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateAzureCredential>>,
+        TError,
+        {id: number;data: BodyType<AzureCredentialInput>},
+        TContext
+      > => {
+      return useMutation(getUpdateAzureCredentialMutationOptions(options));
+    }
+
+export const getDeleteAzureCredentialUrl = (id: number,) => {
+
+
+
+
+  return `/api/admin/azure-credentials/${id}`
+}
+
+/**
+ * @summary Delete Azure tenant credential
+ */
+export const deleteAzureCredential = async (id: number, options?: RequestInit): Promise<void> => {
+
+  return customFetch<void>(getDeleteAzureCredentialUrl(id),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+export const getDeleteAzureCredentialMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteAzureCredential>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteAzureCredential>>, TError,{id: number}, TContext> => {
+
+const mutationKey = ['deleteAzureCredential'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteAzureCredential>>, {id: number}> = (props) => {
+          const {id} = props ?? {};
+
+          return  deleteAzureCredential(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeleteAzureCredentialMutationResult = NonNullable<Awaited<ReturnType<typeof deleteAzureCredential>>>
+
+    export type DeleteAzureCredentialMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Delete Azure tenant credential
+ */
+export const useDeleteAzureCredential = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteAzureCredential>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof deleteAzureCredential>>,
+        TError,
+        {id: number},
+        TContext
+      > => {
+      return useMutation(getDeleteAzureCredentialMutationOptions(options));
+    }
+
+export const getListRunbooksUrl = () => {
+
+
+
+
+  return `/api/admin/runbooks`
+}
+
+/**
+ * @summary List Azure Automation Runbooks
+ */
+export const listRunbooks = async ( options?: RequestInit): Promise<RunbookSummary[]> => {
+
+  return customFetch<RunbookSummary[]>(getListRunbooksUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListRunbooksQueryKey = () => {
+    return [
+    `/api/admin/runbooks`
+    ] as const;
+    }
+
+
+export const getListRunbooksQueryOptions = <TData = Awaited<ReturnType<typeof listRunbooks>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listRunbooks>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListRunbooksQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listRunbooks>>> = ({ signal }) => listRunbooks({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listRunbooks>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListRunbooksQueryResult = NonNullable<Awaited<ReturnType<typeof listRunbooks>>>
+export type ListRunbooksQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List Azure Automation Runbooks
+ */
+
+export function useListRunbooks<TData = Awaited<ReturnType<typeof listRunbooks>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listRunbooks>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListRunbooksQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getCreateRunbookJobUrl = () => {
+
+
+
+
+  return `/api/admin/runbook-jobs`
+}
+
+/**
+ * @summary Create and trigger a runbook job
+ */
+export const createRunbookJob = async (createRunbookJobInput: CreateRunbookJobInput, options?: RequestInit): Promise<RunbookJobCreated> => {
+
+  return customFetch<RunbookJobCreated>(getCreateRunbookJobUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      createRunbookJobInput,)
+  }
+);}
+
+
+
+
+export const getCreateRunbookJobMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createRunbookJob>>, TError,{data: BodyType<CreateRunbookJobInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createRunbookJob>>, TError,{data: BodyType<CreateRunbookJobInput>}, TContext> => {
+
+const mutationKey = ['createRunbookJob'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createRunbookJob>>, {data: BodyType<CreateRunbookJobInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  createRunbookJob(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateRunbookJobMutationResult = NonNullable<Awaited<ReturnType<typeof createRunbookJob>>>
+    export type CreateRunbookJobMutationBody = BodyType<CreateRunbookJobInput>
+    export type CreateRunbookJobMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Create and trigger a runbook job
+ */
+export const useCreateRunbookJob = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createRunbookJob>>, TError,{data: BodyType<CreateRunbookJobInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createRunbookJob>>,
+        TError,
+        {data: BodyType<CreateRunbookJobInput>},
+        TContext
+      > => {
+      return useMutation(getCreateRunbookJobMutationOptions(options));
+    }
+
+export const getGetRunbookJobOutputUrl = (params: GetRunbookJobOutputParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : value.toString())
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/admin/runbook-jobs/output?${stringifiedParams}` : `/api/admin/runbook-jobs/output`
+}
+
+/**
+ * @summary Poll runbook job output (use since=N for incremental fetch)
+ */
+export const getRunbookJobOutput = async (params: GetRunbookJobOutputParams, options?: RequestInit): Promise<RunbookJobOutput> => {
+
+  return customFetch<RunbookJobOutput>(getGetRunbookJobOutputUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetRunbookJobOutputQueryKey = (params?: GetRunbookJobOutputParams,) => {
+    return [
+    `/api/admin/runbook-jobs/output`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetRunbookJobOutputQueryOptions = <TData = Awaited<ReturnType<typeof getRunbookJobOutput>>, TError = ErrorType<unknown>>(params: GetRunbookJobOutputParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getRunbookJobOutput>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetRunbookJobOutputQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getRunbookJobOutput>>> = ({ signal }) => getRunbookJobOutput(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getRunbookJobOutput>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetRunbookJobOutputQueryResult = NonNullable<Awaited<ReturnType<typeof getRunbookJobOutput>>>
+export type GetRunbookJobOutputQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Poll runbook job output (use since=N for incremental fetch)
+ */
+
+export function useGetRunbookJobOutput<TData = Awaited<ReturnType<typeof getRunbookJobOutput>>, TError = ErrorType<unknown>>(
+ params: GetRunbookJobOutputParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getRunbookJobOutput>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetRunbookJobOutputQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
 
