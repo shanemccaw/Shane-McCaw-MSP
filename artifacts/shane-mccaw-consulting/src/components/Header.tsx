@@ -62,6 +62,7 @@ const MICRO_OFFERS_ITEMS: NavItem[] = withIcons([
   { label: "Migration Readiness Assessment",      href: "/micro-offers/migration-readiness-assessment" },
   { label: "Copilot Readiness Assessment",        href: "/micro-offers/copilot-readiness-assessment" },
   { label: "Microsoft 365 Training & Enablement", href: "/micro-offers/m365-training-enablement" },
+  { label: "Quick Win Quiz",                      href: "/quick-win-quiz" },
 ]);
 
 const RETAINER_ITEMS: NavItem[] = withIcons([

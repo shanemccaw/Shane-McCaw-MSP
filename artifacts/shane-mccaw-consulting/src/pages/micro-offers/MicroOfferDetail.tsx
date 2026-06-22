@@ -382,6 +382,28 @@ export default function MicroOfferDetail({ params }: MicroOfferDetailProps) {
         </section>
       )}
 
+      {/* ── QUICK WIN QUIZ CTA ────────────────────────────────────────────── */}
+      <section className="bg-[#F7F9FC] py-14 border-t border-border">
+        <div className="max-w-[760px] mx-auto px-6 text-center">
+          <p className="text-[#0078D4] text-xs font-bold uppercase tracking-widest mb-3">
+            Not Sure This Is the Right Fit?
+          </p>
+          <h2 className="text-2xl font-extrabold text-[#0A2540] mb-3">
+            Take the Quick Win Quiz
+          </h2>
+          <p className="text-muted-foreground text-sm leading-relaxed mb-6 max-w-md mx-auto">
+            Answer 10 short questions and get a personalised recommendation for the Quick Win
+            package that best matches your M365 environment and priorities.
+          </p>
+          <Link
+            href="/quick-win-quiz"
+            className="inline-flex items-center gap-2 bg-[#0078D4] hover:bg-[#0068BE] text-white font-bold px-8 py-3.5 rounded-xl transition-colors text-sm"
+          >
+            Take the Quick Win Quiz <ArrowRight className="w-4 h-4" />
+          </Link>
+        </div>
+      </section>
+
       {/* ── WHY SHANE ─────────────────────────────────────────────────────── */}
       <section className="bg-[#F7F9FC] py-20 border-t border-border">
         <div className="max-w-[1200px] mx-auto px-6">
