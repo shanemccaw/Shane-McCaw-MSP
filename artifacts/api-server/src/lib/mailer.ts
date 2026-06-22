@@ -242,13 +242,19 @@ export function purchaseConfirmationEmail(opts: {
   serviceName: string;
   amountDollars: string;
   portalPath?: string;
+  couponCode?: string;
+  originalAmountDollars?: string;
+  discountAmountDollars?: string;
 }): string {
   const link = opts.portalPath ? `${PORTAL_URL}${opts.portalPath}` : PORTAL_URL;
+  const hasDiscount = !!(opts.couponCode && opts.originalAmountDollars && opts.discountAmountDollars);
   return `
     <p>Hi ${opts.clientName || "there"},</p>
     <p>Thank you for your purchase — payment has been confirmed. Here's a summary:</p>
     <table cellpadding="0" cellspacing="0" style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:16px 20px;margin:16px 0;width:100%;">
       <tr><td style="padding:4px 0;color:#64748b;font-size:13px;width:140px;">Service</td><td style="padding:4px 0;font-weight:600;">${opts.serviceName}</td></tr>
+      ${hasDiscount ? `<tr><td style="padding:4px 0;color:#64748b;font-size:13px;">Original price</td><td style="padding:4px 0;color:#94a3b8;text-decoration:line-through;">$${opts.originalAmountDollars} USD</td></tr>
+      <tr><td style="padding:4px 0;color:#64748b;font-size:13px;">Discount (${opts.couponCode})</td><td style="padding:4px 0;color:#16a34a;font-weight:600;">−$${opts.discountAmountDollars} USD</td></tr>` : ""}
       <tr><td style="padding:4px 0;color:#64748b;font-size:13px;">Amount paid</td><td style="padding:4px 0;font-weight:600;">$${opts.amountDollars} USD</td></tr>
     </table>
     <p>Shane will be in touch within <strong>1–2 business days</strong> to kick things off. In the meantime, you can check your project status in your client portal.</p>
@@ -263,7 +269,11 @@ export function onboardingConfirmationEmail(opts: {
   serviceName: string;
   amountDollars: string;
   projectId: number;
+  couponCode?: string;
+  originalAmountDollars?: string;
+  discountAmountDollars?: string;
 }): string {
+  const hasDiscount = !!(opts.couponCode && opts.originalAmountDollars && opts.discountAmountDollars);
   return `
     <p>Hi ${opts.clientName || "there"},</p>
     <p>Your payment is confirmed and your <strong>${opts.serviceName}</strong> project workspace has been created. Here's what happens next:</p>
@@ -274,6 +284,8 @@ export function onboardingConfirmationEmail(opts: {
     </ol>
     <table cellpadding="0" cellspacing="0" style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:16px 20px;margin:16px 0;width:100%;">
       <tr><td style="padding:4px 0;color:#64748b;font-size:13px;width:140px;">Service</td><td style="padding:4px 0;font-weight:600;">${opts.serviceName}</td></tr>
+      ${hasDiscount ? `<tr><td style="padding:4px 0;color:#64748b;font-size:13px;">Original price</td><td style="padding:4px 0;color:#94a3b8;text-decoration:line-through;">$${opts.originalAmountDollars} USD</td></tr>
+      <tr><td style="padding:4px 0;color:#64748b;font-size:13px;">Discount (${opts.couponCode})</td><td style="padding:4px 0;color:#16a34a;font-weight:600;">−$${opts.discountAmountDollars} USD</td></tr>` : ""}
       <tr><td style="padding:4px 0;color:#64748b;font-size:13px;">Amount paid</td><td style="padding:4px 0;font-weight:600;">$${opts.amountDollars} USD</td></tr>
     </table>
     ${emailButton("View your project workspace", `${PORTAL_URL}/projects/${opts.projectId}`)}

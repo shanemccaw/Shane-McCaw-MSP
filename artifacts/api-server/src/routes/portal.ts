@@ -2301,12 +2301,16 @@ async function provisionOnboardingProject(
   // Ordered service list matching sids order
   const orderedServices = sids.map(id => serviceMap.get(id)).filter(Boolean) as typeof fetchedServices;
   const serviceNames = orderedServices.map(s => s.name);
-  // Use per-service prices from metadata when available; fall back to session total or DB price
-  const totalAmountDollars = servicePricesList.length > 0
+  // Original (pre-discount) amount: prefer per-service prices from session metadata, fall back to DB prices
+  const originalAmountDollars = servicePricesList.length > 0
     ? servicePricesList.reduce((sum, p) => sum + p, 0).toFixed(2)
-    : sessionTotalCents != null
-      ? (sessionTotalCents / 100).toFixed(2)
-      : orderedServices.reduce((sum, s) => sum + (s.price ? parseFloat(String(s.price)) : 0), 0).toFixed(2);
+    : orderedServices.reduce((sum, s) => sum + (s.price ? parseFloat(String(s.price)) : 0), 0).toFixed(2);
+  // Final (post-discount) amount: what Stripe actually charged
+  const finalAmountDollars = sessionTotalCents != null
+    ? (sessionTotalCents / 100).toFixed(2)
+    : originalAmountDollars;
+  // Keep totalAmountDollars pointing at the final paid amount (used for invoices etc.)
+  const totalAmountDollars = finalAmountDollars;
 
   // Parse optional start date from checkout metadata; default to now
   const rawStart = session.metadata?.startDate;
@@ -2515,6 +2519,11 @@ async function provisionOnboardingProject(
   // ── Confirmation email to client (fire-and-forget) ────────────────────────
   const primaryServiceName = serviceNames.join(", ");
   if (buyer.email) {
+    const couponCode = session.metadata?.couponCode || undefined;
+    const hasDiscount = !!(couponCode && originalAmountDollars !== finalAmountDollars);
+    const discountAmountDollars = hasDiscount
+      ? (parseFloat(originalAmountDollars) - parseFloat(finalAmountDollars)).toFixed(2)
+      : undefined;
     sendEmailFromTemplate(
       "onboarding-confirmation",
       buyer.email,
@@ -2523,9 +2532,18 @@ async function provisionOnboardingProject(
         serviceName: primaryServiceName,
         amountDollars: totalAmountDollars,
         projectUrl: `${PORTAL_URL}/projects/${project.id}`,
+        ...(hasDiscount ? { couponCode, originalAmountDollars, discountAmountDollars } : {}),
       },
       `Your ${primaryServiceName} project is ready — next steps inside`,
-      onboardingConfirmationEmail({ clientName: buyer.name ?? "", serviceName: primaryServiceName, amountDollars: totalAmountDollars, projectId: project.id }),
+      onboardingConfirmationEmail({
+        clientName: buyer.name ?? "",
+        serviceName: primaryServiceName,
+        amountDollars: totalAmountDollars,
+        projectId: project.id,
+        couponCode,
+        originalAmountDollars: hasDiscount ? originalAmountDollars : undefined,
+        discountAmountDollars,
+      }),
     ).catch(() => null);
   }
 
@@ -2805,12 +2823,33 @@ async function processStripeEvent(req: Request, event: import("stripe").Stripe.E
 
       // Send branded confirmation email to buyer (fire-and-forget)
       if (buyer?.email) {
+        const couponCode = session.metadata?.couponCode || undefined;
+        const finalAmountDollars = session.amount_total != null
+          ? (session.amount_total / 100).toFixed(2)
+          : amountDollars;
+        const hasDiscount = !!(couponCode && finalAmountDollars !== amountDollars);
+        const discountAmountDollars = hasDiscount
+          ? (parseFloat(amountDollars) - parseFloat(finalAmountDollars)).toFixed(2)
+          : undefined;
         sendEmailFromTemplate(
           "purchase-confirmation",
           buyer.email,
-          { clientName: buyer.name ?? "", serviceName, amountDollars, portalLink: PORTAL_URL },
+          {
+            clientName: buyer.name ?? "",
+            serviceName,
+            amountDollars: finalAmountDollars,
+            portalLink: PORTAL_URL,
+            ...(hasDiscount ? { couponCode, originalAmountDollars: amountDollars, discountAmountDollars } : {}),
+          },
           `Your purchase of "${serviceName}" is confirmed`,
-          purchaseConfirmationEmail({ clientName: buyer.name ?? "", serviceName, amountDollars }),
+          purchaseConfirmationEmail({
+            clientName: buyer.name ?? "",
+            serviceName,
+            amountDollars: finalAmountDollars,
+            couponCode,
+            originalAmountDollars: hasDiscount ? amountDollars : undefined,
+            discountAmountDollars,
+          }),
         ).catch(() => null);
       }
 
