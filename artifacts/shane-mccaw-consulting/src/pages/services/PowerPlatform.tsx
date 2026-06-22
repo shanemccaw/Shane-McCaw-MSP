@@ -3,6 +3,7 @@ import { ServiceOverviewModal } from "@/components/ServiceOverviewModal";
 import { SEOMeta } from "@/components/SEOMeta";
 import { Layout } from "@/components/Layout";
 import { CTAButton } from "@/components/CTAButton";
+import { CopilotQuizCTA } from "@/components/CopilotQuizCTA";
 import { RetainerCard } from "@/components/RetainerCard";
 import { ConsultationCTA } from "@/components/ConsultationCTA";
 import { CheckCircle, ArrowRight, Zap, Building2, Shield, Users } from "lucide-react";
@@ -405,6 +406,8 @@ export default function PowerPlatform() {
           </div>
         </div>
       </section>
+
+      <CopilotQuizCTA />
 
       {/* ── COMPARISON TABLE ────────────────────────────────────────────── */}
       <section className="bg-white py-20">

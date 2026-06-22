@@ -47,6 +47,7 @@ const comparisonRows = [
 ];
 import { Link } from "wouter";
 import { CTAButton } from "@/components/CTAButton";
+import { CopilotQuizCTA } from "@/components/CopilotQuizCTA";
 import { OfferCard } from "@/components/OfferCard";
 import { RetainerCard } from "@/components/RetainerCard";
 import { useServices, useServiceHasPdf } from "@/hooks/useServices";
@@ -339,6 +340,8 @@ export default function Microsoft365() {
           </div>
         </div>
       </section>
+
+      <CopilotQuizCTA />
 
       {/* ── COMPARISON TABLE ────────────────────────────────────────────── */}
       <section className="bg-[#F7F9FC] py-20">

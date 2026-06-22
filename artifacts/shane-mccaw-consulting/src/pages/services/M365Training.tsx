@@ -3,6 +3,7 @@ import { ServiceOverviewModal } from "@/components/ServiceOverviewModal";
 import { SEOMeta } from "@/components/SEOMeta";
 import { Layout } from "@/components/Layout";
 import { CTAButton } from "@/components/CTAButton";
+import { CopilotQuizCTA } from "@/components/CopilotQuizCTA";
 import { RetainerCard } from "@/components/RetainerCard";
 import { useServices, useServiceHasPdf } from "@/hooks/useServices";
 import { Link } from "wouter";
@@ -298,6 +299,8 @@ export default function M365Training() {
           </div>
         </div>
       </section>
+
+      <CopilotQuizCTA />
 
       {/* ── OPTIONAL ADD-ONS ─────────────────────────────────────────────── */}
       <section className="bg-[#F7F9FC] py-20">

@@ -11,6 +11,7 @@ import { OfferCard } from "@/components/OfferCard";
 import { EngagementProjectCard } from "@/components/EngagementProjectCard";
 import { useEngagementProjects } from "@/hooks/useEngagementProjects";
 import { RetainerCard } from "@/components/RetainerCard";
+import { CopilotQuizCTA } from "@/components/CopilotQuizCTA";
 
 function TrackSection({
   trackLabel,
@@ -312,6 +313,8 @@ export default function Services() {
           </div>
         </div>
       )}
+
+      <CopilotQuizCTA />
 
       {/* Closing CTA */}
       <section className="bg-[#0A2540] py-20">

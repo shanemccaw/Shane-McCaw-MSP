@@ -5,6 +5,7 @@ import { Layout } from "@/components/Layout";
 import { RetainerCard } from "@/components/RetainerCard";
 import { Server, CheckCircle, Clock, DollarSign, ArrowRight, Users, Shield, Building2 } from "lucide-react";
 import { CTAButton } from "@/components/CTAButton";
+import { CopilotQuizCTA } from "@/components/CopilotQuizCTA";
 import { useServices, formatPriceDisplay, useServiceHasPdf } from "@/hooks/useServices";
 import { FollowOnProjects } from "@/components/FollowOnProjects";
 import FixedPriceOfferCard from "@/components/FixedPriceOfferCard";
@@ -397,6 +398,8 @@ export default function CloudMigration() {
           </div>
         </div>
       </section>
+
+      <CopilotQuizCTA />
 
       {/* Supported Migration Types */}
       <section className="bg-white py-20">

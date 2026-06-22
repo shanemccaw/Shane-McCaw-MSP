@@ -5,6 +5,7 @@ import { Layout } from "@/components/Layout";
 import { Layout as LayoutIcon, CheckCircle, ArrowRight, Building2, Shield, Users } from "lucide-react";
 import { ConsultationCTA } from "@/components/ConsultationCTA";
 import { CTAButton } from "@/components/CTAButton";
+import { CopilotQuizCTA } from "@/components/CopilotQuizCTA";
 import { RetainerCard } from "@/components/RetainerCard";
 import { useServices, formatPriceDisplay, useServiceHasPdf } from "@/hooks/useServices";
 import { FollowOnProjects } from "@/components/FollowOnProjects";
@@ -333,6 +334,8 @@ export default function SharePoint() {
           </div>
         </div>
       </section>
+
+      <CopilotQuizCTA />
 
       {/* Comparison Table */}
       <section className="bg-white py-20">
