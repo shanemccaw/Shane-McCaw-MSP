@@ -92,6 +92,7 @@ export default function GovernanceQuiz() {
       <SEOMeta
         title="Microsoft 365 Governance Maturity Assessment | Shane McCaw Consulting"
         description="How mature is your M365 governance framework? Take our free assessment to benchmark your policies, lifecycle management, and compliance posture — with a personalised PDF report."
+        ogImage="/og-image-governance-quiz.png"
         ogUrl="https://shanemccaw.com/governance-maturity-quiz"
       />
       <section className="bg-[#0A2540] pt-32 pb-24 relative overflow-hidden">

@@ -92,6 +92,7 @@ export default function TeamsQuiz() {
       <SEOMeta
         title="Microsoft Teams Maturity Assessment | Free Quiz | Shane McCaw Consulting"
         description="Is your organisation getting full value from Microsoft Teams? Take our free maturity quiz assessing governance, adoption, and technical configuration — PDF report emailed to you."
+        ogImage="/og-image-teams-quiz.png"
         ogUrl="https://shanemccaw.com/teams-maturity-quiz"
       />
       <section className="bg-[#0A2540] pt-32 pb-24 relative overflow-hidden">

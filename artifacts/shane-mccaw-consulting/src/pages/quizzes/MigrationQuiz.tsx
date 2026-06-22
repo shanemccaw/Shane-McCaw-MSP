@@ -92,6 +92,7 @@ export default function MigrationQuiz() {
       <SEOMeta
         title="Cloud Migration Readiness Assessment | Microsoft 365 | Shane McCaw Consulting"
         description="Is your organisation ready to migrate to Microsoft 365? Take our free readiness quiz and receive a personalised migration roadmap from a 30-year Microsoft ecosystem veteran."
+        ogImage="/og-image-migration-quiz.png"
         ogUrl="https://shanemccaw.com/migration-readiness-quiz"
       />
       <section className="bg-[#0A2540] pt-32 pb-24 relative overflow-hidden">

@@ -92,6 +92,7 @@ export default function SecurityQuiz() {
       <SEOMeta
         title="Microsoft 365 Security & Compliance Assessment | Shane McCaw Consulting"
         description="How secure is your Microsoft 365 environment? Take our free security posture quiz covering Defender, Conditional Access, DLP, and sensitivity labels — with a PDF report included."
+        ogImage="/og-image-security-quiz.png"
         ogUrl="https://shanemccaw.com/security-compliance-quiz"
       />
       <section className="bg-[#0A2540] pt-32 pb-24 relative overflow-hidden">

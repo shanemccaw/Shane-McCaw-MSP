@@ -199,6 +199,7 @@ export default function SharePointQuiz() {
       <SEOMeta
         title="SharePoint Architecture & IA Assessment | Free Quiz | Shane McCaw Consulting"
         description="How well-architected is your SharePoint environment? Answer 10 expert questions across 5 dimensions and receive a personalised maturity report from a NASA-certified Microsoft 365 Architect."
+        ogImage="/og-image-sharepoint-quiz.png"
         ogUrl="https://shanemccaw.com/sharepoint-readiness-quiz"
       />
 

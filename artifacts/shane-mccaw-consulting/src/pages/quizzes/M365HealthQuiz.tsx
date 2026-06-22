@@ -270,6 +270,7 @@ export default function M365HealthQuiz() {
       <SEOMeta
         title="Microsoft 365 Health Check | Free Tenant Assessment | Shane McCaw Consulting"
         description="Take our free M365 tenant health assessment. Score your security posture, identity, governance, and DLP in 5 minutes — and receive a personalised PDF report by email."
+        ogImage="/og-image-m365-health-quiz.png"
         ogUrl="https://shanemccaw.com/m365-health-quiz"
       />
 

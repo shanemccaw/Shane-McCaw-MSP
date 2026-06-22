@@ -252,6 +252,7 @@ export default function PowerPlatformQuiz() {
       <SEOMeta
         title="Power Platform Maturity Assessment | Free Quiz | Shane McCaw Consulting"
         description="How mature is your Power Platform practice? Take our free assessment and receive a personalised PDF report with a tailored service recommendation from a 30-year Microsoft expert."
+        ogImage="/og-image-power-platform-quiz.png"
         ogUrl="https://shanemccaw.com/power-platform-quiz"
       />
 
