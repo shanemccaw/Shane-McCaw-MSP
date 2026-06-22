@@ -37,6 +37,7 @@ import ArchitectEssentials from "@/pages/retainers/ArchitectEssentials";
 import ArchitectGrowth from "@/pages/retainers/ArchitectGrowth";
 import ArchitectEnterprise from "@/pages/retainers/ArchitectEnterprise";
 import RetainersOverview from "@/pages/retainers/RetainersOverview";
+import MicroOfferDetail from "@/pages/micro-offers/MicroOfferDetail";
 
 const queryClient = new QueryClient();
 
@@ -82,6 +83,7 @@ function Router() {
       <Route path="/services/cloud-migration" component={CloudMigration} />
       <Route path="/services/m365-training" component={M365Training} />
       <Route path="/micro-offers" component={MicroOffers} />
+      <Route path="/micro-offers/:slug" component={MicroOfferDetail} />
       <Route path="/pricing" component={Pricing} />
       <Route path="/resources" component={Resources} />
       <Route path="/resources/:slug" component={ArticlePage} />

@@ -18,14 +18,13 @@ const SERVICES_ITEMS: NavItem[] = [
   { label: "Cloud Migration",               href: "/services/cloud-migration" },
 ];
 
-// 6 offer items, all pointing to /micro-offers (no per-offer routes exist yet)
 const MICRO_OFFERS_ITEMS: NavItem[] = [
-  { label: "Tenant Health Audit",                  href: "/micro-offers" },
-  { label: "Power Platform Quick-Start",           href: "/micro-offers" },
-  { label: "Governance Foundations",               href: "/micro-offers" },
-  { label: "Migration Readiness Assessment",       href: "/micro-offers" },
-  { label: "Copilot Readiness Assessment",         href: "/micro-offers" },
-  { label: "Microsoft 365 Training & Enablement",  href: "/micro-offers" },
+  { label: "Tenant Health Audit",                  href: "/micro-offers/tenant-health-audit" },
+  { label: "Power Platform Quick-Start",           href: "/micro-offers/power-platform-quick-start" },
+  { label: "Governance Foundations",               href: "/micro-offers/governance-foundations" },
+  { label: "Migration Readiness Assessment",       href: "/micro-offers/migration-readiness-assessment" },
+  { label: "Copilot Readiness Assessment",         href: "/micro-offers/copilot-readiness-assessment" },
+  { label: "Microsoft 365 Training & Enablement",  href: "/micro-offers/m365-training-enablement" },
 ];
 
 const RETAINER_ITEMS: NavItem[] = [
@@ -230,7 +229,7 @@ export function Header() {
   }
 
   const isServicesActive    = location.startsWith("/services");
-  const isMicroActive       = location === "/micro-offers";
+  const isMicroActive       = location.startsWith("/micro-offers");
   const isRetainersActive   = location.startsWith("/retainers");
   const isAssessmentsActive = ASSESSMENTS_ITEMS.some((i) => location === i.href);
   const isResourcesActive   = location.startsWith("/resources");
