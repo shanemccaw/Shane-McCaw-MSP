@@ -20,6 +20,8 @@ function TrackSection({
   accent,
   children,
   isEmpty,
+  headerExtra,
+  footerExtra,
 }: {
   trackLabel: string;
   trackNumber: string;
@@ -28,6 +30,8 @@ function TrackSection({
   accent: string;
   children: React.ReactNode;
   isEmpty: boolean;
+  headerExtra?: React.ReactNode;
+  footerExtra?: React.ReactNode;
 }) {
   if (isEmpty) return null;
   return (
@@ -40,10 +44,12 @@ function TrackSection({
           </div>
           <h2 className="text-2xl md:text-3xl font-extrabold text-[#0A2540] mb-4">{title}</h2>
           <p className="text-muted-foreground max-w-2xl leading-relaxed">{description}</p>
+          {headerExtra && <div className="mt-6">{headerExtra}</div>}
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 items-stretch">
           {children}
         </div>
+        {footerExtra && <div className="mt-8">{footerExtra}</div>}
       </div>
     </section>
   );
@@ -65,6 +71,15 @@ function ServicesSkeleton() {
   );
 }
 
+const COMMON_TRIGGERS = [
+  "Moving from on-premises Exchange or file shares to Microsoft 365",
+  "Deploying Microsoft Copilot across the organization",
+  "Failing a compliance audit or preparing for one (FedRAMP, ITAR, HIPAA, ISO 27001)",
+  "SharePoint intranet that no one uses or that has grown out of control",
+  "Teams sprawl, ungoverned groups, and no lifecycle management",
+  "New CISO or CTO who needs an independent architecture review before committing to a roadmap",
+];
+
 export default function Services() {
   const { services, loading, error } = useServices();
   const { projects: engagementProjects, loading: projectsLoading } = useEngagementProjects();
@@ -72,6 +87,7 @@ export default function Services() {
   const microOffers = services.filter(s => s.serviceType === "micro_offer");
   const retainers = services.filter(s => s.serviceType === "retainer");
   const visibleProjects = engagementProjects.filter(p => p.isVisible);
+  const entryOffers = microOffers.filter(s => s.tier === "Entry");
 
   const isLoading = loading && services.length === 0;
 
@@ -107,6 +123,9 @@ export default function Services() {
           </h1>
           <p className="text-white/70 text-lg mt-6 max-w-2xl leading-relaxed">
             A complete directory of every productized service offered by Shane McCaw Consulting.
+          </p>
+          <p className="text-[#00B4D8] text-sm font-semibold mt-3 tracking-wide">
+            Productized offers. Fractional architecture. NASA-grade governance.
           </p>
           <div className="mt-8 flex flex-wrap gap-4 items-center">
             <CTAButton href="/book" className="text-base px-8 py-3" data-testid="hero-book-cta">
@@ -145,6 +164,36 @@ export default function Services() {
         </div>
       </section>
 
+      {/* NASA Authority Strip */}
+      <section className="bg-[#0A2540] border-t border-white/10 py-16">
+        <div className="max-w-[1200px] mx-auto px-6">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-start">
+            <div>
+              <p className="text-[#00B4D8] text-xs font-bold uppercase tracking-[0.15em] mb-4">Why It Matters</p>
+              <p className="text-white text-xl font-bold leading-snug mb-3">
+                NASA is not a resume line — it is a market differentiator of the first order.
+              </p>
+              <p className="text-white/70 leading-relaxed">
+                This experience translates directly into value for mid-market and regulated-industry clients.
+              </p>
+            </div>
+            <div>
+              <p className="text-white text-sm font-bold uppercase tracking-[0.1em] mb-5">
+                Common Triggers for Engaging an M365 Architect
+              </p>
+              <ul className="space-y-3">
+                {COMMON_TRIGGERS.map((trigger, i) => (
+                  <li key={i} className="flex items-start gap-3 text-sm text-white/70">
+                    <CheckCircle className="w-4 h-4 text-[#00B4D8] flex-shrink-0 mt-0.5" />
+                    {trigger}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </div>
+        </div>
+      </section>
+
       {/* Three Track Sections */}
       {isLoading ? (
         <div className="bg-[#F7F9FC]">
@@ -171,6 +220,32 @@ export default function Services() {
               description="Scoped deliverables with a defined price, a defined output, and a defined turnaround. No discovery call required — pick the package that matches your need and get in the queue."
               accent="text-emerald-700"
               isEmpty={microOffers.length === 0}
+              headerExtra={
+                <div className="space-y-4">
+                  <div className="rounded-lg bg-emerald-50 border border-emerald-200 px-5 py-4">
+                    <p className="text-sm font-semibold text-emerald-800 mb-1">Quick Win Strategy</p>
+                    <p className="text-sm text-emerald-700 leading-relaxed">
+                      Most clients begin with an entry-point engagement before moving into deeper governance or fractional architecture.
+                      {entryOffers.length > 0 && (
+                        <> The current entry-point {entryOffers.length === 1 ? "offer is" : "offers are"}{" "}
+                          <span className="font-semibold">
+                            {entryOffers.map((o, i) => (
+                              <span key={o.id}>
+                                {i > 0 && i < entryOffers.length - 1 ? ", " : ""}
+                                {i > 0 && i === entryOffers.length - 1 ? " and " : ""}
+                                {o.name}
+                              </span>
+                            ))}
+                          </span>.
+                        </>
+                      )}
+                    </p>
+                  </div>
+                  <p className="text-sm text-muted-foreground italic">
+                    Early clients may receive discounted entry-point engagements in exchange for a testimonial or case study.
+                  </p>
+                </div>
+              }
             >
               {microOffers.map((s, i) => (
                 <OfferCard
@@ -193,6 +268,11 @@ export default function Services() {
               description="For larger, multi-phase work — tenant migrations, full governance overhauls, Copilot deployment programs, intranet builds. Priced as a fixed project after a free scoping call."
               accent="text-[#0078D4]"
               isEmpty={visibleProjects.length === 0 && !projectsLoading}
+              headerExtra={
+                <p className="text-sm text-muted-foreground leading-relaxed border-l-2 border-[#0078D4]/40 pl-4">
+                  Track 02 projects are always triggered by Track 01 micro-offers. Each project is scoped only after the initial assessment is complete.
+                </p>
+              }
             >
               {projectsLoading
                 ? [...Array(3)].map((_, i) => (
@@ -212,6 +292,16 @@ export default function Services() {
               description="Consistent, predictable access to Shane's expertise every month — for architecture reviews, ongoing governance, strategic planning, or Copilot rollout support. Cancel with 30 days' notice."
               accent="text-[#00B4D8]"
               isEmpty={retainers.length === 0}
+              headerExtra={
+                <p className="text-sm text-muted-foreground leading-relaxed">
+                  Fractional architecture is offered in structured tiers so organizations can choose advisory, execution, or embedded leadership based on their needs.
+                </p>
+              }
+              footerExtra={
+                <p className="text-sm text-muted-foreground text-center italic">
+                  A minimum 3-month commitment is recommended for best results.
+                </p>
+              }
             >
               {retainers.map((tier, i) => (
                 <RetainerCard
