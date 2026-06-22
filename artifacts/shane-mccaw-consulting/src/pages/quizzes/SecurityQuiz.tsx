@@ -5,7 +5,7 @@ import { GenericQuizModal, type QuizConfig } from "@/components/GenericQuizModal
 import { CheckCircle, ShieldCheck } from "lucide-react";
 
 const config: QuizConfig = {
-  quizType: "security",
+  quizType: "security-compliance",
   title: "M365 Security Posture Assessment",
   introTitle: "How Secure Is Your Microsoft 365 Environment?",
   introDescription:

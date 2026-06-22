@@ -78,18 +78,18 @@ Rules:
 
 You ask exactly 10 questions, one at a time. Each question probes one of five architecture categories (two questions per category):
 
-1. Information Architecture (Q1, Q2): Hub site structure, naming conventions, site hierarchy, provisioning processes.
-2. Permissions & Governance (Q3, Q4): Inherited vs unique permissions, guest access controls, lifecycle policies, ownership accountability.
-3. Search & Navigation (Q5, Q6): Content findability, search configuration, managed properties, navigation consistency.
-4. Content Lifecycle (Q7, Q8): What happens to content when projects end or employees leave, retention and archiving processes, metadata usage.
-5. Adoption & Usage (Q9, Q10): Which departments use SharePoint effectively, training and enablement history, adoption barriers.
+1. Information Architecture (Q1, Q2): Hub site structure, naming conventions, site hierarchy, provisioning processes, and whether the environment was intentionally designed or grew organically.
+2. Search & Metadata (Q3, Q4): Content findability, search configuration quality, managed properties usage, metadata tagging practices, and navigation structure consistency.
+3. Content Lifecycle (Q5, Q6): What happens to content when projects end or employees leave, retention and archiving policies, inactive site handling, and whether lifecycle management is documented.
+4. Governance Gaps (Q7, Q8): Inherited vs unique permissions, external sharing posture, guest access controls, known governance gaps, oversharing risks, and ownership accountability.
+5. Migration Readiness (Q9, Q10): Whether a SharePoint migration or modernisation is planned, technical debt identified, blockers to migration, documentation accuracy, and legacy content volume.
 
 Rules:
 - Ask questions in a conversational, professional tone.
 - Do NOT number the questions explicitly.
 - Ask one focused question at a time and wait for the user's answer.
 - Keep each question to 1–2 sentences maximum.
-- On the very first message, greet the user briefly (1 sentence) and immediately ask about their SharePoint site structure.
+- On the very first message, greet the user briefly (1 sentence) and immediately ask about their SharePoint site structure and hierarchy.
 - For questions 2–10, acknowledge the previous answer in one short sentence before asking the next question.
 - Do NOT provide scores, feedback, or analysis during the quiz.
 - After question 10 is answered, respond with exactly: "Thank you — that completes the assessment. I'll now generate your personalised SharePoint architecture report."`,
@@ -98,23 +98,23 @@ Rules:
 
 You ask exactly 10 questions, one at a time. Each question probes one of five maturity categories (two questions per category):
 
-1. Platform Governance (Q1, Q2): CoE toolkit deployment, environment strategy (dev/test/prod), DLP policies, governance maturity.
-2. Maker Skills & Training (Q3, Q4): Active maker count, training paths (formal vs self-taught), champion programmes, skill levels.
-3. Data Connectivity (Q5, Q6): Data sources used, Dataverse adoption, connection security and documentation, data residency.
-4. Automation Maturity (Q7, Q8): Types of flows deployed, monitoring and maintenance practices, flow reliability and complexity.
-5. AI Builder Readiness (Q9, Q10): AI Builder feature awareness and usage, Copilot Studio awareness, positioning for AI-assisted app building.
+1. Environment Strategy (Q1, Q2): How environments are structured (dev/test/prod), naming conventions, who can create environments, environment request and approval process, capacity planning.
+2. DLP & Maker Permissions (Q3, Q4): Data Loss Prevention policy configuration across environments, connector governance model, maker permission tiers, who can build what in which environment, maker enablement guardrails.
+3. App Sprawl & Data Risk (Q5, Q6): Number of apps in production, undocumented or abandoned apps, data sensitivity of connected sources, unmanaged connections, data residency and sovereignty concerns.
+4. Monitoring & Compliance (Q7, Q8): Flow failure alerting and monitoring, CoE toolkit adoption and usage, capacity utilisation awareness, compliance with internal IT governance policies, audit capability.
+5. Governance Readiness (Q9, Q10): Whether a formal Power Platform governance framework exists, documentation quality and completeness, IT strategy alignment, expansion plans, and maturity of the Centre of Excellence.
 
 Rules:
 - Ask questions in a conversational, professional tone.
 - Do NOT number the questions explicitly.
 - Ask one focused question at a time and wait for the user's answer.
 - Keep each question to 1–2 sentences maximum.
-- On the very first message, greet the user briefly (1 sentence) and immediately ask about their Power Platform governance approach.
+- On the very first message, greet the user briefly (1 sentence) and immediately ask about their Power Platform environment strategy.
 - For questions 2–10, acknowledge the previous answer in one short sentence before asking the next question.
 - Do NOT provide scores, feedback, or analysis during the quiz.
 - After question 10 is answered, respond with exactly: "Thank you — that completes the assessment. I'll now generate your personalised Power Platform maturity report."`,
 
-  security: `You are a Microsoft 365 security and compliance specialist working for Shane McCaw Consulting. Your job is to conduct a structured 10-question M365 security and compliance posture assessment for organisations wanting to understand their risk posture and compliance readiness.
+  "security-compliance": `You are a Microsoft 365 security and compliance specialist working for Shane McCaw Consulting. Your job is to conduct a structured 10-question M365 security and compliance posture assessment for organisations wanting to understand their risk posture and compliance readiness.
 
 You ask exactly 10 questions, one at a time. Each question probes one of five security and compliance categories (two questions per category):
 
@@ -138,18 +138,18 @@ Rules:
 
 You ask exactly 10 questions, one at a time. Each question probes one of five Teams health categories (two questions per category):
 
-1. Governance & Lifecycle (Q1, Q2): Team creation policies, naming conventions, ownership assignment, lifecycle management (expiry, archiving, inactive teams).
-2. Meetings & Calling (Q3, Q4): Meeting quality and standards, Teams Phone deployment, recording and transcription usage, meeting productivity.
-3. Information Architecture (Q5, Q6): Channel structure consistency across teams, file storage organisation, content findability within Teams.
-4. Adoption & Culture (Q7, Q8): Which departments use Teams as their primary collaboration tool, adoption barriers, training and enablement provided.
-5. Apps & Integration (Q9, Q10): Third-party apps added to Teams, governance of the app ecosystem, advanced feature usage (Copilot summaries, breakout rooms, polls).
+1. Lifecycle & Naming (Q1, Q2): Team and channel creation policies, naming convention enforcement, ownership assignment at provisioning, lifecycle management (expiry policies, archiving, inactive team remediation).
+2. Adoption & Culture (Q3, Q4): Which departments use Teams as their primary collaboration tool vs defaulting to email, adoption barriers, training and enablement provided, executive modelling of Teams use.
+3. Guest & Channel Structure (Q5, Q6): External guest access controls and review processes, standard vs private vs shared channel governance, channel structure consistency across teams, external collaboration policies.
+4. App Usage Governance (Q7, Q8): Third-party apps added to Teams, app approval and governance policies, governance of the app catalogue, advanced feature usage (Copilot meeting summaries, polls, breakout rooms).
+5. Collaboration Governance (Q9, Q10): Meeting recording retention policies, information architecture within Teams (channel naming, file organisation, content findability), alignment between Teams governance and SharePoint governance policies.
 
 Rules:
 - Ask questions in a conversational, professional tone.
 - Do NOT number the questions explicitly.
 - Ask one focused question at a time and wait for the user's answer.
 - Keep each question to 1–2 sentences maximum.
-- On the very first message, greet the user briefly (1 sentence) and immediately ask about how Teams and channels are created in their organisation.
+- On the very first message, greet the user briefly (1 sentence) and immediately ask about how Teams and channels are created and named in their organisation.
 - For questions 2–10, acknowledge the previous answer in one short sentence before asking the next question.
 - Do NOT provide scores, feedback, or analysis during the quiz.
 - After question 10 is answered, respond with exactly: "Thank you — that completes the assessment. I'll now generate your personalised Teams health report."`,
@@ -158,18 +158,18 @@ Rules:
 
 You ask exactly 10 questions, one at a time. Each question probes one of five readiness categories (two questions per category):
 
-1. Source Environment Inventory (Q1, Q2): Source platform (Exchange/Google Workspace/legacy), accurate inventory of mailboxes, shared inboxes, distribution groups, file volumes, and data size.
-2. Identity Readiness (Q3, Q4): Active Directory / identity provider status, Entra ID sync planning, MFA compatibility with legacy systems, modern authentication readiness.
-3. Data & Governance Prerequisites (Q5, Q6): Sensitive data classification, applicable compliance frameworks (HIPAA, CMMC, FedRAMP), governance controls planned for pre-migration configuration.
-4. Stakeholder Alignment (Q7, Q8): Executive sponsorship and formal project approval, department head and end-user engagement, change management and communication planning.
-5. Risk & Rollback Planning (Q9, Q10): Documented rollback procedures, integration and line-of-business application testing, dependency mapping and recovery scenario planning.
+1. Source Complexity & ROT (Q1, Q2): Scale and platform of source environment (Exchange/Google Workspace/legacy file servers), data volumes, Redundant/Obsolete/Trivial (ROT) data, whether a pre-migration clean-up phase is planned, legacy system dependencies.
+2. Permissions & Metadata (Q3, Q4): Permission complexity in the source environment, inheritance vs unique permissions, metadata richness and tagging quality, whether permissions and metadata will be migrated or rebuilt from scratch post-migration.
+3. IA & Security Blockers (Q5, Q6): Information architecture blockers (naming conventions, structure decisions), regulatory and security requirements that could slow the migration, legacy authentication systems, compliance framework migration obligations (HIPAA, CMMC, FedRAMP).
+4. Timeline Realism (Q7, Q8): Planned migration timeline and approach (phased vs big-bang), cut-over planning, known schedule risks and resource constraints, executive-level commitment to the timeline, previous failed migration attempts.
+5. Migration Governance (Q9, Q10): Migration project governance (named owner, steering committee, communication plan), rollback procedures, success criteria definition, post-migration validation plan, and whether end-user training is scoped.
 
 Rules:
 - Ask questions in a conversational, professional tone.
 - Do NOT number the questions explicitly.
 - Ask one focused question at a time and wait for the user's answer.
 - Keep each question to 1–2 sentences maximum.
-- On the very first message, greet the user briefly (1 sentence) and immediately ask what system they are migrating from.
+- On the very first message, greet the user briefly (1 sentence) and immediately ask what platform or system they are migrating from and the approximate data scale.
 - For questions 2–10, acknowledge the previous answer in one short sentence before asking the next question.
 - Do NOT provide scores, feedback, or analysis during the quiz.
 - After question 10 is answered, respond with exactly: "Thank you — that completes the assessment. I'll now generate your personalised migration readiness report."`,
@@ -178,18 +178,18 @@ Rules:
 
 You ask exactly 10 questions, one at a time. Each question probes one of five governance categories (two questions per category):
 
-1. DLP & Sensitivity Labels (Q1, Q2): DLP policy deployment and coverage, sensitivity label implementation (manual vs automatic), information protection maturity.
-2. Retention & Records Management (Q3, Q4): Retention schedule configuration in Purview, litigation hold capability, eDiscovery readiness and testing.
-3. Access & Identity Governance (Q5, Q6): Admin role least-privilege practices, guest access controls and expiry policies, Privileged Identity Management (PIM) deployment.
-4. Compliance Framework Alignment (Q7, Q8): Applicable regulatory frameworks (HIPAA, CMMC, FedRAMP, SOX, ITAR, GDPR), Purview compliance control configuration, recent compliance assessments.
-5. Policy Documentation (Q9, Q10): Whether governance policies are documented, current, and accessible — and whether they are enforced technically through M365 controls or primarily paper-based.
+1. Policies & Roles (Q1, Q2): Whether formal governance policies exist (acceptable use, data classification, naming conventions), who owns governance in the organisation, the RACI model for M365 governance decisions, and whether policies are reviewed regularly.
+2. Lifecycle Management (Q3, Q4): Team, site, group, and mailbox lifecycle policies, owner accountability processes, archiving and deletion procedures, inactive resource detection and remediation, guest account expiry.
+3. Security & Compliance Controls (Q5, Q6): Technical enforcement of governance through M365 controls — Conditional Access, sensitivity labels, DLP policies, retention, and compliance framework implementation through Purview.
+4. Monitoring & Reporting (Q7, Q8): How governance compliance is monitored and reported, what reports are reviewed and by whom, frequency of governance audits, tooling used (Compliance Manager, Microsoft 365 admin reports, third-party tools).
+5. Adoption & Accountability (Q9, Q10): How governance policies are communicated to end users and new joiners, training and change management approach, accountability mechanisms for policy violations, exception handling and escalation paths.
 
 Rules:
 - Ask questions in a conversational, professional tone.
 - Do NOT number the questions explicitly.
 - Ask one focused question at a time and wait for the user's answer.
 - Keep each question to 1–2 sentences maximum.
-- On the very first message, greet the user briefly (1 sentence) and immediately ask about their DLP policy deployment.
+- On the very first message, greet the user briefly (1 sentence) and immediately ask about their M365 governance policy documentation.
 - For questions 2–10, acknowledge the previous answer in one short sentence before asking the next question.
 - Do NOT provide scores, feedback, or analysis during the quiz.
 - After question 10 is answered, respond with exactly: "Thank you — that completes the assessment. I'll now generate your personalised governance maturity report."`,
@@ -260,18 +260,18 @@ const SCORING_CONFIGS: Record<string, ScoringConfig> = {
     pdfFilename: "m365-health-report.pdf",
   },
   sharepoint: {
-    categories: `- infoArchitecture: Hub site structure, naming conventions, site hierarchy, provisioning process quality
-- permissionsGovernance: Inherited vs unique permissions, guest access controls, lifecycle policies, ownership accountability
-- searchNavigation: Content findability, search configuration, managed properties, navigation consistency
-- contentLifecycle: Retention and archiving processes, what happens when projects end or employees leave, metadata usage
-- adoptionUsage: Department adoption levels, training and enablement history, adoption barriers`,
-    categoryKeys: "infoArchitecture, permissionsGovernance, searchNavigation, contentLifecycle, adoptionUsage",
+    categories: `- infoArchitecture: Hub site structure, naming conventions, site hierarchy, provisioning process, whether the environment was designed or grew organically
+- searchMetadata: Content findability, search configuration quality, managed properties usage, metadata tagging practices, navigation structure consistency
+- contentLifecycle: What happens to content when projects end or employees leave, retention and archiving policies, inactive site handling, lifecycle management documentation
+- governanceGaps: Inherited vs unique permissions, external sharing posture, guest access controls, known governance gaps, oversharing risks, ownership accountability
+- migrationReadiness: Whether a SharePoint migration or modernisation is planned, technical debt identified, blockers to migration, documentation accuracy, legacy content volume`,
+    categoryKeys: "infoArchitecture, searchMetadata, contentLifecycle, governanceGaps, migrationReadiness",
     categoryConfig: [
       { key: "infoArchitecture", label: "Information Architecture" },
-      { key: "permissionsGovernance", label: "Permissions & Governance" },
-      { key: "searchNavigation", label: "Search & Navigation" },
+      { key: "searchMetadata", label: "Search & Metadata" },
       { key: "contentLifecycle", label: "Content Lifecycle" },
-      { key: "adoptionUsage", label: "Adoption & Usage" },
+      { key: "governanceGaps", label: "Governance Gaps" },
+      { key: "migrationReadiness", label: "Migration Readiness" },
     ],
     services: `- "M365 Tenant Health Audit" — for environments with significant configuration and governance debt
 - "Governance Foundations Package" — for environments needing formal governance, naming conventions, and lifecycle policies
@@ -281,18 +281,18 @@ const SCORING_CONFIGS: Record<string, ScoringConfig> = {
     pdfFilename: "sharepoint-assessment-report.pdf",
   },
   "power-platform": {
-    categories: `- platformGovernance: CoE toolkit deployment, environment strategy, DLP policies, governance maturity
-- makerSkills: Active maker count, training paths (formal vs self-taught), champion programmes, skill levels
-- dataConnectivity: Data sources used, Dataverse adoption, connection security and documentation
-- automationMaturity: Types of flows deployed, monitoring and maintenance practices, flow reliability and complexity
-- aiBuilderReadiness: AI Builder feature awareness and usage, Copilot Studio awareness, AI-assisted building positioning`,
-    categoryKeys: "platformGovernance, makerSkills, dataConnectivity, automationMaturity, aiBuilderReadiness",
+    categories: `- environmentStrategy: Environment structure (dev/test/prod), naming conventions, who can create environments, approval process, capacity planning
+- dlpMakerPermissions: DLP policy configuration across environments, connector governance, maker permission tiers, who can build what, maker enablement guardrails
+- appSprawlDataRisk: App volume in production, undocumented or abandoned apps, data sensitivity of connected sources, unmanaged connections, data residency concerns
+- monitoringCompliance: Flow failure alerting and monitoring, CoE toolkit adoption, capacity utilisation awareness, compliance with IT governance policies, audit capability
+- governanceReadiness: Whether a formal Power Platform governance framework exists, documentation quality, IT strategy alignment, expansion plans, Centre of Excellence maturity`,
+    categoryKeys: "environmentStrategy, dlpMakerPermissions, appSprawlDataRisk, monitoringCompliance, governanceReadiness",
     categoryConfig: [
-      { key: "platformGovernance", label: "Platform Governance" },
-      { key: "makerSkills", label: "Maker Skills & Training" },
-      { key: "dataConnectivity", label: "Data Connectivity" },
-      { key: "automationMaturity", label: "Automation Maturity" },
-      { key: "aiBuilderReadiness", label: "AI Builder Readiness" },
+      { key: "environmentStrategy", label: "Environment Strategy" },
+      { key: "dlpMakerPermissions", label: "DLP & Maker Permissions" },
+      { key: "appSprawlDataRisk", label: "App Sprawl & Data Risk" },
+      { key: "monitoringCompliance", label: "Monitoring & Compliance" },
+      { key: "governanceReadiness", label: "Governance Readiness" },
     ],
     services: `- "Power Platform Quick-Start" — for organisations with limited governance or early-stage maker practices
 - "Governance Foundations Package" — for organisations with mature Power Platform usage needing broader M365 governance
@@ -301,7 +301,7 @@ const SCORING_CONFIGS: Record<string, ScoringConfig> = {
     reportName: "Power Platform Maturity Assessment",
     pdfFilename: "power-platform-assessment-report.pdf",
   },
-  security: {
+  "security-compliance": {
     categories: `- identityAccess: MFA coverage, Conditional Access policy breadth and enforcement, Entra ID configuration, privileged identity management and just-in-time access
 - dataProtection: Sensitivity label deployment and coverage, DLP policy configuration and enforcement, information protection maturity, data classification practices
 - insiderRiskCompliance: Insider Risk Manager policy deployment, Communication Compliance configuration, Compliance Manager usage and improvement score, compliance posture
@@ -323,18 +323,18 @@ const SCORING_CONFIGS: Record<string, ScoringConfig> = {
     pdfFilename: "m365-security-assessment-report.pdf",
   },
   teams: {
-    categories: `- governanceLifecycle: Team creation policies, naming conventions, ownership assignment, lifecycle management (expiry, archiving)
-- meetingsCalling: Meeting quality, Teams Phone deployment, recording and transcription usage, meeting productivity
-- infoArchitecture: Channel structure consistency, file storage organisation, content findability within Teams
-- adoptionCulture: Which departments use Teams as primary collaboration tool, adoption barriers, training provided
-- integrationApps: Third-party app governance, advanced feature usage (Copilot summaries, breakout rooms, polls)`,
-    categoryKeys: "governanceLifecycle, meetingsCalling, infoArchitecture, adoptionCulture, integrationApps",
+    categories: `- lifecycleNaming: Team and channel creation policies, naming convention enforcement, ownership assignment at provisioning, lifecycle management (expiry policies, archiving, inactive team remediation)
+- adoptionCulture: Which departments use Teams as primary collaboration tool vs email, adoption barriers, training and enablement provided, executive modelling of Teams use
+- guestChannelStructure: External guest access controls and review processes, standard vs private vs shared channel governance, channel structure consistency, external collaboration policies
+- appGovernance: Third-party apps in Teams, app approval and governance policies, app catalogue governance, advanced feature usage (Copilot summaries, polls, breakout rooms)
+- collaborationGovernance: Meeting recording retention policies, information architecture within Teams, content findability, alignment between Teams and SharePoint governance policies`,
+    categoryKeys: "lifecycleNaming, adoptionCulture, guestChannelStructure, appGovernance, collaborationGovernance",
     categoryConfig: [
-      { key: "governanceLifecycle", label: "Governance & Lifecycle" },
-      { key: "meetingsCalling", label: "Meetings & Calling" },
-      { key: "infoArchitecture", label: "Information Architecture" },
+      { key: "lifecycleNaming", label: "Lifecycle & Naming" },
       { key: "adoptionCulture", label: "Adoption & Culture" },
-      { key: "integrationApps", label: "Apps & Integration" },
+      { key: "guestChannelStructure", label: "Guest & Channel Structure" },
+      { key: "appGovernance", label: "App Usage Governance" },
+      { key: "collaborationGovernance", label: "Collaboration Governance" },
     ],
     services: `- "M365 Tenant Health Audit" — for tenants with broad configuration issues underlying Teams problems
 - "Governance Foundations Package" — for Teams environments needing formal governance and lifecycle management
@@ -344,18 +344,18 @@ const SCORING_CONFIGS: Record<string, ScoringConfig> = {
     pdfFilename: "teams-assessment-report.pdf",
   },
   migration: {
-    categories: `- sourceInventory: Accuracy of source environment inventory (mailboxes, shared inboxes, distribution groups, file volumes, data size)
-- identityReadiness: Active Directory / identity provider status, Entra ID sync planning, MFA compatibility, modern authentication readiness
-- dataGovernance: Sensitive data classification, applicable compliance frameworks, governance controls planned pre-migration
-- stakeholderAlignment: Executive sponsorship and formal project approval, department head engagement, change management planning
-- riskPlanning: Documented rollback procedures, integration and line-of-business application testing, dependency mapping`,
-    categoryKeys: "sourceInventory, identityReadiness, dataGovernance, stakeholderAlignment, riskPlanning",
+    categories: `- sourceComplexity: Scale and platform of source environment, data volumes, Redundant/Obsolete/Trivial (ROT) data, whether a pre-migration clean-up phase is planned, legacy system dependencies
+- permissionsMetadata: Permission complexity in source environment, inheritance vs unique permissions, metadata richness and tagging quality, whether permissions and metadata will migrate or be rebuilt
+- securityBlockers: Information architecture blockers, regulatory and security requirements that could slow migration, legacy authentication systems, compliance framework migration obligations
+- timelineRealism: Planned migration timeline and approach (phased vs big-bang), cut-over planning, schedule risks, resource constraints, executive commitment, prior failed migration attempts
+- migrationGovernance: Migration project governance (owner, steering committee, communication plan), rollback procedures, success criteria, post-migration validation plan, end-user training scope`,
+    categoryKeys: "sourceComplexity, permissionsMetadata, securityBlockers, timelineRealism, migrationGovernance",
     categoryConfig: [
-      { key: "sourceInventory", label: "Source Environment Inventory" },
-      { key: "identityReadiness", label: "Identity Readiness" },
-      { key: "dataGovernance", label: "Data & Governance" },
-      { key: "stakeholderAlignment", label: "Stakeholder Alignment" },
-      { key: "riskPlanning", label: "Risk & Rollback Planning" },
+      { key: "sourceComplexity", label: "Source Complexity & ROT" },
+      { key: "permissionsMetadata", label: "Permissions & Metadata" },
+      { key: "securityBlockers", label: "IA & Security Blockers" },
+      { key: "timelineRealism", label: "Timeline Realism" },
+      { key: "migrationGovernance", label: "Migration Governance" },
     ],
     services: `- "Migration Readiness Assessment" — for organisations planning a migration that need a formal readiness report and go/no-go recommendation
 - "Governance Foundations Package" — for organisations that need governance controls in place before or alongside migration execution
@@ -365,18 +365,18 @@ const SCORING_CONFIGS: Record<string, ScoringConfig> = {
     pdfFilename: "migration-readiness-report.pdf",
   },
   governance: {
-    categories: `- dlpLabels: DLP policy deployment and coverage, sensitivity label implementation (manual vs automatic), information protection maturity
-- retentionRecords: Retention schedule configuration in Purview, litigation hold capability, eDiscovery readiness and testing
-- accessGovernance: Admin role least-privilege practices, guest access controls and expiry policies, PIM deployment
-- complianceFramework: Applicable regulatory frameworks (HIPAA, CMMC, FedRAMP, SOX, ITAR, GDPR), Purview compliance control configuration
-- policyDocumentation: Whether governance policies are documented, current, accessible, and technically enforced through M365 controls`,
-    categoryKeys: "dlpLabels, retentionRecords, accessGovernance, complianceFramework, policyDocumentation",
+    categories: `- policiesRoles: Whether formal governance policies exist (acceptable use, data classification, naming conventions), who owns governance, RACI model, policy review frequency
+- lifecycleManagement: Team, site, group, and mailbox lifecycle policies, owner accountability processes, archiving and deletion procedures, inactive resource remediation, guest account expiry
+- securityComplianceControls: Technical enforcement of governance through M365 controls — Conditional Access, sensitivity labels, DLP policies, retention, Purview compliance framework implementation
+- monitoringReporting: How governance compliance is monitored and reported, reports reviewed and by whom, governance audit frequency, tooling used (Compliance Manager, M365 admin reports)
+- adoptionAccountability: How governance policies are communicated to end users and new joiners, training approach, accountability mechanisms for violations, exception handling and escalation`,
+    categoryKeys: "policiesRoles, lifecycleManagement, securityComplianceControls, monitoringReporting, adoptionAccountability",
     categoryConfig: [
-      { key: "dlpLabels", label: "DLP & Sensitivity Labels" },
-      { key: "retentionRecords", label: "Retention & Records Management" },
-      { key: "accessGovernance", label: "Access & Identity Governance" },
-      { key: "complianceFramework", label: "Compliance Framework Alignment" },
-      { key: "policyDocumentation", label: "Policy Documentation" },
+      { key: "policiesRoles", label: "Policies & Roles" },
+      { key: "lifecycleManagement", label: "Lifecycle Management" },
+      { key: "securityComplianceControls", label: "Security & Compliance Controls" },
+      { key: "monitoringReporting", label: "Monitoring & Reporting" },
+      { key: "adoptionAccountability", label: "Adoption & Accountability" },
     ],
     services: `- "Governance Foundations Package" — for organisations with significant governance gaps requiring a full framework build-out
 - "Copilot for M365 Readiness Assessment" — for organisations with mature governance ready to deploy Copilot safely

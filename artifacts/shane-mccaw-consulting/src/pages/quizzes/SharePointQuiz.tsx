@@ -12,10 +12,10 @@ const config: QuizConfig = {
     "Answer 10 AI-powered questions across 5 architecture dimensions. Takes around 5 minutes. You'll receive a personalised PDF report and recommendation by email.",
   categories: [
     { key: "infoArchitecture", label: "Information Architecture" },
-    { key: "permissionsGovernance", label: "Permissions & Governance" },
-    { key: "searchNavigation", label: "Search & Navigation" },
+    { key: "searchMetadata", label: "Search & Metadata" },
     { key: "contentLifecycle", label: "Content Lifecycle" },
-    { key: "adoptionUsage", label: "Adoption & Usage" },
+    { key: "governanceGaps", label: "Governance Gaps" },
+    { key: "migrationReadiness", label: "Migration Readiness" },
   ],
   fallbackQuestions: [
     "How is your SharePoint environment currently structured — for example, do you use a hub site model with associated team/communication sites, or has it grown organically without a deliberate hierarchy?",
@@ -77,11 +77,11 @@ const config: QuizConfig = {
 };
 
 const PILLARS = [
-  { label: "Information Architecture", desc: "Hub site structure, naming conventions, site hierarchy, and whether your environment was designed or just grew." },
-  { label: "Permissions & Governance", desc: "Inherited vs unique permissions, external sharing posture, guest access controls, and ownership accountability." },
-  { label: "Search & Navigation", desc: "Content findability, search configuration, managed properties, and whether staff can locate what they need quickly." },
-  { label: "Content Lifecycle", desc: "What happens to content when projects end, employees leave, or sites become inactive — and whether it's documented." },
-  { label: "Adoption & Usage", desc: "Which departments use SharePoint effectively, which avoid it, and what training or enablement has been provided." },
+  { label: "Information Architecture", desc: "Hub site structure, naming conventions, site hierarchy, and whether your environment was intentionally designed or grew organically without a plan." },
+  { label: "Search & Metadata", desc: "Content findability, search configuration quality, managed properties, metadata tagging practices, and navigation structure consistency." },
+  { label: "Content Lifecycle", desc: "What happens to content when projects end or employees leave, retention and archiving policies, inactive site handling, and lifecycle documentation." },
+  { label: "Governance Gaps", desc: "Inherited vs unique permissions, external sharing posture, guest access controls, known governance gaps, oversharing risks, and ownership accountability." },
+  { label: "Migration Readiness", desc: "Whether a SharePoint migration or modernisation is planned, technical debt identified, blockers, documentation accuracy, and legacy content volume." },
 ];
 
 export default function SharePointQuiz() {

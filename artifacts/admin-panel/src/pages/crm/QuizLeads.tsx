@@ -44,7 +44,7 @@ const QUIZ_TYPE_LABELS: Record<string, string> = {
   "m365-health": "M365 Health",
   sharepoint: "SharePoint",
   "power-platform": "Power Platform",
-  security: "Security",
+  "security-compliance": "Security & Compliance",
   teams: "Teams",
   migration: "Migration",
   governance: "Governance",
@@ -257,7 +257,7 @@ function SlideOver({ lead, onClose, onRefresh }: {
 }
 
 const TIER_OPTIONS = ["all", "Beginner", "Developing", "Emerging", "Advanced", "Ready"] as const;
-const QUIZ_TYPE_OPTIONS = ["all", "copilot", "m365-health", "sharepoint", "power-platform", "security", "teams", "migration", "governance"] as const;
+const QUIZ_TYPE_OPTIONS = ["all", "copilot", "m365-health", "sharepoint", "power-platform", "security-compliance", "teams", "migration", "governance"] as const;
 const LIMIT = 20;
 
 export default function QuizLeadsPage() {

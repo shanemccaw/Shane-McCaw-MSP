@@ -11,11 +11,11 @@ const config: QuizConfig = {
   introDescription:
     "Answer 10 AI-powered questions across 5 governance dimensions. Takes around 5 minutes. You'll receive a personalised PDF governance report by email.",
   categories: [
-    { key: "dlpLabels", label: "DLP & Sensitivity Labels" },
-    { key: "retentionRecords", label: "Retention & Records Management" },
-    { key: "accessGovernance", label: "Access & Identity Governance" },
-    { key: "complianceFramework", label: "Compliance Framework Alignment" },
-    { key: "policyDocumentation", label: "Policy Documentation" },
+    { key: "policiesRoles", label: "Policies & Roles" },
+    { key: "lifecycleManagement", label: "Lifecycle Management" },
+    { key: "securityComplianceControls", label: "Security & Compliance Controls" },
+    { key: "monitoringReporting", label: "Monitoring & Reporting" },
+    { key: "adoptionAccountability", label: "Adoption & Accountability" },
   ],
   fallbackQuestions: [
     "Has your organisation deployed Data Loss Prevention (DLP) policies in Microsoft 365 — for example, policies that detect and block the sharing of social security numbers, financial records, or health information via email, Teams, or SharePoint?",
@@ -77,11 +77,11 @@ const config: QuizConfig = {
 };
 
 const PILLARS = [
-  { label: "DLP & Sensitivity Labels", desc: "Whether DLP policies are configured to detect and protect sensitive data, and whether sensitivity labels are in use to classify documents and emails." },
-  { label: "Retention & Records Management", desc: "Retention schedules, litigation hold capability, eDiscovery readiness, and whether records management is configured in Purview." },
-  { label: "Access & Identity Governance", desc: "Admin role least-privilege, guest access controls, access expiry policies, and whether Privileged Identity Management (PIM) is deployed." },
-  { label: "Compliance Framework Alignment", desc: "Regulatory frameworks you're subject to (HIPAA, CMMC, FedRAMP, SOX, ITAR, GDPR) and whether Purview compliance controls are configured accordingly." },
-  { label: "Policy Documentation", desc: "Whether governance policies are documented, current, accessible, and — critically — technically enforced through M365 controls rather than just on paper." },
+  { label: "Policies & Roles", desc: "Whether formal governance policies exist, who owns governance, the RACI model for M365 governance decisions, and whether policies are reviewed regularly." },
+  { label: "Lifecycle Management", desc: "Team, site, group, and mailbox lifecycle policies, owner accountability, archiving and deletion procedures, inactive resource remediation, and guest account expiry." },
+  { label: "Security & Compliance Controls", desc: "Technical enforcement of governance through M365 controls — Conditional Access, sensitivity labels, DLP policies, retention, and Purview compliance framework implementation." },
+  { label: "Monitoring & Reporting", desc: "How governance compliance is monitored and reported, what reports are reviewed and by whom, audit frequency, and tooling used (Compliance Manager, M365 admin reports)." },
+  { label: "Adoption & Accountability", desc: "How governance policies are communicated to end users and new joiners, training approach, accountability mechanisms for violations, and exception handling." },
 ];
 
 export default function GovernanceQuiz() {

@@ -11,11 +11,11 @@ const config: QuizConfig = {
   introDescription:
     "Answer 10 AI-powered questions across 5 maturity dimensions. Takes around 5 minutes. You'll receive a personalised PDF report and recommendation by email.",
   categories: [
-    { key: "platformGovernance", label: "Platform Governance" },
-    { key: "makerSkills", label: "Maker Skills & Training" },
-    { key: "dataConnectivity", label: "Data Connectivity" },
-    { key: "automationMaturity", label: "Automation Maturity" },
-    { key: "aiBuilderReadiness", label: "AI Builder Readiness" },
+    { key: "environmentStrategy", label: "Environment Strategy" },
+    { key: "dlpMakerPermissions", label: "DLP & Maker Permissions" },
+    { key: "appSprawlDataRisk", label: "App Sprawl & Data Risk" },
+    { key: "monitoringCompliance", label: "Monitoring & Compliance" },
+    { key: "governanceReadiness", label: "Governance Readiness" },
   ],
   fallbackQuestions: [
     "How is your Power Platform environment governed today? Do you have a Centre of Excellence (CoE) toolkit deployed, an environment strategy, and data loss prevention (DLP) policies configured, or is it largely ungoverned?",
@@ -77,11 +77,11 @@ const config: QuizConfig = {
 };
 
 const PILLARS = [
-  { label: "Platform Governance", desc: "CoE toolkit deployment, environment strategy, DLP policies, and whether your Power Platform practice has guardrails or is ungoverned." },
-  { label: "Maker Skills & Training", desc: "How many makers you have, how they were trained, and whether your organisation has a structured enablement path for new builders." },
-  { label: "Data Connectivity", desc: "What data sources your solutions connect to, whether Dataverse is in use, and how connections are secured and documented." },
-  { label: "Automation Maturity", desc: "The complexity and reliability of your Power Automate flows — from basic approval workflows to monitored, enterprise-grade integrations." },
-  { label: "AI Builder Readiness", desc: "Whether your organisation has explored AI Builder features and is positioned to benefit from the Copilot capabilities now built into Power Platform." },
+  { label: "Environment Strategy", desc: "How environments are structured (dev/test/prod), naming conventions, who can create environments, the approval process, and capacity planning." },
+  { label: "DLP & Maker Permissions", desc: "DLP policy coverage across environments, connector governance model, maker permission tiers, and whether guardrails prevent unsafe building." },
+  { label: "App Sprawl & Data Risk", desc: "Number of apps in production, undocumented or abandoned apps, data sensitivity of connected sources, unmanaged connections, and data residency concerns." },
+  { label: "Monitoring & Compliance", desc: "Flow failure alerting, CoE toolkit adoption, capacity utilisation awareness, IT governance compliance, and audit capability." },
+  { label: "Governance Readiness", desc: "Whether a formal Power Platform governance framework exists, documentation quality, IT strategy alignment, and Centre of Excellence maturity." },
 ];
 
 export default function PowerPlatformQuiz() {

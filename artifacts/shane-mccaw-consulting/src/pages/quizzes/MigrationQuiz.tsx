@@ -11,11 +11,11 @@ const config: QuizConfig = {
   introDescription:
     "Answer 10 AI-powered questions across 5 migration readiness dimensions. Takes around 5 minutes. You'll receive a personalised PDF readiness report by email.",
   categories: [
-    { key: "sourceInventory", label: "Source Environment Inventory" },
-    { key: "identityReadiness", label: "Identity Readiness" },
-    { key: "dataGovernance", label: "Data & Governance Prerequisites" },
-    { key: "stakeholderAlignment", label: "Stakeholder Alignment" },
-    { key: "riskPlanning", label: "Risk & Rollback Planning" },
+    { key: "sourceComplexity", label: "Source Complexity & ROT" },
+    { key: "permissionsMetadata", label: "Permissions & Metadata" },
+    { key: "securityBlockers", label: "IA & Security Blockers" },
+    { key: "timelineRealism", label: "Timeline Realism" },
+    { key: "migrationGovernance", label: "Migration Governance" },
   ],
   fallbackQuestions: [
     "What systems are you migrating from — for example, on-premises Exchange, Google Workspace, Lotus Notes, or another legacy platform — and do you have an accurate inventory of all mailboxes, shared inboxes, and distribution groups?",
@@ -77,11 +77,11 @@ const config: QuizConfig = {
 };
 
 const PILLARS = [
-  { label: "Source Environment Inventory", desc: "Whether you have an accurate inventory of mailboxes, shared inboxes, distribution groups, files, and dependencies in your current environment." },
-  { label: "Identity Readiness", desc: "Active Directory sync, Entra ID configuration, MFA compatibility with legacy apps, and whether modern authentication is achievable from day one." },
-  { label: "Data & Governance Prerequisites", desc: "Sensitive data classification, compliance requirements (HIPAA, CMMC, FedRAMP), and whether governance controls are planned pre-migration." },
-  { label: "Stakeholder Alignment", desc: "Executive sponsorship, formal project approval, department head engagement, and whether the migration has a named owner and budget." },
-  { label: "Risk & Rollback Planning", desc: "Documented rollback procedures, dependency testing, integration validation, and whether you have tested recovery scenarios for critical failure events." },
+  { label: "Source Complexity & ROT", desc: "Scale and platform of your source environment, data volumes, Redundant/Obsolete/Trivial (ROT) data, and whether a pre-migration clean-up phase is planned." },
+  { label: "Permissions & Metadata", desc: "Permission complexity in the source, inheritance vs unique permissions, metadata richness, and whether permissions and metadata will migrate or be rebuilt." },
+  { label: "IA & Security Blockers", desc: "Information architecture blockers, regulatory and security requirements that could slow the migration, legacy authentication systems, and compliance obligations." },
+  { label: "Timeline Realism", desc: "Planned migration timeline and approach (phased vs big-bang), cut-over planning, schedule risks, resource constraints, and executive commitment." },
+  { label: "Migration Governance", desc: "Migration project governance (named owner, steering committee, communication plan), rollback procedures, success criteria, and end-user training scope." },
 ];
 
 export default function MigrationQuiz() {

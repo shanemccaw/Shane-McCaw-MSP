@@ -11,11 +11,11 @@ const config: QuizConfig = {
   introDescription:
     "Answer 10 AI-powered questions across 5 Teams health dimensions. Takes around 5 minutes. You'll receive a personalised PDF report and recommendation by email.",
   categories: [
-    { key: "governanceLifecycle", label: "Governance & Lifecycle" },
-    { key: "meetingsCalling", label: "Meetings & Calling" },
-    { key: "infoArchitecture", label: "Information Architecture" },
+    { key: "lifecycleNaming", label: "Lifecycle & Naming" },
     { key: "adoptionCulture", label: "Adoption & Culture" },
-    { key: "integrationApps", label: "Apps & Integration" },
+    { key: "guestChannelStructure", label: "Guest & Channel Structure" },
+    { key: "appGovernance", label: "App Usage Governance" },
+    { key: "collaborationGovernance", label: "Collaboration Governance" },
   ],
   fallbackQuestions: [
     "How are Teams and channels created in your organisation — can any user create a team at any time, or do you have a provisioning process with naming conventions, defined owners, and purpose documentation?",
@@ -77,11 +77,11 @@ const config: QuizConfig = {
 };
 
 const PILLARS = [
-  { label: "Governance & Lifecycle", desc: "How Teams and channels are provisioned, named, owned, and eventually archived or deleted when no longer needed." },
-  { label: "Meetings & Calling", desc: "Meeting quality, Teams Phone deployment, recording and transcription usage, and whether meetings are productive or dysfunctional." },
-  { label: "Information Architecture", desc: "Channel structure consistency, file organisation within Teams, and whether content is findable or siloed." },
-  { label: "Adoption & Culture", desc: "Which teams are actively using Teams vs defaulting to email, and what enablement has been provided to drive adoption." },
-  { label: "Apps & Integration", desc: "Third-party apps added to Teams, custom integrations, governance of the app ecosystem, and advanced feature utilisation." },
+  { label: "Lifecycle & Naming", desc: "Team and channel creation policies, naming convention enforcement, ownership at provisioning, lifecycle management (expiry, archiving, inactive team remediation)." },
+  { label: "Adoption & Culture", desc: "Which departments use Teams as their primary tool vs defaulting to email, adoption barriers, training provided, and executive modelling of Teams use." },
+  { label: "Guest & Channel Structure", desc: "External guest access controls and review processes, standard vs private vs shared channel governance, and external collaboration policies." },
+  { label: "App Usage Governance", desc: "Third-party apps added to Teams, app approval and governance policies, app catalogue governance, and advanced feature utilisation." },
+  { label: "Collaboration Governance", desc: "Meeting recording retention policies, information architecture within Teams, content findability, and alignment with SharePoint governance." },
 ];
 
 export default function TeamsQuiz() {
