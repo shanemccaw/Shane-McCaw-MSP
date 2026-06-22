@@ -1,17 +1,149 @@
+import { useMemo } from "react";
 import { SEOMeta } from "@/components/SEOMeta";
 import { Link } from "wouter";
 import { Layout } from "@/components/Layout";
 import { CTAButton } from "@/components/CTAButton";
 import {
   Zap, FolderOpen, Calendar, ArrowRight,
-  CheckCircle, Clock,
+  CheckCircle, ClipboardList, GraduationCap, Settings, Shield, Cloud,
 } from "lucide-react";
-import { useServices } from "@/hooks/useServices";
+import { useServices, formatPriceDisplay, type PublicService } from "@/hooks/useServices";
+import { type EngagementProject } from "@/hooks/useEngagementProjects";
 import { OfferCard } from "@/components/OfferCard";
 import { EngagementProjectCard } from "@/components/EngagementProjectCard";
-import { useEngagementProjects } from "@/hooks/useEngagementProjects";
 import { RetainerCard } from "@/components/RetainerCard";
 import { CopilotQuizCTA } from "@/components/CopilotQuizCTA";
+
+type CardType = "offer" | "project" | "retainer";
+
+interface SectionConfig {
+  title: string;
+  description: string;
+  trackLabel: string;
+  accent: string;
+  cardType: CardType;
+  icon: React.ElementType;
+  chipLabel: string;
+}
+
+const CATEGORY_CONFIG: Record<string, SectionConfig> = {
+  micro_offer: {
+    title: "Fixed-Price Quick Wins",
+    description:
+      "Scoped deliverables with a defined price, a defined output, and a defined turnaround. No discovery call required — pick the package that matches your need and get in the queue.",
+    trackLabel: "Entry Tier",
+    accent: "text-emerald-700",
+    cardType: "offer",
+    icon: Zap,
+    chipLabel: "Fixed-Price Quick Wins",
+  },
+  "quick-win": {
+    title: "Fixed-Price Quick Wins",
+    description:
+      "Scoped deliverables with a defined price, a defined output, and a defined turnaround. No discovery call required — pick the package that matches your need and get in the queue.",
+    trackLabel: "Entry Tier",
+    accent: "text-emerald-700",
+    cardType: "offer",
+    icon: Zap,
+    chipLabel: "Fixed-Price Quick Wins",
+  },
+  project: {
+    title: "Project-Based Engagements",
+    description:
+      "For larger, multi-phase work — tenant migrations, full governance overhauls, Copilot deployment programs, intranet builds. Priced as a fixed project after a free scoping call.",
+    trackLabel: "Core Tier",
+    accent: "text-[#0078D4]",
+    cardType: "project",
+    icon: FolderOpen,
+    chipLabel: "Project-Based Engagements",
+  },
+  retainer: {
+    title: "Monthly Fractional Architecture Retainer",
+    description:
+      "Consistent, predictable access to Shane's expertise every month — for architecture reviews, ongoing governance, strategic planning, or Copilot rollout support. Cancel with 30 days' notice.",
+    trackLabel: "Strategic Tier",
+    accent: "text-[#00B4D8]",
+    cardType: "retainer",
+    icon: Calendar,
+    chipLabel: "Fractional Architecture",
+  },
+  assessment: {
+    title: "Assessments & Diagnostics",
+    description:
+      "Independent evaluations of your Microsoft 365 environment — identifying gaps, risks, and opportunities before you commit to a larger program.",
+    trackLabel: "Diagnostic",
+    accent: "text-violet-700",
+    cardType: "offer",
+    icon: ClipboardList,
+    chipLabel: "Assessments",
+  },
+  training: {
+    title: "Training & Enablement",
+    description:
+      "Structured, role-based training programs that turn passive Microsoft 365 users into confident, productive adopters.",
+    trackLabel: "Enablement",
+    accent: "text-amber-700",
+    cardType: "offer",
+    icon: GraduationCap,
+    chipLabel: "Training",
+  },
+  "power-platform": {
+    title: "Power Platform",
+    description:
+      "Low-code automation and application development with Power Apps, Power Automate, and Dataverse — governed, secure, and enterprise-ready.",
+    trackLabel: "Automation",
+    accent: "text-purple-700",
+    cardType: "offer",
+    icon: Settings,
+    chipLabel: "Power Platform",
+  },
+  governance: {
+    title: "Governance & Compliance",
+    description:
+      "Policy frameworks, lifecycle management, and compliance controls that keep your Microsoft 365 tenant secure, organized, and audit-ready.",
+    trackLabel: "Governance",
+    accent: "text-rose-700",
+    cardType: "offer",
+    icon: Shield,
+    chipLabel: "Governance",
+  },
+  migration: {
+    title: "Cloud Migration",
+    description:
+      "End-to-end migration planning and execution — from Exchange on-premises to Exchange Online, from file shares to SharePoint, and from legacy identity to Azure AD.",
+    trackLabel: "Migration",
+    accent: "text-sky-700",
+    cardType: "offer",
+    icon: Cloud,
+    chipLabel: "Cloud Migration",
+  },
+};
+
+const PRIMARY_CATEGORIES = ["micro_offer", "quick-win", "project", "retainer"];
+const CATEGORY_ORDER = [
+  "micro_offer",
+  "quick-win",
+  "project",
+  "retainer",
+  "assessment",
+  "training",
+  "power-platform",
+  "governance",
+  "migration",
+];
+
+function serviceToEngagementProject(s: PublicService): EngagementProject {
+  return {
+    id: s.id,
+    title: s.name,
+    priceRange: formatPriceDisplay(s),
+    description: s.description ?? null,
+    triggeredBy: s.triggers ?? [],
+    sowItems: s.deliverables ?? [],
+    sortOrder: s.sortOrder,
+    isVisible: true,
+  };
+}
 
 function TrackSection({
   trackLabel,
@@ -21,6 +153,7 @@ function TrackSection({
   accent,
   children,
   isEmpty,
+  anchorId,
   headerExtra,
   footerExtra,
 }: {
@@ -31,12 +164,13 @@ function TrackSection({
   accent: string;
   children: React.ReactNode;
   isEmpty: boolean;
+  anchorId: string;
   headerExtra?: React.ReactNode;
   footerExtra?: React.ReactNode;
 }) {
   if (isEmpty) return null;
   return (
-    <section className="py-20 border-b border-border last:border-b-0">
+    <section id={anchorId} className="py-20 border-b border-border last:border-b-0">
       <div className="max-w-[1200px] mx-auto px-6">
         <div className="mb-12">
           <div className="flex items-center gap-3 mb-3">
@@ -83,12 +217,43 @@ const COMMON_TRIGGERS = [
 
 export default function Services() {
   const { services, loading, error } = useServices();
-  const { projects: engagementProjects, loading: projectsLoading } = useEngagementProjects();
 
-  const microOffers = services.filter(s => s.serviceType === "micro_offer");
-  const retainers = services.filter(s => s.serviceType === "retainer");
-  const visibleProjects = engagementProjects.filter(p => p.isVisible);
-  const entryOffers = microOffers.filter(s => s.tier === "Entry");
+  const grouped = useMemo(() => {
+    const map: Record<string, PublicService[]> = {};
+    for (const svc of services) {
+      const cat = svc.category ?? svc.serviceType ?? "other";
+      if (!map[cat]) map[cat] = [];
+      map[cat].push(svc);
+    }
+    return map;
+  }, [services]);
+
+  const orderedCategories = useMemo(() => {
+    const present = Object.keys(grouped);
+    const known = CATEGORY_ORDER.filter((c) => present.includes(c));
+    const unknown = present.filter((c) => !CATEGORY_ORDER.includes(c) && c !== "other");
+    const other = present.includes("other") ? ["other"] : [];
+    return [...known, ...unknown, ...other];
+  }, [grouped]);
+
+  const heroChips = useMemo(() => {
+    return orderedCategories
+      .filter((cat) => PRIMARY_CATEGORIES.includes(cat))
+      .slice(0, 3)
+      .map((cat, i) => {
+        const config = CATEGORY_CONFIG[cat];
+        const Icon = config?.icon ?? Zap;
+        const trackNum = String(i + 1).padStart(2, "0");
+        return {
+          cat,
+          num: `Track ${trackNum}`,
+          tier: config?.trackLabel ?? cat,
+          title: config?.chipLabel ?? config?.title ?? cat,
+          icon: Icon,
+          anchor: `#section-${cat}`,
+        };
+      });
+  }, [orderedCategories]);
 
   const isLoading = loading && services.length === 0;
 
@@ -137,31 +302,29 @@ export default function Services() {
             </a>
           </div>
 
-          {/* Track overview chips */}
-          <div className="mt-12 grid grid-cols-1 sm:grid-cols-3 gap-4">
-            {[
-              { num: "Track 01", tier: "Entry", title: "Fixed-Price Quick Wins", icon: Zap, anchor: "#track-01" },
-              { num: "Track 02", tier: "Core", title: "Project-Based Engagements", icon: FolderOpen, anchor: "#track-02" },
-              { num: "Track 03", tier: "Strategic", title: "Fractional Architecture", icon: Calendar, anchor: "#track-03" },
-            ].map((t, i) => {
-              const Icon = t.icon;
-              return (
-                <a
-                  key={i}
-                  href={t.anchor}
-                  className="flex items-center gap-3 bg-white/5 border border-white/10 rounded-xl px-5 py-4 hover:bg-white/10 hover:border-white/20 transition-all group"
-                >
-                  <div className="w-9 h-9 rounded-lg bg-[#0078D4]/20 flex items-center justify-center flex-shrink-0">
-                    <Icon className="w-4 h-4 text-[#00B4D8]" />
-                  </div>
-                  <div>
-                    <p className="text-[#0078D4]/60 text-[10px] font-bold uppercase tracking-[0.15em]">{t.num} · {t.tier}</p>
-                    <p className="text-white text-sm font-semibold leading-snug">{t.title}</p>
-                  </div>
-                </a>
-              );
-            })}
-          </div>
+          {/* Dynamic track overview chips */}
+          {heroChips.length > 0 && (
+            <div className="mt-12 grid grid-cols-1 sm:grid-cols-3 gap-4">
+              {heroChips.map((t) => {
+                const Icon = t.icon;
+                return (
+                  <a
+                    key={t.cat}
+                    href={t.anchor}
+                    className="flex items-center gap-3 bg-white/5 border border-white/10 rounded-xl px-5 py-4 hover:bg-white/10 hover:border-white/20 transition-all group"
+                  >
+                    <div className="w-9 h-9 rounded-lg bg-[#0078D4]/20 flex items-center justify-center flex-shrink-0">
+                      <Icon className="w-4 h-4 text-[#00B4D8]" />
+                    </div>
+                    <div>
+                      <p className="text-[#0078D4]/60 text-[10px] font-bold uppercase tracking-[0.15em]">{t.num} · {t.tier}</p>
+                      <p className="text-white text-sm font-semibold leading-snug">{t.title}</p>
+                    </div>
+                  </a>
+                );
+              })}
+            </div>
+          )}
         </div>
       </section>
 
@@ -195,7 +358,7 @@ export default function Services() {
         </div>
       </section>
 
-      {/* Three Track Sections */}
+      {/* Dynamic Service Sections */}
       {isLoading ? (
         <div className="bg-[#F7F9FC]">
           <ServicesSkeleton />
@@ -206,111 +369,102 @@ export default function Services() {
         <section className="py-20">
           <div className="max-w-[1200px] mx-auto px-6 text-center">
             <p className="text-muted-foreground text-sm">
-              Services are temporarily unavailable. <Link href="/book" className="text-[#0078D4] hover:underline">Book a call</Link> directly.
+              Services are temporarily unavailable.{" "}
+              <Link href="/book" className="text-[#0078D4] hover:underline">Book a call</Link> directly.
             </p>
           </div>
         </section>
       ) : (
         <div className="bg-[#F7F9FC]">
-          {/* Track 01 — Quick Wins */}
-          <div id="track-01">
-            <TrackSection
-              trackNumber="Track 01"
-              trackLabel="Entry Tier"
-              title="Fixed-Price Quick Wins"
-              description="Scoped deliverables with a defined price, a defined output, and a defined turnaround. No discovery call required — pick the package that matches your need and get in the queue."
-              accent="text-emerald-700"
-              isEmpty={microOffers.length === 0}
-              headerExtra={
-                <div className="space-y-4">
-                  <div className="rounded-lg bg-emerald-50 border border-emerald-200 px-5 py-4">
-                    <p className="text-sm font-semibold text-emerald-800 mb-1">Quick Win Strategy</p>
-                    <p className="text-sm text-emerald-700 leading-relaxed">
-                      Most clients begin with an entry-point engagement before moving into deeper governance or fractional architecture.
-                      {entryOffers.length > 0 && (
-                        <> The current entry-point {entryOffers.length === 1 ? "offer is" : "offers are"}{" "}
-                          <span className="font-semibold">
-                            {entryOffers.map((o, i) => (
-                              <span key={o.id}>
-                                {i > 0 && i < entryOffers.length - 1 ? ", " : ""}
-                                {i > 0 && i === entryOffers.length - 1 ? " and " : ""}
-                                {o.name}
-                              </span>
-                            ))}
-                          </span>.
-                        </>
-                      )}
+          {orderedCategories.map((cat, sectionIndex) => {
+            const items = grouped[cat] ?? [];
+            if (items.length === 0) return null;
+
+            const config = CATEGORY_CONFIG[cat];
+            const trackNum = String(sectionIndex + 1).padStart(2, "0");
+            const title = config?.title ?? cat;
+            const description = config?.description ?? "";
+            const trackLabel = config?.trackLabel ?? cat;
+            const accent = config?.accent ?? "text-[#0078D4]";
+            const cardType: CardType = config?.cardType ?? "offer";
+
+            const isMicroOffer = cat === "micro_offer" || cat === "quick-win";
+            const isRetainer = cat === "retainer";
+
+            const entryItems = isMicroOffer ? items.filter((s) => s.tier === "Entry") : [];
+
+            return (
+              <TrackSection
+                key={cat}
+                anchorId={`section-${cat}`}
+                trackNumber={`Track ${trackNum}`}
+                trackLabel={trackLabel}
+                title={title}
+                description={description}
+                accent={accent}
+                isEmpty={false}
+                headerExtra={
+                  isMicroOffer ? (
+                    <div className="space-y-4">
+                      <div className="rounded-lg bg-emerald-50 border border-emerald-200 px-5 py-4">
+                        <p className="text-sm font-semibold text-emerald-800 mb-1">Quick Win Strategy</p>
+                        <p className="text-sm text-emerald-700 leading-relaxed">
+                          Most clients begin with an entry-point engagement before moving into deeper governance or fractional architecture.
+                          {entryItems.length > 0 && (
+                            <> The current entry-point {entryItems.length === 1 ? "offer is" : "offers are"}{" "}
+                              <span className="font-semibold">
+                                {entryItems.map((o, i) => (
+                                  <span key={o.id}>
+                                    {i > 0 && i < entryItems.length - 1 ? ", " : ""}
+                                    {i > 0 && i === entryItems.length - 1 ? " and " : ""}
+                                    {o.name}
+                                  </span>
+                                ))}
+                              </span>.
+                            </>
+                          )}
+                        </p>
+                      </div>
+                      <p className="text-sm text-muted-foreground italic">
+                        Early clients may receive discounted entry-point engagements in exchange for a testimonial or case study.
+                      </p>
+                    </div>
+                  ) : cat === "project" ? (
+                    <p className="text-sm text-muted-foreground leading-relaxed border-l-2 border-[#0078D4]/40 pl-4">
+                      Track 02 projects are always triggered by Track 01 Quick Wins. Each project is scoped only after the initial assessment is complete.
                     </p>
-                  </div>
-                  <p className="text-sm text-muted-foreground italic">
-                    Early clients may receive discounted entry-point engagements in exchange for a testimonial or case study.
-                  </p>
-                </div>
-              }
-            >
-              {microOffers.map((s, i) => (
-                <OfferCard
-                  key={s.slug ?? s.id}
-                  offer={s}
-                  index={i}
-                />
-              ))}
-            </TrackSection>
-          </div>
-
-          {/* Track 02 — Project-Based Engagements */}
-          <div id="track-02">
-            <TrackSection
-              trackNumber="Track 02"
-              trackLabel="Core Tier"
-              title="Project-Based Engagements"
-              description="For larger, multi-phase work — tenant migrations, full governance overhauls, Copilot deployment programs, intranet builds. Priced as a fixed project after a free scoping call."
-              accent="text-[#0078D4]"
-              isEmpty={visibleProjects.length === 0 && !projectsLoading}
-              headerExtra={
-                <p className="text-sm text-muted-foreground leading-relaxed border-l-2 border-[#0078D4]/40 pl-4">
-                  Track 02 projects are always triggered by Track 01 Quick Wins. Each project is scoped only after the initial assessment is complete.
-                </p>
-              }
-            >
-              {projectsLoading
-                ? [...Array(3)].map((_, i) => (
-                    <div key={i} className="bg-white rounded-xl border border-border p-6 h-48 animate-pulse" />
-                  ))
-                : visibleProjects.map((p, i) => <EngagementProjectCard key={p.id} project={p} index={i} />)
-              }
-            </TrackSection>
-          </div>
-
-          {/* Track 03 — Fractional Architecture */}
-          <div id="track-03">
-            <TrackSection
-              trackNumber="Track 03"
-              trackLabel="Strategic Tier"
-              title="Monthly Fractional Architecture Retainer"
-              description="Consistent, predictable access to Shane's expertise every month — for architecture reviews, ongoing governance, strategic planning, or Copilot rollout support. Cancel with 30 days' notice."
-              accent="text-[#00B4D8]"
-              isEmpty={retainers.length === 0}
-              headerExtra={
-                <p className="text-sm text-muted-foreground leading-relaxed">
-                  Fractional architecture is offered in structured tiers so organizations can choose advisory, execution, or embedded leadership based on their needs.
-                </p>
-              }
-              footerExtra={
-                <p className="text-sm text-muted-foreground text-center italic">
-                  A minimum 3-month commitment is recommended for best results.
-                </p>
-              }
-            >
-              {retainers.map((tier, i) => (
-                <RetainerCard
-                  key={tier.slug ?? tier.id}
-                  plan={tier}
-                  index={i}
-                />
-              ))}
-            </TrackSection>
-          </div>
+                  ) : isRetainer ? (
+                    <p className="text-sm text-muted-foreground leading-relaxed">
+                      Fractional architecture is offered in structured tiers so organizations can choose advisory, execution, or embedded leadership based on their needs.
+                    </p>
+                  ) : undefined
+                }
+                footerExtra={
+                  isRetainer ? (
+                    <p className="text-sm text-muted-foreground text-center italic">
+                      A minimum 3-month commitment is recommended for best results.
+                    </p>
+                  ) : undefined
+                }
+              >
+                {cardType === "retainer"
+                  ? items.map((plan, i) => (
+                      <RetainerCard key={plan.slug ?? plan.id} plan={plan} index={i} />
+                    ))
+                  : cardType === "project"
+                  ? items.map((svc, i) => (
+                      <EngagementProjectCard
+                        key={svc.id}
+                        project={serviceToEngagementProject(svc)}
+                        index={i}
+                      />
+                    ))
+                  : items.map((svc, i) => (
+                      <OfferCard key={svc.slug ?? svc.id} offer={svc} index={i} />
+                    ))}
+              </TrackSection>
+            );
+          })}
         </div>
       )}
 

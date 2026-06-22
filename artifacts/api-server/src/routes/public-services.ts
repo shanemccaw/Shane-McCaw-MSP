@@ -10,10 +10,13 @@ const router: IRouter = Router();
 
 router.get("/services", async (req: Request, res: Response) => {
   try {
-    const { type } = req.query as { type?: string };
+    const { type, category } = req.query as { type?: string; category?: string };
     const conditions = [eq(servicesTable.isPublic, true)];
     if (type) {
       conditions.push(eq(servicesTable.serviceType, type));
+    }
+    if (category) {
+      conditions.push(eq(servicesTable.category, category));
     }
     const services = await db
       .select()
@@ -52,13 +55,17 @@ router.get("/services", async (req: Request, res: Response) => {
     }
 
     res.json(
-      services.map((s) => ({
-        ...s,
-        hasPdf: s.overviewPdfKey != null,
-        workflowTasks: s.workflowTemplateId
+      services.map((s) => {
+        const wfSteps = s.workflowTemplateId
           ? (workflowTasksByTemplateId.get(s.workflowTemplateId) ?? [])
-          : [],
-      }))
+          : [];
+        return {
+          ...s,
+          hasPdf: s.overviewPdfKey != null,
+          workflowTasks: wfSteps,
+          workflowSummary: wfSteps.map(({ title, description }) => ({ title, description })),
+        };
+      })
     );
   } catch {
     res.status(500).json({ error: "Failed to fetch services" });

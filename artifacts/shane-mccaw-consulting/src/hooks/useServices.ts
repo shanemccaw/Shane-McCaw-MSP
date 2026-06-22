@@ -27,7 +27,10 @@ export interface PublicService {
   sortOrder: number;
   tier: string | null;
   hasPdf: boolean;
+  bestFor: string | null;
+  triggers: string[] | null;
   workflowTasks: { title: string; description: string | null; order: number }[];
+  workflowSummary: { title: string; description: string | null }[];
 }
 
 export function formatPrice(price: string | null): string | null {

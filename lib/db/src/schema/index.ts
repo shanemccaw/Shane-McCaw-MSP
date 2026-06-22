@@ -93,6 +93,9 @@ export const servicesTable = pgTable("services", {
   // Pre-generated service overview PDF (stored on disk under data/uploads/service-pdfs/)
   overviewPdfKey: text("overview_pdf_key"),
   overviewPdfGeneratedAt: timestamp("overview_pdf_generated_at"),
+  // Marketing / discovery fields
+  bestFor: text("best_for"),
+  triggers: jsonb("triggers").$type<string[]>(),
 });
 
 export type InsertService = typeof servicesTable.$inferInsert;
