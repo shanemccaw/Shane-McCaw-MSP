@@ -17,6 +17,7 @@ interface ProgressEvent {
   total: number;
   stepTitle: string;
   taskTitle: string;
+  subStep?: "instructions" | "checklist" | "outputs";
 }
 
 interface TaskDoneEvent {
@@ -55,6 +56,7 @@ interface DialogState {
   current: number;
   currentStepTitle: string;
   currentTaskTitle: string;
+  currentSubStep: "instructions" | "checklist" | "outputs" | null;
   log: LogEntry[];
   done: boolean;
   summary: { processed: number; setsCreated: number; failed: number } | null;
@@ -66,6 +68,7 @@ const INITIAL_STATE: DialogState = {
   current: 0,
   currentStepTitle: "",
   currentTaskTitle: "",
+  currentSubStep: null,
   log: [],
   done: false,
   summary: null,
@@ -137,6 +140,7 @@ export function GenerateAssetsDialog({ templateId, open, onClose }: GenerateAsse
                 current: evt.current,
                 currentStepTitle: evt.stepTitle,
                 currentTaskTitle: evt.taskTitle,
+                currentSubStep: evt.subStep ?? null,
               }));
             } else if (evt.type === "task_done") {
               setState(s => ({
@@ -226,13 +230,29 @@ export function GenerateAssetsDialog({ templateId, open, onClose }: GenerateAsse
 
           {/* ── Current task ── */}
           {!state.done && state.total > 0 && (state.currentStepTitle || state.currentTaskTitle) && (
-            <div className="rounded-lg bg-purple-50 border border-purple-100 px-3 py-2.5 space-y-0.5">
-              <p className="text-[10px] font-bold uppercase tracking-wide text-purple-400">Now generating</p>
+            <div className="rounded-lg bg-purple-50 border border-purple-100 px-3 py-2.5 space-y-1">
+              <div className="flex items-center justify-between">
+                <p className="text-[10px] font-bold uppercase tracking-wide text-purple-400">Now generating</p>
+                {state.currentSubStep && (
+                  <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-purple-100 text-purple-600 uppercase tracking-wide">
+                    {state.currentSubStep === "instructions" && "Step 1 · Instructions"}
+                    {state.currentSubStep === "checklist" && "Step 2 · Checklist"}
+                    {state.currentSubStep === "outputs" && "Step 3 · Artifacts & Deliverables"}
+                  </span>
+                )}
+              </div>
               {state.currentStepTitle && (
                 <p className="text-xs text-purple-600 font-medium leading-snug">{state.currentStepTitle}</p>
               )}
               {state.currentTaskTitle && (
                 <p className="text-sm text-purple-900 font-semibold leading-snug">{state.currentTaskTitle}</p>
+              )}
+              {state.currentSubStep && (
+                <p className="text-[11px] text-purple-500 leading-snug">
+                  {state.currentSubStep === "instructions" && "Generating engineer instruction set…"}
+                  {state.currentSubStep === "checklist" && "Generating checklist from instruction set…"}
+                  {state.currentSubStep === "outputs" && "Inferring artifacts & deliverables from completed work…"}
+                </p>
               )}
             </div>
           )}

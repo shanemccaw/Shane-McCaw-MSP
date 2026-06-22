@@ -312,73 +312,126 @@ router.delete("/admin/workflow-templates/:id/steps/:stepId/tasks/:taskId", requi
   }
 });
 
-// ─── AI: Generate asset sets for all tasks missing ≥1 FK ──────────────────────
+// ─── AI: Generate asset sets — 3-step pipeline ────────────────────────────────
 
-async function generateAssetSetsForTask(opts: {
+function parseJsonText(text: string): unknown {
+  const raw = text.trim().replace(/^```json?\s*/i, "").replace(/\s*```$/, "");
+  return JSON.parse(raw);
+}
+
+async function generateInstructionSet(opts: {
   templateName: string;
   stepTitle: string;
   taskTitle: string;
-}): Promise<{
-  instructionSet: string[];
-  checklist: Array<{ id: string; label: string }>;
-  artifactSet: string[];
-  deliverableSet: string[];
-} | null> {
+}): Promise<string[]> {
   const { templateName, stepTitle, taskTitle } = opts;
-
-  const systemPrompt = `You are an expert Microsoft 365 consulting workflow designer. You always respond with valid JSON only — no markdown fences, no explanation, no preamble. Your output must be a single JSON object with exactly these four keys:
-{
-  "instructionSet": ["string", ...],
-  "checklist": [{"id": "item-1", "label": "string"}, ...],
-  "artifactSet": ["string", ...],
-  "deliverableSet": ["string", ...]
-}`;
-
-  const userPrompt = `Generate asset set content for this workflow task:
-
-Workflow Template: "${templateName}"
-Step: "${stepTitle}"
-Task: "${taskTitle}"
-
-Rules:
-- "instructionSet": 5-8 concise engineer action strings (imperative, present tense)
-- "checklist": 4-6 objects, each with a unique "id" (e.g. "item-1") and "label" (what the engineer verifies before marking done)
-- "artifactSet": 2-4 strings naming internal work products produced
-- "deliverableSet": 1-3 strings naming client-facing deliverables
-
-Keep content specific to Microsoft 365 / "${templateName}" context.`;
-
   try {
     const msg = await anthropic.messages.create({
       model: "claude-haiku-4-5",
-      max_tokens: 1024,
-      system: systemPrompt,
-      messages: [{ role: "user", content: userPrompt }],
+      max_tokens: 512,
+      system: `You are an expert Microsoft 365 consulting workflow designer. Respond with valid JSON only — no markdown, no preamble. Output: {"instructionSet": ["string", ...]}`,
+      messages: [{
+        role: "user",
+        content: `Generate the engineer instruction set for this task:
+Workflow: "${templateName}"
+Step: "${stepTitle}"
+Task: "${taskTitle}"
+Rules:
+- 5-8 concise engineer action strings (imperative, present tense)
+- Specific to the Microsoft 365 / "${templateName}" context`,
+      }],
     });
-
     const block = msg.content[0];
-    if (!block || block.type !== "text") return null;
+    if (!block || block.type !== "text") return [];
+    const parsed = parseJsonText(block.text) as { instructionSet?: unknown };
+    return Array.isArray(parsed.instructionSet)
+      ? parsed.instructionSet.filter((s): s is string => typeof s === "string")
+      : [];
+  } catch (err) {
+    logger.warn({ err }, "generate-asset-sets: instruction set AI call failed");
+    return [];
+  }
+}
 
-    const raw = block.text.trim().replace(/^```json?\s*/i, "").replace(/\s*```$/, "");
-    const parsed = JSON.parse(raw) as {
-      instructionSet?: unknown;
-      checklist?: unknown;
-      artifactSet?: unknown;
-      deliverableSet?: unknown;
-    };
+async function generateChecklist(opts: {
+  templateName: string;
+  stepTitle: string;
+  taskTitle: string;
+  instructions: string[];
+}): Promise<Array<{ id: string; label: string }>> {
+  const { templateName, stepTitle, taskTitle, instructions } = opts;
+  const instructionList = instructions.map((s, i) => `${i + 1}. ${s}`).join("\n");
+  try {
+    const msg = await anthropic.messages.create({
+      model: "claude-haiku-4-5",
+      max_tokens: 512,
+      system: `You are an expert Microsoft 365 consulting workflow designer. Respond with valid JSON only — no markdown, no preamble. Output: {"checklist": [{"id": "item-1", "label": "string"}, ...]}`,
+      messages: [{
+        role: "user",
+        content: `Generate a pre-completion checklist for this task, derived directly from its instruction set.
+Workflow: "${templateName}"
+Step: "${stepTitle}"
+Task: "${taskTitle}"
+Instruction Set (what the engineer will do):
+${instructionList}
+Rules:
+- 4-6 checklist items the engineer verifies before marking the task done
+- Each item should map to one or more of the instructions above
+- Label describes what was confirmed/checked, not what was done`,
+      }],
+    });
+    const block = msg.content[0];
+    if (!block || block.type !== "text") return [];
+    const parsed = parseJsonText(block.text) as { checklist?: unknown };
+    return Array.isArray(parsed.checklist)
+      ? parsed.checklist.filter(
+          (it): it is { id: string; label: string } =>
+            typeof it === "object" && it !== null && "id" in it && "label" in it &&
+            typeof (it as Record<string, unknown>).id === "string" &&
+            typeof (it as Record<string, unknown>).label === "string"
+        )
+      : [];
+  } catch (err) {
+    logger.warn({ err }, "generate-asset-sets: checklist AI call failed");
+    return [];
+  }
+}
 
+async function generateOutputSets(opts: {
+  templateName: string;
+  stepTitle: string;
+  taskTitle: string;
+  instructions: string[];
+  checklist: Array<{ id: string; label: string }>;
+}): Promise<{ artifactSet: string[]; deliverableSet: string[] }> {
+  const { templateName, stepTitle, taskTitle, instructions, checklist } = opts;
+  const instructionList = instructions.map((s, i) => `${i + 1}. ${s}`).join("\n");
+  const checklistList = checklist.map(c => `- ${c.label}`).join("\n");
+  try {
+    const msg = await anthropic.messages.create({
+      model: "claude-haiku-4-5",
+      max_tokens: 512,
+      system: `You are an expert Microsoft 365 consulting workflow designer. Respond with valid JSON only — no markdown, no preamble. Output: {"artifactSet": ["string", ...], "deliverableSet": ["string", ...]}`,
+      messages: [{
+        role: "user",
+        content: `Based on this completed workflow task, determine what would be produced.
+Workflow: "${templateName}"
+Step: "${stepTitle}"
+Task: "${taskTitle}"
+Instructions (what the engineer does):
+${instructionList}
+Checklist (what was verified):
+${checklistList}
+Rules:
+- "artifactSet": 2-4 internal work products the engineer produces (e.g. configuration export, audit report, test results, script, diagram)
+- "deliverableSet": 1-3 client-facing outputs the customer receives (e.g. governance playbook, readiness report, configured environment access)
+- Be specific to this task, not generic`,
+      }],
+    });
+    const block = msg.content[0];
+    if (!block || block.type !== "text") return { artifactSet: [], deliverableSet: [] };
+    const parsed = parseJsonText(block.text) as { artifactSet?: unknown; deliverableSet?: unknown };
     return {
-      instructionSet: Array.isArray(parsed.instructionSet)
-        ? parsed.instructionSet.filter((s): s is string => typeof s === "string")
-        : [],
-      checklist: Array.isArray(parsed.checklist)
-        ? parsed.checklist.filter(
-            (it): it is { id: string; label: string } =>
-              typeof it === "object" && it !== null && "id" in it && "label" in it &&
-              typeof (it as Record<string, unknown>).id === "string" &&
-              typeof (it as Record<string, unknown>).label === "string"
-          )
-        : [],
       artifactSet: Array.isArray(parsed.artifactSet)
         ? parsed.artifactSet.filter((s): s is string => typeof s === "string")
         : [],
@@ -387,8 +440,8 @@ Keep content specific to Microsoft 365 / "${templateName}" context.`;
         : [],
     };
   } catch (err) {
-    logger.warn({ err }, "generate-asset-sets: AI call failed for task");
-    return null;
+    logger.warn({ err }, "generate-asset-sets: outputs AI call failed");
+    return { artifactSet: [], deliverableSet: [] };
   }
 }
 
@@ -488,30 +541,11 @@ router.post("/admin/workflow-templates/:id/generate-asset-sets", requireAdmin, a
     let failed = 0;
     const total = incompleteTasks.length;
 
-    // 8. Process each incomplete task sequentially
+    // 8. Process each incomplete task sequentially — 3-step pipeline per task
     for (let i = 0; i < incompleteTasks.length; i++) {
       const task = incompleteTasks[i]!;
       const step = task.workflowTemplateStepId != null ? stepMap.get(task.workflowTemplateStepId) : null;
       const stepTitle = step?.title ?? "Unknown Step";
-
-      // Emit progress event before starting this task
-      if (acceptsSSE) {
-        sendSSE({ type: "progress", current: i, total, stepTitle, taskTitle: task.title });
-      }
-
-      const aiResult = await generateAssetSetsForTask({
-        templateName: template.name,
-        stepTitle,
-        taskTitle: task.title,
-      });
-
-      if (!aiResult) {
-        failed++;
-        if (acceptsSSE) {
-          sendSSE({ type: "task_done", current: i + 1, total, stepTitle, taskTitle: task.title, setsCreated: 0, failed: true });
-        }
-        continue;
-      }
 
       const updates: {
         instructionSetId?: number;
@@ -519,39 +553,78 @@ router.post("/admin/workflow-templates/:id/generate-asset-sets", requireAdmin, a
         artifactsId?: number;
         deliverablesId?: number;
       } = {};
-
       let taskSetsCreated = 0;
 
-      if (task.instructionSetId == null && aiResult.instructionSet.length > 0) {
-        const [ins] = await db
-          .insert(instructionSetsTable)
-          .values({ title: `${task.title} — Instructions`, instructions: aiResult.instructionSet, category: categoryName })
-          .returning();
-        if (ins) { updates.instructionSetId = ins.id; setsCreated++; taskSetsCreated++; }
+      // ── Step 1: Instruction Set ──────────────────────────────────────────────
+      let instructions: string[] = [];
+      if (task.instructionSetId == null) {
+        if (acceptsSSE) {
+          sendSSE({ type: "progress", current: i, total, stepTitle, taskTitle: task.title, subStep: "instructions" });
+        }
+        instructions = await generateInstructionSet({ templateName: template.name, stepTitle, taskTitle: task.title });
+        if (instructions.length > 0) {
+          const [ins] = await db
+            .insert(instructionSetsTable)
+            .values({ title: `${task.title} — Instructions`, instructions, category: categoryName })
+            .returning();
+          if (ins) { updates.instructionSetId = ins.id; setsCreated++; taskSetsCreated++; }
+        }
+      } else {
+        // Fetch existing IS content so subsequent steps can use it as context
+        const [existing] = await db
+          .select()
+          .from(instructionSetsTable)
+          .where(eq(instructionSetsTable.id, task.instructionSetId))
+          .limit(1);
+        instructions = (existing?.instructions as string[] | null) ?? [];
       }
 
-      if (task.checklistId == null && aiResult.checklist.length > 0) {
-        const [chk] = await db
-          .insert(checklistsTable)
-          .values({ title: `${task.title} — Checklist`, items: aiResult.checklist, category: categoryName })
-          .returning();
-        if (chk) { updates.checklistId = chk.id; setsCreated++; taskSetsCreated++; }
+      // ── Step 2: Checklist (derived from Instruction Set) ────────────────────
+      let checklist: Array<{ id: string; label: string }> = [];
+      if (task.checklistId == null) {
+        if (acceptsSSE) {
+          sendSSE({ type: "progress", current: i, total, stepTitle, taskTitle: task.title, subStep: "checklist" });
+        }
+        checklist = await generateChecklist({ templateName: template.name, stepTitle, taskTitle: task.title, instructions });
+        if (checklist.length > 0) {
+          const [chk] = await db
+            .insert(checklistsTable)
+            .values({ title: `${task.title} — Checklist`, items: checklist, category: categoryName })
+            .returning();
+          if (chk) { updates.checklistId = chk.id; setsCreated++; taskSetsCreated++; }
+        }
+      } else {
+        // Fetch existing checklist content for context
+        const [existing] = await db
+          .select()
+          .from(checklistsTable)
+          .where(eq(checklistsTable.id, task.checklistId))
+          .limit(1);
+        checklist = (existing?.items as Array<{ id: string; label: string }> | null) ?? [];
       }
 
-      if (task.artifactsId == null && aiResult.artifactSet.length > 0) {
-        const [art] = await db
-          .insert(artifactSetsTable)
-          .values({ title: `${task.title} — Artifacts`, artifacts: aiResult.artifactSet, category: categoryName })
-          .returning();
-        if (art) { updates.artifactsId = art.id; setsCreated++; taskSetsCreated++; }
-      }
-
-      if (task.deliverablesId == null && aiResult.deliverableSet.length > 0) {
-        const [del] = await db
-          .insert(deliverableSetsTable)
-          .values({ title: `${task.title} — Deliverables`, deliverables: aiResult.deliverableSet, category: categoryName })
-          .returning();
-        if (del) { updates.deliverablesId = del.id; setsCreated++; taskSetsCreated++; }
+      // ── Step 3: Artifacts + Deliverables (derived from IS + Checklist) ──────
+      if (task.artifactsId == null || task.deliverablesId == null) {
+        if (acceptsSSE) {
+          sendSSE({ type: "progress", current: i, total, stepTitle, taskTitle: task.title, subStep: "outputs" });
+        }
+        const { artifactSet, deliverableSet } = await generateOutputSets({
+          templateName: template.name, stepTitle, taskTitle: task.title, instructions, checklist,
+        });
+        if (task.artifactsId == null && artifactSet.length > 0) {
+          const [art] = await db
+            .insert(artifactSetsTable)
+            .values({ title: `${task.title} — Artifacts`, artifacts: artifactSet, category: categoryName })
+            .returning();
+          if (art) { updates.artifactsId = art.id; setsCreated++; taskSetsCreated++; }
+        }
+        if (task.deliverablesId == null && deliverableSet.length > 0) {
+          const [del] = await db
+            .insert(deliverableSetsTable)
+            .values({ title: `${task.title} — Deliverables`, deliverables: deliverableSet, category: categoryName })
+            .returning();
+          if (del) { updates.deliverablesId = del.id; setsCreated++; taskSetsCreated++; }
+        }
       }
 
       if (Object.keys(updates).length > 0) {
@@ -562,9 +635,14 @@ router.post("/admin/workflow-templates/:id/generate-asset-sets", requireAdmin, a
       }
 
       processed++;
+      const taskFailed = taskSetsCreated === 0 && (
+        task.instructionSetId == null || task.checklistId == null ||
+        task.artifactsId == null || task.deliverablesId == null
+      );
+      if (taskFailed) failed++;
 
       if (acceptsSSE) {
-        sendSSE({ type: "task_done", current: i + 1, total, stepTitle, taskTitle: task.title, setsCreated: taskSetsCreated, failed: false });
+        sendSSE({ type: "task_done", current: i + 1, total, stepTitle, taskTitle: task.title, setsCreated: taskSetsCreated, failed: taskFailed });
       }
     }
 
