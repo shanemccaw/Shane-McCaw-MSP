@@ -214,16 +214,38 @@ export default function Contact() {
       />
       <section className="bg-[#0A2540] pt-32 pb-20">
         <div className="max-w-[1200px] mx-auto px-6">
-          <p className="text-[#0078D4] text-sm font-semibold uppercase tracking-[0.1em] mb-4">Get in Touch</p>
+          <p className="text-[#0078D4] text-sm font-semibold uppercase tracking-[0.1em] mb-4">Contact Shane McCaw</p>
           <h1 className="text-4xl md:text-5xl lg:text-6xl font-extrabold text-white leading-tight max-w-3xl">
-            Let's Talk Microsoft 365.
+            Get in Touch
           </h1>
           <p className="text-white/70 text-lg mt-6 max-w-2xl leading-relaxed">
             You're contacting the Lead M365 Architect at NASA — 30 years of Microsoft ecosystem experience, now available to mid&#8209;market and regulated&#8209;industry organizations.
           </p>
-          <p className="text-white/70 text-lg mt-4 max-w-xl leading-relaxed">
-            Tell me what you're dealing with and I'll give you a straight answer on whether and how I can help.
+          <p className="text-white/50 text-base mt-4 max-w-xl leading-relaxed">
+            Tell me what you're dealing with and you'll get a straight, senior&#8209;level answer on whether and how I can help — no fluff, no sales pitch.
           </p>
+        </div>
+      </section>
+
+      <section className="bg-white py-14 border-b border-border">
+        <div className="max-w-[1200px] mx-auto px-6">
+          <p className="text-[#0078D4] text-sm font-semibold uppercase tracking-[0.1em] mb-6">Who I Work With</p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            {[
+              { title: "Mid-Market Organizations", desc: "200–2,000 employees ready to modernize their Microsoft 365 environment at scale." },
+              { title: "Regulated Industries", desc: "Healthcare, finance, legal, and defense organizations with strict compliance requirements." },
+              { title: "Government Contractors", desc: "Teams preparing for CMMC, FedRAMP, ITAR, or other federal compliance frameworks." },
+              { title: "Scaling Startups", desc: "Fast-growing organizations building a Microsoft 365 foundation that can handle compliance from day one." },
+            ].map(({ title, desc }) => (
+              <div key={title} className="flex items-start gap-3 p-5 border border-border rounded-xl bg-[#F7F9FC]">
+                <div className="w-2 h-2 rounded-full bg-[#0078D4] mt-1.5 flex-shrink-0" />
+                <div>
+                  <p className="font-semibold text-[#0A2540] text-sm">{title}</p>
+                  <p className="text-muted-foreground text-xs mt-1 leading-relaxed">{desc}</p>
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
       </section>
 
@@ -233,8 +255,30 @@ export default function Contact() {
 
             {/* Chat */}
             <div className="lg:col-span-2 flex flex-col">
-              <p className="text-[#0A2540] text-sm font-medium mb-5">
-                I work with mid&#8209;market organizations (200–2,000 employees), regulated industries, government contractors, and startups scaling into compliance.
+
+              {/* Why People Contact Me */}
+              <div className="mb-6">
+                <h3 className="text-base font-bold text-[#0A2540] mb-3">Why People Contact Me</h3>
+                <ul className="space-y-2">
+                  {[
+                    "Planning a Microsoft 365 migration, consolidation, or tenant-to-tenant move",
+                    "Rolling out Copilot AI and need to get governance right before it becomes a liability",
+                    "SharePoint has become a mess — sprawl, stale content, broken governance",
+                    "Power Platform is growing ungoverned and nobody owns the strategy",
+                    "Preparing for CMMC, FedRAMP, HIPAA, SOC 2, or similar compliance",
+                    "Current Microsoft partner or consultant isn't delivering senior-level architecture thinking",
+                  ].map((reason) => (
+                    <li key={reason} className="flex items-start gap-2 text-sm text-[#0A2540]/80">
+                      <span className="text-[#0078D4] font-bold leading-5 flex-shrink-0">·</span>
+                      {reason}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+
+              {/* Micro-positioning */}
+              <p className="text-[#0A2540] text-sm font-medium border-l-4 border-[#0078D4] pl-4 py-1 mb-5">
+                You'll speak directly with me — no account managers, no junior staff, no outsourcing.
               </p>
 
               <div className="bg-white rounded-xl border border-border flex flex-col" style={{ minHeight: "520px" }}>
@@ -242,7 +286,7 @@ export default function Contact() {
                   <div className="w-8 h-8 rounded-full bg-[#0078D4] flex items-center justify-center text-white text-xs font-bold">AI</div>
                   <div>
                     <p className="text-sm font-semibold text-[#0A2540]">Shane's AI Assistant</p>
-                    <p className="text-xs text-muted-foreground">I'll gather your info so Shane can follow up personally</p>
+                    <p className="text-xs text-muted-foreground">Here to gather the details so Shane can follow up personally</p>
                   </div>
                   <span className="ml-auto flex items-center gap-1.5 text-xs text-emerald-600 font-medium">
                     <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
@@ -346,10 +390,6 @@ export default function Contact() {
 
             {/* Sidebar */}
             <div className="space-y-6">
-              <p className="text-[#0A2540] text-sm font-medium border-l-4 border-[#0078D4] pl-4 py-1">
-                You'll speak directly with me — no account managers, no junior staff.
-              </p>
-
               <div className="bg-white rounded-xl border border-border p-6">
                 <div className="flex items-start gap-3 mb-4">
                   <Clock className="w-5 h-5 text-[#0078D4] mt-0.5 flex-shrink-0" />
@@ -384,14 +424,29 @@ export default function Contact() {
               </div>
 
               <div className="bg-[#0078D4]/10 border border-[#0078D4]/30 rounded-xl p-6">
-                <h4 className="font-bold text-[#0A2540] mb-2">Prefer a call right now?</h4>
-                <p className="text-muted-foreground text-sm mb-4">Book a time directly on Shane's calendar for a free 30-minute discovery call.</p>
+                <h4 className="font-bold text-[#0A2540] mb-2">Prefer to skip the form?</h4>
+                <p className="text-muted-foreground text-sm mb-1">Book directly on my calendar.</p>
+                <p className="text-muted-foreground text-xs mb-4">You'll speak directly with me — no junior staff.</p>
                 <CTAButton href="/book" className="w-full justify-center text-sm" data-testid="contact-book-link">
                   Book a Free Call
                 </CTAButton>
               </div>
             </div>
           </div>
+        </div>
+      </section>
+      {/* Final CTA */}
+      <section className="bg-[#0A2540] py-20">
+        <div className="max-w-[1200px] mx-auto px-6 text-center">
+          <p className="text-white text-2xl md:text-3xl font-bold mb-4">
+            Your Microsoft 365 environment deserves senior expertise.
+          </p>
+          <p className="text-white/70 text-lg max-w-xl mx-auto mb-8">
+            Reach out and get clarity from someone who architects at NASA scale.
+          </p>
+          <CTAButton href="/book">
+            Book a Free Call
+          </CTAButton>
         </div>
       </section>
     </Layout>
