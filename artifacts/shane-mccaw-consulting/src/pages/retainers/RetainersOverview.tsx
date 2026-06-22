@@ -1,4 +1,4 @@
-import { CheckCircle, Clock, ArrowRight, ChevronRight, Zap } from "lucide-react";
+import { CheckCircle, Clock, ArrowRight, ChevronRight, Zap, Minus } from "lucide-react";
 import { Link } from "wouter";
 import { Layout } from "@/components/Layout";
 import { SEOMeta } from "@/components/SEOMeta";
@@ -203,6 +203,146 @@ export default function RetainersOverview() {
                 </div>
               </div>
             ))}
+          </div>
+        </div>
+      </section>
+
+      {/* Feature comparison table */}
+      <section className="bg-white py-20 px-6">
+        <div className="max-w-[1000px] mx-auto">
+          <div className="text-center mb-12">
+            <h2 className="text-2xl md:text-3xl font-extrabold text-[#0A2540] mb-3">Compare plans at a glance</h2>
+            <p className="text-muted-foreground max-w-xl mx-auto">Every feature, side by side — so you can pick the tier that fits without reading each card twice.</p>
+          </div>
+
+          <div className="overflow-x-auto rounded-2xl border border-border shadow-sm">
+            <table className="w-full text-sm border-collapse">
+              <thead>
+                <tr>
+                  <th className="bg-[#F7F9FC] text-left px-6 py-4 font-semibold text-[#0A2540] w-[38%] border-b border-border">Feature</th>
+                  {/* Essentials */}
+                  <th className="bg-[#F7F9FC] text-center px-4 py-4 border-b border-border w-[20%]">
+                    <span className="block text-xs font-bold uppercase tracking-wider text-muted-foreground mb-1">Essentials</span>
+                    <span className="block text-xl font-extrabold text-[#0A2540]">$1,500<span className="text-sm font-normal text-muted-foreground">/mo</span></span>
+                  </th>
+                  {/* Growth – highlighted */}
+                  <th className="bg-[#0078D4]/5 text-center px-4 py-4 border-b border-[#0078D4]/30 w-[20%] relative">
+                    <span className="absolute -top-3.5 left-1/2 -translate-x-1/2 bg-[#0078D4] text-white text-[10px] font-bold uppercase tracking-wider px-3 py-1 rounded-full whitespace-nowrap">Most Popular</span>
+                    <span className="block text-xs font-bold uppercase tracking-wider text-[#0078D4] mb-1">Growth</span>
+                    <span className="block text-xl font-extrabold text-[#0A2540]">$3,000<span className="text-sm font-normal text-muted-foreground">/mo</span></span>
+                  </th>
+                  {/* Enterprise */}
+                  <th className="bg-[#F7F9FC] text-center px-4 py-4 border-b border-border w-[22%]">
+                    <span className="block text-xs font-bold uppercase tracking-wider text-muted-foreground mb-1">Enterprise</span>
+                    <span className="block text-xl font-extrabold text-[#0A2540]">$6,000<span className="text-sm font-normal text-muted-foreground">/mo</span></span>
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {[
+                  {
+                    feature: "Hours / month",
+                    essentials: "10 hrs",
+                    growth: "25 hrs",
+                    enterprise: "60 hrs",
+                    type: "text",
+                  },
+                  {
+                    feature: "Response time",
+                    essentials: "1 business day",
+                    growth: "4 hours",
+                    enterprise: "Same day",
+                    type: "text",
+                  },
+                  {
+                    feature: "Strategy calls",
+                    essentials: "1 call / month",
+                    growth: "2 calls / month",
+                    enterprise: "Weekly",
+                    type: "text",
+                  },
+                  {
+                    feature: "Proactive tenant monitoring",
+                    essentials: false,
+                    growth: true,
+                    enterprise: true,
+                    type: "bool",
+                  },
+                  {
+                    feature: "Dedicated Slack / Teams channel",
+                    essentials: false,
+                    growth: false,
+                    enterprise: true,
+                    type: "bool",
+                  },
+                  {
+                    feature: "Quarterly executive briefing",
+                    essentials: false,
+                    growth: false,
+                    enterprise: true,
+                    type: "bool",
+                  },
+                  {
+                    feature: "Monthly written summary",
+                    essentials: true,
+                    growth: true,
+                    enterprise: true,
+                    type: "bool",
+                  },
+                  {
+                    feature: "Full M365 service area access",
+                    essentials: true,
+                    growth: true,
+                    enterprise: true,
+                    type: "bool",
+                  },
+                ].map((row, i) => (
+                  <tr key={row.feature} className={i % 2 === 0 ? "bg-white" : "bg-[#F7F9FC]/50"}>
+                    <td className="px-6 py-4 font-medium text-[#0A2540] border-b border-border/60">{row.feature}</td>
+                    <td className="px-4 py-4 text-center border-b border-border/60">
+                      {row.type === "bool"
+                        ? row.essentials
+                          ? <CheckCircle className="w-5 h-5 text-[#0078D4] mx-auto" />
+                          : <Minus className="w-4 h-4 text-muted-foreground/40 mx-auto" />
+                        : <span className="text-foreground/80 text-xs font-medium">{row.essentials as string}</span>}
+                    </td>
+                    <td className="px-4 py-4 text-center bg-[#0078D4]/5 border-b border-[#0078D4]/15">
+                      {row.type === "bool"
+                        ? row.growth
+                          ? <CheckCircle className="w-5 h-5 text-[#0078D4] mx-auto" />
+                          : <Minus className="w-4 h-4 text-muted-foreground/40 mx-auto" />
+                        : <span className="text-[#0078D4] text-xs font-bold">{row.growth as string}</span>}
+                    </td>
+                    <td className="px-4 py-4 text-center border-b border-border/60">
+                      {row.type === "bool"
+                        ? row.enterprise
+                          ? <CheckCircle className="w-5 h-5 text-[#0078D4] mx-auto" />
+                          : <Minus className="w-4 h-4 text-muted-foreground/40 mx-auto" />
+                        : <span className="text-foreground/80 text-xs font-medium">{row.enterprise as string}</span>}
+                    </td>
+                  </tr>
+                ))}
+                {/* CTA row */}
+                <tr className="bg-white">
+                  <td className="px-6 py-5 text-muted-foreground text-xs italic">All plans: no minimum term · cancel with 30 days' notice</td>
+                  <td className="px-4 py-5 text-center">
+                    <Link href="/book?plan=architect-essentials" className="inline-flex items-center justify-center gap-1 text-xs font-bold text-[#0078D4] hover:text-[#005A9E] transition-colors">
+                      Get started <ArrowRight className="w-3 h-3" />
+                    </Link>
+                  </td>
+                  <td className="px-4 py-5 text-center bg-[#0078D4]/5">
+                    <Link href="/book?plan=architect-growth" className="inline-flex items-center justify-center gap-1 text-xs font-bold text-white bg-[#0078D4] hover:bg-[#005A9E] transition-colors px-3 py-1.5 rounded-full">
+                      Get started <ArrowRight className="w-3 h-3" />
+                    </Link>
+                  </td>
+                  <td className="px-4 py-5 text-center">
+                    <Link href="/book?plan=architect-enterprise" className="inline-flex items-center justify-center gap-1 text-xs font-bold text-[#0078D4] hover:text-[#005A9E] transition-colors">
+                      Get started <ArrowRight className="w-3 h-3" />
+                    </Link>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
           </div>
         </div>
       </section>
