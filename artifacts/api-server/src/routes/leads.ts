@@ -57,17 +57,11 @@ router.post("/leads", async (req: Request, res: Response) => {
     const trimmedName = name.trim();
     const trimmedEmail = email.toLowerCase().trim();
     const serviceName = serviceArea ?? "M365 Governance";
-    try {
-      await sendEmailOrThrow(
-        trimmedEmail,
-        `Your ${serviceName} Overview Request — Shane McCaw Consulting`,
-        serviceOverviewConfirmationEmail({ name: trimmedName, serviceName }),
-      );
-    } catch (err) {
-      req.log.error({ err }, "Failed to send service overview confirmation email");
-      res.status(503).json({ error: "Could not send confirmation email. Please try again or email info@shanemccaw.com directly." });
-      return;
-    }
+    void sendEmail(
+      trimmedEmail,
+      `Your ${serviceName} Overview Request — Shane McCaw Consulting`,
+      serviceOverviewConfirmationEmail({ name: trimmedName, serviceName }),
+    );
     void sendEmail(
       adminEmail,
       `New service overview request from ${trimmedName} — ${company ?? ""}`,
