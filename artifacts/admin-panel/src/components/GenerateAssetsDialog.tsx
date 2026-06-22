@@ -202,7 +202,7 @@ export function GenerateAssetsDialog({ templateId, open, onClose }: GenerateAsse
       }}
     >
       <DialogContent
-        className="max-w-lg w-full"
+        className="max-w-2xl w-full"
         closeDisabled={!state.done}
         onPointerDownOutside={e => { if (!state.done) e.preventDefault(); }}
         onEscapeKeyDown={e => { if (!state.done) e.preventDefault(); }}
@@ -290,13 +290,15 @@ export function GenerateAssetsDialog({ templateId, open, onClose }: GenerateAsse
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                     </svg>
                   )}
-                  <div className="min-w-0 flex-1">
+                  <div className="min-w-0 flex-1 overflow-hidden">
                     <span className="font-medium truncate block">{entry.taskTitle}</span>
-                    <span className="text-gray-400">{entry.stepTitle}</span>
-                    {!entry.failed && entry.setsCreated > 0 && (
-                      <span className="ml-1 text-green-600">· {entry.setsCreated} set{entry.setsCreated === 1 ? "" : "s"} created</span>
-                    )}
-                    {entry.failed && <span className="ml-1">— AI generation failed</span>}
+                    <div className="flex items-center gap-1 flex-wrap mt-0.5">
+                      <span className="text-gray-400 truncate">{entry.stepTitle}</span>
+                      {!entry.failed && entry.setsCreated > 0 && (
+                        <span className="flex-shrink-0 text-green-600">· {entry.setsCreated} set{entry.setsCreated === 1 ? "" : "s"} created</span>
+                      )}
+                      {entry.failed && <span className="flex-shrink-0 text-red-500">— AI generation failed</span>}
+                    </div>
                   </div>
                 </div>
               ))}
