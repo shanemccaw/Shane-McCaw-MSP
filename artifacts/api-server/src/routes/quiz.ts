@@ -273,12 +273,12 @@ const SCORING_CONFIGS: Record<string, ScoringConfig> = {
     pdfFilename: "power-platform-assessment-report.pdf",
   },
   security: {
-    categories: `- identityAccess: MFA coverage, Conditional Access policies, admin role hygiene, access controls beyond basic authentication
-- dataProtection: Sensitivity label deployment, DLP policy configuration, protection against data exfiltration
-- deviceManagement: Intune/MDM enrollment, device compliance policies, App Protection Policies, remote wipe capability
-- threatDetection: Microsoft Secure Score engagement, Defender for Office 365 configuration, anti-phishing policies
-- compliancePolicy: Applicable regulatory frameworks, Purview compliance control configuration, incident response readiness`,
-    categoryKeys: "identityAccess, dataProtection, deviceManagement, threatDetection, compliancePolicy",
+    categories: `- identityAccess: MFA coverage, Conditional Access policy breadth and enforcement, Entra ID configuration, privileged identity management and just-in-time access
+- dataProtection: Sensitivity label deployment and coverage, DLP policy configuration and enforcement, information protection maturity, data classification practices
+- insiderRiskCompliance: Insider Risk Manager policy deployment, Communication Compliance configuration, Compliance Manager usage and improvement score, compliance posture
+- auditEDiscovery: Audit log retention configuration, eDiscovery readiness and tested capability, Content Search usage, audit log review processes
+- regulatoryReadiness: Applicable regulatory framework mapping (HIPAA, CMMC, FedRAMP, SOX, GDPR, NIST), Purview compliance control configuration, audit readiness posture`,
+    categoryKeys: "identityAccess, dataProtection, insiderRiskCompliance, auditEDiscovery, regulatoryReadiness",
     services: `- "Governance Foundations Package" — for organisations with significant security and compliance gaps requiring a full governance framework
 - "M365 Tenant Health Audit" — for organisations needing a comprehensive tenant-wide security and configuration review
 - "Copilot for M365 Readiness Assessment" — for mature, secure environments ready to deploy Copilot safely`,

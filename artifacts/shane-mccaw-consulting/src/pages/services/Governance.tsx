@@ -522,18 +522,31 @@ export default function Governance() {
         </div>
       </section>
 
-      {/* ── ASSESSMENT CTA ───────────────────────────────────────────────── */}
+      {/* ── ASSESSMENT CTAS ──────────────────────────────────────────────── */}
       <section className="bg-[#F7F9FC] py-16">
-        <div className="max-w-[1200px] mx-auto px-6">
+        <div className="max-w-[1200px] mx-auto px-6 space-y-4">
           <div className="bg-white border border-border rounded-2xl p-8 md:p-12 flex flex-col md:flex-row items-center gap-8">
             <div className="flex-1">
               <p className="text-[#0078D4] text-xs font-semibold uppercase tracking-widest mb-2">Free · 5 Minutes</p>
               <h3 className="text-2xl font-extrabold text-[#0A2540] mb-3">Governance Maturity Assessment</h3>
               <p className="text-muted-foreground leading-relaxed">
-                Benchmark your M365 governance posture across policy, lifecycle management, data protection, and compliance — get a free PDF report instantly.
+                Benchmark your M365 governance posture across DLP, sensitivity labels, retention, access governance, and compliance framework readiness — get a free PDF report instantly.
               </p>
             </div>
             <a href="/governance-maturity-quiz"
+              className="flex-shrink-0 inline-flex items-center gap-2 bg-[#0078D4] hover:bg-[#0078D4]/90 text-white font-bold px-8 py-4 rounded-xl transition-colors text-base">
+              Take the Free Assessment
+            </a>
+          </div>
+          <div className="bg-white border border-border rounded-2xl p-8 md:p-12 flex flex-col md:flex-row items-center gap-8">
+            <div className="flex-1">
+              <p className="text-[#0078D4] text-xs font-semibold uppercase tracking-widest mb-2">Free · 5 Minutes</p>
+              <h3 className="text-2xl font-extrabold text-[#0A2540] mb-3">Security & Compliance Maturity Assessment</h3>
+              <p className="text-muted-foreground leading-relaxed">
+                Evaluate your identity & access controls, data protection, Insider Risk posture, audit & eDiscovery readiness, and regulatory framework alignment.
+              </p>
+            </div>
+            <a href="/security-compliance-quiz"
               className="flex-shrink-0 inline-flex items-center gap-2 bg-[#0078D4] hover:bg-[#0078D4]/90 text-white font-bold px-8 py-4 rounded-xl transition-colors text-base">
               Take the Free Assessment
             </a>

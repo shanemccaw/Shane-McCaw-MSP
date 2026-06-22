@@ -75,7 +75,7 @@ function Router() {
       <Route path="/copilot-quiz" component={CopilotQuiz} />
       <Route path="/m365-health-quiz" component={M365HealthQuiz} />
       <Route path="/sharepoint-readiness-quiz" component={SharePointQuiz} />
-      <Route path="/power-platform-readiness-quiz" component={PowerPlatformQuiz} />
+      <Route path="/power-platform-quiz" component={PowerPlatformQuiz} />
       <Route path="/security-compliance-quiz" component={SecurityQuiz} />
       <Route path="/teams-maturity-quiz" component={TeamsQuiz} />
       <Route path="/migration-readiness-quiz" component={MigrationQuiz} />

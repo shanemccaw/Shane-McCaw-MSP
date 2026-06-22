@@ -309,7 +309,7 @@ export default function Resources() {
                 badge: null,
               },
               {
-                href: "/power-platform-readiness-quiz",
+                href: "/power-platform-quiz",
                 title: "Power Platform Maturity",
                 description: "Measure your Power Platform governance, maker skills, data connectivity, automation maturity, and AI Builder readiness.",
                 badge: null,
