@@ -4,7 +4,7 @@ import {
   Menu, X, Rocket, ChevronDown,
   LayoutGrid, Building2, GraduationCap, Sparkles, FolderOpen, Zap,
   Shield, ShieldCheck, Cloud, Activity, ArrowLeftRight, Users,
-  Star, TrendingUp, Award, BookOpen, FileText, FileCode, Wrench,
+  Star, TrendingUp, Award,
   Info, Tag, Mail, ScanSearch,
 } from "lucide-react";
 import { CTAButton } from "./CTAButton";
@@ -29,10 +29,6 @@ function getNavIcon(label: string): React.ReactNode {
   if (l.includes("growth"))                                   return <TrendingUp  className="w-5 h-5" aria-hidden="true" />;
   if (l.includes("enterprise"))                               return <Award       className="w-5 h-5" aria-hidden="true" />;
   if (l.includes("retainer") || l.includes("all ") || l.includes("overview") || l.includes("service")) return <LayoutGrid className="w-5 h-5" aria-hidden="true" />;
-  if (l.includes("article"))                                  return <FileText    className="w-5 h-5" aria-hidden="true" />;
-  if (l.includes("template"))                                 return <FileCode    className="w-5 h-5" aria-hidden="true" />;
-  if (l.includes("tool"))                                     return <Wrench      className="w-5 h-5" aria-hidden="true" />;
-  if (l.includes("library") || l.includes("resource"))       return <BookOpen    className="w-5 h-5" aria-hidden="true" />;
   if (l.includes("about"))                                    return <Info        className="w-5 h-5" aria-hidden="true" />;
   if (l.includes("pric"))                                     return <Tag         className="w-5 h-5" aria-hidden="true" />;
   if (l.includes("contact"))                                  return <Mail        className="w-5 h-5" aria-hidden="true" />;
@@ -85,13 +81,6 @@ const ASSESSMENTS_ITEMS: NavItem[] = withIcons([
   { label: "Governance Maturity Assessment",   href: "/governance-maturity-quiz" },
 ]);
 
-const RESOURCES_ITEMS: NavItem[] = withIcons([
-  { label: "Resource Library", href: "/resources" },
-  { label: "Articles",         href: "/resources" },
-  { label: "Templates",        href: "/resources" },
-  { label: "Tools",            href: "/resources" },
-]);
-
 const COMPANY_ITEMS: NavItem[] = withIcons([
   { label: "About",   href: "/about" },
   { label: "Pricing", href: "/pricing" },
@@ -99,7 +88,7 @@ const COMPANY_ITEMS: NavItem[] = withIcons([
 ]);
 
 // ─── Menu key type ─────────────────────────────────────────────────────────────
-type MenuKey = "services" | "microOffers" | "retainers" | "assessments" | "resources" | "company";
+type MenuKey = "services" | "microOffers" | "retainers" | "assessments" | "company";
 
 // ─── Dropdown trigger ──────────────────────────────────────────────────────────
 function DropdownTrigger({
@@ -219,7 +208,6 @@ export function Header() {
     microOffers: useRef<HTMLButtonElement>(null),
     retainers:   useRef<HTMLButtonElement>(null),
     assessments: useRef<HTMLButtonElement>(null),
-    resources:   useRef<HTMLButtonElement>(null),
     company:     useRef<HTMLButtonElement>(null),
   };
 
@@ -283,12 +271,11 @@ export function Header() {
   );
 
   const MOBILE_SECTIONS = [
-    { key: "services",    label: "Services",      items: SERVICES_ITEMS },
-    { key: "microOffers", label: "Quick Wins",     items: MICRO_OFFERS_ITEMS },
-    { key: "retainers",   label: "Retainers",     items: RETAINER_ITEMS },
-    { key: "assessments", label: "Assessments",   items: ASSESSMENTS_ITEMS },
-    { key: "resources",   label: "Resources",     items: RESOURCES_ITEMS },
-    { key: "company",     label: "Company",        items: COMPANY_ITEMS },
+    { key: "services",    label: "Services",    items: SERVICES_ITEMS },
+    { key: "microOffers", label: "Quick Wins",  items: MICRO_OFFERS_ITEMS },
+    { key: "retainers",   label: "Retainers",   items: RETAINER_ITEMS },
+    { key: "assessments", label: "Assessments", items: ASSESSMENTS_ITEMS },
+    { key: "company",     label: "Company",     items: COMPANY_ITEMS },
   ];
 
   return (
@@ -336,12 +323,20 @@ export function Header() {
               )}
             </li>
 
-            {/* Resources dropdown */}
-            <li className="relative">
-              <DropdownTrigger menuKey="resources" label="Resources" isActive={isResourcesActive} isOpen={openMenu === "resources"} onToggle={toggle} triggerRef={triggerRefs.resources} />
-              {openMenu === "resources" && (
-                <DropdownPanel items={RESOURCES_ITEMS} location={location} width="w-52" onClose={closeAll} triggerRef={triggerRefs.resources} />
-              )}
+            {/* Resources — plain top-level link */}
+            <li>
+              <Link
+                href="/resources"
+                data-track="nav"
+                className={cn(
+                  "flex items-center px-3 py-2 rounded-md text-sm font-medium transition-colors whitespace-nowrap",
+                  isResourcesActive
+                    ? "text-primary"
+                    : "text-white/80 hover:text-white hover:bg-white/5"
+                )}
+              >
+                Resources
+              </Link>
             </li>
 
             {/* Company dropdown (About / Pricing / Contact) */}
@@ -418,6 +413,21 @@ export function Header() {
                 <div className="border-t border-white/10 mx-3" />
               </div>
             ))}
+
+            {/* Resources — standalone direct link */}
+            <div>
+              <Link
+                href="/resources"
+                onClick={() => setMobileMenuOpen(false)}
+                className={cn(
+                  "flex items-center px-3 py-2.5 text-[11px] font-bold uppercase tracking-widest transition-colors",
+                  isResourcesActive ? "text-primary" : "text-white/40 hover:text-white/60"
+                )}
+              >
+                Resources
+              </Link>
+              <div className="border-t border-white/10 mx-3" />
+            </div>
 
           </div>
 
