@@ -4,6 +4,7 @@ import { useLocation } from "wouter";
 import {
   BarChart2, Kanban, FileText, FileDown,
   CheckCircle2, CreditCard, MessageSquare, Loader2,
+  Lock, ShieldCheck, Shield, Building2,
 } from "lucide-react";
 
 const FEATURES = [
@@ -42,6 +43,13 @@ const FEATURES = [
     label: "Direct communication with your consultant",
     desc: "Structured messaging tied directly to your projects.",
   },
+];
+
+const TRUST_SIGNALS = [
+  { icon: <Lock className="w-4 h-4" />,       label: "Encrypted in transit & at rest" },
+  { icon: <ShieldCheck className="w-4 h-4" />, label: "MFA required on all accounts" },
+  { icon: <Building2 className="w-4 h-4" />,   label: "Regulated-industry compliance — HIPAA, SOC 2, FINRA, CMMC, ITAR" },
+  { icon: <Shield className="w-4 h-4" />,      label: "Zero Trust–aligned access controls" },
 ];
 
 function DashboardMockup() {
@@ -263,7 +271,7 @@ export default function LoginPage() {
             <span className="text-[#0078D4]">Customer Command Center</span>
           </h1>
           <p className="text-white/60 text-sm leading-relaxed max-w-md">
-            A 360° view of your projects, services, documents, reports, and billing — all in one secure place.
+            Built on NASA-grade Microsoft 365 architecture principles — a 360° secure view of your projects, documents, reports, and billing.
           </p>
         </div>
 
@@ -281,6 +289,21 @@ export default function LoginPage() {
             </li>
           ))}
         </ul>
+
+        {/* Security & trust signals */}
+        <div className="mb-8 bg-white/5 border border-white/10 rounded-xl px-4 py-3">
+          <p className="text-[11px] font-bold uppercase tracking-widest text-white/30 mb-3">Security & Compliance</p>
+          <ul className="space-y-2">
+            {TRUST_SIGNALS.map(({ icon, label }) => (
+              <li key={label} className="flex items-start gap-3">
+                <div className="mt-0.5 w-6 h-6 rounded-md bg-[#0078D4]/20 border border-[#0078D4]/30 flex items-center justify-center flex-shrink-0 text-[#00B4D8]">
+                  {icon}
+                </div>
+                <span className="text-white/60 text-xs leading-snug pt-1">{label}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
 
         {/* Dashboard mockup */}
         <div className="mt-auto">
@@ -373,7 +396,7 @@ export default function LoginPage() {
                 </h2>
                 <p className="text-muted-foreground text-sm">
                   {isLogin
-                    ? "Enter your credentials below to continue."
+                    ? "Sign in to your secure portal using Microsoft, Google, or email."
                     : "Set up your client portal in seconds."}
                 </p>
               </div>
@@ -539,26 +562,47 @@ export default function LoginPage() {
                   </>
                 )}
               </p>
+
+              {/* New client guidance — register mode only */}
+              {!isLogin && (
+                <p className="text-center text-xs text-muted-foreground mt-3">
+                  New client? Your account is created automatically after your first engagement.
+                </p>
+              )}
+
+              {/* Troubleshooting — login mode only */}
+              {isLogin && (
+                <div className="mt-4 bg-white border border-border rounded-xl px-4 py-3">
+                  <p className="text-xs font-semibold text-[#0A2540] mb-2">Having trouble signing in?</p>
+                  <ul className="space-y-1.5">
+                    {[
+                      "Try signing in with your Microsoft work account above.",
+                      "Check your inbox for a portal invite email from Shane McCaw Consulting.",
+                      "Reset your password using the \"Forgot password?\" link in the form above.",
+                    ].map((tip) => (
+                      <li key={tip} className="flex items-start gap-2 text-xs text-muted-foreground">
+                        <span className="text-[#0078D4] font-bold mt-0.5 shrink-0">·</span>
+                        {tip}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
             </>
           )}
 
-          {/* Trust bar */}
+          {/* Support contact trust bar */}
           <div className="mt-4 bg-white border border-border rounded-xl px-4 py-3 flex items-start gap-3">
             <div className="w-6 h-6 rounded-full bg-[#0078D4]/10 flex items-center justify-center flex-shrink-0 mt-0.5">
               <CheckCircle2 className="w-3.5 h-3.5 text-[#0078D4]" />
             </div>
             <p className="text-xs text-muted-foreground leading-relaxed">
-              <span className="font-semibold text-[#0A2540]">Shane McCaw Consulting</span> — Microsoft 365 Architect with 30 years of experience helping organizations modernize, secure, and optimize their Microsoft ecosystem.
+              Need help accessing your account?{" "}
+              <a href="mailto:support@shanemccaw.com" className="text-[#0078D4] hover:underline font-medium">
+                Contact support@shanemccaw.com
+              </a>
             </p>
           </div>
-
-          {/* Support footer */}
-          <p className="text-center text-xs text-muted-foreground mt-5">
-            Need help accessing your account?{" "}
-            <a href="mailto:support@shanemccaw.com" className="text-[#0078D4] hover:underline font-medium">
-              Contact support@shanemccaw.com
-            </a>
-          </p>
         </div>
       </div>
     </div>
