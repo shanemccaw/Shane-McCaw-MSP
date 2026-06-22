@@ -3,6 +3,12 @@ import { useAuth } from "@/contexts/AuthContext";
 
 type Tier = "Beginner" | "Developing" | "Emerging" | "Advanced" | "Ready";
 
+interface QuizAnalysisText {
+  whatThisMeans: string;
+  whyThisFits: string;
+  roiProjection: string;
+}
+
 interface QuizLead {
   id: number;
   name: string;
@@ -12,6 +18,7 @@ interface QuizLead {
   tier: Tier;
   recommendedService: string | null;
   categoryScores: Record<string, number>;
+  analysisText: QuizAnalysisText | null;
   conversation: { role: "user" | "assistant"; content: string }[];
   createdAt: string;
   contactedAt: string | null;
@@ -228,6 +235,31 @@ function SlideOver({ lead, onClose, onRefresh }: {
             </div>
           )}
 
+          {/* AI Analysis */}
+          {lead.analysisText && (lead.analysisText.whatThisMeans || lead.analysisText.whyThisFits || lead.analysisText.roiProjection) && (
+            <div className="space-y-4">
+              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">AI Analysis</p>
+              {lead.analysisText.whatThisMeans && (
+                <div className="bg-[#F7F9FC] rounded-xl p-4">
+                  <p className="text-xs font-bold text-[#0078D4] uppercase tracking-wider mb-1.5">What This Means</p>
+                  <p className="text-sm text-[#0A2540] leading-relaxed">{lead.analysisText.whatThisMeans}</p>
+                </div>
+              )}
+              {lead.analysisText.whyThisFits && (
+                <div className="bg-[#F7F9FC] rounded-xl p-4">
+                  <p className="text-xs font-bold text-[#0078D4] uppercase tracking-wider mb-1.5">Why This Fits</p>
+                  <p className="text-sm text-[#0A2540] leading-relaxed">{lead.analysisText.whyThisFits}</p>
+                </div>
+              )}
+              {lead.analysisText.roiProjection && (
+                <div className="bg-[#F7F9FC] rounded-xl p-4">
+                  <p className="text-xs font-bold text-[#0078D4] uppercase tracking-wider mb-1.5">ROI Projection</p>
+                  <p className="text-sm text-[#0A2540] leading-relaxed">{lead.analysisText.roiProjection}</p>
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Conversation transcript */}
           <ConversationTranscript messages={lead.conversation} />
         </div>
@@ -388,7 +420,12 @@ export default function QuizLeadsPage() {
                   {leads.map(lead => (
                     <tr key={lead.id} onClick={() => setSelectedLead(lead)}
                       className="border-b border-border last:border-0 hover:bg-[#F7F9FC] cursor-pointer transition-colors">
-                      <td className="px-5 py-3.5 font-semibold text-[#0A2540]">{lead.name}</td>
+                      <td className="px-5 py-3.5">
+                        <p className="font-semibold text-[#0A2540] leading-tight">{lead.name}</p>
+                        <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full mt-0.5 inline-block ${TIER_COLORS[lead.tier] ?? "bg-gray-100 text-gray-600"}`}>
+                          {lead.tier}
+                        </span>
+                      </td>
                       <td className="px-5 py-3.5 text-muted-foreground">{lead.email}</td>
                       <td className="px-5 py-3.5 text-muted-foreground hidden md:table-cell">{lead.company ?? "—"}</td>
                       <td className="px-5 py-3.5 hidden lg:table-cell">
