@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Layout } from "@/components/Layout";
 import { CTAButton } from "@/components/CTAButton";
 import { GenericQuizModal, type QuizConfig } from "@/components/GenericQuizModal";
@@ -86,6 +86,10 @@ const PILLARS = [
 
 export default function SecurityQuiz() {
   const [modalOpen, setModalOpen] = useState(false);
+  useEffect(() => {
+    document.title = "M365 Security & Compliance Assessment | Shane McCaw Consulting";
+    return () => { document.title = "Shane McCaw Consulting"; };
+  }, []);
   return (
     <Layout>
       <section className="bg-[#0A2540] pt-32 pb-24 relative overflow-hidden">
