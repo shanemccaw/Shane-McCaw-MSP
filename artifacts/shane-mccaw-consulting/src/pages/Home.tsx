@@ -78,6 +78,28 @@ export default function Home() {
   const visibleProjects = engagementProjects.filter(p => p.isVisible);
   const dbServices = [...dbServiceAreas, ...dbRetainers];
   const servicesLoading = serviceAreasLoading || retainersLoading;
+
+  const allTriggers = visibleProjects.flatMap(p => p.triggeredBy ?? []);
+  const dedupedTriggers = [...new Set(allTriggers)];
+  const fallbackTriggers = [
+    "Microsoft 365 is deployed but nobody's using it effectively",
+    "Copilot is on your radar but your tenant isn't ready for it",
+    "A compliance audit revealed gaps in your M365 governance",
+    "A migration project has stalled or previously failed",
+    "Shadow IT is undermining your security posture",
+    "You need senior-level expertise without a full-time hire",
+  ];
+  const decisionMakerTriggers = dedupedTriggers.length > 0 ? dedupedTriggers : fallbackTriggers;
+
+  const entryKeywords = ["audit", "assessment", "readiness", "health"];
+  const allEntryPool = [...dbServiceAreas, ...dbOffers];
+  const entryPointServices = allEntryPool
+    .filter(s => {
+      const haystack = `${s.name ?? ""} ${s.category ?? ""} ${s.slug ?? ""}`.toLowerCase();
+      return entryKeywords.some(kw => haystack.includes(kw));
+    })
+    .slice(0, 2);
+
   return (
     <Layout>
       <SEOMeta
@@ -209,6 +231,9 @@ export default function Home() {
           <h2 className="text-3xl md:text-4xl lg:text-5xl font-extrabold text-white leading-tight mb-5">
             Is Your Organization Ready for Copilot AI?
           </h2>
+          <p className="text-[#00B4D8] font-bold text-lg mb-4">
+            Don't light up Copilot on a dirty tenant.
+          </p>
           <p className="text-white/70 text-lg max-w-2xl mx-auto mb-10 leading-relaxed">
             Most deployments fail not because of the technology — but because the Microsoft 365 tenant isn't ready for it. Take the Copilot Readiness Quiz and find out exactly where you stand.
           </p>
@@ -246,6 +271,9 @@ export default function Home() {
               Shane's tenure as Lead M365 Architect at NASA required mastery of the most demanding compliance frameworks in existence. That expertise now benefits mid-market companies, regulated industries, government contractors, and startups scaling into their first compliance obligations.
             </p>
           </div>
+          <p className="text-center text-[#0078D4] font-semibold italic mt-2 mb-10 max-w-2xl mx-auto">
+            This experience translates directly into value for mid-market and regulated-industry clients.
+          </p>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
             {nasaCompliance.map((item, i) => (
               <div key={i} className="bg-white rounded-lg border border-border p-6 flex items-start gap-4">
@@ -364,16 +392,64 @@ export default function Home() {
         </div>
       </section>
 
+      {/* DECISION-MAKER TRIGGERS */}
+      <section className="bg-white py-20" data-testid="decision-maker-triggers-section">
+        <div className="max-w-[860px] mx-auto px-6">
+          <div className="text-center mb-10">
+            <p className="text-[#0078D4] text-sm font-semibold uppercase tracking-[0.1em] mb-3">Engagement Signals</p>
+            <h2 className="text-2xl md:text-3xl font-extrabold text-[#0A2540]">Are any of these familiar?</h2>
+            <p className="text-muted-foreground mt-3 max-w-xl mx-auto leading-relaxed">
+              These are the situations that typically bring organizations to Shane.
+            </p>
+          </div>
+          <ul className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {decisionMakerTriggers.map((trigger, i) => (
+              <li key={i} className="flex items-start gap-3 bg-[#F7F9FC] border border-border rounded-lg px-5 py-4">
+                <span className="flex-shrink-0 w-2 h-2 rounded-full bg-[#0078D4] mt-2" />
+                <span className="text-foreground text-sm leading-relaxed">{trigger}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      </section>
+
       {/* SERVICES GRID */}
-      <section className="bg-white py-20" data-testid="services-section">
+      <section className="bg-[#F7F9FC] py-20" data-testid="services-section">
         <div className="max-w-[1200px] mx-auto px-6">
-          <div className="text-center mb-14">
+          <div className="text-center mb-6">
             <p className="text-[#0078D4] text-sm font-semibold uppercase tracking-[0.1em] mb-3">Services & Engagements</p>
             <h2 className="text-3xl md:text-4xl font-extrabold text-[#0A2540]">Six Ways to Engage — All Backed by NASA-Level Expertise</h2>
-            <p className="text-muted-foreground mt-4 max-w-2xl mx-auto leading-relaxed">
+            <p className="text-[#00B4D8] font-semibold mt-3 text-base">
+              Productized offers. Fractional architecture. NASA‑grade governance.
+            </p>
+            <p className="text-muted-foreground mt-3 max-w-2xl mx-auto leading-relaxed">
               Every engagement is scoped and delivered personally by Shane. No project managers between you and the architect. No junior consultants doing the work.
             </p>
           </div>
+
+          {/* Quick Win Strategy */}
+          <div className="max-w-2xl mx-auto mb-10 text-center">
+            <p className="text-foreground leading-relaxed">
+              Not ready for a full retainer? A great place to start is a focused audit or readiness assessment
+              {entryPointServices.length > 0 && (
+                <> — such as {entryPointServices.map((s, i) => (
+                  <span key={s.slug ?? i}>
+                    {i > 0 && " or "}
+                    <strong>{s.name}</strong>
+                  </span>
+                ))}</>
+              )}
+              {" "}— that delivers clear findings and a prioritized action plan in days, not months.
+            </p>
+            <p className="text-sm text-muted-foreground italic mt-3">
+              For the first few clients, discounted entry‑point engagements may be offered — reach out to discuss availability.
+            </p>
+          </div>
+
+          <p className="text-center text-foreground font-medium mb-6 max-w-2xl mx-auto">
+            My fractional architecture engagements are structured in three tiers — micro-offers for quick wins, project-based engagements for defined outcomes, and retainer arrangements for ongoing advisory work.
+          </p>
+
           {servicesLoading && dbServices.length === 0 ? (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {[...Array(6)].map((_, i) => <div key={i} className="h-96 rounded-xl border border-border bg-gray-100 animate-pulse" />)}
@@ -391,7 +467,12 @@ export default function Home() {
               ))}
             </div>
           )}
-          <div className="text-center mt-10">
+
+          <p className="text-center text-sm text-muted-foreground mt-6">
+            Retainer arrangements require a minimum 3-month commitment.
+          </p>
+
+          <div className="text-center mt-4">
             <Link href="/micro-offers" className="inline-flex items-center gap-1.5 text-muted-foreground text-sm hover:text-[#0078D4] transition-colors" data-testid="view-all-services">
               View all fixed-price packages and retainer options <ArrowRight className="w-3.5 h-3.5" />
             </Link>
