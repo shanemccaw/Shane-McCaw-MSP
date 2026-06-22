@@ -1,61 +1,96 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useLocation } from "wouter";
-import { Menu, X, Rocket, ChevronDown } from "lucide-react";
+import {
+  Menu, X, Rocket, ChevronDown,
+  LayoutGrid, Building2, GraduationCap, Sparkles, FolderOpen, Zap,
+  Shield, ShieldCheck, Cloud, Activity, ArrowLeftRight, Users,
+  Star, TrendingUp, Award, BookOpen, FileText, FileCode, Wrench,
+  Info, Tag, Mail, ScanSearch,
+} from "lucide-react";
 import { CTAButton } from "./CTAButton";
 import { cn } from "@/lib/utils";
+
+// ─── Nav icon helper ───────────────────────────────────────────────────────────
+function getNavIcon(label: string): React.ReactNode {
+  const l = label.toLowerCase();
+  if (l.includes("copilot") || l.includes("ai"))             return <Sparkles    className="w-4 h-4" aria-hidden="true" />;
+  if (l.includes("sharepoint"))                               return <FolderOpen  className="w-4 h-4" aria-hidden="true" />;
+  if (l.includes("power platform") || l.includes("quick-start") || l.includes("power automate")) return <Zap className="w-4 h-4" aria-hidden="true" />;
+  if (l.includes("security") || l.includes("compliance"))    return <ShieldCheck className="w-4 h-4" aria-hidden="true" />;
+  if (l.includes("governance"))                               return <Shield      className="w-4 h-4" aria-hidden="true" />;
+  if (l.includes("migration"))                                return <ArrowLeftRight className="w-4 h-4" aria-hidden="true" />;
+  if (l.includes("training") || l.includes("enablement"))    return <GraduationCap className="w-4 h-4" aria-hidden="true" />;
+  if (l.includes("cloud"))                                    return <Cloud       className="w-4 h-4" aria-hidden="true" />;
+  if (l.includes("health") || l.includes("audit"))           return <Activity    className="w-4 h-4" aria-hidden="true" />;
+  if (l.includes("tenant"))                                   return <ScanSearch  className="w-4 h-4" aria-hidden="true" />;
+  if (l.includes("teams"))                                    return <Users       className="w-4 h-4" aria-hidden="true" />;
+  if (l.includes("architecture") || l.includes("strategy") || l.includes("m365") || l.includes("microsoft 365")) return <Building2 className="w-4 h-4" aria-hidden="true" />;
+  if (l.includes("essentials"))                               return <Star        className="w-4 h-4" aria-hidden="true" />;
+  if (l.includes("growth"))                                   return <TrendingUp  className="w-4 h-4" aria-hidden="true" />;
+  if (l.includes("enterprise"))                               return <Award       className="w-4 h-4" aria-hidden="true" />;
+  if (l.includes("retainer") || l.includes("all ") || l.includes("overview") || l.includes("service")) return <LayoutGrid className="w-4 h-4" aria-hidden="true" />;
+  if (l.includes("article"))                                  return <FileText    className="w-4 h-4" aria-hidden="true" />;
+  if (l.includes("template"))                                 return <FileCode    className="w-4 h-4" aria-hidden="true" />;
+  if (l.includes("tool"))                                     return <Wrench      className="w-4 h-4" aria-hidden="true" />;
+  if (l.includes("library") || l.includes("resource"))       return <BookOpen    className="w-4 h-4" aria-hidden="true" />;
+  if (l.includes("about"))                                    return <Info        className="w-4 h-4" aria-hidden="true" />;
+  if (l.includes("pric"))                                     return <Tag         className="w-4 h-4" aria-hidden="true" />;
+  if (l.includes("contact"))                                  return <Mail        className="w-4 h-4" aria-hidden="true" />;
+  return                                                             <LayoutGrid  className="w-4 h-4" aria-hidden="true" />;
+}
 
 // ─── Nav data ─────────────────────────────────────────────────────────────────
 interface NavItem { label: string; href: string; icon?: React.ReactNode; }
 
 const SERVICES_ITEMS: NavItem[] = [
-  { label: "Service Overview",              href: "/services" },
-  { label: "M365 Architecture & Strategy",  href: "/services/microsoft-365" },
-  { label: "M365 Training",                 href: "/services/m365-training" },
-  { label: "Copilot & AI",                  href: "/services/copilot-ai" },
-  { label: "SharePoint",                    href: "/services/sharepoint" },
-  { label: "Power Platform",                href: "/services/power-platform" },
-  { label: "Governance",                    href: "/services/governance" },
-  { label: "Cloud Migration",               href: "/services/cloud-migration" },
+  { label: "Service Overview",              href: "/services",                  icon: getNavIcon("Service Overview") },
+  { label: "M365 Architecture & Strategy",  href: "/services/microsoft-365",   icon: getNavIcon("M365 Architecture & Strategy") },
+  { label: "M365 Training",                 href: "/services/m365-training",   icon: getNavIcon("M365 Training") },
+  { label: "Copilot & AI",                  href: "/services/copilot-ai",      icon: getNavIcon("Copilot & AI") },
+  { label: "SharePoint",                    href: "/services/sharepoint",      icon: getNavIcon("SharePoint") },
+  { label: "Power Platform",                href: "/services/power-platform",  icon: getNavIcon("Power Platform") },
+  { label: "Governance",                    href: "/services/governance",      icon: getNavIcon("Governance") },
+  { label: "Cloud Migration",               href: "/services/cloud-migration", icon: getNavIcon("Cloud Migration") },
 ];
 
 const MICRO_OFFERS_ITEMS: NavItem[] = [
-  { label: "Tenant Health Audit",                  href: "/micro-offers/tenant-health-audit" },
-  { label: "Power Platform Quick-Start",           href: "/micro-offers/power-platform-quick-start" },
-  { label: "Governance Foundations",               href: "/micro-offers/governance-foundations" },
-  { label: "Migration Readiness Assessment",       href: "/micro-offers/migration-readiness-assessment" },
-  { label: "Copilot Readiness Assessment",         href: "/micro-offers/copilot-readiness-assessment" },
-  { label: "Microsoft 365 Training & Enablement",  href: "/micro-offers/m365-training-enablement" },
+  { label: "Tenant Health Audit",                  href: "/micro-offers/tenant-health-audit",          icon: getNavIcon("Tenant Health Audit") },
+  { label: "Power Platform Quick-Start",           href: "/micro-offers/power-platform-quick-start",   icon: getNavIcon("Power Platform Quick-Start") },
+  { label: "Governance Foundations",               href: "/micro-offers/governance-foundations",        icon: getNavIcon("Governance Foundations") },
+  { label: "Migration Readiness Assessment",       href: "/micro-offers/migration-readiness-assessment",icon: getNavIcon("Migration Readiness Assessment") },
+  { label: "Copilot Readiness Assessment",         href: "/micro-offers/copilot-readiness-assessment", icon: getNavIcon("Copilot Readiness Assessment") },
+  { label: "Microsoft 365 Training & Enablement",  href: "/micro-offers/m365-training-enablement",     icon: getNavIcon("Microsoft 365 Training & Enablement") },
 ];
 
 const RETAINER_ITEMS: NavItem[] = [
-  { label: "All Retainer Plans",    href: "/retainers" },
-  { label: "Architect Essentials",  href: "/retainers/architect-essentials" },
-  { label: "Architect Growth",      href: "/retainers/architect-growth" },
-  { label: "Architect Enterprise",  href: "/retainers/architect-enterprise" },
+  { label: "All Retainer Plans",    href: "/retainers",                    icon: getNavIcon("All Retainer Plans") },
+  { label: "Architect Essentials",  href: "/retainers/architect-essentials", icon: getNavIcon("Architect Essentials") },
+  { label: "Architect Growth",      href: "/retainers/architect-growth",   icon: getNavIcon("Architect Growth") },
+  { label: "Architect Enterprise",  href: "/retainers/architect-enterprise", icon: getNavIcon("Architect Enterprise") },
 ];
 
 const ASSESSMENTS_ITEMS: NavItem[] = [
-  { label: "Copilot Readiness Assessment",     href: "/copilot-quiz" },
-  { label: "M365 Health Assessment",           href: "/m365-health-quiz" },
-  { label: "SharePoint Readiness Assessment",  href: "/sharepoint-readiness-quiz" },
-  { label: "Power Platform Risk Assessment",   href: "/power-platform-quiz" },
-  { label: "Security & Compliance Assessment", href: "/security-compliance-quiz" },
-  { label: "Teams Maturity Assessment",        href: "/teams-maturity-quiz" },
-  { label: "Migration Readiness Assessment",   href: "/migration-readiness-quiz" },
-  { label: "Governance Maturity Assessment",   href: "/governance-maturity-quiz" },
+  { label: "Copilot Readiness Assessment",     href: "/copilot-quiz",              icon: getNavIcon("Copilot Readiness Assessment") },
+  { label: "M365 Health Assessment",           href: "/m365-health-quiz",          icon: getNavIcon("M365 Health Assessment") },
+  { label: "SharePoint Readiness Assessment",  href: "/sharepoint-readiness-quiz", icon: getNavIcon("SharePoint Readiness Assessment") },
+  { label: "Power Platform Risk Assessment",   href: "/power-platform-quiz",       icon: getNavIcon("Power Platform Risk Assessment") },
+  { label: "Security & Compliance Assessment", href: "/security-compliance-quiz",  icon: getNavIcon("Security & Compliance Assessment") },
+  { label: "Teams Maturity Assessment",        href: "/teams-maturity-quiz",       icon: getNavIcon("Teams Maturity Assessment") },
+  { label: "Migration Readiness Assessment",   href: "/migration-readiness-quiz",  icon: getNavIcon("Migration Readiness Assessment") },
+  { label: "Governance Maturity Assessment",   href: "/governance-maturity-quiz",  icon: getNavIcon("Governance Maturity Assessment") },
 ];
 
 const RESOURCES_ITEMS: NavItem[] = [
-  { label: "Resource Library", href: "/resources" },
-  { label: "Articles",         href: "/resources" },
-  { label: "Templates",        href: "/resources" },
-  { label: "Tools",            href: "/resources" },
+  { label: "Resource Library", href: "/resources", icon: getNavIcon("Resource Library") },
+  { label: "Articles",         href: "/resources", icon: getNavIcon("Articles") },
+  { label: "Templates",        href: "/resources", icon: getNavIcon("Templates") },
+  { label: "Tools",            href: "/resources", icon: getNavIcon("Tools") },
 ];
 
 const COMPANY_ITEMS: NavItem[] = [
-  { label: "About",   href: "/about" },
-  { label: "Pricing", href: "/pricing" },
-  { label: "Contact", href: "/contact" },
+  { label: "About",   href: "/about",   icon: getNavIcon("About") },
+  { label: "Pricing", href: "/pricing", icon: getNavIcon("Pricing") },
+  { label: "Contact", href: "/contact", icon: getNavIcon("Contact") },
 ];
 
 // ─── Menu key type ─────────────────────────────────────────────────────────────
