@@ -4,26 +4,10 @@ import { CTAButton } from "@/components/CTAButton";
 import { GenericQuizModal, type QuizConfig } from "@/components/GenericQuizModal";
 import { SEOMeta } from "@/components/SEOMeta";
 import {
-  CheckCircle,
-  Cpu,
-  AlertTriangle,
-  ShieldCheck,
-  Users,
-  Building2,
-  ArrowRight,
-  FileText,
-  BarChart3,
-  Award,
-  Layers,
-  GitBranch,
-  Lock,
-  BookOpen,
-  Zap,
-  ClipboardList,
-  Map,
-  Target,
-  Star,
-  Download,
+  CheckCircle, Cpu, AlertTriangle, ShieldCheck, Users,
+  Building2, ArrowRight, FileText, BarChart3, Award, Layers,
+  GitBranch, Lock, BookOpen, Zap, ClipboardList, Target,
+  Star, Download, TrendingUp, Settings2,
 } from "lucide-react";
 
 const config: QuizConfig = {
@@ -98,150 +82,66 @@ const config: QuizConfig = {
   introFeatureLabels: ["5 maturity dimensions", "Maturity tier rating", "PDF report emailed"],
 };
 
-const PILLARS = [
+const DIMENSIONS = [
   {
-    label: "Governance & Environment Strategy",
-    icon: Building2,
-    desc: "How environments are structured across dev, test, and production.",
+    colour: "bg-blue-500",
+    label: "Dimension 1",
+    title: "Governance & Environment Strategy",
     bullets: [
-      "Environment segmentation and naming conventions",
-      "Who can create environments and the approval process",
-      "DLP policy coverage across all environments",
-      "Maker permission tiers and connector governance model",
-      "Capacity planning and tenant-level configuration",
+      "Environment segmentation across dev, test, and production workloads.",
+      "Who can create environments and whether the approval process is enforced.",
+      "DLP policy coverage and connector governance across all environments.",
+      "Maker permission tiers and access model — who can build what, and where.",
+      "Capacity planning and tenant-level Power Platform configuration maturity.",
     ],
   },
   {
-    label: "Application Lifecycle Management",
-    icon: GitBranch,
-    desc: "How solutions are built, versioned, tested, and promoted.",
+    colour: "bg-teal-500",
+    label: "Dimension 2",
+    title: "Application Lifecycle Management",
     bullets: [
-      "Solution layering and managed vs unmanaged solutions",
-      "Dev/test/prod pipeline maturity",
-      "Use of Power Platform Pipelines or Azure DevOps",
-      "Version control and rollback capability",
-      "Change management and release governance",
+      "Solution layering and managed versus unmanaged solutions discipline.",
+      "Dev/test/prod pipeline maturity and promotion governance controls.",
+      "Use of Power Platform Pipelines or Azure DevOps for release management.",
+      "Version control, rollback capability, and change documentation practices.",
+      "Release governance and change management for production-critical solutions.",
     ],
   },
   {
-    label: "Security & Compliance",
-    icon: Lock,
-    desc: "How data, connectors, and access are protected across the platform.",
+    colour: "bg-violet-500",
+    label: "Dimension 3",
+    title: "Security & Compliance",
     bullets: [
-      "RBAC and row-level security in Dataverse",
-      "Connector governance and data residency controls",
-      "Conditional access policy alignment",
-      "Audit logging and compliance reporting",
-      "Sensitivity label integration with M365 Purview",
+      "RBAC and row-level security implementation in Dataverse environments.",
+      "Connector governance, data residency controls, and sensitive data handling.",
+      "Conditional Access policy alignment for Power Platform service access.",
+      "Audit logging configuration and compliance reporting coverage.",
+      "Sensitivity label integration with Microsoft Purview across workloads.",
     ],
   },
   {
-    label: "Maker Enablement & Training",
-    icon: BookOpen,
-    desc: "How makers are onboarded, upskilled, and supported at scale.",
+    colour: "bg-orange-500",
+    label: "Dimension 4",
+    title: "Maker Enablement & Training",
     bullets: [
-      "Maker onboarding programme and documentation",
-      "Centre of Excellence (CoE) toolkit deployment",
-      "Internal champion network and community of practice",
-      "Shadow IT identification and remediation",
-      "Training paths: Microsoft Learn, internal courses, certification",
+      "Maker onboarding programme quality and documentation availability.",
+      "Centre of Excellence (CoE) toolkit deployment and active management.",
+      "Internal champion network and community of practice maturity.",
+      "Shadow IT identification, remediation, and governance integration.",
+      "Training paths: Microsoft Learn, internal courses, and certification coverage.",
     ],
   },
   {
-    label: "Automation & Integration Maturity",
-    icon: Zap,
-    desc: "How reliable, monitored, and AI-ready your automation layer is.",
+    colour: "bg-green-500",
+    label: "Dimension 5",
+    title: "Automation & Integration Maturity",
     bullets: [
-      "Flow reliability and structured error handling",
-      "Failure alerting and operational monitoring",
-      "API and system integration governance",
-      "Copilot Studio readiness and AI Builder adoption",
-      "Readiness to scale automation across the enterprise",
+      "Flow reliability and structured error handling across production flows.",
+      "Failure alerting, operational monitoring, and on-call response processes.",
+      "API and system integration governance — documented and reviewed.",
+      "Copilot Studio readiness and AI Builder adoption across the practice.",
+      "Readiness to scale automation reliably across the enterprise.",
     ],
-  },
-];
-
-const WHO_ITS_FOR = [
-  { icon: Building2, label: "Mid-market organisations", desc: "200–5,000 users scaling Power Apps and Power Automate across departments." },
-  { icon: ShieldCheck, label: "Regulated industries", desc: "HIPAA, SOC 2, and FINRA-regulated teams needing compliant automation governance." },
-  { icon: Target, label: "Government contractors", desc: "CMMC and FedRAMP environments where governance isn't optional." },
-  { icon: Zap, label: "Teams scaling automation", desc: "Organisations running dozens of flows but lacking ALM and monitoring discipline." },
-  { icon: AlertTriangle, label: "App sprawl situations", desc: "Environments with undocumented apps, orphaned flows, and unmanaged connectors." },
-  { icon: Cpu, label: "Copilot Studio aspirants", desc: "Orgs planning AI automation who need to know if their platform foundation is ready." },
-];
-
-const HOW_IT_WORKS_STATS = [
-  { value: "10", label: "targeted questions" },
-  { value: "5", label: "maturity dimensions scored" },
-  { value: "NASA", label: "scoring methodology" },
-  { value: "Free", label: "instant PDF report" },
-  { value: "0", label: "account required" },
-  { value: "0", label: "sales calls required" },
-];
-
-const WHAT_YOU_RECEIVE = [
-  { icon: BarChart3, text: "Overall Power Platform maturity score across all 5 dimensions" },
-  { icon: AlertTriangle, text: "Governance and environment strategy gaps with severity ratings" },
-  { icon: GitBranch, text: "ALM maturity gaps — pipeline, solution management, and release governance" },
-  { icon: Lock, text: "Security and compliance exposures identified by dimension" },
-  { icon: BookOpen, text: "Maker enablement gaps and CoE readiness assessment" },
-  { icon: Zap, text: "Automation reliability and integration maturity findings" },
-  { icon: Map, text: "Recommended next steps in priority order, matched to your tier" },
-  { icon: Layers, text: "Architecture notes tailored to your environment and scale" },
-];
-
-const PDF_SECTIONS = [
-  {
-    title: "Executive Summary",
-    desc: "A one-page overview of your maturity tier, overall score, and the most critical gaps — suitable for sharing with leadership.",
-  },
-  {
-    title: "Dimension-by-Dimension Scoring",
-    desc: "Individual scores for each of the 5 maturity dimensions with narrative interpretation and benchmark context.",
-  },
-  {
-    title: "Maturity Heatmap",
-    desc: "A visual representation of where your practice is strong, developing, or at risk — immediately actionable at a glance.",
-  },
-  {
-    title: "Gap Analysis",
-    desc: "A structured breakdown of every identified gap, ranked by impact and remediation complexity.",
-  },
-  {
-    title: "Remediation Path",
-    desc: "A sequenced action plan mapping your gaps to concrete remediation steps, with recommended sequencing and effort estimates.",
-  },
-  {
-    title: "Suggested Quick Wins",
-    desc: "Matched service recommendations — Power Platform Quick-Start, Governance Foundations, or Automation Hardening — based on your exact maturity tier.",
-  },
-];
-
-const WHY_SHANE = [
-  {
-    icon: Award,
-    title: "Lead M365 Architect at NASA",
-    desc: "Shane built and governs the Power Platform environment for one of the world's most security-conscious and complex Microsoft 365 tenants.",
-  },
-  {
-    icon: Star,
-    title: "30-Year Microsoft Ecosystem Veteran",
-    desc: "Three decades across every generation of the Microsoft stack — from on-premises SharePoint to modern Power Platform, Copilot Studio, and Dataverse at enterprise scale.",
-  },
-  {
-    icon: Users,
-    title: "Senior-Only Delivery",
-    desc: "No juniors, no project managers as intermediaries. Every assessment and engagement is delivered personally by Shane — the same expert you read about.",
-  },
-  {
-    icon: ShieldCheck,
-    title: "Regulated Industry Expertise",
-    desc: "Deep experience in federal, healthcare, and financial services environments where governance, compliance, and audit-readiness are non-negotiable.",
-  },
-  {
-    icon: ClipboardList,
-    title: "Architecture-First Methodology",
-    desc: "Shane's approach starts with the platform architecture, not the tooling. Every recommendation is grounded in sustainable governance design, not quick fixes.",
   },
 ];
 
@@ -257,41 +157,67 @@ export default function PowerPlatformQuiz() {
         ogUrl="https://shanemccaw.com/power-platform-quiz"
       />
 
-      {/* ── 1. Hero ─────────────────────────────────────────────────────────── */}
-      <section className="bg-[#0A2540] pt-32 pb-24 relative overflow-hidden">
+      {/* ── 1. Hero ── */}
+      <section className="relative min-h-[90vh] flex items-center justify-center overflow-hidden bg-[#0A2540]">
+        <div className="absolute inset-0 bg-gradient-to-br from-[#0A2540] via-[#0d2f50] to-[#0A2540]" />
+        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_30%_50%,rgba(0,120,212,0.15),transparent_60%)]" />
+        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_70%_20%,rgba(0,180,216,0.1),transparent_50%)]" />
         <div
-          className="absolute inset-0 pointer-events-none"
-          style={{ background: "radial-gradient(ellipse 900px 500px at 60% 0%, rgba(0,120,212,0.14) 0%, transparent 70%)" }}
-        />
-        <div
-          className="absolute inset-0 opacity-[0.035] pointer-events-none"
+          className="absolute inset-0 opacity-[0.04]"
           style={{ backgroundImage: "radial-gradient(circle, #ffffff 1px, transparent 1px)", backgroundSize: "32px 32px" }}
         />
-        <div className="max-w-[1200px] mx-auto px-6 relative">
-          <div className="inline-flex items-center gap-2 bg-[#0078D4]/20 border border-[#0078D4]/30 rounded-full px-4 py-1.5 mb-6">
-            <Cpu className="w-4 h-4 text-[#0078D4]" />
-            <span className="text-[#0078D4] text-sm font-semibold uppercase tracking-wide">Free Power Platform Assessment</span>
+
+        <div className="relative z-10 max-w-[900px] mx-auto px-6 text-center">
+          <div className="inline-flex items-center gap-2 bg-primary/20 border border-primary/30 rounded-full px-4 py-1.5 mb-8">
+            <Cpu className="w-4 h-4 text-primary" />
+            <span className="text-primary text-sm font-semibold uppercase tracking-wide">Power Platform Maturity Assessment</span>
           </div>
-          <h1 className="text-4xl md:text-5xl lg:text-6xl font-extrabold text-white leading-tight max-w-4xl">
-            Is Your Power Platform{" "}
+
+          <h1 className="text-4xl md:text-6xl font-extrabold text-white leading-tight mb-6">
+            Your Power Platform Is{" "}
             <span className="text-[#00B4D8]">Creating Value</span>
-            {" "}or Creating Risk?
+            <br className="hidden md:block" /> or Creating Risk.
           </h1>
-          <p className="text-white/70 text-xl mt-6 max-w-3xl leading-relaxed">
-            Ungoverned Power Platform environments accumulate shadow IT, broken flows, and unmanaged data connections — often without anyone realising until it becomes a governance failure. This assessment uses the same diagnostic framework Shane applies as Lead Microsoft 365 Architect at NASA to tell you exactly where your practice stands.
+
+          <p className="text-white/70 text-lg md:text-xl leading-relaxed max-w-2xl mx-auto mb-4">
+            Ungoverned Power Platform environments accumulate shadow IT, broken flows, and unmanaged data connections — often without anyone realising until it becomes a governance failure or a compliance exposure.
           </p>
-          <div className="mt-10 flex flex-wrap gap-4">
-            <CTAButton onClick={() => setModalOpen(true)}>Take the Free Assessment</CTAButton>
+          <p className="text-white/60 text-base md:text-lg leading-relaxed max-w-2xl mx-auto mb-10">
+            This 10-question assessment — built on the same diagnostic framework Shane applied as Lead M365 Architect at NASA — identifies exactly where your practice stands across five maturity dimensions before Copilot Studio, AI Builder, or an enterprise-scale rollout begins.
+          </p>
+
+          <div className="flex flex-wrap items-center justify-center gap-8 mb-12">
+            {[
+              { value: "10", label: "targeted questions" },
+              { value: "5", label: "maturity dimensions" },
+              { value: "Free", label: "personalised PDF report" },
+            ].map((stat) => (
+              <div key={stat.label} className="text-center">
+                <p className="text-3xl font-extrabold text-[#00B4D8]">{stat.value}</p>
+                <p className="text-white/50 text-sm mt-1">{stat.label}</p>
+              </div>
+            ))}
+          </div>
+
+          <div className="flex flex-wrap items-center justify-center gap-4 mb-6">
+            <button
+              onClick={() => setModalOpen(true)}
+              className="group inline-flex items-center gap-3 bg-primary hover:bg-primary/90 text-white font-semibold text-lg px-8 py-4 rounded-xl transition-all duration-200 shadow-lg shadow-primary/25 hover:shadow-primary/40 hover:-translate-y-0.5"
+            >
+              Take the Free Assessment
+              <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
+            </button>
             <a
               href="/book"
-              className="inline-flex items-center gap-2 text-white/70 hover:text-white font-semibold text-sm border border-white/20 px-6 py-3 rounded-xl hover:border-white/40 transition-colors"
+              className="inline-flex items-center gap-2 text-white/70 hover:text-white font-semibold text-sm border border-white/20 px-6 py-4 rounded-xl hover:border-white/40 transition-colors"
             >
               Book a Discovery Call
             </a>
           </div>
-          <div className="mt-10 flex flex-wrap gap-6">
-            {["5 minutes", "Free PDF report", "No sales call required"].map((item) => (
-              <div key={item} className="flex items-center gap-2 text-white/55 text-sm">
+
+          <div className="flex flex-wrap justify-center gap-6">
+            {["5 minutes", "Free PDF report", "No account required", "No sales call"].map((item) => (
+              <div key={item} className="flex items-center gap-2 text-white/40 text-sm">
                 <CheckCircle className="w-4 h-4 text-[#0078D4]" />
                 {item}
               </div>
@@ -300,209 +226,362 @@ export default function PowerPlatformQuiz() {
         </div>
       </section>
 
-      {/* ── 2. Why This Assessment Exists ───────────────────────────────────── */}
-      <section className="bg-white py-20">
+      {/* ── 2. Why This Assessment Exists ── */}
+      <section className="py-20 bg-white">
         <div className="max-w-[1100px] mx-auto px-6">
-          <div className="text-center mb-14">
-            <p className="text-[#0078D4] text-xs font-bold uppercase tracking-widest mb-3">Why This Assessment Exists</p>
-            <h2 className="text-3xl md:text-4xl font-extrabold text-[#0A2540] max-w-3xl mx-auto leading-tight">
-              Most Power Platform environments are ungoverned. Most organisations don't know it until something breaks.
-            </h2>
-          </div>
-          <div className="grid md:grid-cols-2 gap-10 items-start">
-            <div className="space-y-5 text-slate-600 leading-relaxed text-base">
-              <p>
-                Microsoft's low-code platform is powerful and accessible — which is exactly why it creates problems at scale. When any employee can build an app or flow without governance guardrails, the result is <strong className="text-[#0A2540]">app sprawl</strong>: hundreds of undocumented solutions running on production data, with no owner, no monitoring, and no remediation path.
-              </p>
-              <p>
-                DLP policies either don't exist or are misconfigured, leaving sensitive connectors exposed. ALM is absent — makers build directly in the default environment and push to production without a test cycle. Shadow development flourishes: business units solve their own problems with no IT visibility and no security review.
-              </p>
-              <p>
-                The result isn't just technical debt. It's a compliance risk, a data governance failure, and — when Copilot Studio enters the picture — an AI readiness blocker.
-              </p>
-            </div>
-            <div className="bg-[#F7F9FC] rounded-2xl p-8 border border-border space-y-4">
-              <p className="text-[#0A2540] font-bold text-sm uppercase tracking-wide mb-4">Common signals of ungoverned growth</p>
-              {[
-                "No formal environment strategy — everything runs in Default",
-                "DLP policies that only cover the default environment",
-                "Makers with no training building production-critical flows",
-                "Apps connecting to sensitive data with no security review",
-                "Zero flow failure monitoring or alerting",
-                "No CoE toolkit or governance documentation",
-              ].map((signal) => (
-                <div key={signal} className="flex items-start gap-3">
-                  <AlertTriangle className="w-4 h-4 text-orange-500 flex-shrink-0 mt-0.5" />
-                  <span className="text-slate-600 text-sm leading-relaxed">{signal}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* ── 3. Who This Is For ──────────────────────────────────────────────── */}
-      <section className="bg-[#0A2540] py-20">
-        <div className="max-w-[1100px] mx-auto px-6">
-          <div className="text-center mb-12">
-            <p className="text-[#00B4D8] text-xs font-bold uppercase tracking-widest mb-3">Who This Is For</p>
-            <h2 className="text-3xl md:text-4xl font-extrabold text-white max-w-2xl mx-auto leading-tight">
-              Built for organisations where Power Platform governance is falling behind adoption.
-            </h2>
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {WHO_ITS_FOR.map(({ icon: Icon, label, desc }) => (
-              <div
-                key={label}
-                className="flex gap-4 p-6 rounded-2xl border border-white/10 bg-white/5 hover:bg-white/[0.08] transition-colors"
-              >
-                <div className="w-10 h-10 rounded-xl bg-[#0078D4]/20 flex items-center justify-center flex-shrink-0">
-                  <Icon className="w-5 h-5 text-[#0078D4]" />
-                </div>
-                <div>
-                  <h3 className="font-bold text-white mb-1">{label}</h3>
-                  <p className="text-white/55 text-sm leading-relaxed">{desc}</p>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* ── 4. How It Works ─────────────────────────────────────────────────── */}
-      <section className="bg-[#F7F9FC] py-20">
-        <div className="max-w-[1100px] mx-auto px-6">
-          <div className="text-center mb-14">
-            <p className="text-[#0078D4] text-xs font-bold uppercase tracking-widest mb-3">How It Works</p>
-            <h2 className="text-3xl md:text-4xl font-extrabold text-[#0A2540] mb-4">
-              10 questions. 5 dimensions. One actionable report.
-            </h2>
-            <p className="text-slate-500 max-w-xl mx-auto text-lg leading-relaxed">
-              Designed to surface the governance gaps that matter — and skip everything that doesn't.
-            </p>
-          </div>
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-6 mb-12">
-            {HOW_IT_WORKS_STATS.map(({ value, label }) => (
-              <div key={label} className="bg-white border border-border rounded-2xl p-6 text-center">
-                <p className="text-4xl font-extrabold text-[#0078D4] mb-1">{value}</p>
-                <p className="text-slate-500 text-sm">{label}</p>
-              </div>
-            ))}
-          </div>
-          <div className="grid md:grid-cols-4 gap-6">
+          <p className="text-center text-xs font-bold uppercase tracking-widest text-[#0078D4] mb-3">Why This Assessment Exists</p>
+          <h2 className="text-3xl font-extrabold text-[#0A2540] text-center mb-4">
+            Most Power Platform environments are ungoverned. Most organisations don't know it until something breaks.
+          </h2>
+          <p className="text-slate-500 text-center max-w-2xl mx-auto mb-14 text-lg leading-relaxed">
+            Microsoft's low-code platform is powerful and accessible — which is exactly why it creates problems at scale. When any employee can build an app or flow without governance guardrails, the result is app sprawl, data exposure, and automation that fails silently in production.
+          </p>
+          <div className="grid md:grid-cols-2 gap-6">
             {[
-              { step: "01", title: "Answer 10 questions", body: "AI-powered questions adapt to your context, covering all 5 maturity dimensions in sequence." },
-              { step: "02", title: "Scored against NASA benchmarks", body: "Each answer is scored using the same Power Platform governance framework applied at NASA." },
-              { step: "03", title: "Receive your maturity tier", body: "Your overall tier — Beginner through Ready — is calculated instantly with per-dimension scores." },
-              { step: "04", title: "Get your PDF report", body: "A full diagnostic PDF is emailed immediately. No account required, no call scheduled." },
-            ].map(({ step, title, body }) => (
-              <div key={step} className="relative">
-                <p className="text-[#0078D4]/30 font-extrabold text-5xl mb-3 leading-none">{step}</p>
-                <h3 className="font-bold text-[#0A2540] mb-2">{title}</h3>
-                <p className="text-slate-500 text-sm leading-relaxed">{body}</p>
-              </div>
-            ))}
+              {
+                icon: AlertTriangle,
+                colour: "bg-blue-500/10 text-blue-600",
+                title: "App sprawl accumulates faster than governance frameworks can keep up",
+                body: "Hundreds of undocumented solutions running on production data — with no owner, no monitoring, and no remediation path. Shadow development flourishes when any user can build with no IT visibility and no security review. The result is a catalogue of technical debt, not a governed practice.",
+              },
+              {
+                icon: Lock,
+                colour: "bg-orange-500/10 text-orange-600",
+                title: "DLP gaps leave sensitive connectors exposed to unmanaged makers",
+                body: "DLP policies that only cover the default environment, or that were configured once and never reviewed, leave sensitive data connectors open to any maker who finds them. The gap is invisible in the admin centre — until a data exposure incident surfaces it.",
+              },
+              {
+                icon: Settings2,
+                colour: "bg-violet-500/10 text-violet-600",
+                title: "ALM absence means production critical flows have no recovery path",
+                body: "When makers build directly in the default environment and promote without a test cycle, version control is absent and rollback is manual. A broken flow in production has no documented fix path — and may have been built by someone who has since left the organisation.",
+              },
+              {
+                icon: Zap,
+                colour: "bg-teal-500/10 text-teal-600",
+                title: "Ungoverned Power Platform becomes an AI readiness blocker",
+                body: "Copilot Studio and AI Builder deployments require a governed, monitored Power Platform foundation. App sprawl, absent ALM, and unmanaged connectors are not just current risks — they are blockers to the AI automation investments your organisation is planning.",
+              },
+            ].map((item, i) => {
+              const Icon = item.icon;
+              return (
+                <div key={i} className="bg-[#F7F9FC] rounded-2xl border border-border p-6">
+                  <div className={`w-11 h-11 rounded-xl flex items-center justify-center mb-4 ${item.colour}`}>
+                    <Icon className="w-5 h-5" />
+                  </div>
+                  <h3 className="font-extrabold text-[#0A2540] mb-2">{item.title}</h3>
+                  <p className="text-slate-500 text-sm leading-relaxed">{item.body}</p>
+                </div>
+              );
+            })}
           </div>
         </div>
       </section>
 
-      {/* ── 5. 5 Maturity Dimensions ────────────────────────────────────────── */}
-      <section className="bg-white py-20">
-        <div className="max-w-[1200px] mx-auto px-6">
-          <div className="text-center mb-12">
-            <p className="text-[#0078D4] text-sm font-semibold uppercase tracking-[0.12em] mb-3">What We Assess</p>
-            <h2 className="text-3xl md:text-4xl font-extrabold text-[#0A2540]">5 Maturity Dimensions</h2>
-            <p className="text-muted-foreground mt-4 max-w-xl mx-auto text-lg leading-relaxed">
-              Every Power Platform environment is measured across the same five dimensions — scored independently and combined into your overall maturity tier.
-            </p>
+      {/* ── 3. Who This Is For ── */}
+      <section className="py-20 bg-[#0A2540]">
+        <div className="max-w-[1100px] mx-auto px-6">
+          <p className="text-center text-xs font-bold uppercase tracking-widest text-[#00B4D8] mb-3">Who This Assessment Is For</p>
+          <h2 className="text-3xl font-extrabold text-white text-center mb-4">
+            Built for organisations where Power Platform governance is falling behind adoption.
+          </h2>
+          <p className="text-white/60 text-center max-w-xl mx-auto mb-12 text-lg">
+            If your organisation is in any of these categories, you need this assessment before your next Power Platform initiative begins.
+          </p>
+          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {[
+              {
+                icon: Building2,
+                title: "Mid-market organisations",
+                body: "200–5,000 users scaling Power Apps and Power Automate across departments — where organic adoption has outpaced governance and a formal practice has never been established.",
+              },
+              {
+                icon: ShieldCheck,
+                title: "Regulated industries",
+                body: "HIPAA, SOC 2, and FINRA-regulated teams needing compliant automation governance — where unmanaged connectors and absent audit logging create direct regulatory exposure.",
+              },
+              {
+                icon: Target,
+                title: "Government contractors",
+                body: "CMMC and FedRAMP environments where Power Platform governance is a contractual requirement — and where maker permissions and data residency controls must be documented and defensible.",
+              },
+              {
+                icon: Zap,
+                title: "Teams scaling automation",
+                body: "Organisations running dozens of flows but lacking ALM, monitoring discipline, and documented ownership — where a single point of failure can bring a business process down silently.",
+              },
+              {
+                icon: AlertTriangle,
+                title: "App sprawl situations",
+                body: "Environments with undocumented apps, orphaned flows, and unmanaged connectors — where IT has lost visibility over what is running, who owns it, and what data it accesses.",
+              },
+              {
+                icon: Cpu,
+                title: "Copilot Studio aspirants",
+                body: "Organisations planning AI automation through Copilot Studio or AI Builder who need to know whether their Power Platform foundation is mature enough to support it safely.",
+              },
+            ].map((item, i) => {
+              const Icon = item.icon;
+              return (
+                <div key={i} className="bg-white/5 border border-white/10 rounded-2xl p-5">
+                  <div className="w-10 h-10 rounded-xl bg-[#0078D4]/20 flex items-center justify-center mb-4">
+                    <Icon className="w-5 h-5 text-[#00B4D8]" />
+                  </div>
+                  <h3 className="font-extrabold text-white mb-1">{item.title}</h3>
+                  <p className="text-white/50 text-sm leading-relaxed">{item.body}</p>
+                </div>
+              );
+            })}
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-            {PILLARS.map(({ label, icon: Icon, desc, bullets }) => (
-              <div
-                key={label}
-                className="p-7 rounded-2xl border border-border hover:border-[#0078D4]/30 hover:bg-[#F7F9FC] transition-all"
-              >
-                <div className="flex items-start gap-4 mb-4">
-                  <div className="w-10 h-10 rounded-xl bg-[#0078D4]/10 flex items-center justify-center flex-shrink-0">
+        </div>
+      </section>
+
+      {/* ── 4. How It Works ── */}
+      <section className="py-20 bg-white">
+        <div className="max-w-[1100px] mx-auto px-6">
+          <p className="text-center text-xs font-bold uppercase tracking-widest text-[#0078D4] mb-3">How It Works</p>
+          <h2 className="text-3xl font-extrabold text-[#0A2540] text-center mb-4">From first question to maturity report in under five minutes.</h2>
+          <p className="text-slate-500 text-center max-w-xl mx-auto mb-14">
+            Ten questions. Five maturity dimensions. A NASA-grade scoring model. An instant maturity score, a personalised PDF report, and a recommended next step — delivered to your inbox the moment you finish.
+          </p>
+          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
+            {[
+              {
+                icon: Cpu,
+                title: "10 targeted questions",
+                desc: "Each question maps to one of five Power Platform maturity dimensions — the same diagnostics Shane uses in a paid engagement, compressed into a 5-minute format. No generic questionnaire.",
+              },
+              {
+                icon: Layers,
+                title: "5 maturity dimensions scored",
+                desc: "Governance & Environment Strategy, Application Lifecycle Management, Security & Compliance, Maker Enablement, and Automation Maturity — each scored independently on a 0–10 scale.",
+              },
+              {
+                icon: Star,
+                title: "NASA-grade scoring model",
+                desc: "Your answers are weighted and scored using the same diagnostic framework applied at NASA. You receive a total score (0–50), a maturity tier, and a per-dimension breakdown.",
+              },
+              {
+                icon: FileText,
+                title: "Instant PDF report emailed",
+                desc: "A branded, personalised PDF lands in your inbox the moment you complete the assessment. No waiting, no scheduling — your maturity report is generated and delivered immediately.",
+              },
+              {
+                icon: CheckCircle,
+                title: "No account required",
+                desc: "There is nothing to sign up for, no login, no subscription. Enter your name and email at the end to receive your PDF. That is the only information required.",
+              },
+              {
+                icon: Users,
+                title: "No sales call required",
+                desc: "Your report includes a recommended next step — not a sales pitch. If you want to discuss the findings, a booking link is included. The decision is entirely yours.",
+              },
+            ].map((item, i) => {
+              const Icon = item.icon;
+              return (
+                <div key={i} className="flex gap-4">
+                  <div className="w-10 h-10 rounded-xl bg-[#0078D4]/10 flex items-center justify-center flex-shrink-0 mt-0.5">
                     <Icon className="w-5 h-5 text-[#0078D4]" />
                   </div>
                   <div>
-                    <h3 className="font-bold text-[#0A2540] text-lg leading-snug">{label}</h3>
-                    <p className="text-muted-foreground text-sm mt-1">{desc}</p>
+                    <h3 className="font-extrabold text-[#0A2540] mb-2">{item.title}</h3>
+                    <p className="text-slate-500 text-sm leading-relaxed">{item.desc}</p>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          <div className="mt-14 text-center">
+            <button
+              onClick={() => setModalOpen(true)}
+              className="group inline-flex items-center gap-2 text-[#0078D4] font-semibold hover:text-[#005A9E] transition-colors"
+            >
+              Start the assessment now <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+            </button>
+          </div>
+        </div>
+      </section>
+
+      {/* ── 5. Five Maturity Dimensions ── */}
+      <section className="py-20 bg-[#F7F9FC]">
+        <div className="max-w-[1100px] mx-auto px-6">
+          <p className="text-center text-xs font-bold uppercase tracking-widest text-[#0078D4] mb-3">The Five Maturity Dimensions</p>
+          <h2 className="text-3xl font-extrabold text-[#0A2540] text-center mb-4">What the assessment measures — and why it matters.</h2>
+          <p className="text-slate-500 text-center max-w-xl mx-auto mb-14">
+            These five dimensions determine whether your Power Platform practice is governed, scalable, and AI-ready — or carrying technical debt and compliance risk that compounds with every new app and flow added.
+          </p>
+          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {DIMENSIONS.map((dim) => (
+              <div key={dim.title} className="bg-white rounded-2xl border border-slate-100 shadow-sm p-6">
+                <div className="flex items-center gap-3 mb-4">
+                  <div className={`w-2 h-10 rounded-full ${dim.colour}`} />
+                  <div>
+                    <p className="text-xs font-bold uppercase tracking-wide text-muted-foreground">{dim.label}</p>
+                    <h3 className="font-extrabold text-lg text-[#0A2540]">{dim.title}</h3>
                   </div>
                 </div>
                 <ul className="space-y-2">
-                  {bullets.map((b) => (
-                    <li key={b} className="flex items-start gap-2.5">
+                  {dim.bullets.map((b, i) => (
+                    <li key={i} className="flex gap-2 text-sm text-slate-500 leading-relaxed">
                       <CheckCircle className="w-4 h-4 text-[#0078D4] flex-shrink-0 mt-0.5" />
-                      <span className="text-slate-600 text-sm leading-relaxed">{b}</span>
+                      {b}
                     </li>
                   ))}
                 </ul>
               </div>
             ))}
-            {/* 5th pillar spans full width on md */}
-            <div className="md:col-span-2">
-              {/* Already rendered in the map above — pillar index 4 is Automation */}
+            <div className="bg-[#0A2540] rounded-2xl border border-[#0A2540] p-6 flex flex-col justify-between">
+              <div>
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="w-2 h-10 rounded-full bg-primary" />
+                  <div>
+                    <p className="text-xs font-bold uppercase tracking-wide text-white/40">Your Output</p>
+                    <h3 className="font-extrabold text-lg text-white">Your Report</h3>
+                  </div>
+                </div>
+                <p className="text-white/60 text-sm leading-relaxed">
+                  All five dimensions scored, ranked by maturity risk, and mapped to a tailored service recommendation. Personalised PDF delivered to your inbox the moment you finish.
+                </p>
+              </div>
+              <button
+                onClick={() => setModalOpen(true)}
+                className="mt-6 inline-flex items-center gap-1.5 text-[#00B4D8] text-sm font-semibold hover:gap-2.5 transition-all"
+              >
+                Start Assessment <ArrowRight className="w-4 h-4" />
+              </button>
             </div>
           </div>
         </div>
       </section>
 
-      {/* ── 6. What You Receive ─────────────────────────────────────────────── */}
-      <section className="bg-[#F7F9FC] py-20">
+      {/* ── 6. What You Receive ── */}
+      <section className="py-20 bg-white">
         <div className="max-w-[1100px] mx-auto px-6">
-          <div className="text-center mb-12">
-            <p className="text-[#0078D4] text-xs font-bold uppercase tracking-widest mb-3">Your Deliverable</p>
-            <h2 className="text-3xl md:text-4xl font-extrabold text-[#0A2540] mb-4">What You Receive</h2>
-            <p className="text-slate-500 max-w-xl mx-auto text-lg leading-relaxed">
-              Every assessment produces a structured PDF report, emailed instantly. No summary slides. No vague findings. Actionable findings tied to your specific maturity gaps.
-            </p>
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-3xl mx-auto">
-            {WHAT_YOU_RECEIVE.map(({ icon: Icon, text }) => (
-              <div key={text} className="flex items-start gap-3 bg-white border border-border rounded-xl p-5">
-                <Icon className="w-5 h-5 text-[#0078D4] flex-shrink-0 mt-0.5" />
-                <span className="text-slate-700 text-sm leading-relaxed">{text}</span>
-              </div>
-            ))}
+          <p className="text-center text-xs font-bold uppercase tracking-widest text-[#0078D4] mb-3">What You Receive</p>
+          <h2 className="text-3xl font-extrabold text-[#0A2540] text-center mb-4">
+            A personalised Power Platform maturity report. Free. Instant.
+          </h2>
+          <p className="text-slate-500 text-center max-w-xl mx-auto mb-14 text-lg">
+            Not a generic score. Not a newsletter signup. A real diagnostic report — built on the same framework Shane applies in paid engagements — delivered to your inbox the moment you finish.
+          </p>
+          <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-5">
+            {[
+              {
+                icon: BarChart3,
+                title: "Overall maturity score",
+                body: "Aggregated score across all five dimensions with your maturity tier: Beginner, Developing, Emerging, Advanced, or Ready.",
+              },
+              {
+                icon: AlertTriangle,
+                title: "Governance and environment gaps",
+                body: "Environment strategy failures, DLP gaps, and maker permission issues — with severity ratings and specific remediation direction.",
+              },
+              {
+                icon: GitBranch,
+                title: "ALM maturity gaps",
+                body: "Pipeline, solution management, and release governance findings — what's missing and how it creates risk in your production environment.",
+              },
+              {
+                icon: Lock,
+                title: "Security and compliance exposures",
+                body: "Security risks identified by dimension — RBAC gaps, connector vulnerabilities, audit logging failures, and data residency issues.",
+              },
+              {
+                icon: BookOpen,
+                title: "Maker enablement gaps",
+                body: "CoE readiness assessment and maker training gaps — what's preventing your makers from building reliably at scale.",
+              },
+              {
+                icon: Zap,
+                title: "Automation reliability findings",
+                body: "Flow failure monitoring, integration governance, and automation maturity findings — what is running unmonitored in your environment.",
+              },
+              {
+                icon: ArrowRight,
+                title: "Recommended next steps",
+                body: "Prioritised action items in priority order, matched to your maturity tier — specific to your environment, not a generic Power Platform checklist.",
+              },
+              {
+                icon: Layers,
+                title: "Architecture notes",
+                body: "Architectural observations tailored to your environment and scale — structural decisions and patterns that will determine your platform's ceiling.",
+              },
+            ].map((item, i) => {
+              const Icon = item.icon;
+              return (
+                <div key={i} className="flex items-start gap-4 bg-[#F7F9FC] rounded-2xl border border-border p-5">
+                  <div className="w-10 h-10 rounded-xl bg-[#0078D4]/10 flex items-center justify-center flex-shrink-0">
+                    <Icon className="w-5 h-5 text-[#0078D4]" />
+                  </div>
+                  <div>
+                    <h3 className="font-extrabold text-[#0A2540] mb-1">{item.title}</h3>
+                    <p className="text-slate-500 text-sm leading-relaxed">{item.body}</p>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </div>
       </section>
 
-      {/* ── 7. Inside Your PDF Report ───────────────────────────────────────── */}
-      <section className="bg-white py-20">
+      {/* ── 7. Inside Your PDF Report ── */}
+      <section className="py-20 bg-[#0A2540]">
         <div className="max-w-[1100px] mx-auto px-6">
-          <div className="text-center mb-12">
-            <p className="text-[#0078D4] text-xs font-bold uppercase tracking-widest mb-3">Report Anatomy</p>
-            <h2 className="text-3xl md:text-4xl font-extrabold text-[#0A2540] mb-4">Inside Your PDF Report</h2>
-            <p className="text-slate-500 max-w-xl mx-auto text-lg leading-relaxed">
-              Six structured sections designed to move from diagnosis to action — shareable with your leadership team or IT governance board.
-            </p>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-            {PDF_SECTIONS.map(({ title, desc }, i) => (
-              <div key={title} className="rounded-2xl border border-border p-6 hover:border-[#0078D4]/30 hover:bg-[#F7F9FC] transition-all">
-                <div className="flex items-center gap-3 mb-3">
-                  <span className="text-[#0078D4]/40 font-extrabold text-2xl leading-none">{String(i + 1).padStart(2, "0")}</span>
-                  <h3 className="font-bold text-[#0A2540]">{title}</h3>
+          <p className="text-center text-xs font-bold uppercase tracking-widest text-[#00B4D8] mb-3">Inside Your PDF Report</p>
+          <h2 className="text-3xl font-extrabold text-white text-center mb-4">
+            A structured maturity diagnostic — not a marketing brochure.
+          </h2>
+          <p className="text-white/60 text-center max-w-xl mx-auto mb-12 text-lg">
+            Your PDF is structured as a professional diagnostic document — designed to be shared with IT leadership, a procurement committee, or an executive sponsor, not just filed in a personal inbox.
+          </p>
+          <div className="grid md:grid-cols-2 gap-4">
+            {[
+              {
+                num: "01",
+                title: "Executive summary",
+                desc: "A one-page overview of your maturity tier, overall score, and the most critical governance gaps — suitable for sharing with IT leadership or a business sponsor.",
+              },
+              {
+                num: "02",
+                title: "Dimension-by-dimension scoring",
+                desc: "Individual scores for each of the five maturity dimensions with narrative interpretation and benchmark context against enterprise Power Platform standards.",
+              },
+              {
+                num: "03",
+                title: "Maturity heatmap",
+                desc: "A visual representation of where your practice is strong, developing, or at risk — immediately actionable at a glance for both technical and business audiences.",
+              },
+              {
+                num: "04",
+                title: "Gap analysis",
+                desc: "A structured breakdown of every identified gap, ranked by impact and remediation complexity — governance failures, ALM gaps, security exposures, and maker issues.",
+              },
+              {
+                num: "05",
+                title: "Recommended remediation path",
+                desc: "A sequenced action plan mapping your gaps to concrete remediation steps — with recommended sequencing and effort estimates for your maturity tier.",
+              },
+              {
+                num: "06",
+                title: "Suggested quick wins",
+                desc: "Matched service recommendations — Power Platform Quick-Start, Governance Foundations, or Copilot Readiness — based on your exact maturity tier and gap profile.",
+              },
+            ].map((item) => (
+              <div key={item.num} className="flex gap-4 bg-white/5 border border-white/10 rounded-2xl p-5">
+                <div className="text-4xl font-black text-primary/20 leading-none flex-shrink-0 w-10">{item.num}</div>
+                <div>
+                  <h3 className="font-extrabold text-white mb-1">{item.title}</h3>
+                  <p className="text-white/50 text-sm leading-relaxed">{item.desc}</p>
                 </div>
-                <p className="text-slate-500 text-sm leading-relaxed">{desc}</p>
               </div>
             ))}
           </div>
-          <div className="mt-10 bg-[#0A2540]/5 border border-[#0078D4]/15 rounded-2xl p-6 text-center">
-            <p className="text-[#0A2540] font-semibold mb-1">Suggested Quick Wins included in every report</p>
-            <p className="text-slate-500 text-sm">
-              Based on your maturity tier, your report includes a matched service recommendation — Power Platform Quick-Start, Governance Foundations Package, or Automation Hardening — with full scope and pricing detail.
-            </p>
-          </div>
-          <div className="mt-8 text-center">
+          <div className="mt-10 text-center">
             <a
-              href="/power-platform-maturity-report-sample.pdf"
+              href="/power-platform-assessment-report-sample.pdf"
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center gap-2 rounded-lg border border-[#0078D4]/30 px-6 py-2.5 text-sm font-semibold text-[#0078D4] hover:bg-[#0078D4]/5 hover:border-[#0078D4] transition-colors"
+              className="inline-flex items-center gap-2 rounded-lg border border-white/20 px-6 py-2.5 text-sm font-semibold text-white/80 hover:bg-white/10 hover:text-white transition-colors"
             >
               <Download className="w-4 h-4" />
               View Sample Report (PDF)
@@ -511,65 +590,81 @@ export default function PowerPlatformQuiz() {
         </div>
       </section>
 
-      {/* ── 8. Why Shane ────────────────────────────────────────────────────── */}
-      <section className="bg-[#0A2540] py-20">
+      {/* ── 8. Why Shane ── */}
+      <section className="py-20 bg-white">
         <div className="max-w-[1100px] mx-auto px-6">
-          <div className="text-center mb-12">
-            <p className="text-[#00B4D8] text-xs font-bold uppercase tracking-widest mb-3">Your Assessor</p>
-            <h2 className="text-3xl md:text-4xl font-extrabold text-white mb-4">Why Shane McCaw</h2>
-            <p className="text-white/60 max-w-xl mx-auto text-lg leading-relaxed">
-              The assessment is designed and interpreted by the same person who governs Power Platform at NASA. Not a consultant who read the documentation — an architect who built the controls.
-            </p>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-            {WHY_SHANE.map(({ icon: Icon, title, desc }) => (
-              <div
-                key={title}
-                className="flex gap-4 p-6 rounded-2xl border border-white/10 bg-white/5 hover:bg-white/[0.08] transition-colors"
-              >
-                <div className="w-10 h-10 rounded-xl bg-[#0078D4]/20 flex items-center justify-center flex-shrink-0">
-                  <Icon className="w-5 h-5 text-[#0078D4]" />
+          <p className="text-center text-xs font-bold uppercase tracking-widest text-[#0078D4] mb-3">Why Shane McCaw</p>
+          <h2 className="text-3xl font-extrabold text-[#0A2540] text-center mb-4">
+            This framework was built from 30 years of doing this work — not reading about it.
+          </h2>
+          <p className="text-slate-500 text-center max-w-2xl mx-auto mb-14 text-lg leading-relaxed">
+            Shane McCaw is not a generalist consultant who added Power Platform to a service catalogue. He has spent three decades building and governing Microsoft automation environments for some of the most demanding and regulated organisations in the world.
+          </p>
+          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {[
+              {
+                icon: Star,
+                colour: "bg-blue-500/10 text-blue-600",
+                title: "Lead M365 Architect at NASA",
+                body: "Shane built and governs the Power Platform environment for one of the world's most security-conscious and complex Microsoft 365 tenants — a 60,000-user environment operating under ITAR, CMMC, and FedRAMP requirements.",
+              },
+              {
+                icon: TrendingUp,
+                colour: "bg-teal-500/10 text-teal-600",
+                title: "30-year Microsoft ecosystem veteran",
+                body: "Three decades across every generation of the Microsoft stack — from on-premises SharePoint to modern Power Platform, Copilot Studio, and Dataverse at enterprise scale.",
+              },
+              {
+                icon: Users,
+                colour: "bg-violet-500/10 text-violet-600",
+                title: "Senior-only delivery",
+                body: "No juniors, no project managers as intermediaries. Every assessment and engagement is delivered personally by Shane — the same expert you read about on this page.",
+              },
+              {
+                icon: ShieldCheck,
+                colour: "bg-orange-500/10 text-orange-600",
+                title: "Regulated industry expertise",
+                body: "Deep experience in federal, healthcare, and financial services environments where Power Platform governance, compliance, and audit-readiness are non-negotiable requirements.",
+              },
+              {
+                icon: ClipboardList,
+                colour: "bg-green-500/10 text-green-600",
+                title: "Architecture-first methodology",
+                body: "Shane's approach starts with the platform architecture, not the tooling. Every recommendation is grounded in sustainable governance design, not quick fixes or generic best practices.",
+              },
+            ].map((item, i) => {
+              const Icon = item.icon;
+              return (
+                <div key={i} className="bg-[#F7F9FC] rounded-2xl border border-border p-6">
+                  <div className={`w-11 h-11 rounded-xl flex items-center justify-center mb-4 ${item.colour}`}>
+                    <Icon className="w-5 h-5" />
+                  </div>
+                  <h3 className="font-extrabold text-[#0A2540] mb-2">{item.title}</h3>
+                  <p className="text-slate-500 text-sm leading-relaxed">{item.body}</p>
                 </div>
-                <div>
-                  <h3 className="font-bold text-white mb-1.5">{title}</h3>
-                  <p className="text-white/55 text-sm leading-relaxed">{desc}</p>
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       </section>
 
-      {/* ── 9. Final CTA ────────────────────────────────────────────────────── */}
-      <section className="py-24 bg-[#F7F9FC]">
+      {/* ── 9. CTA Reinforcement ── */}
+      <section className="py-20 bg-[#0A2540]">
         <div className="max-w-[700px] mx-auto px-6 text-center">
-          <p className="text-[#0078D4] text-xs font-bold uppercase tracking-widest mb-4">Free in 5 Minutes</p>
-          <h2 className="text-3xl md:text-4xl font-extrabold text-[#0A2540] mb-5 leading-tight">
-            Your Power Platform maturity determines your automation reliability, governance posture, and Copilot success.
+          <p className="text-[#00B4D8] text-xs font-bold uppercase tracking-widest mb-4">Free in 5 Minutes</p>
+          <h2 className="text-3xl md:text-4xl font-extrabold text-white mb-4">
+            Your Power Platform maturity determines your automation reliability, your compliance posture, and your AI readiness.
           </h2>
-          <p className="text-slate-500 text-lg mb-10 leading-relaxed">
-            Take the free assessment now. Receive a personalised PDF report — scored across all 5 maturity dimensions — delivered instantly to your inbox. No account required. No sales call triggered.
+          <p className="text-white/60 text-lg mb-3 leading-relaxed">
+            Most organisations discover their Power Platform problems when they try to scale — when Copilot Studio deployment begins, when a compliance audit starts, or when a critical flow fails in production and nobody knows how to fix it.
+          </p>
+          <p className="text-white/60 text-lg mb-10 leading-relaxed">
+            This assessment takes five minutes. The PDF report is free. The maturity gap analysis it surfaces is the same work Shane charges for in a paid engagement.
           </p>
           <CTAButton onClick={() => setModalOpen(true)} className="text-base px-8 py-4">
-            Take the Free Assessment
+            Take the Free Assessment Now
           </CTAButton>
-          <div className="mt-8 flex flex-wrap justify-center gap-6">
-            {["5 minutes", "Free PDF report", "No sales call required"].map((item) => (
-              <div key={item} className="flex items-center gap-2 text-slate-400 text-sm">
-                <CheckCircle className="w-4 h-4 text-[#0078D4]" />
-                {item}
-              </div>
-            ))}
-          </div>
-          <div className="mt-8 pt-8 border-t border-border">
-            <p className="text-slate-400 text-sm mb-3">Prefer to talk through your situation first?</p>
-            <a
-              href="/book"
-              className="inline-flex items-center gap-2 text-[#0078D4] hover:text-[#005A9E] font-semibold text-sm transition-colors"
-            >
-              Book a Discovery Call <ArrowRight className="w-4 h-4" />
-            </a>
-          </div>
+          <p className="text-white/30 text-sm mt-4">No account required · No sales follow-up · Results delivered instantly</p>
         </div>
       </section>
 

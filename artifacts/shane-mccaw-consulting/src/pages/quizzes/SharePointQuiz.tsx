@@ -4,26 +4,10 @@ import { CTAButton } from "@/components/CTAButton";
 import { GenericQuizModal, type QuizConfig } from "@/components/GenericQuizModal";
 import { SEOMeta } from "@/components/SEOMeta";
 import {
-  CheckCircle,
-  FolderOpen,
-  Building2,
-  ShieldCheck,
-  FileText,
-  Users,
-  BarChart3,
-  AlertTriangle,
-  Globe,
-  Lock,
-  Database,
-  Target,
-  Award,
-  Zap,
-  ArrowRight,
-  BookOpen,
-  Search,
-  RefreshCw,
-  Layers,
-  Download,
+  CheckCircle, FolderOpen, Building2, ShieldCheck, FileText,
+  Users, BarChart3, AlertTriangle, Globe, Lock, Database,
+  Target, Award, ArrowRight, RefreshCw, Layers, Download,
+  TrendingUp, Star, Search,
 } from "lucide-react";
 
 const config: QuizConfig = {
@@ -98,99 +82,67 @@ const config: QuizConfig = {
   introFeatureLabels: ["5 architecture dimensions", "Maturity tier rating", "PDF report emailed"],
 };
 
-const PILLARS = [
-  { label: "Information Architecture", desc: "Hub site structure, naming conventions, site hierarchy, and whether your environment was intentionally designed or grew organically without a plan." },
-  { label: "Search & Metadata", desc: "Content findability, search configuration quality, managed properties, metadata tagging practices, and navigation structure consistency." },
-  { label: "Content Lifecycle", desc: "What happens to content when projects end or employees leave, retention and archiving policies, inactive site handling, and lifecycle documentation." },
-  { label: "Governance Gaps", desc: "Inherited vs unique permissions, external sharing posture, guest access controls, known governance gaps, oversharing risks, and ownership accountability." },
-  { label: "Migration Readiness", desc: "Whether a SharePoint migration or modernisation is planned, technical debt identified, blockers, documentation accuracy, and legacy content volume." },
-];
-
 const DIMENSIONS = [
   {
-    label: "Information Architecture",
-    icon: <Layers className="w-5 h-5 text-[#0078D4]" />,
+    colour: "bg-blue-500",
+    label: "Dimension 1",
+    title: "Information Architecture",
     bullets: [
-      "Hub site model adoption and associated site hierarchy",
-      "Naming conventions for sites, libraries, and folders",
-      "Intentional IA design vs. organic ungoverned growth",
-      "Navigation structure consistency across departments",
-      "Site provisioning process and governance maturity",
+      "Hub site model adoption and associated site hierarchy design quality.",
+      "Naming conventions for sites, libraries, and folders — enforced or ad hoc.",
+      "Intentional IA design versus organic ungoverned growth over time.",
+      "Navigation structure consistency across departments and divisions.",
+      "Site provisioning process maturity and governance controls at creation.",
     ],
   },
   {
-    label: "Governance & Lifecycle",
-    icon: <RefreshCw className="w-5 h-5 text-[#0078D4]" />,
+    colour: "bg-teal-500",
+    label: "Dimension 2",
+    title: "Search & Metadata",
     bullets: [
-      "Site expiry policies and ownership accountability",
-      "Lifecycle documentation for active and inactive sites",
-      "Archiving and deletion processes when projects end",
-      "Employee offboarding content handling procedures",
-      "Provisioning guardrails and request workflows",
+      "Content findability — can staff reliably locate documents using search?",
+      "Managed properties, result sources, and promoted results configuration.",
+      "Metadata and content type adoption across libraries and sites.",
+      "Folder-based versus metadata-based document organisation maturity.",
+      "Search relevance tuning and query rules for high-priority content types.",
     ],
   },
   {
-    label: "Security & Permissions",
-    icon: <ShieldCheck className="w-5 h-5 text-[#0078D4]" />,
+    colour: "bg-violet-500",
+    label: "Dimension 3",
+    title: "Content Lifecycle",
     bullets: [
-      "Inherited vs. unique item- and folder-level permissions",
-      "RBAC model maturity and group-based access design",
-      "External sharing posture and guest access controls",
-      "Oversharing risk and sensitive content exposure",
-      "Sensitivity label adoption and enforcement",
+      "Site expiry policies and ownership accountability documentation.",
+      "Lifecycle processes for active and inactive sites — reviews, archiving, deletion.",
+      "Employee offboarding content handling and ownership transfer procedures.",
+      "Retention and archiving processes aligned to regulatory obligations.",
+      "Provisioning guardrails that enforce lifecycle expectations at site creation.",
     ],
   },
   {
-    label: "Content Quality & ROT",
-    icon: <Database className="w-5 h-5 text-[#0078D4]" />,
+    colour: "bg-orange-500",
+    label: "Dimension 4",
+    title: "Governance & Permissions",
     bullets: [
-      "Volume of Redundant, Outdated, and Trivial (ROT) content",
-      "Metadata and content type adoption across libraries",
-      "Folder-based vs. metadata-based document organisation",
-      "Search relevance and managed property configuration",
-      "Content ownership and review accountability",
+      "Inherited versus unique item- and folder-level permission sprawl.",
+      "RBAC model maturity and group-based access design consistency.",
+      "External sharing posture and guest access controls and review cadence.",
+      "Oversharing risk and sensitive content exposure to unintended audiences.",
+      "Sensitivity label adoption and enforcement across SharePoint workloads.",
     ],
   },
   {
-    label: "Integration & Copilot Readiness",
-    icon: <Target className="w-5 h-5 text-[#0078D4]" />,
+    colour: "bg-green-500",
+    label: "Dimension 5",
+    title: "Copilot & Migration Readiness",
     bullets: [
-      "SharePoint as a Copilot knowledge source quality",
-      "Teams and SharePoint integration alignment",
-      "Compliance and data residency posture for AI use",
-      "Power Platform and third-party connector dependencies",
-      "Architecture gaps blocking safe Copilot deployment",
+      "SharePoint as a Copilot knowledge source — content quality and governance.",
+      "Teams and SharePoint integration alignment and architectural consistency.",
+      "Compliance and data residency posture for AI and regulated workloads.",
+      "Power Platform and third-party connector dependencies and documentation.",
+      "Architecture gaps that would block safe Copilot deployment or migration.",
     ],
   },
-];
-
-const DELIVERABLES = [
-  { icon: <BarChart3 className="w-5 h-5 text-[#0078D4]" />, label: "Overall Architecture Score", desc: "Aggregated maturity score across all five dimensions" },
-  { icon: <Layers className="w-5 h-5 text-[#0078D4]" />, label: "IA Maturity Score", desc: "Specific rating for your information architecture design" },
-  { icon: <AlertTriangle className="w-5 h-5 text-[#0078D4]" />, label: "Governance Gaps", desc: "Identified governance failures and risk areas" },
-  { icon: <ShieldCheck className="w-5 h-5 text-[#0078D4]" />, label: "Security Gaps", desc: "Permission model issues and oversharing risks flagged" },
-  { icon: <Database className="w-5 h-5 text-[#0078D4]" />, label: "ROT Indicators", desc: "Signals of redundant, outdated, and trivial content volume" },
-  { icon: <ArrowRight className="w-5 h-5 text-[#0078D4]" />, label: "Next Steps", desc: "Prioritised action items matched to your maturity tier" },
-  { icon: <FileText className="w-5 h-5 text-[#0078D4]" />, label: "Architecture Notes", desc: "Specific observations from your assessment responses" },
-  { icon: <Target className="w-5 h-5 text-[#0078D4]" />, label: "Priority Roadmap", desc: "A sequenced improvement roadmap based on your results" },
-];
-
-const REPORT_SECTIONS = [
-  { label: "Executive Summary", desc: "A plain-English overview of your SharePoint environment's current state and the top three risks identified by the assessment." },
-  { label: "Dimension-by-Dimension Scoring", desc: "A scored breakdown across all five architecture dimensions, with narrative commentary on the strengths and gaps in each area." },
-  { label: "Architecture Heatmap", desc: "A visual representation of your maturity across all five dimensions — instantly shows where your environment is thriving and where it is failing." },
-  { label: "Gap Analysis", desc: "A detailed catalogue of the specific IA, governance, security, and content quality issues discovered, ranked by severity and business impact." },
-  { label: "Remediation Path", desc: "A prioritised, step-by-step remediation guide aligned to your maturity tier — so you know what to fix first and why." },
-  { label: "Quick Win Suggestions", desc: "Specific Shane McCaw Consulting service recommendations that directly address your highest-priority gaps, with pricing guidance." },
-];
-
-const ICP_PROFILES = [
-  { icon: <Building2 className="w-5 h-5 text-[#0078D4]" />, label: "Mid-Market Organisations", desc: "200–2,000 employees with SharePoint deployments that have outgrown informal governance" },
-  { icon: <ShieldCheck className="w-5 h-5 text-[#0078D4]" />, label: "Regulated Industries", desc: "Finance, healthcare, legal, and energy firms where SharePoint governance has compliance implications" },
-  { icon: <Globe className="w-5 h-5 text-[#0078D4]" />, label: "Government Contractors", desc: "Organisations handling sensitive government data who need defensible SharePoint security postures" },
-  { icon: <RefreshCw className="w-5 h-5 text-[#0078D4]" />, label: "SharePoint Rebuild Orgs", desc: "Teams planning a SharePoint modernisation or migration who need a baseline before they start" },
-  { icon: <AlertTriangle className="w-5 h-5 text-[#0078D4]" />, label: "Sprawl-Affected Teams", desc: "Environments with thousands of sites, broken permissions, and content nobody can find" },
-  { icon: <Target className="w-5 h-5 text-[#0078D4]" />, label: "Copilot-Prep Organisations", desc: "Companies planning a Copilot for M365 rollout who need clean SharePoint foundations first" },
 ];
 
 export default function SharePointQuiz() {
@@ -204,30 +156,67 @@ export default function SharePointQuiz() {
         ogUrl="https://shanemccaw.com/sharepoint-readiness-quiz"
       />
 
-      {/* ── Section 1: Hero ──────────────────────────────────────────────────── */}
-      <section className="bg-[#0A2540] pt-32 pb-24 relative overflow-hidden">
-        <div className="absolute inset-0 pointer-events-none" style={{ background: "radial-gradient(ellipse 900px 500px at 60% 0%, rgba(0,120,212,0.12) 0%, transparent 70%)" }} />
-        <div className="max-w-[1200px] mx-auto px-6 relative">
-          <FolderOpen className="w-10 h-10 text-[#0078D4] mb-6" />
-          <p className="text-[#0078D4] text-sm font-semibold uppercase tracking-[0.12em] mb-4">Free Assessment · NASA-Grade Methodology</p>
-          <h1 className="text-4xl md:text-5xl lg:text-6xl font-extrabold text-white leading-tight max-w-4xl">
-            SharePoint Architecture &amp; Information Architecture Assessment
+      {/* ── 1. Hero ── */}
+      <section className="relative min-h-[90vh] flex items-center justify-center overflow-hidden bg-[#0A2540]">
+        <div className="absolute inset-0 bg-gradient-to-br from-[#0A2540] via-[#0d2f50] to-[#0A2540]" />
+        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_30%_50%,rgba(0,120,212,0.15),transparent_60%)]" />
+        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_70%_20%,rgba(0,180,216,0.1),transparent_50%)]" />
+        <div
+          className="absolute inset-0 opacity-[0.04]"
+          style={{ backgroundImage: "radial-gradient(circle, #ffffff 1px, transparent 1px)", backgroundSize: "32px 32px" }}
+        />
+
+        <div className="relative z-10 max-w-[900px] mx-auto px-6 text-center">
+          <div className="inline-flex items-center gap-2 bg-primary/20 border border-primary/30 rounded-full px-4 py-1.5 mb-8">
+            <FolderOpen className="w-4 h-4 text-primary" />
+            <span className="text-primary text-sm font-semibold uppercase tracking-wide">SharePoint Architecture Assessment</span>
+          </div>
+
+          <h1 className="text-4xl md:text-6xl font-extrabold text-white leading-tight mb-6">
+            Your SharePoint Is{" "}
+            <span className="text-[#00B4D8]">Growing.</span>
+            <br className="hidden md:block" /> Is It Architected?
           </h1>
-          <p className="text-[#00B4D8] font-semibold mt-5 text-base">
-            The same assessment framework used at NASA — now available to your organisation.
+
+          <p className="text-white/70 text-lg md:text-xl leading-relaxed max-w-2xl mx-auto mb-4">
+            SharePoint environments almost always start with good intentions and end with thousands of ungoverned sites, redundant libraries, broken permissions, and content nobody can find. Sprawl accumulates silently until it becomes a compliance crisis or a migration blocker.
           </p>
-          <p className="text-white/65 text-xl mt-3 max-w-2xl leading-relaxed">
-            Built for mid-market and enterprise teams where ungoverned SharePoint sprawl is blocking Copilot adoption, compliance, and findability.
+          <p className="text-white/60 text-base md:text-lg leading-relaxed max-w-2xl mx-auto mb-10">
+            This 10-question assessment — built on the same diagnostic framework Shane applied as Lead M365 Architect at NASA — identifies exactly where your SharePoint environment stands across five architecture dimensions before Copilot, migration, or governance work begins.
           </p>
-          <div className="mt-10 flex flex-wrap gap-4">
-            <CTAButton onClick={() => setModalOpen(true)}>Take the Free Assessment</CTAButton>
-            <a href="/book" className="inline-flex items-center gap-2 text-white/70 hover:text-white font-semibold text-sm border border-white/20 px-6 py-3 rounded-xl hover:border-white/40 transition-colors">
+
+          <div className="flex flex-wrap items-center justify-center gap-8 mb-12">
+            {[
+              { value: "10", label: "targeted questions" },
+              { value: "5", label: "architecture dimensions" },
+              { value: "Free", label: "personalised PDF report" },
+            ].map((stat) => (
+              <div key={stat.label} className="text-center">
+                <p className="text-3xl font-extrabold text-[#00B4D8]">{stat.value}</p>
+                <p className="text-white/50 text-sm mt-1">{stat.label}</p>
+              </div>
+            ))}
+          </div>
+
+          <div className="flex flex-wrap items-center justify-center gap-4 mb-6">
+            <button
+              onClick={() => setModalOpen(true)}
+              className="group inline-flex items-center gap-3 bg-primary hover:bg-primary/90 text-white font-semibold text-lg px-8 py-4 rounded-xl transition-all duration-200 shadow-lg shadow-primary/25 hover:shadow-primary/40 hover:-translate-y-0.5"
+            >
+              Take the Free Assessment
+              <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
+            </button>
+            <a
+              href="/book"
+              className="inline-flex items-center gap-2 text-white/70 hover:text-white font-semibold text-sm border border-white/20 px-6 py-4 rounded-xl hover:border-white/40 transition-colors"
+            >
               Book a Discovery Call
             </a>
           </div>
-          <div className="mt-10 flex flex-wrap gap-6">
-            {["5 minutes", "Free PDF report", "No account required", "No sales call required"].map((item) => (
-              <div key={item} className="flex items-center gap-2 text-white/50 text-sm">
+
+          <div className="flex flex-wrap justify-center gap-6">
+            {["5 minutes", "Free PDF report", "No account required", "No sales call"].map((item) => (
+              <div key={item} className="flex items-center gap-2 text-white/40 text-sm">
                 <CheckCircle className="w-4 h-4 text-[#0078D4]" />
                 {item}
               </div>
@@ -236,174 +225,359 @@ export default function SharePointQuiz() {
         </div>
       </section>
 
-      {/* ── Section 2: Why This Assessment Exists ────────────────────────────── */}
-      <section className="bg-white py-20">
-        <div className="max-w-[1200px] mx-auto px-6">
-          <div className="max-w-3xl">
-            <p className="text-[#0078D4] text-sm font-semibold uppercase tracking-[0.12em] mb-3">Why This Exists</p>
-            <h2 className="text-3xl md:text-4xl font-extrabold text-[#0A2540] mb-8">Most SharePoint Environments Are Architecturally Broken — And Admins Can't See It</h2>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-            <div className="space-y-2">
-              <div className="flex items-start gap-3">
-                <AlertTriangle className="w-5 h-5 text-[#0078D4] flex-shrink-0 mt-0.5" />
-                <div>
-                  <h3 className="font-bold text-[#0A2540] mb-1">Organic Sprawl Is the Default</h3>
-                  <p className="text-muted-foreground text-sm leading-relaxed">SharePoint environments almost always start with good intentions and end with thousands of ungoverned sites, redundant libraries, and abandoned team sites no one owns. Sprawl accumulates silently over years — until it becomes a compliance or migration crisis.</p>
-                </div>
-              </div>
-            </div>
-            <div className="space-y-2">
-              <div className="flex items-start gap-3">
-                <Database className="w-5 h-5 text-[#0078D4] flex-shrink-0 mt-0.5" />
-                <div>
-                  <h3 className="font-bold text-[#0A2540] mb-1">ROT Content Destroys Findability</h3>
-                  <p className="text-muted-foreground text-sm leading-relaxed">Redundant, Outdated, and Trivial (ROT) content is the silent productivity killer. When staff can't trust search results, they stop using SharePoint — defaulting to email attachments, shared drives, and tribal knowledge that never gets captured.</p>
-                </div>
-              </div>
-            </div>
-            <div className="space-y-2">
-              <div className="flex items-start gap-3">
-                <Target className="w-5 h-5 text-[#0078D4] flex-shrink-0 mt-0.5" />
-                <div>
-                  <h3 className="font-bold text-[#0A2540] mb-1">Poor IA Blocks Copilot, Teams, and Compliance</h3>
-                  <p className="text-muted-foreground text-sm leading-relaxed">Copilot for M365 surfaces content from SharePoint. If your information architecture is chaotic, Copilot will surface the wrong documents to the wrong people — creating security and compliance risks rather than productivity gains. Clean IA isn't optional for AI readiness.</p>
-                </div>
-              </div>
-            </div>
-            <div className="space-y-2">
-              <div className="flex items-start gap-3">
-                <Lock className="w-5 h-5 text-[#0078D4] flex-shrink-0 mt-0.5" />
-                <div>
-                  <h3 className="font-bold text-[#0A2540] mb-1">Admins Can't See What They Don't Know to Look For</h3>
-                  <p className="text-muted-foreground text-sm leading-relaxed">SharePoint admin tools show you what exists — not whether it's well-architected. Permission sprawl, broken lifecycle policies, and IA antipatterns are invisible in the admin centre. An expert-designed assessment surfaces what tooling alone cannot.</p>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* ── Section 3: Who This Is For ───────────────────────────────────────── */}
-      <section className="bg-[#F7F9FC] py-20">
-        <div className="max-w-[1200px] mx-auto px-6">
-          <div className="text-center mb-12">
-            <p className="text-[#0078D4] text-sm font-semibold uppercase tracking-[0.12em] mb-3">Ideal For</p>
-            <h2 className="text-3xl md:text-4xl font-extrabold text-[#0A2540]">Who This Assessment Is For</h2>
-            <p className="text-muted-foreground mt-4 max-w-xl mx-auto">This assessment is designed for organisations where SharePoint is a core platform — not an afterthought.</p>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-            {ICP_PROFILES.map((profile) => (
-              <div key={profile.label} className="bg-white flex gap-4 p-6 rounded-2xl border border-border hover:border-[#0078D4]/30 hover:shadow-sm transition-all">
-                <div className="flex-shrink-0 mt-0.5">{profile.icon}</div>
-                <div>
-                  <h3 className="font-bold text-[#0A2540] mb-1">{profile.label}</h3>
-                  <p className="text-muted-foreground text-sm leading-relaxed">{profile.desc}</p>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* ── Section 4: How This Assessment Works ─────────────────────────────── */}
-      <section className="bg-white py-20">
-        <div className="max-w-[1200px] mx-auto px-6">
-          <div className="text-center mb-12">
-            <p className="text-[#0078D4] text-sm font-semibold uppercase tracking-[0.12em] mb-3">The Process</p>
-            <h2 className="text-3xl md:text-4xl font-extrabold text-[#0A2540]">How This Assessment Works</h2>
-          </div>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-5 mb-8">
+      {/* ── 2. Why This Assessment Exists ── */}
+      <section className="py-20 bg-white">
+        <div className="max-w-[1100px] mx-auto px-6">
+          <p className="text-center text-xs font-bold uppercase tracking-widest text-[#0078D4] mb-3">Why This Assessment Exists</p>
+          <h2 className="text-3xl font-extrabold text-[#0A2540] text-center mb-4">
+            Most SharePoint environments are architecturally broken — and admins can't see it.
+          </h2>
+          <p className="text-slate-500 text-center max-w-2xl mx-auto mb-14 text-lg leading-relaxed">
+            SharePoint admin tools show you what exists — not whether it's well-architected. Permission sprawl, broken lifecycle policies, and information architecture antipatterns are invisible in the admin centre. They surface only when a Copilot deployment surfaces the wrong data or a migration reveals what was hiding in the file shares.
+          </p>
+          <div className="grid md:grid-cols-2 gap-6">
             {[
-              { stat: "10", label: "Expert Questions", desc: "Tailored to your SharePoint environment" },
-              { stat: "5", label: "Dimensions Scored", desc: "IA, governance, security, content, integration" },
-              { stat: "NASA", label: "Scoring Methodology", desc: "The same framework used at NASA" },
-              { stat: "PDF", label: "Instant Report", desc: "Delivered to your inbox immediately" },
-            ].map((card) => (
-              <div key={card.label} className="flex flex-col items-center text-center p-6 rounded-2xl border border-border bg-[#F7F9FC]">
-                <span className="text-3xl font-extrabold text-[#0078D4] mb-1">{card.stat}</span>
-                <span className="font-bold text-[#0A2540] text-sm mb-1">{card.label}</span>
-                <span className="text-muted-foreground text-xs leading-relaxed">{card.desc}</span>
-              </div>
-            ))}
+              {
+                icon: AlertTriangle,
+                colour: "bg-blue-500/10 text-blue-600",
+                title: "Organic sprawl is the default outcome without intentional architecture",
+                body: "SharePoint environments almost always start with good intentions and end with thousands of ungoverned sites, redundant libraries, and abandoned team sites no one owns. Sprawl accumulates silently over years — until it becomes a compliance or migration crisis.",
+              },
+              {
+                icon: Database,
+                colour: "bg-orange-500/10 text-orange-600",
+                title: "ROT content destroys findability and trust in the platform",
+                body: "Redundant, Outdated, and Trivial content is the silent productivity killer. When staff cannot trust search results, they stop using SharePoint — defaulting to email attachments, shared drives, and tribal knowledge that never gets captured.",
+              },
+              {
+                icon: Target,
+                colour: "bg-violet-500/10 text-violet-600",
+                title: "Poor information architecture blocks Copilot, Teams, and compliance",
+                body: "Copilot for M365 surfaces content from SharePoint based on existing permissions and structure. If your information architecture is chaotic, Copilot surfaces the wrong documents to the wrong people — creating security and compliance risks rather than productivity gains.",
+              },
+              {
+                icon: Lock,
+                colour: "bg-teal-500/10 text-teal-600",
+                title: "Permission sprawl is invisible until it becomes a breach or audit finding",
+                body: "Unique permissions at the folder and item level accumulate silently across a mature SharePoint environment. External sharing that was enabled once and never reviewed. Guest accounts that still have access to sensitive libraries. These gaps exist invisibly until an auditor or attacker surfaces them.",
+              },
+            ].map((item, i) => {
+              const Icon = item.icon;
+              return (
+                <div key={i} className="bg-[#F7F9FC] rounded-2xl border border-border p-6">
+                  <div className={`w-11 h-11 rounded-xl flex items-center justify-center mb-4 ${item.colour}`}>
+                    <Icon className="w-5 h-5" />
+                  </div>
+                  <h3 className="font-extrabold text-[#0A2540] mb-2">{item.title}</h3>
+                  <p className="text-slate-500 text-sm leading-relaxed">{item.body}</p>
+                </div>
+              );
+            })}
           </div>
-          <p className="text-center text-muted-foreground text-sm">No account required · No sales call required</p>
         </div>
       </section>
 
-      {/* ── Section 5: 5 Architecture Dimensions ─────────────────────────────── */}
-      <section className="bg-[#F7F9FC] py-20">
-        <div className="max-w-[1200px] mx-auto px-6">
-          <div className="text-center mb-12">
-            <p className="text-[#0078D4] text-sm font-semibold uppercase tracking-[0.12em] mb-3">What We Assess</p>
-            <h2 className="text-3xl md:text-4xl font-extrabold text-[#0A2540]">5 Architecture Dimensions</h2>
-            <p className="text-muted-foreground mt-4 max-w-xl mx-auto">SharePoint environments degrade silently. Ungoverned growth creates permission sprawl, content silos, and findability failure — this assessment finds where yours stands across five critical dimensions.</p>
+      {/* ── 3. Who This Is For ── */}
+      <section className="py-20 bg-[#0A2540]">
+        <div className="max-w-[1100px] mx-auto px-6">
+          <p className="text-center text-xs font-bold uppercase tracking-widest text-[#00B4D8] mb-3">Who This Assessment Is For</p>
+          <h2 className="text-3xl font-extrabold text-white text-center mb-4">
+            Built for organisations where SharePoint is a core platform — not an afterthought.
+          </h2>
+          <p className="text-white/60 text-center max-w-xl mx-auto mb-12 text-lg">
+            If your organisation is in any of these categories, you need this assessment before your next SharePoint initiative begins.
+          </p>
+          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {[
+              {
+                icon: Building2,
+                title: "Mid-market organisations",
+                body: "200–2,000 employees with SharePoint deployments that have outgrown informal governance — where sites proliferate and nobody has a current picture of what exists or who owns it.",
+              },
+              {
+                icon: ShieldCheck,
+                title: "Regulated industries",
+                body: "Finance, healthcare, legal, and energy firms where SharePoint governance has direct compliance implications — and where external sharing and permission sprawl create documented liability.",
+              },
+              {
+                icon: Globe,
+                title: "Government contractors",
+                body: "Organisations handling sensitive government data who need defensible SharePoint security postures, documented lifecycle controls, and audit-ready permission models.",
+              },
+              {
+                icon: RefreshCw,
+                title: "SharePoint rebuild organisations",
+                body: "Teams planning a SharePoint modernisation or migration who need a clear architectural baseline before they start — so they migrate to a better model rather than recreating the problems they have.",
+              },
+              {
+                icon: AlertTriangle,
+                title: "Sprawl-affected environments",
+                body: "Environments with thousands of sites, broken permissions, abandoned team sites, and content nobody can find — where the scale of the problem has made remediation feel impossible.",
+              },
+              {
+                icon: Target,
+                title: "Copilot-prep organisations",
+                body: "Companies planning a Copilot for M365 rollout who need clean, well-governed SharePoint foundations first — because Copilot will surface whatever is in SharePoint, whether it should be surfaced or not.",
+              },
+            ].map((item, i) => {
+              const Icon = item.icon;
+              return (
+                <div key={i} className="bg-white/5 border border-white/10 rounded-2xl p-5">
+                  <div className="w-10 h-10 rounded-xl bg-[#0078D4]/20 flex items-center justify-center mb-4">
+                    <Icon className="w-5 h-5 text-[#00B4D8]" />
+                  </div>
+                  <h3 className="font-extrabold text-white mb-1">{item.title}</h3>
+                  <p className="text-white/50 text-sm leading-relaxed">{item.body}</p>
+                </div>
+              );
+            })}
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-            {DIMENSIONS.map((d) => (
-              <div key={d.label} className="bg-white flex flex-col p-6 rounded-2xl border border-border hover:border-[#0078D4]/30 hover:shadow-sm transition-all">
+        </div>
+      </section>
+
+      {/* ── 4. How It Works ── */}
+      <section className="py-20 bg-white">
+        <div className="max-w-[1100px] mx-auto px-6">
+          <p className="text-center text-xs font-bold uppercase tracking-widest text-[#0078D4] mb-3">How It Works</p>
+          <h2 className="text-3xl font-extrabold text-[#0A2540] text-center mb-4">From first question to architecture report in under five minutes.</h2>
+          <p className="text-slate-500 text-center max-w-xl mx-auto mb-14">
+            Ten questions. Five architecture dimensions. A NASA-grade scoring model. An instant maturity score, a personalised PDF report, and a recommended next step — delivered to your inbox the moment you finish.
+          </p>
+          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
+            {[
+              {
+                icon: FolderOpen,
+                title: "10 targeted questions",
+                desc: "Each question maps to one of five SharePoint architecture dimensions — the same diagnostics Shane uses in a paid engagement, compressed into a 5-minute format. No generic questionnaire.",
+              },
+              {
+                icon: Layers,
+                title: "5 architecture dimensions scored",
+                desc: "Information Architecture, Search & Metadata, Content Lifecycle, Governance & Permissions, and Copilot & Migration Readiness — each scored independently on a 0–10 scale.",
+              },
+              {
+                icon: Star,
+                title: "NASA-grade scoring model",
+                desc: "Your answers are weighted and scored using the same diagnostic framework applied at NASA. You receive a total score (0–50), a maturity tier, and a per-dimension breakdown.",
+              },
+              {
+                icon: FileText,
+                title: "Instant PDF report emailed",
+                desc: "A branded, personalised PDF lands in your inbox the moment you complete the assessment. No waiting, no scheduling — your architecture report is generated and delivered immediately.",
+              },
+              {
+                icon: CheckCircle,
+                title: "No account required",
+                desc: "There is nothing to sign up for, no login, no subscription. Enter your name and email at the end to receive your PDF. That is the only information required.",
+              },
+              {
+                icon: Users,
+                title: "No sales call required",
+                desc: "Your report includes a recommended next step — not a sales pitch. If you want to discuss the findings, a booking link is included. The decision is entirely yours.",
+              },
+            ].map((item, i) => {
+              const Icon = item.icon;
+              return (
+                <div key={i} className="flex gap-4">
+                  <div className="w-10 h-10 rounded-xl bg-[#0078D4]/10 flex items-center justify-center flex-shrink-0 mt-0.5">
+                    <Icon className="w-5 h-5 text-[#0078D4]" />
+                  </div>
+                  <div>
+                    <h3 className="font-extrabold text-[#0A2540] mb-2">{item.title}</h3>
+                    <p className="text-slate-500 text-sm leading-relaxed">{item.desc}</p>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          <div className="mt-14 text-center">
+            <button
+              onClick={() => setModalOpen(true)}
+              className="group inline-flex items-center gap-2 text-[#0078D4] font-semibold hover:text-[#005A9E] transition-colors"
+            >
+              Start the assessment now <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+            </button>
+          </div>
+        </div>
+      </section>
+
+      {/* ── 5. Five Architecture Dimensions ── */}
+      <section className="py-20 bg-[#F7F9FC]">
+        <div className="max-w-[1100px] mx-auto px-6">
+          <p className="text-center text-xs font-bold uppercase tracking-widest text-[#0078D4] mb-3">The Five Architecture Dimensions</p>
+          <h2 className="text-3xl font-extrabold text-[#0A2540] text-center mb-4">What the assessment measures — and why it matters.</h2>
+          <p className="text-slate-500 text-center max-w-xl mx-auto mb-14">
+            These five dimensions determine whether your SharePoint environment supports governance, findability, and AI-readiness — or undermines every initiative that depends on it. Each is scored independently so you know exactly where to focus.
+          </p>
+          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {DIMENSIONS.map((dim) => (
+              <div key={dim.title} className="bg-white rounded-2xl border border-slate-100 shadow-sm p-6">
                 <div className="flex items-center gap-3 mb-4">
-                  {d.icon}
-                  <h3 className="font-bold text-[#0A2540]">{d.label}</h3>
+                  <div className={`w-2 h-10 rounded-full ${dim.colour}`} />
+                  <div>
+                    <p className="text-xs font-bold uppercase tracking-wide text-muted-foreground">{dim.label}</p>
+                    <h3 className="font-extrabold text-lg text-[#0A2540]">{dim.title}</h3>
+                  </div>
                 </div>
                 <ul className="space-y-2">
-                  {d.bullets.map((b) => (
-                    <li key={b} className="flex items-start gap-2 text-sm text-muted-foreground leading-relaxed">
-                      <CheckCircle className="w-3.5 h-3.5 text-[#0078D4] flex-shrink-0 mt-0.5" />
+                  {dim.bullets.map((b, i) => (
+                    <li key={i} className="flex gap-2 text-sm text-slate-500 leading-relaxed">
+                      <CheckCircle className="w-4 h-4 text-[#0078D4] flex-shrink-0 mt-0.5" />
                       {b}
                     </li>
                   ))}
                 </ul>
               </div>
             ))}
-          </div>
-        </div>
-      </section>
-
-      {/* ── Section 6: What You Receive ──────────────────────────────────────── */}
-      <section className="bg-white py-20">
-        <div className="max-w-[1200px] mx-auto px-6">
-          <div className="text-center mb-12">
-            <p className="text-[#0078D4] text-sm font-semibold uppercase tracking-[0.12em] mb-3">Your Report</p>
-            <h2 className="text-3xl md:text-4xl font-extrabold text-[#0A2540]">What You Receive</h2>
-            <p className="text-muted-foreground mt-4 max-w-xl mx-auto">Every completed assessment generates a personalised PDF report delivered instantly to your inbox. It includes eight distinct deliverable components.</p>
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
-            {DELIVERABLES.map((item) => (
-              <div key={item.label} className="flex flex-col gap-3 p-5 rounded-2xl border border-border bg-[#F7F9FC]">
-                <div>{item.icon}</div>
-                <div>
-                  <h3 className="font-bold text-[#0A2540] text-sm mb-1">{item.label}</h3>
-                  <p className="text-muted-foreground text-xs leading-relaxed">{item.desc}</p>
+            <div className="bg-[#0A2540] rounded-2xl border border-[#0A2540] p-6 flex flex-col justify-between">
+              <div>
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="w-2 h-10 rounded-full bg-primary" />
+                  <div>
+                    <p className="text-xs font-bold uppercase tracking-wide text-white/40">Your Output</p>
+                    <h3 className="font-extrabold text-lg text-white">Your Report</h3>
+                  </div>
                 </div>
+                <p className="text-white/60 text-sm leading-relaxed">
+                  All five dimensions scored, ranked by architectural risk, and mapped to a tailored service recommendation. Personalised PDF delivered to your inbox the moment you finish.
+                </p>
               </div>
-            ))}
+              <button
+                onClick={() => setModalOpen(true)}
+                className="mt-6 inline-flex items-center gap-1.5 text-[#00B4D8] text-sm font-semibold hover:gap-2.5 transition-all"
+              >
+                Start Assessment <ArrowRight className="w-4 h-4" />
+              </button>
+            </div>
           </div>
         </div>
       </section>
 
-      {/* ── Section 7: Inside Your PDF Report ────────────────────────────────── */}
-      <section className="bg-[#0A2540] py-20">
-        <div className="max-w-[1200px] mx-auto px-6">
-          <div className="text-center mb-12">
-            <p className="text-[#00B4D8] text-sm font-semibold uppercase tracking-[0.12em] mb-3">Report Structure</p>
-            <h2 className="text-3xl md:text-4xl font-extrabold text-white">Inside Your PDF Report</h2>
-            <p className="text-white/60 mt-4 max-w-xl mx-auto">Your report is structured to give you immediate clarity — from an executive overview down to a specific, prioritised remediation path.</p>
+      {/* ── 6. What You Receive ── */}
+      <section className="py-20 bg-white">
+        <div className="max-w-[1100px] mx-auto px-6">
+          <p className="text-center text-xs font-bold uppercase tracking-widest text-[#0078D4] mb-3">What You Receive</p>
+          <h2 className="text-3xl font-extrabold text-[#0A2540] text-center mb-4">
+            A personalised SharePoint architecture report. Free. Instant.
+          </h2>
+          <p className="text-slate-500 text-center max-w-xl mx-auto mb-14 text-lg">
+            Not a generic score. Not a newsletter signup. A real architectural diagnostic report — built on the same framework Shane applies in paid engagements — delivered to your inbox the moment you finish.
+          </p>
+          <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-5">
+            {[
+              {
+                icon: BarChart3,
+                title: "Overall architecture score",
+                body: "Aggregated maturity score across all five dimensions with your maturity tier: Beginner, Developing, Emerging, Advanced, or Ready.",
+              },
+              {
+                icon: Layers,
+                title: "IA maturity score",
+                body: "Specific rating for your information architecture design — hub model adoption, naming conventions, and structural intentionality.",
+              },
+              {
+                icon: AlertTriangle,
+                title: "Governance gaps",
+                body: "Identified governance failures and risk areas — lifecycle policy gaps, orphaned sites, and permission sprawl findings.",
+              },
+              {
+                icon: ShieldCheck,
+                title: "Security and permission gaps",
+                body: "Permission model issues, oversharing risks, external sharing exposure, and sensitive content visibility to unintended audiences.",
+              },
+              {
+                icon: Database,
+                title: "ROT indicators",
+                body: "Signals of redundant, outdated, and trivial content volume — and how ROT is affecting findability and Copilot readiness.",
+              },
+              {
+                icon: ArrowRight,
+                title: "Recommended next steps",
+                body: "Prioritised action items matched to your maturity tier — specific to your environment, not a generic SharePoint checklist.",
+              },
+              {
+                icon: FileText,
+                title: "Architecture notes",
+                body: "Specific observations from your assessment responses — structural antipatterns, IA decisions, and improvement considerations.",
+              },
+              {
+                icon: Target,
+                title: "Priority remediation roadmap",
+                body: "A sequenced improvement roadmap based on your results — what to fix first, what to plan next, and what Copilot readiness requires.",
+              },
+            ].map((item, i) => {
+              const Icon = item.icon;
+              return (
+                <div key={i} className="flex items-start gap-4 bg-[#F7F9FC] rounded-2xl border border-border p-5">
+                  <div className="w-10 h-10 rounded-xl bg-[#0078D4]/10 flex items-center justify-center flex-shrink-0">
+                    <Icon className="w-5 h-5 text-[#0078D4]" />
+                  </div>
+                  <div>
+                    <h3 className="font-extrabold text-[#0A2540] mb-1">{item.title}</h3>
+                    <p className="text-slate-500 text-sm leading-relaxed">{item.body}</p>
+                  </div>
+                </div>
+              );
+            })}
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-            {REPORT_SECTIONS.map((section, i) => (
-              <div key={section.label} className="flex gap-4 p-6 rounded-2xl border border-white/10 bg-white/5 hover:bg-white/8 transition-all">
-                <span className="text-[#00B4D8] font-extrabold text-lg flex-shrink-0 w-6">{i + 1}</span>
+        </div>
+      </section>
+
+      {/* ── 7. Inside Your PDF Report ── */}
+      <section className="py-20 bg-[#0A2540]">
+        <div className="max-w-[1100px] mx-auto px-6">
+          <p className="text-center text-xs font-bold uppercase tracking-widest text-[#00B4D8] mb-3">Inside Your PDF Report</p>
+          <h2 className="text-3xl font-extrabold text-white text-center mb-4">
+            A structured architectural diagnostic — not a marketing brochure.
+          </h2>
+          <p className="text-white/60 text-center max-w-xl mx-auto mb-12 text-lg">
+            Your PDF is structured as a professional diagnostic document — designed to be shared with IT leadership, a SharePoint migration project sponsor, or a procurement committee, not just filed in a personal inbox.
+          </p>
+          <div className="grid md:grid-cols-2 gap-4">
+            {[
+              {
+                num: "01",
+                title: "Executive summary",
+                desc: "A plain-English overview of your SharePoint environment's current state — your score, maturity tier, and the top three architectural risks identified by the assessment.",
+              },
+              {
+                num: "02",
+                title: "Dimension-by-dimension scoring",
+                desc: "A scored breakdown across all five architecture dimensions with narrative commentary on the strengths and gaps identified in each area.",
+              },
+              {
+                num: "03",
+                title: "Architecture heatmap",
+                desc: "A visual representation of your maturity across all five dimensions — immediately shows where your environment is thriving and where it is structurally at risk.",
+              },
+              {
+                num: "04",
+                title: "Gap analysis",
+                desc: "A detailed catalogue of specific IA, governance, security, and content quality issues discovered, ranked by severity and business impact.",
+              },
+              {
+                num: "05",
+                title: "Recommended remediation path",
+                desc: "A prioritised, step-by-step remediation guide aligned to your maturity tier — so you know what to fix first, what to plan, and what Copilot readiness will require.",
+              },
+              {
+                num: "06",
+                title: "Suggested quick wins",
+                desc: "Specific Shane McCaw Consulting service recommendations that directly address your highest-priority architectural gaps, with pricing guidance and expected outcomes.",
+              },
+            ].map((item) => (
+              <div key={item.num} className="flex gap-4 bg-white/5 border border-white/10 rounded-2xl p-5">
+                <div className="text-4xl font-black text-primary/20 leading-none flex-shrink-0 w-10">{item.num}</div>
                 <div>
-                  <h3 className="font-bold text-white mb-2">{section.label}</h3>
-                  <p className="text-white/55 text-sm leading-relaxed">{section.desc}</p>
+                  <h3 className="font-extrabold text-white mb-1">{item.title}</h3>
+                  <p className="text-white/50 text-sm leading-relaxed">{item.desc}</p>
                 </div>
               </div>
             ))}
           </div>
           <div className="mt-10 text-center">
             <a
-              href="/sharepoint-architecture-report-sample.pdf"
+              href="/sharepoint-assessment-report-sample.pdf"
               target="_blank"
               rel="noopener noreferrer"
               className="inline-flex items-center gap-2 rounded-lg border border-white/20 px-6 py-2.5 text-sm font-semibold text-white/80 hover:bg-white/10 hover:text-white transition-colors"
@@ -415,45 +589,81 @@ export default function SharePointQuiz() {
         </div>
       </section>
 
-      {/* ── Section 8: Why Shane ─────────────────────────────────────────────── */}
-      <section className="bg-white py-20">
-        <div className="max-w-[1200px] mx-auto px-6">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
-            <div>
-              <p className="text-[#0078D4] text-sm font-semibold uppercase tracking-[0.12em] mb-3">The Assessor</p>
-              <h2 className="text-3xl md:text-4xl font-extrabold text-[#0A2540] leading-tight">
-                SharePoint Architecture Expertise You Can Actually Trust
-              </h2>
-              <p className="text-muted-foreground mt-4 leading-relaxed">
-                Most SharePoint consultants learned from documentation. Shane McCaw learned by architecting the platform at scale — inside one of the most complex IT environments on the planet.
-              </p>
-            </div>
-            <div className="space-y-4">
-              {[
-                { icon: <Award className="w-5 h-5 text-[#0078D4]" />, text: "Lead Microsoft 365 Architect at NASA — responsible for SharePoint architecture across one of the world's most complex M365 tenants" },
-                { icon: <Zap className="w-5 h-5 text-[#0078D4]" />, text: "30 years in the Microsoft ecosystem — from on-premises SharePoint Server to modern SharePoint Online and Viva" },
-                { icon: <Users className="w-5 h-5 text-[#0078D4]" />, text: "Senior-only delivery — every assessment is conducted personally by Shane, not delegated to junior consultants" },
-                { icon: <ShieldCheck className="w-5 h-5 text-[#0078D4]" />, text: "Regulated industry expertise — extensive experience in government, defence contractor, and compliance-heavy SharePoint environments" },
-                { icon: <BookOpen className="w-5 h-5 text-[#0078D4]" />, text: "Architecture-first methodology — assessments address root causes, not symptoms, delivering fixes that last beyond the engagement" },
-              ].map((item) => (
-                <div key={item.text} className="flex items-start gap-4 p-4 rounded-xl border border-border hover:border-[#0078D4]/30 transition-colors">
-                  <div className="flex-shrink-0 mt-0.5">{item.icon}</div>
-                  <p className="text-[#0A2540] text-sm leading-relaxed">{item.text}</p>
+      {/* ── 8. Why Shane ── */}
+      <section className="py-20 bg-white">
+        <div className="max-w-[1100px] mx-auto px-6">
+          <p className="text-center text-xs font-bold uppercase tracking-widest text-[#0078D4] mb-3">Why Shane McCaw</p>
+          <h2 className="text-3xl font-extrabold text-[#0A2540] text-center mb-4">
+            This framework was built from 30 years of doing this work — not reading about it.
+          </h2>
+          <p className="text-slate-500 text-center max-w-2xl mx-auto mb-14 text-lg leading-relaxed">
+            Shane McCaw is not a generalist consultant who added SharePoint to a service catalogue. He has spent three decades designing information architecture, governing content lifecycles, and remediating SharePoint environments for some of the most demanding organisations in the world.
+          </p>
+          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {[
+              {
+                icon: Star,
+                colour: "bg-blue-500/10 text-blue-600",
+                title: "Lead M365 Architect at NASA",
+                body: "Shane serves as Lead Microsoft 365 Architect at NASA — responsible for SharePoint governance, information architecture, and Copilot readiness across a deeply complex and regulated environment.",
+              },
+              {
+                icon: TrendingUp,
+                colour: "bg-teal-500/10 text-teal-600",
+                title: "30 years in the Microsoft ecosystem",
+                body: "Shane has worked with SharePoint since its earliest versions — from on-premises farm architecture to modern hub sites, Syntex, and SharePoint Premium at enterprise scale.",
+              },
+              {
+                icon: Users,
+                colour: "bg-violet-500/10 text-violet-600",
+                title: "Senior-only delivery",
+                body: "Every engagement is delivered personally by Shane. There are no junior consultants, no offshore teams, and no account managers between you and the person who understands your environment.",
+              },
+              {
+                icon: ShieldCheck,
+                colour: "bg-orange-500/10 text-orange-600",
+                title: "Regulated industry expertise",
+                body: "Deep experience in HIPAA, FedRAMP, CMMC, and SOC 2 environments where SharePoint governance and permission models must be defensible, documented, and audit-ready.",
+              },
+              {
+                icon: Award,
+                colour: "bg-green-500/10 text-green-600",
+                title: "Architecture-first methodology",
+                body: "Shane's assessments produce an architectural understanding of where your SharePoint environment is and a sequenced path to where it needs to be — not a list of settings changes without strategic context.",
+              },
+            ].map((item, i) => {
+              const Icon = item.icon;
+              return (
+                <div key={i} className="bg-[#F7F9FC] rounded-2xl border border-border p-6">
+                  <div className={`w-11 h-11 rounded-xl flex items-center justify-center mb-4 ${item.colour}`}>
+                    <Icon className="w-5 h-5" />
+                  </div>
+                  <h3 className="font-extrabold text-[#0A2540] mb-2">{item.title}</h3>
+                  <p className="text-slate-500 text-sm leading-relaxed">{item.body}</p>
                 </div>
-              ))}
-            </div>
+              );
+            })}
           </div>
         </div>
       </section>
 
-      {/* ── Section 9: Final CTA ──────────────────────────────────────────────── */}
+      {/* ── 9. CTA Reinforcement ── */}
       <section className="py-20 bg-[#0A2540]">
         <div className="max-w-[700px] mx-auto px-6 text-center">
           <p className="text-[#00B4D8] text-xs font-bold uppercase tracking-widest mb-4">Free in 5 Minutes</p>
-          <h2 className="text-3xl md:text-4xl font-extrabold text-white mb-4">Your SharePoint architecture determines your search, governance, and Copilot success.</h2>
-          <p className="text-white/60 text-lg mb-10 leading-relaxed">Most organisations don't know where their SharePoint is failing — because the problems are invisible to standard admin tooling. This assessment surfaces exactly what needs to be fixed, and in what order.</p>
-          <CTAButton onClick={() => setModalOpen(true)} className="text-base px-8 py-4">Take the Free Assessment Now</CTAButton>
-          <p className="text-white/30 text-sm mt-4">5 minutes · Instant results · No sales call</p>
+          <h2 className="text-3xl md:text-4xl font-extrabold text-white mb-4">
+            Your SharePoint architecture determines your findability, your compliance posture, and your Copilot readiness.
+          </h2>
+          <p className="text-white/60 text-lg mb-3 leading-relaxed">
+            Most organisations discover their SharePoint problems when they try to layer something new on top — Copilot, a migration, or an audit — and find the foundation is not ready.
+          </p>
+          <p className="text-white/60 text-lg mb-10 leading-relaxed">
+            This assessment takes five minutes. The PDF report is free. The architectural gap analysis it surfaces is the same work Shane charges for in a paid engagement.
+          </p>
+          <CTAButton onClick={() => setModalOpen(true)} className="text-base px-8 py-4">
+            Take the Free Assessment Now
+          </CTAButton>
+          <p className="text-white/30 text-sm mt-4">No account required · No sales follow-up · Results delivered instantly</p>
         </div>
       </section>
 
