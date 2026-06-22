@@ -49,6 +49,7 @@ interface Project {
   endDate: string | null;
   projectType: string;
   sharepointFolderUrl: string | null;
+  generatedArtifacts: Array<{ artifactName: string; sharepointUrl: string; generatedAt: string }> | null;
   createdAt: string;
 }
 
@@ -980,6 +981,34 @@ export default function ProjectDetailPage() {
   const [statusReportOpen, setStatusReportOpen] = useState(false);
 
   const [spFolderCreating, setSpFolderCreating] = useState(false);
+  const [generateArtifactsLoading, setGenerateArtifactsLoading] = useState(false);
+
+  const allTasksClosed = tasks.length > 0 && tasks.every(t => t.column === "completed");
+
+  const handleGenerateArtifacts = async () => {
+    if (!projectId) return;
+    setGenerateArtifactsLoading(true);
+    try {
+      const res = await fetchWithAuth(`/api/admin/projects/${projectId}/generate-artifacts`, { method: "POST" });
+      type GenResult = { artifacts: Array<{ artifactName: string; sharepointUrl: string; generatedAt: string }>; errors?: string[] };
+      const data = await res.json() as GenResult & { error?: string; details?: string[] };
+      if (!res.ok) {
+        toast({ title: "Generation failed", description: data.error ?? "Unknown error", variant: "destructive" });
+        return;
+      }
+      setProject(prev => prev ? { ...prev, generatedArtifacts: data.artifacts } : prev);
+      const errCount = data.errors?.length ?? 0;
+      if (errCount > 0) {
+        toast({ title: `${data.artifacts.length} artifact${data.artifacts.length !== 1 ? "s" : ""} generated`, description: `${errCount} failed — check server logs.` });
+      } else {
+        toast({ title: `${data.artifacts.length} artifact${data.artifacts.length !== 1 ? "s" : ""} generated`, description: "All PDFs uploaded to SharePoint." });
+      }
+    } catch {
+      toast({ title: "Network error", description: "Could not reach the server.", variant: "destructive" });
+    } finally {
+      setGenerateArtifactsLoading(false);
+    }
+  };
 
   const handleCreateSharePointFolder = async () => {
     if (!projectId) return;
@@ -1703,6 +1732,73 @@ export default function ProjectDetailPage() {
           onCardClick={handleCardClick}
           onMutation={loadAuditLogs}
         />
+      </section>
+
+      {/* ── Generated Artifacts ────────────────────────────────────────── */}
+      <section className="mb-8">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-sm font-bold uppercase tracking-wider text-[#0A2540]">Generated Artifacts</h2>
+          <div className="relative group">
+            <button
+              onClick={() => void handleGenerateArtifacts()}
+              disabled={generateArtifactsLoading || !allTasksClosed}
+              className="flex items-center gap-1.5 bg-[#0A2540] text-white text-xs font-semibold px-3 py-2 rounded-lg hover:bg-[#0A2540]/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {generateArtifactsLoading ? (
+                <>
+                  <div className="w-3 h-3 border border-white/40 border-t-white rounded-full animate-spin" />
+                  Generating…
+                </>
+              ) : (
+                <>
+                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                  </svg>
+                  Generate Artifacts
+                </>
+              )}
+            </button>
+            {!allTasksClosed && (
+              <div className="absolute right-0 top-full mt-1.5 z-10 hidden group-hover:block w-56 bg-[#0A2540] text-white text-[11px] leading-snug rounded-lg px-3 py-2 shadow-lg pointer-events-none">
+                Complete all kanban tasks first to enable artifact generation.
+              </div>
+            )}
+          </div>
+        </div>
+
+        {project.generatedArtifacts && project.generatedArtifacts.length > 0 ? (
+          <div className="bg-white border border-border rounded-xl overflow-hidden divide-y divide-border">
+            {project.generatedArtifacts.map(artifact => (
+              <div key={artifact.artifactName} className="flex items-center gap-3 px-4 py-3 hover:bg-[#F7F9FC]/70 transition-colors">
+                <div className="w-8 h-8 rounded-lg bg-[#0078D4]/10 flex items-center justify-center flex-shrink-0">
+                  <svg className="w-4 h-4 text-[#0078D4]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
+                  </svg>
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-semibold text-[#0A2540] truncate">{artifact.artifactName}</p>
+                  <p className="text-[11px] text-muted-foreground">
+                    Generated {new Date(artifact.generatedAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                  </p>
+                </div>
+                <a
+                  href={artifact.sharepointUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex-shrink-0 flex items-center gap-1 text-[11px] font-semibold text-[#0078D4] hover:underline"
+                >
+                  Open in SharePoint ↗
+                </a>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="bg-[#F7F9FC] border border-border rounded-xl px-4 py-6 text-center text-sm text-muted-foreground">
+            {allTasksClosed
+              ? "No artifacts generated yet. Click Generate Artifacts to create PDFs from the project's task metadata."
+              : "Artifacts are generated when all kanban tasks are completed."}
+          </div>
+        )}
       </section>
 
       {/* ── Workflow Phases & Milestones ───────────────────────────────── */}
