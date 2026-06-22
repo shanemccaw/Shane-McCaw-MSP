@@ -4,7 +4,7 @@ import { eq } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/requireAuth";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
 import { PDFDocument, rgb, StandardFonts, type PDFFont, type PDFPage } from "pdf-lib";
-import { uploadFileToSharePoint, graphCredentialsPresent } from "../lib/graph";
+import { uploadFileToSharePoint, graphCredentialsPresent, ensureSharePointFolderAtRoot } from "../lib/graph";
 import { logger } from "../lib/logger";
 
 const router = Router();
@@ -164,7 +164,7 @@ router.post(
 
     if (!graphCredentialsPresent()) {
       res.status(503).json({
-        error: "Microsoft Graph credentials are not configured. Set AZURE_CLIENT_ID, AZURE_CLIENT_SECRET, and AZURE_TENANT_ID in Replit Secrets.",
+        error: "Microsoft Graph credentials are not configured. Set GRAPH_CLIENT_ID, GRAPH_CLIENT_SECRET, and GRAPH_TENANT_ID in Replit Secrets.",
         code: "GRAPH_CREDENTIALS_MISSING",
       });
       return;
@@ -232,6 +232,9 @@ router.post(
         return parts.join("\n");
       }),
     ].filter(Boolean).join("\n");
+
+    const GENERATED_ARTIFACTS_FOLDER = "Generated Artifacts";
+    await ensureSharePointFolderAtRoot(sharepointSiteId, GENERATED_ARTIFACTS_FOLDER);
 
     const generatedAt = new Date();
     const results: Array<{ artifactName: string; sharepointUrl: string; generatedAt: string }> = [];

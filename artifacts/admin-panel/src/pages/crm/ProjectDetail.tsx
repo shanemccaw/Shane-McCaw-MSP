@@ -1777,10 +1777,14 @@ export default function ProjectDetailPage() {
             <div className="flex-1 min-w-0">
               <p className="text-sm font-semibold text-red-800">Generation failed</p>
               <p className="text-xs text-red-700 mt-0.5">{generateArtifactsError}</p>
+              <p className="text-xs text-red-600 mt-1.5">
+                If this is a credentials or SharePoint error, check{" "}
+                <a href="/admin-panel/settings" className="underline font-semibold">Settings → Microsoft 365</a>
+                {" "}and ensure <code className="font-mono bg-red-100 px-0.5 rounded">GRAPH_CLIENT_ID</code>,{" "}
+                <code className="font-mono bg-red-100 px-0.5 rounded">GRAPH_CLIENT_SECRET</code>, and{" "}
+                <code className="font-mono bg-red-100 px-0.5 rounded">GRAPH_TENANT_ID</code> are set in Replit Secrets, and the client has a SharePoint site ID configured.
+              </p>
             </div>
-            <button onClick={() => setGenerateArtifactsError(null)} className="flex-shrink-0 text-red-400 hover:text-red-600">
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
-            </button>
           </div>
         )}
 

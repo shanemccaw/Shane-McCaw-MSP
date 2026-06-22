@@ -440,6 +440,29 @@ export async function createProjectFolder(
 }
 
 /**
+ * Ensure a named folder exists directly under the site's default drive root.
+ * Uses conflictBehavior:"fail" so Graph 409/nameAlreadyExists is treated as success.
+ * Other non-OK responses are logged as warnings but not thrown (non-fatal).
+ */
+export async function ensureSharePointFolderAtRoot(siteId: string, folderName: string): Promise<void> {
+  const token = await getAccessToken();
+  const res = await fetch(`${GRAPH_BASE}/sites/${siteId}/drive/root/children`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ name: folderName, folder: {}, "@microsoft.graph.conflictBehavior": "fail" }),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    if (res.status !== 409 && !text.includes("nameAlreadyExists")) {
+      logger.warn({ status: res.status, body: text, folderName }, "Graph ensureSharePointFolderAtRoot: non-fatal creation failure");
+    }
+  }
+}
+
+/**
  * Ensure the "Contracts" folder exists under the site's default drive root.
  * Uses conflictBehavior:"rename" which silently resolves if the folder already exists
  * (it picks a new name only on conflict with a *file*, not another folder).
