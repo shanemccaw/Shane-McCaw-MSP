@@ -4,7 +4,7 @@ import { SEOMeta } from "@/components/SEOMeta";
 import { Layout } from "@/components/Layout";
 import { CTAButton } from "@/components/CTAButton";
 import { ConsultationCTA } from "@/components/ConsultationCTA";
-import { Download, ArrowRight, Share2, Loader2, Shield } from "lucide-react";
+import { Download, ArrowRight, Share2, Loader2, Shield, BookOpen, ClipboardCheck, MessageSquare, CheckCircle2 } from "lucide-react";
 import { FaLinkedin, FaXTwitter } from "react-icons/fa6";
 import { articles } from "@/data/articles";
 import { pdf } from "@react-pdf/renderer";
@@ -91,25 +91,221 @@ export default function Resources() {
         title="Microsoft 365 & Copilot AI Insights | Shane McCaw Consulting"
         description="Microsoft 365 and Copilot AI insights, guides, and articles by Shane McCaw — NASA's Lead M365 Architect. Practical, experience-backed advice for IT leaders and Microsoft admins."
       />
+
+      {/* Hero */}
       <section className="bg-[#0A2540] pt-32 pb-20">
         <div className="max-w-[1200px] mx-auto px-6">
           <p className="text-[#0078D4] text-sm font-semibold uppercase tracking-[0.1em] mb-4">Resources</p>
-          <h1 className="text-4xl md:text-5xl lg:text-6xl font-extrabold text-white leading-tight max-w-4xl">
-            Microsoft 365 & Copilot AI Insights — From the Desk of a NASA Architect
+          <h1 className="text-4xl md:text-5xl lg:text-6xl font-extrabold text-white leading-tight max-w-4xl mb-6">
+            Microsoft 365 & Copilot AI Insights
           </h1>
+          <p className="text-white/80 text-lg md:text-xl max-w-2xl leading-relaxed mb-4">
+            Senior-level guidance on Copilot adoption, M365 governance, cloud migrations, and SharePoint architecture — written by a Lead M365 Architect with 30 years in the Microsoft ecosystem.
+          </p>
+          <p className="text-white/60 text-base max-w-2xl mb-6">
+            Built for IT Directors, M365 Admins, and technology leaders in mid-market, regulated, and government-contracting environments who need guidance they can trust — not content written for search engines.
+          </p>
+          <p className="text-[#00B4D8] text-sm font-semibold tracking-wide">
+            Actionable. Real-world. No fluff.
+          </p>
         </div>
       </section>
 
       {/* Why These Resources Exist */}
-      <section className="bg-white py-12 border-b border-border">
+      <section className="bg-white py-16 border-b border-border">
         <div className="max-w-[1200px] mx-auto px-6">
-          <h2 className="text-2xl md:text-3xl font-extrabold text-[#0A2540] mb-4">Why These Resources Exist</h2>
-          <p className="text-foreground leading-relaxed max-w-3xl mb-4">
-            These insights come directly from Shane's 30-year career in the Microsoft ecosystem and his active role as Lead M365 Architect at NASA. They're designed to help mid-market organizations and regulated industries avoid the costly Microsoft 365 mistakes that are entirely preventable — if you know what to look for before they happen. Every piece is built around the real decisions IT leaders face when preparing for Copilot, designing governance frameworks, executing migrations, and meeting compliance requirements. They translate the architecture principles Shane applies under federal accountability into practical, actionable guidance any IT leader can use.
+          <h2 className="text-2xl md:text-3xl font-extrabold text-[#0A2540] mb-8">Why These Resources Exist</h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-4xl">
+            <div className="flex gap-4">
+              <div className="flex-shrink-0 w-10 h-10 rounded-full bg-[#0078D4]/10 flex items-center justify-center mt-0.5">
+                <CheckCircle2 className="w-5 h-5 text-[#0078D4]" />
+              </div>
+              <div>
+                <h3 className="font-bold text-[#0A2540] mb-1">30 years of hands-on Microsoft experience</h3>
+                <p className="text-muted-foreground text-sm leading-relaxed">
+                  Every article draws directly from Shane's career — not from certification prep material or recycled vendor documentation. These insights reflect decisions made and lessons learned across hundreds of real deployments.
+                </p>
+              </div>
+            </div>
+            <div className="flex gap-4">
+              <div className="flex-shrink-0 w-10 h-10 rounded-full bg-[#0078D4]/10 flex items-center justify-center mt-0.5">
+                <CheckCircle2 className="w-5 h-5 text-[#0078D4]" />
+              </div>
+              <div>
+                <h3 className="font-bold text-[#0A2540] mb-1">Tested under federal accountability at NASA</h3>
+                <p className="text-muted-foreground text-sm leading-relaxed">
+                  As Lead M365 Architect at NASA, Shane architects solutions where security, compliance, and reliability aren't optional. The frameworks and principles here are forged in one of the most demanding IT environments in the world.
+                </p>
+              </div>
+            </div>
+            <div className="flex gap-4">
+              <div className="flex-shrink-0 w-10 h-10 rounded-full bg-[#0078D4]/10 flex items-center justify-center mt-0.5">
+                <CheckCircle2 className="w-5 h-5 text-[#0078D4]" />
+              </div>
+              <div>
+                <h3 className="font-bold text-[#0A2540] mb-1">Written for mid-market, regulated, and gov-contractor IT teams</h3>
+                <p className="text-muted-foreground text-sm leading-relaxed">
+                  Enterprise-scale advice rarely translates cleanly to organizations with 200–2,000 seats. These resources are deliberately scoped for teams that face real compliance requirements, limited resources, and high-stakes Microsoft 365 decisions.
+                </p>
+              </div>
+            </div>
+            <div className="flex gap-4">
+              <div className="flex-shrink-0 w-10 h-10 rounded-full bg-[#0078D4]/10 flex items-center justify-center mt-0.5">
+                <CheckCircle2 className="w-5 h-5 text-[#0078D4]" />
+              </div>
+              <div>
+                <h3 className="font-bold text-[#0A2540] mb-1">Focused on the topics that move the needle</h3>
+                <p className="text-muted-foreground text-sm leading-relaxed">
+                  Copilot readiness, governance frameworks, cloud migrations, security hardening, and SharePoint architecture — the areas where poor decisions are expensive and good ones compound. No filler, no buzzword-driven content.
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Resource Library Overview */}
+      <section className="bg-[#F7F9FC] py-16 border-b border-border">
+        <div className="max-w-[1200px] mx-auto px-6">
+          <h2 className="text-2xl md:text-3xl font-extrabold text-[#0A2540] mb-3">About This Resource Library</h2>
+          <p className="text-muted-foreground max-w-3xl mb-10 leading-relaxed">
+            This library is organized around the Microsoft 365 decisions that matter most to IT leaders in compliance-sensitive environments. Here's what you'll find and how to get the most from it.
           </p>
-          <p className="text-muted-foreground text-sm font-medium">
-            These resources are written for mid-market organizations, regulated industries, and government contractors navigating Microsoft 365 at scale.
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-10">
+            <div className="bg-white rounded-xl border border-border p-6">
+              <div className="w-10 h-10 rounded-lg bg-[#0078D4]/10 flex items-center justify-center mb-4">
+                <BookOpen className="w-5 h-5 text-[#0078D4]" />
+              </div>
+              <h3 className="font-bold text-[#0A2540] mb-2">Articles & Guides</h3>
+              <p className="text-muted-foreground text-sm leading-relaxed">
+                Deep-dive articles covering Copilot AI adoption, M365 governance, SharePoint architecture, Power Platform best practices, cloud migrations, and digital transformation strategy. Mapped to the same service categories Shane delivers as a consultant.
+              </p>
+            </div>
+            <div className="bg-white rounded-xl border border-border p-6">
+              <div className="w-10 h-10 rounded-lg bg-[#0078D4]/10 flex items-center justify-center mb-4">
+                <ClipboardCheck className="w-5 h-5 text-[#0078D4]" />
+              </div>
+              <h3 className="font-bold text-[#0A2540] mb-2">Free Assessments</h3>
+              <p className="text-muted-foreground text-sm leading-relaxed">
+                AI-powered quiz tools that benchmark your Microsoft 365 environment across eight domains — Copilot readiness, tenant health, SharePoint, Power Platform, security, Teams, migration, and governance. Each delivers a personalized PDF report.
+              </p>
+            </div>
+            <div className="bg-white rounded-xl border border-border p-6">
+              <div className="w-10 h-10 rounded-lg bg-[#0078D4]/10 flex items-center justify-center mb-4">
+                <Download className="w-5 h-5 text-[#0078D4]" />
+              </div>
+              <h3 className="font-bold text-[#0A2540] mb-2">Downloads & Checklists</h3>
+              <p className="text-muted-foreground text-sm leading-relaxed">
+                Practical tools you can use immediately — starting with the M365 Copilot Readiness Checklist. Each download is built around the frameworks Shane uses with consulting clients and applies at NASA.
+              </p>
+            </div>
+          </div>
+          <div className="bg-white rounded-xl border border-[#0078D4]/20 p-6 flex flex-col md:flex-row gap-6 items-start">
+            <p className="text-sm font-semibold text-[#0078D4] uppercase tracking-widest md:whitespace-nowrap mt-0.5">How to use this library</p>
+            <div className="flex flex-col sm:flex-row gap-4 flex-1">
+              <div className="flex items-start gap-3 flex-1">
+                <span className="flex-shrink-0 w-6 h-6 rounded-full bg-[#0078D4] text-white text-xs font-bold flex items-center justify-center">1</span>
+                <div>
+                  <p className="font-semibold text-[#0A2540] text-sm">Learn</p>
+                  <p className="text-muted-foreground text-sm">Read the articles relevant to your current challenge or roadmap initiative.</p>
+                </div>
+              </div>
+              <div className="flex items-start gap-3 flex-1">
+                <span className="flex-shrink-0 w-6 h-6 rounded-full bg-[#0078D4] text-white text-xs font-bold flex items-center justify-center">2</span>
+                <div>
+                  <p className="font-semibold text-[#0A2540] text-sm">Assess</p>
+                  <p className="text-muted-foreground text-sm">Take the matching free assessment to benchmark where your environment actually stands.</p>
+                </div>
+              </div>
+              <div className="flex items-start gap-3 flex-1">
+                <span className="flex-shrink-0 w-6 h-6 rounded-full bg-[#0078D4] text-white text-xs font-bold flex items-center justify-center">3</span>
+                <div>
+                  <p className="font-semibold text-[#0A2540] text-sm">Engage</p>
+                  <p className="text-muted-foreground text-sm">If your score reveals gaps that need senior guidance, book a consultation with Shane directly.</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Start Here */}
+      <section className="bg-white py-16 border-b border-border">
+        <div className="max-w-[1200px] mx-auto px-6">
+          <h2 className="text-2xl md:text-3xl font-extrabold text-[#0A2540] mb-3">Start Here</h2>
+          <p className="text-muted-foreground max-w-2xl mb-10 leading-relaxed">
+            Not sure where to begin? These five starting points cover the most common scenarios IT leaders bring to Shane. Each links to a recommended article and the matching assessment quiz.
           </p>
+          <div className="divide-y divide-border border border-border rounded-xl overflow-hidden">
+            {[
+              {
+                scenario: "We're evaluating Microsoft 365 Copilot",
+                context: "Understand what tenant readiness actually means before purchasing licenses — security posture, data hygiene, identity, and change management all factor in.",
+                articleLabel: "5 Reasons Your Copilot Rollout Is Failing",
+                articleHref: "/resources/copilot-rollout-failing",
+                quizLabel: "Copilot Readiness Assessment",
+                quizHref: "/copilot-quiz",
+              },
+              {
+                scenario: "Our M365 tenant has grown messy over the years",
+                context: "Sprawling Teams, ungoverned SharePoint sites, stale guest accounts, and orphaned licenses are the norm — not the exception. Start with a health benchmark.",
+                articleLabel: "The M365 Tenant Health Check",
+                articleHref: "/resources/m365-tenant-health-check",
+                quizLabel: "M365 Health Check",
+                quizHref: "/m365-health-quiz",
+              },
+              {
+                scenario: "We have an on-premises to cloud migration coming up",
+                context: "Migration projects fail most often in planning, not execution. Source inventory, identity readiness, and stakeholder alignment are the variables that matter.",
+                articleLabel: "M365 Migration Checklist: 30 Things to Do First",
+                articleHref: "/resources/m365-migration-checklist",
+                quizLabel: "Migration Readiness Assessment",
+                quizHref: "/migration-readiness-quiz",
+              },
+              {
+                scenario: "We need to tighten our governance and compliance posture",
+                context: "DLP policies, sensitivity labels, retention schedules, and access governance need to work together as a framework — not as isolated configurations.",
+                articleLabel: "DLP and Sensitivity Labels: The Governance Stack",
+                articleHref: "/resources/dlp-sensitivity-labels",
+                quizLabel: "Governance Maturity Assessment",
+                quizHref: "/governance-maturity-quiz",
+              },
+              {
+                scenario: "We want to modernize our SharePoint intranet",
+                context: "A successful intranet is built on solid information architecture, clear ownership, and adoption-first design — not just a visual refresh.",
+                articleLabel: "SharePoint Intranet Architecture: The Blueprint",
+                articleHref: "/resources/sharepoint-intranet-architecture",
+                quizLabel: "SharePoint & Intranet Readiness Assessment",
+                quizHref: "/sharepoint-readiness-quiz",
+              },
+            ].map((item, i) => (
+              <div key={i} className="flex flex-col md:flex-row md:items-center gap-4 p-6 bg-white hover:bg-[#F7F9FC] transition-colors">
+                <div className="flex-shrink-0 w-8 h-8 rounded-full bg-[#0078D4]/10 flex items-center justify-center">
+                  <span className="text-[#0078D4] text-sm font-bold">{i + 1}</span>
+                </div>
+                <div className="flex-grow">
+                  <p className="font-bold text-[#0A2540] mb-1">{item.scenario}</p>
+                  <p className="text-muted-foreground text-sm leading-relaxed">{item.context}</p>
+                </div>
+                <div className="flex flex-col sm:flex-row gap-2 flex-shrink-0">
+                  <Link
+                    href={item.articleHref}
+                    className="inline-flex items-center gap-1.5 text-[#0078D4] text-sm font-semibold border border-[#0078D4]/30 rounded-lg px-4 py-2 hover:bg-[#0078D4]/5 transition-colors whitespace-nowrap"
+                  >
+                    <BookOpen className="w-3.5 h-3.5" />
+                    {item.articleLabel}
+                  </Link>
+                  <a
+                    href={item.quizHref}
+                    className="inline-flex items-center gap-1.5 text-white text-sm font-semibold bg-[#0078D4] rounded-lg px-4 py-2 hover:bg-[#005A9E] transition-colors whitespace-nowrap"
+                  >
+                    <ClipboardCheck className="w-3.5 h-3.5" />
+                    Take Assessment
+                  </a>
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
       </section>
 
@@ -121,9 +317,10 @@ export default function Resources() {
               <Download className="w-8 h-8 text-[#0078D4]" />
             </div>
             <div className="flex-grow">
-              <p className="text-[#0078D4] text-sm font-semibold uppercase tracking-[0.1em] mb-2">Free Download</p>
-              <h2 className="text-2xl font-extrabold text-[#0A2540] mb-2">The M365 Copilot Readiness Checklist</h2>
-              <p className="text-muted-foreground mb-6">20 points to know before you deploy. Know exactly where your organization stands before investing in Copilot licenses.</p>
+              <p className="text-[#0078D4] text-sm font-semibold uppercase tracking-[0.1em] mb-2">Free Download — The M365 Copilot Readiness Checklist</p>
+              <h2 className="text-2xl font-extrabold text-[#0A2540] mb-2">20 Questions Every IT Leader Must Answer Before Deploying Copilot</h2>
+              <p className="text-muted-foreground mb-3">Know exactly where your organization stands before investing in Copilot licenses — across security, identity, data governance, and change readiness.</p>
+              <p className="text-muted-foreground text-xs mb-6">Instant download · No email marketing spam · No sales call</p>
               {!submitted ? (
                 <form onSubmit={handleLeadMagnet} className="flex flex-col sm:flex-row gap-3" data-testid="lead-magnet-form">
                   <input
@@ -195,7 +392,7 @@ export default function Resources() {
           <div className="mb-8 border-l-4 border-[#0078D4] bg-[#0078D4]/6 rounded-r-xl px-5 py-4 flex items-start gap-3" data-testid="nasa-methodology-callout">
             <Shield className="w-4 h-4 text-[#0078D4] flex-shrink-0 mt-0.5" />
             <p className="text-sm text-[#0A2540] leading-relaxed italic">
-              Every article is based on the same architecture principles Shane applied at NASA — adapted for real-world mid-market and compliance-driven environments.
+              Every article is based on the same architecture principles Shane applies at NASA — adapted for real-world mid‑market and compliance-driven environments.
             </p>
           </div>
 
@@ -278,14 +475,14 @@ export default function Resources() {
         </div>
       </section>
 
-      {/* ── FREE ASSESSMENTS ─────────────────────────────────────────────── */}
+      {/* Free Assessments */}
       <section className="bg-[#F7F9FC] py-20">
         <div className="max-w-[1200px] mx-auto px-6">
           <div className="text-center mb-12">
             <p className="text-[#0078D4] text-sm font-semibold uppercase tracking-[0.12em] mb-3">Free · AI-Powered · 5 Minutes</p>
             <h2 className="text-3xl font-extrabold text-[#0A2540] mb-4">Free Assessment Quizzes</h2>
             <p className="text-muted-foreground max-w-xl mx-auto">
-              Take a free AI-powered quiz to benchmark your organisation across any Microsoft 365 domain. You'll receive a personalised PDF report and recommended next step by email.
+              Benchmark your Microsoft 365 environment with a free AI-powered assessment. Each quiz delivers a personalized PDF report with your score, risks, and next steps.
             </p>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
@@ -357,6 +554,23 @@ export default function Resources() {
               </a>
             ))}
           </div>
+        </div>
+      </section>
+
+      {/* Closing CTA */}
+      <section className="bg-white py-20 border-t border-border">
+        <div className="max-w-[860px] mx-auto px-6 text-center">
+          <h2 className="text-3xl md:text-4xl font-extrabold text-[#0A2540] mb-6 leading-tight">
+            Your Microsoft 365 environment deserves senior expertise
+          </h2>
+          <p className="text-muted-foreground text-lg leading-relaxed max-w-2xl mx-auto mb-8">
+            Shane has spent 30 years in the Microsoft ecosystem and currently serves as Lead M365 Architect at NASA — where security, compliance, and reliability aren't optional. If the articles and assessments have identified gaps you'd rather not tackle alone, book a free 30-minute discovery call.
+          </p>
+          <CTAButton href="/book" className="text-base px-10 py-4">
+            <MessageSquare className="w-4 h-4 mr-2 inline-block" />
+            Book a Consultation
+          </CTAButton>
+          <p className="mt-5 text-muted-foreground text-sm tracking-wide">No pitch. No obligation. Just clarity.</p>
         </div>
       </section>
 
