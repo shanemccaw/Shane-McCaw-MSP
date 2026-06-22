@@ -235,8 +235,8 @@ export default function Home() {
                 Not sure where your tenant stands? Start with a readiness assessment or tenant health audit — you'll get a clear picture and a prioritized action plan before committing to anything larger.
               </p>
               <div className="flex flex-col gap-2">
-                <CTAButton href="/copilot-quiz" className="text-sm px-5 py-2.5 w-full">
-                  Take the Copilot Readiness Quiz
+                <CTAButton href="/m365-health-quiz" className="text-sm px-5 py-2.5 w-full">
+                  Take the M365 Health Assessment
                 </CTAButton>
                 <Link href="/micro-offers" className="inline-flex items-center justify-center gap-1.5 text-[#0078D4] font-semibold text-sm hover:underline">
                   See Tenant Health Audit <ArrowRight className="w-3.5 h-3.5" />
@@ -265,7 +265,7 @@ export default function Home() {
               <p className="text-white/70 text-sm leading-relaxed flex-1 mb-6">
                 Fractional architecture retainers give you a dedicated senior architect without the cost of a full-time hire. Monthly engagements — strategic oversight, hands-on delivery, and direct access to Shane.
               </p>
-              <CTAButton href="/pricing" className="text-sm px-5 py-2.5 w-full bg-[#0078D4] hover:bg-[#005A9E]">
+              <CTAButton href="/retainers" className="text-sm px-5 py-2.5 w-full bg-[#0078D4] hover:bg-[#005A9E]">
                 View Fractional Architecture Tiers
               </CTAButton>
             </div>
@@ -506,15 +506,18 @@ export default function Home() {
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {dbServices.map((s, i) => (
-                <OfferCard
-                  key={s.slug ?? i}
-                  offer={s}
-                  index={i}
-                  ctaHref={s.pageHref ?? "/services"}
-                  ctaLabel="Learn More"
-                />
-              ))}
+              {dbServices.map((s, i) => {
+                const isRetainer = s.billingType === "recurring_monthly";
+                return (
+                  <OfferCard
+                    key={s.slug ?? i}
+                    offer={s}
+                    index={i}
+                    ctaHref={isRetainer ? undefined : (s.pageHref ?? "/services")}
+                    ctaLabel={isRetainer ? "Get Started" : "Learn More"}
+                  />
+                );
+              })}
             </div>
           )}
 
