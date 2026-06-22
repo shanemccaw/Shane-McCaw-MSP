@@ -740,6 +740,21 @@ export const couponsTable = pgTable("coupons", {
 export type Coupon = typeof couponsTable.$inferSelect;
 export type InsertCoupon = typeof couponsTable.$inferInsert;
 
+// Coupon Redemption History — one row per unique checkout session that used a coupon
+export const couponRedemptionsTable = pgTable("coupon_redemptions", {
+  id: serial("id").primaryKey(),
+  couponCode: text("coupon_code").notNull(),
+  checkoutSessionId: text("checkout_session_id").notNull().unique(),
+  couponId: integer("coupon_id"),
+  userId: integer("user_id"),
+  purchaseAmount: numeric("purchase_amount", { precision: 10, scale: 2 }),
+  discountAmount: numeric("discount_amount", { precision: 10, scale: 2 }),
+  redeemedAt: timestamp("redeemed_at").notNull().defaultNow(),
+});
+
+export type CouponRedemption = typeof couponRedemptionsTable.$inferSelect;
+export type InsertCouponRedemption = typeof couponRedemptionsTable.$inferInsert;
+
 // Quick Win Quiz Results — persisted quiz submissions for shareable results pages
 export const quickWinQuizResultsTable = pgTable("quick_win_quiz_results", {
   id: serial("id").primaryKey(),

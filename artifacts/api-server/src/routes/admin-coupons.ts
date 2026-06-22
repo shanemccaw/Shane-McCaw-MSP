@@ -1,6 +1,6 @@
 import { Router, type IRouter, type Request, type Response } from "express";
-import { db, couponsTable } from "@workspace/db";
-import { eq, desc } from "drizzle-orm";
+import { db, couponsTable, couponRedemptionsTable, usersTable } from "@workspace/db";
+import { eq, desc, sql } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/requireAuth";
 
 const router: IRouter = Router();
@@ -146,6 +146,35 @@ router.delete("/admin/coupons/:id", requireAdmin, async (req: Request, res: Resp
 
   await db.delete(couponsTable).where(eq(couponsTable.id, id));
   res.json({ deleted: id });
+});
+
+router.get("/admin/coupons/:id/redemptions", requireAdmin, async (req: Request, res: Response) => {
+  const id = parseInt(String(req.params.id ?? ""), 10);
+  if (isNaN(id)) { res.status(400).json({ error: "Invalid coupon ID" }); return; }
+
+  const [coupon] = await db.select({ code: couponsTable.code }).from(couponsTable).where(eq(couponsTable.id, id));
+  if (!coupon) { res.status(404).json({ error: "Coupon not found" }); return; }
+
+  const rows = await db
+    .select({
+      id: couponRedemptionsTable.id,
+      checkoutSessionId: couponRedemptionsTable.checkoutSessionId,
+      purchaseAmount: couponRedemptionsTable.purchaseAmount,
+      discountAmount: couponRedemptionsTable.discountAmount,
+      redeemedAt: couponRedemptionsTable.redeemedAt,
+      userId: couponRedemptionsTable.userId,
+      userName: sql<string | null>`${usersTable.name}`,
+      userEmail: sql<string | null>`${usersTable.email}`,
+    })
+    .from(couponRedemptionsTable)
+    .leftJoin(usersTable, eq(couponRedemptionsTable.userId, usersTable.id))
+    .where(
+      sql`(${couponRedemptionsTable.couponId} = ${id})
+          OR (${couponRedemptionsTable.couponId} IS NULL AND ${couponRedemptionsTable.couponCode} = ${coupon.code})`
+    )
+    .orderBy(desc(couponRedemptionsTable.redeemedAt));
+
+  res.json(rows);
 });
 
 export default router;

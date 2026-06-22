@@ -309,6 +309,13 @@
       "when": 1782163495579,
       "tag": "0043_coupon_idempotency",
       "breakpoints": true
+    },
+    {
+      "idx": 44,
+      "version": "7",
+      "when": 1750250400000,
+      "tag": "0044_coupon_redemptions_history",
+      "breakpoints": true
     }
   ]
 }

@@ -1,7 +1,7 @@
-import { useState, useEffect } from "react";
+import React, { useState, useEffect } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
-import { Plus, Pencil, Trash2, Loader2, Tag, ToggleLeft, ToggleRight, X } from "lucide-react";
+import { Plus, Pencil, Trash2, Loader2, Tag, ToggleLeft, ToggleRight, X, ChevronDown, ChevronRight, History } from "lucide-react";
 
 interface Coupon {
   id: number;
@@ -13,6 +13,17 @@ interface Coupon {
   active: boolean;
   expiresAt: string | null;
   createdAt: string;
+}
+
+interface Redemption {
+  id: number;
+  checkoutSessionId: string;
+  purchaseAmount: string | null;
+  discountAmount: string | null;
+  redeemedAt: string;
+  userId: number | null;
+  userName: string | null;
+  userEmail: string | null;
 }
 
 interface CouponForm {
@@ -54,6 +65,20 @@ function formatExpiry(expiresAt: string | null) {
   return expired ? `${formatted} (expired)` : formatted;
 }
 
+function formatMoney(val: string | null) {
+  if (val == null) return "—";
+  const n = parseFloat(val);
+  if (isNaN(n)) return "—";
+  return `$${n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+function formatDate(val: string) {
+  return new Date(val).toLocaleString("en-US", {
+    month: "short", day: "numeric", year: "numeric",
+    hour: "numeric", minute: "2-digit",
+  });
+}
+
 export default function CouponsPage() {
   const { fetchWithAuth } = useAuth();
   const { toast } = useToast();
@@ -66,6 +91,10 @@ export default function CouponsPage() {
   const [deletingId, setDeletingId] = useState<number | null>(null);
   const [formError, setFormError] = useState("");
 
+  const [expandedId, setExpandedId] = useState<number | null>(null);
+  const [redemptions, setRedemptions] = useState<Record<number, Redemption[]>>({});
+  const [loadingRedemptions, setLoadingRedemptions] = useState<number | null>(null);
+
   const load = async () => {
     try {
       const res = await fetchWithAuth("/api/admin/coupons");
@@ -77,6 +106,27 @@ export default function CouponsPage() {
   };
 
   useEffect(() => { void load(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const toggleRedemptions = async (coupon: Coupon) => {
+    if (expandedId === coupon.id) {
+      setExpandedId(null);
+      return;
+    }
+    setExpandedId(coupon.id);
+    if (redemptions[coupon.id]) return;
+    setLoadingRedemptions(coupon.id);
+    try {
+      const res = await fetchWithAuth(`/api/admin/coupons/${coupon.id}/redemptions`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json() as Redemption[];
+      setRedemptions(prev => ({ ...prev, [coupon.id]: data }));
+    } catch {
+      toast({ title: "Failed to load redemptions", variant: "destructive" });
+      setExpandedId(null);
+    } finally {
+      setLoadingRedemptions(null);
+    }
+  };
 
   const openCreate = () => {
     setEditingId(null);
@@ -352,6 +402,7 @@ export default function CouponsPage() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="bg-[#F7F9FC] border-b border-border text-left">
+                  <th className="px-4 py-3 text-xs font-bold text-muted-foreground uppercase tracking-wider w-6"></th>
                   <th className="px-4 py-3 text-xs font-bold text-muted-foreground uppercase tracking-wider">Code</th>
                   <th className="px-4 py-3 text-xs font-bold text-muted-foreground uppercase tracking-wider">Discount</th>
                   <th className="px-4 py-3 text-xs font-bold text-muted-foreground uppercase tracking-wider">Uses</th>
@@ -365,73 +416,169 @@ export default function CouponsPage() {
                   const expired = coupon.expiresAt ? new Date(coupon.expiresAt) < new Date() : false;
                   const exhausted = coupon.maxUses != null && coupon.usesCount >= coupon.maxUses;
                   const effectivelyInactive = !coupon.active || expired || exhausted;
+                  const isExpanded = expandedId === coupon.id;
+                  const isLoadingThis = loadingRedemptions === coupon.id;
+                  const couponRedemptions = redemptions[coupon.id];
 
                   return (
-                    <tr key={coupon.id} className="hover:bg-[#F7F9FC]/50 transition-colors">
-                      <td className="px-4 py-3">
-                        <span className="font-mono font-bold text-[#0A2540] text-sm tracking-wide">
-                          {coupon.code}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3">
-                        <span className={`inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-full ${
-                          coupon.discountType === "percentage"
-                            ? "bg-purple-100 text-purple-700"
-                            : "bg-emerald-100 text-emerald-700"
-                        }`}>
-                          {formatDiscount(coupon)}
-                          <span className="text-[10px] font-normal opacity-70">
-                            {coupon.discountType === "percentage" ? "off" : "off"}
-                          </span>
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 text-[#0A2540] font-mono text-xs">
-                        {formatUses(coupon)}
-                      </td>
-                      <td className="px-4 py-3">
-                        <button
-                          onClick={() => void handleToggleActive(coupon)}
-                          title={coupon.active ? "Click to deactivate" : "Click to activate"}
-                          className="focus:outline-none"
-                        >
-                          {effectivelyInactive ? (
-                            <span className="inline-flex items-center gap-1 text-xs bg-gray-100 text-gray-500 px-2.5 py-1 rounded-full font-medium">
-                              {expired ? "Expired" : exhausted ? "Exhausted" : "Inactive"}
-                            </span>
-                          ) : (
-                            <span className="inline-flex items-center gap-1 text-xs bg-emerald-100 text-emerald-700 px-2.5 py-1 rounded-full font-medium">
-                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block" />
-                              Active
-                            </span>
-                          )}
-                        </button>
-                      </td>
-                      <td className="px-4 py-3 text-xs text-muted-foreground">
-                        {formatExpiry(coupon.expiresAt)}
-                      </td>
-                      <td className="px-4 py-3">
-                        <div className="flex items-center gap-2">
+                    <React.Fragment key={coupon.id}>
+                      <tr className={`transition-colors ${isExpanded ? "bg-[#F7F9FC]/70" : "hover:bg-[#F7F9FC]/50"}`}>
+                        <td className="px-3 py-3">
                           <button
-                            onClick={() => openEdit(coupon)}
-                            className="p-1.5 text-muted-foreground hover:text-[#0078D4] hover:bg-[#0078D4]/10 rounded-lg transition-colors"
-                            title="Edit"
+                            onClick={() => void toggleRedemptions(coupon)}
+                            title={isExpanded ? "Hide redemption history" : "View redemption history"}
+                            className="p-1 text-muted-foreground hover:text-[#0078D4] rounded transition-colors"
+                            disabled={isLoadingThis}
                           >
-                            <Pencil className="w-3.5 h-3.5" />
-                          </button>
-                          <button
-                            onClick={() => void handleDelete(coupon)}
-                            disabled={deletingId === coupon.id}
-                            className="p-1.5 text-muted-foreground hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50"
-                            title="Delete"
-                          >
-                            {deletingId === coupon.id
+                            {isLoadingThis
                               ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                              : <Trash2 className="w-3.5 h-3.5" />
+                              : isExpanded
+                                ? <ChevronDown className="w-3.5 h-3.5" />
+                                : <ChevronRight className="w-3.5 h-3.5" />
                             }
                           </button>
-                        </div>
-                      </td>
-                    </tr>
+                        </td>
+                        <td className="px-4 py-3">
+                          <span className="font-mono font-bold text-[#0A2540] text-sm tracking-wide">
+                            {coupon.code}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3">
+                          <span className={`inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-full ${
+                            coupon.discountType === "percentage"
+                              ? "bg-purple-100 text-purple-700"
+                              : "bg-emerald-100 text-emerald-700"
+                          }`}>
+                            {formatDiscount(coupon)}
+                            <span className="text-[10px] font-normal opacity-70">off</span>
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-[#0A2540] font-mono text-xs">
+                          {formatUses(coupon)}
+                        </td>
+                        <td className="px-4 py-3">
+                          <button
+                            onClick={() => void handleToggleActive(coupon)}
+                            title={coupon.active ? "Click to deactivate" : "Click to activate"}
+                            className="focus:outline-none"
+                          >
+                            {effectivelyInactive ? (
+                              <span className="inline-flex items-center gap-1 text-xs bg-gray-100 text-gray-500 px-2.5 py-1 rounded-full font-medium">
+                                {expired ? "Expired" : exhausted ? "Exhausted" : "Inactive"}
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 text-xs bg-emerald-100 text-emerald-700 px-2.5 py-1 rounded-full font-medium">
+                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block" />
+                                Active
+                              </span>
+                            )}
+                          </button>
+                        </td>
+                        <td className="px-4 py-3 text-xs text-muted-foreground">
+                          {formatExpiry(coupon.expiresAt)}
+                        </td>
+                        <td className="px-4 py-3">
+                          <div className="flex items-center gap-2">
+                            <button
+                              onClick={() => openEdit(coupon)}
+                              className="p-1.5 text-muted-foreground hover:text-[#0078D4] hover:bg-[#0078D4]/10 rounded-lg transition-colors"
+                              title="Edit"
+                            >
+                              <Pencil className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              onClick={() => void handleDelete(coupon)}
+                              disabled={deletingId === coupon.id}
+                              className="p-1.5 text-muted-foreground hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50"
+                              title="Delete"
+                            >
+                              {deletingId === coupon.id
+                                ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                : <Trash2 className="w-3.5 h-3.5" />
+                              }
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+
+                      {isExpanded && (
+                        <tr key={`${coupon.id}-redemptions`}>
+                          <td colSpan={7} className="bg-[#F7F9FC] border-b border-border px-0 py-0">
+                            <div className="px-6 py-4">
+                              <div className="flex items-center gap-2 mb-3">
+                                <History className="w-3.5 h-3.5 text-[#0078D4]" />
+                                <span className="text-xs font-bold text-[#0A2540] uppercase tracking-wider">
+                                  Redemption History — {coupon.code}
+                                </span>
+                              </div>
+
+                              {!couponRedemptions ? (
+                                <div className="flex items-center gap-2 py-4 text-muted-foreground text-xs">
+                                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                  Loading…
+                                </div>
+                              ) : couponRedemptions.length === 0 ? (
+                                <p className="text-xs text-muted-foreground py-3">
+                                  No redemptions yet — this coupon hasn't been used at checkout.
+                                </p>
+                              ) : (
+                                <table className="w-full text-xs">
+                                  <thead>
+                                    <tr className="text-left border-b border-border/60">
+                                      <th className="pb-2 pr-4 font-semibold text-muted-foreground">Client</th>
+                                      <th className="pb-2 pr-4 font-semibold text-muted-foreground">Paid</th>
+                                      <th className="pb-2 pr-4 font-semibold text-muted-foreground">Saved</th>
+                                      <th className="pb-2 pr-4 font-semibold text-muted-foreground">Date</th>
+                                      <th className="pb-2 font-semibold text-muted-foreground">Session</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody className="divide-y divide-border/40">
+                                    {couponRedemptions.map(r => (
+                                      <tr key={r.id} className="text-[#0A2540]">
+                                        <td className="py-2 pr-4">
+                                          {r.userName || r.userEmail ? (
+                                            <div>
+                                              {r.userName && <span className="font-medium">{r.userName}</span>}
+                                              {r.userEmail && (
+                                                <span className={`block text-muted-foreground ${r.userName ? "text-[10px]" : ""}`}>
+                                                  {r.userEmail}
+                                                </span>
+                                              )}
+                                            </div>
+                                          ) : (
+                                            <span className="text-muted-foreground italic">Guest / unknown</span>
+                                          )}
+                                        </td>
+                                        <td className="py-2 pr-4 font-mono font-medium">
+                                          {formatMoney(r.purchaseAmount)}
+                                        </td>
+                                        <td className="py-2 pr-4">
+                                          {r.discountAmount != null ? (
+                                            <span className="text-emerald-700 font-mono font-medium">
+                                              -{formatMoney(r.discountAmount)}
+                                            </span>
+                                          ) : (
+                                            <span className="text-muted-foreground">—</span>
+                                          )}
+                                        </td>
+                                        <td className="py-2 pr-4 text-muted-foreground whitespace-nowrap">
+                                          {formatDate(r.redeemedAt)}
+                                        </td>
+                                        <td className="py-2">
+                                          <span className="font-mono text-[10px] text-muted-foreground truncate max-w-[120px] block" title={r.checkoutSessionId}>
+                                            {r.checkoutSessionId.slice(0, 20)}…
+                                          </span>
+                                        </td>
+                                      </tr>
+                                    ))}
+                                  </tbody>
+                                </table>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                    </React.Fragment>
                   );
                 })}
               </tbody>

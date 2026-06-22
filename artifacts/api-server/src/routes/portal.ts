@@ -2914,10 +2914,26 @@ async function processStripeEvent(req: Request, event: import("stripe").Stripe.E
     if (session.payment_status === "paid" && session.metadata?.couponCode) {
       const couponCodeUsed = session.metadata.couponCode;
       const sessionId = session.id;
+      const redemptionUserId = session.metadata?.userId
+        ? (parseInt(session.metadata.userId, 10) || null)
+        : null;
+      const redemptionPurchaseAmount = session.amount_total != null
+        ? String(session.amount_total / 100)
+        : null;
+      const redemptionDiscountAmount = (session.total_details as { amount_discount?: number } | null)?.amount_discount != null
+        ? String((session.total_details as { amount_discount: number }).amount_discount / 100)
+        : null;
       try {
         const insertResult = await db.execute(
-          sql`INSERT INTO coupon_redemptions (coupon_code, checkout_session_id)
-              VALUES (${couponCodeUsed}, ${sessionId})
+          sql`INSERT INTO coupon_redemptions (coupon_code, checkout_session_id, coupon_id, user_id, purchase_amount, discount_amount)
+              VALUES (
+                ${couponCodeUsed},
+                ${sessionId},
+                (SELECT id FROM coupons WHERE code = ${couponCodeUsed}),
+                ${redemptionUserId},
+                ${redemptionPurchaseAmount},
+                ${redemptionDiscountAmount}
+              )
               ON CONFLICT (checkout_session_id) DO NOTHING`,
         );
         // Only increment if this is the first time we're processing this session
