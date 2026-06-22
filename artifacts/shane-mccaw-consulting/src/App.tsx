@@ -24,6 +24,13 @@ import ArticlePage from "@/pages/ArticlePage";
 import Admin from "@/pages/Admin";
 import CustomerCommandCenter from "@/pages/CustomerCommandCenter";
 import CopilotQuiz from "@/pages/CopilotQuiz";
+import M365HealthQuiz from "@/pages/quizzes/M365HealthQuiz";
+import SharePointQuiz from "@/pages/quizzes/SharePointQuiz";
+import PowerPlatformQuiz from "@/pages/quizzes/PowerPlatformQuiz";
+import SecurityQuiz from "@/pages/quizzes/SecurityQuiz";
+import TeamsQuiz from "@/pages/quizzes/TeamsQuiz";
+import MigrationQuiz from "@/pages/quizzes/MigrationQuiz";
+import GovernanceQuiz from "@/pages/quizzes/GovernanceQuiz";
 import ArchitectEssentials from "@/pages/retainers/ArchitectEssentials";
 import ArchitectGrowth from "@/pages/retainers/ArchitectGrowth";
 import ArchitectEnterprise from "@/pages/retainers/ArchitectEnterprise";
@@ -66,6 +73,13 @@ function Router() {
       <Route path="/admin" component={Admin} />
       <Route path="/customer-command-center" component={CustomerCommandCenter} />
       <Route path="/copilot-quiz" component={CopilotQuiz} />
+      <Route path="/m365-health-quiz" component={M365HealthQuiz} />
+      <Route path="/sharepoint-quiz" component={SharePointQuiz} />
+      <Route path="/power-platform-quiz" component={PowerPlatformQuiz} />
+      <Route path="/security-quiz" component={SecurityQuiz} />
+      <Route path="/teams-quiz" component={TeamsQuiz} />
+      <Route path="/migration-quiz" component={MigrationQuiz} />
+      <Route path="/governance-quiz" component={GovernanceQuiz} />
       <Route path="/retainers" component={RetainersOverview} />
       <Route path="/retainers/architect-essentials" component={ArchitectEssentials} />
       <Route path="/retainers/architect-growth" component={ArchitectGrowth} />

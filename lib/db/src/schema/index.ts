@@ -640,9 +640,10 @@ export const quizLeadsTable = pgTable("quiz_leads", {
   totalScore: integer("total_score").notNull().default(0),
   tier: text("tier").notNull().default("Beginner"),
   recommendedService: text("recommended_service"),
-  categoryScores: jsonb("category_scores").$type<QuizCategoryScores>().notNull().default({ infrastructure: 0, data: 0, aiLiteracy: 0, changeManagement: 0, businessProcess: 0 }),
+  categoryScores: jsonb("category_scores").$type<Record<string, number>>().notNull().default({ infrastructure: 0, data: 0, aiLiteracy: 0, changeManagement: 0, businessProcess: 0 }),
   analysisText: jsonb("analysis_text").$type<QuizAnalysisText>().default({ whatThisMeans: "", whyThisFits: "", roiProjection: "" }),
   conversation: jsonb("conversation").$type<QuizConversationEntry[]>().notNull().default([]),
+  quizType: text("quiz_type").notNull().default("copilot"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   contactedAt: timestamp("contacted_at"),
 });
