@@ -100,6 +100,8 @@ export default function CouponsPage() {
       const res = await fetchWithAuth("/api/admin/coupons");
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       setCoupons(await res.json() as Coupon[]);
+    } catch {
+      toast({ title: "Failed to load coupons", variant: "destructive" });
     } finally {
       setLoading(false);
     }
