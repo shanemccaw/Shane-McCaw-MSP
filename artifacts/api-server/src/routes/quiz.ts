@@ -58,18 +58,18 @@ Rules:
 
 You ask exactly 10 questions, one at a time. Each question probes one of five health categories (two questions per category):
 
-1. Licensing & Entitlements (Q1, Q2): Licensing tiers, licence utilisation, wasted licences, appropriate plans for roles.
-2. Security & Identity (Q3, Q4): MFA coverage, Entra ID / Azure AD setup, admin role hygiene, identity management approach.
-3. Collaboration Hygiene (Q5, Q6): Teams and SharePoint governance, naming conventions, email security (DKIM/DMARC/SPF).
-4. Admin & Governance (Q7, Q8): Admin centre usage, monitoring tools, Global Admin count, least-privilege practices.
-5. Adoption & Training (Q9, Q10): End-user adoption levels, formal M365 training programmes, self-serve vs structured enablement.
+1. Security Posture (Q1, Q2): Microsoft Secure Score engagement, Defender for Office 365 configuration, anti-phishing and anti-malware policies, DKIM/DMARC/SPF email authentication.
+2. Identity & Conditional Access (Q3, Q4): MFA coverage across all accounts, Conditional Access policy deployment and breadth, Entra ID configuration, privileged identity management.
+3. Collaboration Sprawl (Q5, Q6): Teams and SharePoint governance — naming conventions, site and team lifecycle policies, guest access controls, sprawl and shadow IT indicators.
+4. Admin Roles & Shadow IT (Q7, Q8): Global Admin count and least-privilege practices, admin role hygiene, monitoring and alerting tools in use, shadow IT and unsanctioned app usage.
+5. DLP & Sensitivity Labels (Q9, Q10): Sensitivity label deployment and coverage, DLP policy configuration and scope, data classification maturity, information protection readiness.
 
 Rules:
 - Ask questions in a conversational, professional tone.
 - Do NOT number the questions explicitly.
 - Ask one focused question at a time and wait for the user's answer.
 - Keep each question to 1–2 sentences maximum.
-- On the very first message, greet the user briefly (1 sentence) and immediately ask about their M365 licensing tier.
+- On the very first message, greet the user briefly (1 sentence) and immediately ask about their Microsoft Secure Score.
 - For questions 2–10, acknowledge the previous answer in one short sentence before asking the next question.
 - Do NOT provide scores, feedback, or analysis during the quiz.
 - After question 10 is answered, respond with exactly: "Thank you — that completes the assessment. I'll now generate your personalised tenant health report."`,
@@ -114,22 +114,22 @@ Rules:
 - Do NOT provide scores, feedback, or analysis during the quiz.
 - After question 10 is answered, respond with exactly: "Thank you — that completes the assessment. I'll now generate your personalised Power Platform maturity report."`,
 
-  security: `You are a Microsoft 365 security specialist working for Shane McCaw Consulting. Your job is to conduct a structured 10-question M365 security posture assessment for organisations wanting to understand the security risks in their Microsoft 365 environment.
+  security: `You are a Microsoft 365 security and compliance specialist working for Shane McCaw Consulting. Your job is to conduct a structured 10-question M365 security and compliance posture assessment for organisations wanting to understand their risk posture and compliance readiness.
 
-You ask exactly 10 questions, one at a time. Each question probes one of five security categories (two questions per category):
+You ask exactly 10 questions, one at a time. Each question probes one of five security and compliance categories (two questions per category):
 
-1. Identity & Access (Q1, Q2): MFA coverage for all users, Conditional Access policy deployment, access controls beyond basic authentication.
-2. Data Protection (Q3, Q4): Sensitivity label deployment, DLP policy configuration, protection against data exfiltration via email, Teams, and SharePoint.
-3. Device & Endpoint Management (Q5, Q6): Intune/MDM enrollment, device compliance policies, App Protection Policies for unmanaged devices, remote wipe capability.
-4. Threat Detection & Response (Q7, Q8): Microsoft Secure Score engagement, Defender for Office 365 configuration (Safe Attachments, Safe Links, anti-phishing).
-5. Compliance & Policy (Q9, Q10): Applicable regulatory frameworks (HIPAA, CMMC, FedRAMP, SOX, GDPR), Purview compliance control configuration, incident response readiness.
+1. Identity & Access Control (Q1, Q2): MFA coverage for all users including admins and contractors, Conditional Access policy deployment and enforcement, Entra ID configuration, Privileged Identity Management and just-in-time access controls.
+2. Data Protection (Q3, Q4): Microsoft Purview sensitivity label deployment and coverage, DLP policy configuration and enforcement across email, Teams, SharePoint, and OneDrive, information protection maturity and data classification practices.
+3. Insider Risk & Compliance (Q5, Q6): Microsoft Purview Insider Risk Management policy deployment, Communication Compliance configuration, Compliance Manager usage and improvement score, overall compliance posture.
+4. Audit & eDiscovery (Q7, Q8): Unified Audit Log retention configuration, eDiscovery readiness and whether it has been tested in practice, Content Search usage, audit log review processes and alerting.
+5. Regulatory Readiness (Q9, Q10): Applicable regulatory framework mapping (HIPAA, CMMC, FedRAMP, SOX, GDPR, NIST), corresponding Microsoft Purview Compliance Manager control configuration, audit readiness posture and gaps.
 
 Rules:
 - Ask questions in a conversational, professional tone.
 - Do NOT number the questions explicitly.
 - Ask one focused question at a time and wait for the user's answer.
 - Keep each question to 1–2 sentences maximum.
-- On the very first message, greet the user briefly (1 sentence) and immediately ask about their MFA deployment status.
+- On the very first message, greet the user briefly (1 sentence) and immediately ask about their MFA and Conditional Access deployment.
 - For questions 2–10, acknowledge the previous answer in one short sentence before asking the next question.
 - Do NOT provide scores, feedback, or analysis during the quiz.
 - After question 10 is answered, respond with exactly: "Thank you — that completes the assessment. I'll now generate your personalised security posture report."`,
@@ -199,6 +199,7 @@ Rules:
 interface ScoringConfig {
   categories: string;
   categoryKeys: string;
+  categoryConfig: Array<{ key: string; label: string }>;
   services: string;
   defaultService: string;
   reportName: string;
@@ -221,6 +222,13 @@ const SCORING_CONFIGS: Record<string, ScoringConfig> = {
 - changeManagement: Executive buy-in, policies, rollout planning
 - businessProcess: Use cases identified, ROI tracking, success metrics`,
     categoryKeys: "infrastructure, data, aiLiteracy, changeManagement, businessProcess",
+    categoryConfig: [
+      { key: "infrastructure", label: "Infrastructure & Identity" },
+      { key: "data", label: "Data & Compliance" },
+      { key: "aiLiteracy", label: "AI Literacy" },
+      { key: "changeManagement", label: "Change Management" },
+      { key: "businessProcess", label: "Business Process" },
+    ],
     services: `- "Microsoft 365 Essentials Audit" — best for early-stage orgs with licensing/infrastructure gaps
 - "Copilot AI Readiness & Deployment" — best for orgs ready to deploy but needing guided rollout
 - "Microsoft 365 Governance Setup" — best for orgs with data/compliance gaps
@@ -237,6 +245,13 @@ const SCORING_CONFIGS: Record<string, ScoringConfig> = {
 - adminRolesShadowIT: Global Admin count and least-privilege practices, admin role hygiene, monitoring tools in use, shadow IT and unsanctioned app usage
 - dlpSensitivityLabels: Sensitivity label deployment and coverage, DLP policy configuration and scope, data classification maturity, information protection readiness`,
     categoryKeys: "securityPosture, identityConditionalAccess, collaborationSprawl, adminRolesShadowIT, dlpSensitivityLabels",
+    categoryConfig: [
+      { key: "securityPosture", label: "Security Posture" },
+      { key: "identityConditionalAccess", label: "Identity & Conditional Access" },
+      { key: "collaborationSprawl", label: "Collaboration Sprawl" },
+      { key: "adminRolesShadowIT", label: "Admin Roles & Shadow IT" },
+      { key: "dlpSensitivityLabels", label: "DLP & Sensitivity Labels" },
+    ],
     services: `- "M365 Tenant Health Audit" — comprehensive audit for tenants with configuration gaps, security issues, or governance debt
 - "Copilot for M365 Readiness Assessment" — for mature tenants ready to evaluate Copilot deployment
 - "Governance Foundations Package" — for tenants that need formal governance after addressing health issues`,
@@ -251,6 +266,13 @@ const SCORING_CONFIGS: Record<string, ScoringConfig> = {
 - contentLifecycle: Retention and archiving processes, what happens when projects end or employees leave, metadata usage
 - adoptionUsage: Department adoption levels, training and enablement history, adoption barriers`,
     categoryKeys: "infoArchitecture, permissionsGovernance, searchNavigation, contentLifecycle, adoptionUsage",
+    categoryConfig: [
+      { key: "infoArchitecture", label: "Information Architecture" },
+      { key: "permissionsGovernance", label: "Permissions & Governance" },
+      { key: "searchNavigation", label: "Search & Navigation" },
+      { key: "contentLifecycle", label: "Content Lifecycle" },
+      { key: "adoptionUsage", label: "Adoption & Usage" },
+    ],
     services: `- "M365 Tenant Health Audit" — for environments with significant configuration and governance debt
 - "Governance Foundations Package" — for environments needing formal governance, naming conventions, and lifecycle policies
 - "Copilot for M365 Readiness Assessment" — for mature environments ready to deploy Copilot on clean SharePoint foundations`,
@@ -265,6 +287,13 @@ const SCORING_CONFIGS: Record<string, ScoringConfig> = {
 - automationMaturity: Types of flows deployed, monitoring and maintenance practices, flow reliability and complexity
 - aiBuilderReadiness: AI Builder feature awareness and usage, Copilot Studio awareness, AI-assisted building positioning`,
     categoryKeys: "platformGovernance, makerSkills, dataConnectivity, automationMaturity, aiBuilderReadiness",
+    categoryConfig: [
+      { key: "platformGovernance", label: "Platform Governance" },
+      { key: "makerSkills", label: "Maker Skills & Training" },
+      { key: "dataConnectivity", label: "Data Connectivity" },
+      { key: "automationMaturity", label: "Automation Maturity" },
+      { key: "aiBuilderReadiness", label: "AI Builder Readiness" },
+    ],
     services: `- "Power Platform Quick-Start" — for organisations with limited governance or early-stage maker practices
 - "Governance Foundations Package" — for organisations with mature Power Platform usage needing broader M365 governance
 - "Copilot for M365 Readiness Assessment" — for mature organisations ready to add AI to their Power Platform practice`,
@@ -279,6 +308,13 @@ const SCORING_CONFIGS: Record<string, ScoringConfig> = {
 - auditEDiscovery: Audit log retention configuration, eDiscovery readiness and tested capability, Content Search usage, audit log review processes
 - regulatoryReadiness: Applicable regulatory framework mapping (HIPAA, CMMC, FedRAMP, SOX, GDPR, NIST), Purview compliance control configuration, audit readiness posture`,
     categoryKeys: "identityAccess, dataProtection, insiderRiskCompliance, auditEDiscovery, regulatoryReadiness",
+    categoryConfig: [
+      { key: "identityAccess", label: "Identity & Access Control" },
+      { key: "dataProtection", label: "Data Protection" },
+      { key: "insiderRiskCompliance", label: "Insider Risk & Compliance" },
+      { key: "auditEDiscovery", label: "Audit & eDiscovery" },
+      { key: "regulatoryReadiness", label: "Regulatory Readiness" },
+    ],
     services: `- "Governance Foundations Package" — for organisations with significant security and compliance gaps requiring a full governance framework
 - "M365 Tenant Health Audit" — for organisations needing a comprehensive tenant-wide security and configuration review
 - "Copilot for M365 Readiness Assessment" — for mature, secure environments ready to deploy Copilot safely`,
@@ -293,6 +329,13 @@ const SCORING_CONFIGS: Record<string, ScoringConfig> = {
 - adoptionCulture: Which departments use Teams as primary collaboration tool, adoption barriers, training provided
 - integrationApps: Third-party app governance, advanced feature usage (Copilot summaries, breakout rooms, polls)`,
     categoryKeys: "governanceLifecycle, meetingsCalling, infoArchitecture, adoptionCulture, integrationApps",
+    categoryConfig: [
+      { key: "governanceLifecycle", label: "Governance & Lifecycle" },
+      { key: "meetingsCalling", label: "Meetings & Calling" },
+      { key: "infoArchitecture", label: "Information Architecture" },
+      { key: "adoptionCulture", label: "Adoption & Culture" },
+      { key: "integrationApps", label: "Apps & Integration" },
+    ],
     services: `- "M365 Tenant Health Audit" — for tenants with broad configuration issues underlying Teams problems
 - "Governance Foundations Package" — for Teams environments needing formal governance and lifecycle management
 - "Copilot for M365 Readiness Assessment" — for well-governed Teams environments ready for Copilot meeting summaries and chat assistance`,
@@ -307,6 +350,13 @@ const SCORING_CONFIGS: Record<string, ScoringConfig> = {
 - stakeholderAlignment: Executive sponsorship and formal project approval, department head engagement, change management planning
 - riskPlanning: Documented rollback procedures, integration and line-of-business application testing, dependency mapping`,
     categoryKeys: "sourceInventory, identityReadiness, dataGovernance, stakeholderAlignment, riskPlanning",
+    categoryConfig: [
+      { key: "sourceInventory", label: "Source Environment Inventory" },
+      { key: "identityReadiness", label: "Identity Readiness" },
+      { key: "dataGovernance", label: "Data & Governance" },
+      { key: "stakeholderAlignment", label: "Stakeholder Alignment" },
+      { key: "riskPlanning", label: "Risk & Rollback Planning" },
+    ],
     services: `- "Migration Readiness Assessment" — for organisations planning a migration that need a formal readiness report and go/no-go recommendation
 - "Governance Foundations Package" — for organisations that need governance controls in place before or alongside migration execution
 - "M365 Tenant Health Audit" — for organisations that have already migrated and want to assess the health of their new M365 tenant`,
@@ -321,6 +371,13 @@ const SCORING_CONFIGS: Record<string, ScoringConfig> = {
 - complianceFramework: Applicable regulatory frameworks (HIPAA, CMMC, FedRAMP, SOX, ITAR, GDPR), Purview compliance control configuration
 - policyDocumentation: Whether governance policies are documented, current, accessible, and technically enforced through M365 controls`,
     categoryKeys: "dlpLabels, retentionRecords, accessGovernance, complianceFramework, policyDocumentation",
+    categoryConfig: [
+      { key: "dlpLabels", label: "DLP & Sensitivity Labels" },
+      { key: "retentionRecords", label: "Retention & Records Management" },
+      { key: "accessGovernance", label: "Access & Identity Governance" },
+      { key: "complianceFramework", label: "Compliance Framework Alignment" },
+      { key: "policyDocumentation", label: "Policy Documentation" },
+    ],
     services: `- "Governance Foundations Package" — for organisations with significant governance gaps requiring a full framework build-out
 - "Copilot for M365 Readiness Assessment" — for organisations with mature governance ready to deploy Copilot safely
 - "M365 Tenant Health Audit" — for organisations that want a broader tenant review alongside their governance assessment`,
@@ -483,7 +540,7 @@ Respond ONLY with valid JSON in this exact shape:
     }
   })();
 
-  const pdfData = { name, email, company, totalScore, tier, recommendedService, categoryScores: scores, whatThisMeans, whyThisFits, roiProjection };
+  const pdfData = { name, email, company, totalScore, tier, recommendedService, categoryScores: scores, whatThisMeans, whyThisFits, roiProjection, reportTitle: cfg.reportName, categoryConfig: cfg.categoryConfig };
 
   void (async () => {
     try {
@@ -569,6 +626,8 @@ router.post("/quiz/resend-pdf", resendLimiter, async (req, res) => {
       whatThisMeans: analysis.whatThisMeans,
       whyThisFits: analysis.whyThisFits,
       roiProjection: analysis.roiProjection,
+      reportTitle: cfg.reportName,
+      categoryConfig: cfg.categoryConfig,
     });
 
     const firstName = lead.name.split(" ")[0] || "there";

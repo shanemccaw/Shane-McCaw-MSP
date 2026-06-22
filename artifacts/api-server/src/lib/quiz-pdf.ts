@@ -19,6 +19,8 @@ export interface QuizPdfData {
   whatThisMeans: string;
   whyThisFits: string;
   roiProjection: string;
+  reportTitle: string;
+  categoryConfig: Array<{ key: string; label: string }>;
 }
 
 function wrapText(text: string, maxWidth: number, fontSize: number, charsPerLine: number): string[] {
@@ -60,9 +62,10 @@ export async function generateQuizPdf(data: QuizPdfData): Promise<Buffer> {
     x: width - 36 - 160, y: height - 44, size: 10, font: helvetica, color: BLUE,
   });
 
-  // Title
-  page1.drawText("Microsoft Copilot Readiness Report", {
-    x: 36, y: height - 120, size: 22, font: helveticaBold, color: DARK_TEXT,
+  // Title — dynamic per quiz type
+  const titleFontSize = data.reportTitle.length > 38 ? 18 : 22;
+  page1.drawText(data.reportTitle, {
+    x: 36, y: height - 120, size: titleFontSize, font: helveticaBold, color: DARK_TEXT,
   });
   page1.drawText(`Prepared for: ${data.name}${data.company ? ` — ${data.company}` : ""}`, {
     x: 36, y: height - 148, size: 11, font: helvetica, color: MID_GRAY,
@@ -93,22 +96,14 @@ export async function generateQuizPdf(data: QuizPdfData): Promise<Buffer> {
   };
   page1.drawText(tierDesc[data.tier] ?? "", { x: 232, y: boxY + 18, size: 9, font: helvetica, color: rgb(0.85, 0.92, 1) });
 
-  // Section: Category Breakdown
+  // Section: Category Breakdown — dynamic per quiz type
   const catY = boxY - 40;
-  page1.drawText("Readiness Category Breakdown", {
+  page1.drawText("Assessment Category Breakdown", {
     x: 36, y: catY, size: 14, font: helveticaBold, color: DARK_TEXT,
   });
 
-  const categories = [
-    { key: "infrastructure", label: "Infrastructure & Identity" },
-    { key: "data", label: "Data & Compliance" },
-    { key: "aiLiteracy", label: "AI Literacy" },
-    { key: "changeManagement", label: "Change Management" },
-    { key: "businessProcess", label: "Business Process" },
-  ];
-
   let rowY = catY - 24;
-  for (const cat of categories) {
+  for (const cat of data.categoryConfig) {
     const score = data.categoryScores[cat.key] ?? 0;
     const pct = Math.min(score / 10, 1);
     const barWidth = 260;
@@ -148,7 +143,7 @@ export async function generateQuizPdf(data: QuizPdfData): Promise<Buffer> {
   page2.drawText("Shane McCaw Consulting", {
     x: 36, y: height - 32, size: 16, font: helveticaBold, color: WHITE,
   });
-  page2.drawText("Copilot Readiness Report — Recommendations", {
+  page2.drawText(`${data.reportTitle} — Recommendations`, {
     x: 36, y: height - 52, size: 10, font: helvetica, color: rgb(0.6, 0.7, 0.8),
   });
 
@@ -202,10 +197,10 @@ export async function generateQuizPdf(data: QuizPdfData): Promise<Buffer> {
     p2Y -= 8;
   }
 
-  // CTA box
+  // CTA box — generic across all quiz types
   p2Y -= 10;
   page2.drawRectangle({ x: 36, y: p2Y - 56, width: width - 72, height: 72, color: NAVY });
-  page2.drawText("Ready to accelerate your Copilot journey?", {
+  page2.drawText("Ready to act on your results?", {
     x: 56, y: p2Y - 14, size: 13, font: helveticaBold, color: WHITE,
   });
   page2.drawText("Book your complimentary strategy call at shanemccaw.consulting/contact", {
