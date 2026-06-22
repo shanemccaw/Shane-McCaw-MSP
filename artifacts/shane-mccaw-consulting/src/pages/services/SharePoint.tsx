@@ -6,6 +6,7 @@ import { CTAButton } from "@/components/CTAButton";
 import { RetainerCard } from "@/components/RetainerCard";
 import { useServices, formatPriceDisplay } from "@/hooks/useServices";
 import { FollowOnProjects } from "@/components/FollowOnProjects";
+import FixedPriceOfferCard from "@/components/FixedPriceOfferCard";
 
 const comparisonRows = [
   {
@@ -189,86 +190,19 @@ export default function SharePoint() {
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-            {/* Offer 1: Governance Foundations */}
-            <div className="bg-white rounded-2xl border border-border p-8 flex flex-col">
-              <div className="flex items-center gap-3 mb-5">
-                <div className="w-10 h-10 rounded-xl bg-[#0078D4]/10 flex items-center justify-center flex-shrink-0">
-                  <Shield className="w-5 h-5 text-[#0078D4]" />
-                </div>
-                <p className="text-[#0078D4] text-xs font-semibold uppercase tracking-wide">Fixed-Price Project</p>
-              </div>
-              <h3 className="text-xl font-extrabold text-[#0A2540] mb-2">Governance Foundations Package</h3>
-              <div className="mb-1">
-                <span className="text-2xl font-extrabold text-[#0A2540]">{livePrice(govSvc, "$12,000–$18,000")}</span>
-              </div>
-              <p className="text-sm text-muted-foreground mb-6">6 weeks · Fixed scope</p>
-              <p className="text-muted-foreground text-sm leading-relaxed mb-6">
-                For organizations that need a solid governance foundation before building anything else. Covers the full structural layer — from maturity assessment to training.
-              </p>
-              <ul className="space-y-3 mb-8 flex-1">
-                {[
-                  "SharePoint maturity assessment",
-                  "Governance structure & policy framework",
-                  "Naming conventions & site lifecycle policies",
-                  "Permissions model design",
-                  "Data Loss Prevention (DLP) configuration",
-                  "Admin roles & responsibilities definition",
-                  "Policy templates & documentation",
-                  "Governance training session",
-                ].map((item, i) => (
-                  <li key={i} className="flex items-start gap-3">
-                    <CheckCircle className="w-4 h-4 text-[#0078D4] flex-shrink-0 mt-0.5" />
-                    <span className="text-sm text-foreground">{item}</span>
-                  </li>
-                ))}
-              </ul>
-              <a
-                href="/crm/portal/onboarding/select?service=governance-foundations-package"
-                className="inline-flex items-center justify-center gap-2 bg-[#0078D4] text-white font-semibold px-5 py-3 rounded-xl hover:bg-[#0066B8] transition-colors text-sm"
-              >
-                Get Started <ArrowRight className="w-4 h-4" />
-              </a>
-            </div>
-
-            {/* Offer 2: Migration Readiness */}
-            <div className="bg-white rounded-2xl border border-border p-8 flex flex-col">
-              <div className="flex items-center gap-3 mb-5">
-                <div className="w-10 h-10 rounded-xl bg-[#00B4D8]/10 flex items-center justify-center flex-shrink-0">
-                  <ArrowRight className="w-5 h-5 text-[#00B4D8]" />
-                </div>
-                <p className="text-[#00B4D8] text-xs font-semibold uppercase tracking-wide">Fixed-Price Project</p>
-              </div>
-              <h3 className="text-xl font-extrabold text-[#0A2540] mb-2">Migration Readiness Assessment</h3>
-              <div className="mb-1">
-                <span className="text-2xl font-extrabold text-[#0A2540]">{livePrice(migSvc, "$3,500–$5,000")}</span>
-              </div>
-              <p className="text-sm text-muted-foreground mb-6">1 week · Fixed scope</p>
-              <p className="text-muted-foreground text-sm leading-relaxed mb-6">
-                For organizations migrating from legacy SharePoint, on-prem file servers, Google Workspace, or poorly configured M365 tenants. Know exactly what you're getting into before you move a single file.
-              </p>
-              <ul className="space-y-3 mb-8 flex-1">
-                {[
-                  "Current environment audit & risk analysis",
-                  "Migration blocker identification",
-                  "Data classification & prioritization",
-                  "Phased migration plan with timeline",
-                  "Tool & resource recommendations",
-                  "Executive summary & decision brief",
-                ].map((item, i) => (
-                  <li key={i} className="flex items-start gap-3">
-                    <CheckCircle className="w-4 h-4 text-[#00B4D8] flex-shrink-0 mt-0.5" />
-                    <span className="text-sm text-foreground">{item}</span>
-                  </li>
-                ))}
-              </ul>
-              <a
-                href="/crm/portal/onboarding/select?service=migration-readiness-assessment"
-                className="inline-flex items-center justify-center gap-2 border-2 border-[#0078D4] text-[#0078D4] font-semibold px-5 py-3 rounded-xl hover:bg-[#0078D4]/5 transition-colors text-sm"
-              >
-                Get Started <ArrowRight className="w-4 h-4" />
-              </a>
-            </div>
-
+            <FixedPriceOfferCard
+              slug="governance-foundations-package"
+              variant="compact"
+              ctaLabel="Get Started"
+              ctaHref="/crm/portal/onboarding/select?service=governance-foundations-package"
+            />
+            <FixedPriceOfferCard
+              slug="migration-readiness-assessment"
+              variant="compact"
+              accentColor="#00B4D8"
+              ctaLabel="Get Started"
+              ctaHref="/crm/portal/onboarding/select?service=migration-readiness-assessment"
+            />
           </div>
 
           {/* Follow-On Project Engagements */}

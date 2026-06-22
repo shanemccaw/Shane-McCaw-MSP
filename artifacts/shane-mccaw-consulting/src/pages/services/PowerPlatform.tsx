@@ -6,6 +6,7 @@ import { ConsultationCTA } from "@/components/ConsultationCTA";
 import { CheckCircle, ArrowRight, Zap, Building2, Shield, Users } from "lucide-react";
 import { useServices, formatPriceDisplay } from "@/hooks/useServices";
 import { FollowOnProjects } from "@/components/FollowOnProjects";
+import FixedPriceOfferCard from "@/components/FixedPriceOfferCard";
 
 const comparisonRows = [
   {
@@ -222,49 +223,10 @@ export default function PowerPlatform() {
               Fixed-Price Engagement
             </p>
             <h2 className="text-3xl md:text-4xl font-extrabold text-[#0A2540]">
-              Power Platform Quick-Start
+              Power Platform Quick&#8209;Start
             </h2>
-            <p className="text-muted-foreground mt-4 max-w-xl mx-auto">
-              A fully built, production-ready Power Platform solution delivered in 30 days.
-            </p>
           </div>
-
-          <div className="max-w-3xl mx-auto bg-white border border-border rounded-2xl overflow-hidden shadow-sm">
-            <div className="bg-[#0A2540] px-8 py-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-              <div>
-                <p className="text-[#0078D4] text-xs font-bold uppercase tracking-widest mb-1">
-                  Quick-Start Package
-                </p>
-                <p className="text-white font-extrabold text-2xl">Power Platform Quick-Start</p>
-              </div>
-              <div className="text-left sm:text-right">
-                <p className="text-white font-extrabold text-3xl">{livePrice(quickStartSvc, "$6,000–$10,000")}</p>
-                <p className="text-white/60 text-sm mt-0.5">4-week engagement</p>
-              </div>
-            </div>
-            <div className="px-8 py-8">
-              <p className="text-[#0078D4] text-xs font-bold uppercase tracking-widest mb-4">
-                What's Included
-              </p>
-              <ul className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-8">
-                {QUICK_START_DELIVERABLES.map((item) => (
-                  <li key={item} className="flex items-start gap-3">
-                    <CheckCircle className="w-5 h-5 text-[#0078D4] flex-shrink-0 mt-0.5" />
-                    <span className="text-foreground text-sm">{item}</span>
-                  </li>
-                ))}
-              </ul>
-              <div className="bg-[#F7F9FC] border border-border rounded-xl px-6 py-4 mb-8">
-                <p className="text-[#0A2540] font-bold text-sm mb-1">Deliverable</p>
-                <p className="text-muted-foreground text-sm leading-relaxed">
-                  A fully built, production-ready Power Platform solution delivered in 30 days — complete with documentation, governance alignment, and a live handoff training session.
-                </p>
-              </div>
-              <CTAButton href="/book" className="w-full justify-center">
-                Book a Free Discovery Call
-              </CTAButton>
-            </div>
-          </div>
+          <FixedPriceOfferCard slug="power-platform-quickstart" ctaLabel="Book a Free Discovery Call" />
         </div>
       </section>
 

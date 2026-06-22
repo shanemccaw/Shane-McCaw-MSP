@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 import { useServices, formatPriceDisplay } from "@/hooks/useServices";
 import { FollowOnProjects } from "@/components/FollowOnProjects";
+import FixedPriceOfferCard from "@/components/FixedPriceOfferCard";
 
 const comparisonRows = [
   {
@@ -196,54 +197,7 @@ export default function CopilotAI() {
             <p className="text-[#0078D4] text-sm font-semibold uppercase tracking-[0.12em] mb-3">Fixed-Price Engagement</p>
             <h2 className="text-3xl md:text-4xl font-extrabold text-[#0A2540]">Copilot for M365 Readiness Assessment</h2>
           </div>
-
-          <div className="max-w-4xl mx-auto bg-white border border-border rounded-2xl overflow-hidden shadow-sm">
-            {/* Offer header */}
-            <div className="bg-[#0A2540] px-8 py-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-              <div>
-                <p className="text-white font-bold text-xl">Copilot for Microsoft 365 Readiness Assessment</p>
-                <p className="text-white/50 text-sm mt-1">A complete picture of where your tenant stands — and exactly what it takes to deploy Copilot safely.</p>
-              </div>
-              <div className="flex-shrink-0 text-right">
-                <div className="flex items-center gap-1.5 justify-end">
-                  <DollarSign className="w-4 h-4 text-[#0078D4]" />
-                  <span className="text-white font-extrabold text-2xl">{livePrice(assessmentSvc, "$5,000–$8,000")}</span>
-                </div>
-                <div className="flex items-center gap-1.5 justify-end mt-1">
-                  <Clock className="w-3.5 h-3.5 text-white/40" />
-                  <span className="text-white/50 text-sm">2 weeks</span>
-                </div>
-              </div>
-            </div>
-
-            {/* What's included */}
-            <div className="px-8 py-8 border-b border-border">
-              <p className="text-xs font-bold uppercase tracking-widest text-muted-foreground mb-5">What's Included</p>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                {ASSESSMENT_INCLUDES.map((item) => (
-                  <div key={item.text} className="flex items-start gap-3">
-                    <div className="w-7 h-7 rounded-lg bg-[#0078D4]/10 flex items-center justify-center text-[#0078D4] flex-shrink-0 mt-0.5">
-                      {item.icon}
-                    </div>
-                    <span className="text-[#0A2540] text-sm leading-snug">{item.text}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Deliverable */}
-            <div className="px-8 py-7 bg-[#0078D4]/5 flex flex-col sm:flex-row sm:items-center gap-6">
-              <div className="flex-1">
-                <p className="text-xs font-bold uppercase tracking-widest text-[#0078D4] mb-2">Deliverable</p>
-                <p className="text-[#0A2540] font-semibold leading-relaxed">
-                  A complete Copilot readiness report + prioritized rollout plan with quick-win recommendations.
-                </p>
-              </div>
-              <CTAButton href="/book" className="flex-shrink-0 whitespace-nowrap">
-                Book This Assessment
-              </CTAButton>
-            </div>
-          </div>
+          <FixedPriceOfferCard slug="copilot-for-m365-readiness-assessment" ctaLabel="Book This Assessment" />
         </div>
       </section>
 

@@ -5,6 +5,7 @@ import { Server, CheckCircle, Clock, DollarSign, ArrowRight, Users, Shield, Buil
 import { CTAButton } from "@/components/CTAButton";
 import { useServices, formatPriceDisplay } from "@/hooks/useServices";
 import { FollowOnProjects } from "@/components/FollowOnProjects";
+import FixedPriceOfferCard from "@/components/FixedPriceOfferCard";
 
 const comparisonRows = [
   {
@@ -189,95 +190,18 @@ export default function CloudMigration() {
           <h2 className="text-3xl font-extrabold text-[#0A2540] mb-12">Fixed-Scope Migration Engagements</h2>
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-12">
-            {/* Migration Readiness Assessment */}
-            <div className="bg-white border border-border rounded-2xl p-8 flex flex-col">
-              <div className="flex items-center gap-3 mb-4">
-                <Shield className="w-6 h-6 text-[#0078D4]" />
-                <span className="text-[#0078D4] text-sm font-semibold uppercase tracking-wide">Fixed-Scope Offer</span>
-              </div>
-              <h3 className="text-2xl font-extrabold text-[#0A2540] mb-2">Migration Readiness Assessment</h3>
-              <div className="flex items-center gap-4 mb-4">
-                <div className="flex items-center gap-1.5 text-[#0A2540] font-bold">
-                  <DollarSign className="w-4 h-4 text-[#0078D4]" />
-                  <span>{livePrice(migSvc, "$3,500–$5,000")}</span>
-                </div>
-                <div className="flex items-center gap-1.5 text-muted-foreground text-sm">
-                  <Clock className="w-4 h-4" />
-                  <span>1 week</span>
-                </div>
-              </div>
-              <p className="text-muted-foreground leading-relaxed mb-6">
-                Before you move a single mailbox, know exactly what you're dealing with. This structured assessment identifies every risk, dependency, and sequencing requirement in your environment — so your migration has a validated plan, not assumptions.
-              </p>
-              <div className="mb-6">
-                <p className="text-sm font-semibold text-[#0A2540] mb-3 uppercase tracking-wide">Deliverables</p>
-                <ul className="space-y-2">
-                  {[
-                    "Source environment inventory (mailboxes, sites, identities, data volumes)",
-                    "Identity review and Azure AD readiness assessment",
-                    "Data classification and retention requirements analysis",
-                    "Network readiness and bandwidth impact analysis",
-                    "Risk analysis with mitigation recommendations",
-                    "Migration sequencing plan with dependency mapping",
-                    "Go/no-go recommendation with clear criteria",
-                    "Phased migration roadmap with milestones",
-                  ].map((item, i) => (
-                    <li key={i} className="flex items-start gap-2 text-sm text-foreground">
-                      <CheckCircle className="w-4 h-4 text-[#0078D4] flex-shrink-0 mt-0.5" />
-                      <span>{item}</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-              <div className="mt-auto bg-[#0078D4]/8 border border-[#0078D4]/20 rounded-xl p-4">
-                <p className="text-sm font-semibold text-[#0A2540] mb-1">You Walk Away With</p>
-                <p className="text-sm text-muted-foreground">A complete migration readiness report with a validated migration plan — ready to hand to your IT team or use as the foundation for a managed migration engagement.</p>
-              </div>
-            </div>
-
-            {/* Governance Foundations Package */}
-            <div className="bg-white border border-border rounded-2xl p-8 flex flex-col">
-              <div className="flex items-center gap-3 mb-4">
-                <Building2 className="w-6 h-6 text-[#0078D4]" />
-                <span className="text-[#0078D4] text-sm font-semibold uppercase tracking-wide">Fixed-Scope Offer</span>
-              </div>
-              <h3 className="text-2xl font-extrabold text-[#0A2540] mb-2">Governance Foundations Package</h3>
-              <div className="flex items-center gap-4 mb-4">
-                <div className="flex items-center gap-1.5 text-[#0A2540] font-bold">
-                  <DollarSign className="w-4 h-4 text-[#0078D4]" />
-                  <span>{livePrice(govSvc, "$12,000–$18,000")}</span>
-                </div>
-                <div className="flex items-center gap-1.5 text-muted-foreground text-sm">
-                  <Clock className="w-4 h-4" />
-                  <span>6 weeks</span>
-                </div>
-              </div>
-              <p className="text-muted-foreground leading-relaxed mb-6">
-                For organizations that need governance cleanup before migration begins. Migrating into a chaotic Microsoft 365 environment creates compounding debt — this package establishes the policies, naming conventions, lifecycle rules, and security baselines your new environment needs before the first workload arrives.
-              </p>
-              <div className="mb-6">
-                <p className="text-sm font-semibold text-[#0A2540] mb-3 uppercase tracking-wide">What's Included</p>
-                <ul className="space-y-2">
-                  {[
-                    "Microsoft 365 governance framework design",
-                    "Identity and access management policies",
-                    "Group lifecycle and naming convention enforcement",
-                    "Data retention and sensitivity label architecture",
-                    "Teams and SharePoint governance policies",
-                    "Security baseline and Conditional Access review",
-                  ].map((item, i) => (
-                    <li key={i} className="flex items-start gap-2 text-sm text-foreground">
-                      <CheckCircle className="w-4 h-4 text-[#0078D4] flex-shrink-0 mt-0.5" />
-                      <span>{item}</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-              <div className="mt-auto bg-[#0078D4]/8 border border-[#0078D4]/20 rounded-xl p-4">
-                <p className="text-sm font-semibold text-[#0A2540] mb-1">Prerequisite Value</p>
-                <p className="text-sm text-muted-foreground">Organizations that complete governance foundations before migrating avoid the most expensive post-migration remediation work — especially in regulated industries.</p>
-              </div>
-            </div>
+            <FixedPriceOfferCard
+              slug="migration-readiness-assessment"
+              variant="compact"
+              ctaLabel="Start This Assessment"
+              ctaHref="/crm/portal/onboarding/select?service=migration-readiness-assessment"
+            />
+            <FixedPriceOfferCard
+              slug="governance-foundations-package"
+              variant="compact"
+              ctaLabel="Start This Package"
+              ctaHref="/crm/portal/onboarding/select?service=governance-foundations-package"
+            />
           </div>
 
           <FollowOnProjects triggerKeys={["Migration Readiness Assessment"]} />

@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 import { useServices, formatPriceDisplay } from "@/hooks/useServices";
 import { FollowOnProjects } from "@/components/FollowOnProjects";
+import FixedPriceOfferCard from "@/components/FixedPriceOfferCard";
 
 const comparisonRows = [
   {
@@ -254,49 +255,7 @@ export default function Governance() {
             <p className="text-[#0078D4] text-sm font-semibold uppercase tracking-[0.12em] mb-3">Fixed-Price Engagement</p>
             <h2 className="text-3xl md:text-4xl font-extrabold text-[#0A2540]">Governance Foundations Package</h2>
           </div>
-
-          <div className="max-w-4xl mx-auto bg-white border border-border rounded-2xl overflow-hidden shadow-sm">
-            <div className="bg-[#0A2540] px-8 py-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-              <div>
-                <p className="text-white font-bold text-xl">Governance Foundations Package</p>
-                <p className="text-white/50 text-sm mt-1">A complete Microsoft 365 governance framework — designed for your organization's regulatory obligations.</p>
-              </div>
-              <div className="flex-shrink-0 text-right">
-                <div className="flex items-center gap-1.5 justify-end">
-                  <DollarSign className="w-4 h-4 text-[#0078D4]" />
-                  <span className="text-white font-extrabold text-2xl">{livePrice(govSvc, "$12,000–$18,000")}</span>
-                </div>
-                <div className="flex items-center gap-1.5 justify-end mt-1">
-                  <Clock className="w-3.5 h-3.5 text-white/40" />
-                  <span className="text-white/50 text-sm">6 weeks</span>
-                </div>
-              </div>
-            </div>
-
-            <div className="px-8 py-8 border-b border-border">
-              <p className="text-xs font-bold uppercase tracking-widest text-muted-foreground mb-5">What's Included</p>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                {PACKAGE_INCLUDES.map((item) => (
-                  <div key={item} className="flex items-start gap-3">
-                    <CheckCircle className="w-4 h-4 text-[#0078D4] flex-shrink-0 mt-0.5" />
-                    <span className="text-[#0A2540] text-sm leading-snug">{item}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <div className="px-8 py-7 bg-[#0078D4]/5 flex flex-col sm:flex-row sm:items-center gap-6">
-              <div className="flex-1">
-                <p className="text-xs font-bold uppercase tracking-widest text-[#0078D4] mb-2">Deliverable</p>
-                <p className="text-[#0A2540] font-semibold leading-relaxed">
-                  A complete governance playbook, policy documentation package, and configured Microsoft 365 environment — ready for audit and ongoing operations.
-                </p>
-              </div>
-              <CTAButton href="/book" className="flex-shrink-0 whitespace-nowrap">
-                Book This Package
-              </CTAButton>
-            </div>
-          </div>
+          <FixedPriceOfferCard slug="governance-foundations-package" ctaLabel="Book This Package" />
         </div>
       </section>
 
