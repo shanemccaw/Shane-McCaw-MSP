@@ -984,8 +984,25 @@ export default function ProjectDetailPage() {
   const [generateArtifactsLoading, setGenerateArtifactsLoading] = useState(false);
   const [generateArtifactsError, setGenerateArtifactsError] = useState<string | null>(null);
   const [regeneratingArtifact, setRegeneratingArtifact] = useState<string | null>(null);
+  const [confirmGenerateOpen, setConfirmGenerateOpen] = useState(false);
+  const [confirmRegenerateTarget, setConfirmRegenerateTarget] = useState<string | null>(null);
 
   const allTasksClosed = tasks.length > 0 && tasks.every(t => t.column === "completed");
+
+  const artifactNamesToGenerate = (): string[] => {
+    const names = new Set<string>();
+    for (const t of tasks) {
+      const meta = (t.taskMetadata ?? {}) as Record<string, unknown>;
+      for (const field of ["artifactsProduced", "clientDeliverables"] as const) {
+        if (Array.isArray(meta[field])) {
+          for (const n of meta[field] as string[]) {
+            if (typeof n === "string" && n.trim()) names.add(n.trim());
+          }
+        }
+      }
+    }
+    return Array.from(names);
+  };
 
   type GenResult = { artifacts: Array<{ artifactName: string; sharepointUrl: string; generatedAt: string }>; errors?: string[]; error?: string; code?: string; details?: string[] };
 
@@ -1772,7 +1789,7 @@ export default function ProjectDetailPage() {
           <h2 className="text-sm font-bold uppercase tracking-wider text-[#0A2540]">Generated Artifacts</h2>
           <div className="relative group">
             <button
-              onClick={() => void handleGenerateArtifacts()}
+              onClick={() => setConfirmGenerateOpen(true)}
               disabled={generateArtifactsLoading || !allTasksClosed}
               className="flex items-center gap-1.5 bg-[#0A2540] text-white text-xs font-semibold px-3 py-2 rounded-lg hover:bg-[#0A2540]/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
@@ -1836,7 +1853,7 @@ export default function ProjectDetailPage() {
                   </div>
                   <div className="flex items-center gap-2 flex-shrink-0">
                     <button
-                      onClick={() => void handleRegenerateArtifact(artifact.artifactName)}
+                      onClick={() => setConfirmRegenerateTarget(artifact.artifactName)}
                       disabled={isRegenerating || !!regeneratingArtifact || generateArtifactsLoading}
                       title="Regenerate this artifact"
                       className="flex items-center gap-1 text-[11px] font-semibold text-muted-foreground hover:text-[#0A2540] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
@@ -1870,6 +1887,81 @@ export default function ProjectDetailPage() {
               : "Artifacts are generated when all kanban tasks are completed."}
           </div>
         )}
+
+        {/* ── Confirm: Generate All Artifacts ─────────────────────────── */}
+        <AlertDialog open={confirmGenerateOpen} onOpenChange={setConfirmGenerateOpen}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Generate All Artifacts?</AlertDialogTitle>
+              <AlertDialogDescription asChild>
+                <div className="space-y-3">
+                  <p>
+                    The following artifacts will be drafted by AI, rendered as PDFs, and uploaded to the client's SharePoint.
+                    {project.generatedArtifacts && project.generatedArtifacts.length > 0 && (
+                      <span className="block mt-1 text-amber-700 font-medium">Existing PDFs will be overwritten.</span>
+                    )}
+                  </p>
+                  {(() => {
+                    const names = artifactNamesToGenerate();
+                    return names.length > 0 ? (
+                      <ul className="text-sm text-foreground space-y-1 border border-border rounded-lg px-3 py-2 bg-[#F7F9FC]">
+                        {names.map(n => (
+                          <li key={n} className="flex items-center gap-2">
+                            <span className="w-1.5 h-1.5 rounded-full bg-[#0078D4] flex-shrink-0" />
+                            {n}
+                          </li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <p className="text-sm text-muted-foreground italic">
+                        No artifact names found in task metadata yet.
+                      </p>
+                    );
+                  })()}
+                </div>
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction
+                className="bg-[#0A2540] hover:bg-[#0A2540]/90 text-white"
+                onClick={() => void handleGenerateArtifacts()}
+              >
+                Generate
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+
+        {/* ── Confirm: Regenerate Single Artifact ─────────────────────── */}
+        <AlertDialog
+          open={confirmRegenerateTarget !== null}
+          onOpenChange={open => { if (!open) setConfirmRegenerateTarget(null); }}
+        >
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Regenerate "{confirmRegenerateTarget}"?</AlertDialogTitle>
+              <AlertDialogDescription>
+                The AI will produce a new PDF for this artifact and upload it to SharePoint,
+                overwriting the existing file. This action cannot be undone.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction
+                className="bg-[#0A2540] hover:bg-[#0A2540]/90 text-white"
+                onClick={() => {
+                  if (confirmRegenerateTarget) {
+                    void handleRegenerateArtifact(confirmRegenerateTarget);
+                    setConfirmRegenerateTarget(null);
+                  }
+                }}
+              >
+                Regenerate
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </section>
 
       {/* ── Workflow Phases & Milestones ───────────────────────────────── */}
