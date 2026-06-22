@@ -1,12 +1,48 @@
+import { useState, useEffect } from "react";
 import { Link } from "wouter";
 import { Layout } from "@/components/Layout";
 import { SEOMeta } from "@/components/SEOMeta";
 import { CTAButton } from "@/components/CTAButton";
 import {
   CheckCircle, ArrowRight, Shield, Building2, Rocket, Briefcase,
-  Clock, Star, Zap, Lock, BarChart2, Server, GitBranch,
+  Clock, Star, ShieldCheck, Zap, Database, BookOpen, Target,
+  BarChart2, Sparkles, TrendingUp, Award,
 } from "lucide-react";
 
+// ── Icon lookup ───────────────────────────────────────────────────────────────
+const ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
+  ShieldCheck, Zap, Shield, Database, BookOpen, Target, BarChart2, Sparkles,
+  TrendingUp, Award, Building2, Briefcase, Rocket,
+};
+function ServiceIcon({ name, className }: { name: string | null; className?: string }) {
+  const Icon = (name && ICON_MAP[name]) ? ICON_MAP[name] : Shield;
+  return <Icon className={className} />;
+}
+
+// ── API types ─────────────────────────────────────────────────────────────────
+interface ServiceRecord {
+  id: number;
+  name: string;
+  description: string | null;
+  tagline: string | null;
+  category: string;
+  basePrice: string | null;
+  maxPrice: string | null;
+  price: string | null;
+  turnaround: string | null;
+  hoursPerMonth: string | null;
+  inclusions: string[] | null;
+  deliverables: string[] | null;
+  badge: string | null;
+  highlighted: boolean;
+  iconName: string | null;
+  pageHref: string | null;
+  slug: string;
+  serviceType: string;
+  isPublic: boolean;
+}
+
+// ── Static data ───────────────────────────────────────────────────────────────
 const whoIWorkWith = [
   {
     icon: Building2,
@@ -52,128 +88,6 @@ const whoIWorkWith = [
   },
 ];
 
-const productizedServices = [
-  {
-    icon: BarChart2,
-    name: "M365 Tenant Health Audit",
-    price: "$3,500 – $5,000",
-    timeline: "5 business days",
-    deliverable: "Full tenant assessment with a prioritized remediation roadmap.",
-    value: "Know exactly where your tenant stands before committing to anything larger.",
-    badge: "Quick Entry Engagement",
-    href: "/micro-offers",
-    color: "#0078D4",
-  },
-  {
-    icon: Server,
-    name: "Migration Readiness Assessment",
-    price: "$3,500 – $5,000",
-    timeline: "5 business days",
-    deliverable: "Risk-ranked data mapping, blockers list, and migration sequencing plan.",
-    value: "Prevent the most common migration failures before they cost you months.",
-    badge: "Quick Entry Engagement",
-    href: "/micro-offers",
-    color: "#0078D4",
-  },
-  {
-    icon: Zap,
-    name: "Copilot Readiness Assessment",
-    price: "$4,500 – $6,500",
-    timeline: "7 business days",
-    deliverable: "Tenant readiness score, data exposure risk analysis, and a Copilot deployment plan.",
-    value: "Don't light up Copilot on a dirty tenant — know your risks first.",
-    badge: null,
-    href: "/micro-offers",
-    color: "#00B4D8",
-  },
-  {
-    icon: Lock,
-    name: "Governance Foundations Package",
-    price: "$4,000 – $7,500",
-    timeline: "2–3 weeks",
-    deliverable: "DLP policies, sensitivity labels, retention framework, and governance runbook.",
-    value: "A defensible governance baseline — delivered, not just documented.",
-    badge: null,
-    href: "/micro-offers",
-    color: "#0078D4",
-  },
-  {
-    icon: GitBranch,
-    name: "Power Platform Quick-Start",
-    price: "$5,000 – $8,500",
-    timeline: "2–3 weeks",
-    deliverable: "Two production-ready flows or apps, environment strategy, and connector governance.",
-    value: "Automation that runs in production — not a proof-of-concept that dies in a sandbox.",
-    badge: null,
-    href: "/micro-offers",
-    color: "#00B4D8",
-  },
-  {
-    icon: Building2,
-    name: "SharePoint Architecture Sprint",
-    price: "$5,500 – $9,500",
-    timeline: "2–4 weeks",
-    deliverable: "Redesigned information architecture, site templates, metadata taxonomy, and owner training.",
-    value: "A SharePoint structure people actually use — findable, governed, and scalable.",
-    badge: null,
-    href: "/micro-offers",
-    color: "#0078D4",
-  },
-  {
-    icon: Shield,
-    name: "Security & Compliance Quick-Win",
-    price: "$5,000 – $9,000",
-    timeline: "2–3 weeks",
-    deliverable: "Conditional Access redesign, MFA hardening, PIM implementation, and compliance documentation.",
-    value: "Close the highest-risk security gaps in your tenant before your next audit.",
-    badge: null,
-    href: "/micro-offers",
-    color: "#00B4D8",
-  },
-];
-
-const retainerTiers = [
-  {
-    name: "Essentials",
-    price: "$2,500",
-    hours: "10 hrs/mo",
-    description: "Strategic oversight and tenant governance for organizations that need a senior architect on call — without a full-time commitment.",
-    includes: [
-      "Monthly architecture review",
-      "Governance and policy guidance",
-      "Async Q&A and advisory",
-      "Priority access for urgent issues",
-    ],
-    highlight: false,
-  },
-  {
-    name: "Growth",
-    price: "$6,000",
-    hours: "25 hrs/mo",
-    description: "Hands-on delivery alongside strategic direction — the right tier for active M365 initiatives, Copilot rollouts, and compliance projects.",
-    includes: [
-      "Everything in Essentials",
-      "Active project delivery",
-      "Copilot and AI readiness support",
-      "Monthly executive briefing",
-    ],
-    highlight: true,
-  },
-  {
-    name: "Enterprise",
-    price: "$11,000",
-    hours: "50 hrs/mo",
-    description: "Embedded fractional architect — equivalent to part-time senior staff without the overhead of a full-time hire.",
-    includes: [
-      "Everything in Growth",
-      "Embedded delivery cadence",
-      "Multi-workload architecture coverage",
-      "Stakeholder and board-level reporting",
-    ],
-    highlight: false,
-  },
-];
-
 const complianceBadges = ["FedRAMP", "FISMA", "ITAR", "GCC High"];
 
 const engagementSteps = [
@@ -203,7 +117,40 @@ const engagementSteps = [
   },
 ];
 
+// ── Helpers ───────────────────────────────────────────────────────────────────
+function formatPriceRange(base: string | null, max: string | null): string {
+  if (!base && !max) return "";
+  const fmt = (v: string) => {
+    const n = parseFloat(v);
+    return n >= 1000 ? `$${Math.round(n / 1000)}k` : `$${Math.round(n)}`;
+  };
+  if (base && max) return `${fmt(base)} – ${fmt(max)}`;
+  if (base) return fmt(base);
+  return fmt(max!);
+}
+
 export default function Home() {
+  const [microOffers, setMicroOffers] = useState<ServiceRecord[]>([]);
+  const [retainers, setRetainers] = useState<ServiceRecord[]>([]);
+  const [offersLoading, setOffersLoading] = useState(true);
+  const [retainersLoading, setRetainersLoading] = useState(true);
+
+  useEffect(() => {
+    fetch("/api/services?type=micro_offer")
+      .then((r) => r.json())
+      .then((data: ServiceRecord[]) => setMicroOffers(data.filter((s) => s.isPublic !== false)))
+      .catch(() => {})
+      .finally(() => setOffersLoading(false));
+  }, []);
+
+  useEffect(() => {
+    fetch("/api/services?type=retainer")
+      .then((r) => r.json())
+      .then((data: ServiceRecord[]) => setRetainers(data.filter((s) => s.isPublic !== false)))
+      .catch(() => {})
+      .finally(() => setRetainersLoading(false));
+  }, []);
+
   return (
     <Layout>
       <SEOMeta
@@ -221,14 +168,10 @@ export default function Home() {
           "hasOfferCatalog": {
             "@type": "OfferCatalog",
             "name": "Microsoft 365 Consulting Services",
-            "itemListElement": [
-              { "@type": "Offer", "itemOffered": { "@type": "Service", "name": "M365 Tenant Health Audit" } },
-              { "@type": "Offer", "itemOffered": { "@type": "Service", "name": "Copilot AI Readiness Assessment" } },
-              { "@type": "Offer", "itemOffered": { "@type": "Service", "name": "Migration Readiness Assessment" } },
-              { "@type": "Offer", "itemOffered": { "@type": "Service", "name": "Governance Foundations Package" } },
-              { "@type": "Offer", "itemOffered": { "@type": "Service", "name": "SharePoint Architecture Sprint" } },
-              { "@type": "Offer", "itemOffered": { "@type": "Service", "name": "Power Platform Quick-Start" } },
-            ],
+            "itemListElement": microOffers.map((s) => ({
+              "@type": "Offer",
+              "itemOffered": { "@type": "Service", "name": s.name },
+            })),
           },
         }}
       />
@@ -360,51 +303,86 @@ export default function Home() {
               Productized Services
             </h2>
             <p className="text-muted-foreground mt-4 max-w-2xl mx-auto leading-relaxed">
-              Seven scoped packages with fixed pricing, defined timelines, and clear deliverables. No open-ended consulting fees. No scope creep.
+              Scoped packages with fixed pricing, defined timelines, and clear deliverables. No open-ended consulting fees. No scope creep.
             </p>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {productizedServices.map((service, i) => {
-              const Icon = service.icon;
-              return (
-                <div
-                  key={i}
-                  className="bg-[#F7F9FC] rounded-xl border border-border p-7 flex flex-col hover:border-[#0078D4]/30 hover:bg-white transition-all"
-                  data-testid={`service-card-${i}`}
-                >
-                  {service.badge && (
-                    <span className="inline-flex self-start items-center gap-1.5 bg-[#0078D4]/10 text-[#0078D4] text-xs font-bold uppercase tracking-wider px-3 py-1 rounded-full mb-4">
-                      <Star className="w-3 h-3" />
-                      {service.badge}
-                    </span>
-                  )}
+
+          {offersLoading ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {[...Array(6)].map((_, i) => (
+                <div key={i} className="bg-[#F7F9FC] rounded-xl border border-border p-7 h-64 animate-pulse" />
+              ))}
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {microOffers.map((service, i) => {
+                const priceRange = formatPriceRange(service.basePrice, service.maxPrice);
+                const isQuickEntry = service.badge === "High Impact" || service.badge === "Quick Win" ||
+                  service.name.toLowerCase().includes("audit") || service.name.toLowerCase().includes("assessment");
+                return (
                   <div
-                    className="w-10 h-10 rounded-lg flex items-center justify-center mb-4 flex-shrink-0"
-                    style={{ backgroundColor: `${service.color}18` }}
+                    key={service.id}
+                    className="bg-[#F7F9FC] rounded-xl border border-border p-7 flex flex-col hover:border-[#0078D4]/30 hover:bg-white transition-all"
+                    data-testid={`service-card-${i}`}
                   >
-                    <Icon className="w-5 h-5" style={{ color: service.color }} />
+                    {service.badge && (
+                      <span className="inline-flex self-start items-center gap-1.5 bg-[#0078D4]/10 text-[#0078D4] text-xs font-bold uppercase tracking-wider px-3 py-1 rounded-full mb-4">
+                        <Star className="w-3 h-3" />
+                        {service.badge}
+                      </span>
+                    )}
+                    <div className="w-10 h-10 rounded-lg bg-[#0078D4]/10 flex items-center justify-center mb-4 flex-shrink-0">
+                      <ServiceIcon name={service.iconName} className="w-5 h-5 text-[#0078D4]" />
+                    </div>
+                    <h3 className="font-extrabold text-[#0A2540] text-lg mb-1 leading-snug">{service.name}</h3>
+                    <div className="flex items-center gap-3 mb-4">
+                      {priceRange && (
+                        <span className="text-sm font-bold text-[#0078D4]">{priceRange}</span>
+                      )}
+                      {priceRange && service.turnaround && (
+                        <span className="text-xs text-muted-foreground">·</span>
+                      )}
+                      {service.turnaround && (
+                        <span className="flex items-center gap-1 text-xs text-muted-foreground font-medium">
+                          <Clock className="w-3 h-3" />
+                          {service.turnaround}
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-muted-foreground text-sm leading-relaxed mb-3 flex-1">
+                      {service.tagline ?? service.description}
+                    </p>
+                    {service.inclusions && service.inclusions.length > 0 && (
+                      <ul className="space-y-1.5 mb-5">
+                        {service.inclusions.slice(0, 3).map((item, j) => (
+                          <li key={j} className="flex items-start gap-2 text-xs text-[#0A2540]">
+                            <CheckCircle className="w-3.5 h-3.5 text-[#0078D4] flex-shrink-0 mt-0.5" />
+                            {item}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                    <div className="flex items-center justify-between gap-3 mt-auto pt-2 border-t border-border">
+                      {service.pageHref ? (
+                        <Link
+                          href={service.pageHref}
+                          className="inline-flex items-center gap-1.5 text-[#0078D4] text-sm font-semibold hover:underline"
+                        >
+                          Learn More <ArrowRight className="w-3.5 h-3.5" />
+                        </Link>
+                      ) : (
+                        <span />
+                      )}
+                      <CTAButton href="/book" className="text-xs px-4 py-2">
+                        Get Started
+                      </CTAButton>
+                    </div>
                   </div>
-                  <h3 className="font-extrabold text-[#0A2540] text-lg mb-1 leading-snug">{service.name}</h3>
-                  <div className="flex items-center gap-3 mb-4">
-                    <span className="text-sm font-bold text-[#0078D4]">{service.price}</span>
-                    <span className="text-xs text-muted-foreground">·</span>
-                    <span className="flex items-center gap-1 text-xs text-muted-foreground font-medium">
-                      <Clock className="w-3 h-3" />
-                      {service.timeline}
-                    </span>
-                  </div>
-                  <p className="text-muted-foreground text-sm leading-relaxed mb-3 flex-1">{service.deliverable}</p>
-                  <p className="text-sm font-semibold text-[#0A2540] italic mb-5">{service.value}</p>
-                  <Link
-                    href={service.href}
-                    className="inline-flex items-center gap-1.5 text-[#0078D4] text-sm font-semibold hover:underline"
-                  >
-                    Learn more <ArrowRight className="w-3.5 h-3.5" />
-                  </Link>
-                </div>
-              );
-            })}
-          </div>
+                );
+              })}
+            </div>
+          )}
+
           <div className="text-center mt-10">
             <CTAButton href="/micro-offers" className="text-base px-8 py-3.5">
               View All Fixed-Price Packages
@@ -426,62 +404,98 @@ export default function Home() {
             </p>
           </div>
 
-          <div className="inline-flex items-center justify-center w-full mb-12">
+          <div className="flex justify-center mb-12">
             <div className="bg-[#0A2540] text-white text-sm font-semibold px-6 py-3 rounded-xl text-center max-w-xl">
               A full-time M365 Architect costs $150,000–$220,000/year — plus benefits, equity, and months to recruit.
             </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {retainerTiers.map((tier, i) => (
-              <div
-                key={i}
-                className={`rounded-xl border p-8 flex flex-col ${
-                  tier.highlight
-                    ? "bg-[#0A2540] border-[#0078D4]/50 shadow-xl shadow-[#0A2540]/20"
-                    : "bg-white border-border"
-                }`}
-                data-testid={`retainer-tier-${i}`}
-              >
-                {tier.highlight && (
-                  <span className="inline-flex self-start items-center gap-1.5 bg-[#0078D4]/20 text-[#00B4D8] text-xs font-bold uppercase tracking-wider px-3 py-1 rounded-full mb-4">
-                    Most Popular
-                  </span>
-                )}
-                <h3 className={`text-2xl font-extrabold mb-1 ${tier.highlight ? "text-white" : "text-[#0A2540]"}`}>
-                  {tier.name}
-                </h3>
-                <div className="flex items-baseline gap-1 mb-1">
-                  <span className={`text-3xl font-extrabold ${tier.highlight ? "text-white" : "text-[#0078D4]"}`}>
-                    {tier.price}
-                  </span>
-                  <span className={`text-sm font-medium ${tier.highlight ? "text-white/60" : "text-muted-foreground"}`}>
-                    /mo
-                  </span>
-                </div>
-                <p className={`text-sm font-semibold mb-4 ${tier.highlight ? "text-[#00B4D8]" : "text-[#0078D4]"}`}>
-                  {tier.hours}
-                </p>
-                <p className={`text-sm leading-relaxed mb-6 flex-1 ${tier.highlight ? "text-white/70" : "text-muted-foreground"}`}>
-                  {tier.description}
-                </p>
-                <ul className="space-y-2 mb-8">
-                  {tier.includes.map((item, j) => (
-                    <li key={j} className="flex items-start gap-2 text-sm">
-                      <CheckCircle className={`w-4 h-4 flex-shrink-0 mt-0.5 ${tier.highlight ? "text-[#00B4D8]" : "text-[#0078D4]"}`} />
-                      <span className={tier.highlight ? "text-white/80" : "text-[#0A2540]"}>{item}</span>
-                    </li>
-                  ))}
-                </ul>
-                <CTAButton
-                  href="/book"
-                  className={`text-sm w-full ${tier.highlight ? "bg-[#0078D4] hover:bg-[#005A9E]" : ""}`}
-                >
-                  Book a Discovery Call
-                </CTAButton>
-              </div>
-            ))}
-          </div>
+          {retainersLoading ? (
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              {[...Array(3)].map((_, i) => (
+                <div key={i} className="bg-white rounded-xl border border-border p-8 h-80 animate-pulse" />
+              ))}
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              {retainers.map((tier, i) => {
+                const monthlyPrice = tier.price ? `$${parseInt(tier.price).toLocaleString()}` : null;
+                const items = tier.deliverables ?? tier.inclusions ?? [];
+                const isHighlighted = tier.highlighted;
+                return (
+                  <div
+                    key={tier.id}
+                    className={`rounded-xl border p-8 flex flex-col ${
+                      isHighlighted
+                        ? "bg-[#0A2540] border-[#0078D4]/50 shadow-xl shadow-[#0A2540]/20"
+                        : "bg-white border-border"
+                    }`}
+                    data-testid={`retainer-tier-${i}`}
+                  >
+                    {tier.badge && (
+                      <span className={`inline-flex self-start items-center gap-1.5 text-xs font-bold uppercase tracking-wider px-3 py-1 rounded-full mb-4 ${
+                        isHighlighted
+                          ? "bg-[#0078D4]/20 text-[#00B4D8]"
+                          : "bg-[#0078D4]/10 text-[#0078D4]"
+                      }`}>
+                        {tier.badge}
+                      </span>
+                    )}
+                    <h3 className={`text-2xl font-extrabold mb-1 ${isHighlighted ? "text-white" : "text-[#0A2540]"}`}>
+                      {tier.name.replace(/^Architect\s+/i, "")}
+                    </h3>
+                    {monthlyPrice && (
+                      <div className="flex items-baseline gap-1 mb-1">
+                        <span className={`text-3xl font-extrabold ${isHighlighted ? "text-white" : "text-[#0078D4]"}`}>
+                          {monthlyPrice}
+                        </span>
+                        <span className={`text-sm font-medium ${isHighlighted ? "text-white/60" : "text-muted-foreground"}`}>
+                          /mo
+                        </span>
+                      </div>
+                    )}
+                    {tier.hoursPerMonth && (
+                      <p className={`text-sm font-semibold mb-4 ${isHighlighted ? "text-[#00B4D8]" : "text-[#0078D4]"}`}>
+                        {tier.hoursPerMonth}/mo
+                      </p>
+                    )}
+                    <p className={`text-sm leading-relaxed mb-6 flex-1 ${isHighlighted ? "text-white/70" : "text-muted-foreground"}`}>
+                      {tier.tagline ?? tier.description}
+                    </p>
+                    {items.length > 0 && (
+                      <ul className="space-y-2 mb-8">
+                        {items.slice(0, 5).map((item, j) => (
+                          <li key={j} className="flex items-start gap-2 text-sm">
+                            <CheckCircle className={`w-4 h-4 flex-shrink-0 mt-0.5 ${isHighlighted ? "text-[#00B4D8]" : "text-[#0078D4]"}`} />
+                            <span className={isHighlighted ? "text-white/80" : "text-[#0A2540]"}>{item}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                    <div className="flex flex-col gap-3 mt-auto">
+                      <CTAButton
+                        href="/book"
+                        className={`text-sm w-full ${isHighlighted ? "bg-[#0078D4] hover:bg-[#005A9E]" : ""}`}
+                      >
+                        Get Started
+                      </CTAButton>
+                      {tier.pageHref && (
+                        <Link
+                          href={tier.pageHref}
+                          className={`inline-flex items-center justify-center gap-1.5 text-sm font-semibold hover:underline ${
+                            isHighlighted ? "text-[#00B4D8]" : "text-[#0078D4]"
+                          }`}
+                        >
+                          Learn More <ArrowRight className="w-3.5 h-3.5" />
+                        </Link>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
           <div className="text-center mt-8">
             <Link href="/retainers" className="inline-flex items-center gap-1.5 text-[#0078D4] font-semibold text-sm hover:underline">
               Compare all retainer tiers in detail <ArrowRight className="w-3.5 h-3.5" />
@@ -546,7 +560,6 @@ export default function Home() {
             </p>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8 relative">
-            {/* Connector line (desktop only) */}
             <div className="hidden md:block absolute top-10 left-[calc(16.67%+1rem)] right-[calc(16.67%+1rem)] h-0.5 bg-gradient-to-r from-[#0078D4] via-[#00B4D8] to-[#0A2540] opacity-20" />
             {engagementSteps.map((step, i) => (
               <div key={i} className="flex flex-col items-center text-center" data-testid={`step-${i}`}>
