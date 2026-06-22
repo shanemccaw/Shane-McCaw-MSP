@@ -195,10 +195,14 @@ router.post(
     const allArtifactNames = new Set<string>();
     for (const task of tasks) {
       const meta = task.taskMetadata as Record<string, unknown> | null;
-      if (meta && Array.isArray(meta.artifactsProduced)) {
-        for (const name of meta.artifactsProduced as string[]) {
-          if (typeof name === "string" && name.trim()) {
-            allArtifactNames.add(name.trim());
+      if (meta) {
+        for (const field of ["artifactsProduced", "clientDeliverables"] as const) {
+          if (Array.isArray(meta[field])) {
+            for (const name of meta[field] as string[]) {
+              if (typeof name === "string" && name.trim()) {
+                allArtifactNames.add(name.trim());
+              }
+            }
           }
         }
       }
@@ -206,7 +210,7 @@ router.post(
 
     if (allArtifactNames.size === 0) {
       res.status(400).json({
-        error: "No artifacts are defined in the project tasks. Add artifact names to task metadata before generating.",
+        error: "No artifacts are defined in the project tasks. Add artifact names to the 'Artifacts Produced' or 'Client Deliverables' fields on each task before generating.",
         code: "NO_ARTIFACTS_DEFINED",
       });
       return;
@@ -220,15 +224,58 @@ router.post(
       "",
       "Completed Tasks:",
       ...tasks.map(t => {
-        const meta = t.taskMetadata as Record<string, unknown> | null;
+        const meta = (t.taskMetadata ?? {}) as Record<string, unknown>;
         const parts = [`- [${t.taskType ?? "task"}] ${t.title}`];
+        if (t.groupName) parts.push(`  Group: ${t.groupName}`);
         if (t.description) parts.push(`  Description: ${t.description}`);
+        if (t.completionStatus) parts.push(`  Completion Status: ${t.completionStatus}`);
         if (t.completionNotes) parts.push(`  Completion Notes: ${t.completionNotes}`);
-        if (meta) {
-          if (typeof meta.postureSummary === "string") parts.push(`  Posture: ${meta.postureSummary}`);
-          if (typeof meta.findingsSummary === "string") parts.push(`  Findings: ${meta.findingsSummary}`);
-          if (typeof meta.outputSummary === "string") parts.push(`  Output: ${meta.outputSummary}`);
+
+        // Instructions
+        const instructions = Array.isArray(meta.instructions) ? (meta.instructions as string[]) : [];
+        if (instructions.length > 0) parts.push(`  Instructions: ${instructions.join("; ")}`);
+
+        // Checklist with completion state
+        const checklist = Array.isArray(meta.checklist) ? (meta.checklist as Array<{ id: string; label: string }>) : [];
+        const checklistState = (meta.checklistState ?? {}) as Record<string, boolean>;
+        if (checklist.length > 0) {
+          const done = checklist.filter(i => checklistState[i.id]).length;
+          parts.push(`  Checklist (${done}/${checklist.length} completed):`);
+          for (const item of checklist) {
+            parts.push(`    [${checklistState[item.id] ? "x" : " "}] ${item.label}`);
+          }
         }
+
+        // Checklist item closure data (typed fields captured at completion)
+        const checklistItemData = (meta.checklistItemData ?? {}) as Record<string, Record<string, unknown>>;
+        const closureEntries = Object.entries(checklistItemData);
+        if (closureEntries.length > 0) {
+          parts.push(`  Captured Closure Data:`);
+          for (const [itemId, data] of closureEntries) {
+            const label = checklist.find(i => i.id === itemId)?.label ?? itemId;
+            const flat = Object.entries(data).map(([k, v]) => `${k}: ${typeof v === "string" ? v : JSON.stringify(v)}`).join(", ");
+            parts.push(`    ${label}: ${flat}`);
+          }
+        }
+
+        // Typed task fields
+        for (const field of ["postureSummary", "findingsSummary", "outputSummary", "riskLevel", "remediationSummary", "recommendation"] as const) {
+          if (typeof meta[field] === "string" && meta[field]) {
+            const label = field.replace(/([A-Z])/g, " $1").trim();
+            parts.push(`  ${label}: ${meta[field] as string}`);
+          }
+        }
+
+        // Artifacts produced and client deliverables
+        const artifactsProduced = Array.isArray(meta.artifactsProduced) ? (meta.artifactsProduced as string[]) : [];
+        if (artifactsProduced.length > 0) parts.push(`  Artifacts Produced: ${artifactsProduced.join(", ")}`);
+        const clientDeliverables = Array.isArray(meta.clientDeliverables) ? (meta.clientDeliverables as string[]) : [];
+        if (clientDeliverables.length > 0) parts.push(`  Client Deliverables: ${clientDeliverables.join(", ")}`);
+
+        // Uploaded files
+        const uploadedArtifacts = Array.isArray(meta.uploadedArtifacts) ? (meta.uploadedArtifacts as string[]) : [];
+        if (uploadedArtifacts.length > 0) parts.push(`  Uploaded Files: ${uploadedArtifacts.join(", ")}`);
+
         return parts.join("\n");
       }),
     ].filter(Boolean).join("\n");
