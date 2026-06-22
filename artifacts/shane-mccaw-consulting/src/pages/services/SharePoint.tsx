@@ -6,7 +6,7 @@ import { Layout as LayoutIcon, CheckCircle, ArrowRight, Building2, Shield, Users
 import { ConsultationCTA } from "@/components/ConsultationCTA";
 import { CTAButton } from "@/components/CTAButton";
 import { RetainerCard } from "@/components/RetainerCard";
-import { useServices, formatPriceDisplay } from "@/hooks/useServices";
+import { useServices, formatPriceDisplay, useServiceHasPdf } from "@/hooks/useServices";
 import { FollowOnProjects } from "@/components/FollowOnProjects";
 import FixedPriceOfferCard from "@/components/FixedPriceOfferCard";
 
@@ -64,6 +64,7 @@ export default function SharePoint() {
     retainer: "$2,500 / $6,000 / $11,000 per month",
   };
   const [modalOpen, setModalOpen] = useState(false);
+  const hasPdf = useServiceHasPdf("SharePoint Architecture");
 
   return (
     <Layout>
@@ -152,12 +153,14 @@ export default function SharePoint() {
             >
               Get Started <ArrowRight className="w-4 h-4" />
             </a>
-            <button
-              onClick={() => setModalOpen(true)}
-              className="inline-flex items-center gap-2 text-white/50 hover:text-white/80 transition-colors text-sm"
-            >
-              Download SharePoint Architecture Overview <ArrowRight className="w-4 h-4" />
-            </button>
+            {hasPdf && (
+              <button
+                onClick={() => setModalOpen(true)}
+                className="inline-flex items-center gap-2 text-white/50 hover:text-white/80 transition-colors text-sm"
+              >
+                Download Overview <ArrowRight className="w-4 h-4" />
+              </button>
+            )}
           </div>
         </div>
       </section>

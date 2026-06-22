@@ -24,6 +24,7 @@ export interface PublicService {
   pageHref: string | null;
   sortOrder: number;
   tier: string | null;
+  hasPdf: boolean;
 }
 
 export function formatPrice(price: string | null): string | null {
@@ -73,6 +74,21 @@ function fetchServices(type?: string): Promise<PublicService[]> {
       });
   }
   return _pending[key];
+}
+
+/**
+ * Returns true if a service matching the given name (case-insensitive partial
+ * match) has a pre-generated PDF brochure available.
+ */
+export function useServiceHasPdf(serviceName: string): boolean {
+  const { services } = useServices();
+  const lower = serviceName.toLowerCase();
+  const match = services.find(
+    (s) =>
+      s.name.toLowerCase().includes(lower) ||
+      lower.includes(s.name.toLowerCase()),
+  );
+  return match?.hasPdf ?? false;
 }
 
 export function useServices(type?: string): {

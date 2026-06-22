@@ -49,7 +49,7 @@ import { Link } from "wouter";
 import { CTAButton } from "@/components/CTAButton";
 import { OfferCard } from "@/components/OfferCard";
 import { RetainerCard } from "@/components/RetainerCard";
-import { useServices } from "@/hooks/useServices";
+import { useServices, useServiceHasPdf } from "@/hooks/useServices";
 import { FollowOnProjects } from "@/components/FollowOnProjects";
 import FixedPriceOfferCard from "@/components/FixedPriceOfferCard";
 
@@ -85,6 +85,7 @@ export default function Microsoft365() {
   const { services: retainerServices, loading: retainerLoading } = useServices("retainer");
 
   const [modalOpen, setModalOpen] = useState(false);
+  const hasPdf = useServiceHasPdf("Microsoft 365");
 
   return (
     <Layout>
@@ -134,12 +135,14 @@ export default function Microsoft365() {
             >
               Get Started <ArrowRight className="w-4 h-4" />
             </a>
-            <button
-              onClick={() => setModalOpen(true)}
-              className="inline-flex items-center gap-2 text-white/50 hover:text-white/80 transition-colors text-sm"
-            >
-              Download Microsoft 365 Overview <ArrowRight className="w-4 h-4" />
-            </button>
+            {hasPdf && (
+              <button
+                onClick={() => setModalOpen(true)}
+                className="inline-flex items-center gap-2 text-white/50 hover:text-white/80 transition-colors text-sm"
+              >
+                Download Overview <ArrowRight className="w-4 h-4" />
+              </button>
+            )}
           </div>
         </div>
       </section>

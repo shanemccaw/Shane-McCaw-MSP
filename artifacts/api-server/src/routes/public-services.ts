@@ -16,7 +16,7 @@ router.get("/services", async (req: Request, res: Response) => {
       .from(servicesTable)
       .where(and(...conditions))
       .orderBy(asc(servicesTable.sortOrder), asc(servicesTable.createdAt));
-    res.json(services);
+    res.json(services.map((s) => ({ ...s, hasPdf: s.overviewPdfKey != null })));
   } catch {
     res.status(500).json({ error: "Failed to fetch services" });
   }

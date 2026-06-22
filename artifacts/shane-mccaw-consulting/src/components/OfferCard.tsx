@@ -2,6 +2,7 @@ import { SharedOfferCard, formatOfferPrice, type OfferCardData } from "@workspac
 export { resolveIcon, badgeClass, BADGE_COLORS, type OfferCardData } from "@workspace/offer-card";
 import { CTAButton } from "@/components/CTAButton";
 import { type PublicService } from "@/hooks/useServices";
+import { Download } from "lucide-react";
 
 interface OfferCardProps {
   offer: PublicService;
@@ -10,6 +11,7 @@ interface OfferCardProps {
   ctaLabel?: string;
   ctaOnClick?: () => void;
   ctaDisabled?: boolean;
+  onDownloadOverview?: () => void;
 }
 
 export function OfferCard({
@@ -19,6 +21,7 @@ export function OfferCard({
   ctaLabel = "Get Started",
   ctaOnClick,
   ctaDisabled,
+  onDownloadOverview,
 }: OfferCardProps) {
   const resolvedHref = ctaHref ?? `/crm/portal/onboarding/select?service=${offer.slug ?? ""}`;
   const priceDisplay = formatOfferPrice(offer.basePrice, offer.maxPrice);
@@ -63,9 +66,21 @@ export function OfferCard({
     </CTAButton>
   );
 
+  const downloadBtn =
+    offer.hasPdf && onDownloadOverview ? (
+      <button
+        type="button"
+        onClick={onDownloadOverview}
+        className="w-full flex items-center justify-center gap-1.5 text-[#0078D4] text-sm font-medium border border-[#0078D4]/30 py-2 rounded hover:bg-[#0078D4]/5 transition-colors"
+      >
+        <Download className="w-4 h-4" /> Download Overview
+      </button>
+    ) : null;
+
   const cta = (
     <div className="flex flex-col gap-2 mt-6">
       {primaryBtn}
+      {downloadBtn}
       {learnMoreBtn}
     </div>
   );

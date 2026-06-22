@@ -1,9 +1,10 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { SEOMeta } from "@/components/SEOMeta";
 import { Layout } from "@/components/Layout";
 import { CTAButton } from "@/components/CTAButton";
 import { useServices, formatPriceDisplay } from "@/hooks/useServices";
 import { OfferCard } from "@/components/OfferCard";
+import { ServiceOverviewModal } from "@/components/ServiceOverviewModal";
 import { Lightbulb } from "lucide-react";
 
 const TIERS = [
@@ -32,6 +33,7 @@ const TIERS = [
 
 export default function MicroOffers() {
   const { services: offers, loading } = useServices("micro_offer");
+  const [overviewFor, setOverviewFor] = useState<string | null>(null);
 
   useEffect(() => {
     if (loading || offers.length === 0) return;
@@ -111,7 +113,11 @@ export default function MicroOffers() {
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {offers.map((offer, i) => (
                 <div key={offer.slug ?? i} id={offer.slug ?? undefined}>
-                  <OfferCard offer={offer} index={i} />
+                  <OfferCard
+                    offer={offer}
+                    index={i}
+                    onDownloadOverview={offer.hasPdf ? () => setOverviewFor(offer.name) : undefined}
+                  />
                 </div>
               ))}
             </div>
@@ -157,6 +163,12 @@ export default function MicroOffers() {
           </CTAButton>
         </div>
       </section>
+
+      <ServiceOverviewModal
+        serviceName={overviewFor ?? ""}
+        isOpen={!!overviewFor}
+        onClose={() => setOverviewFor(null)}
+      />
     </Layout>
   );
 }

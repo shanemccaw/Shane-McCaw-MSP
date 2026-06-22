@@ -4,7 +4,7 @@ import { SEOMeta } from "@/components/SEOMeta";
 import { Layout } from "@/components/Layout";
 import { CTAButton } from "@/components/CTAButton";
 import { RetainerCard } from "@/components/RetainerCard";
-import { useServices } from "@/hooks/useServices";
+import { useServices, useServiceHasPdf } from "@/hooks/useServices";
 import { Link } from "wouter";
 import {
   CheckCircle, ArrowRight, Clock, DollarSign,
@@ -107,6 +107,7 @@ const ADD_ONS = [
 export default function M365Training() {
   const { services: retainerServices, loading: retainerLoading } = useServices("retainer");
   const [modalOpen, setModalOpen] = useState(false);
+  const hasPdf = useServiceHasPdf("M365 Training & Enablement");
 
   return (
     <Layout>
@@ -166,12 +167,14 @@ export default function M365Training() {
             >
               Get Started <ArrowRight className="w-4 h-4" />
             </a>
-            <button
-              onClick={() => setModalOpen(true)}
-              className="inline-flex items-center gap-2 text-white/50 hover:text-white/80 transition-colors text-sm"
-            >
-              Download M365 Training Overview <ArrowRight className="w-4 h-4" />
-            </button>
+            {hasPdf && (
+              <button
+                onClick={() => setModalOpen(true)}
+                className="inline-flex items-center gap-2 text-white/50 hover:text-white/80 transition-colors text-sm"
+              >
+                Download Overview <ArrowRight className="w-4 h-4" />
+              </button>
+            )}
           </div>
         </div>
       </section>
@@ -369,12 +372,21 @@ export default function M365Training() {
             <CTAButton href="/book" className="px-8 py-3.5 text-base">
               Book a Training Consultation
             </CTAButton>
-            <a
-              href="/contact?intent=training-overview"
-              className="inline-flex items-center gap-2 text-white/80 hover:text-white font-semibold border border-white/20 hover:border-white/40 px-8 py-3.5 rounded-xl transition-colors text-base"
-            >
-              Download the Training Overview <ArrowRight className="w-4 h-4" />
-            </a>
+            {hasPdf ? (
+              <button
+                onClick={() => setModalOpen(true)}
+                className="inline-flex items-center gap-2 text-white/80 hover:text-white font-semibold border border-white/20 hover:border-white/40 px-8 py-3.5 rounded-xl transition-colors text-base"
+              >
+                Download the Training Overview <ArrowRight className="w-4 h-4" />
+              </button>
+            ) : (
+              <a
+                href="/contact?intent=training-overview"
+                className="inline-flex items-center gap-2 text-white/80 hover:text-white font-semibold border border-white/20 hover:border-white/40 px-8 py-3.5 rounded-xl transition-colors text-base"
+              >
+                Download the Training Overview <ArrowRight className="w-4 h-4" />
+              </a>
+            )}
           </div>
         </div>
       </section>
