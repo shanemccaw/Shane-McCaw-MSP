@@ -4,8 +4,7 @@ import { Link } from "wouter";
 import { Layout } from "@/components/Layout";
 import { CTAButton } from "@/components/CTAButton";
 import {
-  Zap, FolderOpen, Calendar, ArrowRight,
-  CheckCircle, ClipboardList, GraduationCap, Settings, Shield, Cloud,
+  Zap, FolderOpen, Calendar, ArrowRight, CheckCircle,
   type LucideIcon,
 } from "lucide-react";
 import { useServices, type PublicService } from "@/hooks/useServices";
@@ -14,34 +13,67 @@ import { ServiceProjectCard } from "@/components/ServiceProjectCard";
 import { RetainerCard } from "@/components/RetainerCard";
 import { CopilotQuizCTA } from "@/components/CopilotQuizCTA";
 
-type CardType = "offer" | "project" | "retainer";
+// ─── Tier configuration ───────────────────────────────────────────────────────
+// Keys must be lowercase to match the normalised tier value from the DB.
+// Card type is NOT stored here — it is derived per-service from serviceType /
+// billingType so mixed-type tiers render each card correctly.
 
-interface CategoryDisplay {
-  cardType: CardType;
+interface TierConfig {
+  title: string;
+  trackLabel: string;
+  description: string;
+  chipLabel: string;
   accent: string;
   icon: LucideIcon;
 }
 
-const CATEGORY_DISPLAY: Record<string, CategoryDisplay> = {
-  micro_offer:    { cardType: "offer",    accent: "text-emerald-700", icon: Zap },
-  "quick-win":   { cardType: "offer",    accent: "text-emerald-700", icon: Zap },
-  project:       { cardType: "project",  accent: "text-[#0078D4]",   icon: FolderOpen },
-  retainer:      { cardType: "retainer", accent: "text-[#00B4D8]",   icon: Calendar },
-  assessment:    { cardType: "offer",    accent: "text-violet-700",  icon: ClipboardList },
-  training:      { cardType: "offer",    accent: "text-amber-700",   icon: GraduationCap },
-  "power-platform": { cardType: "offer", accent: "text-purple-700",  icon: Settings },
-  governance:    { cardType: "offer",    accent: "text-rose-700",    icon: Shield },
-  migration:     { cardType: "offer",    accent: "text-sky-700",     icon: Cloud },
+const TIER_CONFIG: Record<string, TierConfig> = {
+  entry: {
+    title: "Fixed-Price Quick Wins",
+    trackLabel: "Entry Tier",
+    chipLabel: "Quick Wins",
+    description:
+      "Productized, fixed-scope engagements designed to deliver clear value in days — not months. A low-risk way to work together before committing to a larger engagement.",
+    accent: "text-emerald-700",
+    icon: Zap,
+  },
+  core: {
+    title: "Project-Based Engagements",
+    trackLabel: "Core Tier",
+    chipLabel: "Projects",
+    description:
+      "Scoped, fixed-fee projects with a defined Statement of Work. Ideal for organisations ready to implement a specific workload or solve a defined architecture problem.",
+    accent: "text-[#0078D4]",
+    icon: FolderOpen,
+  },
+  strategic: {
+    title: "Fractional Architecture",
+    trackLabel: "Strategic Tier",
+    chipLabel: "Retainers",
+    description:
+      "Ongoing fractional architect support — advisory, execution, or embedded leadership — structured as a monthly retainer so you get a senior architect without a full-time hire.",
+    accent: "text-[#00B4D8]",
+    icon: Calendar,
+  },
 };
 
-function toSectionTitle(cat: string): string {
-  return cat
-    .replace(/_/g, " ")
-    .replace(/-/g, " ")
-    .replace(/\b\w/g, (c) => c.toUpperCase());
+const TIER_ORDER = ["entry", "core", "strategic"];
+
+// ─── Card type resolution (per-service) ──────────────────────────────────────
+
+type CardType = "offer" | "project" | "retainer";
+
+function resolveCardType(svc: PublicService): CardType {
+  if (svc.billingType === "recurring_monthly") return "retainer";
+  if (svc.serviceType === "project") return "project";
+  return "offer";
 }
 
-const PRIMARY_CATEGORIES = ["micro_offer", "quick-win", "project", "retainer"];
+function toSectionTitle(tier: string): string {
+  return tier.replace(/_/g, " ").replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+// ─── Sub-components ───────────────────────────────────────────────────────────
 
 function TrackSection({
   trackLabel,
@@ -112,65 +144,59 @@ const COMMON_TRIGGERS = [
   "New CISO or CTO who needs an independent architecture review before committing to a roadmap",
 ];
 
-function renderCards(items: PublicService[], cardType: CardType) {
-  if (cardType === "retainer") {
-    return items.map((plan, i) => (
-      <RetainerCard key={plan.slug ?? plan.id} plan={plan} index={i} />
-    ));
-  }
-  if (cardType === "project") {
-    return items.map((svc, i) => (
-      <ServiceProjectCard key={svc.id} service={svc} index={i} />
-    ));
-  }
-  return items.map((svc, i) => (
-    <OfferCard key={svc.slug ?? svc.id} offer={svc} index={i} />
-  ));
+function renderCards(items: PublicService[]) {
+  return items.map((svc, i) => {
+    const cardType = resolveCardType(svc);
+    if (cardType === "retainer") return <RetainerCard key={svc.slug ?? svc.id} plan={svc} index={i} />;
+    if (cardType === "project") return <ServiceProjectCard key={svc.id} service={svc} index={i} />;
+    return <OfferCard key={svc.slug ?? svc.id} offer={svc} index={i} />;
+  });
 }
+
+// ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function Services() {
   const { services, loading, error } = useServices();
 
+  // Group by tier (normalised to lowercase), unknown tiers fall to "other"
   const grouped = useMemo(() => {
     const map: Record<string, PublicService[]> = {};
     for (const svc of services) {
-      const cat = svc.category ?? svc.serviceType ?? "other";
-      if (!map[cat]) map[cat] = [];
-      map[cat].push(svc);
+      const tier = svc.tier ? svc.tier.toLowerCase() : "other";
+      if (!map[tier]) map[tier] = [];
+      map[tier].push(svc);
     }
     return map;
   }, [services]);
 
-  const orderedCategories = useMemo(() => {
+  // Ordered: known tiers first (in TIER_ORDER sequence), then any unrecognised
+  // tiers alphabetically, then "other" at the end
+  const orderedTiers = useMemo(() => {
     const present = Object.keys(grouped);
-    const knownOrder = [
-      "micro_offer", "quick-win", "project", "retainer",
-      "assessment", "training", "power-platform", "governance", "migration",
-    ];
-    const known = knownOrder.filter((c) => present.includes(c));
-    const unknown = present.filter((c) => !knownOrder.includes(c) && c !== "other");
+    const known = TIER_ORDER.filter((t) => present.includes(t));
+    const unknown = present
+      .filter((t) => !TIER_ORDER.includes(t) && t !== "other")
+      .sort();
     const other = present.includes("other") ? ["other"] : [];
     return [...known, ...unknown, ...other];
   }, [grouped]);
 
+  // First three tiers that have data, used for hero anchor chips
   const heroChips = useMemo(() => {
-    return orderedCategories
-      .filter((cat) => PRIMARY_CATEGORIES.includes(cat))
-      .slice(0, 3)
-      .map((cat, i) => {
-        const display = CATEGORY_DISPLAY[cat];
-        const Icon = display?.icon ?? Zap;
-        const trackNum = String(i + 1).padStart(2, "0");
-        return {
-          cat,
-          num: `Track ${trackNum}`,
-          tier: toSectionTitle(cat),
-          title: toSectionTitle(cat),
-          icon: Icon,
-          anchor: `#section-${cat}`,
-        };
-      });
-  }, [orderedCategories]);
+    return orderedTiers.slice(0, 3).map((tier, i) => {
+      const cfg = TIER_CONFIG[tier];
+      const Icon = cfg?.icon ?? Zap;
+      const trackNum = String(i + 1).padStart(2, "0");
+      return {
+        tier,
+        num: `Track ${trackNum}`,
+        trackLabel: cfg?.trackLabel ?? toSectionTitle(tier),
+        chipLabel: cfg?.chipLabel ?? toSectionTitle(tier),
+        icon: Icon,
+        anchor: `#section-${tier}`,
+      };
+    });
+  }, [orderedTiers]);
 
   const isLoading = loading && services.length === 0;
 
@@ -191,9 +217,9 @@ export default function Services() {
             "name": "Microsoft 365 Consulting Services",
             "itemListElement": services.map((s) => ({
               "@type": "Offer",
-              "itemOffered": { "@type": "Service", "name": s.name }
-            }))
-          }
+              "itemOffered": { "@type": "Service", "name": s.name },
+            })),
+          },
         }}
       />
 
@@ -219,23 +245,25 @@ export default function Services() {
             </a>
           </div>
 
-          {/* Dynamic track overview chips — derived from actual DB categories */}
+          {/* Hero chips — anchor links to tier sections, derived from live data */}
           {heroChips.length > 0 && (
             <div className="mt-12 grid grid-cols-1 sm:grid-cols-3 gap-4">
-              {heroChips.map((t) => {
-                const Icon = t.icon;
+              {heroChips.map((chip) => {
+                const Icon = chip.icon;
                 return (
                   <a
-                    key={t.cat}
-                    href={t.anchor}
-                    className="flex items-center gap-3 bg-white/5 border border-white/10 rounded-xl px-5 py-4 hover:bg-white/10 hover:border-white/20 transition-all group"
+                    key={chip.tier}
+                    href={chip.anchor}
+                    className="flex items-center gap-3 bg-white/5 border border-white/10 rounded-xl px-5 py-4 hover:bg-white/10 hover:border-white/20 transition-all"
                   >
                     <div className="w-9 h-9 rounded-lg bg-[#0078D4]/20 flex items-center justify-center flex-shrink-0">
                       <Icon className="w-4 h-4 text-[#00B4D8]" />
                     </div>
                     <div>
-                      <p className="text-[#0078D4]/60 text-[10px] font-bold uppercase tracking-[0.15em]">{t.num} · {t.tier}</p>
-                      <p className="text-white text-sm font-semibold leading-snug">{t.title}</p>
+                      <p className="text-[#0078D4]/60 text-[10px] font-bold uppercase tracking-[0.15em]">
+                        {chip.num} · {chip.trackLabel}
+                      </p>
+                      <p className="text-white text-sm font-semibold leading-snug">{chip.chipLabel}</p>
                     </div>
                   </a>
                 );
@@ -275,7 +303,7 @@ export default function Services() {
         </div>
       </section>
 
-      {/* Dynamic Service Sections */}
+      {/* Tier-grouped service sections */}
       {isLoading ? (
         <div className="bg-[#F7F9FC]">
           <ServicesSkeleton />
@@ -293,39 +321,43 @@ export default function Services() {
         </section>
       ) : (
         <div className="bg-[#F7F9FC]">
-          {orderedCategories.map((cat, sectionIndex) => {
-            const items = grouped[cat] ?? [];
+          {orderedTiers.map((tier, sectionIndex) => {
+            const items = grouped[tier] ?? [];
             if (items.length === 0) return null;
 
-            const display = CATEGORY_DISPLAY[cat];
-            const cardType: CardType = display?.cardType ?? "offer";
-            const accent = display?.accent ?? "text-[#0078D4]";
+            const cfg = TIER_CONFIG[tier];
+            const accent = cfg?.accent ?? "text-[#0078D4]";
+            const trackLabel = cfg?.trackLabel ?? toSectionTitle(tier);
+            const title = cfg?.title ?? toSectionTitle(tier);
+            const description = cfg?.description;
             const trackNum = String(sectionIndex + 1).padStart(2, "0");
-            const title = toSectionTitle(cat);
 
-            const isMicroOffer = cat === "micro_offer" || cat === "quick-win";
-            const isProject = cardType === "project";
-            const isRetainer = cardType === "retainer";
+            const isEntry = tier === "entry";
+            const isStrategic = tier === "strategic";
+            const isCore = tier === "core";
 
-            const entryItems = isMicroOffer ? items.filter((s) => s.tier === "Entry") : [];
+            // Entry: show entry-point offer names if present
+            const entryItems = isEntry ? items.filter((s) => resolveCardType(s) === "offer") : [];
 
             return (
               <TrackSection
-                key={cat}
-                anchorId={`section-${cat}`}
+                key={tier}
+                anchorId={`section-${tier}`}
                 trackNumber={`Track ${trackNum}`}
-                trackLabel={toSectionTitle(cat)}
+                trackLabel={trackLabel}
                 title={title}
+                description={description}
                 accent={accent}
                 headerExtra={
-                  isMicroOffer ? (
+                  isEntry ? (
                     <div className="space-y-4">
                       <div className="rounded-lg bg-emerald-50 border border-emerald-200 px-5 py-4">
                         <p className="text-sm font-semibold text-emerald-800 mb-1">Quick Win Strategy</p>
                         <p className="text-sm text-emerald-700 leading-relaxed">
-                          Most clients begin with an entry-point engagement before moving into deeper governance or fractional architecture.
+                          Most clients begin with a fixed-price engagement before moving into deeper governance or fractional architecture.
                           {entryItems.length > 0 && (
-                            <> The current entry-point {entryItems.length === 1 ? "offer is" : "offers are"}{" "}
+                            <>
+                              {" "}Current {entryItems.length === 1 ? "entry offer" : "entry offers"}:{" "}
                               <span className="font-semibold">
                                 {entryItems.map((o, i) => (
                                   <span key={o.id}>
@@ -343,25 +375,25 @@ export default function Services() {
                         Early clients may receive discounted entry-point engagements in exchange for a testimonial or case study.
                       </p>
                     </div>
-                  ) : isProject ? (
+                  ) : isCore ? (
                     <p className="text-sm text-muted-foreground leading-relaxed border-l-2 border-[#0078D4]/40 pl-4">
                       Project engagements are scoped after an initial assessment. Each project is priced as a fixed-fee engagement with a defined SOW.
                     </p>
-                  ) : isRetainer ? (
+                  ) : isStrategic ? (
                     <p className="text-sm text-muted-foreground leading-relaxed">
-                      Fractional architecture is offered in structured tiers so organizations can choose advisory, execution, or embedded leadership based on their needs.
+                      Fractional architecture is offered in structured tiers so organisations can choose advisory, execution, or embedded leadership based on their needs.
                     </p>
                   ) : undefined
                 }
                 footerExtra={
-                  isRetainer ? (
+                  isStrategic ? (
                     <p className="text-sm text-muted-foreground text-center italic">
                       A minimum 3-month commitment is recommended for best results.
                     </p>
                   ) : undefined
                 }
               >
-                {renderCards(items, cardType)}
+                {renderCards(items)}
               </TrackSection>
             );
           })}
