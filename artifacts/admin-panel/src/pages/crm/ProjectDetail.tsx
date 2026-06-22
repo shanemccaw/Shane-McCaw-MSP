@@ -982,20 +982,23 @@ export default function ProjectDetailPage() {
 
   const [spFolderCreating, setSpFolderCreating] = useState(false);
   const [generateArtifactsLoading, setGenerateArtifactsLoading] = useState(false);
+  const [generateArtifactsError, setGenerateArtifactsError] = useState<string | null>(null);
 
   const allTasksClosed = tasks.length > 0 && tasks.every(t => t.column === "completed");
 
   const handleGenerateArtifacts = async () => {
     if (!projectId) return;
     setGenerateArtifactsLoading(true);
+    setGenerateArtifactsError(null);
     try {
       const res = await fetchWithAuth(`/api/admin/projects/${projectId}/generate-artifacts`, { method: "POST" });
-      type GenResult = { artifacts: Array<{ artifactName: string; sharepointUrl: string; generatedAt: string }>; errors?: string[] };
-      const data = await res.json() as GenResult & { error?: string; details?: string[] };
+      type GenResult = { artifacts: Array<{ artifactName: string; sharepointUrl: string; generatedAt: string }>; errors?: string[]; error?: string; code?: string; details?: string[] };
+      const data = await res.json() as GenResult;
       if (!res.ok) {
-        toast({ title: "Generation failed", description: data.error ?? "Unknown error", variant: "destructive" });
+        setGenerateArtifactsError(data.error ?? "Unknown error");
         return;
       }
+      setGenerateArtifactsError(null);
       setProject(prev => prev ? { ...prev, generatedArtifacts: data.artifacts } : prev);
       const errCount = data.errors?.length ?? 0;
       if (errCount > 0) {
@@ -1004,7 +1007,7 @@ export default function ProjectDetailPage() {
         toast({ title: `${data.artifacts.length} artifact${data.artifacts.length !== 1 ? "s" : ""} generated`, description: "All PDFs uploaded to SharePoint." });
       }
     } catch {
-      toast({ title: "Network error", description: "Could not reach the server.", variant: "destructive" });
+      setGenerateArtifactsError("Network error — could not reach the server.");
     } finally {
       setGenerateArtifactsLoading(false);
     }
@@ -1765,6 +1768,21 @@ export default function ProjectDetailPage() {
             )}
           </div>
         </div>
+
+        {generateArtifactsError && (
+          <div className="mb-4 flex items-start gap-3 bg-red-50 border border-red-200 rounded-xl px-4 py-3">
+            <svg className="w-4 h-4 text-red-500 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
+            </svg>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-semibold text-red-800">Generation failed</p>
+              <p className="text-xs text-red-700 mt-0.5">{generateArtifactsError}</p>
+            </div>
+            <button onClick={() => setGenerateArtifactsError(null)} className="flex-shrink-0 text-red-400 hover:text-red-600">
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+            </button>
+          </div>
+        )}
 
         {project.generatedArtifacts && project.generatedArtifacts.length > 0 ? (
           <div className="bg-white border border-border rounded-xl overflow-hidden divide-y divide-border">

@@ -3,7 +3,7 @@ import { db, projectsTable, kanbanTasksTable, usersTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/requireAuth";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
-import { PDFDocument, rgb, StandardFonts, type PDFFont } from "pdf-lib";
+import { PDFDocument, rgb, StandardFonts, type PDFFont, type PDFPage } from "pdf-lib";
 import { uploadFileToSharePoint, graphCredentialsPresent } from "../lib/graph";
 import { logger } from "../lib/logger";
 
@@ -12,7 +12,6 @@ const router = Router();
 const navy  = rgb(0.039, 0.145, 0.251);
 const blue  = rgb(0,     0.471, 0.831);
 const white = rgb(1, 1, 1);
-const grey  = rgb(0.45,  0.45,  0.45);
 
 function wrapText(text: string, maxWidth: number, font: PDFFont, size: number): string[] {
   const words = text.split(" ");
@@ -31,6 +30,12 @@ function wrapText(text: string, maxWidth: number, font: PDFFont, size: number): 
   return lines;
 }
 
+function dt(page: PDFPage, text: string, x: number, y: number, opts: {
+  font: PDFFont; size: number; color: ReturnType<typeof rgb>;
+}) {
+  page.drawText(text, { x, y, font: opts.font, size: opts.size, color: opts.color });
+}
+
 async function generateArtifactPdf(
   artifactName: string,
   content: string,
@@ -47,29 +52,27 @@ async function generateArtifactPdf(
   const margin = 55;
   const bodyW  = pageW - margin * 2;
 
-  const addPage = () => {
+  const addPage = (): PDFPage => {
     const p = pdfDoc.addPage([pageW, pageH]);
     p.drawRectangle({ x: 0, y: pageH - 52, width: pageW, height: 52, color: navy });
-    p.drawText("Shane McCaw Consulting", margin, pageH - 22, { font: bold, size: 14, color: white });
-    p.drawText("Lead Microsoft 365 Architect", margin, pageH - 38, { size: 9, font: regular, color: rgb(0.7, 0.8, 0.9) });
+    dt(p, "Shane McCaw Consulting", margin, pageH - 22, { font: bold, size: 14, color: white });
+    dt(p, "Lead Microsoft 365 Architect", margin, pageH - 38, { font: regular, size: 9, color: rgb(0.7, 0.8, 0.9) });
     p.drawRectangle({ x: 0, y: 0, width: pageW, height: 28, color: navy });
-    p.drawText(`${projectTitle}  |  ${clientName}`, margin, 10, { size: 7, font: regular, color: rgb(0.6, 0.7, 0.8) });
+    dt(p, `${projectTitle}  |  ${clientName}`, margin, 10, { font: regular, size: 7, color: rgb(0.6, 0.7, 0.8) });
     const dateStr = generatedAt.toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
-    p.drawText(`Generated ${dateStr}`, pageW - 160, 10, { size: 7, font: regular, color: rgb(0.5, 0.6, 0.7) });
+    dt(p, `Generated ${dateStr}`, pageW - 160, 10, { font: regular, size: 7, color: rgb(0.5, 0.6, 0.7) });
     return p;
   };
 
   let page = addPage();
   let y = pageH - 72;
 
-  page.drawText(artifactName, margin, y, { font: bold, size: 15, color: navy });
+  dt(page, artifactName, margin, y, { font: bold, size: 15, color: navy });
   y -= 6;
   page.drawLine({ start: { x: margin, y }, end: { x: pageW - margin, y }, thickness: 1.5, color: blue });
   y -= 20;
 
-  const lines = content.split("\n");
-
-  for (const rawLine of lines) {
+  for (const rawLine of content.split("\n")) {
     const line = rawLine.trimEnd();
 
     if (y < 50) {
@@ -80,26 +83,26 @@ async function generateArtifactPdf(
     if (line.startsWith("# ")) {
       const text = line.slice(2).trim();
       y -= 6;
-      page.drawText(text, margin, y, { font: bold, size: 13, color: navy });
+      dt(page, text, margin, y, { font: bold, size: 13, color: navy });
       y -= 4;
       page.drawLine({ start: { x: margin, y }, end: { x: pageW - margin, y }, thickness: 0.8, color: blue });
       y -= 14;
     } else if (line.startsWith("## ")) {
       const text = line.slice(3).trim();
       y -= 4;
-      page.drawText(text, margin, y, { font: bold, size: 11, color: blue });
+      dt(page, text, margin, y, { font: bold, size: 11, color: blue });
       y -= 14;
     } else if (line.startsWith("### ")) {
       const text = line.slice(4).trim();
-      page.drawText(text, margin, y, { font: bold, size: 10, color: navy });
+      dt(page, text, margin, y, { font: bold, size: 10, color: navy });
       y -= 13;
     } else if (line.startsWith("- ") || line.startsWith("* ")) {
       const text = line.slice(2).trim();
       const wrapped = wrapText(text, bodyW - 14, regular, 9);
       for (let i = 0; i < wrapped.length; i++) {
         if (y < 50) { page = addPage(); y = pageH - 72; }
-        if (i === 0) page.drawText("•", margin, y, { font: bold, size: 9, color: blue });
-        page.drawText(wrapped[i], margin + 12, y, { font: regular, size: 9, color: navy });
+        if (i === 0) dt(page, "•", margin, y, { font: bold, size: 9, color: blue });
+        dt(page, wrapped[i], margin + 12, y, { font: regular, size: 9, color: navy });
         y -= 12;
       }
     } else if (line === "" || line === "---") {
@@ -109,7 +112,7 @@ async function generateArtifactPdf(
       const wrapped = wrapText(stripped, bodyW, regular, 9);
       for (const wl of wrapped) {
         if (y < 50) { page = addPage(); y = pageH - 72; }
-        page.drawText(wl, margin, y, { font: regular, size: 9, color: navy });
+        dt(page, wl, margin, y, { font: regular, size: 9, color: navy });
         y -= 13;
       }
       y -= 3;
@@ -121,10 +124,10 @@ async function generateArtifactPdf(
 }
 
 router.post(
-  "/api/admin/projects/:projectId/generate-artifacts",
+  "/admin/projects/:projectId/generate-artifacts",
   requireAdmin,
   async (req, res) => {
-    const projectId = parseInt(req.params.projectId, 10);
+    const projectId = parseInt(String(req.params.projectId), 10);
     if (isNaN(projectId)) {
       res.status(400).json({ error: "Invalid project ID" });
       return;
@@ -159,6 +162,14 @@ router.post(
       return;
     }
 
+    if (!graphCredentialsPresent()) {
+      res.status(503).json({
+        error: "Microsoft Graph credentials are not configured. Set AZURE_CLIENT_ID, AZURE_CLIENT_SECRET, and AZURE_TENANT_ID in Replit Secrets.",
+        code: "GRAPH_CREDENTIALS_MISSING",
+      });
+      return;
+    }
+
     let clientName = "Client";
     let sharepointSiteId: string | null = null;
     if (project.clientUserId) {
@@ -169,20 +180,14 @@ router.post(
         .limit(1);
       if (user) {
         clientName = user.company ?? user.name ?? user.email ?? "Client";
-        sharepointSiteId = (user as unknown as { sharepointSiteId?: string | null }).sharepointSiteId ?? null;
+        sharepointSiteId = user.sharepointSiteId ?? null;
       }
-    }
-
-    if (!graphCredentialsPresent()) {
-      res.status(503).json({
-        error: "Microsoft Graph credentials are not configured. Set AZURE_CLIENT_ID, AZURE_CLIENT_SECRET, and AZURE_TENANT_ID in Replit Secrets.",
-      });
-      return;
     }
 
     if (!sharepointSiteId) {
       res.status(503).json({
-        error: "The client does not have a SharePoint site ID configured. Set it from the client profile in the CRM.",
+        error: "The client does not have a SharePoint site ID configured. Edit the client profile in the CRM to add it.",
+        code: "SHAREPOINT_SITE_ID_MISSING",
       });
       return;
     }
@@ -202,6 +207,7 @@ router.post(
     if (allArtifactNames.size === 0) {
       res.status(400).json({
         error: "No artifacts are defined in the project tasks. Add artifact names to task metadata before generating.",
+        code: "NO_ARTIFACTS_DEFINED",
       });
       return;
     }
@@ -219,9 +225,9 @@ router.post(
         if (t.description) parts.push(`  Description: ${t.description}`);
         if (t.completionNotes) parts.push(`  Completion Notes: ${t.completionNotes}`);
         if (meta) {
-          if (meta.posturesSummary) parts.push(`  Posture: ${String(meta.posturesSummary)}`);
-          if (meta.findingsSummary) parts.push(`  Findings: ${String(meta.findingsSummary)}`);
-          if (meta.outputSummary) parts.push(`  Output: ${String(meta.outputSummary)}`);
+          if (typeof meta.postureSummary === "string") parts.push(`  Posture: ${meta.postureSummary}`);
+          if (typeof meta.findingsSummary === "string") parts.push(`  Findings: ${meta.findingsSummary}`);
+          if (typeof meta.outputSummary === "string") parts.push(`  Output: ${meta.outputSummary}`);
         }
         return parts.join("\n");
       }),
@@ -240,10 +246,7 @@ router.post(
           messages: [
             {
               role: "user",
-              content: [
-                {
-                  type: "text",
-                  text: `You are a senior Microsoft 365 consultant. Generate a professional project artifact document in Markdown format.
+              content: `You are a senior Microsoft 365 consultant. Generate a professional project artifact document in Markdown format.
 
 Project Context:
 ${projectContext}
@@ -258,8 +261,6 @@ Requirements:
 - Length: 400-800 words
 - Do NOT include a top-level title (# heading) — that will be added automatically
 - Start directly with the first section heading (## ...)`,
-                },
-              ],
             },
           ],
         });

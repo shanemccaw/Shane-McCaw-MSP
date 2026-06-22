@@ -253,6 +253,13 @@
       "when": 1750636802000,
       "tag": "0035_analytics_country",
       "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1750723202000,
+      "tag": "0036_generated_artifacts",
+      "breakpoints": true
     }
   ]
 }
