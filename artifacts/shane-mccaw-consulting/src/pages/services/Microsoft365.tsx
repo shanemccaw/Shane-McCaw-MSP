@@ -156,23 +156,23 @@ export default function Microsoft365() {
         <div className="max-w-[1200px] mx-auto px-6">
           <div className="text-center mb-12">
             <p className="text-[#0078D4] text-sm font-semibold uppercase tracking-[0.12em] mb-3">Fixed-Price Engagement</p>
-            <h2 className="text-3xl md:text-4xl font-extrabold text-[#0A2540]">M365 Tenant Architecture & Governance Assessment</h2>
+            <h2 className="text-3xl md:text-4xl font-extrabold text-[#0A2540]">M365 Tenant Health Audit</h2>
           </div>
 
           <div className="max-w-4xl mx-auto bg-white border border-border rounded-2xl overflow-hidden shadow-sm">
             <div className="bg-[#0A2540] px-8 py-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
               <div>
-                <p className="text-white font-bold text-xl">M365 Tenant Architecture & Governance Assessment</p>
-                <p className="text-white/50 text-sm mt-1">A comprehensive, fixed-scope engagement covering your entire Microsoft 365 environment — from identity and security to governance, compliance, and collaboration architecture.</p>
+                <p className="text-white font-bold text-xl">M365 Tenant Health Audit</p>
+                <p className="text-white/50 text-sm mt-1">A focused, fixed-scope review of your Microsoft 365 tenant — diagnosing configuration gaps, security risks, and licensing inefficiencies so you know exactly where you stand and what to fix first.</p>
               </div>
               <div className="flex-shrink-0 text-right">
                 <div className="flex items-center gap-1.5 justify-end">
                   <DollarSign className="w-4 h-4 text-[#0078D4]" />
-                  <span className="text-white font-extrabold text-2xl">$6,000–$12,000</span>
+                  <span className="text-white font-extrabold text-2xl">$1,500–$3,000</span>
                 </div>
                 <div className="flex items-center gap-1.5 justify-end mt-1">
                   <Clock className="w-3.5 h-3.5 text-white/40" />
-                  <span className="text-white/50 text-sm">2–4 weeks</span>
+                  <span className="text-white/50 text-sm">3–5 business days</span>
                 </div>
               </div>
             </div>
@@ -181,14 +181,14 @@ export default function Microsoft365() {
               <p className="text-xs font-bold uppercase tracking-widest text-muted-foreground mb-5">What's Included</p>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 {[
-                  "Full tenant health audit — identity, licensing, and configuration review",
-                  "Security baseline assessment against Microsoft Secure Score best practices",
-                  "Exchange Online, Teams, and SharePoint architecture review",
-                  "Conditional Access and Zero Trust readiness evaluation",
-                  "Governance framework gap analysis with policy recommendations",
-                  "Compliance posture review (DLP, retention, sensitivity labels)",
-                  "Prioritized remediation roadmap with effort and risk scoring",
-                  "Executive briefing and written Architecture Assessment Report",
+                  "Identity and licensing review — user accounts, groups, and SKU optimisation",
+                  "Security Secure Score analysis with actionable improvement recommendations",
+                  "Exchange Online, Teams, and SharePoint configuration health check",
+                  "Conditional Access policy review and gap identification",
+                  "MFA and identity protection posture assessment",
+                  "Admin role and privilege audit to surface over-permissioned accounts",
+                  "Prioritised findings report with effort and risk scoring",
+                  "30-minute readout call to walk through results and next steps",
                 ].map((item) => (
                   <div key={item} className="flex items-start gap-3">
                     <CheckCircle className="w-4 h-4 text-[#0078D4] flex-shrink-0 mt-0.5" />
@@ -202,7 +202,7 @@ export default function Microsoft365() {
               <div className="flex-1">
                 <p className="text-xs font-bold uppercase tracking-widest text-[#0078D4] mb-2">Deliverable</p>
                 <p className="text-[#0A2540] font-semibold leading-relaxed">
-                  A detailed Microsoft 365 Architecture Assessment Report — covering security posture, governance gaps, and a prioritized remediation roadmap — plus an executive readout session your team can act on immediately.
+                  A written M365 Tenant Health Audit Report — documenting security gaps, misconfigured settings, and licensing waste — plus a prioritised remediation checklist and a live readout session your team can act on immediately.
                 </p>
               </div>
               <CTAButton href="/book" className="flex-shrink-0 whitespace-nowrap">
