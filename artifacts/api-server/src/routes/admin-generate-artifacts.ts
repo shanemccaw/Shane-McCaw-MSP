@@ -133,6 +133,11 @@ router.post(
       return;
     }
 
+    const singleArtifactName: string | undefined =
+      typeof req.body?.artifactName === "string" && req.body.artifactName.trim()
+        ? req.body.artifactName.trim()
+        : undefined;
+
     const [project] = await db
       .select()
       .from(projectsTable)
@@ -155,7 +160,7 @@ router.post(
     }
 
     const incomplete = tasks.filter(t => t.column !== "completed");
-    if (incomplete.length > 0) {
+    if (incomplete.length > 0 && !singleArtifactName) {
       res.status(400).json({
         error: `${incomplete.length} task${incomplete.length === 1 ? "" : "s"} not yet completed. All tasks must be in the Completed column.`,
       });
@@ -192,7 +197,7 @@ router.post(
       return;
     }
 
-    const allArtifactNames = new Set<string>();
+    const allArtifactNamesFromTasks = new Set<string>();
     for (const task of tasks) {
       const meta = task.taskMetadata as Record<string, unknown> | null;
       if (meta) {
@@ -200,7 +205,7 @@ router.post(
           if (Array.isArray(meta[field])) {
             for (const name of meta[field] as string[]) {
               if (typeof name === "string" && name.trim()) {
-                allArtifactNames.add(name.trim());
+                allArtifactNamesFromTasks.add(name.trim());
               }
             }
           }
@@ -208,13 +213,17 @@ router.post(
       }
     }
 
-    if (allArtifactNames.size === 0) {
+    if (allArtifactNamesFromTasks.size === 0 && !singleArtifactName) {
       res.status(400).json({
         error: "No artifacts are defined in the project tasks. Add artifact names to the 'Artifacts Produced' or 'Client Deliverables' fields on each task before generating.",
         code: "NO_ARTIFACTS_DEFINED",
       });
       return;
     }
+
+    const allArtifactNames: Set<string> = singleArtifactName
+      ? new Set([singleArtifactName])
+      : allArtifactNamesFromTasks;
 
     const projectContext = [
       `Project: ${project.title}`,

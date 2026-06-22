@@ -983,8 +983,11 @@ export default function ProjectDetailPage() {
   const [spFolderCreating, setSpFolderCreating] = useState(false);
   const [generateArtifactsLoading, setGenerateArtifactsLoading] = useState(false);
   const [generateArtifactsError, setGenerateArtifactsError] = useState<string | null>(null);
+  const [regeneratingArtifact, setRegeneratingArtifact] = useState<string | null>(null);
 
   const allTasksClosed = tasks.length > 0 && tasks.every(t => t.column === "completed");
+
+  type GenResult = { artifacts: Array<{ artifactName: string; sharepointUrl: string; generatedAt: string }>; errors?: string[]; error?: string; code?: string; details?: string[] };
 
   const handleGenerateArtifacts = async () => {
     if (!projectId) return;
@@ -992,7 +995,6 @@ export default function ProjectDetailPage() {
     setGenerateArtifactsError(null);
     try {
       const res = await fetchWithAuth(`/api/admin/projects/${projectId}/generate-artifacts`, { method: "POST" });
-      type GenResult = { artifacts: Array<{ artifactName: string; sharepointUrl: string; generatedAt: string }>; errors?: string[]; error?: string; code?: string; details?: string[] };
       const data = await res.json() as GenResult;
       if (!res.ok) {
         setGenerateArtifactsError(data.error ?? "Unknown error");
@@ -1010,6 +1012,33 @@ export default function ProjectDetailPage() {
       setGenerateArtifactsError("Network error — could not reach the server.");
     } finally {
       setGenerateArtifactsLoading(false);
+    }
+  };
+
+  const handleRegenerateArtifact = async (artifactName: string) => {
+    if (!projectId) return;
+    setRegeneratingArtifact(artifactName);
+    try {
+      const res = await fetchWithAuth(`/api/admin/projects/${projectId}/generate-artifacts`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ artifactName }),
+      });
+      const data = await res.json() as GenResult;
+      if (!res.ok) {
+        toast({ title: "Regeneration failed", description: data.error ?? "Unknown error", variant: "destructive" });
+        return;
+      }
+      setProject(prev => prev ? { ...prev, generatedArtifacts: data.artifacts } : prev);
+      if (data.errors && data.errors.length > 0) {
+        toast({ title: "Regeneration failed", description: data.errors[0], variant: "destructive" });
+      } else {
+        toast({ title: "Artifact regenerated", description: `"${artifactName}" uploaded to SharePoint.` });
+      }
+    } catch {
+      toast({ title: "Network error", description: "Could not reach the server.", variant: "destructive" });
+    } finally {
+      setRegeneratingArtifact(null);
     }
   };
 
@@ -1790,29 +1819,49 @@ export default function ProjectDetailPage() {
 
         {project.generatedArtifacts && project.generatedArtifacts.length > 0 ? (
           <div className="bg-white border border-border rounded-xl overflow-hidden divide-y divide-border">
-            {project.generatedArtifacts.map(artifact => (
-              <div key={artifact.artifactName} className="flex items-center gap-3 px-4 py-3 hover:bg-[#F7F9FC]/70 transition-colors">
-                <div className="w-8 h-8 rounded-lg bg-[#0078D4]/10 flex items-center justify-center flex-shrink-0">
-                  <svg className="w-4 h-4 text-[#0078D4]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
-                  </svg>
+            {project.generatedArtifacts.map(artifact => {
+              const isRegenerating = regeneratingArtifact === artifact.artifactName;
+              return (
+                <div key={artifact.artifactName} className="flex items-center gap-3 px-4 py-3 hover:bg-[#F7F9FC]/70 transition-colors">
+                  <div className="w-8 h-8 rounded-lg bg-[#0078D4]/10 flex items-center justify-center flex-shrink-0">
+                    <svg className="w-4 h-4 text-[#0078D4]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
+                    </svg>
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-semibold text-[#0A2540] truncate">{artifact.artifactName}</p>
+                    <p className="text-[11px] text-muted-foreground">
+                      Generated {new Date(artifact.generatedAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2 flex-shrink-0">
+                    <button
+                      onClick={() => void handleRegenerateArtifact(artifact.artifactName)}
+                      disabled={isRegenerating || !!regeneratingArtifact || generateArtifactsLoading}
+                      title="Regenerate this artifact"
+                      className="flex items-center gap-1 text-[11px] font-semibold text-muted-foreground hover:text-[#0A2540] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                    >
+                      {isRegenerating ? (
+                        <div className="w-3 h-3 border border-current border-t-transparent rounded-full animate-spin" />
+                      ) : (
+                        <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" />
+                        </svg>
+                      )}
+                      {isRegenerating ? "Regenerating…" : "Regenerate"}
+                    </button>
+                    <a
+                      href={artifact.sharepointUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-1 text-[11px] font-semibold text-[#0078D4] hover:underline"
+                    >
+                      Open in SharePoint ↗
+                    </a>
+                  </div>
                 </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-semibold text-[#0A2540] truncate">{artifact.artifactName}</p>
-                  <p className="text-[11px] text-muted-foreground">
-                    Generated {new Date(artifact.generatedAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
-                  </p>
-                </div>
-                <a
-                  href={artifact.sharepointUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex-shrink-0 flex items-center gap-1 text-[11px] font-semibold text-[#0078D4] hover:underline"
-                >
-                  Open in SharePoint ↗
-                </a>
-              </div>
-            ))}
+              );
+            })}
           </div>
         ) : (
           <div className="bg-[#F7F9FC] border border-border rounded-xl px-4 py-6 text-center text-sm text-muted-foreground">
