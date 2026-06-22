@@ -5,11 +5,13 @@ import { requireAdmin } from "../middlewares/requireAuth";
 import {
   sendEmailOrThrow,
   sendEmail,
+  sendEmailWithAttachment,
   contactInquiryNotificationEmail,
   serviceOverviewConfirmationEmail,
   serviceOverviewLeadNotificationEmail,
 } from "../lib/mailer";
 import { createAuditLog } from "../lib/audit";
+import { generateServiceOverviewPdf } from "../lib/service-overview-pdf";
 
 const router: IRouter = Router();
 
@@ -57,11 +59,25 @@ router.post("/leads", async (req: Request, res: Response) => {
     const trimmedName = name.trim();
     const trimmedEmail = email.toLowerCase().trim();
     const serviceName = serviceArea ?? "M365 Governance";
-    void sendEmail(
-      trimmedEmail,
-      `Your ${serviceName} Overview Request — Shane McCaw Consulting`,
-      serviceOverviewConfirmationEmail({ name: trimmedName, serviceName }),
-    );
+
+    void (async () => {
+      try {
+        const pdfBuffer = await generateServiceOverviewPdf(serviceName);
+        const subject = `Your ${serviceName} Overview — Shane McCaw Consulting`;
+        const html = serviceOverviewConfirmationEmail({ name: trimmedName, serviceName });
+        if (pdfBuffer) {
+          const safeName = serviceName.replace(/[^a-z0-9]/gi, "-").toLowerCase();
+          await sendEmailWithAttachment(trimmedEmail, subject, html, [
+            { filename: `${safeName}-overview.pdf`, content: pdfBuffer },
+          ]);
+        } else {
+          await sendEmail(trimmedEmail, subject, html);
+        }
+      } catch (err) {
+        req.log.error({ err }, "Failed to send service overview email with PDF");
+      }
+    })();
+
     void sendEmail(
       adminEmail,
       `New service overview request from ${trimmedName} — ${company ?? ""}`,
