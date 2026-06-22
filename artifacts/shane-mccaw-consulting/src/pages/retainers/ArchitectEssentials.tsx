@@ -20,6 +20,12 @@ const WHO_ITS_FOR = [
   "SMBs that can't justify a full-time architect but want one available on demand",
 ];
 
+const TIERS = [
+  { name: "Architect Essentials", price: "$1,500", hours: "10 hrs/mo", href: "/retainers/architect-essentials", current: true },
+  { name: "Architect Growth", price: "$3,000", hours: "25 hrs/mo", href: "/retainers/architect-growth", current: false },
+  { name: "Architect Enterprise", price: "$5,500", hours: "50 hrs/mo", href: "/retainers/architect-enterprise", current: false },
+];
+
 const TYPICAL_MONTH = [
   { week: "Week 1", activity: "60-minute strategy call to set priorities — Shane reviews your tenant health, upcoming projects, and open questions from the previous month." },
   { week: "Week 2", activity: "Async work on the agreed deliverable: architecture review, governance policy draft, Teams topology guidance, or Copilot readiness assessment." },
@@ -92,6 +98,30 @@ export default function ArchitectEssentials() {
             >
               Talk to Shane first <ArrowRight className="w-4 h-4" />
             </Link>
+          </div>
+        </div>
+      </section>
+
+      {/* Plan comparison strip */}
+      <section className="bg-white border-b border-border py-8 px-6">
+        <div className="max-w-[900px] mx-auto">
+          <p className="text-center text-xs font-bold uppercase tracking-wider text-muted-foreground mb-6">Compare all retainer tiers</p>
+          <div className="grid grid-cols-3 gap-3">
+            {TIERS.map((tier) => (
+              <Link
+                key={tier.href}
+                href={tier.href}
+                className={`rounded-xl border p-4 text-center transition-all ${
+                  tier.current
+                    ? "bg-[#0078D4] border-[#0078D4] text-white shadow-md"
+                    : "bg-[#F7F9FC] border-border text-[#0A2540] hover:border-[#0078D4]/50 hover:shadow-sm"
+                }`}
+              >
+                <p className={`text-xs font-bold uppercase tracking-wide mb-1 ${tier.current ? "text-white/70" : "text-muted-foreground"}`}>{tier.hours}</p>
+                <p className={`font-extrabold text-lg mb-0.5 ${tier.current ? "text-white" : "text-[#0A2540]"}`}>{tier.name}</p>
+                <p className={`text-sm font-semibold ${tier.current ? "text-white/80" : "text-[#0078D4]"}`}>{tier.price}/mo</p>
+              </Link>
+            ))}
           </div>
         </div>
       </section>
