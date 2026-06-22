@@ -5,7 +5,10 @@ import { requireAdmin } from "../middlewares/requireAuth";
 import {
   sendEmailOrThrow,
   sendEmail,
+  sendEmailFromTemplate,
+  getEmailTemplateOrFallback,
   sendEmailWithAttachment,
+  brandedEmail,
   contactInquiryNotificationEmail,
   serviceOverviewConfirmationEmail,
   serviceOverviewLeadNotificationEmail,
@@ -77,8 +80,6 @@ router.post("/leads", async (req: Request, res: Response) => {
           .limit(1);
         const matchedService = matchedServices[0] ?? null;
 
-        const subject = `Your ${serviceName} Overview — Shane McCaw Consulting`;
-
         let pdfAttached = false;
         let attachments: { filename: string; content: Buffer }[] | undefined;
 
@@ -94,33 +95,44 @@ router.post("/leads", async (req: Request, res: Response) => {
           }
         }
 
-        const html = serviceOverviewConfirmationEmail({ name: trimmedName, serviceName, pdfAttached });
+        const { subject, bodyHtml } = await getEmailTemplateOrFallback(
+          "service-overview-confirmation",
+          { firstName: trimmedName.split(" ")[0] ?? trimmedName, serviceName, pdfAttached: String(pdfAttached), bookingLink: "https://shanemccaw.consulting/book" },
+          `Your ${serviceName} Overview — Shane McCaw Consulting`,
+          serviceOverviewConfirmationEmail({ name: trimmedName, serviceName, pdfAttached }),
+        );
 
         if (attachments) {
-          await sendEmailWithAttachment(trimmedEmail, subject, html, attachments);
+          await sendEmailWithAttachment(trimmedEmail, subject, brandedEmail(bodyHtml), attachments);
         } else {
-          await sendEmail(trimmedEmail, subject, html);
+          await sendEmail(trimmedEmail, subject, bodyHtml);
         }
       } catch (err) {
         req.log.error({ err }, "Failed to send service overview email with PDF");
       }
     })();
 
-    void sendEmail(
+    void sendEmailFromTemplate(
+      "service-overview-lead-notification",
       adminEmail,
+      { name: trimmedName, email: trimmedEmail, company: company ?? "", serviceName },
       `New service overview request from ${trimmedName} — ${company ?? ""}`,
-      serviceOverviewLeadNotificationEmail({
-        name: trimmedName,
-        email: trimmedEmail,
-        company: company ?? "",
-        serviceName,
-      }),
+      serviceOverviewLeadNotificationEmail({ name: trimmedName, email: trimmedEmail, company: company ?? "", serviceName }),
     );
   } else if (leadSource === "contact_form") {
     const adminEmail = process.env.CONTACT_NOTIFICATION_EMAIL ?? process.env.CRM_ADMIN_EMAIL ?? "info@shanemccaw.com";
     try {
-      await sendEmailOrThrow(
-        adminEmail,
+      const { subject: contactSubject, bodyHtml: contactBody } = await getEmailTemplateOrFallback(
+        "contact-inquiry-notification",
+        {
+          name: name.trim(),
+          email: email.toLowerCase().trim(),
+          company: company ?? "",
+          companySize: companySize ?? "",
+          serviceArea: serviceArea ?? "",
+          message: message ?? "",
+          howFound: howFound ?? "",
+        },
         `New contact inquiry from ${name.trim()} — ${company ?? ""}`,
         contactInquiryNotificationEmail({
           name: name.trim(),
@@ -132,6 +144,7 @@ router.post("/leads", async (req: Request, res: Response) => {
           howFound: howFound ?? undefined,
         }),
       );
+      await sendEmailOrThrow(adminEmail, contactSubject, contactBody);
     } catch (err) {
       req.log.error({ err }, "Failed to send contact notification email");
       res.status(503).json({ error: "Message could not be delivered. Please try again or email info@shanemccaw.com directly." });

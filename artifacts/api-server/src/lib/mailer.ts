@@ -1,12 +1,14 @@
 import nodemailer from "nodemailer";
 import { Resend } from "resend";
 import { ReplitConnectors } from "@replit/connectors-sdk";
+import { db, emailTemplatesTable } from "@workspace/db";
+import { eq } from "drizzle-orm";
 import { logger } from "./logger";
 import { graphCredentialsPresent, sendMailViaGraph } from "./graph";
 
 // ─── Brand constants ──────────────────────────────────────────────────────────
 const BRAND_FROM = "Shane McCaw Consulting <noreply@shanemccaw.com>";
-const PORTAL_URL = "https://shanemccaw.consulting/crm/portal";
+export const PORTAL_URL = "https://shanemccaw.consulting/crm/portal";
 const NAVY = "#0A2540";
 const BLUE = "#0078D4";
 
@@ -549,4 +551,56 @@ export function adminPurchaseAlertEmail(opts: {
     ${emailButton("View in dashboard", link)}
     <p style="margin-top:24px;">— Shane McCaw Consulting (automated notification)</p>
   `;
+}
+
+// ─── Database-backed template helpers ─────────────────────────────────────────
+
+function substituteVars(template: string, vars: Record<string, string>): string {
+  return template.replace(/\{\{(\w+)\}\}/g, (_, key: string) =>
+    key in vars ? escapeHtml(vars[key]) : `{{${key}}}`,
+  );
+}
+
+/**
+ * Look up a stored email template by slug and substitute variables.
+ * Falls back to the provided defaults if no DB row exists or DB is unavailable.
+ */
+export async function getEmailTemplateOrFallback(
+  slug: string,
+  vars: Record<string, string>,
+  defaultSubject: string,
+  defaultBodyHtml: string,
+): Promise<{ subject: string; bodyHtml: string }> {
+  try {
+    const [row] = await db
+      .select({ subject: emailTemplatesTable.subject, bodyHtml: emailTemplatesTable.bodyHtml })
+      .from(emailTemplatesTable)
+      .where(eq(emailTemplatesTable.slug, slug))
+      .limit(1);
+    if (row) {
+      return {
+        subject: substituteVars(row.subject, vars),
+        bodyHtml: substituteVars(row.bodyHtml, vars),
+      };
+    }
+  } catch (err) {
+    logger.warn({ err, slug }, "Email template DB lookup failed — using hardcoded fallback");
+  }
+  return { subject: defaultSubject, bodyHtml: defaultBodyHtml };
+}
+
+/**
+ * Send an email using the stored DB template (with variable substitution), falling back
+ * to the provided subject/body if no template row exists or the DB is unavailable.
+ * Errors are caught and logged — fire-and-forget friendly.
+ */
+export async function sendEmailFromTemplate(
+  slug: string,
+  to: string,
+  vars: Record<string, string>,
+  defaultSubject: string,
+  defaultBodyHtml: string,
+): Promise<void> {
+  const { subject, bodyHtml } = await getEmailTemplateOrFallback(slug, vars, defaultSubject, defaultBodyHtml);
+  await sendEmail(to, subject, bodyHtml);
 }

@@ -5,7 +5,7 @@ import jwt from "jsonwebtoken";
 import { db, usersTable, passwordResetTokensTable, impersonationTokensTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import type { CookieOptions } from "express";
-import { sendEmail, passwordResetEmail } from "../lib/mailer";
+import { sendEmailFromTemplate, passwordResetEmail } from "../lib/mailer";
 
 const registerLimiter = rateLimit({
   windowMs: 60 * 60 * 1000,
@@ -188,8 +188,10 @@ router.post("/auth/forgot-password", async (req: Request, res: Response) => {
     ?? `${req.protocol}://${req.hostname}/crm`;
   const resetUrl = `${baseUrl}/reset-password?token=${token}`;
 
-  void sendEmail(
+  void sendEmailFromTemplate(
+    "password-reset",
     user.email,
+    { resetLink: resetUrl },
     "Reset your Shane McCaw Consulting portal password",
     passwordResetEmail({ resetUrl }),
   ).catch(() => null);

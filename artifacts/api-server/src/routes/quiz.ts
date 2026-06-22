@@ -6,7 +6,7 @@ import { anthropic } from "@workspace/integrations-anthropic-ai";
 import { db, quizLeadsTable, quizAnalyticsEventsTable } from "@workspace/db";
 import { logger } from "../lib/logger";
 import { generateQuizPdf } from "../lib/quiz-pdf";
-import { sendEmailWithAttachment, sendEmailWithAttachmentOrThrow, sendEmail, brandedEmail, quizLeadNotificationEmail } from "../lib/mailer";
+import { sendEmailWithAttachment, sendEmailWithAttachmentOrThrow, sendEmail, sendEmailFromTemplate, brandedEmail, quizLeadNotificationEmail } from "../lib/mailer";
 
 const RESEND_TOKEN_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 
@@ -579,8 +579,17 @@ Respond ONLY with valid JSON in this exact shape:
   void (async () => {
     const shaneEmail = process.env.ADMIN_EMAIL ?? process.env.CRM_ADMIN_EMAIL;
     if (shaneEmail) {
-      await sendEmail(
+      await sendEmailFromTemplate(
+        "quiz-lead-notification",
         shaneEmail,
+        {
+          name,
+          email,
+          company: company ?? "",
+          totalScore: String(totalScore),
+          tier,
+          recommendedService,
+        },
         `New quiz lead: ${name} (${cfg.reportName} — ${tier} — ${totalScore}/50)`,
         quizLeadNotificationEmail({ name, email, company, totalScore, tier, recommendedService }),
       );

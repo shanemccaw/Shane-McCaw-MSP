@@ -2,7 +2,7 @@ import { Router, type IRouter, type Request, type Response } from "express";
 import { db, projectsTable, clientServicesTable, servicesTable, workflowStepsTable, kanbanTasksTable, documentsTable, reportsTable, invoicesTable, messagesTable, notificationsTable, projectUpdatesTable, usersTable, contractsTable, passwordResetTokensTable, workflowTemplateStepsTable, workflowTemplateStepTasksTable, contractTemplatesTable, impersonationTokensTable, statusReportsTable, deviceTokensTable, projectClosuresTable, auditLogsTable, instructionSetsTable, checklistsTable, artifactSetsTable, deliverableSetsTable, emailsTable, emailDomainRulesTable, clientM365ProfilesTable } from "@workspace/db";
 import { eq, and, desc, asc, count, sql, inArray, gte, isNotNull } from "drizzle-orm";
 import { requireAuth, requireAdmin } from "../middlewares/requireAuth";
-import { sendEmail, purchaseConfirmationEmail, onboardingConfirmationEmail, adminPurchaseAlertEmail, closureRequestEmail, statusReportReplyEmail, clientThreadReplyEmail, adminThreadReplyEmail, retainerResumedEmail } from "../lib/mailer";
+import { sendEmail, sendEmailFromTemplate, getEmailTemplateOrFallback, purchaseConfirmationEmail, onboardingConfirmationEmail, adminPurchaseAlertEmail, closureRequestEmail, statusReportReplyEmail, clientThreadReplyEmail, adminThreadReplyEmail, retainerResumedEmail, PORTAL_URL } from "../lib/mailer";
 import { sendAdminSms } from "../lib/sms";
 import { sendPushNotifications } from "../lib/push";
 import { createAuditLog } from "../lib/audit";
@@ -1736,14 +1736,12 @@ router.post("/portal/billing/subscriptions/:id/resume", requireAuth, async (req:
     `Retainer resumed: ${req.user!.name ?? req.user!.email} has un-cancelled their ${serviceName} retainer. Next billing: ${nextBillingDate}.`
   );
 
-  void sendEmail(
+  void sendEmailFromTemplate(
+    "retainer-resumed",
     req.user!.email,
+    { clientName: req.user!.name ?? "", serviceName, nextBillingDate, portalLink: PORTAL_URL },
     `Your ${serviceName} retainer is back on`,
-    retainerResumedEmail({
-      clientName: req.user!.name ?? "",
-      serviceName,
-      nextBillingDate,
-    }),
+    retainerResumedEmail({ clientName: req.user!.name ?? "", serviceName, nextBillingDate }),
   );
 
   res.json({
@@ -2517,32 +2515,36 @@ async function provisionOnboardingProject(
   // ── Confirmation email to client (fire-and-forget) ────────────────────────
   const primaryServiceName = serviceNames.join(", ");
   if (buyer.email) {
-    sendEmail(
+    sendEmailFromTemplate(
+      "onboarding-confirmation",
       buyer.email,
-      `Your ${primaryServiceName} project is ready — next steps inside`,
-      onboardingConfirmationEmail({
+      {
         clientName: buyer.name ?? "",
         serviceName: primaryServiceName,
         amountDollars: totalAmountDollars,
-        projectId: project.id,
-      }),
+        projectUrl: `${PORTAL_URL}/projects/${project.id}`,
+      },
+      `Your ${primaryServiceName} project is ready — next steps inside`,
+      onboardingConfirmationEmail({ clientName: buyer.name ?? "", serviceName: primaryServiceName, amountDollars: totalAmountDollars, projectId: project.id }),
     ).catch(() => null);
   }
 
   // ── Admin notification email (fire-and-forget) ─────────────────────────────
   const adminEmailAddr = process.env.ADMIN_EMAIL ?? process.env.CRM_ADMIN_EMAIL;
   if (adminEmailAddr) {
-    sendEmail(
+    sendEmailFromTemplate(
+      "admin-purchase-alert",
       adminEmailAddr,
-      `New onboarding purchase: ${primaryServiceName} — $${totalAmountDollars}`,
-      adminPurchaseAlertEmail({
+      {
         clientName: buyer.name ?? "",
         clientEmail: buyer.email,
         serviceName: primaryServiceName,
         amountDollars: totalAmountDollars,
-        type: "onboarding_purchase",
-        projectId: project.id,
-      }),
+        purchaseType: "Onboarding purchase",
+        portalLink: `${PORTAL_URL}/projects/${project.id}`,
+      },
+      `New onboarding purchase: ${primaryServiceName} — $${totalAmountDollars}`,
+      adminPurchaseAlertEmail({ clientName: buyer.name ?? "", clientEmail: buyer.email, serviceName: primaryServiceName, amountDollars: totalAmountDollars, type: "onboarding_purchase", projectId: project.id }),
     ).catch(() => null);
   }
 }
@@ -2803,30 +2805,31 @@ async function processStripeEvent(req: Request, event: import("stripe").Stripe.E
 
       // Send branded confirmation email to buyer (fire-and-forget)
       if (buyer?.email) {
-        sendEmail(
+        sendEmailFromTemplate(
+          "purchase-confirmation",
           buyer.email,
+          { clientName: buyer.name ?? "", serviceName, amountDollars, portalLink: PORTAL_URL },
           `Your purchase of "${serviceName}" is confirmed`,
-          purchaseConfirmationEmail({
-            clientName: buyer.name ?? "",
-            serviceName,
-            amountDollars,
-          }),
+          purchaseConfirmationEmail({ clientName: buyer.name ?? "", serviceName, amountDollars }),
         ).catch(() => null);
       }
 
       // Send admin notification email (fire-and-forget)
       const adminEmail = process.env.ADMIN_EMAIL ?? process.env.CRM_ADMIN_EMAIL;
       if (adminEmail) {
-        sendEmail(
+        sendEmailFromTemplate(
+          "admin-purchase-alert",
           adminEmail,
-          `New purchase: ${serviceName} — $${amountDollars}`,
-          adminPurchaseAlertEmail({
+          {
             clientName: buyer?.name ?? "",
             clientEmail: buyer?.email ?? "",
             serviceName,
             amountDollars,
-            type: "service_purchase",
-          }),
+            purchaseType: "Service purchase",
+            portalLink: PORTAL_URL,
+          },
+          `New purchase: ${serviceName} — $${amountDollars}`,
+          adminPurchaseAlertEmail({ clientName: buyer?.name ?? "", clientEmail: buyer?.email ?? "", serviceName, amountDollars, type: "service_purchase" }),
         ).catch(() => null);
       }
 
@@ -4303,15 +4306,19 @@ router.post("/portal/status-reports/:id/thread", requireAuth, async (req: Reques
   const adminEmailAddr = process.env.ADMIN_EMAIL ?? process.env.CRM_ADMIN_EMAIL;
   if (adminEmailAddr) {
     const [client] = await db.select({ name: usersTable.name }).from(usersTable).where(eq(usersTable.id, userId));
-    void sendEmail(
+    void sendEmailFromTemplate(
+      "client-thread-reply",
       adminEmailAddr,
-      `Client follow-up on status report: ${report.title}`,
-      clientThreadReplyEmail({
+      {
         clientName: client?.name ?? "",
         reportTitle: report.title,
         replyContent: content.trim(),
-        projectId: report.projectId,
-      }),
+        adminPanelUrl: report.projectId
+          ? `https://shanemccaw.consulting/admin-panel/crm/projects/${report.projectId}`
+          : `https://shanemccaw.consulting/admin-panel/crm/status-reports`,
+      },
+      `Client follow-up on status report: ${report.title}`,
+      clientThreadReplyEmail({ clientName: client?.name ?? "", reportTitle: report.title, replyContent: content.trim(), projectId: report.projectId }),
     );
   }
 
@@ -4373,15 +4380,17 @@ router.post("/admin/status-reports/:id/reply", requireAdmin, async (req: Request
       .from(usersTable)
       .where(eq(usersTable.id, report.clientUserId));
     if (client?.email) {
-      await sendEmail(
+      await sendEmailFromTemplate(
+        "status-report-reply",
         client.email,
-        `Reply to your question on: ${report.title}`,
-        statusReportReplyEmail({
+        {
           clientName: client.name ?? "",
           reportTitle: report.title,
           adminReply: reply.trim(),
-          projectId: report.projectId,
-        }),
+          projectUrl: report.projectId ? `${PORTAL_URL}/projects/${report.projectId}` : PORTAL_URL,
+        },
+        `Reply to your question on: ${report.title}`,
+        statusReportReplyEmail({ clientName: client.name ?? "", reportTitle: report.title, adminReply: reply.trim(), projectId: report.projectId }),
       );
     }
   }
@@ -4442,15 +4451,17 @@ router.post("/admin/status-reports/:id/thread", requireAdmin, async (req: Reques
       .from(usersTable)
       .where(eq(usersTable.id, report.clientUserId));
     if (client?.email) {
-      void sendEmail(
+      void sendEmailFromTemplate(
+        "admin-thread-reply",
         client.email,
-        `Reply to your follow-up on: ${report.title}`,
-        adminThreadReplyEmail({
+        {
           clientName: client.name ?? "",
           reportTitle: report.title,
           replyContent: content.trim(),
-          projectId: report.projectId,
-        }),
+          projectUrl: report.projectId ? `${PORTAL_URL}/projects/${report.projectId}` : PORTAL_URL,
+        },
+        `Reply to your follow-up on: ${report.title}`,
+        adminThreadReplyEmail({ clientName: client.name ?? "", reportTitle: report.title, replyContent: content.trim(), projectId: report.projectId }),
       );
     }
   }
@@ -5777,8 +5788,10 @@ router.post("/admin/projects/:id/closure-request", requireAdmin, async (req: Req
   if (project.clientUserId) {
     const [client] = await db.select().from(usersTable).where(eq(usersTable.id, project.clientUserId));
     if (client) {
-      await sendEmail(
+      await sendEmailFromTemplate(
+        "closure-request",
         client.email,
+        { clientName: client.name ?? "", projectTitle: project.title, projectUrl: `${PORTAL_URL}/projects/${projectId}` },
         `Project Sign-Off: ${project.title}`,
         closureRequestEmail({ clientName: client.name ?? "", projectTitle: project.title, projectId }),
       );

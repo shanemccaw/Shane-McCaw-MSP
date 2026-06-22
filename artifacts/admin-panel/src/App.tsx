@@ -36,6 +36,7 @@ import ChecklistsPage from "@/pages/asset-library/ChecklistsPage";
 import ArtifactSetsPage from "@/pages/asset-library/ArtifactSetsPage";
 import DeliverableSetsPage from "@/pages/asset-library/DeliverableSetsPage";
 import CategoriesPage from "@/pages/asset-library/CategoriesPage";
+import EmailTemplatesPage from "@/pages/EmailTemplates";
 import type { ReactNode } from "react";
 
 const queryClient = new QueryClient({
@@ -204,6 +205,9 @@ function Router() {
       </Route>
       <Route path="/asset-library/categories">
         <RequireAdmin><DashboardShell><CategoriesPage /></DashboardShell></RequireAdmin>
+      </Route>
+      <Route path="/email-templates">
+        <RequireAdmin><DashboardShell><EmailTemplatesPage /></DashboardShell></RequireAdmin>
       </Route>
 
       <Route>

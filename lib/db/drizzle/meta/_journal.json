@@ -267,6 +267,13 @@
       "when": 1750809602000,
       "tag": "0037_services_overview_pdf",
       "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "7",
+      "when": 1750607807000,
+      "tag": "0038_add_email_templates",
+      "breakpoints": true
     }
   ]
 }

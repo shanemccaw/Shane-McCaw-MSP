@@ -2,6 +2,7 @@ import app from "./app";
 import { logger } from "./lib/logger";
 import { seedAdminUser } from "./routes/auth";
 import { seedPortalDemo, seedServiceTemplates } from "./lib/seed-portal";
+import { seedEmailTemplates } from "./lib/seed-email-templates";
 import { initGraphSubscription } from "./lib/graph-subscription";
 
 const rawPort = process.env["PORT"];
@@ -36,6 +37,12 @@ app.listen(port, (err) => {
     logger.info("Service workflow/project templates seeded (no-op if exists)");
   }).catch((seedErr) => {
     logger.warn({ err: seedErr }, "Could not seed service templates");
+  });
+
+  seedEmailTemplates().then(() => {
+    logger.info("Email templates seeded (no-op if exists)");
+  }).catch((seedErr) => {
+    logger.warn({ err: seedErr }, "Could not seed email templates");
   });
 
   if (process.env.NODE_ENV !== "production") {

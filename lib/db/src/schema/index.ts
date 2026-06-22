@@ -706,3 +706,16 @@ export const analyticsSiteEventsTable = pgTable("analytics_site_events", {
   metadata: jsonb("metadata").$type<Record<string, unknown>>().default({}),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
+
+// Email Templates — editable email copy stored in the database
+export const emailTemplatesTable = pgTable("email_templates", {
+  slug: text("slug").primaryKey(),
+  name: text("name").notNull(),
+  subject: text("subject").notNull(),
+  bodyHtml: text("body_html").notNull(),
+  variables: jsonb("variables").$type<Array<{ name: string; description: string }>>().notNull().default([]),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export type InsertEmailTemplate = typeof emailTemplatesTable.$inferInsert;
+export type EmailTemplate = typeof emailTemplatesTable.$inferSelect;
