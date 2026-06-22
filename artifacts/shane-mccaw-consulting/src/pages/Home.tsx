@@ -79,9 +79,7 @@ export default function Home() {
   const dbServices = [...dbServiceAreas, ...dbRetainers];
   const servicesLoading = serviceAreasLoading || retainersLoading;
 
-  const allTriggers = visibleProjects.flatMap(p => p.triggeredBy ?? []);
-  const dedupedTriggers = [...new Set(allTriggers)];
-  const fallbackTriggers = [
+  const decisionMakerTriggers = [
     "Microsoft 365 is deployed but nobody's using it effectively",
     "Copilot is on your radar but your tenant isn't ready for it",
     "A compliance audit revealed gaps in your M365 governance",
@@ -89,7 +87,6 @@ export default function Home() {
     "Shadow IT is undermining your security posture",
     "You need senior-level expertise without a full-time hire",
   ];
-  const decisionMakerTriggers = dedupedTriggers.length > 0 ? dedupedTriggers : fallbackTriggers;
 
   const entryKeywords = ["audit", "assessment", "readiness", "health"];
   const allEntryPool = [...dbServiceAreas, ...dbOffers];
