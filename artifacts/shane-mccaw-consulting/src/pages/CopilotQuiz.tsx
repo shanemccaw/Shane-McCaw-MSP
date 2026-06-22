@@ -82,6 +82,8 @@ interface TierUpsell {
   description: string;
   slug: string;
   ctaText: string;
+  servicePath: string;
+  servicePageLabel: string;
 }
 
 const TIER_UPSELLS: Record<string, TierUpsell> = {
@@ -92,6 +94,8 @@ const TIER_UPSELLS: Record<string, TierUpsell> = {
       "Before Copilot can succeed, your tenant needs a clean foundation. A comprehensive NASA-methodology assessment identifies every configuration gap, licensing issue, and security risk — with a prioritised roadmap so you know exactly where to start.",
     slug: "m365-tenant-health-audit",
     ctaText: "Book Your Audit",
+    servicePath: "/services/microsoft-365",
+    servicePageLabel: "Microsoft 365",
   },
   Developing: {
     badge: "Recommended · From $5,000",
@@ -100,6 +104,8 @@ const TIER_UPSELLS: Record<string, TierUpsell> = {
       "You're building the right habits, but gaps remain before Copilot is safe to deploy. A targeted readiness assessment pinpoints exactly what to fix — and in what order — so your rollout doesn't stall or expose sensitive data.",
     slug: "copilot-for-m365-readiness-assessment",
     ctaText: "Get Your Readiness Report",
+    servicePath: "/services/copilot-ai",
+    servicePageLabel: "Copilot AI",
   },
   Emerging: {
     badge: "Next Step · From $5,000",
@@ -108,6 +114,8 @@ const TIER_UPSELLS: Record<string, TierUpsell> = {
       "You're making solid progress. A formal Copilot readiness assessment will validate your environment, surface the remaining gaps, and give you a prioritised rollout roadmap so you can deploy with confidence — not guesswork.",
     slug: "copilot-for-m365-readiness-assessment",
     ctaText: "Validate Your Readiness",
+    servicePath: "/services/copilot-ai",
+    servicePageLabel: "Copilot AI",
   },
   Advanced: {
     badge: "High Impact · From $6,000",
@@ -116,6 +124,8 @@ const TIER_UPSELLS: Record<string, TierUpsell> = {
       "Your M365 environment is mature and you're ready to start automating. A focused 30-day sprint to design, build, and deploy one production-ready Power App or Power Automate flow — turning your Copilot investment into measurable business impact.",
     slug: "power-platform-quickstart",
     ctaText: "Start Automating",
+    servicePath: "/services/power-platform",
+    servicePageLabel: "Power Platform",
   },
   Ready: {
     badge: "Enterprise Grade · From $12,000",
@@ -124,6 +134,8 @@ const TIER_UPSELLS: Record<string, TierUpsell> = {
       "Your environment is Copilot-ready — now make sure it scales safely. A complete Microsoft 365 governance framework built to enterprise standards, ensuring your Copilot deployment remains secure, compliant, and audit-ready as adoption grows.",
     slug: "governance-foundations-package",
     ctaText: "Build Your Governance Framework",
+    servicePath: "/services/governance",
+    servicePageLabel: "Governance",
   },
 };
 
@@ -562,30 +574,38 @@ function QuizModal({ onClose }: { onClose: () => void }) {
               {(() => {
                 const upsell = TIER_UPSELLS[results.tier] ?? TIER_UPSELLS["Developing"];
                 return (
-                  <div className="bg-[#0A2540] border border-primary/40 rounded-xl p-5 space-y-3">
-                    <div className="flex items-center gap-2">
-                      <span className="bg-primary/20 text-primary text-xs font-bold uppercase tracking-wider px-2.5 py-1 rounded-full">
+                  <div className="bg-primary/10 border border-primary/30 rounded-xl p-5 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <p className="text-primary text-xs font-bold uppercase tracking-wider">Recommended Next Step</p>
+                      <span className="text-primary text-xs font-semibold bg-primary/10 px-2.5 py-1 rounded-full border border-primary/30">
                         {upsell.badge}
                       </span>
                     </div>
-                    <div>
-                      <h4 className="text-white font-bold text-lg leading-snug">{upsell.name}</h4>
-                      <p className="text-white/65 text-sm mt-1 leading-relaxed">{upsell.description}</p>
-                    </div>
-                    <a
-                      href={`/crm/portal/onboarding/select?service=${upsell.slug}`}
-                      className="w-full py-3 px-6 bg-primary hover:bg-primary/90 text-white font-semibold rounded-lg transition-colors flex items-center justify-center gap-2"
-                      onClick={() => trackEvent("quiz_upsell_cta_click", { quiz_type: "copilot", tier: results.tier, score: results.totalScore, upsell_slug: upsell.slug })}
-                    >
-                      {upsell.ctaText} <ChevronRight className="w-4 h-4" />
-                    </a>
-                    <div className="text-center">
+                    <p className="text-white font-bold text-base">{upsell.name}</p>
+                    <p className="text-white/70 text-sm leading-relaxed">{upsell.description}</p>
+                    <div className="flex flex-col sm:flex-row gap-2 pt-1">
                       <a
-                        href={`/micro-offers#${upsell.slug}`}
-                        className="text-primary/80 hover:text-primary text-sm transition-colors"
-                        onClick={() => trackEvent("quiz_upsell_details_click", { quiz_type: "copilot", tier: results.tier, score: results.totalScore, upsell_slug: upsell.slug })}
+                        href={`/crm/portal/onboarding/select?service=${upsell.slug}`}
+                        className="flex-1 py-2.5 px-4 bg-primary hover:bg-primary/90 text-white font-semibold rounded-lg text-sm transition-colors flex items-center justify-center gap-1.5"
+                        onClick={() => trackEvent("quiz_upsell_cta_click", { quiz_type: "copilot", tier: results.tier, score: results.totalScore, upsell_slug: upsell.slug })}
                       >
-                        See full offer details →
+                        {upsell.ctaText} <ArrowRight className="w-3.5 h-3.5" />
+                      </a>
+                      <a
+                        href="/book"
+                        className="flex-1 py-2.5 px-4 border border-white/20 hover:border-white/40 text-white/80 hover:text-white font-semibold rounded-lg text-sm transition-colors flex items-center justify-center gap-1.5"
+                        onClick={() => trackEvent("quiz_upsell_book_click", { quiz_type: "copilot", tier: results.tier, score: results.totalScore })}
+                      >
+                        Book a Free Call
+                      </a>
+                    </div>
+                    <div className="text-center pt-1">
+                      <a
+                        href={upsell.servicePath}
+                        className="inline-flex items-center gap-1 text-primary/70 hover:text-primary text-sm transition-colors"
+                        onClick={() => trackEvent("quiz_service_page_click", { quiz_type: "copilot", tier: results.tier, score: results.totalScore, service_path: upsell.servicePath })}
+                      >
+                        Explore the {upsell.servicePageLabel} service <ArrowRight className="w-3 h-3" />
                       </a>
                     </div>
                   </div>
