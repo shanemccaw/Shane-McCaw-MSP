@@ -13,6 +13,7 @@ import { useServices, useServiceHasPdf, formatPriceDisplay } from "@/hooks/useSe
 import { EngagementProjectCard } from "@/components/EngagementProjectCard";
 import { useEngagementProjects } from "@/hooks/useEngagementProjects";
 import { OfferCard } from "@/components/OfferCard";
+import { useServicePageTriggerKeys } from "@/hooks/useServicePageTriggerKeys";
 
 const WHO_FOR = [
   { icon: <Building2 className="w-5 h-5 text-[#0078D4]" />, label: "Mid-market companies (200–2,000 employees)" },
@@ -65,9 +66,10 @@ export default function Microsoft365() {
   const { services, loading, error } = useServices("micro_offer");
   const { services: retainerServices, loading: retainerLoading } = useServices("retainer");
   const { projects: engagementProjects, loading: engagementLoading } = useEngagementProjects();
+  const { triggerKeys: m365TriggerKeys } = useServicePageTriggerKeys("microsoft-365");
 
   const matchedProjects = engagementProjects.filter(
-    (p) => p.isVisible && p.pages.includes("microsoft-365")
+    (p) => p.isVisible && p.triggeredBy.some((t) => m365TriggerKeys.includes(t))
   );
 
   const [modalOpen, setModalOpen] = useState(false);

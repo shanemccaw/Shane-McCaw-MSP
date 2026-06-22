@@ -4,6 +4,7 @@ import { seedAdminUser } from "./routes/auth";
 import { seedPortalDemo, seedServiceTemplates } from "./lib/seed-portal";
 import { seedEmailTemplates } from "./lib/seed-email-templates";
 import { initGraphSubscription } from "./lib/graph-subscription";
+import { seedServicePageTriggerKeys } from "./lib/seed-service-page-triggers";
 
 const rawPort = process.env["PORT"];
 
@@ -43,6 +44,12 @@ app.listen(port, (err) => {
     logger.info("Email templates seeded (no-op if exists)");
   }).catch((seedErr) => {
     logger.warn({ err: seedErr }, "Could not seed email templates");
+  });
+
+  seedServicePageTriggerKeys().then(() => {
+    logger.info("Service page trigger keys seeded (no-op if exists)");
+  }).catch((seedErr) => {
+    logger.warn({ err: seedErr }, "Could not seed service page trigger keys");
   });
 
   if (process.env.NODE_ENV !== "production") {

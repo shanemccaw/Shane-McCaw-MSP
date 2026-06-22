@@ -10,6 +10,7 @@ import { CheckCircle, ArrowRight, Zap, Building2, Shield, Users } from "lucide-r
 import { useServices, formatPriceDisplay, useServiceHasPdf } from "@/hooks/useServices";
 import { EngagementProjectCard } from "@/components/EngagementProjectCard";
 import { useEngagementProjects } from "@/hooks/useEngagementProjects";
+import { useServicePageTriggerKeys } from "@/hooks/useServicePageTriggerKeys";
 import FixedPriceOfferCard from "@/components/FixedPriceOfferCard";
 
 const comparisonRows = [
@@ -116,9 +117,10 @@ export default function PowerPlatform() {
   const { services, loading } = useServices();
   const { services: retainerServices, loading: retainerLoading } = useServices("retainer");
   const { projects: engagementProjects, loading: engagementLoading } = useEngagementProjects();
+  const { triggerKeys: powerPlatformTriggerKeys } = useServicePageTriggerKeys("power-platform");
 
   const matchedProjects = engagementProjects.filter(
-    (p) => p.isVisible && p.pages.includes("power-platform")
+    (p) => p.isVisible && p.triggeredBy.some((t) => powerPlatformTriggerKeys.includes(t))
   );
 
   const quickStartSvc = services.find((s) => s.slug === "power-platform-quickstart");

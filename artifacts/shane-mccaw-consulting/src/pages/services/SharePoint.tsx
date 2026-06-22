@@ -10,6 +10,7 @@ import { RetainerCard } from "@/components/RetainerCard";
 import { useServices, formatPriceDisplay, useServiceHasPdf } from "@/hooks/useServices";
 import { EngagementProjectCard } from "@/components/EngagementProjectCard";
 import { useEngagementProjects } from "@/hooks/useEngagementProjects";
+import { useServicePageTriggerKeys } from "@/hooks/useServicePageTriggerKeys";
 import FixedPriceOfferCard from "@/components/FixedPriceOfferCard";
 
 const comparisonRows = [
@@ -57,9 +58,10 @@ export default function SharePoint() {
   const { services, loading } = useServices();
   const { services: retainerServices, loading: retainerLoading } = useServices("retainer");
   const { projects: engagementProjects, loading: engagementLoading } = useEngagementProjects();
+  const { triggerKeys: sharepointTriggerKeys } = useServicePageTriggerKeys("sharepoint");
 
   const matchedProjects = engagementProjects.filter(
-    (p) => p.isVisible && p.pages.includes("sharepoint")
+    (p) => p.isVisible && p.triggeredBy.some((t) => sharepointTriggerKeys.includes(t))
   );
 
   const govSvc = services.find((s) => s.slug === "governance-foundations-package");

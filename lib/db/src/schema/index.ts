@@ -767,3 +767,14 @@ export const quickWinQuizResultsTable = pgTable("quick_win_quiz_results", {
 
 export type InsertQuickWinQuizResult = typeof quickWinQuizResultsTable.$inferInsert;
 export type QuickWinQuizResult = typeof quickWinQuizResultsTable.$inferSelect;
+
+// Service page trigger key mappings — which engagement project trigger keys each service page shows
+export const servicePageTriggerKeysTable = pgTable("service_page_trigger_keys", {
+  id: serial("id").primaryKey(),
+  pageSlug: text("page_slug").notNull().unique(),
+  triggerKeys: jsonb("trigger_keys").$type<string[]>().notNull().default([]),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export type ServicePageTriggerKey = typeof servicePageTriggerKeysTable.$inferSelect;
+export type InsertServicePageTriggerKey = typeof servicePageTriggerKeysTable.$inferInsert;

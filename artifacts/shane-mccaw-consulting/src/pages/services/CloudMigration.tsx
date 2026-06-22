@@ -9,6 +9,7 @@ import { AssessmentCTA } from "@/components/AssessmentCTA";
 import { useServices, formatPriceDisplay, useServiceHasPdf } from "@/hooks/useServices";
 import { EngagementProjectCard } from "@/components/EngagementProjectCard";
 import { useEngagementProjects } from "@/hooks/useEngagementProjects";
+import { useServicePageTriggerKeys } from "@/hooks/useServicePageTriggerKeys";
 import FixedPriceOfferCard from "@/components/FixedPriceOfferCard";
 
 const comparisonRows = [
@@ -91,9 +92,10 @@ export default function CloudMigration() {
   const { services, loading } = useServices();
   const { services: retainerServices, loading: retainerLoading } = useServices("retainer");
   const { projects: engagementProjects, loading: engagementLoading } = useEngagementProjects();
+  const { triggerKeys: cloudMigrationTriggerKeys } = useServicePageTriggerKeys("cloud-migration");
 
   const matchedProjects = engagementProjects.filter(
-    (p) => p.isVisible && p.pages.includes("cloud-migration")
+    (p) => p.isVisible && p.triggeredBy.some((t) => cloudMigrationTriggerKeys.includes(t))
   );
 
   const migSvc = services.find((s) => s.slug === "migration-readiness-assessment");

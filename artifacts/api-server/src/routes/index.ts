@@ -30,6 +30,8 @@ import adminEmailTemplatesRouter from "./admin-email-templates";
 import adminCouponsRouter from "./admin-coupons";
 import quizQuickWinRouter from "./quiz-quick-win";
 import quizSelectorRouter from "./quiz-selector";
+import adminServicePageTriggersRouter from "./admin-service-page-triggers";
+import publicServicePageTriggersRouter from "./public-service-page-triggers";
 
 const router: IRouter = Router();
 
@@ -51,6 +53,7 @@ router.use(leadsRouter);
 router.use(downloadsRouter);
 router.use(publicServicesRouter);
 router.use(publicEngagementProjectsRouter);
+router.use(publicServicePageTriggersRouter);
 router.use(portalRouter);
 router.use(auditLogsRouter);
 router.use(adminSharepointRouter);
@@ -64,5 +67,6 @@ router.use(adminEmailTemplatesRouter);
 router.use(adminCouponsRouter);
 router.use(quizQuickWinRouter);
 router.use(quizSelectorRouter);
+router.use(adminServicePageTriggersRouter);
 
 export default router;

@@ -38,6 +38,7 @@ import DeliverableSetsPage from "@/pages/asset-library/DeliverableSetsPage";
 import CategoriesPage from "@/pages/asset-library/CategoriesPage";
 import EmailTemplatesPage from "@/pages/EmailTemplates";
 import CouponsPage from "@/pages/Coupons";
+import ServicePageTriggersPage from "@/pages/ServicePageTriggers";
 import type { ReactNode } from "react";
 
 const queryClient = new QueryClient({
@@ -212,6 +213,9 @@ function Router() {
       </Route>
       <Route path="/coupons">
         <RequireAdmin><DashboardShell><CouponsPage /></DashboardShell></RequireAdmin>
+      </Route>
+      <Route path="/service-page-triggers">
+        <RequireAdmin><DashboardShell><ServicePageTriggersPage /></DashboardShell></RequireAdmin>
       </Route>
 
       <Route>
