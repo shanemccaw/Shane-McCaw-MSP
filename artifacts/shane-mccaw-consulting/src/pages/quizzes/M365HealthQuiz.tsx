@@ -11,23 +11,23 @@ const config: QuizConfig = {
   introDescription:
     "Answer 10 AI-powered questions across 5 health dimensions. Takes around 5 minutes. You'll receive a personalised PDF report and service recommendation by email.",
   categories: [
-    { key: "licensing", label: "Licensing & Entitlements" },
-    { key: "security", label: "Security & Identity" },
-    { key: "collaboration", label: "Collaboration Hygiene" },
-    { key: "adminGovernance", label: "Admin & Governance" },
-    { key: "adoption", label: "Adoption & Training" },
+    { key: "securityPosture", label: "Security Posture" },
+    { key: "identityConditionalAccess", label: "Identity & Conditional Access" },
+    { key: "collaborationSprawl", label: "Teams/SharePoint Sprawl" },
+    { key: "adminRolesShadowIT", label: "Admin Roles & Shadow IT" },
+    { key: "dlpSensitivityLabels", label: "DLP & Sensitivity Labels" },
   ],
   fallbackQuestions: [
-    "What Microsoft 365 licensing tier does your organisation currently have (e.g., Business Basic, Business Standard, E3, E5), and are all users on the same plan or a mix?",
-    "Are there any users in your tenant with licences they don't actively use — for example, former employees still licensed, or users with premium features they've never accessed?",
-    "Has your organisation deployed Multi-Factor Authentication (MFA) across all user accounts, or are there gaps — for example, shared accounts, service accounts, or contractors without MFA?",
-    "How would you describe your Azure Active Directory / Entra ID setup? Are all user identities managed in the cloud, synced from on-premises AD, or a mixed environment with inconsistencies?",
-    "Are your Teams and SharePoint environments structured and governed — with naming conventions, lifecycle policies, and clear ownership — or have they grown organically with teams and sites created ad hoc?",
-    "How is email security configured? Do you have DKIM, DMARC, and SPF records in place, and are your Exchange Online protection policies tuned beyond the defaults?",
-    "Who manages your Microsoft 365 tenant day-to-day, and how many users have Global Administrator rights? Are admin roles assigned using least-privilege principles?",
-    "Are you currently using any Microsoft 365 admin tools for monitoring — such as Microsoft 365 Admin Center, Microsoft Secure Score, or third-party monitoring — to proactively identify issues?",
-    "How would you rate overall end-user adoption of Microsoft 365 tools across your organisation? Are staff actively using Teams, SharePoint, and OneDrive, or defaulting to older habits?",
-    "Has your organisation provided any formal Microsoft 365 training to staff — such as onboarding sessions, self-paced learning paths, or department-specific enablement — or has adoption been largely self-serve?",
+    "What is your organisation's current Microsoft Secure Score, and do you actively review it? Have you configured Defender for Office 365 anti-phishing and anti-malware policies beyond the defaults?",
+    "Do you have DKIM, DMARC, and SPF email authentication records correctly published and enforced for all your domains, or are some domains still using default settings?",
+    "Has your organisation deployed Multi-Factor Authentication across all user accounts — including shared accounts, service accounts, and contractors — or are there gaps in MFA coverage?",
+    "Have you configured Conditional Access policies in Entra ID? Do policies enforce compliant devices, block legacy authentication, or restrict access based on location or risk signals?",
+    "How would you describe your Teams and SharePoint environments — are they structured with naming conventions, lifecycle policies, and clear ownership, or have they grown organically with ad hoc creation?",
+    "Do you have visibility into how many Teams, SharePoint sites, and Microsoft 365 Groups exist in your tenant? Are there inactive or ownerless sites and groups that haven't been reviewed or archived?",
+    "How many users in your tenant have Global Administrator rights, and are admin roles assigned using least-privilege principles? Are Privileged Identity Management (PIM) or just-in-time access controls in use?",
+    "Are you aware of unsanctioned apps or services your staff are using to work around Microsoft 365 limitations — for example, personal cloud storage, external messaging tools, or unapproved third-party apps?",
+    "Have you deployed Microsoft Purview sensitivity labels across your tenant? Are labels applied automatically to sensitive content, or is labelling entirely manual and inconsistent?",
+    "Do you have Data Loss Prevention (DLP) policies configured in Microsoft Purview, and do those policies actively block or alert on sharing of sensitive data — such as PII, financial data, or classified content?",
   ],
   tierUpsells: {
     Beginner: {
@@ -77,11 +77,11 @@ const config: QuizConfig = {
 };
 
 const PILLARS = [
-  { label: "Licensing & Entitlements", desc: "Are you paying for licences your organisation isn't using? Are users on the right plans for their roles?" },
-  { label: "Security & Identity", desc: "MFA coverage, Entra ID configuration, admin role hygiene, and your Microsoft Secure Score baseline." },
-  { label: "Collaboration Hygiene", desc: "Teams and SharePoint sprawl, naming conventions, lifecycle policies, and email security configuration." },
-  { label: "Admin & Governance", desc: "Who's managing your tenant, how many Global Admins exist, and what monitoring is in place?" },
-  { label: "Adoption & Training", desc: "Are staff actually using the tools you're paying for, and have they been trained to use them effectively?" },
+  { label: "Security Posture", desc: "Microsoft Secure Score engagement, Defender for Office 365 configuration, email authentication (DKIM/DMARC/SPF), and anti-phishing policy coverage." },
+  { label: "Identity & Conditional Access", desc: "MFA coverage across all accounts, Conditional Access policy breadth, Entra ID configuration, and privileged identity management practices." },
+  { label: "Teams/SharePoint Sprawl", desc: "Teams and SharePoint governance — naming conventions, site and team lifecycle policies, guest access controls, and indicators of unmanaged sprawl." },
+  { label: "Admin Roles & Shadow IT", desc: "Global Admin count, least-privilege role assignment, monitoring tools in use, and awareness of unsanctioned apps and workarounds." },
+  { label: "DLP & Sensitivity Labels", desc: "Sensitivity label deployment and coverage, DLP policy configuration and enforcement scope, and overall data classification and information protection maturity." },
 ];
 
 export default function M365HealthQuiz() {

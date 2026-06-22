@@ -513,7 +513,7 @@ export default function CloudMigration() {
                 Get an AI-powered snapshot of your migration readiness across infrastructure, data, security, and project management — with a free PDF report.
               </p>
             </div>
-            <a href="/migration-quiz"
+            <a href="/migration-readiness-quiz"
               className="flex-shrink-0 inline-flex items-center gap-2 bg-[#0078D4] hover:bg-[#0078D4]/90 text-white font-bold px-8 py-4 rounded-xl transition-colors text-base">
               Take the Free Assessment
             </a>

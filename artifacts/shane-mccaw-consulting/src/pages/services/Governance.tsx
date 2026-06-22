@@ -533,7 +533,7 @@ export default function Governance() {
                 Benchmark your M365 governance posture across policy, lifecycle management, data protection, and compliance — get a free PDF report instantly.
               </p>
             </div>
-            <a href="/governance-quiz"
+            <a href="/governance-maturity-quiz"
               className="flex-shrink-0 inline-flex items-center gap-2 bg-[#0078D4] hover:bg-[#0078D4]/90 text-white font-bold px-8 py-4 rounded-xl transition-colors text-base">
               Take the Free Assessment
             </a>

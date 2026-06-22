@@ -453,7 +453,7 @@ export default function SharePoint() {
                 Find out where your SharePoint environment stands across governance, search, adoption, and security — with a personalised PDF report.
               </p>
             </div>
-            <a href="/sharepoint-quiz"
+            <a href="/sharepoint-readiness-quiz"
               className="flex-shrink-0 inline-flex items-center gap-2 bg-[#0078D4] hover:bg-[#0078D4]/90 text-white font-bold px-8 py-4 rounded-xl transition-colors text-base">
               Take the Free Assessment
             </a>

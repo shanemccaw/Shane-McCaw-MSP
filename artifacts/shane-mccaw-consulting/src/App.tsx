@@ -74,12 +74,12 @@ function Router() {
       <Route path="/customer-command-center" component={CustomerCommandCenter} />
       <Route path="/copilot-quiz" component={CopilotQuiz} />
       <Route path="/m365-health-quiz" component={M365HealthQuiz} />
-      <Route path="/sharepoint-quiz" component={SharePointQuiz} />
-      <Route path="/power-platform-quiz" component={PowerPlatformQuiz} />
-      <Route path="/security-quiz" component={SecurityQuiz} />
-      <Route path="/teams-quiz" component={TeamsQuiz} />
-      <Route path="/migration-quiz" component={MigrationQuiz} />
-      <Route path="/governance-quiz" component={GovernanceQuiz} />
+      <Route path="/sharepoint-readiness-quiz" component={SharePointQuiz} />
+      <Route path="/power-platform-readiness-quiz" component={PowerPlatformQuiz} />
+      <Route path="/security-compliance-quiz" component={SecurityQuiz} />
+      <Route path="/teams-maturity-quiz" component={TeamsQuiz} />
+      <Route path="/migration-readiness-quiz" component={MigrationQuiz} />
+      <Route path="/governance-maturity-quiz" component={GovernanceQuiz} />
       <Route path="/retainers" component={RetainersOverview} />
       <Route path="/retainers/architect-essentials" component={ArchitectEssentials} />
       <Route path="/retainers/architect-growth" component={ArchitectGrowth} />

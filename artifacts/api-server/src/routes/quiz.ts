@@ -231,12 +231,12 @@ const SCORING_CONFIGS: Record<string, ScoringConfig> = {
     pdfFilename: "copilot-readiness-report.pdf",
   },
   "m365-health": {
-    categories: `- licensing: M365 licensing tiers, licence utilisation, wasted licences, plan appropriateness
-- security: MFA coverage, Entra ID setup, admin role hygiene, identity management
-- collaboration: Teams/SharePoint governance, naming conventions, email security (DKIM/DMARC/SPF)
-- adminGovernance: Admin centre usage, monitoring tools, Global Admin count, least-privilege practices
-- adoption: End-user adoption levels, formal training, enablement programmes`,
-    categoryKeys: "licensing, security, collaboration, adminGovernance, adoption",
+    categories: `- securityPosture: Microsoft Secure Score engagement, Defender for Office 365 configuration, anti-phishing and anti-malware policies, DKIM/DMARC/SPF email authentication
+- identityConditionalAccess: MFA coverage across all accounts, Conditional Access policy breadth and enforcement, Entra ID configuration, privileged identity management
+- collaborationSprawl: Teams and SharePoint governance — naming conventions, site/team lifecycle policies, guest access controls, sprawl and shadow IT indicators
+- adminRolesShadowIT: Global Admin count and least-privilege practices, admin role hygiene, monitoring tools in use, shadow IT and unsanctioned app usage
+- dlpSensitivityLabels: Sensitivity label deployment and coverage, DLP policy configuration and scope, data classification maturity, information protection readiness`,
+    categoryKeys: "securityPosture, identityConditionalAccess, collaborationSprawl, adminRolesShadowIT, dlpSensitivityLabels",
     services: `- "M365 Tenant Health Audit" — comprehensive audit for tenants with configuration gaps, security issues, or governance debt
 - "Copilot for M365 Readiness Assessment" — for mature tenants ready to evaluate Copilot deployment
 - "Governance Foundations Package" — for tenants that need formal governance after addressing health issues`,

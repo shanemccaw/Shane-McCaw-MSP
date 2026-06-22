@@ -278,6 +278,88 @@ export default function Resources() {
         </div>
       </section>
 
+      {/* ── FREE ASSESSMENTS ─────────────────────────────────────────────── */}
+      <section className="bg-[#F7F9FC] py-20">
+        <div className="max-w-[1200px] mx-auto px-6">
+          <div className="text-center mb-12">
+            <p className="text-[#0078D4] text-sm font-semibold uppercase tracking-[0.12em] mb-3">Free · AI-Powered · 5 Minutes</p>
+            <h2 className="text-3xl font-extrabold text-[#0A2540] mb-4">Free Assessment Quizzes</h2>
+            <p className="text-muted-foreground max-w-xl mx-auto">
+              Take a free AI-powered quiz to benchmark your organisation across any Microsoft 365 domain. You'll receive a personalised PDF report and recommended next step by email.
+            </p>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+            {[
+              {
+                href: "/copilot-quiz",
+                title: "Copilot Readiness",
+                description: "Is your tenant ready for Microsoft 365 Copilot? Score across infrastructure, data, AI literacy, change management, and business process.",
+                badge: "Most Popular",
+              },
+              {
+                href: "/m365-health-quiz",
+                title: "M365 Health Check",
+                description: "Benchmark your tenant health across security posture, identity, Conditional Access, collaboration sprawl, and data protection.",
+                badge: null,
+              },
+              {
+                href: "/sharepoint-readiness-quiz",
+                title: "SharePoint & Intranet Readiness",
+                description: "Assess your SharePoint architecture, permissions governance, search quality, content lifecycle, and adoption depth.",
+                badge: null,
+              },
+              {
+                href: "/power-platform-readiness-quiz",
+                title: "Power Platform Maturity",
+                description: "Measure your Power Platform governance, maker skills, data connectivity, automation maturity, and AI Builder readiness.",
+                badge: null,
+              },
+              {
+                href: "/security-compliance-quiz",
+                title: "Security & Compliance Maturity",
+                description: "Evaluate your identity & access controls, data protection, device management, threat detection, and compliance framework readiness.",
+                badge: null,
+              },
+              {
+                href: "/teams-maturity-quiz",
+                title: "Teams Collaboration Maturity",
+                description: "Score your Teams governance, meetings & calling setup, information architecture, adoption culture, and app governance.",
+                badge: null,
+              },
+              {
+                href: "/migration-readiness-quiz",
+                title: "Migration Readiness",
+                description: "Check your source inventory accuracy, identity readiness, data governance, stakeholder alignment, and risk planning completeness.",
+                badge: null,
+              },
+              {
+                href: "/governance-maturity-quiz",
+                title: "Governance Maturity",
+                description: "Assess your DLP & sensitivity labels, retention & records management, access governance, compliance framework, and policy documentation.",
+                badge: null,
+              },
+            ].map((q) => (
+              <a
+                key={q.href}
+                href={q.href}
+                className="group bg-white border border-border rounded-xl p-6 hover:shadow-lg hover:-translate-y-1 transition-all duration-300 flex flex-col"
+              >
+                {q.badge && (
+                  <span className="inline-block bg-[#00B4D8]/10 text-[#00B4D8] text-[10px] font-bold uppercase tracking-widest px-2.5 py-1 rounded-full mb-3 w-fit">
+                    {q.badge}
+                  </span>
+                )}
+                <h3 className="text-base font-bold text-[#0A2540] mb-2 group-hover:text-[#0078D4] transition-colors leading-snug">{q.title}</h3>
+                <p className="text-muted-foreground text-sm leading-relaxed flex-1">{q.description}</p>
+                <p className="text-[#0078D4] text-sm font-semibold mt-4 flex items-center gap-1 group-hover:gap-2 transition-all">
+                  Take Free Assessment <ArrowRight className="w-3.5 h-3.5" />
+                </p>
+              </a>
+            ))}
+          </div>
+        </div>
+      </section>
+
       <ConsultationCTA />
     </Layout>
   );

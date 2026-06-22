@@ -525,7 +525,7 @@ export default function PowerPlatform() {
                 Discover your Power Platform maturity across governance, automation depth, and citizen developer enablement — with a free AI-powered report.
               </p>
             </div>
-            <a href="/power-platform-quiz"
+            <a href="/power-platform-readiness-quiz"
               className="flex-shrink-0 inline-flex items-center gap-2 bg-[#0078D4] hover:bg-[#0078D4]/90 text-white font-bold px-8 py-4 rounded-xl transition-colors text-base">
               Take the Free Assessment
             </a>
