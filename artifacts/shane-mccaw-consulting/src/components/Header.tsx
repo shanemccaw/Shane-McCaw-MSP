@@ -56,6 +56,7 @@ const SERVICES_ITEMS: NavItem[] = withIcons([
 ]);
 
 const MICRO_OFFERS_ITEMS: NavItem[] = withIcons([
+  { label: "All Quick Wins",                       href: "/micro-offers" },
   { label: "Tenant Health Audit",                 href: "/micro-offers/tenant-health-audit" },
   { label: "Power Platform Quick-Start",          href: "/micro-offers/power-platform-quick-start" },
   { label: "Governance Foundations",              href: "/micro-offers/governance-foundations" },
