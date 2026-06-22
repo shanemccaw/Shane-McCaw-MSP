@@ -1,7 +1,22 @@
 #!/bin/bash
 set -e
 pnpm install --frozen-lockfile
-pnpm --filter @workspace/db push-force
+
+# Apply pending Drizzle-generated SQL migrations to the dev database.
+# Uses the journal-based migrate-dev runner (not drizzle-kit push) so that:
+#   - Each migration is tracked in __drizzle_migrations and never re-applied.
+#   - "Already exists" errors (column/table/constraint) are handled gracefully
+#     via savepoints — safe when the dev DB was patched by hand before tracking.
+#   - No interactive TTY prompts are required (push/push-force can hang or fail
+#     in non-interactive post-merge shells when schema changes need confirmation).
+echo "Applying pending migrations to dev database…"
+if pnpm --filter @workspace/scripts run migrate-dev; then
+  echo "Dev database migrations applied."
+else
+  echo "ERROR: migrate-dev failed — see output above."
+  echo "Fix the migration error, then run: pnpm --filter @workspace/scripts run migrate-dev"
+  exit 1
+fi
 
 # Verify Stripe webhook endpoints are registered for every production domain.
 # This is a check-only pass (no --fix) so it never blocks a deploy.

@@ -193,14 +193,12 @@ function main(): void {
   // Auto-apply reminder
   // =========================================================================
   console.log(bold("\n3. Auto-apply coverage"));
-  console.log(
-    dim(`   migrate-prod Phase 2 reads _journal.json and applies each entry's SQL file`)
-  );
-  console.log(
-    dim(`   via the __drizzle_migrations tracking table. No manual editing of migrate-prod.ts`)
-  );
-  console.log(dim(`   is needed when the schema changes — just run generate and migrate-prod.`)
-  );
+  console.log(dim(`   Dev  (DATABASE_URL):      pnpm --filter @workspace/scripts run migrate-dev`));
+  console.log(dim(`   Prod (PROD_DATABASE_URL): pnpm --filter @workspace/scripts run migrate-prod`));
+  console.log(dim(`   Both runners read _journal.json and track applied entries in`));
+  console.log(dim(`   __drizzle_migrations — no manual editing needed when the schema`));
+  console.log(dim(`   grows. post-merge.sh calls migrate-dev automatically on every merge.`));
+  console.log(dim(`   New changes: edit schema → run generate → run migrate-dev (dev) / migrate-prod (prod).`));
 
   // =========================================================================
   // Summary
