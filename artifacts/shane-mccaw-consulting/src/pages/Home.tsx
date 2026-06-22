@@ -183,6 +183,12 @@ export default function Home() {
               Explore the Client Portal <ArrowRight className="w-4 h-4" />
             </a>
           </div>
+          <p className="mt-5 text-white/50 text-sm">
+            Not sure where to start?{" "}
+            <a href="/quick-win-quiz" className="text-white/70 hover:text-white underline underline-offset-2 transition-colors">
+              Take the 2-min quiz →
+            </a>
+          </p>
           <div className="mt-14 pt-10 border-t border-white/10 flex flex-wrap items-center justify-center gap-x-8 gap-y-3 text-white/50 text-sm font-medium">
             {[
               "Fractional M365 Architecture",
