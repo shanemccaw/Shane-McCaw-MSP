@@ -24,6 +24,7 @@ import adminAssetLibraryRouter from "./admin-asset-library";
 import quizRouter from "./quiz";
 import adminQuizLeadsRouter from "./admin-quiz-leads";
 import contactChatRouter from "./contact-chat";
+import analyticsRouter from "./analytics";
 
 const router: IRouter = Router();
 
@@ -52,5 +53,6 @@ router.use(adminAssetLibraryRouter);
 router.use(quizRouter);
 router.use(adminQuizLeadsRouter);
 router.use(contactChatRouter);
+router.use(analyticsRouter);
 
 export default router;

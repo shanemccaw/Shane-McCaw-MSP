@@ -1,5 +1,6 @@
 import { Switch, Route, Router as WouterRouter, useLocation } from "wouter";
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
+import { initTracker, trackPageview } from "@/lib/analytics";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -48,10 +49,26 @@ function ScrollToTop() {
   return null;
 }
 
+function AnalyticsTracker() {
+  const [location] = useLocation();
+  const initialized = useRef(false);
+  useEffect(() => {
+    if (!initialized.current) {
+      initialized.current = true;
+      initTracker();
+    }
+  }, []);
+  useEffect(() => {
+    void trackPageview(location);
+  }, [location]);
+  return null;
+}
+
 function Router() {
   return (
     <>
       <ScrollToTop />
+      <AnalyticsTracker />
       <Switch>
       <Route path="/" component={Home} />
       <Route path="/about" component={About} />

@@ -661,3 +661,43 @@ export const quizAnalyticsEventsTable = pgTable("quiz_analytics_events", {
   properties: jsonb("properties").$type<Record<string, string | number | boolean>>().notNull().default({}),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
+
+// ── Site Analytics ─────────────────────────────────────────────────────────────
+export const analyticsSessionsTable = pgTable("analytics_sessions", {
+  sessionId: text("session_id").primaryKey(),
+  entryPage: text("entry_page").notNull().default("/"),
+  referrer: text("referrer"),
+  utmSource: text("utm_source"),
+  utmMedium: text("utm_medium"),
+  utmCampaign: text("utm_campaign"),
+  utmContent: text("utm_content"),
+  utmTerm: text("utm_term"),
+  deviceType: text("device_type"),
+  browser: text("browser"),
+  startedAt: timestamp("started_at").notNull().defaultNow(),
+  lastSeenAt: timestamp("last_seen_at").notNull().defaultNow(),
+  totalSeconds: integer("total_seconds").notNull().default(0),
+  isBounce: boolean("is_bounce").notNull().default(true),
+});
+
+export const analyticsPageviewsTable = pgTable("analytics_pageviews", {
+  id: serial("id").primaryKey(),
+  sessionId: text("session_id").notNull(),
+  page: text("page").notNull(),
+  title: text("title"),
+  enteredAt: timestamp("entered_at").notNull().defaultNow(),
+  exitedAt: timestamp("exited_at"),
+  durationSeconds: integer("duration_seconds"),
+  maxScrollPct: integer("max_scroll_pct").notNull().default(0),
+});
+
+export const analyticsSiteEventsTable = pgTable("analytics_site_events", {
+  id: serial("id").primaryKey(),
+  sessionId: text("session_id").notNull(),
+  page: text("page").notNull(),
+  eventType: text("event_type").notNull(),
+  elementLabel: text("element_label"),
+  elementHref: text("element_href"),
+  metadata: jsonb("metadata").$type<Record<string, unknown>>().default({}),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});

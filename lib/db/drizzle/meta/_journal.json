@@ -239,6 +239,13 @@
       "when": 1750464002000,
       "tag": "0033_quiz_analytics_events",
       "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1750550402000,
+      "tag": "0034_site_analytics",
+      "breakpoints": true
     }
   ]
 }
