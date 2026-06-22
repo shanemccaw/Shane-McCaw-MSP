@@ -4,57 +4,15 @@ import { SEOMeta } from "@/components/SEOMeta";
 import { Layout } from "@/components/Layout";
 import {
   CheckCircle, ArrowRight, Shield, Users, Building2, Zap, AlertCircle,
-  DollarSign, Clock,
+  Clock,
 } from "lucide-react";
-
-const comparisonRows = [
-  {
-    label: "Best For",
-    fixedPrice: "Organizations with a specific, scoped problem to solve — audit, assessment, or configuration",
-    essentials: "Organizations needing regular advisory, architecture reviews, and escalation support",
-    growth: "Organizations running active M365 programs that need embedded senior architect capacity",
-  },
-  {
-    label: "Scope",
-    fixedPrice: "Discrete deliverable defined upfront — one scoped project, one clear output",
-    essentials: "10 hrs/mo advisory, architecture reviews, roadmap validation, and escalation support",
-    growth: "25–50 hrs/mo roadmap execution, governance implementation, and IT team mentoring",
-  },
-  {
-    label: "Timeline",
-    fixedPrice: "1–4 weeks (project-specific)",
-    essentials: "Ongoing — month-to-month",
-    growth: "Ongoing — month-to-month",
-  },
-  {
-    label: "Price",
-    fixedPrice: "Varies by package — see the pricing page",
-    essentials: "$2,500/mo",
-    growth: "$6,000–$11,000/mo",
-  },
-  {
-    label: "Key Deliverables",
-    fixedPrice: "Defined deliverable per offer: readiness report, governance playbook, or configured environment",
-    essentials: "Advisory hours, architecture reviews, escalation access, monthly progress check-in",
-    growth: "Roadmap execution, governance implementation, IT team mentoring, executive reporting",
-  },
-  {
-    label: "Ongoing Support",
-    fixedPrice: "One-time engagement — can roll directly into a retainer for continued partnership",
-    essentials: "Continuous — cancel or adjust with 30-day notice",
-    growth: "Continuous — cancel or adjust with 30-day notice",
-  },
-];
 import { Link } from "wouter";
 import { CTAButton } from "@/components/CTAButton";
 import { AssessmentCTA } from "@/components/AssessmentCTA";
-import { OfferCard } from "@/components/OfferCard";
-import { RetainerCard } from "@/components/RetainerCard";
-import { useServices, useServiceHasPdf } from "@/hooks/useServices";
+import { useServices, useServiceHasPdf, formatPriceDisplay } from "@/hooks/useServices";
 import { EngagementProjectCard } from "@/components/EngagementProjectCard";
 import { useEngagementProjects } from "@/hooks/useEngagementProjects";
-import FixedPriceOfferCard from "@/components/FixedPriceOfferCard";
-
+import { OfferCard } from "@/components/OfferCard";
 
 const WHO_FOR = [
   { icon: <Building2 className="w-5 h-5 text-[#0078D4]" />, label: "Mid-market companies (200–2,000 employees)" },
@@ -80,6 +38,27 @@ const WHY_SHANE = [
     title: "Practitioner, Not a Generalist",
     desc: "Shane doesn't subcontract or hand your project to a junior team. He does the work himself, with direct accountability for every recommendation and implementation.",
   },
+];
+
+const PROBLEMS = [
+  "Teams and SharePoint sprawl — hundreds of ungoverned sites and teams",
+  "Overshared content with no sensitivity labels or DLP policies",
+  "Excessive global admins and over-privileged service accounts",
+  "Legacy authentication still enabled, bypassing Conditional Access",
+  "No retention or deletion policies — rising compliance exposure",
+  "No lifecycle governance — expired groups persist indefinitely",
+  "No provisioning standards — every team is configured differently",
+  "No security baselines — Secure Score ignored, defaults left in place",
+];
+
+const WHAT_YOU_GET = [
+  "A governed tenant with documented policies and enforced standards",
+  "A secure identity plane — MFA, Conditional Access, PIM in place",
+  "A compliant data estate — sensitivity labels, DLP, and retention active",
+  "A rationalized Teams and SharePoint architecture with a provisioning model",
+  "A modernized security posture aligned to your regulatory requirements",
+  "A prioritized remediation roadmap you can hand to your IT team",
+  "A clear operating model so governance doesn't drift again",
 ];
 
 const M365_TRIGGER_KEYS = ["M365 Tenant Health Audit"];
@@ -136,10 +115,13 @@ export default function Microsoft365() {
           <p className="text-white/65 text-xl mt-6 max-w-2xl leading-relaxed">
             NASA-proven Microsoft 365 expertise for mid-market and regulated organizations.
           </p>
+          <p className="text-white/40 text-sm mt-3 max-w-xl">
+            Built on the same architecture principles Shane applied as NASA's Lead M365 Architect.
+          </p>
           <div className="mt-10 flex flex-wrap gap-4 items-center">
             <CTAButton href="/book">Book a Free Discovery Call</CTAButton>
             <a
-              href="/crm/portal/onboarding/select?service=m365-tenant-health-audit"
+              href="/crm/portal/onboarding/select"
               className="inline-flex items-center gap-2 text-white/80 font-semibold hover:text-white transition-colors text-sm border border-white/20 px-6 py-3 rounded-xl hover:border-white/40"
             >
               Get Started <ArrowRight className="w-4 h-4" />
@@ -156,7 +138,7 @@ export default function Microsoft365() {
         </div>
       </section>
 
-      {/* ── OVERVIEW ─────────────────────────────────────────────────────── */}
+      {/* ── WHY THIS MATTERS ─────────────────────────────────────────────── */}
       <section className="bg-white py-20">
         <div className="max-w-[1200px] mx-auto px-6">
           <div className="max-w-3xl mx-auto text-center">
@@ -168,29 +150,64 @@ export default function Microsoft365() {
               Microsoft 365 is the operating system of the modern organization — email, identity, collaboration, compliance, and automation all run through it. Yet most deployments are under-configured, under-governed, and under-utilized.
             </p>
             <p className="text-muted-foreground text-lg leading-relaxed mt-4">
+              Architecture is the missing layer. Most organizations deploy M365 and assume it's configured. It isn't. Without deliberate architecture, governance, and operational standards, every new team, site, and app adds to the debt.
+            </p>
+            <p className="text-muted-foreground text-lg leading-relaxed mt-4">
               Shane provides senior-level architecture, governance, and modernization services through fixed-price Quick Win packages and fractional architecture retainers — so you get NASA-grade expertise without the cost of a full-time hire.
             </p>
           </div>
         </div>
       </section>
 
-      {/* ── FIXED-PRICE ENGAGEMENT ───────────────────────────────────────── */}
+      {/* ── COMMON PROBLEMS WE FIX ───────────────────────────────────────── */}
       <section className="bg-[#F7F9FC] py-20">
         <div className="max-w-[1200px] mx-auto px-6">
-          <div className="text-center mb-12">
-            <p className="text-[#0078D4] text-sm font-semibold uppercase tracking-[0.12em] mb-3">Fixed-Price Engagement</p>
-            <h2 className="text-3xl md:text-4xl font-extrabold text-[#0A2540]">M365 Tenant Health Audit</h2>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-start">
+            <div>
+              <p className="text-[#0078D4] text-sm font-semibold uppercase tracking-[0.12em] mb-4">Common Problems</p>
+              <h2 className="text-3xl md:text-4xl font-extrabold text-[#0A2540] mb-6">
+                What We Fix
+              </h2>
+              <p className="text-muted-foreground leading-relaxed mb-8">
+                Most tenants have accumulated years of configuration drift. These are the patterns Shane sees in almost every engagement.
+              </p>
+              <ul className="space-y-3">
+                {PROBLEMS.map((problem) => (
+                  <li key={problem} className="flex items-start gap-3">
+                    <AlertCircle className="w-5 h-5 text-[#0078D4] flex-shrink-0 mt-0.5" />
+                    <span className="text-[#0A2540] text-sm leading-relaxed">{problem}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+
+            <div>
+              <p className="text-[#0078D4] text-sm font-semibold uppercase tracking-[0.12em] mb-4">Outcomes</p>
+              <h2 className="text-3xl md:text-4xl font-extrabold text-[#0A2540] mb-6">
+                What You Get
+              </h2>
+              <p className="text-muted-foreground leading-relaxed mb-8">
+                Every engagement — from a Quick Win audit to a full retainer — moves your tenant closer to this state.
+              </p>
+              <ul className="space-y-3">
+                {WHAT_YOU_GET.map((item) => (
+                  <li key={item} className="flex items-start gap-3">
+                    <CheckCircle className="w-5 h-5 text-[#0078D4] flex-shrink-0 mt-0.5" />
+                    <span className="text-[#0A2540] text-sm leading-relaxed">{item}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
           </div>
-          <FixedPriceOfferCard slug="m365-tenant-health-audit" ctaLabel="Get Started" />
         </div>
       </section>
 
       {/* ── QUICK WIN SUITE ──────────────────────────────────────────────── */}
-      <section className="bg-[#F7F9FC] py-20">
+      <section className="bg-white py-20">
         <div className="max-w-[1200px] mx-auto px-6">
           <div className="text-center mb-12">
-            <p className="text-[#0078D4] text-sm font-semibold uppercase tracking-[0.12em] mb-3">Fixed-Price Engagements</p>
-            <h2 className="text-3xl md:text-4xl font-extrabold text-[#0A2540]">Quick Win Suite</h2>
+            <p className="text-[#0078D4] text-sm font-semibold uppercase tracking-[0.12em] mb-3">Track 01 · Entry Tier</p>
+            <h2 className="text-3xl md:text-4xl font-extrabold text-[#0A2540]">Recommended Quick Wins</h2>
             <p className="text-muted-foreground mt-4 max-w-xl mx-auto">
               Scoped, delivered, and priced upfront. No retainer required to get started.
             </p>
@@ -198,7 +215,7 @@ export default function Microsoft365() {
 
           {loading && (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {Array.from({ length: 6 }).map((_, i) => (
+              {Array.from({ length: 3 }).map((_, i) => (
                 <div key={i} className="bg-white border border-border rounded-2xl p-6 flex flex-col gap-4 animate-pulse">
                   <div className="w-10 h-10 rounded-xl bg-[#0078D4]/10" />
                   <div className="space-y-2">
@@ -246,8 +263,8 @@ export default function Microsoft365() {
         <section className="bg-[#F7F9FC] py-20">
           <div className="max-w-[1200px] mx-auto px-6">
             <div className="text-center mb-12">
-              <p className="text-[#0078D4] text-sm font-semibold uppercase tracking-[0.12em] mb-3">Project Engagements</p>
-              <h2 className="text-3xl md:text-4xl font-extrabold text-[#0A2540]">Common Project Engagements</h2>
+              <p className="text-[#0078D4] text-sm font-semibold uppercase tracking-[0.12em] mb-3">Track 02 · Core Tier</p>
+              <h2 className="text-3xl md:text-4xl font-extrabold text-[#0A2540]">Recommended Projects</h2>
               <p className="text-muted-foreground mt-4 max-w-xl mx-auto">
                 Most M365 health audits surface deeper work. Shane can lead that work through a scoped project engagement.
               </p>
@@ -269,34 +286,57 @@ export default function Microsoft365() {
         </section>
       )}
 
-      {/* ── RETAINERS ────────────────────────────────────────────────────── */}
+      {/* ── FRACTIONAL RETAINERS (COMPACT) ───────────────────────────────── */}
       <section className="bg-white py-20">
         <div className="max-w-[1200px] mx-auto px-6">
-          <div className="text-center mb-12">
-            <p className="text-[#0078D4] text-sm font-semibold uppercase tracking-[0.12em] mb-3">Ongoing Partnership</p>
-            <h2 className="text-3xl md:text-4xl font-extrabold text-[#0A2540]">Fractional M365 Architect Retainers</h2>
+          <div className="text-center mb-10">
+            <p className="text-[#0078D4] text-sm font-semibold uppercase tracking-[0.12em] mb-3">Track 03 · Strategic Tier</p>
+            <h2 className="text-3xl md:text-4xl font-extrabold text-[#0A2540]">Fractional Architecture Retainers</h2>
             <p className="text-muted-foreground mt-4 max-w-xl mx-auto">
               Embedded architecture leadership on a monthly basis — strategy, governance, roadmap execution, and escalation support.
             </p>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-4xl mx-auto">
-            {retainerLoading
-              ? [0, 1, 2].map((i) => (
-                  <div key={i} className="rounded-2xl p-8 border bg-white border-border animate-pulse">
-                    <div className="h-5 w-32 bg-gray-200 rounded mb-4" />
-                    <div className="h-10 w-24 bg-gray-200 rounded mb-2" />
-                    <div className="h-4 w-20 bg-gray-200 rounded mb-4" />
-                    <div className="h-16 bg-gray-100 rounded" />
+
+          {retainerLoading ? (
+            <div className="space-y-3 max-w-3xl mx-auto">
+              {[0, 1, 2].map((i) => (
+                <div key={i} className="h-16 rounded-xl bg-muted animate-pulse" />
+              ))}
+            </div>
+          ) : (
+            <div className="max-w-3xl mx-auto divide-y divide-border border border-border rounded-2xl overflow-hidden">
+              {retainerServices.map((tier) => (
+                <div key={tier.slug ?? tier.name} className="flex items-center justify-between gap-4 px-6 py-5 bg-white hover:bg-[#F7F9FC] transition-colors">
+                  <div className="flex-1 min-w-0">
+                    <p className="font-bold text-[#0A2540] leading-snug">{tier.name}</p>
+                    {tier.hoursPerMonth && (
+                      <p className="text-sm text-muted-foreground mt-0.5 flex items-center gap-1.5">
+                        <Clock className="w-3.5 h-3.5 flex-shrink-0" />
+                        {tier.hoursPerMonth} hrs/mo
+                      </p>
+                    )}
                   </div>
-                ))
-              : retainerServices.map((tier, i) => (
-                  <RetainerCard key={tier.slug ?? tier.name} plan={tier} index={i} />
-                ))}
-          </div>
+                  <div className="text-right flex-shrink-0">
+                    <p className="font-extrabold text-[#0A2540] text-lg leading-none">
+                      {formatPriceDisplay(tier)}
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-1">per month</p>
+                  </div>
+                  <Link
+                    href={tier.pageHref ?? "/retainers"}
+                    className="flex-shrink-0 inline-flex items-center gap-1.5 text-[#0078D4] text-sm font-semibold hover:underline"
+                  >
+                    Learn more <ArrowRight className="w-3.5 h-3.5" />
+                  </Link>
+                </div>
+              ))}
+            </div>
+          )}
+
           <p className="text-center text-sm text-muted-foreground mt-6">
             All retainers are month-to-month. Cancel anytime.{" "}
-            <Link href="/pricing" className="text-[#0078D4] hover:underline font-medium">
-              See full pricing →
+            <Link href="/retainers" className="text-[#0078D4] hover:underline font-medium">
+              See full retainer details →
             </Link>
           </p>
         </div>
@@ -363,149 +403,20 @@ export default function Microsoft365() {
         </div>
       </section>
 
+      {/* ── ARCHITECTURE READINESS QUIZ ──────────────────────────────────── */}
       <AssessmentCTA
-        label="Free M365 Health Assessment"
-        title="Not Sure How Healthy Your M365 Tenant Is?<br class='hidden sm:block' /> Take the Free Assessment."
-        description="Your Microsoft 365 tenant accumulates configuration drift, permission sprawl, and governance gaps over time. Most organizations don't know what's there until something goes wrong."
-        supportingCopy="Answer 10 targeted questions on identity, governance, security, and configuration hygiene — and receive a personalised health score with a prioritised remediation roadmap. Delivered instantly. No account required."
+        label="Microsoft 365 Architecture Readiness Quiz"
+        title="How Ready Is Your M365 Tenant?<br class='hidden sm:block' /> Take the Architecture Readiness Quiz."
+        description="Most tenants have blind spots across identity, governance, security, and architecture. This assessment surfaces yours in minutes — with a prioritised action plan."
+        supportingCopy="Answer targeted questions across identity &amp; access baseline, governance maturity, security &amp; compliance posture, Teams/SharePoint architecture, configuration hygiene, and operational readiness. Delivered instantly. No account required."
         quizUrl="/m365-health-quiz"
-        ctaLabel="Take the M365 Health Assessment"
+        ctaLabel="Take the Architecture Readiness Quiz"
         stats={[
           { label: "10 questions · ~5 minutes" },
           { label: "Personalised report emailed instantly" },
           { label: "No sales follow-up" },
         ]}
       />
-
-      {/* ── COMPARISON TABLE ────────────────────────────────────────────── */}
-      <section className="bg-[#F7F9FC] py-20">
-        <div className="max-w-[1200px] mx-auto px-6">
-          <p className="text-[#0078D4] text-sm font-semibold uppercase tracking-[0.12em] mb-4">Quick Comparison</p>
-          <h2 className="text-3xl font-extrabold text-[#0A2540] mb-3">Which Engagement Is Right for You?</h2>
-          <p className="text-muted-foreground mb-10 max-w-2xl leading-relaxed">
-            Not sure whether to start with a fixed-price project or a retainer? This table maps both engagement models across the dimensions that matter most — so you can self-select before picking up the phone.
-          </p>
-
-          <div className="hidden md:block overflow-x-auto rounded-2xl border border-border">
-            <table className="w-full text-sm border-collapse">
-              <thead>
-                <tr className="bg-[#0A2540] text-white">
-                  <th className="text-left px-6 py-5 w-[18%] font-semibold text-white/60 text-xs uppercase tracking-widest"></th>
-                  <th className="text-left px-6 py-5 w-[27%]">
-                    <div className="flex items-center gap-2 mb-1">
-                      <Zap className="w-4 h-4 text-[#00B4D8]" />
-                      <span className="text-xs font-semibold text-[#00B4D8] uppercase tracking-widest">Fixed-Price</span>
-                    </div>
-                    <p className="text-base font-extrabold leading-snug">Quick Win (Project)</p>
-                  </th>
-                  <th className="text-left px-6 py-5 w-[27%] border-l border-white/10">
-                    <div className="flex items-center gap-2 mb-1">
-                      <Shield className="w-4 h-4 text-[#00B4D8]" />
-                      <span className="text-xs font-semibold text-[#00B4D8] uppercase tracking-widest">Retainer</span>
-                    </div>
-                    <p className="text-base font-extrabold leading-snug">Architect Essentials — $2,500/mo</p>
-                  </th>
-                  <th className="text-left px-6 py-5 w-[27%] border-l border-white/10">
-                    <div className="flex items-center gap-2 mb-1">
-                      <Users className="w-4 h-4 text-[#00B4D8]" />
-                      <span className="text-xs font-semibold text-[#00B4D8] uppercase tracking-widest">Retainer</span>
-                    </div>
-                    <p className="text-base font-extrabold leading-snug">Architect Growth & Enterprise</p>
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {comparisonRows.map((row, i) => (
-                  <tr key={row.label} className={i % 2 === 0 ? "bg-white" : "bg-[#F7F9FC]"}>
-                    <td className="px-6 py-5 font-semibold text-[#0A2540] text-xs uppercase tracking-widest align-top whitespace-nowrap border-r border-border">
-                      {row.label}
-                    </td>
-                    <td className="px-6 py-5 text-foreground leading-relaxed align-top">
-                      {row.label === "Price" ? <span className="font-bold text-[#0A2540]">{row.fixedPrice}</span> : row.fixedPrice}
-                    </td>
-                    <td className="px-6 py-5 text-foreground leading-relaxed align-top border-l border-border">
-                      {row.label === "Price" ? <span className="font-bold text-[#0A2540]">{row.essentials}</span> : row.essentials}
-                    </td>
-                    <td className="px-6 py-5 text-foreground leading-relaxed align-top border-l border-border">
-                      {row.label === "Price" ? <span className="font-bold text-[#0A2540]">{row.growth}</span> : row.growth}
-                    </td>
-                  </tr>
-                ))}
-                <tr className="bg-[#0A2540]">
-                  <td className="px-6 py-5 border-r border-white/10"></td>
-                  <td className="px-6 py-5">
-                    <a href="/micro-offers" className="inline-flex items-center gap-1.5 text-[#00B4D8] text-sm font-semibold hover:underline">
-                      View Quick Wins <ArrowRight className="w-3.5 h-3.5" />
-                    </a>
-                  </td>
-                  <td className="px-6 py-5 border-l border-white/10">
-                    <a href="/book" className="inline-flex items-center gap-1.5 text-[#00B4D8] text-sm font-semibold hover:underline">
-                      Book a Call <ArrowRight className="w-3.5 h-3.5" />
-                    </a>
-                  </td>
-                  <td className="px-6 py-5 border-l border-white/10">
-                    <a href="/book" className="inline-flex items-center gap-1.5 text-[#00B4D8] text-sm font-semibold hover:underline">
-                      Book a Call <ArrowRight className="w-3.5 h-3.5" />
-                    </a>
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-
-          <div className="md:hidden space-y-6">
-            {[
-              { icon: <Zap className="w-5 h-5 text-[#0078D4]" />, badge: "Fixed-Price", title: "Quick Win (Project)", key: "fixedPrice" as const },
-              { icon: <Shield className="w-5 h-5 text-[#0078D4]" />, badge: "Retainer", title: "Architect Essentials — $2,500/mo", key: "essentials" as const },
-              { icon: <Users className="w-5 h-5 text-[#0078D4]" />, badge: "Retainer", title: "Architect Growth & Enterprise", key: "growth" as const },
-            ].map((col) => (
-              <div key={col.key} className="bg-white border border-border rounded-2xl overflow-hidden">
-                <div className="bg-[#0A2540] px-5 py-4 flex items-start gap-3">
-                  {col.icon}
-                  <div>
-                    <p className="text-[#00B4D8] text-xs font-semibold uppercase tracking-widest mb-0.5">{col.badge}</p>
-                    <p className="text-white font-extrabold leading-snug">{col.title}</p>
-                  </div>
-                </div>
-                <div className="divide-y divide-border">
-                  {comparisonRows.map((row) => (
-                    <div key={row.label} className="px-5 py-4">
-                      <p className="text-[#0078D4] text-xs font-semibold uppercase tracking-widest mb-1">{row.label}</p>
-                      <p className={`text-sm leading-relaxed ${row.label === "Price" ? "font-bold text-[#0A2540]" : "text-foreground"}`}>
-                        {row[col.key]}
-                      </p>
-                    </div>
-                  ))}
-                </div>
-                <div className="px-5 py-4 bg-[#F7F9FC] border-t border-border">
-                  <a href="/book" className="inline-flex items-center gap-1.5 text-[#0078D4] text-sm font-semibold hover:underline">
-                    Book a Call <ArrowRight className="w-3.5 h-3.5" />
-                  </a>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* ── ASSESSMENT CTA ───────────────────────────────────────────────── */}
-      <section className="bg-[#F7F9FC] py-16">
-        <div className="max-w-[1200px] mx-auto px-6">
-          <div className="bg-white border border-border rounded-2xl p-8 md:p-12 flex flex-col md:flex-row items-center gap-8">
-            <div className="flex-1">
-              <p className="text-[#0078D4] text-xs font-semibold uppercase tracking-widest mb-2">Free · 5 Minutes</p>
-              <h3 className="text-2xl font-extrabold text-[#0A2540] mb-3">M365 Health Assessment</h3>
-              <p className="text-muted-foreground leading-relaxed">
-                Answer 10 AI-powered questions and get a personalised health report for your Microsoft 365 environment — delivered straight to your inbox.
-              </p>
-            </div>
-            <a href="/m365-health-quiz"
-              className="flex-shrink-0 inline-flex items-center gap-2 bg-[#0078D4] hover:bg-[#0078D4]/90 text-white font-bold px-8 py-4 rounded-xl transition-colors text-base">
-              Take the Free Assessment
-            </a>
-          </div>
-        </div>
-      </section>
 
       {/* ── FINAL CTA ────────────────────────────────────────────────────── */}
       <section className="bg-[#0A2540] py-24 relative overflow-hidden">
@@ -533,6 +444,7 @@ export default function Microsoft365() {
           </div>
         </div>
       </section>
+
       <ServiceOverviewModal
         serviceName="Microsoft 365"
         isOpen={modalOpen}
