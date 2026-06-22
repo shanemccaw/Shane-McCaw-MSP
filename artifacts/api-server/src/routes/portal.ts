@@ -5466,6 +5466,7 @@ async function lookupAndValidateCoupon(
   code: string,
   cartTotal: number,
 ): Promise<{ ok: true; coupon: typeof couponsTable.$inferSelect; discountAmount: number } | { ok: false; error: string }> {
+  if (cartTotal <= 0) return { ok: false, error: "Coupon codes cannot be applied to a free cart" };
   const upper = code.trim().toUpperCase();
   const [coupon] = await db.select().from(couponsTable).where(eq(couponsTable.code, upper));
   if (!coupon) return { ok: false, error: "Coupon code not found" };
@@ -5489,6 +5490,10 @@ router.post("/portal/coupons/validate", requireAuth, async (req: Request, res: R
   if (!code?.trim()) { res.status(400).json({ error: "code is required" }); return; }
   if (cartTotal == null || isNaN(Number(cartTotal)) || Number(cartTotal) < 0) {
     res.status(400).json({ error: "cartTotal is required" });
+    return;
+  }
+  if (Number(cartTotal) === 0) {
+    res.status(422).json({ error: "Coupon codes cannot be applied when your cart total is $0" });
     return;
   }
 
@@ -5618,7 +5623,7 @@ router.post("/portal/checkout/create-session", requireAuth, async (req: Request,
   const discountedPriceCents = new Map<number, number>(rawPriceCents);
   let validatedCouponCode: string | null = null;
 
-  if (couponCode?.trim()) {
+  if (couponCode?.trim() && totalCartCents > 0) {
     const couponResult = await lookupAndValidateCoupon(couponCode, totalCartCents / 100);
     if (!couponResult.ok) {
       res.status(422).json({ error: `Coupon error: ${couponResult.error}` });

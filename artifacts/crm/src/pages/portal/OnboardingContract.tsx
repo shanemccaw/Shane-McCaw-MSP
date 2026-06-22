@@ -601,8 +601,8 @@ export default function OnboardingContract() {
                 )}
               </div>
 
-              {/* Promo code toggle */}
-              {!appliedCoupon && (
+              {/* Promo code toggle — hidden when all services are free */}
+              {!appliedCoupon && (oneTimeTotal + monthlyTotal) > 0 && (
                 <div className="mt-3">
                   <button
                     onClick={() => { setCouponOpen(o => !o); setCouponError(""); }}
