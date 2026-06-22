@@ -98,7 +98,7 @@ export default function CloudMigration() {
     retainer: "$2,500 / $6,000 / $11,000 per month",
   };
   const [modalOpen, setModalOpen] = useState(false);
-  const hasPdf = useServiceHasPdf("Cloud Migration");
+  const hasPdf = useServiceHasPdf("/services/cloud-migration");
 
   return (
     <Layout>

@@ -123,7 +123,7 @@ export default function PowerPlatform() {
     retainer: "$2,500 / $6,000 / $11,000 per month",
   };
   const [modalOpen, setModalOpen] = useState(false);
-  const hasPdf = useServiceHasPdf("Power Platform");
+  const hasPdf = useServiceHasPdf("/services/power-platform");
 
   return (
     <Layout>

@@ -77,17 +77,16 @@ function fetchServices(type?: string): Promise<PublicService[]> {
 }
 
 /**
- * Returns true if a service matching the given name (case-insensitive partial
- * match) has a pre-generated PDF brochure available.
+ * Returns true when any service whose `pageHref` exactly matches the given
+ * path has a pre-generated PDF brochure available.
+ *
+ * Pass the page's own route (e.g. "/services/microsoft-365"). Using pageHref
+ * for the lookup avoids the fragile name-matching that plagued the previous
+ * approach — the DB value is stable and unique per service page.
  */
-export function useServiceHasPdf(serviceName: string): boolean {
+export function useServiceHasPdf(pageHref: string): boolean {
   const { services } = useServices();
-  const lower = serviceName.toLowerCase();
-  const match = services.find(
-    (s) =>
-      s.name.toLowerCase().includes(lower) ||
-      lower.includes(s.name.toLowerCase()),
-  );
+  const match = services.find((s) => s.pageHref === pageHref);
   return match?.hasPdf ?? false;
 }
 

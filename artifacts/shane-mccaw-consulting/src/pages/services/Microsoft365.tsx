@@ -85,7 +85,7 @@ export default function Microsoft365() {
   const { services: retainerServices, loading: retainerLoading } = useServices("retainer");
 
   const [modalOpen, setModalOpen] = useState(false);
-  const hasPdf = useServiceHasPdf("Microsoft 365");
+  const hasPdf = useServiceHasPdf("/services/microsoft-365");
 
   return (
     <Layout>

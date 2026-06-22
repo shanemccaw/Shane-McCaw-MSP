@@ -99,7 +99,7 @@ export default function CopilotAI() {
     retainer: "$2,500 / $6,000 / $11,000 per month",
   };
   const [modalOpen, setModalOpen] = useState(false);
-  const hasPdf = useServiceHasPdf("Copilot for M365");
+  const hasPdf = useServiceHasPdf("/services/copilot-ai");
 
   return (
     <Layout>

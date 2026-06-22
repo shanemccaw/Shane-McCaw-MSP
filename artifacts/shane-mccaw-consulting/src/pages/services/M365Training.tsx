@@ -107,7 +107,7 @@ const ADD_ONS = [
 export default function M365Training() {
   const { services: retainerServices, loading: retainerLoading } = useServices("retainer");
   const [modalOpen, setModalOpen] = useState(false);
-  const hasPdf = useServiceHasPdf("M365 Training & Enablement");
+  const hasPdf = useServiceHasPdf("/services/m365-training");
 
   return (
     <Layout>

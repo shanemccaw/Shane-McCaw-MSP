@@ -64,7 +64,7 @@ export default function SharePoint() {
     retainer: "$2,500 / $6,000 / $11,000 per month",
   };
   const [modalOpen, setModalOpen] = useState(false);
-  const hasPdf = useServiceHasPdf("SharePoint Architecture");
+  const hasPdf = useServiceHasPdf("/services/sharepoint");
 
   return (
     <Layout>
