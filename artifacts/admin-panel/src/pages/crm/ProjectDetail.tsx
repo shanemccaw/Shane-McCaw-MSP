@@ -986,6 +986,7 @@ export default function ProjectDetailPage() {
   const [regeneratingArtifact, setRegeneratingArtifact] = useState<string | null>(null);
   const [confirmGenerateOpen, setConfirmGenerateOpen] = useState(false);
   const [confirmRegenerateTarget, setConfirmRegenerateTarget] = useState<string | null>(null);
+  const [generateProgress, setGenerateProgress] = useState<{ count: number; total: number; currentName: string } | null>(null);
 
   const allTasksClosed = tasks.length > 0 && tasks.every(t => t.column === "completed");
 
@@ -1004,31 +1005,76 @@ export default function ProjectDetailPage() {
     return Array.from(names);
   };
 
-  type GenResult = { artifacts: Array<{ artifactName: string; sharepointUrl: string; generatedAt: string }>; errors?: string[]; error?: string; code?: string; details?: string[] };
+  type SseEvent =
+    | { type: "progress"; artifactName: string; count: number; total: number }
+    | { type: "artifactDone"; artifactName: string; sharepointUrl: string }
+    | { type: "artifactError"; artifactName: string; error: string }
+    | { type: "done"; artifacts: Array<{ artifactName: string; sharepointUrl: string; generatedAt: string }>; errors?: string[] }
+    | { type: "error"; error: string; details?: string[] };
 
   const handleGenerateArtifacts = async () => {
     if (!projectId) return;
     setGenerateArtifactsLoading(true);
     setGenerateArtifactsError(null);
+    setGenerateProgress(null);
     try {
       const res = await fetchWithAuth(`/api/admin/projects/${projectId}/generate-artifacts`, { method: "POST" });
-      const data = await res.json() as GenResult;
-      if (!res.ok) {
+
+      // Pre-flight JSON errors (4xx/5xx before SSE starts)
+      const contentType = res.headers.get("content-type") ?? "";
+      if (!res.ok || !contentType.includes("text/event-stream")) {
+        const data = await res.json() as { error?: string };
         setGenerateArtifactsError(data.error ?? "Unknown error");
         return;
       }
-      setGenerateArtifactsError(null);
-      setProject(prev => prev ? { ...prev, generatedArtifacts: data.artifacts } : prev);
-      const errCount = data.errors?.length ?? 0;
-      if (errCount > 0) {
-        toast({ title: `${data.artifacts.length} artifact${data.artifacts.length !== 1 ? "s" : ""} generated`, description: `${errCount} failed — check server logs.` });
-      } else {
-        toast({ title: `${data.artifacts.length} artifact${data.artifacts.length !== 1 ? "s" : ""} generated`, description: "All PDFs uploaded to SharePoint." });
+
+      // Parse SSE stream
+      const reader = res.body!.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+
+        // SSE messages are separated by double newlines
+        const messages = buffer.split("\n\n");
+        buffer = messages.pop() ?? "";
+
+        for (const message of messages) {
+          const dataLine = message.split("\n").find(l => l.startsWith("data: "));
+          if (!dataLine) continue;
+          try {
+            const event = JSON.parse(dataLine.slice(6)) as SseEvent;
+
+            if (event.type === "progress") {
+              setGenerateProgress({ count: event.count, total: event.total, currentName: event.artifactName });
+            } else if (event.type === "done") {
+              setGenerateProgress(null);
+              setGenerateArtifactsError(null);
+              setProject(prev => prev ? { ...prev, generatedArtifacts: event.artifacts } : prev);
+              const errCount = event.errors?.length ?? 0;
+              if (errCount > 0) {
+                toast({ title: `${event.artifacts.length} artifact${event.artifacts.length !== 1 ? "s" : ""} generated`, description: `${errCount} failed — check server logs.` });
+              } else {
+                toast({ title: `${event.artifacts.length} artifact${event.artifacts.length !== 1 ? "s" : ""} generated`, description: "All PDFs uploaded to SharePoint." });
+              }
+            } else if (event.type === "error") {
+              setGenerateProgress(null);
+              setGenerateArtifactsError(event.error);
+            }
+          } catch {
+            // malformed SSE line — ignore
+          }
+        }
       }
     } catch {
       setGenerateArtifactsError("Network error — could not reach the server.");
+      setGenerateProgress(null);
     } finally {
       setGenerateArtifactsLoading(false);
+      setGenerateProgress(null);
     }
   };
 
@@ -1041,16 +1087,43 @@ export default function ProjectDetailPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ artifactName }),
       });
-      const data = await res.json() as GenResult;
-      if (!res.ok) {
+
+      const contentType = res.headers.get("content-type") ?? "";
+      if (!res.ok || !contentType.includes("text/event-stream")) {
+        const data = await res.json() as { error?: string };
         toast({ title: "Regeneration failed", description: data.error ?? "Unknown error", variant: "destructive" });
         return;
       }
-      setProject(prev => prev ? { ...prev, generatedArtifacts: data.artifacts } : prev);
-      if (data.errors && data.errors.length > 0) {
-        toast({ title: "Regeneration failed", description: data.errors[0], variant: "destructive" });
-      } else {
-        toast({ title: "Artifact regenerated", description: `"${artifactName}" uploaded to SharePoint.` });
+
+      const reader = res.body!.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const messages = buffer.split("\n\n");
+        buffer = messages.pop() ?? "";
+        for (const message of messages) {
+          const dataLine = message.split("\n").find(l => l.startsWith("data: "));
+          if (!dataLine) continue;
+          try {
+            const event = JSON.parse(dataLine.slice(6)) as SseEvent;
+            if (event.type === "done") {
+              setProject(prev => prev ? { ...prev, generatedArtifacts: event.artifacts } : prev);
+              if (event.errors && event.errors.length > 0) {
+                toast({ title: "Regeneration failed", description: event.errors[0], variant: "destructive" });
+              } else {
+                toast({ title: "Artifact regenerated", description: `"${artifactName}" uploaded to SharePoint.` });
+              }
+            } else if (event.type === "error") {
+              toast({ title: "Regeneration failed", description: event.error, variant: "destructive" });
+            }
+          } catch {
+            // malformed SSE line — ignore
+          }
+        }
       }
     } catch {
       toast({ title: "Network error", description: "Could not reach the server.", variant: "destructive" });
@@ -1814,6 +1887,29 @@ export default function ProjectDetailPage() {
             )}
           </div>
         </div>
+
+        {/* ── Live progress bar ── */}
+        {generateProgress && (
+          <div className="mb-4 bg-[#F7F9FC] border border-[#0078D4]/30 rounded-xl px-4 py-3">
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-xs font-semibold text-[#0A2540]">
+                Generating {generateProgress.count} of {generateProgress.total}
+              </p>
+              <p className="text-[11px] text-muted-foreground">
+                {Math.round((generateProgress.count / generateProgress.total) * 100)}%
+              </p>
+            </div>
+            <div className="w-full h-2 bg-[#0A2540]/10 rounded-full overflow-hidden">
+              <div
+                className="h-full bg-gradient-to-r from-[#0078D4] to-[#00B4D8] rounded-full transition-all duration-500 ease-out"
+                style={{ width: `${(generateProgress.count / generateProgress.total) * 100}%` }}
+              />
+            </div>
+            <p className="mt-2 text-[11px] text-muted-foreground truncate">
+              <span className="font-medium text-[#0A2540]">{generateProgress.currentName}</span>
+            </p>
+          </div>
+        )}
 
         {generateArtifactsError && (
           <div className="mb-4 flex items-start gap-3 bg-red-50 border border-red-200 rounded-xl px-4 py-3">

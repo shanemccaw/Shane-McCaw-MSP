@@ -240,11 +240,9 @@ router.post(
         if (t.completionStatus) parts.push(`  Completion Status: ${t.completionStatus}`);
         if (t.completionNotes) parts.push(`  Completion Notes: ${t.completionNotes}`);
 
-        // Instructions
         const instructions = Array.isArray(meta.instructions) ? (meta.instructions as string[]) : [];
         if (instructions.length > 0) parts.push(`  Instructions: ${instructions.join("; ")}`);
 
-        // Checklist with completion state
         const checklist = Array.isArray(meta.checklist) ? (meta.checklist as Array<{ id: string; label: string }>) : [];
         const checklistState = (meta.checklistState ?? {}) as Record<string, boolean>;
         if (checklist.length > 0) {
@@ -255,7 +253,6 @@ router.post(
           }
         }
 
-        // Checklist item closure data (typed fields captured at completion)
         const checklistItemData = (meta.checklistItemData ?? {}) as Record<string, Record<string, unknown>>;
         const closureEntries = Object.entries(checklistItemData);
         if (closureEntries.length > 0) {
@@ -267,7 +264,6 @@ router.post(
           }
         }
 
-        // Typed task fields
         for (const field of ["postureSummary", "findingsSummary", "outputSummary", "riskLevel", "remediationSummary", "recommendation"] as const) {
           if (typeof meta[field] === "string" && meta[field]) {
             const label = field.replace(/([A-Z])/g, " $1").trim();
@@ -275,13 +271,11 @@ router.post(
           }
         }
 
-        // Artifacts produced and client deliverables
         const artifactsProduced = Array.isArray(meta.artifactsProduced) ? (meta.artifactsProduced as string[]) : [];
         if (artifactsProduced.length > 0) parts.push(`  Artifacts Produced: ${artifactsProduced.join(", ")}`);
         const clientDeliverables = Array.isArray(meta.clientDeliverables) ? (meta.clientDeliverables as string[]) : [];
         if (clientDeliverables.length > 0) parts.push(`  Client Deliverables: ${clientDeliverables.join(", ")}`);
 
-        // Uploaded files
         const uploadedArtifacts = Array.isArray(meta.uploadedArtifacts) ? (meta.uploadedArtifacts as string[]) : [];
         if (uploadedArtifacts.length > 0) parts.push(`  Uploaded Files: ${uploadedArtifacts.join(", ")}`);
 
@@ -292,11 +286,29 @@ router.post(
     const GENERATED_ARTIFACTS_FOLDER = "Generated Artifacts";
     await ensureSharePointFolderAtRoot(sharepointSiteId, GENERATED_ARTIFACTS_FOLDER);
 
+    // ── Switch to SSE streaming ──────────────────────────────────────────────
+    res.setHeader("Content-Type", "text/event-stream");
+    res.setHeader("Cache-Control", "no-cache");
+    res.setHeader("Connection", "keep-alive");
+    res.setHeader("X-Accel-Buffering", "no");
+    res.flushHeaders();
+
+    const sendEvent = (data: object) => {
+      res.write(`data: ${JSON.stringify(data)}\n\n`);
+      const resWithFlush = res as unknown as { flush?: () => void };
+      if (typeof resWithFlush.flush === "function") resWithFlush.flush();
+    };
+
     const generatedAt = new Date();
     const results: Array<{ artifactName: string; sharepointUrl: string; generatedAt: string }> = [];
     const errors: string[] = [];
+    const total = allArtifactNames.size;
+    let count = 0;
 
     for (const artifactName of allArtifactNames) {
+      count++;
+      sendEvent({ type: "progress", artifactName, count, total });
+
       try {
         req.log.info({ artifactName }, "Generating artifact with AI");
         const aiResponse = await anthropic.messages.create({
@@ -348,19 +360,24 @@ Requirements:
 
         if (!webUrl) {
           errors.push(`Failed to upload "${artifactName}" to SharePoint`);
+          sendEvent({ type: "artifactError", artifactName, error: `Failed to upload "${artifactName}" to SharePoint` });
           continue;
         }
 
         results.push({ artifactName, sharepointUrl: webUrl, generatedAt: generatedAt.toISOString() });
         req.log.info({ artifactName, webUrl }, "Artifact generated and uploaded");
+        sendEvent({ type: "artifactDone", artifactName, sharepointUrl: webUrl });
       } catch (err) {
         logger.error({ err, artifactName }, "Error generating artifact");
-        errors.push(`Error generating "${artifactName}": ${err instanceof Error ? err.message : String(err)}`);
+        const msg = `Error generating "${artifactName}": ${err instanceof Error ? err.message : String(err)}`;
+        errors.push(msg);
+        sendEvent({ type: "artifactError", artifactName, error: msg });
       }
     }
 
     if (results.length === 0) {
-      res.status(502).json({ error: "All artifact generations failed.", details: errors });
+      sendEvent({ type: "error", error: "All artifact generations failed.", details: errors });
+      res.end();
       return;
     }
 
@@ -376,7 +393,8 @@ Requirements:
       .set({ generatedArtifacts: merged, updatedAt: new Date() })
       .where(eq(projectsTable.id, projectId));
 
-    res.json({ artifacts: merged, errors: errors.length > 0 ? errors : undefined });
+    sendEvent({ type: "done", artifacts: merged, errors: errors.length > 0 ? errors : undefined });
+    res.end();
   },
 );
 
