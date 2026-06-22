@@ -263,6 +263,7 @@ function SortableStepCard({
   idx,
   totalSteps,
   isSelected,
+  missingCount,
   onSelect,
   onMoveUp,
   onMoveDown,
@@ -273,6 +274,7 @@ function SortableStepCard({
   idx: number;
   totalSteps: number;
   isSelected: boolean;
+  missingCount: number;
   onSelect: () => void;
   onMoveUp: () => void;
   onMoveDown: () => void;
@@ -390,6 +392,14 @@ function SortableStepCard({
             {taskCount}
           </span>
         )}
+        {missingCount > 0 && (
+          <span
+            className="flex-shrink-0 text-[9px] font-bold bg-amber-100 text-amber-700 border border-amber-300 rounded-full px-1.5 py-0.5 leading-none"
+            title={`${missingCount} task${missingCount === 1 ? "" : "s"} missing asset sets`}
+          >
+            {missingCount}
+          </span>
+        )}
       </div>
 
       {/* Action buttons — always visible */}
@@ -470,12 +480,19 @@ function SortableTaskRow({
     (task.checklist && task.checklist.length > 0) ||
     (task.artifactsProduced && task.artifactsProduced.length > 0) ||
     (task.clientDeliverables && task.clientDeliverables.length > 0);
+  const isMissingAssets =
+    task.instructionSetId == null || task.checklistId == null ||
+    task.artifactsId == null || task.deliverablesId == null;
 
   return (
     <div
       ref={setNodeRef}
       style={style}
-      className="flex items-center gap-2 bg-white rounded-lg border border-gray-200 px-3 py-2.5 hover:border-[#0078D4] hover:bg-blue-50 cursor-pointer transition-colors"
+      className={`flex items-center gap-2 rounded-lg border px-3 py-2.5 cursor-pointer transition-colors ${
+        isMissingAssets
+          ? "bg-amber-50 border-amber-200 hover:border-amber-400 hover:bg-amber-100"
+          : "bg-white border-gray-200 hover:border-[#0078D4] hover:bg-blue-50"
+      }`}
       onClick={() => onEdit(task)}
     >
       {/* Drag handle */}
@@ -494,7 +511,17 @@ function SortableTaskRow({
       </button>
 
       <div className="flex-1 min-w-0">
-        <span className="text-sm text-[#0A2540] leading-snug">{task.title}</span>
+        <div className="flex items-center gap-1.5">
+          <span className="text-sm text-[#0A2540] leading-snug">{task.title}</span>
+          {isMissingAssets && (
+            <span className="flex-shrink-0 inline-flex items-center gap-0.5 text-[9px] font-bold bg-amber-200 text-amber-800 border border-amber-300 rounded-full px-1.5 py-0.5 leading-none">
+              <svg className="w-2 h-2" fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+              </svg>
+              Missing sets
+            </span>
+          )}
+        </div>
         {(hasInlineDetail || hasLibraryLinks || task.taskType) && (
           <div className="flex flex-wrap gap-1 mt-1">
             {task.taskType && (
@@ -855,6 +882,9 @@ export default function WorkflowsPage() {
   const [editingTask, setEditingTask] = useState<StepTask | null>(null);
   const [taskForm, setTaskForm] = useState<EditingTaskForm>(EMPTY_TASK_FORM);
 
+  // Filter: show only tasks missing asset sets
+  const [showMissingOnly, setShowMissingOnly] = useState(false);
+
   // Bulk Tools
   const [bulkOpen, setBulkOpen] = useState(false);
   const [jsonImportOpen, setJsonImportOpen] = useState(false);
@@ -925,6 +955,7 @@ export default function WorkflowsPage() {
       setJsonImportText("");
       setEngImportOpen(false);
       setEngImportText("");
+      setShowMissingOnly(false);
     } catch { /* ignore */ }
   }, [fetchWithAuth]);
 
@@ -1387,12 +1418,31 @@ export default function WorkflowsPage() {
 
   const steps = (selected?.steps ?? []).slice().sort((a, b) => a.order - b.order);
   const selectedStep = steps.find(s => s.id === selectedStepId) ?? null;
-  const stepTasks = (selectedStep?.tasks ?? []).slice().sort((a, b) => a.order - b.order);
+  const allStepTasks = (selectedStep?.tasks ?? []).slice().sort((a, b) => a.order - b.order);
 
   const tasksMissingAssets = (selected?.steps ?? [])
     .flatMap(s => s.tasks ?? [])
     .filter(t => t.instructionSetId == null || t.checklistId == null || t.artifactsId == null || t.deliverablesId == null)
     .length;
+
+  const stepMissingCounts = new Map<number, number>(
+    steps.map(s => [
+      s.id,
+      (s.tasks ?? []).filter(t =>
+        t.instructionSetId == null || t.checklistId == null ||
+        t.artifactsId == null || t.deliverablesId == null
+      ).length,
+    ])
+  );
+
+  const stepMissingCount = stepMissingCounts.get(selectedStepId ?? -1) ?? 0;
+
+  const stepTasks = showMissingOnly
+    ? allStepTasks.filter(t =>
+        t.instructionSetId == null || t.checklistId == null ||
+        t.artifactsId == null || t.deliverablesId == null
+      )
+    : allStepTasks;
 
   // Group tasks for display
   const tasksByGroup: Record<string, StepTask[]> = {};
@@ -1568,7 +1618,7 @@ export default function WorkflowsPage() {
               </div>
 
               <div className="flex-1 overflow-y-auto p-3 space-y-1.5">
-                <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={e => void handleStepDragEnd(e)}>
+                <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={(e: DragEndEvent) => void handleStepDragEnd(e)}>
                   <SortableContext items={steps.map(s => s.id)} strategy={verticalListSortingStrategy}>
                     {steps.map((step, idx) => (
                       <SortableStepCard
@@ -1577,7 +1627,8 @@ export default function WorkflowsPage() {
                         idx={idx}
                         totalSteps={steps.length}
                         isSelected={selectedStepId === step.id}
-                        onSelect={() => setSelectedStepId(step.id)}
+                        missingCount={stepMissingCounts.get(step.id) ?? 0}
+                        onSelect={() => { setSelectedStepId(step.id); setShowMissingOnly(false); }}
                         onMoveUp={() => void moveStep(step, "up")}
                         onMoveDown={() => void moveStep(step, "down")}
                         onDelete={() => void deleteStep(step.id)}
@@ -1792,18 +1843,46 @@ export default function WorkflowsPage() {
                     <div>
                       <h3 className="font-semibold text-[#0A2540] text-sm">{selectedStep.title}</h3>
                       <p className="text-xs text-gray-400 mt-0.5">
-                        {stepTasks.length} task{stepTasks.length !== 1 ? "s" : ""}
+                        {showMissingOnly
+                          ? `${stepTasks.length} of ${allStepTasks.length} task${allStepTasks.length !== 1 ? "s" : ""} missing sets`
+                          : `${allStepTasks.length} task${allStepTasks.length !== 1 ? "s" : ""}`}
                       </p>
                     </div>
+                    {stepMissingCount > 0 && (
+                      <button
+                        onClick={() => setShowMissingOnly(v => !v)}
+                        className={`flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg border transition-colors ${
+                          showMissingOnly
+                            ? "bg-amber-500 text-white border-amber-500 hover:bg-amber-600"
+                            : "bg-amber-50 text-amber-700 border-amber-300 hover:bg-amber-100"
+                        }`}
+                        title={showMissingOnly ? "Show all tasks" : `Filter to ${stepMissingCount} task${stepMissingCount === 1 ? "" : "s"} missing asset sets`}
+                      >
+                        <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                          <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                        </svg>
+                        {showMissingOnly ? "Show all" : `${stepMissingCount} missing`}
+                      </button>
+                    )}
                   </div>
 
                   {/* Task list */}
                   <div className="flex-1 overflow-y-auto px-5 py-4 space-y-5">
                     {stepTasks.length === 0 && (
-                      <p className="text-xs text-gray-400 italic text-center py-8">No tasks yet for this step.</p>
+                      showMissingOnly
+                        ? (
+                          <div className="flex flex-col items-center gap-2 py-10 text-center">
+                            <svg className="w-8 h-8 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                            </svg>
+                            <p className="text-sm font-medium text-green-700">All tasks in this step have asset sets linked.</p>
+                            <button onClick={() => setShowMissingOnly(false)} className="text-xs text-gray-400 hover:text-gray-600 underline">Show all tasks</button>
+                          </div>
+                        )
+                        : <p className="text-xs text-gray-400 italic text-center py-8">No tasks yet for this step.</p>
                     )}
 
-                    <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={e => void handleTaskDragEnd(e)}>
+                    <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={(e: DragEndEvent) => void handleTaskDragEnd(e)}>
                       <SortableContext items={stepTasks.map(t => t.id)} strategy={verticalListSortingStrategy}>
                         {renderedGroups.length > 0 ? (
                           renderedGroups.map(group => (
