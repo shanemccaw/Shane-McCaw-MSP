@@ -380,7 +380,19 @@ router.get("/portal/projects/:id", requireAuth, async (req: Request, res: Respon
 
   const contract = contracts[0] ?? null;
 
-  res.json({ project, steps, tasks, previewTasks, documents, updates, statusReports, pendingStatusReport: pendingStatusReport ?? null, contract, contracts });
+  // Fetch coupon info — sum all discount amounts across project invoices sharing
+  // the same coupon code, ordered by earliest invoice for determinism.
+  const [projectInvoiceCoupon] = await db
+    .select({ couponCode: invoicesTable.couponCode, discountAmount: invoicesTable.discountAmount })
+    .from(invoicesTable)
+    .where(and(eq(invoicesTable.projectId, id), isNotNull(invoicesTable.couponCode)))
+    .orderBy(invoicesTable.createdAt)
+    .limit(1);
+  const appliedCoupon = projectInvoiceCoupon?.couponCode
+    ? { couponCode: projectInvoiceCoupon.couponCode, discountAmount: projectInvoiceCoupon.discountAmount ?? null }
+    : null;
+
+  res.json({ project, steps, tasks, previewTasks, documents, updates, statusReports, pendingStatusReport: pendingStatusReport ?? null, contract, contracts, appliedCoupon });
 });
 
 // ─── CLIENT: Project Recent Activity ─────────────────────────────────────────
@@ -2453,6 +2465,13 @@ async function provisionOnboardingProject(
 
     // Create paid invoice for this service.
     // Only the first invoice gets stripeSessionId (idempotency guard reads it).
+    const onbCouponCode = session.metadata?.couponCode ?? null;
+    const onbTotalDiscount = onbCouponCode
+      ? Math.max(0, parseFloat(originalAmountDollars) - parseFloat(finalAmountDollars))
+      : 0;
+    const onbInvoiceDiscount = onbTotalDiscount > 0 && parseFloat(originalAmountDollars) > 0
+      ? (onbTotalDiscount * (parseFloat(svcAmount) / parseFloat(originalAmountDollars))).toFixed(2)
+      : null;
     const [onbInvoice] = await db.insert(invoicesTable).values({
       clientUserId: uid,
       projectId: project.id,
@@ -2463,6 +2482,8 @@ async function provisionOnboardingProject(
       status: "paid",
       paidAt: new Date(),
       stripeSessionId: i === 0 ? session.id : null,
+      couponCode: onbCouponCode,
+      discountAmount: onbInvoiceDiscount,
     }).returning({ id: invoicesTable.id });
     void uploadInvoiceToSharePoint(onbInvoice.id);
   }
@@ -2796,6 +2817,11 @@ async function processStripeEvent(req: Request, event: import("stripe").Stripe.E
       const amountDollars = (parseInt(servicePriceInCents, 10) / 100).toFixed(2);
 
       // Create a paid invoice so it shows in billing history
+      const svcCouponCode = session.metadata?.couponCode ?? null;
+      const svcFinalAmount = session.amount_total != null ? session.amount_total / 100 : parseFloat(amountDollars);
+      const svcDiscountAmount = svcCouponCode && svcFinalAmount < parseFloat(amountDollars)
+        ? (parseFloat(amountDollars) - svcFinalAmount).toFixed(2)
+        : null;
       const [newInvoice] = await db.insert(invoicesTable).values({
         clientUserId: uid,
         invoiceNumber: `SVC-${Date.now()}`,
@@ -2805,6 +2831,8 @@ async function processStripeEvent(req: Request, event: import("stripe").Stripe.E
         status: "paid",
         paidAt: new Date(),
         stripeSessionId: session.id,
+        couponCode: svcCouponCode,
+        discountAmount: svcDiscountAmount,
       }).returning({ id: invoicesTable.id });
       void uploadInvoiceToSharePoint(newInvoice.id);
 
@@ -5824,6 +5852,8 @@ router.get("/admin/purchases/:id", requireAdmin, async (req: Request, res: Respo
       status: invoicesTable.status,
       paidAt: invoicesTable.paidAt,
       stripeSessionId: invoicesTable.stripeSessionId,
+      couponCode: invoicesTable.couponCode,
+      discountAmount: invoicesTable.discountAmount,
       createdAt: invoicesTable.createdAt,
       clientId: usersTable.id,
       clientName: usersTable.name,
@@ -5840,6 +5870,7 @@ router.get("/admin/purchases/:id", requireAdmin, async (req: Request, res: Respo
 
   if (invoiceRows.length === 0) { res.status(404).json({ error: "Not found" }); return; }
   const inv = invoiceRows[0];
+
 
   // Fetch ALL contracts linked to this purchase (multi-service cart support).
   // Strategy: prefer stripeSessionId match (set on all contracts during fulfillment).
@@ -5891,6 +5922,8 @@ router.get("/admin/purchases/:id", requireAdmin, async (req: Request, res: Respo
     status: inv.status,
     paidAt: inv.paidAt,
     stripeSessionId: inv.stripeSessionId,
+    couponCode: inv.couponCode ?? null,
+    discountAmount: inv.discountAmount ?? null,
     createdAt: inv.createdAt,
     client: {
       id: inv.clientId,

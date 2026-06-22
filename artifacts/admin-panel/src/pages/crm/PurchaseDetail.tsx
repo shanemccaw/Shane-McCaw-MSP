@@ -36,6 +36,8 @@ interface PurchaseDetail {
   status: string;
   paidAt: string | null;
   stripeSessionId: string | null;
+  couponCode: string | null;
+  discountAmount: string | null;
   createdAt: string;
   client: {
     id: number | null;
@@ -164,6 +166,23 @@ export default function PurchaseDetailPage() {
         <Row label="Service / Description" value={detail.description} />
         <Row label="Invoice Number" value={detail.invoiceNumber} />
         <Row label="Amount" value={amount} />
+        {detail.couponCode && (
+          <Row
+            label="Promo Code Applied"
+            value={
+              <span className="inline-flex items-center gap-2">
+                <span className="font-mono bg-green-50 text-green-700 border border-green-200 text-xs font-semibold px-2 py-0.5 rounded">
+                  {detail.couponCode}
+                </span>
+                {detail.discountAmount && (
+                  <span className="text-green-700 text-xs font-semibold">
+                    −${parseFloat(detail.discountAmount).toFixed(2)} savings
+                  </span>
+                )}
+              </span>
+            }
+          />
+        )}
         <Row label="Status" value={<span className={statusBadge(detail.status)}>{detail.status}</span>} />
         <Row label="Created" value={fmt(detail.createdAt)} />
         <Row label="Paid At" value={fmt(detail.paidAt)} />

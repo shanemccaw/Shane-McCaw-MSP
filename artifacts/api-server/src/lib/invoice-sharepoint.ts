@@ -87,6 +87,8 @@ export async function uploadInvoiceToSharePoint(invoiceId: number): Promise<void
       clientEmail: client.email,
       clientCompany: client.company,
       projectTitle,
+      couponCode: invoice.couponCode,
+      discountAmount: invoice.discountAmount,
     });
 
     // ── Upload to SharePoint ─────────────────────────────────────────────────

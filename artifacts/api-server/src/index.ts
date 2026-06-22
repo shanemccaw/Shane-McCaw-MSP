@@ -5,6 +5,7 @@ import { seedPortalDemo, seedServiceTemplates } from "./lib/seed-portal";
 import { seedEmailTemplates } from "./lib/seed-email-templates";
 import { initGraphSubscription } from "./lib/graph-subscription";
 import { seedServicePageTriggerKeys } from "./lib/seed-service-page-triggers";
+import { pool } from "@workspace/db";
 
 const rawPort = process.env["PORT"];
 
@@ -62,5 +63,15 @@ app.listen(port, (err) => {
 
   initGraphSubscription().catch((err) => {
     logger.warn({ err }, "Graph subscription init failed (non-fatal)");
+  });
+
+  pool.query(`
+    ALTER TABLE invoices
+    ADD COLUMN IF NOT EXISTS coupon_code TEXT,
+    ADD COLUMN IF NOT EXISTS discount_amount NUMERIC(10,2)
+  `).then(() => {
+    logger.info("Migration: invoices coupon columns ensured");
+  }).catch((err: unknown) => {
+    logger.warn({ err }, "Migration: failed to add coupon columns to invoices (non-fatal)");
   });
 });

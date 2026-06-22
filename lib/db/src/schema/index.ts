@@ -233,6 +233,8 @@ export const invoicesTable = pgTable("invoices", {
   pdfFilename: text("pdf_filename"),
   stripeSessionId: text("stripe_session_id"),
   sharepointFileUrl: text("sharepoint_file_url"),
+  couponCode: text("coupon_code"),
+  discountAmount: numeric("discount_amount", { precision: 10, scale: 2 }),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });

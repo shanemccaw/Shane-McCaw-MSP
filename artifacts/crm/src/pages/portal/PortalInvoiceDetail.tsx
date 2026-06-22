@@ -15,6 +15,8 @@ interface Invoice {
   pdfFilename: string | null;
   createdAt: string;
   projectId: number | null;
+  couponCode: string | null;
+  discountAmount: string | null;
 }
 
 interface Project {
@@ -386,6 +388,26 @@ export default function PortalInvoiceDetail() {
                     </span>
                   </div>
                 ))}
+
+                {/* Coupon / discount row */}
+                {inv!.couponCode && (
+                  <div className="px-4 py-2.5 flex items-center justify-between border-b border-border/40 bg-green-50/50">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className="text-muted-foreground/50 select-none ml-3">↳</span>
+                      <div className="min-w-0 flex items-center gap-2">
+                        <span className="text-xs text-muted-foreground">Promo code:</span>
+                        <span className="font-mono text-xs font-semibold text-green-700 bg-green-100 border border-green-200 px-1.5 py-0.5 rounded">
+                          {inv!.couponCode}
+                        </span>
+                      </div>
+                    </div>
+                    <span className="text-xs font-semibold text-green-700 flex-shrink-0 ml-4">
+                      {inv!.discountAmount
+                        ? `−${formatCurrency(inv!.discountAmount, inv!.currency)}`
+                        : "Discount applied"}
+                    </span>
+                  </div>
+                )}
 
                 {/* Total row */}
                 <div className="px-4 py-3 bg-[#F7F9FC] border-t border-border flex items-center justify-between">

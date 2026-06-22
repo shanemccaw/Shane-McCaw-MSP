@@ -13,6 +13,8 @@ export interface InvoicePdfData {
   clientEmail: string;
   clientCompany: string | null;
   projectTitle: string | null;
+  couponCode?: string | null;
+  discountAmount?: string | null;
 }
 
 const navy  = rgb(0.039, 0.145, 0.251);
@@ -121,8 +123,22 @@ export async function generateInvoicePdf(data: InvoicePdfData): Promise<Buffer> 
 
   const desc = data.description ?? "Professional consulting services";
   drawText(desc, margin + 8, y, { size: 9 });
-  drawText(formatAmount(data.amount, data.currency), pageW - margin - 60, y, { size: 9, font: bold });
-  y -= 24;
+
+  // If there's a coupon, show the pre-discount subtotal then the discount row
+  const discountNum = data.discountAmount ? parseFloat(data.discountAmount) : 0;
+  if (data.couponCode && discountNum > 0) {
+    const originalNum = parseFloat(data.amount) + discountNum;
+    drawText(formatAmount(originalNum.toFixed(2), data.currency), pageW - margin - 60, y, { size: 9, font: bold });
+    y -= 20;
+
+    // Promo code row
+    drawText(`Promo Code: ${data.couponCode}`, margin + 8, y, { size: 9, color: green });
+    drawText(`-${formatAmount(discountNum.toFixed(2), data.currency)}`, pageW - margin - 60, y, { size: 9, font: bold, color: green });
+    y -= 20;
+  } else {
+    drawText(formatAmount(data.amount, data.currency), pageW - margin - 60, y, { size: 9, font: bold });
+    y -= 24;
+  }
 
   page.drawLine({ start: { x: margin, y }, end: { x: pageW - margin, y }, thickness: 0.5, color: rgb(0.8, 0.8, 0.8) });
   y -= 16;

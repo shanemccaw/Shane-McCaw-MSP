@@ -127,6 +127,11 @@ interface ContractRef {
   serviceName: string;
 }
 
+interface AppliedCoupon {
+  couponCode: string;
+  discountAmount: string | null;
+}
+
 interface ProjectDetailData {
   project: Project;
   steps: WorkflowStep[];
@@ -138,6 +143,7 @@ interface ProjectDetailData {
   pendingStatusReport: StatusReport | null;
   contract: ContractRef | null;
   contracts: ContractRef[];
+  appliedCoupon: AppliedCoupon | null;
 }
 
 type SecondaryTab = "kanban" | "documents" | "status-reports" | "contracts";
@@ -964,6 +970,26 @@ export default function PortalProjectDetail() {
             </div>
           </div>
         </div>
+
+        {/* ── Coupon / Discount Banner ── */}
+        {detail.appliedCoupon && (
+          <div className="bg-green-50 border border-green-200 rounded-xl px-5 py-3 mb-5 flex items-center gap-3">
+            <svg className="w-4 h-4 text-green-600 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
+            </svg>
+            <p className="text-sm text-green-800 font-medium">
+              Discount applied:{" "}
+              <span className="font-mono font-bold bg-green-100 border border-green-300 px-1.5 py-0.5 rounded text-green-800">
+                {detail.appliedCoupon.couponCode}
+              </span>
+              {detail.appliedCoupon.discountAmount && (
+                <span className="ml-2 text-green-700">
+                  (−${parseFloat(detail.appliedCoupon.discountAmount).toFixed(2)})
+                </span>
+              )}
+            </p>
+          </div>
+        )}
 
         {/* ── Secondary Tab Bar ── */}
         <div className="flex items-center gap-1 mb-6 border-b border-border">
