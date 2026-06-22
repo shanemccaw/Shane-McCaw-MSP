@@ -284,7 +284,7 @@ export function Header() {
 
   const MOBILE_SECTIONS = [
     { key: "services",    label: "Services",      items: SERVICES_ITEMS },
-    { key: "microOffers", label: "Micro-Offers",  items: MICRO_OFFERS_ITEMS },
+    { key: "microOffers", label: "Quick Wins",     items: MICRO_OFFERS_ITEMS },
     { key: "retainers",   label: "Retainers",     items: RETAINER_ITEMS },
     { key: "assessments", label: "Assessments",   items: ASSESSMENTS_ITEMS },
     { key: "resources",   label: "Resources",     items: RESOURCES_ITEMS },
@@ -312,9 +312,9 @@ export function Header() {
               )}
             </li>
 
-            {/* Micro-Offers */}
+            {/* Quick Wins */}
             <li className="relative">
-              <DropdownTrigger menuKey="microOffers" label="Micro-Offers" isActive={isMicroActive} isOpen={openMenu === "microOffers"} onToggle={toggle} triggerRef={triggerRefs.microOffers} />
+              <DropdownTrigger menuKey="microOffers" label="Quick Wins" isActive={isMicroActive} isOpen={openMenu === "microOffers"} onToggle={toggle} triggerRef={triggerRefs.microOffers} />
               {openMenu === "microOffers" && (
                 <DropdownPanel items={MICRO_OFFERS_ITEMS} location={location} twoCol onClose={closeAll} triggerRef={triggerRefs.microOffers} />
               )}

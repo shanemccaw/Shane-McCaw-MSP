@@ -30,7 +30,7 @@ export function Footer() {
           <div className="flex flex-col gap-2">
             <span className="text-[10px] font-bold uppercase tracking-widest text-white/30">Quick Links</span>
             <Link href="/pricing" className="text-sm text-white/65 hover:text-white transition-colors">Pricing</Link>
-            <Link href="/micro-offers" className="text-sm text-white/65 hover:text-white transition-colors">Micro-Offers</Link>
+            <Link href="/micro-offers" className="text-sm text-white/65 hover:text-white transition-colors">Quick Wins</Link>
             <Link href="/resources" className="text-sm text-white/65 hover:text-white transition-colors">Resources</Link>
             <Link href="/contact" className="text-sm text-white/65 hover:text-white transition-colors">Contact</Link>
           </div>
