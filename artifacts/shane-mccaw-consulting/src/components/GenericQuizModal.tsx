@@ -110,6 +110,93 @@ function ScoreBar({ score, label }: { score: number; label: string }) {
   );
 }
 
+// ─── Heuristic answer scorer ───────────────────────────────────────────────────
+function estimateAnswerScore(answer: string): number {
+  const text = answer.toLowerCase();
+  const positives = [
+    "yes", "have ", "configured", "enabled", "deployed", "enforced", "active",
+    "using", "implemented", "fully", "complete", "reviewed", "managed", "governed",
+    "all users", "all accounts", "mfa", "blocked", "applied", "in place",
+  ];
+  const negatives = [
+    "no ", "haven't", "not ", "don't", "never", "minimal", "gaps", "issues",
+    "none", "missing", "unconfigured", "partial", "limited", "unsure", "unknown",
+    "ad hoc", "organic", "inconsistent",
+  ];
+  let score = 5;
+  const posCount = positives.filter((p) => text.includes(p)).length;
+  const negCount = negatives.filter((n) => text.includes(n)).length;
+  score += Math.min(posCount * 1.2, 4);
+  score -= Math.min(negCount * 1.2, 4);
+  return Math.max(1, Math.min(10, Math.round(score)));
+}
+
+// ─── Live Scorecard ────────────────────────────────────────────────────────────
+function LiveScorecard({
+  categories,
+  liveScores,
+  answeredCounts,
+  questionsPerCat,
+}: {
+  categories: Array<{ key: string; label: string }>;
+  liveScores: Partial<Record<string, number>>;
+  answeredCounts: Partial<Record<string, number>>;
+  questionsPerCat: number;
+}) {
+  const anyAnswered = categories.some((c) => (answeredCounts[c.key] ?? 0) > 0);
+  if (!anyAnswered) return null;
+
+  return (
+    <div className="bg-white/5 border border-white/10 rounded-xl p-4 space-y-3">
+      <div className="flex items-center justify-between">
+        <p className="text-white/50 text-xs font-semibold uppercase tracking-wider">Live Score Preview</p>
+        <span className="text-white/30 text-xs italic">Provisional · final scores at submission</span>
+      </div>
+      <div className="space-y-2.5">
+        {categories.map((cat) => {
+          const count = answeredCounts[cat.key] ?? 0;
+          const score = liveScores[cat.key] ?? null;
+          const isComplete = count >= questionsPerCat;
+          const isPending = count === 0;
+
+          if (isPending) {
+            return (
+              <div key={cat.key} className="space-y-1 opacity-35">
+                <div className="flex justify-between text-xs">
+                  <span className="text-white/60">{cat.label}</span>
+                  <span className="text-white/40">—</span>
+                </div>
+                <div className="h-1.5 bg-white/10 rounded-full" />
+              </div>
+            );
+          }
+
+          const displayScore = score ?? 5;
+          const pct = (displayScore / 10) * 100;
+          const colour = displayScore >= 7 ? "bg-teal-400" : displayScore >= 4 ? "bg-primary" : "bg-red-400";
+
+          return (
+            <div key={cat.key} className="space-y-1">
+              <div className="flex justify-between text-xs">
+                <span className="text-white/80">{cat.label}</span>
+                <span className={cn("font-semibold", isComplete ? "text-white" : "text-white/60")}>
+                  {isComplete ? `${displayScore}/10` : `~${displayScore}/10`}
+                </span>
+              </div>
+              <div className="h-1.5 bg-white/10 rounded-full overflow-hidden">
+                <div
+                  className={cn("h-full rounded-full transition-all duration-700", colour, !isComplete && "opacity-70")}
+                  style={{ width: `${pct}%` }}
+                />
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 // ─── Quiz Modal ────────────────────────────────────────────────────────────────
 export function GenericQuizModal({ config, onClose }: { config: QuizConfig; onClose: () => void }) {
   const [state, setState] = useState<QuizState>("intro");
@@ -124,6 +211,8 @@ export function GenericQuizModal({ config, onClose }: { config: QuizConfig; onCl
   const [resendEmail, setResendEmail] = useState("");
   const [resendState, setResendState] = useState<"idle" | "sending" | "sent" | "error">("idle");
   const [shareCopied, setShareCopied] = useState(false);
+  const [liveScores, setLiveScores] = useState<Partial<Record<string, number>>>({});
+  const [answeredCounts, setAnsweredCounts] = useState<Partial<Record<string, number>>>({});
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const { register, handleSubmit, formState: { errors } } = useForm<LeadForm>({ resolver: zodResolver(leadSchema) });
@@ -146,11 +235,30 @@ export function GenericQuizModal({ config, onClose }: { config: QuizConfig; onCl
     }
   }
 
+  const questionsPerCat = Math.max(1, Math.round(TOTAL_QUESTIONS / (config.categories.length || 1)));
+
+  function updateLiveScore(answerText: string, qIdx: number) {
+    const catIdx = Math.min(
+      Math.floor((qIdx - 1) / questionsPerCat),
+      config.categories.length - 1
+    );
+    const cat = config.categories[catIdx];
+    if (!cat) return;
+    const estimate = estimateAnswerScore(answerText);
+    setLiveScores((prev) => {
+      const existing = prev[cat.key];
+      const next = existing !== undefined ? Math.round((existing + estimate) / 2) : estimate;
+      return { ...prev, [cat.key]: next };
+    });
+    setAnsweredCounts((prev) => ({ ...prev, [cat.key]: (prev[cat.key] ?? 0) + 1 }));
+  }
+
   async function submitAnswer() {
     if (!answer.trim() || loading) return;
     const userMsg: Message = { role: "user", content: answer.trim() };
     const updatedMessages = [...messages, userMsg];
     setMessages(updatedMessages);
+    updateLiveScore(answer.trim(), questionIndex);
     setAnswer("");
 
     if (questionIndex >= TOTAL_QUESTIONS) {
@@ -323,6 +431,12 @@ export function GenericQuizModal({ config, onClose }: { config: QuizConfig; onCl
                       )}
                     </button>
                   </div>
+                  <LiveScorecard
+                    categories={config.categories}
+                    liveScores={liveScores}
+                    answeredCounts={answeredCounts}
+                    questionsPerCat={questionsPerCat}
+                  />
                 </>
               )}
             </div>
