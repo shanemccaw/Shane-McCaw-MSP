@@ -22,9 +22,17 @@ function setMeta(property: string, content: string, isName = false) {
   el.setAttribute("content", content);
 }
 
+function toAbsoluteUrl(url: string): string {
+  if (url.startsWith("http://") || url.startsWith("https://")) return url;
+  if (url.startsWith("/")) return `${window.location.origin}${url}`;
+  return url;
+}
+
 export function SEOMeta({ title, description, ogImage = DEFAULT_OG_IMAGE, ogUrl, jsonLd }: SEOMetaProps) {
   useEffect(() => {
     document.title = title;
+
+    const absoluteImage = toAbsoluteUrl(ogImage);
 
     setMeta("description", description, true);
 
@@ -32,13 +40,13 @@ export function SEOMeta({ title, description, ogImage = DEFAULT_OG_IMAGE, ogUrl,
     setMeta("og:site_name", SITE_NAME);
     setMeta("og:title", title);
     setMeta("og:description", description);
-    setMeta("og:image", ogImage);
+    setMeta("og:image", absoluteImage);
     if (ogUrl) setMeta("og:url", ogUrl);
 
     setMeta("twitter:card", "summary_large_image", true);
     setMeta("twitter:title", title, true);
     setMeta("twitter:description", description, true);
-    setMeta("twitter:image", ogImage, true);
+    setMeta("twitter:image", absoluteImage, true);
   }, [title, description, ogImage, ogUrl]);
 
   useEffect(() => {

@@ -138,10 +138,103 @@ function sitemapPlugin(): Plugin {
   };
 }
 
+function escapeAttr(str: string): string {
+  return str.replace(/&/g, "&amp;").replace(/"/g, "&quot;");
+}
+
+const QUIZ_ROUTE_META = [
+  {
+    routePath: "m365-health-quiz",
+    title: "Microsoft 365 Health Check | Free Tenant Assessment | Shane McCaw Consulting",
+    description: "Take our free M365 tenant health assessment. Score your security posture, identity, governance, and DLP in 5 minutes — and receive a personalised PDF report by email.",
+    image: "og-image-m365-health-quiz.png",
+    url: `${SITE_URL}/m365-health-quiz`,
+  },
+  {
+    routePath: "governance-maturity-quiz",
+    title: "Microsoft 365 Governance Maturity Assessment | Shane McCaw Consulting",
+    description: "How mature is your M365 governance framework? Take our free assessment to benchmark your policies, lifecycle management, and compliance posture — with a personalised PDF report.",
+    image: "og-image-governance-quiz.png",
+    url: `${SITE_URL}/governance-maturity-quiz`,
+  },
+  {
+    routePath: "migration-readiness-quiz",
+    title: "Cloud Migration Readiness Assessment | Microsoft 365 | Shane McCaw Consulting",
+    description: "Is your organisation ready to migrate to Microsoft 365? Take our free readiness quiz and receive a personalised migration roadmap from a 30-year Microsoft ecosystem veteran.",
+    image: "og-image-migration-quiz.png",
+    url: `${SITE_URL}/migration-readiness-quiz`,
+  },
+  {
+    routePath: "power-platform-quiz",
+    title: "Power Platform Maturity Assessment | Free Quiz | Shane McCaw Consulting",
+    description: "How mature is your Power Platform practice? Take our free assessment and receive a personalised PDF report with a tailored service recommendation from a 30-year Microsoft expert.",
+    image: "og-image-power-platform-quiz.png",
+    url: `${SITE_URL}/power-platform-quiz`,
+  },
+  {
+    routePath: "security-compliance-quiz",
+    title: "Microsoft 365 Security & Compliance Assessment | Shane McCaw Consulting",
+    description: "How secure is your Microsoft 365 environment? Take our free security posture quiz covering Defender, Conditional Access, DLP, and sensitivity labels — with a PDF report included.",
+    image: "og-image-security-quiz.png",
+    url: `${SITE_URL}/security-compliance-quiz`,
+  },
+  {
+    routePath: "sharepoint-readiness-quiz",
+    title: "SharePoint Architecture & IA Assessment | Free Quiz | Shane McCaw Consulting",
+    description: "How well-architected is your SharePoint environment? Answer 10 expert questions across 5 dimensions and receive a personalised maturity report from a NASA-certified Microsoft 365 Architect.",
+    image: "og-image-sharepoint-quiz.png",
+    url: `${SITE_URL}/sharepoint-readiness-quiz`,
+  },
+  {
+    routePath: "teams-maturity-quiz",
+    title: "Microsoft Teams Maturity Assessment | Free Quiz | Shane McCaw Consulting",
+    description: "Is your organisation getting full value from Microsoft Teams? Take our free maturity quiz assessing governance, adoption, and technical configuration — PDF report emailed to you.",
+    image: "og-image-teams-quiz.png",
+    url: `${SITE_URL}/teams-maturity-quiz`,
+  },
+];
+
+function perRouteOgPlugin(): Plugin {
+  return {
+    name: "per-route-og-meta",
+    apply: "build" as const,
+    closeBundle() {
+      const outDir = path.resolve(import.meta.dirname, "dist/public");
+      const indexPath = path.join(outDir, "index.html");
+      if (!fs.existsSync(indexPath)) return;
+
+      let template = fs.readFileSync(indexPath, "utf-8");
+
+      for (const route of QUIZ_ROUTE_META) {
+        const routeDir = path.join(outDir, route.routePath);
+        fs.mkdirSync(routeDir, { recursive: true });
+
+        let html = template;
+        const t = escapeAttr(route.title);
+        const d = escapeAttr(route.description);
+        const img = `${SITE_URL}/${route.image}`;
+
+        html = html.replace(/(<title>)[^<]*(<\/title>)/, `$1${t}$2`);
+        html = html.replace(/(<meta\s+name="description"\s+content=")[^"]*(")/,   `$1${d}$2`);
+        html = html.replace(/(<meta\s+property="og:title"\s+content=")[^"]*(")/,  `$1${t}$2`);
+        html = html.replace(/(<meta\s+property="og:description"\s+content=")[^"]*(")/,`$1${d}$2`);
+        html = html.replace(/(<meta\s+property="og:url"\s+content=")[^"]*(")/,    `$1${escapeAttr(route.url)}$2`);
+        html = html.replace(/(<meta\s+property="og:image"\s+content=")[^"]*(")/,  `$1${img}$2`);
+        html = html.replace(/(<meta\s+name="twitter:title"\s+content=")[^"]*(")/,       `$1${t}$2`);
+        html = html.replace(/(<meta\s+name="twitter:description"\s+content=")[^"]*(")/,  `$1${d}$2`);
+        html = html.replace(/(<meta\s+name="twitter:image"\s+content=")[^"]*(")/,        `$1${img}$2`);
+
+        fs.writeFileSync(path.join(routeDir, "index.html"), html, "utf-8");
+      }
+    },
+  };
+}
+
 export default defineConfig({
   base: basePath,
   plugins: [
     sitemapPlugin(),
+    perRouteOgPlugin(),
     react(),
     tailwindcss(),
     runtimeErrorOverlay(),
