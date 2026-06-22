@@ -1530,33 +1530,42 @@ export default function WorkflowsPage() {
                 </div>
               </div>
               <div className="flex items-center gap-2 flex-shrink-0">
-                {tasksMissingAssets > 0 && (
-                  <button
-                    type="button"
-                    onClick={handleGenerateAssetSets}
-                    disabled={generating}
-                    title={`Generate asset sets for ${tasksMissingAssets} task${tasksMissingAssets === 1 ? "" : "s"} missing sets`}
-                    className="flex items-center gap-1.5 text-xs text-purple-700 hover:text-purple-900 px-3 py-1.5 border border-purple-200 rounded-lg hover:bg-purple-50 transition-colors disabled:opacity-60"
-                  >
-                    {generating ? (
-                      <>
-                        <svg className="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24">
-                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                        </svg>
-                        Generating…
-                      </>
-                    ) : (
-                      <>
-                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-                        </svg>
-                        Generate Asset Sets
-                        <span className="ml-0.5 text-[9px] bg-purple-100 text-purple-700 rounded-full px-1.5 py-0.5 font-semibold">{tasksMissingAssets}</span>
-                      </>
-                    )}
-                  </button>
-                )}
+                <button
+                  type="button"
+                  onClick={handleGenerateAssetSets}
+                  disabled={generating || tasksMissingAssets === 0}
+                  title={
+                    tasksMissingAssets > 0
+                      ? `Generate asset sets for ${tasksMissingAssets} task${tasksMissingAssets === 1 ? "" : "s"} missing sets`
+                      : "All tasks already have asset sets linked"
+                  }
+                  className="flex items-center gap-1.5 text-xs text-purple-700 hover:text-purple-900 px-3 py-1.5 border border-purple-200 rounded-lg hover:bg-purple-50 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  {generating ? (
+                    <>
+                      <svg className="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                      </svg>
+                      Generating…
+                    </>
+                  ) : tasksMissingAssets === 0 ? (
+                    <>
+                      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                      </svg>
+                      Asset Sets Linked
+                    </>
+                  ) : (
+                    <>
+                      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                      </svg>
+                      Generate Asset Sets
+                      <span className="ml-0.5 text-[9px] bg-purple-100 text-purple-700 rounded-full px-1.5 py-0.5 font-semibold">{tasksMissingAssets}</span>
+                    </>
+                  )}
+                </button>
                 <button
                   type="button"
                   onClick={deleteTemplate}
