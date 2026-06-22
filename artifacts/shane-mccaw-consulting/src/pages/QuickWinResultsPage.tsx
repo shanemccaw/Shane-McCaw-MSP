@@ -25,15 +25,26 @@ type QuizSlug =
   | "copilot-readiness-assessment"
   | "m365-training-enablement";
 
+interface ServiceData {
+  name: string;
+  tagline: string | null;
+  description: string | null;
+  price: string | null;
+  turnaround: string | null;
+  durationDays: number | null;
+  deliverables: string[] | null;
+  features: string[] | null;
+  inclusions: string[] | null;
+  pageHref: string | null;
+  badge: string | null;
+  highlighted: boolean;
+}
+
 interface Recommendation {
   rank: number;
   slug: string;
   score: number;
-  name: string | null;
-  tagline: string | null;
-  price: string | null;
-  pageHref: string | null;
-  description: string | null;
+  service: ServiceData | null;
 }
 
 interface QuizResult {
@@ -45,7 +56,7 @@ interface QuizResult {
   createdAt: string;
 }
 
-// ── Static fallback metadata (display only — names/hrefs when DB record is absent) ──
+// ── Static fallback labels (display-only when service record is absent) ───────
 
 const SLUG_LABELS: Record<QuizSlug, string> = {
   "tenant-health-audit": "M365 Tenant Health Audit",
@@ -55,8 +66,6 @@ const SLUG_LABELS: Record<QuizSlug, string> = {
   "copilot-readiness-assessment": "Copilot for M365 Readiness Assessment",
   "m365-training-enablement": "Microsoft 365 Training & Enablement",
 };
-
-// ── Dimension labels for readiness profile ────────────────────────────────────
 
 const DIMENSION_LABELS: Record<QuizSlug, string> = {
   "tenant-health-audit": "M365 Tenant Health",
@@ -76,35 +85,32 @@ const ALL_SLUGS: QuizSlug[] = [
   "m365-training-enablement",
 ];
 
-// Max possible score per dimension across all 10 questions
+// Max possible score per dimension across all questions
 const MAX_SCORE = 12;
 
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
 function getScorePct(slug: string, scores: Record<string, number>): number {
-  const raw = scores[slug] ?? 0;
-  return Math.min(100, Math.round((raw / MAX_SCORE) * 100));
+  return Math.min(100, Math.round(((scores[slug] ?? 0) / MAX_SCORE) * 100));
 }
 
 function getPackageName(rec: Recommendation): string {
-  return rec.name ?? SLUG_LABELS[rec.slug as QuizSlug] ?? rec.slug;
+  return rec.service?.name ?? SLUG_LABELS[rec.slug as QuizSlug] ?? rec.slug;
 }
 
 function getPackageHref(rec: Recommendation): string {
-  return rec.pageHref ?? `/micro-offers/${rec.slug}`;
+  return rec.service?.pageHref ?? `/micro-offers/${rec.slug}`;
 }
 
-// ── Dynamic narrative from scores ─────────────────────────────────────────────
+// ── Dynamic narrative builders ────────────────────────────────────────────────
 
-function buildPersonalisedSummary(
-  recommendations: Recommendation[],
+function buildPrimarySummary(
+  primary: Recommendation,
   scores: Record<string, number>
 ): string {
-  if (recommendations.length === 0) return "";
-
-  const top = recommendations[0];
-  const second = recommendations[1];
-  const topName = getPackageName(top);
-  const topPct = getScorePct(top.slug, scores);
-  const topLabel = DIMENSION_LABELS[top.slug as QuizSlug] ?? top.slug;
+  const topPct = getScorePct(primary.slug, scores);
+  const topLabel = DIMENSION_LABELS[primary.slug as QuizSlug] ?? primary.slug;
+  const topName = getPackageName(primary);
 
   let strength: string;
   if (topPct >= 67) {
@@ -115,35 +121,71 @@ function buildPersonalisedSummary(
     strength = "an emerging signal";
   }
 
-  let summary = `Your answers point to ${strength} in ${topLabel} (${topPct}% of the maximum score in that area). **${topName}** is the fastest path to measurable improvement in your environment.`;
+  return `Your answers point to ${strength} in ${topLabel} (${topPct}% of the maximum score in this area). **${topName}** is the fastest path to measurable improvement in your environment.`;
+}
 
-  if (second) {
-    const secondLabel = DIMENSION_LABELS[second.slug as QuizSlug] ?? second.slug;
-    const secondName = getPackageName(second);
-    const gap = top.score - second.score;
-    if (gap <= 1) {
-      summary += ` ${secondLabel} (${secondName}) scored almost as high — both areas deserve attention.`;
-    } else {
-      summary += ` ${secondLabel} is a secondary area to watch once your primary quick win is complete.`;
-    }
+function buildLowestDimensionNote(scores: Record<string, number>): string {
+  const lowest = ALL_SLUGS.slice().sort(
+    (a, b) => (scores[a] ?? 0) - (scores[b] ?? 0)
+  )[0];
+  const lowestLabel = DIMENSION_LABELS[lowest];
+  const lowestPct = getScorePct(lowest, scores);
+  if (lowestPct === 0) {
+    return `${lowestLabel} scored zero across all questions — this area may already be well-managed, or it's simply not a current priority for your organisation.`;
+  }
+  return `Lowest signal: ${lowestLabel} at ${lowestPct}% — this may indicate a relative strength or a lower-priority area given where you are right now.`;
+}
+
+function buildPrimaryReasoning(
+  primary: Recommendation,
+  scores: Record<string, number>
+): string {
+  const topPct = getScorePct(primary.slug, scores);
+  const topLabel = DIMENSION_LABELS[primary.slug as QuizSlug] ?? primary.slug;
+  const rawScore = scores[primary.slug] ?? 0;
+
+  if (rawScore === 0) {
+    return `This package was your closest match given your answers.`;
   }
 
-  return summary;
+  return `You scored ${rawScore} out of a possible ${MAX_SCORE} in ${topLabel} (${topPct}%) — the highest of all six dimensions. This is where your environment has the most immediate, actionable gap that a time-boxed engagement can close.`;
+}
+
+function buildSecondaryReasoning(
+  rec: Recommendation,
+  primary: Recommendation,
+  scores: Record<string, number>
+): string {
+  const label = DIMENSION_LABELS[rec.slug as QuizSlug] ?? rec.slug;
+  const pct = getScorePct(rec.slug, scores);
+  const primaryPct = getScorePct(primary.slug, scores);
+  const gap = primaryPct - pct;
+
+  if (gap <= 5) {
+    return `${label} scored almost as high (${pct}%) — consider this a near-tie with your primary recommendation.`;
+  }
+  return `${label} scored ${pct}% — a secondary signal worth addressing once the primary quick win is delivered.`;
 }
 
 function getReadingIndicator(
   slug: QuizSlug,
-  scores: Record<string, number>,
   recommendations: Recommendation[]
 ): string {
-  const pct = getScorePct(slug, scores);
-  const isPrimary = recommendations[0]?.slug === slug;
-  const isSecondary = recommendations[1]?.slug === slug;
-
-  if (isPrimary) return "Highest priority";
-  if (isSecondary) return "Worth considering next";
-  if (pct >= 30) return "Moderate signal";
+  const rank = recommendations.findIndex((r) => r.slug === slug) + 1;
+  if (rank === 1) return "Highest priority";
+  if (rank === 2) return "Worth considering next";
+  if (rank === 3) return "Moderate signal";
   return "Low signal at this time";
+}
+
+// ── Bar fill class — no inline style for colour ───────────────────────────────
+
+function barFillClass(slug: string, recommendations: Recommendation[]): string {
+  const isPrimary = recommendations[0]?.slug === slug;
+  const pct = recommendations.find((r) => r.slug === slug)?.score ?? 0;
+  if (isPrimary) return "bg-[#0078D4]";
+  if (pct >= 5) return "bg-[#00B4D8]";
+  return "bg-gray-300";
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
@@ -216,10 +258,15 @@ export default function QuickWinResultsPage() {
   const primary = topRecs[0] ?? null;
   const secondaryRecs = topRecs.slice(1, 3);
 
-  const summary = primary ? buildPersonalisedSummary(recommendations, scores) : "";
+  const primarySummary = primary ? buildPrimarySummary(primary, scores) : "";
+  const lowestNote = buildLowestDimensionNote(scores);
 
-  // Split on **...** for bold rendering
-  const summaryParts = summary.split(/\*\*(.+?)\*\*/g);
+  // Split **...** for bold rendering
+  function renderBold(text: string) {
+    return text.split(/\*\*(.+?)\*\*/g).map((part, i) =>
+      i % 2 === 1 ? <strong key={i}>{part}</strong> : <span key={i}>{part}</span>
+    );
+  }
 
   return (
     <Layout>
@@ -230,13 +277,7 @@ export default function QuickWinResultsPage() {
 
       {/* ── Hero ──────────────────────────────────────────────────────────────── */}
       <section className="bg-[#0A2540] pt-32 pb-20 relative overflow-hidden">
-        <div
-          className="absolute inset-0 pointer-events-none"
-          style={{
-            background:
-              "radial-gradient(ellipse 800px 400px at 60% 0%, rgba(0,120,212,0.14) 0%, transparent 70%)",
-          }}
-        />
+        <div className="absolute inset-0 pointer-events-none bg-[radial-gradient(ellipse_800px_400px_at_60%_0%,rgba(0,120,212,0.14)_0%,transparent_70%)]" />
         <div className="max-w-[1200px] mx-auto px-6 relative text-center">
           <div className="inline-flex items-center gap-2 bg-[#0078D4]/20 text-[#60B4FF] px-4 py-1.5 rounded-full text-sm font-semibold mb-6">
             <CheckCircle className="w-4 h-4" />
@@ -246,7 +287,7 @@ export default function QuickWinResultsPage() {
             Your Personalised Quick Win Recommendations
           </h1>
           <p className="text-white/70 text-lg mt-5 max-w-xl mx-auto leading-relaxed">
-            Based on your 10 answers, here's the fastest way to get measurable value from your
+            Based on your answers, here's the fastest way to get measurable value from your
             Microsoft 365 environment.
           </p>
         </div>
@@ -256,7 +297,7 @@ export default function QuickWinResultsPage() {
       {primary && (
         <section className="bg-white border-b border-border py-14">
           <div className="max-w-[760px] mx-auto px-6">
-            <div className="flex items-start gap-4">
+            <div className="flex items-start gap-4 mb-6">
               <div className="flex-shrink-0 w-10 h-10 rounded-xl bg-[#0078D4]/10 flex items-center justify-center">
                 <Star className="w-5 h-5 text-[#0078D4]" />
               </div>
@@ -265,15 +306,12 @@ export default function QuickWinResultsPage() {
                   What your answers tell us
                 </p>
                 <p className="text-[#0A2540] text-base leading-relaxed">
-                  {summaryParts.map((part, i) =>
-                    i % 2 === 1 ? (
-                      <strong key={i}>{part}</strong>
-                    ) : (
-                      <span key={i}>{part}</span>
-                    )
-                  )}
+                  {renderBold(primarySummary)}
                 </p>
               </div>
+            </div>
+            <div className="pl-14">
+              <p className="text-sm text-muted-foreground leading-relaxed">{lowestNote}</p>
             </div>
           </div>
         </section>
@@ -298,16 +336,54 @@ export default function QuickWinResultsPage() {
                   <h2 className="text-xl font-extrabold text-[#0A2540] mb-2 leading-snug">
                     {getPackageName(primary)}
                   </h2>
-                  {primary.tagline && (
-                    <p className="text-muted-foreground text-sm leading-relaxed mb-6">
-                      {primary.tagline}
+                  {primary.service?.tagline && (
+                    <p className="text-muted-foreground text-sm leading-relaxed mb-4">
+                      {primary.service.tagline}
                     </p>
                   )}
+                  {/* Why this was ranked first */}
+                  <p className="text-sm text-[#0A2540] bg-[#F7F9FC] rounded-xl px-4 py-3 mb-5 border border-border leading-relaxed">
+                    <span className="font-semibold text-[#0078D4]">Why this?</span>{" "}
+                    {buildPrimaryReasoning(primary, scores)}
+                  </p>
+                  {/* Service meta */}
+                  {(primary.service?.turnaround || primary.service?.durationDays) && (
+                    <div className="flex flex-wrap gap-3 mb-6">
+                      {primary.service.turnaround && (
+                        <span className="inline-flex items-center gap-1.5 text-xs font-semibold bg-[#0A2540]/5 text-[#0A2540] px-3 py-1.5 rounded-full border border-[#0A2540]/10">
+                          ⏱ {primary.service.turnaround}
+                        </span>
+                      )}
+                      {primary.service.durationDays && (
+                        <span className="inline-flex items-center gap-1.5 text-xs font-semibold bg-[#0A2540]/5 text-[#0A2540] px-3 py-1.5 rounded-full border border-[#0A2540]/10">
+                          📅 {primary.service.durationDays} day{primary.service.durationDays !== 1 ? "s" : ""}
+                        </span>
+                      )}
+                      {primary.service.price && (
+                        <span className="inline-flex items-center gap-1.5 text-xs font-semibold bg-[#0078D4]/10 text-[#0078D4] px-3 py-1.5 rounded-full border border-[#0078D4]/20">
+                          From ${parseFloat(primary.service.price).toLocaleString()}
+                        </span>
+                      )}
+                    </div>
+                  )}
+                  {/* Deliverables */}
+                  {primary.service?.deliverables && primary.service.deliverables.length > 0 && (
+                    <div className="mb-6">
+                      <p className="text-xs font-bold uppercase tracking-widest text-muted-foreground mb-2">
+                        What you get
+                      </p>
+                      <ul className="space-y-1.5">
+                        {primary.service.deliverables.slice(0, 4).map((d, i) => (
+                          <li key={i} className="flex items-start gap-2 text-sm text-[#0A2540]">
+                            <CheckCircle className="w-3.5 h-3.5 text-[#0078D4] flex-shrink-0 mt-0.5" />
+                            {d}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
                   <div className="flex flex-col sm:flex-row gap-3">
-                    <CTAButton
-                      href={getPackageHref(primary)}
-                      className="px-6 py-2.5 text-sm"
-                    >
+                    <CTAButton href={getPackageHref(primary)} className="px-6 py-2.5 text-sm">
                       Start This Quick Win
                     </CTAButton>
                     <CTAButton
@@ -344,9 +420,15 @@ export default function QuickWinResultsPage() {
                     <h3 className="font-extrabold text-[#0A2540] text-base mb-1 leading-snug">
                       {getPackageName(rec)}
                     </h3>
-                    {rec.tagline && (
-                      <p className="text-muted-foreground text-sm leading-relaxed mb-4">
-                        {rec.tagline}
+                    {rec.service?.tagline && (
+                      <p className="text-muted-foreground text-sm leading-relaxed mb-3">
+                        {rec.service.tagline}
+                      </p>
+                    )}
+                    {/* Per-secondary reasoning */}
+                    {primary && (
+                      <p className="text-xs text-muted-foreground bg-[#F7F9FC] rounded-lg px-3 py-2 border border-border mb-4 leading-relaxed">
+                        {buildSecondaryReasoning(rec, primary, scores)}
                       </p>
                     )}
                     <Link
@@ -375,27 +457,32 @@ export default function QuickWinResultsPage() {
                 Your Readiness Profile
               </p>
               <p className="text-sm text-muted-foreground mt-0.5">
-                How each area scored across all 10 questions
+                How each area scored across all questions
               </p>
             </div>
           </div>
           {primary && (
             <p className="text-sm text-muted-foreground mb-7 pl-12">
-              Strongest area: <strong className="text-[#0A2540]">{DIMENSION_LABELS[primary.slug as QuizSlug] ?? primary.slug}</strong> at{" "}
-              {getScorePct(primary.slug, scores)}%. Lowest-scoring areas represent either strengths or lower priorities given your current situation.
+              Strongest area:{" "}
+              <strong className="text-[#0A2540]">
+                {DIMENSION_LABELS[primary.slug as QuizSlug] ?? primary.slug}
+              </strong>{" "}
+              at {getScorePct(primary.slug, scores)}%. {lowestNote}
             </p>
           )}
           <div className="space-y-4">
             {ALL_SLUGS.map((slug) => {
               const pct = getScorePct(slug, scores);
               const label = DIMENSION_LABELS[slug];
-              const indicator = getReadingIndicator(slug, scores, recommendations);
+              const indicator = getReadingIndicator(slug, recommendations);
               const isPrimary = primary?.slug === slug;
               return (
                 <div key={slug}>
                   <div className="flex items-center justify-between mb-1">
                     <span
-                      className={`text-sm font-semibold ${isPrimary ? "text-[#0078D4]" : "text-[#0A2540]"}`}
+                      className={`text-sm font-semibold ${
+                        isPrimary ? "text-[#0078D4]" : "text-[#0A2540]"
+                      }`}
                     >
                       {label}
                     </span>
@@ -403,16 +490,11 @@ export default function QuickWinResultsPage() {
                   </div>
                   <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
                     <div
-                      className="h-full rounded-full transition-all duration-700"
-                      style={{
-                        width: `${pct}%`,
-                        background:
-                          isPrimary
-                            ? "#0078D4"
-                            : pct >= 40
-                            ? "#00B4D8"
-                            : "#e2e8f0",
-                      }}
+                      className={`h-full rounded-full transition-all duration-700 ${barFillClass(
+                        slug,
+                        recommendations
+                      )}`}
+                      style={{ width: `${pct}%` }}
                     />
                   </div>
                   <p className="text-xs text-muted-foreground mt-0.5 text-right">{pct}%</p>
@@ -423,7 +505,7 @@ export default function QuickWinResultsPage() {
         </div>
       </section>
 
-      {/* ── Next Steps — dynamic from ranked results ──────────────────────────── */}
+      {/* ── Next Steps — fully ranked dynamic sequence from recommendations ────── */}
       <section className="bg-[#F7F9FC] border-t border-border py-16">
         <div className="max-w-[760px] mx-auto px-6">
           <div className="flex items-center gap-3 mb-6">
@@ -435,31 +517,44 @@ export default function QuickWinResultsPage() {
             </p>
           </div>
           <div className="space-y-4">
-            {/* Step 1: start the top Quick Win */}
-            {primary && (
-              <div className="bg-white rounded-2xl border border-border p-6 flex gap-5">
+            {/* Step per ranked recommendation */}
+            {topRecs.slice(0, 3).map((rec, i) => (
+              <div
+                key={rec.slug}
+                className="bg-white rounded-2xl border border-border p-6 flex gap-5"
+              >
                 <div className="flex-shrink-0 w-9 h-9 rounded-xl bg-[#0078D4]/10 flex items-center justify-center">
-                  <span className="text-[#0078D4] font-extrabold text-sm">1</span>
+                  <span className="text-[#0078D4] font-extrabold text-sm">{i + 1}</span>
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="font-bold text-[#0A2540] text-sm mb-1">
-                    Review {getPackageName(primary)}
+                    {i === 0 ? "Start with: " : i === 1 ? "Then consider: " : "Finally: "}
+                    {getPackageName(rec)}
                   </p>
                   <p className="text-muted-foreground text-sm leading-relaxed mb-3">
-                    This is your highest-scoring area. See exactly what's included, the timeline,
-                    and what your environment will look like when we're done.
+                    {i === 0
+                      ? `This is your highest-scoring area. ${
+                          rec.service?.turnaround
+                            ? `Turnaround: ${rec.service.turnaround}.`
+                            : ""
+                        } See exactly what's included and what your environment will look like when we're done.`
+                      : `${buildSecondaryReasoning(rec, topRecs[0], scores)} ${
+                          rec.service?.turnaround
+                            ? `Turnaround: ${rec.service.turnaround}.`
+                            : ""
+                        }`}
                   </p>
                   <Link
-                    href={getPackageHref(primary)}
+                    href={getPackageHref(rec)}
                     className="inline-flex items-center gap-1.5 text-[#0078D4] font-semibold text-sm hover:underline"
                   >
                     View package details <ArrowRight className="w-3.5 h-3.5" />
                   </Link>
                 </div>
               </div>
-            )}
+            ))}
 
-            {/* Step 2: book a call */}
+            {/* Final step: book discovery call */}
             <div className="bg-white rounded-2xl border border-border p-6 flex gap-5">
               <div className="flex-shrink-0 w-9 h-9 rounded-xl bg-[#0078D4]/10 flex items-center justify-center">
                 <CalendarDays className="w-4 h-4 text-[#0078D4]" />
@@ -480,36 +575,6 @@ export default function QuickWinResultsPage() {
                 </Link>
               </div>
             </div>
-
-            {/* Step 3: secondary quick wins if they scored */}
-            {secondaryRecs.length > 0 && (
-              <div className="bg-white rounded-2xl border border-border p-6 flex gap-5">
-                <div className="flex-shrink-0 w-9 h-9 rounded-xl bg-[#0078D4]/10 flex items-center justify-center">
-                  <span className="text-[#0078D4] font-extrabold text-sm">3</span>
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="font-bold text-[#0A2540] text-sm mb-1">
-                    Plan for your secondary priorities
-                  </p>
-                  <p className="text-muted-foreground text-sm leading-relaxed mb-3">
-                    Your answers also signalled need in{" "}
-                    {secondaryRecs.map((r, i) => (
-                      <span key={r.slug}>
-                        {i > 0 && " and "}
-                        <strong>{getPackageName(r)}</strong>
-                      </span>
-                    ))}
-                    . These are natural follow-ons once your primary quick win is delivered.
-                  </p>
-                  <Link
-                    href="/micro-offers"
-                    className="inline-flex items-center gap-1.5 text-[#0078D4] font-semibold text-sm hover:underline"
-                  >
-                    Browse all quick wins <ArrowRight className="w-3.5 h-3.5" />
-                  </Link>
-                </div>
-              </div>
-            )}
           </div>
         </div>
       </section>
@@ -530,7 +595,10 @@ export default function QuickWinResultsPage() {
                 Start This Quick Win
               </CTAButton>
             )}
-            <CTAButton href="/book" className="px-8 py-3.5 text-sm !bg-white !text-[#0A2540] hover:!bg-[#F7F9FC]">
+            <CTAButton
+              href="/book"
+              className="px-8 py-3.5 text-sm !bg-white !text-[#0A2540] hover:!bg-[#F7F9FC]"
+            >
               Book a Free Call
             </CTAButton>
           </div>

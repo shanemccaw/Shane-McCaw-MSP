@@ -81,7 +81,6 @@ router.get("/quiz/quick-win/results/:resultId", async (req, res) => {
       VALID_SLUGS.includes(s as QuizSlug)
     );
 
-    // Query services by page_slug (the quiz slug values match the page_slug column)
     const services =
       validSlugs.length > 0
         ? await db
@@ -89,9 +88,16 @@ router.get("/quiz/quick-win/results/:resultId", async (req, res) => {
               pageSlug: servicesTable.pageSlug,
               name: servicesTable.name,
               tagline: servicesTable.tagline,
-              price: servicesTable.price,
-              pageHref: servicesTable.pageHref,
               description: servicesTable.description,
+              price: servicesTable.price,
+              turnaround: servicesTable.turnaround,
+              durationDays: servicesTable.durationDays,
+              deliverables: servicesTable.deliverables,
+              features: servicesTable.features,
+              inclusions: servicesTable.inclusions,
+              pageHref: servicesTable.pageHref,
+              badge: servicesTable.badge,
+              highlighted: servicesTable.highlighted,
             })
             .from(servicesTable)
             .where(inArray(servicesTable.pageSlug, validSlugs))
@@ -99,7 +105,6 @@ router.get("/quiz/quick-win/results/:resultId", async (req, res) => {
 
     const servicesByPageSlug = Object.fromEntries(services.map((s) => [s.pageSlug, s]));
 
-    // Build ordered recommendations array with rank
     const recommendations = rankedSlugs
       .filter((s): s is QuizSlug => VALID_SLUGS.includes(s as QuizSlug))
       .map((slug, index) => {
@@ -108,11 +113,22 @@ router.get("/quiz/quick-win/results/:resultId", async (req, res) => {
           rank: index + 1,
           slug,
           score: scores[slug] ?? 0,
-          name: svc?.name ?? null,
-          tagline: svc?.tagline ?? null,
-          price: svc?.price ?? null,
-          pageHref: svc?.pageHref ?? null,
-          description: svc?.description ?? null,
+          service: svc
+            ? {
+                name: svc.name,
+                tagline: svc.tagline ?? null,
+                description: svc.description ?? null,
+                price: svc.price ?? null,
+                turnaround: svc.turnaround ?? null,
+                durationDays: svc.durationDays ?? null,
+                deliverables: svc.deliverables ?? null,
+                features: svc.features ?? null,
+                inclusions: svc.inclusions ?? null,
+                pageHref: svc.pageHref ?? null,
+                badge: svc.badge ?? null,
+                highlighted: svc.highlighted ?? false,
+              }
+            : null,
         };
       });
 
