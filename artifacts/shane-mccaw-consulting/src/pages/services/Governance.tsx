@@ -343,7 +343,8 @@ export default function Governance() {
 
           {(engagementLoading || matchedProjects.length > 0) && (
             <div className="mb-12">
-              <p className="text-[#0078D4] text-sm font-semibold uppercase tracking-[0.12em] mb-5">Project Engagements</p>
+              <p className="text-[#0078D4] text-sm font-semibold uppercase tracking-[0.12em] mb-2">Project Engagements</p>
+              <p className="text-muted-foreground text-sm mb-5 max-w-xl">These scoped engagements typically emerge after a governance assessment uncovers gaps in policy enforcement, compliance posture, or information architecture.</p>
               {engagementLoading ? (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                   {[0, 1].map((i) => (

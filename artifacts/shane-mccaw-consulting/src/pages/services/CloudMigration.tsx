@@ -233,7 +233,8 @@ export default function CloudMigration() {
 
           {(engagementLoading || matchedProjects.length > 0) && (
             <div className="mb-10">
-              <p className="text-[#0078D4] text-sm font-semibold uppercase tracking-[0.1em] mb-5">Project Engagements</p>
+              <p className="text-[#0078D4] text-sm font-semibold uppercase tracking-[0.1em] mb-2">Project Engagements</p>
+              <p className="text-muted-foreground text-sm mb-5 max-w-xl">These scoped engagements typically surface during a migration readiness review, covering workloads that need extra lift, remediation, or post-migration optimisation.</p>
               {engagementLoading ? (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                   {[0, 1].map((i) => (

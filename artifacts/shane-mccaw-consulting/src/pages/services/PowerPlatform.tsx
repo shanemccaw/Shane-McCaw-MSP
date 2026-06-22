@@ -287,7 +287,8 @@ export default function PowerPlatform() {
 
           {(engagementLoading || matchedProjects.length > 0) && (
             <div className="mb-8">
-              <p className="text-[#0078D4] text-sm font-semibold uppercase tracking-[0.12em] mb-5">Project Engagements</p>
+              <p className="text-[#0078D4] text-sm font-semibold uppercase tracking-[0.12em] mb-2">Project Engagements</p>
+              <p className="text-muted-foreground text-sm mb-5 max-w-xl">These scoped engagements are commonly identified when a Power Platform audit surfaces opportunities to automate, extend, or properly govern existing solutions.</p>
               {engagementLoading ? (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                   {[0, 1].map((i) => (
