@@ -14,6 +14,7 @@ import {
   MapPin,
   BarChart2,
   Star,
+  DollarSign,
 } from "lucide-react";
 import { Link } from "wouter";
 import { Layout } from "@/components/Layout";
@@ -504,6 +505,8 @@ export default function RetainersOverview() {
               { icon: <Lightbulb className="w-5 h-5 text-[#00B4D8]" />, title: "Better decisions", body: "Leadership gets clear recommendations — not vendor-driven marketing." },
               { icon: <MapPin className="w-5 h-5 text-[#00B4D8]" />, title: "Clear roadmap", body: "A prioritized, written plan for your M365 environment — updated every quarter." },
               { icon: <Users className="w-5 h-5 text-[#00B4D8]" />, title: "No drift, no chaos", body: "Your tenant evolves with intention, not with whoever last opened the admin center." },
+              { icon: <DollarSign className="w-5 h-5 text-[#00B4D8]" />, title: "License optimization", body: "Right-size your M365 licensing. Stop paying for seats and SKUs you don't need." },
+              { icon: <Clock className="w-5 h-5 text-[#00B4D8]" />, title: "Faster issue resolution", body: "When something breaks, a senior architect knows exactly where to look — no ticket queue, no guessing." },
             ].map((item) => (
               <div key={item.title} className="bg-white/5 rounded-xl p-6 border border-white/10">
                 <div className="flex items-center gap-2 mb-3">
