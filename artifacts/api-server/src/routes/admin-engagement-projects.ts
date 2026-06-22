@@ -32,7 +32,7 @@ router.get("/admin/engagement-projects/:id", requireAdmin, async (req: Request, 
 router.post("/admin/engagement-projects", requireAdmin, async (req: Request, res: Response) => {
   try {
     const body = (req.body ?? {}) as Record<string, unknown>;
-    const { title, priceRange, description, triggeredBy, sowItems, sortOrder, isVisible } = body;
+    const { title, priceRange, description, triggeredBy, sowItems, pages, sortOrder, isVisible } = body;
     if (!title || typeof title !== "string" || !title.trim()) {
       res.status(400).json({ error: "title is required" }); return;
     }
@@ -47,6 +47,7 @@ router.post("/admin/engagement-projects", requireAdmin, async (req: Request, res
         description: typeof description === "string" ? description.trim() || null : null,
         triggeredBy: Array.isArray(triggeredBy) ? (triggeredBy as string[]) : [],
         sowItems: Array.isArray(sowItems) ? (sowItems as string[]) : [],
+        pages: Array.isArray(pages) ? (pages as string[]) : [],
         sortOrder: typeof sortOrder === "number" ? sortOrder : 0,
         isVisible: typeof isVisible === "boolean" ? isVisible : true,
       })
@@ -62,7 +63,7 @@ router.put("/admin/engagement-projects/:id", requireAdmin, async (req: Request, 
     const id = Number(req.params.id);
     if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
     const body = (req.body ?? {}) as Record<string, unknown>;
-    const { title, priceRange, description, triggeredBy, sowItems, sortOrder, isVisible } = body;
+    const { title, priceRange, description, triggeredBy, sowItems, pages, sortOrder, isVisible } = body;
     if (!title || typeof title !== "string" || !title.trim()) {
       res.status(400).json({ error: "title is required" }); return;
     }
@@ -77,6 +78,7 @@ router.put("/admin/engagement-projects/:id", requireAdmin, async (req: Request, 
         description: typeof description === "string" ? description.trim() || null : null,
         triggeredBy: Array.isArray(triggeredBy) ? (triggeredBy as string[]) : [],
         sowItems: Array.isArray(sowItems) ? (sowItems as string[]) : [],
+        pages: Array.isArray(pages) ? (pages as string[]) : [],
         sortOrder: typeof sortOrder === "number" ? sortOrder : 0,
         isVisible: typeof isVisible === "boolean" ? isVisible : true,
         updatedAt: new Date(),

@@ -14,6 +14,7 @@ interface EngagementProject {
   description: string | null;
   triggeredBy: string[];
   sowItems: string[];
+  pages: string[];
   sortOrder: number;
   isVisible: boolean;
   createdAt: string;
@@ -22,12 +23,22 @@ interface EngagementProject {
 
 type FormMode = "create" | "edit";
 
+const SERVICE_PAGES: { slug: string; label: string }[] = [
+  { slug: "copilot-ai", label: "Copilot AI" },
+  { slug: "microsoft-365", label: "Microsoft 365" },
+  { slug: "sharepoint", label: "SharePoint" },
+  { slug: "power-platform", label: "Power Platform" },
+  { slug: "governance", label: "Governance" },
+  { slug: "cloud-migration", label: "Cloud Migration" },
+];
+
 const EMPTY_FORM = {
   title: "",
   priceRange: "",
   description: "",
   triggeredBy: [] as string[],
   sowItems: [] as string[],
+  pages: [] as string[],
   sortOrder: 0,
   isVisible: true,
 };
@@ -112,6 +123,53 @@ function ArrayEditor({
   );
 }
 
+function PageTagsChecklist({
+  selected,
+  onChange,
+}: {
+  selected: string[];
+  onChange: (pages: string[]) => void;
+}) {
+  const toggle = (slug: string) => {
+    if (selected.includes(slug)) {
+      onChange(selected.filter((s) => s !== slug));
+    } else {
+      onChange([...selected, slug]);
+    }
+  };
+
+  return (
+    <div>
+      <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wide mb-2">
+        Service Pages
+      </label>
+      <p className="text-xs text-gray-400 mb-3">
+        Choose which service pages show this project in their "Project Engagements" section.
+      </p>
+      <div className="grid grid-cols-2 gap-2">
+        {SERVICE_PAGES.map(({ slug, label }) => (
+          <label
+            key={slug}
+            className={`flex items-center gap-2.5 px-3 py-2 rounded-lg border cursor-pointer transition-colors select-none ${
+              selected.includes(slug)
+                ? "border-[#0078D4] bg-[#0078D4]/5 text-[#0078D4]"
+                : "border-gray-200 bg-white text-gray-700 hover:border-gray-300"
+            }`}
+          >
+            <input
+              type="checkbox"
+              checked={selected.includes(slug)}
+              onChange={() => toggle(slug)}
+              className="w-3.5 h-3.5 accent-[#0078D4] flex-shrink-0"
+            />
+            <span className="text-sm font-medium">{label}</span>
+          </label>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export default function EngagementProjectsPage() {
   const { fetchWithAuth } = useAuth();
   const { toast } = useToast();
@@ -158,6 +216,7 @@ export default function EngagementProjectsPage() {
       description: p.description ?? "",
       triggeredBy: p.triggeredBy ?? [],
       sowItems: p.sowItems ?? [],
+      pages: p.pages ?? [],
       sortOrder: p.sortOrder,
       isVisible: p.isVisible,
     });
@@ -183,6 +242,7 @@ export default function EngagementProjectsPage() {
         description: form.description.trim() || null,
         triggeredBy: form.triggeredBy,
         sowItems: form.sowItems,
+        pages: form.pages,
         sortOrder: Number(form.sortOrder) || 0,
         isVisible: form.isVisible,
       };
@@ -252,11 +312,23 @@ export default function EngagementProjectsPage() {
             <div key={p.id} className={`bg-white rounded-xl border transition-all ${expandedId === p.id ? "border-[#0078D4]/40 shadow-sm" : "border-gray-200"}`}>
               <div className="flex items-center gap-3 px-5 py-4">
                 <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-3 flex-wrap">
                     <p className="font-semibold text-gray-900 text-sm">{p.title}</p>
                     <span className="text-[#0078D4] font-bold text-sm">{p.priceRange}</span>
                     {!p.isVisible && (
                       <span className="text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full font-medium">Hidden</span>
+                    )}
+                    {(p.pages ?? []).length > 0 && (
+                      <div className="flex items-center gap-1 flex-wrap">
+                        {(p.pages ?? []).map((slug) => {
+                          const page = SERVICE_PAGES.find((pg) => pg.slug === slug);
+                          return page ? (
+                            <span key={slug} className="text-xs bg-[#0078D4]/8 text-[#0078D4] border border-[#0078D4]/20 px-2 py-0.5 rounded-full font-medium">
+                              {page.label}
+                            </span>
+                          ) : null;
+                        })}
+                      </div>
                     )}
                   </div>
                   {p.description && (
@@ -297,35 +369,54 @@ export default function EngagementProjectsPage() {
               </div>
 
               {expandedId === p.id && (
-                <div className="border-t border-gray-100 px-5 py-4 grid grid-cols-1 md:grid-cols-2 gap-5">
-                  <div>
-                    <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2">Triggered By</p>
-                    {p.triggeredBy.length === 0 ? (
-                      <p className="text-xs text-gray-400 italic">None defined</p>
-                    ) : (
-                      <ul className="space-y-1">
-                        {p.triggeredBy.map((t, i) => (
-                          <li key={i} className="text-xs text-gray-700 flex items-start gap-1.5">
-                            <span className="mt-1 w-1.5 h-1.5 rounded-full bg-[#0078D4] flex-shrink-0" />
-                            {t}
-                          </li>
-                        ))}
-                      </ul>
-                    )}
+                <div className="border-t border-gray-100 px-5 py-4 space-y-5">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                    <div>
+                      <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2">Triggered By</p>
+                      {p.triggeredBy.length === 0 ? (
+                        <p className="text-xs text-gray-400 italic">None defined</p>
+                      ) : (
+                        <ul className="space-y-1">
+                          {p.triggeredBy.map((t, i) => (
+                            <li key={i} className="text-xs text-gray-700 flex items-start gap-1.5">
+                              <span className="mt-1 w-1.5 h-1.5 rounded-full bg-[#0078D4] flex-shrink-0" />
+                              {t}
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+                    <div>
+                      <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2">Typical SOW Items</p>
+                      {p.sowItems.length === 0 ? (
+                        <p className="text-xs text-gray-400 italic">None defined</p>
+                      ) : (
+                        <ul className="space-y-1">
+                          {p.sowItems.map((s, i) => (
+                            <li key={i} className="text-xs text-gray-700 flex items-start gap-1.5">
+                              <span className="mt-1 w-1.5 h-1.5 rounded-full bg-[#00B4D8] flex-shrink-0" />
+                              {s}
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
                   </div>
                   <div>
-                    <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2">Typical SOW Items</p>
-                    {p.sowItems.length === 0 ? (
-                      <p className="text-xs text-gray-400 italic">None defined</p>
+                    <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2">Shown on Service Pages</p>
+                    {(p.pages ?? []).length === 0 ? (
+                      <p className="text-xs text-gray-400 italic">Not tagged to any service page — will not appear on service pages</p>
                     ) : (
-                      <ul className="space-y-1">
-                        {p.sowItems.map((s, i) => (
-                          <li key={i} className="text-xs text-gray-700 flex items-start gap-1.5">
-                            <span className="mt-1 w-1.5 h-1.5 rounded-full bg-[#00B4D8] flex-shrink-0" />
-                            {s}
-                          </li>
-                        ))}
-                      </ul>
+                      <div className="flex flex-wrap gap-1.5">
+                        {(p.pages ?? []).map((slug) => {
+                          const page = SERVICE_PAGES.find((pg) => pg.slug === slug);
+                          return page ? (
+                            <span key={slug} className="text-xs bg-[#0078D4]/8 text-[#0078D4] border border-[#0078D4]/20 px-2.5 py-1 rounded-full font-medium">
+                              {page.label}
+                            </span>
+                          ) : null;
+                        })}
+                      </div>
                     )}
                   </div>
                 </div>
@@ -388,6 +479,12 @@ export default function EngagementProjectsPage() {
                   className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4]/40 resize-none"
                 />
               </div>
+
+              {/* Service Pages */}
+              <PageTagsChecklist
+                selected={form.pages}
+                onChange={pages => setForm(f => ({ ...f, pages }))}
+              />
 
               {/* Triggered By */}
               <ArrayEditor

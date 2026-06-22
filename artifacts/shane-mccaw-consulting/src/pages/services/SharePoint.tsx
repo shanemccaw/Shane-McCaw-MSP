@@ -52,7 +52,6 @@ const comparisonRows = [
 ];
 
 
-const SHAREPOINT_TRIGGER_KEYS = ["Governance Foundations Package", "Migration Readiness Assessment"];
 
 export default function SharePoint() {
   const { services, loading } = useServices();
@@ -60,7 +59,7 @@ export default function SharePoint() {
   const { projects: engagementProjects, loading: engagementLoading } = useEngagementProjects();
 
   const matchedProjects = engagementProjects.filter(
-    (p) => p.isVisible && p.triggeredBy.some((t) => SHAREPOINT_TRIGGER_KEYS.includes(t))
+    (p) => p.isVisible && p.pages.includes("sharepoint")
   );
 
   const govSvc = services.find((s) => s.slug === "governance-foundations-package");

@@ -86,7 +86,6 @@ const migrationTypes = [
 ];
 
 
-const CLOUD_MIGRATION_TRIGGER_KEYS = ["Migration Readiness Assessment"];
 
 export default function CloudMigration() {
   const { services, loading } = useServices();
@@ -94,7 +93,7 @@ export default function CloudMigration() {
   const { projects: engagementProjects, loading: engagementLoading } = useEngagementProjects();
 
   const matchedProjects = engagementProjects.filter(
-    (p) => p.isVisible && p.triggeredBy.some((t) => CLOUD_MIGRATION_TRIGGER_KEYS.includes(t))
+    (p) => p.isVisible && p.pages.includes("cloud-migration")
   );
 
   const migSvc = services.find((s) => s.slug === "migration-readiness-assessment");

@@ -353,6 +353,7 @@ export const engagementProjectsTable = pgTable("engagement_projects", {
   description: text("description"),
   triggeredBy: jsonb("triggered_by").$type<string[]>().notNull().default([]),
   sowItems: jsonb("sow_items").$type<string[]>().notNull().default([]),
+  pages: jsonb("pages").$type<string[]>().notNull().default([]),
   sortOrder: integer("sort_order").notNull().default(0),
   isVisible: boolean("is_visible").notNull().default(true),
   createdAt: timestamp("created_at").notNull().defaultNow(),

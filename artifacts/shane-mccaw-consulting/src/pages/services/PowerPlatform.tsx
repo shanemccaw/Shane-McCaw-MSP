@@ -111,7 +111,6 @@ const WHY_SHANE = [
 ];
 
 
-const POWER_PLATFORM_TRIGGER_KEYS = ["Power Platform Quick\u2011Start"];
 
 export default function PowerPlatform() {
   const { services, loading } = useServices();
@@ -119,7 +118,7 @@ export default function PowerPlatform() {
   const { projects: engagementProjects, loading: engagementLoading } = useEngagementProjects();
 
   const matchedProjects = engagementProjects.filter(
-    (p) => p.isVisible && p.triggeredBy.some((t) => POWER_PLATFORM_TRIGGER_KEYS.includes(t))
+    (p) => p.isVisible && p.pages.includes("power-platform")
   );
 
   const quickStartSvc = services.find((s) => s.slug === "power-platform-quickstart");

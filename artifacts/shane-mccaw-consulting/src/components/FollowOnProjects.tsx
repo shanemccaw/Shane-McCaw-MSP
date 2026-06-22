@@ -2,16 +2,16 @@ import { useEngagementProjects } from "@/hooks/useEngagementProjects";
 import { EngagementProjectCard } from "@/components/EngagementProjectCard";
 
 interface FollowOnProjectsProps {
-  triggerKeys: string[];
+  pageSlug: string;
 }
 
-export function FollowOnProjects({ triggerKeys }: FollowOnProjectsProps) {
+export function FollowOnProjects({ pageSlug }: FollowOnProjectsProps) {
   const { projects, loading } = useEngagementProjects();
 
   const matched = projects.filter(
     (p) =>
       p.isVisible &&
-      p.triggeredBy.some((t) => triggerKeys.includes(t))
+      p.pages.includes(pageSlug)
   );
 
   if (loading) {

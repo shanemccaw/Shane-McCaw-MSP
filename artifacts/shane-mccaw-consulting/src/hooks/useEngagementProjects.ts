@@ -7,6 +7,7 @@ export interface EngagementProject {
   description: string | null;
   triggeredBy: string[];
   sowItems: string[];
+  pages: string[];
   sortOrder: number;
   isVisible: boolean;
 }

@@ -158,7 +158,6 @@ const WHY_SHANE = [
   },
 ];
 
-const GOVERNANCE_TRIGGER_KEYS = ["Governance Foundations Package"];
 
 export default function Governance() {
   const { services, loading } = useServices();
@@ -166,7 +165,7 @@ export default function Governance() {
   const { projects: engagementProjects, loading: engagementLoading } = useEngagementProjects();
 
   const matchedProjects = engagementProjects.filter(
-    (p) => p.isVisible && p.triggeredBy.some((t) => GOVERNANCE_TRIGGER_KEYS.includes(t))
+    (p) => p.isVisible && p.pages.includes("governance")
   );
 
   const govSvc = services.find((s) => s.slug === "governance-foundations-package");

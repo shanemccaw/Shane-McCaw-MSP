@@ -61,15 +61,13 @@ const WHAT_YOU_GET = [
   "A clear operating model so governance doesn't drift again",
 ];
 
-const M365_TRIGGER_KEYS = ["M365 Tenant Health Audit"];
-
 export default function Microsoft365() {
   const { services, loading, error } = useServices("micro_offer");
   const { services: retainerServices, loading: retainerLoading } = useServices("retainer");
   const { projects: engagementProjects, loading: engagementLoading } = useEngagementProjects();
 
   const matchedProjects = engagementProjects.filter(
-    (p) => p.isVisible && p.triggeredBy.some((t) => M365_TRIGGER_KEYS.includes(t))
+    (p) => p.isVisible && p.pages.includes("microsoft-365")
   );
 
   const [modalOpen, setModalOpen] = useState(false);

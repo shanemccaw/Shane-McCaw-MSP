@@ -103,10 +103,7 @@ export default function CopilotAI() {
   };
   const { projects: engagementProjects, loading: engagementLoading } = useEngagementProjects();
   const matchedProjects = engagementProjects.filter((p) =>
-    p.isVisible &&
-    p.triggeredBy.some((k) =>
-      ["copilot readiness assessment", "copilot for m365 readiness assessment"].includes(k.toLowerCase())
-    )
+    p.isVisible && p.pages.includes("copilot-ai")
   );
   const [modalOpen, setModalOpen] = useState(false);
   const hasPdf = useServiceHasPdf("/services/copilot-ai");
@@ -283,7 +280,7 @@ export default function CopilotAI() {
           </div>
 
           <div className="max-w-4xl mx-auto mb-2">
-            <FollowOnProjects triggerKeys={["Copilot Readiness Assessment"]} />
+            <FollowOnProjects pageSlug="copilot-ai" />
           </div>
 
           {/* Retainers */}
