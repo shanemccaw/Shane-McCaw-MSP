@@ -43,6 +43,7 @@ export default function ScriptRunnerPage() {
   const [runbooks, setRunbooks] = useState<RunbookSummary[]>([]);
   const [loadingCredentials, setLoadingCredentials] = useState(true);
   const [loadingRunbooks, setLoadingRunbooks] = useState(false);
+  const [azureConfigured, setAzureConfigured] = useState<boolean | null>(null);
 
   const [selectedCredId, setSelectedCredId] = useState<number | "">("");
   const [selectedRunbook, setSelectedRunbook] = useState("");
@@ -66,6 +67,7 @@ export default function ScriptRunnerPage() {
 
   useEffect(() => {
     void loadCredentials();
+    void checkAzureConfig();
   }, []);
 
   useEffect(() => {
@@ -91,15 +93,30 @@ export default function ScriptRunnerPage() {
     }
   };
 
+  const checkAzureConfig = async () => {
+    try {
+      const res = await fetchWithAuth("/api/admin/runbooks");
+      const data = await res.json() as { configured: boolean };
+      setAzureConfigured(res.status === 503 && data.configured === false ? false : true);
+    } catch {
+      // network error — leave as null (unknown)
+    }
+  };
+
   const loadRunbooks = async () => {
     setLoadingRunbooks(true);
     try {
       const res = await fetchWithAuth("/api/admin/runbooks");
-      if (res.ok) {
-        const data = await res.json() as RunbookSummary[];
-        setRunbooks(data);
+      const data = await res.json() as { configured: boolean; runbooks?: RunbookSummary[]; error?: string };
+      if (res.status === 503 && data.configured === false) {
+        setAzureConfigured(false);
+        setRunbooks([]);
+      } else if (res.ok && data.configured) {
+        setAzureConfigured(true);
+        setRunbooks(data.runbooks ?? []);
       } else {
-        toast({ title: "Could not load runbooks", description: "Check Azure Automation secrets are configured.", variant: "destructive" });
+        setAzureConfigured(true);
+        toast({ title: "Could not load runbooks", description: data.error ?? "Check Azure Automation is reachable.", variant: "destructive" });
       }
     } catch {
       toast({ title: "Could not load runbooks", variant: "destructive" });
@@ -253,6 +270,41 @@ export default function ScriptRunnerPage() {
           Add Customer
         </button>
       </div>
+
+      {azureConfigured === false && (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 p-5 space-y-3">
+          <div className="flex items-start gap-3">
+            <svg className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+            </svg>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-bold text-amber-800 mb-1">Azure Automation is not configured</p>
+              <p className="text-xs text-amber-700 leading-relaxed mb-3">
+                Add the following 7 secrets to <strong>Replit Secrets</strong> (Tools → Secrets in the sidebar) to enable Script Runner. The values come from your Azure App Registration and Automation account.
+              </p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-1 font-mono text-xs text-amber-900">
+                {[
+                  ["AZURE_CLIENT_ID", "App Registration client ID"],
+                  ["AZURE_CLIENT_SECRET", "App Registration client secret"],
+                  ["AZURE_TENANT_ID", "Azure AD tenant ID"],
+                  ["AZURE_KEY_VAULT_URL", "https://your-vault.vault.azure.net"],
+                  ["AZURE_SUBSCRIPTION_ID", "Azure subscription ID"],
+                  ["AZURE_AUTOMATION_RESOURCE_GROUP", "Resource group name"],
+                  ["AZURE_AUTOMATION_ACCOUNT_NAME", "Automation account name"],
+                ].map(([key, hint]) => (
+                  <div key={key} className="flex flex-col py-0.5">
+                    <span className="font-bold">{key}</span>
+                    <span className="text-amber-700 font-sans text-[10px]">{hint}</span>
+                  </div>
+                ))}
+              </div>
+              <p className="text-[10px] text-amber-600 mt-3">
+                The App Registration needs <strong>Key Vault Secrets User</strong> on the vault and <strong>Automation Operator</strong> on the Automation account. Reload this page after adding the secrets.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Configuration sidebar */}

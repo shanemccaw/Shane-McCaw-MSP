@@ -25,13 +25,33 @@ import { logger } from "../lib/logger";
 
 const router: IRouter = Router();
 
+function isAzureConfigMissing(err: unknown): boolean {
+  return (
+    err instanceof Error &&
+    (err.message.includes("Missing Azure env vars") ||
+      err.message.includes("AZURE_TENANT_ID") ||
+      err.message.includes("AZURE_CLIENT_ID") ||
+      err.message.includes("AZURE_KEY_VAULT_URL") ||
+      err.message.includes("AZURE_SUBSCRIPTION_ID") ||
+      err.message.includes("AZURE_AUTOMATION_"))
+  );
+}
+
 router.get("/admin/runbooks", requireAdmin, async (_req: Request, res: Response) => {
   try {
     const runbooks = await listRunbooks();
-    res.json(runbooks);
+    res.json({ configured: true, runbooks });
   } catch (err) {
+    if (isAzureConfigMissing(err)) {
+      res.status(503).json({
+        configured: false,
+        error: "not_configured",
+        message: "Azure Automation secrets are not set. Add AZURE_CLIENT_ID, AZURE_CLIENT_SECRET, AZURE_TENANT_ID, AZURE_KEY_VAULT_URL, AZURE_SUBSCRIPTION_ID, AZURE_AUTOMATION_RESOURCE_GROUP, and AZURE_AUTOMATION_ACCOUNT_NAME to Replit Secrets.",
+      });
+      return;
+    }
     logger.error({ err }, "admin-script-runner: failed to list runbooks");
-    res.status(500).json({ error: "Failed to list runbooks from Azure Automation" });
+    res.status(500).json({ configured: true, error: "Failed to list runbooks from Azure Automation" });
   }
 });
 
