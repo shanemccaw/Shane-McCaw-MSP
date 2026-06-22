@@ -4,7 +4,7 @@ import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer,
 } from "recharts";
 
-type Range = "today" | "7d" | "30d" | "90d";
+type Preset = "today" | "7d" | "30d" | "90d";
 
 interface KPIs {
   visitors: number;
@@ -20,6 +20,8 @@ interface TopReferrer { source: string; sessions: number; pct: number }
 interface TopLink { href: string; label: string; count: number }
 interface TopCta { page: string; label: string; clicks: number; pageViews: number; ctr: number }
 
+type SortDir = "asc" | "desc";
+
 function fmt(n: number) {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
   if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`;
@@ -30,6 +32,14 @@ function fmtTime(seconds: number): string {
   if (!seconds) return "—";
   if (seconds < 60) return `${seconds}s`;
   return `${Math.floor(seconds / 60)}m ${seconds % 60}s`;
+}
+
+function isoDate(d: Date): string {
+  return d.toISOString().slice(0, 10);
+}
+
+function safeHref(raw: string): string {
+  return /^https?:\/\//i.test(raw) ? raw : "";
 }
 
 function SkeletonCard({ h = "h-24" }: { h?: string }) {
@@ -47,10 +57,23 @@ function SectionError({ message }: { message: string }) {
   );
 }
 
-const RANGE_LABELS: Record<Range, string> = { today: "Today", "7d": "Last 7 days", "30d": "Last 30 days", "90d": "Last 90 days" };
+function SortBtn({ col, sortCol, sortDir, onSort }: { col: string; sortCol: string; sortDir: SortDir; onSort: (c: string) => void }) {
+  const active = sortCol === col;
+  return (
+    <button onClick={() => onSort(col)} className="inline-flex items-center gap-0.5 group">
+      <span className={active ? "text-[#0078D4]" : ""}>{col}</span>
+      <svg className={`w-3 h-3 ml-0.5 transition-transform ${active && sortDir === "asc" ? "rotate-180" : ""} ${active ? "text-[#0078D4]" : "text-gray-300 group-hover:text-gray-400"}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+      </svg>
+    </button>
+  );
+}
+
+const PRESET_LABELS: Record<Preset, string> = { today: "Today", "7d": "7d", "30d": "30d", "90d": "90d" };
 
 const EVENT_TYPE_LABELS: Record<string, string> = {
   cta_click: "CTA Click",
+  nav_click: "Nav Click",
   outbound_click: "Outbound",
   click: "Click",
   form_submit: "Form Submit",
@@ -59,7 +82,11 @@ const EVENT_TYPE_LABELS: Record<string, string> = {
 
 export default function AnalyticsPage() {
   const { fetchWithAuth } = useAuth();
-  const [range, setRange] = useState<Range>("30d");
+
+  const [preset, setPreset] = useState<Preset>("30d");
+  const [customStart, setCustomStart] = useState("");
+  const [customEnd, setCustomEnd] = useState("");
+  const [isCustom, setIsCustom] = useState(false);
 
   const [kpis, setKpis] = useState<KPIs | null>(null);
   const [kpisLoading, setKpisLoading] = useState(true);
@@ -70,6 +97,7 @@ export default function AnalyticsPage() {
 
   const [topPages, setTopPages] = useState<TopPage[] | null>(null);
   const [topPagesLoading, setTopPagesLoading] = useState(true);
+  const [topPagesSort, setTopPagesSort] = useState<{ col: string; dir: SortDir }>({ col: "Views", dir: "desc" });
 
   const [topEvents, setTopEvents] = useState<TopEvent[] | null>(null);
   const [topEventsLoading, setTopEventsLoading] = useState(true);
@@ -82,47 +110,68 @@ export default function AnalyticsPage() {
 
   const [topCtas, setTopCtas] = useState<TopCta[] | null>(null);
   const [topCtasLoading, setTopCtasLoading] = useState(true);
+  const [topCtasSort, setTopCtasSort] = useState<{ col: string; dir: SortDir }>({ col: "Clicks", dir: "desc" });
 
   const [live, setLive] = useState<number | null>(null);
 
-  const load = useCallback(async (r: Range) => {
+  function buildQs(extra?: Record<string, string>): string {
+    const params = new URLSearchParams(extra ?? {});
+    if (isCustom && customStart && customEnd) {
+      params.set("start", customStart);
+      params.set("end", customEnd);
+    } else {
+      params.set("range", preset);
+    }
+    return params.toString();
+  }
+
+  const load = useCallback(async (p: Preset, custom: boolean, cStart: string, cEnd: string) => {
     setKpisLoading(true); setKpisError(null);
     setSeriesLoading(true); setTopPagesLoading(true);
     setTopEventsLoading(true); setTopReferrersLoading(true);
     setTopLinksLoading(true); setTopCtasLoading(true);
 
+    function qs(): string {
+      const params = new URLSearchParams();
+      if (custom && cStart && cEnd) { params.set("start", cStart); params.set("end", cEnd); }
+      else { params.set("range", p); }
+      return params.toString();
+    }
+
     await Promise.allSettled([
-      fetchWithAuth(`/api/admin/analytics/kpis?range=${r}`)
+      fetchWithAuth(`/api/admin/analytics/kpis?${qs()}`)
         .then(async res => { const d = await res.json(); if (d && typeof d === "object" && !("error" in d)) { setKpis(d as KPIs); } else { setKpisError("Could not load KPIs"); } setKpisLoading(false); })
         .catch(() => { setKpisError("Could not load KPIs"); setKpisLoading(false); }),
 
-      fetchWithAuth(`/api/admin/analytics/pageviews-series?range=${r}`)
+      fetchWithAuth(`/api/admin/analytics/pageviews-series?${qs()}`)
         .then(async res => { const d = await res.json(); setSeries(Array.isArray(d) ? d as Series[] : []); setSeriesLoading(false); })
         .catch(() => { setSeries([]); setSeriesLoading(false); }),
 
-      fetchWithAuth(`/api/admin/analytics/top-pages?range=${r}`)
+      fetchWithAuth(`/api/admin/analytics/top-pages?${qs()}`)
         .then(async res => { const d = await res.json(); setTopPages(Array.isArray(d) ? d as TopPage[] : []); setTopPagesLoading(false); })
         .catch(() => { setTopPages([]); setTopPagesLoading(false); }),
 
-      fetchWithAuth(`/api/admin/analytics/top-events?range=${r}`)
+      fetchWithAuth(`/api/admin/analytics/top-events?${qs()}`)
         .then(async res => { const d = await res.json(); setTopEvents(Array.isArray(d) ? d as TopEvent[] : []); setTopEventsLoading(false); })
         .catch(() => { setTopEvents([]); setTopEventsLoading(false); }),
 
-      fetchWithAuth(`/api/admin/analytics/top-referrers?range=${r}`)
+      fetchWithAuth(`/api/admin/analytics/top-referrers?${qs()}`)
         .then(async res => { const d = await res.json(); setTopReferrers(Array.isArray(d) ? d as TopReferrer[] : []); setTopReferrersLoading(false); })
         .catch(() => { setTopReferrers([]); setTopReferrersLoading(false); }),
 
-      fetchWithAuth(`/api/admin/analytics/top-links?range=${r}`)
+      fetchWithAuth(`/api/admin/analytics/top-links?${qs()}`)
         .then(async res => { const d = await res.json(); setTopLinks(Array.isArray(d) ? d as TopLink[] : []); setTopLinksLoading(false); })
         .catch(() => { setTopLinks([]); setTopLinksLoading(false); }),
 
-      fetchWithAuth(`/api/admin/analytics/top-ctas?range=${r}`)
+      fetchWithAuth(`/api/admin/analytics/top-ctas?${qs()}`)
         .then(async res => { const d = await res.json(); setTopCtas(Array.isArray(d) ? d as TopCta[] : []); setTopCtasLoading(false); })
         .catch(() => { setTopCtas([]); setTopCtasLoading(false); }),
     ]);
   }, [fetchWithAuth]);
 
-  useEffect(() => { void load(range); }, [range, load]);
+  useEffect(() => {
+    if (!isCustom) void load(preset, false, "", "");
+  }, [preset, isCustom, load]);
 
   useEffect(() => {
     const poll = async () => {
@@ -151,6 +200,35 @@ export default function AnalyticsPage() {
       })
     : [];
 
+  function sortedPages(): TopPage[] {
+    if (!topPages) return [];
+    const { col, dir } = topPagesSort;
+    return [...topPages].sort((a, b) => {
+      let av = 0, bv = 0;
+      if (col === "Views") { av = a.views; bv = b.views; }
+      else if (col === "Avg Time") { av = a.avgDuration ?? 0; bv = b.avgDuration ?? 0; }
+      else if (col === "Bounce") { av = a.bounceRate; bv = b.bounceRate; }
+      return dir === "desc" ? bv - av : av - bv;
+    });
+  }
+
+  function sortedCtas(): TopCta[] {
+    if (!topCtas) return [];
+    const { col, dir } = topCtasSort;
+    return [...topCtas].sort((a, b) => {
+      let av = 0, bv = 0;
+      if (col === "Clicks") { av = a.clicks; bv = b.clicks; }
+      else if (col === "Views") { av = a.pageViews; bv = b.pageViews; }
+      else if (col === "CTR") { av = a.ctr; bv = b.ctr; }
+      return dir === "desc" ? bv - av : av - bv;
+    });
+  }
+
+  function toggleSort(state: { col: string; dir: SortDir }, col: string): { col: string; dir: SortDir } {
+    if (state.col === col) return { col, dir: state.dir === "desc" ? "asc" : "desc" };
+    return { col, dir: "desc" };
+  }
+
   return (
     <div className="p-6 max-w-[1280px] space-y-6">
       {/* Header */}
@@ -167,17 +245,49 @@ export default function AnalyticsPage() {
               {live} live now
             </div>
           )}
-          {/* Range selector */}
-          <div className="flex items-center bg-white border border-gray-200 rounded-lg overflow-hidden shadow-sm">
-            {(["today", "7d", "30d", "90d"] as Range[]).map((r) => (
+          {/* Range selector — presets + custom */}
+          <div className="flex items-center gap-2 flex-wrap">
+            <div className="flex items-center bg-white border border-gray-200 rounded-lg overflow-hidden shadow-sm">
+              {(["today", "7d", "30d", "90d"] as Preset[]).map((r) => (
+                <button
+                  key={r}
+                  onClick={() => { setPreset(r); setIsCustom(false); }}
+                  className={`px-3 py-1.5 text-xs font-semibold transition-colors ${!isCustom && preset === r ? "bg-[#0078D4] text-white" : "text-gray-600 hover:bg-gray-50"}`}
+                >
+                  {PRESET_LABELS[r]}
+                </button>
+              ))}
               <button
-                key={r}
-                onClick={() => setRange(r)}
-                className={`px-3 py-1.5 text-xs font-semibold transition-colors ${range === r ? "bg-[#0078D4] text-white" : "text-gray-600 hover:bg-gray-50"}`}
+                onClick={() => {
+                  if (!customStart) setCustomStart(isoDate(new Date(Date.now() - 30 * 86400_000)));
+                  if (!customEnd) setCustomEnd(isoDate(new Date()));
+                  setIsCustom(true);
+                }}
+                className={`px-3 py-1.5 text-xs font-semibold transition-colors border-l border-gray-200 ${isCustom ? "bg-[#0078D4] text-white" : "text-gray-600 hover:bg-gray-50"}`}
               >
-                {RANGE_LABELS[r]}
+                Custom
               </button>
-            ))}
+            </div>
+            {isCustom && (
+              <div className="flex items-center gap-1.5 bg-white border border-gray-200 rounded-lg px-2 py-1 shadow-sm">
+                <input type="date" value={customStart} max={customEnd || isoDate(new Date())}
+                  onChange={e => setCustomStart(e.target.value)}
+                  className="text-xs text-gray-700 border-0 outline-none bg-transparent cursor-pointer"
+                />
+                <span className="text-gray-400 text-xs">→</span>
+                <input type="date" value={customEnd} min={customStart} max={isoDate(new Date())}
+                  onChange={e => setCustomEnd(e.target.value)}
+                  className="text-xs text-gray-700 border-0 outline-none bg-transparent cursor-pointer"
+                />
+                <button
+                  onClick={() => { if (customStart && customEnd) void load(preset, true, customStart, customEnd); }}
+                  disabled={!customStart || !customEnd}
+                  className="ml-1 px-2 py-0.5 text-[10px] font-bold bg-[#0078D4] text-white rounded hover:bg-[#005A9E] disabled:opacity-40 transition-colors"
+                >
+                  Apply
+                </button>
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -263,7 +373,7 @@ export default function AnalyticsPage() {
 
       {/* Two-column: Top Pages + Traffic Sources */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Top Pages */}
+        {/* Top Pages — sortable */}
         <section className="bg-white border border-gray-100 rounded-xl p-5 shadow-sm">
           <h2 className="text-sm font-bold text-[#0A2540] uppercase tracking-widest mb-4">Top Pages</h2>
           {topPagesLoading ? (
@@ -276,13 +386,16 @@ export default function AnalyticsPage() {
                 <thead>
                   <tr className="border-b border-gray-100">
                     <th className="text-left py-2 pr-3 font-semibold text-gray-400 uppercase tracking-widest text-[10px]">Page</th>
-                    <th className="text-right py-2 pr-3 font-semibold text-gray-400 uppercase tracking-widest text-[10px]">Views</th>
-                    <th className="text-right py-2 pr-3 font-semibold text-gray-400 uppercase tracking-widest text-[10px]">Avg Time</th>
-                    <th className="text-right py-2 font-semibold text-gray-400 uppercase tracking-widest text-[10px]">Bounce</th>
+                    {(["Views", "Avg Time", "Bounce"] as const).map(col => (
+                      <th key={col} className="text-right py-2 pr-3 font-semibold text-gray-400 uppercase tracking-widest text-[10px] cursor-pointer select-none">
+                        <SortBtn col={col} sortCol={topPagesSort.col} sortDir={topPagesSort.dir}
+                          onSort={c => setTopPagesSort(s => toggleSort(s, c))} />
+                      </th>
+                    ))}
                   </tr>
                 </thead>
                 <tbody>
-                  {topPages.map((row, i) => (
+                  {sortedPages().map((row, i) => (
                     <tr key={i} className="border-b border-gray-50 hover:bg-gray-50 transition-colors">
                       <td className="py-2 pr-3 text-[#0A2540] font-medium truncate max-w-[180px]" title={row.page}>{row.page || "/"}</td>
                       <td className="py-2 pr-3 text-right text-gray-600 font-semibold">{fmt(row.views)}</td>
@@ -360,7 +473,7 @@ export default function AnalyticsPage() {
           )}
         </section>
 
-        {/* Outbound Links */}
+        {/* Outbound Links — sanitized hrefs */}
         <section className="bg-white border border-gray-100 rounded-xl p-5 shadow-sm">
           <h2 className="text-sm font-bold text-[#0A2540] uppercase tracking-widest mb-4">Outbound Link Clicks</h2>
           {topLinksLoading ? (
@@ -378,15 +491,21 @@ export default function AnalyticsPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {topLinks.map((row, i) => (
-                    <tr key={i} className="border-b border-gray-50 hover:bg-gray-50 transition-colors">
-                      <td className="py-2 pr-3 text-[#0A2540] font-medium truncate max-w-[140px]">{row.label || "—"}</td>
-                      <td className="py-2 pr-3 text-gray-400 truncate max-w-[200px]">
-                        <a href={row.href} target="_blank" rel="noopener noreferrer" className="hover:text-[#0078D4] transition-colors">{row.href}</a>
-                      </td>
-                      <td className="py-2 text-right font-bold text-gray-600">{fmt(row.count)}</td>
-                    </tr>
-                  ))}
+                  {topLinks.map((row, i) => {
+                    const href = safeHref(row.href);
+                    return (
+                      <tr key={i} className="border-b border-gray-50 hover:bg-gray-50 transition-colors">
+                        <td className="py-2 pr-3 text-[#0A2540] font-medium truncate max-w-[140px]">{row.label || "—"}</td>
+                        <td className="py-2 pr-3 text-gray-400 truncate max-w-[200px]">
+                          {href
+                            ? <a href={href} target="_blank" rel="noopener noreferrer" className="hover:text-[#0078D4] transition-colors">{href}</a>
+                            : <span className="text-gray-300 italic text-[10px]">{row.href ? "(non-http url)" : "—"}</span>
+                          }
+                        </td>
+                        <td className="py-2 text-right font-bold text-gray-600">{fmt(row.count)}</td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
@@ -394,7 +513,7 @@ export default function AnalyticsPage() {
         </section>
       </div>
 
-      {/* Top CTAs with CTR */}
+      {/* Top CTAs with CTR — sortable */}
       <section className="bg-white border border-gray-100 rounded-xl p-5 shadow-sm">
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-sm font-bold text-[#0A2540] uppercase tracking-widest">Top CTAs — Click-Through Rates</h2>
@@ -411,13 +530,16 @@ export default function AnalyticsPage() {
                 <tr className="border-b border-gray-100">
                   <th className="text-left py-2 pr-3 font-semibold text-gray-400 uppercase tracking-widest text-[10px]">CTA Label</th>
                   <th className="text-left py-2 pr-3 font-semibold text-gray-400 uppercase tracking-widest text-[10px]">Page</th>
-                  <th className="text-right py-2 pr-3 font-semibold text-gray-400 uppercase tracking-widest text-[10px]">Clicks</th>
-                  <th className="text-right py-2 pr-3 font-semibold text-gray-400 uppercase tracking-widest text-[10px]">Page Views</th>
-                  <th className="text-right py-2 font-semibold text-gray-400 uppercase tracking-widest text-[10px]">CTR</th>
+                  {(["Clicks", "Views", "CTR"] as const).map(col => (
+                    <th key={col} className="text-right py-2 pr-3 font-semibold text-gray-400 uppercase tracking-widest text-[10px] cursor-pointer select-none">
+                      <SortBtn col={col} sortCol={topCtasSort.col} sortDir={topCtasSort.dir}
+                        onSort={c => setTopCtasSort(s => toggleSort(s, c))} />
+                    </th>
+                  ))}
                 </tr>
               </thead>
               <tbody>
-                {topCtas.map((row, i) => (
+                {sortedCtas().map((row, i) => (
                   <tr key={i} className="border-b border-gray-50 hover:bg-gray-50 transition-colors">
                     <td className="py-2 pr-3 text-[#0A2540] font-medium truncate max-w-[180px]">{row.label}</td>
                     <td className="py-2 pr-3 text-gray-500 truncate max-w-[160px]">{row.page || "/"}</td>

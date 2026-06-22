@@ -27,11 +27,32 @@ function daysAgo(n: number): Date {
   return d;
 }
 
-function rangeStart(range: string): Date {
-  if (range === "today") { const d = new Date(); d.setHours(0, 0, 0, 0); return d; }
-  if (range === "7d") return daysAgo(7);
-  if (range === "90d") return daysAgo(90);
-  return daysAgo(30);
+/**
+ * Resolve query params to a [since, until] date window.
+ * Presets: today | 7d | 30d | 90d
+ * Custom:  ?start=YYYY-MM-DD&end=YYYY-MM-DD (both required for custom mode)
+ */
+function resolveRange(query: Record<string, unknown>): { since: Date; until: Date } {
+  const until = new Date();
+
+  // Custom range: both start and end must be supplied
+  if (query["start"] && query["end"]) {
+    const s = new Date(String(query["start"]));
+    const e = new Date(String(query["end"]));
+    // Validate and clamp (refuse future end, refuse start > end)
+    if (!isNaN(s.getTime()) && !isNaN(e.getTime()) && s <= e) {
+      s.setHours(0, 0, 0, 0);
+      const end = new Date(Math.min(e.getTime(), until.getTime()));
+      end.setHours(23, 59, 59, 999);
+      return { since: s, until: end };
+    }
+  }
+
+  const range = String(query["range"] ?? "30d");
+  if (range === "today") { const d = new Date(); d.setHours(0, 0, 0, 0); return { since: d, until }; }
+  if (range === "7d") return { since: daysAgo(7), until };
+  if (range === "90d") return { since: daysAgo(90), until };
+  return { since: daysAgo(30), until };
 }
 
 // ─── Schemas ──────────────────────────────────────────────────────────────────
@@ -182,22 +203,24 @@ router.post("/analytics/batch", publicLimiter, async (req, res) => {
 
 // ─── Admin: KPIs ──────────────────────────────────────────────────────────────
 router.get("/admin/analytics/kpis", adminLimiter, requireAdmin, async (req, res) => {
-  const range = String(req.query.range ?? "30d");
-  const since = rangeStart(range);
+  const { since, until } = resolveRange(req.query as Record<string, unknown>);
   try {
     const [visitors] = await execRows<{ count: string }>(sql`
-      SELECT count(*)::text as count FROM analytics_sessions WHERE started_at >= ${since}
+      SELECT count(*)::text as count FROM analytics_sessions
+      WHERE started_at >= ${since} AND started_at <= ${until}
     `);
     const [pageviews] = await execRows<{ count: string }>(sql`
-      SELECT count(*)::text as count FROM analytics_pageviews WHERE entered_at >= ${since}
+      SELECT count(*)::text as count FROM analytics_pageviews
+      WHERE entered_at >= ${since} AND entered_at <= ${until}
     `);
     const [avgTime] = await execRows<{ avg: string | null }>(sql`
       SELECT round(avg(duration_seconds))::text as avg FROM analytics_pageviews
-      WHERE entered_at >= ${since} AND duration_seconds IS NOT NULL AND duration_seconds > 0
+      WHERE entered_at >= ${since} AND entered_at <= ${until}
+        AND duration_seconds IS NOT NULL AND duration_seconds > 0
     `);
     const [bounceRow] = await execRows<{ rate: string | null }>(sql`
       SELECT round(100.0 * count(*) FILTER (WHERE is_bounce) / nullif(count(*), 0))::text as rate
-      FROM analytics_sessions WHERE started_at >= ${since}
+      FROM analytics_sessions WHERE started_at >= ${since} AND started_at <= ${until}
     `);
     return res.json({
       visitors: parseInt(visitors?.count ?? "0"),
@@ -213,12 +236,12 @@ router.get("/admin/analytics/kpis", adminLimiter, requireAdmin, async (req, res)
 
 // ─── Admin: pageviews time series ─────────────────────────────────────────────
 router.get("/admin/analytics/pageviews-series", adminLimiter, requireAdmin, async (req, res) => {
-  const range = String(req.query.range ?? "30d");
-  const since = rangeStart(range);
+  const { since, until } = resolveRange(req.query as Record<string, unknown>);
   try {
     const rows = await execRows<{ date: string; count: string }>(sql`
       SELECT to_char(entered_at, 'YYYY-MM-DD') as date, count(*)::text as count
-      FROM analytics_pageviews WHERE entered_at >= ${since}
+      FROM analytics_pageviews
+      WHERE entered_at >= ${since} AND entered_at <= ${until}
       GROUP BY date ORDER BY date
     `);
     return res.json(rows.map(r => ({ date: r.date, views: parseInt(r.count) })));
@@ -230,8 +253,7 @@ router.get("/admin/analytics/pageviews-series", adminLimiter, requireAdmin, asyn
 
 // ─── Admin: top pages ─────────────────────────────────────────────────────────
 router.get("/admin/analytics/top-pages", adminLimiter, requireAdmin, async (req, res) => {
-  const range = String(req.query.range ?? "30d");
-  const since = rangeStart(range);
+  const { since, until } = resolveRange(req.query as Record<string, unknown>);
   try {
     const rows = await execRows<{ page: string; views: string; avg_duration: string | null; bounces: string; total_sessions: string }>(sql`
       SELECT
@@ -241,7 +263,7 @@ router.get("/admin/analytics/top-pages", adminLimiter, requireAdmin, async (req,
         count(distinct pv.session_id)::text as total_sessions
       FROM analytics_pageviews pv
       LEFT JOIN analytics_sessions s ON s.session_id = pv.session_id
-      WHERE pv.entered_at >= ${since}
+      WHERE pv.entered_at >= ${since} AND pv.entered_at <= ${until}
       GROUP BY pv.page ORDER BY count(*) DESC LIMIT 20
     `);
     return res.json(rows.map(r => ({
@@ -257,12 +279,12 @@ router.get("/admin/analytics/top-pages", adminLimiter, requireAdmin, async (req,
 
 // ─── Admin: top events / clicks ───────────────────────────────────────────────
 router.get("/admin/analytics/top-events", adminLimiter, requireAdmin, async (req, res) => {
-  const range = String(req.query.range ?? "30d");
-  const since = rangeStart(range);
+  const { since, until } = resolveRange(req.query as Record<string, unknown>);
   try {
     const rows = await execRows<{ event_type: string; element_label: string | null; page: string; count: string }>(sql`
       SELECT event_type, element_label, page, count(*)::text as count
-      FROM analytics_site_events WHERE created_at >= ${since}
+      FROM analytics_site_events
+      WHERE created_at >= ${since} AND created_at <= ${until}
       GROUP BY event_type, element_label, page ORDER BY count(*) DESC LIMIT 30
     `);
     return res.json(rows.map(r => ({
@@ -276,18 +298,18 @@ router.get("/admin/analytics/top-events", adminLimiter, requireAdmin, async (req
 
 // ─── Admin: top CTAs with CTR ─────────────────────────────────────────────────
 router.get("/admin/analytics/top-ctas", adminLimiter, requireAdmin, async (req, res) => {
-  const range = String(req.query.range ?? "30d");
-  const since = rangeStart(range);
+  const { since, until } = resolveRange(req.query as Record<string, unknown>);
   try {
     const rows = await execRows<{ page: string; label: string | null; clicks: string; page_views: string }>(sql`
       SELECT
         e.page,
         e.element_label as label,
         count(*)::text as clicks,
-        (SELECT count(*) FROM analytics_pageviews pv2 WHERE pv2.page = e.page AND pv2.entered_at >= ${since})::text as page_views
+        (SELECT count(*) FROM analytics_pageviews pv2
+         WHERE pv2.page = e.page AND pv2.entered_at >= ${since} AND pv2.entered_at <= ${until})::text as page_views
       FROM analytics_site_events e
       WHERE e.event_type IN ('cta_click', 'nav_click')
-        AND e.created_at >= ${since}
+        AND e.created_at >= ${since} AND e.created_at <= ${until}
       GROUP BY e.page, e.element_label
       ORDER BY count(*) DESC LIMIT 25
     `);
@@ -310,11 +332,11 @@ router.get("/admin/analytics/top-ctas", adminLimiter, requireAdmin, async (req, 
 
 // ─── Admin: traffic sources ───────────────────────────────────────────────────
 router.get("/admin/analytics/top-referrers", adminLimiter, requireAdmin, async (req, res) => {
-  const range = String(req.query.range ?? "30d");
-  const since = rangeStart(range);
+  const { since, until } = resolveRange(req.query as Record<string, unknown>);
   try {
     const [total] = await execRows<{ count: string }>(sql`
-      SELECT count(*)::text as count FROM analytics_sessions WHERE started_at >= ${since}
+      SELECT count(*)::text as count FROM analytics_sessions
+      WHERE started_at >= ${since} AND started_at <= ${until}
     `);
     const totalSessions = parseInt(total?.count ?? "1") || 1;
     const rows = await execRows<{ source: string | null; count: string }>(sql`
@@ -328,7 +350,8 @@ router.get("/admin/analytics/top-referrers", adminLimiter, requireAdmin, async (
           END
         ) as source,
         count(*)::text as count
-      FROM analytics_sessions WHERE started_at >= ${since}
+      FROM analytics_sessions
+      WHERE started_at >= ${since} AND started_at <= ${until}
       GROUP BY source ORDER BY count(*) DESC LIMIT 20
     `);
     return res.json(rows.map(r => ({
@@ -343,16 +366,21 @@ router.get("/admin/analytics/top-referrers", adminLimiter, requireAdmin, async (
 
 // ─── Admin: outbound links ────────────────────────────────────────────────────
 router.get("/admin/analytics/top-links", adminLimiter, requireAdmin, async (req, res) => {
-  const range = String(req.query.range ?? "30d");
-  const since = rangeStart(range);
+  const { since, until } = resolveRange(req.query as Record<string, unknown>);
   try {
     const rows = await execRows<{ href: string | null; label: string | null; count: string }>(sql`
       SELECT element_href as href, element_label as label, count(*)::text as count
       FROM analytics_site_events
-      WHERE event_type = 'outbound_click' AND created_at >= ${since}
+      WHERE event_type = 'outbound_click'
+        AND created_at >= ${since} AND created_at <= ${until}
       GROUP BY element_href, element_label ORDER BY count(*) DESC LIMIT 20
     `);
-    return res.json(rows.map(r => ({ href: r.href ?? "", label: r.label ?? "", count: parseInt(r.count) })));
+    // Allowlist only http/https schemes — strip anything else to prevent javascript: injection
+    return res.json(rows.map(r => {
+      const raw = r.href ?? "";
+      const safeHref = /^https?:\/\//i.test(raw) ? raw : "";
+      return { href: safeHref, label: r.label ?? "", count: parseInt(r.count) };
+    }));
   } catch (err) {
     req.log.warn({ err }, "analytics top links failed");
     return res.status(500).json({ error: "Failed" });

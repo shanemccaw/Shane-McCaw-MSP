@@ -87,6 +87,7 @@ let _sessionStarted = false;
 let _scrollListenerAttached = false;
 let _clickListenerAttached = false;
 let _pagehideListenerAttached = false;
+let _heartbeatInterval: ReturnType<typeof setInterval> | null = null;
 
 // ─── Session ──────────────────────────────────────────────────────────────────
 async function ensureSession(page: string): Promise<void> {
@@ -122,6 +123,17 @@ function attachScrollListener(): void {
     const pct = Math.round((el.scrollTop / scrollable) * 100);
     if (pct > _maxScroll) _maxScroll = pct;
   }, { passive: true });
+}
+
+// ─── Heartbeat — keeps last_seen_at fresh for "live visitors" counter ─────────
+// Pings /api/analytics/session every 60 s while the tab is visible.
+// This ensures users who stay on one page >5 min still appear in "live now".
+function startHeartbeat(): void {
+  if (_heartbeatInterval) return;
+  _heartbeatInterval = setInterval(() => {
+    if (document.visibilityState !== "visible" || !_sessionId) return;
+    beacon("/api/analytics/session", { sessionId: _sessionId });
+  }, 60_000);
 }
 
 // ─── Exit / flush ─────────────────────────────────────────────────────────────
@@ -192,6 +204,7 @@ export function initTracker(): void {
   attachScrollListener();
   attachClickListener();
   attachPagehideListener();
+  startHeartbeat();
 }
 
 export async function trackPageview(page: string): Promise<void> {
