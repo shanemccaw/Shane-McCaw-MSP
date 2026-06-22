@@ -47,7 +47,7 @@ const comparisonRows = [
 ];
 import { Link } from "wouter";
 import { CTAButton } from "@/components/CTAButton";
-import { CopilotQuizCTA } from "@/components/CopilotQuizCTA";
+import { AssessmentCTA } from "@/components/AssessmentCTA";
 import { OfferCard } from "@/components/OfferCard";
 import { RetainerCard } from "@/components/RetainerCard";
 import { useServices, useServiceHasPdf } from "@/hooks/useServices";
@@ -341,7 +341,19 @@ export default function Microsoft365() {
         </div>
       </section>
 
-      <CopilotQuizCTA />
+      <AssessmentCTA
+        label="Free M365 Health Assessment"
+        title="Not Sure How Healthy Your M365 Tenant Is?<br class='hidden sm:block' /> Take the Free Assessment."
+        description="Your Microsoft 365 tenant accumulates configuration drift, permission sprawl, and governance gaps over time. Most organizations don't know what's there until something goes wrong."
+        supportingCopy="Answer 10 targeted questions on identity, governance, security, and configuration hygiene — and receive a personalised health score with a prioritised remediation roadmap. Delivered instantly. No account required."
+        quizUrl="/m365-health-quiz"
+        ctaLabel="Take the M365 Health Assessment"
+        stats={[
+          { label: "10 questions · ~5 minutes" },
+          { label: "Personalised report emailed instantly" },
+          { label: "No sales follow-up" },
+        ]}
+      />
 
       {/* ── COMPARISON TABLE ────────────────────────────────────────────── */}
       <section className="bg-[#F7F9FC] py-20">

@@ -5,7 +5,7 @@ import { Layout } from "@/components/Layout";
 import { RetainerCard } from "@/components/RetainerCard";
 import { Server, CheckCircle, Clock, DollarSign, ArrowRight, Users, Shield, Building2 } from "lucide-react";
 import { CTAButton } from "@/components/CTAButton";
-import { CopilotQuizCTA } from "@/components/CopilotQuizCTA";
+import { AssessmentCTA } from "@/components/AssessmentCTA";
 import { useServices, formatPriceDisplay, useServiceHasPdf } from "@/hooks/useServices";
 import { FollowOnProjects } from "@/components/FollowOnProjects";
 import FixedPriceOfferCard from "@/components/FixedPriceOfferCard";
@@ -399,7 +399,19 @@ export default function CloudMigration() {
         </div>
       </section>
 
-      <CopilotQuizCTA />
+      <AssessmentCTA
+        label="Free Migration Readiness Assessment"
+        title="Is Your Environment Ready to Migrate to Microsoft 365?<br class='hidden sm:block' /> Find Out in 5 Minutes."
+        description="Migration failures are almost always caused by poor planning, not technical complexity. Identity gaps, permission sprawl, and skipped governance work lead to outages and data loss."
+        supportingCopy="Answer 10 targeted questions on identity, data inventory, governance maturity, and compliance readiness — and receive a personalised migration readiness score with a recommended starting point."
+        quizUrl="/migration-readiness-quiz"
+        ctaLabel="Take the Migration Readiness Assessment"
+        stats={[
+          { label: "10 questions · ~5 minutes" },
+          { label: "Personalised report emailed instantly" },
+          { label: "No sales follow-up" },
+        ]}
+      />
 
       {/* Supported Migration Types */}
       <section className="bg-white py-20">

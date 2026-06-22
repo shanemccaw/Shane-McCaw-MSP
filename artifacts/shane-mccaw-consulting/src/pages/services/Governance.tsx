@@ -3,7 +3,7 @@ import { ServiceOverviewModal } from "@/components/ServiceOverviewModal";
 import { SEOMeta } from "@/components/SEOMeta";
 import { Layout } from "@/components/Layout";
 import { CTAButton } from "@/components/CTAButton";
-import { CopilotQuizCTA } from "@/components/CopilotQuizCTA";
+import { AssessmentCTA } from "@/components/AssessmentCTA";
 import { RetainerCard } from "@/components/RetainerCard";
 import { Link } from "wouter";
 import {
@@ -415,7 +415,19 @@ export default function Governance() {
         </div>
       </section>
 
-      <CopilotQuizCTA />
+      <AssessmentCTA
+        label="Free Governance Maturity Assessment"
+        title="How Mature Is Your M365 Governance?<br class='hidden sm:block' /> Find Out in 5 Minutes."
+        description="Most organizations don't discover their governance gaps until Copilot exposes overshared files, an audit flags compliance issues, or a departing employee takes data with them."
+        supportingCopy="Answer 10 targeted questions across naming, lifecycle, DLP, access controls, and admin roles — and receive a maturity score with a tailored governance roadmap."
+        quizUrl="/governance-maturity-quiz"
+        ctaLabel="Take the Governance Maturity Assessment"
+        stats={[
+          { label: "10 questions · ~5 minutes" },
+          { label: "Personalised report emailed instantly" },
+          { label: "No sales follow-up" },
+        ]}
+      />
 
       {/* ── COMPARISON TABLE ────────────────────────────────────────────── */}
       <section className="bg-white py-20">

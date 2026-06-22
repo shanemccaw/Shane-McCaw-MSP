@@ -3,7 +3,7 @@ import { ServiceOverviewModal } from "@/components/ServiceOverviewModal";
 import { SEOMeta } from "@/components/SEOMeta";
 import { Layout } from "@/components/Layout";
 import { CTAButton } from "@/components/CTAButton";
-import { CopilotQuizCTA } from "@/components/CopilotQuizCTA";
+import { AssessmentCTA } from "@/components/AssessmentCTA";
 import { RetainerCard } from "@/components/RetainerCard";
 import { ConsultationCTA } from "@/components/ConsultationCTA";
 import { CheckCircle, ArrowRight, Zap, Building2, Shield, Users } from "lucide-react";
@@ -407,7 +407,19 @@ export default function PowerPlatform() {
         </div>
       </section>
 
-      <CopilotQuizCTA />
+      <AssessmentCTA
+        label="Free Power Platform Readiness Assessment"
+        title="Is Your Organization Ready to Scale Power Platform?<br class='hidden sm:block' /> Find Out in 5 Minutes."
+        description="Power Platform can transform how your organization automates work and builds tools — but unmanaged sprawl, ungoverned flows, and shadow IT create real security and compliance risk."
+        supportingCopy="Answer 10 questions on governance readiness, current adoption, CoE maturity, and risk exposure — and get a personalised score with recommended next steps."
+        quizUrl="/power-platform-quiz"
+        ctaLabel="Take the Power Platform Readiness Assessment"
+        stats={[
+          { label: "10 questions · ~5 minutes" },
+          { label: "Personalised report emailed instantly" },
+          { label: "No sales follow-up" },
+        ]}
+      />
 
       {/* ── COMPARISON TABLE ────────────────────────────────────────────── */}
       <section className="bg-white py-20">

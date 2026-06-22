@@ -5,7 +5,7 @@ import { Layout } from "@/components/Layout";
 import { Layout as LayoutIcon, CheckCircle, ArrowRight, Building2, Shield, Users } from "lucide-react";
 import { ConsultationCTA } from "@/components/ConsultationCTA";
 import { CTAButton } from "@/components/CTAButton";
-import { CopilotQuizCTA } from "@/components/CopilotQuizCTA";
+import { AssessmentCTA } from "@/components/AssessmentCTA";
 import { RetainerCard } from "@/components/RetainerCard";
 import { useServices, formatPriceDisplay, useServiceHasPdf } from "@/hooks/useServices";
 import { FollowOnProjects } from "@/components/FollowOnProjects";
@@ -335,7 +335,19 @@ export default function SharePoint() {
         </div>
       </section>
 
-      <CopilotQuizCTA />
+      <AssessmentCTA
+        label="Free SharePoint Readiness Assessment"
+        title="Is Your SharePoint Ready for the Modern Intranet?<br class='hidden sm:block' /> Find Out in 5 Minutes."
+        description="Underperforming SharePoint environments share common patterns: overshared sites, broken permission inheritance, abandoned content, and no governance framework keeping it in check."
+        supportingCopy="Answer 10 questions across architecture, governance, and adoption maturity — and get a personalised readiness score with specific improvement recommendations."
+        quizUrl="/sharepoint-readiness-quiz"
+        ctaLabel="Take the SharePoint Readiness Assessment"
+        stats={[
+          { label: "10 questions · ~5 minutes" },
+          { label: "Personalised report emailed instantly" },
+          { label: "No sales follow-up" },
+        ]}
+      />
 
       {/* Comparison Table */}
       <section className="bg-white py-20">
