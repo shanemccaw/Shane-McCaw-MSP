@@ -25,16 +25,16 @@ export function OfferCard({
   const hl = offer.highlighted;
 
   const learnMoreBtn = offer.pageHref ? (
-    <a
-      href={offer.pageHref}
-      className={`w-full flex items-center justify-center gap-2 text-sm font-semibold py-2.5 rounded border transition-colors ${
-        hl
-          ? "border-white/30 text-white/80 hover:bg-white/10"
-          : "border-[#0078D4] text-[#0078D4] hover:bg-[#0078D4]/5"
-      }`}
-    >
-      Learn More
-    </a>
+    <div className="text-center">
+      <a
+        href={offer.pageHref}
+        className={`text-sm font-medium hover:underline transition-colors ${
+          hl ? "text-[#00B4D8] hover:text-white" : "text-[#0078D4] hover:text-[#005A9E]"
+        }`}
+      >
+        Learn More →
+      </a>
+    </div>
   ) : null;
 
   const primaryBtn = ctaOnClick ? (
