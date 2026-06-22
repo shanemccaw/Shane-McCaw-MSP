@@ -24,6 +24,9 @@ import ArticlePage from "@/pages/ArticlePage";
 import Admin from "@/pages/Admin";
 import CustomerCommandCenter from "@/pages/CustomerCommandCenter";
 import CopilotQuiz from "@/pages/CopilotQuiz";
+import ArchitectEssentials from "@/pages/retainers/ArchitectEssentials";
+import ArchitectGrowth from "@/pages/retainers/ArchitectGrowth";
+import ArchitectEnterprise from "@/pages/retainers/ArchitectEnterprise";
 
 const queryClient = new QueryClient();
 
@@ -60,6 +63,9 @@ function Router() {
       <Route path="/admin" component={Admin} />
       <Route path="/customer-command-center" component={CustomerCommandCenter} />
       <Route path="/copilot-quiz" component={CopilotQuiz} />
+      <Route path="/retainers/architect-essentials" component={ArchitectEssentials} />
+      <Route path="/retainers/architect-growth" component={ArchitectGrowth} />
+      <Route path="/retainers/architect-enterprise" component={ArchitectEnterprise} />
       <Route component={NotFound} />
     </Switch>
     </>

@@ -1,4 +1,5 @@
 import { Calendar, CheckCircle } from "lucide-react";
+import { Link } from "wouter";
 import { CTAButton } from "@/components/CTAButton";
 import { formatPriceDisplay, type PublicService } from "@/hooks/useServices";
 
@@ -93,10 +94,15 @@ export function RetainerCard({ plan, index }: RetainerCardProps) {
         </div>
       )}
 
-      <div className="mt-auto">
-        <CTAButton href="/book" className="w-full justify-center text-sm" data-testid={`retainer-cta-${index}`}>
+      <div className="mt-auto space-y-3">
+        <CTAButton href={`/book?plan=${plan.slug}`} className="w-full justify-center text-sm" data-testid={`retainer-cta-${index}`}>
           Start a Retainer
         </CTAButton>
+        <div className="text-center">
+          <Link href={`/retainers/${plan.slug}`} className={`text-sm font-medium hover:underline transition-colors ${hl ? "text-[#00B4D8] hover:text-white" : "text-[#0078D4] hover:text-[#005A9E]"}`}>
+            Learn More →
+          </Link>
+        </div>
       </div>
     </div>
   );
