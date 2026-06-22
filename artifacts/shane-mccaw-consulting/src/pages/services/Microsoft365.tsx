@@ -51,7 +51,8 @@ import { AssessmentCTA } from "@/components/AssessmentCTA";
 import { OfferCard } from "@/components/OfferCard";
 import { RetainerCard } from "@/components/RetainerCard";
 import { useServices, useServiceHasPdf } from "@/hooks/useServices";
-import { FollowOnProjects } from "@/components/FollowOnProjects";
+import { EngagementProjectCard } from "@/components/EngagementProjectCard";
+import { useEngagementProjects } from "@/hooks/useEngagementProjects";
 import FixedPriceOfferCard from "@/components/FixedPriceOfferCard";
 
 
@@ -81,9 +82,16 @@ const WHY_SHANE = [
   },
 ];
 
+const M365_TRIGGER_KEYS = ["M365 Tenant Health Audit"];
+
 export default function Microsoft365() {
   const { services, loading, error } = useServices("micro_offer");
   const { services: retainerServices, loading: retainerLoading } = useServices("retainer");
+  const { projects: engagementProjects, loading: engagementLoading } = useEngagementProjects();
+
+  const matchedProjects = engagementProjects.filter(
+    (p) => p.isVisible && p.triggeredBy.some((t) => M365_TRIGGER_KEYS.includes(t))
+  );
 
   const [modalOpen, setModalOpen] = useState(false);
   const hasPdf = useServiceHasPdf("/services/microsoft-365");
@@ -233,19 +241,33 @@ export default function Microsoft365() {
         </div>
       </section>
 
-      {/* ── FOLLOW-ON PROJECT ENGAGEMENTS ────────────────────────────────── */}
-      <section className="bg-[#F7F9FC] py-20">
-        <div className="max-w-[1200px] mx-auto px-6">
-          <div className="text-center mb-12">
-            <p className="text-[#0078D4] text-sm font-semibold uppercase tracking-[0.12em] mb-3">Optional Next Steps</p>
-            <h2 className="text-3xl md:text-4xl font-extrabold text-[#0A2540]">Follow-On Engagements</h2>
-            <p className="text-muted-foreground mt-4 max-w-xl mx-auto">
-              Most M365 health audits surface deeper work. Shane can lead that work through a scoped project engagement.
-            </p>
+      {/* ── PROJECT ENGAGEMENTS ──────────────────────────────────────────── */}
+      {(engagementLoading || matchedProjects.length > 0) && (
+        <section className="bg-[#F7F9FC] py-20">
+          <div className="max-w-[1200px] mx-auto px-6">
+            <div className="text-center mb-12">
+              <p className="text-[#0078D4] text-sm font-semibold uppercase tracking-[0.12em] mb-3">Project Engagements</p>
+              <h2 className="text-3xl md:text-4xl font-extrabold text-[#0A2540]">Common Project Engagements</h2>
+              <p className="text-muted-foreground mt-4 max-w-xl mx-auto">
+                Most M365 health audits surface deeper work. Shane can lead that work through a scoped project engagement.
+              </p>
+            </div>
+            {engagementLoading ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {[0, 1].map((i) => (
+                  <div key={i} className="rounded-xl border bg-white border-border p-8 h-56 animate-pulse" />
+                ))}
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 items-stretch">
+                {matchedProjects.map((project, i) => (
+                  <EngagementProjectCard key={project.id} project={project} index={i} />
+                ))}
+              </div>
+            )}
           </div>
-          <FollowOnProjects triggerKeys={["M365 Tenant Health Audit"]} />
-        </div>
-      </section>
+        </section>
+      )}
 
       {/* ── RETAINERS ────────────────────────────────────────────────────── */}
       <section className="bg-white py-20">

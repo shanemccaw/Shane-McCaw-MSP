@@ -11,7 +11,8 @@ import {
   Eye, Key, Users, Building2, Globe, Clock, DollarSign
 } from "lucide-react";
 import { useServices, formatPriceDisplay, useServiceHasPdf } from "@/hooks/useServices";
-import { FollowOnProjects } from "@/components/FollowOnProjects";
+import { EngagementProjectCard } from "@/components/EngagementProjectCard";
+import { useEngagementProjects } from "@/hooks/useEngagementProjects";
 import FixedPriceOfferCard from "@/components/FixedPriceOfferCard";
 
 const comparisonRows = [
@@ -157,9 +158,17 @@ const WHY_SHANE = [
   },
 ];
 
+const GOVERNANCE_TRIGGER_KEYS = ["Governance Foundations Package"];
+
 export default function Governance() {
   const { services, loading } = useServices();
   const { services: retainerServices, loading: retainerLoading } = useServices("retainer");
+  const { projects: engagementProjects, loading: engagementLoading } = useEngagementProjects();
+
+  const matchedProjects = engagementProjects.filter(
+    (p) => p.isVisible && p.triggeredBy.some((t) => GOVERNANCE_TRIGGER_KEYS.includes(t))
+  );
+
   const govSvc = services.find((s) => s.slug === "governance-foundations-package");
   const migSvc = services.find((s) => s.slug === "migration-readiness-assessment");
   const copilotSvc = services.find((s) => s.slug === "copilot-for-m365-readiness-assessment");
@@ -332,7 +341,24 @@ export default function Governance() {
             ))}
           </div>
 
-          <FollowOnProjects triggerKeys={["Governance Foundations Package"]} />
+          {(engagementLoading || matchedProjects.length > 0) && (
+            <div className="mb-12">
+              <p className="text-[#0078D4] text-sm font-semibold uppercase tracking-[0.12em] mb-5">Project Engagements</p>
+              {engagementLoading ? (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                  {[0, 1].map((i) => (
+                    <div key={i} className="rounded-xl border bg-white border-border p-8 h-56 animate-pulse" />
+                  ))}
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 items-stretch">
+                  {matchedProjects.map((project, i) => (
+                    <EngagementProjectCard key={project.id} project={project} index={i} />
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
 
           <p className="text-center text-sm font-semibold text-muted-foreground uppercase tracking-widest mb-6">Fractional M365 Architect Retainers</p>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-4xl mx-auto">

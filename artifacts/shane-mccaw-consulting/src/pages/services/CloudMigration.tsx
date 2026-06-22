@@ -7,7 +7,8 @@ import { Server, CheckCircle, Clock, DollarSign, ArrowRight, Users, Shield, Buil
 import { CTAButton } from "@/components/CTAButton";
 import { AssessmentCTA } from "@/components/AssessmentCTA";
 import { useServices, formatPriceDisplay, useServiceHasPdf } from "@/hooks/useServices";
-import { FollowOnProjects } from "@/components/FollowOnProjects";
+import { EngagementProjectCard } from "@/components/EngagementProjectCard";
+import { useEngagementProjects } from "@/hooks/useEngagementProjects";
 import FixedPriceOfferCard from "@/components/FixedPriceOfferCard";
 
 const comparisonRows = [
@@ -85,9 +86,17 @@ const migrationTypes = [
 ];
 
 
+const CLOUD_MIGRATION_TRIGGER_KEYS = ["Migration Readiness Assessment"];
+
 export default function CloudMigration() {
   const { services, loading } = useServices();
   const { services: retainerServices, loading: retainerLoading } = useServices("retainer");
+  const { projects: engagementProjects, loading: engagementLoading } = useEngagementProjects();
+
+  const matchedProjects = engagementProjects.filter(
+    (p) => p.isVisible && p.triggeredBy.some((t) => CLOUD_MIGRATION_TRIGGER_KEYS.includes(t))
+  );
+
   const migSvc = services.find((s) => s.slug === "migration-readiness-assessment");
   const govSvc = services.find((s) => s.slug === "governance-foundations-package");
   const skeleton = <span className="inline-block w-28 h-4 bg-gray-200 rounded animate-pulse align-middle" />;
@@ -222,7 +231,24 @@ export default function CloudMigration() {
             />
           </div>
 
-          <FollowOnProjects triggerKeys={["Migration Readiness Assessment"]} />
+          {(engagementLoading || matchedProjects.length > 0) && (
+            <div className="mb-10">
+              <p className="text-[#0078D4] text-sm font-semibold uppercase tracking-[0.1em] mb-5">Project Engagements</p>
+              {engagementLoading ? (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                  {[0, 1].map((i) => (
+                    <div key={i} className="rounded-xl border bg-white border-border p-8 h-56 animate-pulse" />
+                  ))}
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 items-stretch">
+                  {matchedProjects.map((project, i) => (
+                    <EngagementProjectCard key={project.id} project={project} index={i} />
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Fractional Retainers */}
           <div>

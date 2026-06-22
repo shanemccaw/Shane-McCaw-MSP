@@ -8,7 +8,8 @@ import { RetainerCard } from "@/components/RetainerCard";
 import { ConsultationCTA } from "@/components/ConsultationCTA";
 import { CheckCircle, ArrowRight, Zap, Building2, Shield, Users } from "lucide-react";
 import { useServices, formatPriceDisplay, useServiceHasPdf } from "@/hooks/useServices";
-import { FollowOnProjects } from "@/components/FollowOnProjects";
+import { EngagementProjectCard } from "@/components/EngagementProjectCard";
+import { useEngagementProjects } from "@/hooks/useEngagementProjects";
 import FixedPriceOfferCard from "@/components/FixedPriceOfferCard";
 
 const comparisonRows = [
@@ -110,9 +111,17 @@ const WHY_SHANE = [
 ];
 
 
+const POWER_PLATFORM_TRIGGER_KEYS = ["Power Platform Quick\u2011Start"];
+
 export default function PowerPlatform() {
   const { services, loading } = useServices();
   const { services: retainerServices, loading: retainerLoading } = useServices("retainer");
+  const { projects: engagementProjects, loading: engagementLoading } = useEngagementProjects();
+
+  const matchedProjects = engagementProjects.filter(
+    (p) => p.isVisible && p.triggeredBy.some((t) => POWER_PLATFORM_TRIGGER_KEYS.includes(t))
+  );
+
   const quickStartSvc = services.find((s) => s.slug === "power-platform-quickstart");
   const govSvc = services.find((s) => s.slug === "governance-foundations-package");
   const skeleton = <span className="inline-block w-28 h-4 bg-gray-200 rounded animate-pulse align-middle" />;
@@ -276,7 +285,24 @@ export default function PowerPlatform() {
             </div>
           </div>
 
-          <FollowOnProjects triggerKeys={["Power Platform Quick\u2011Start"]} />
+          {(engagementLoading || matchedProjects.length > 0) && (
+            <div className="mb-8">
+              <p className="text-[#0078D4] text-sm font-semibold uppercase tracking-[0.12em] mb-5">Project Engagements</p>
+              {engagementLoading ? (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                  {[0, 1].map((i) => (
+                    <div key={i} className="rounded-xl border bg-white border-border p-8 h-56 animate-pulse" />
+                  ))}
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 items-stretch">
+                  {matchedProjects.map((project, i) => (
+                    <EngagementProjectCard key={project.id} project={project} index={i} />
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Retainer Tiers */}
           <div className="text-center mb-8">
