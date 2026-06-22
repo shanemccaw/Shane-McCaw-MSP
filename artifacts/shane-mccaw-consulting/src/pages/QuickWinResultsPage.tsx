@@ -7,17 +7,17 @@ import {
   CheckCircle,
   ArrowRight,
   RotateCcw,
-  Star,
-  TrendingUp,
-  Loader2,
-  AlertCircle,
   BarChart3,
   CalendarDays,
+  Loader2,
+  AlertCircle,
+  TrendingUp,
+  Star,
 } from "lucide-react";
 
-// ── Types ───────────────────────────────────────────────────────────────────
+// ── Types ─────────────────────────────────────────────────────────────────────
 
-type Slug =
+type QuizSlug =
   | "tenant-health-audit"
   | "power-platform-quick-start"
   | "governance-foundations"
@@ -25,66 +25,40 @@ type Slug =
   | "copilot-readiness-assessment"
   | "m365-training-enablement";
 
-interface ServiceInfo {
-  slug: string | null;
-  name: string;
+interface Recommendation {
+  rank: number;
+  slug: string;
+  score: number;
+  name: string | null;
   tagline: string | null;
   price: string | null;
   pageHref: string | null;
+  description: string | null;
 }
 
 interface QuizResult {
   id: number;
+  answers: Record<string, number>;
   scores: Record<string, number>;
   rankedSlugs: string[];
+  recommendations: Recommendation[];
   createdAt: string;
-  services: Record<string, ServiceInfo>;
 }
 
-// ── Static package metadata (fallback when DB has no marketing data) ─────────
+// ── Static fallback metadata (display only — names/hrefs when DB record is absent) ──
 
-const PACKAGE_META: Record<Slug, { name: string; tagline: string; href: string }> = {
-  "tenant-health-audit": {
-    name: "M365 Tenant Health Audit",
-    tagline:
-      "A deep-dive audit of your entire tenant — security posture, licensing efficiency, governance gaps, and a prioritised remediation roadmap.",
-    href: "/micro-offers/tenant-health-audit",
-  },
-  "power-platform-quick-start": {
-    name: "Power Platform Quick-Start",
-    tagline:
-      "Get your first Power Automate flow or Power App live in days — automating a real business process with a proven delivery framework.",
-    href: "/micro-offers/power-platform-quick-start",
-  },
-  "governance-foundations": {
-    name: "Governance Foundations Package",
-    tagline:
-      "Establish policies, naming conventions, lifecycle rules, and a DLP framework that keeps your tenant compliant and manageable long-term.",
-    href: "/micro-offers/governance-foundations",
-  },
-  "migration-readiness-assessment": {
-    name: "Migration Readiness Assessment",
-    tagline:
-      "A structured pre-migration review covering your source environment, data risks, cutover plan, and the blockers most teams miss.",
-    href: "/micro-offers/migration-readiness-assessment",
-  },
-  "copilot-readiness-assessment": {
-    name: "Copilot for M365 Readiness Assessment",
-    tagline:
-      "Evaluate whether your tenant's data governance, identity, and adoption practices are ready for Copilot AI deployment.",
-    href: "/micro-offers/copilot-readiness-assessment",
-  },
-  "m365-training-enablement": {
-    name: "Microsoft 365 Training & Enablement",
-    tagline:
-      "Targeted end-user and admin training that closes the adoption gap and unlocks the ROI already sitting inside your M365 licences.",
-    href: "/micro-offers/m365-training-enablement",
-  },
+const SLUG_LABELS: Record<QuizSlug, string> = {
+  "tenant-health-audit": "M365 Tenant Health Audit",
+  "power-platform-quick-start": "Power Platform Quick-Start",
+  "governance-foundations": "Governance Foundations Package",
+  "migration-readiness-assessment": "Migration Readiness Assessment",
+  "copilot-readiness-assessment": "Copilot for M365 Readiness Assessment",
+  "m365-training-enablement": "Microsoft 365 Training & Enablement",
 };
 
-// ── Dimension labels ─────────────────────────────────────────────────────────
+// ── Dimension labels for readiness profile ────────────────────────────────────
 
-const DIMENSION_LABELS: Record<Slug, string> = {
+const DIMENSION_LABELS: Record<QuizSlug, string> = {
   "tenant-health-audit": "M365 Tenant Health",
   "power-platform-quick-start": "Power Platform Automation",
   "governance-foundations": "Governance",
@@ -93,51 +67,86 @@ const DIMENSION_LABELS: Record<Slug, string> = {
   "m365-training-enablement": "Training & Enablement",
 };
 
-// Max possible score per dimension (sum of all highest-scoring answers = ~10 per slug roughly)
+const ALL_SLUGS: QuizSlug[] = [
+  "tenant-health-audit",
+  "power-platform-quick-start",
+  "governance-foundations",
+  "migration-readiness-assessment",
+  "copilot-readiness-assessment",
+  "m365-training-enablement",
+];
+
+// Max possible score per dimension across all 10 questions
 const MAX_SCORE = 12;
-
-function getPackageName(slug: string, services: Record<string, ServiceInfo>): string {
-  const svc = services[slug];
-  if (svc?.name) return svc.name;
-  return PACKAGE_META[slug as Slug]?.name ?? slug;
-}
-
-function getPackageTagline(slug: string, services: Record<string, ServiceInfo>): string {
-  const svc = services[slug];
-  if (svc?.tagline) return svc.tagline;
-  return PACKAGE_META[slug as Slug]?.tagline ?? "";
-}
-
-function getPackageHref(slug: string, services: Record<string, ServiceInfo>): string {
-  const svc = services[slug];
-  if (svc?.pageHref) return svc.pageHref;
-  return PACKAGE_META[slug as Slug]?.href ?? `/micro-offers/${slug}`;
-}
 
 function getScorePct(slug: string, scores: Record<string, number>): number {
   const raw = scores[slug] ?? 0;
   return Math.min(100, Math.round((raw / MAX_SCORE) * 100));
 }
 
-function getPrimaryInsight(primarySlug: Slug): string {
-  const insights: Record<Slug, string> = {
-    "tenant-health-audit":
-      "Your answers point to a tenant that hasn't had a structured review in some time — security gaps, licence waste, and configuration drift are common in environments like yours. A Health Audit surfaces every risk with a clear prioritised roadmap.",
-    "power-platform-quick-start":
-      "Your organisation has manual processes that are prime candidates for automation, but Power Platform adoption hasn't taken hold yet. A guided Quick-Start gets a real workflow live in days and gives your team a proven model to build from.",
-    "governance-foundations":
-      "Your tenant has grown without formal governance guardrails — no consistent naming conventions, lifecycle policies, or DLP framework. The Governance Foundations Package gives you the structure that prevents costly sprawl and compliance exposure.",
-    "migration-readiness-assessment":
-      "With a migration on your roadmap, the biggest risk is discovering blockers mid-project. A Readiness Assessment identifies data risks, technical gaps, and cutover complexities before they become expensive problems.",
-    "copilot-readiness-assessment":
-      "You're interested in Copilot for M365, but deployment readiness depends on your identity, data governance, and adoption baseline. The Readiness Assessment gives you a clear go/no-go picture before you commit to licences.",
-    "m365-training-enablement":
-      "Your team isn't getting the most out of the M365 licences you're already paying for. Targeted training closes the adoption gap and turns underused tools into productivity multipliers — without new spend.",
-  };
-  return insights[primarySlug] ?? "Based on your answers, this package is the strongest match for your current situation.";
+function getPackageName(rec: Recommendation): string {
+  return rec.name ?? SLUG_LABELS[rec.slug as QuizSlug] ?? rec.slug;
 }
 
-// ── Component ────────────────────────────────────────────────────────────────
+function getPackageHref(rec: Recommendation): string {
+  return rec.pageHref ?? `/micro-offers/${rec.slug}`;
+}
+
+// ── Dynamic narrative from scores ─────────────────────────────────────────────
+
+function buildPersonalisedSummary(
+  recommendations: Recommendation[],
+  scores: Record<string, number>
+): string {
+  if (recommendations.length === 0) return "";
+
+  const top = recommendations[0];
+  const second = recommendations[1];
+  const topName = getPackageName(top);
+  const topPct = getScorePct(top.slug, scores);
+  const topLabel = DIMENSION_LABELS[top.slug as QuizSlug] ?? top.slug;
+
+  let strength: string;
+  if (topPct >= 67) {
+    strength = "a strong, clear signal";
+  } else if (topPct >= 42) {
+    strength = "a consistent signal";
+  } else {
+    strength = "an emerging signal";
+  }
+
+  let summary = `Your answers point to ${strength} in ${topLabel} (${topPct}% of the maximum score in that area). **${topName}** is the fastest path to measurable improvement in your environment.`;
+
+  if (second) {
+    const secondLabel = DIMENSION_LABELS[second.slug as QuizSlug] ?? second.slug;
+    const secondName = getPackageName(second);
+    const gap = top.score - second.score;
+    if (gap <= 1) {
+      summary += ` ${secondLabel} (${secondName}) scored almost as high — both areas deserve attention.`;
+    } else {
+      summary += ` ${secondLabel} is a secondary area to watch once your primary quick win is complete.`;
+    }
+  }
+
+  return summary;
+}
+
+function getReadingIndicator(
+  slug: QuizSlug,
+  scores: Record<string, number>,
+  recommendations: Recommendation[]
+): string {
+  const pct = getScorePct(slug, scores);
+  const isPrimary = recommendations[0]?.slug === slug;
+  const isSecondary = recommendations[1]?.slug === slug;
+
+  if (isPrimary) return "Highest priority";
+  if (isSecondary) return "Worth considering next";
+  if (pct >= 30) return "Moderate signal";
+  return "Low signal at this time";
+}
+
+// ── Component ─────────────────────────────────────────────────────────────────
 
 export default function QuickWinResultsPage() {
   const params = useParams<{ resultId: string }>();
@@ -201,13 +210,16 @@ export default function QuickWinResultsPage() {
     );
   }
 
-  const { scores, rankedSlugs, services } = result;
+  const { scores, recommendations } = result;
 
-  const topSlugs = rankedSlugs.slice(0, 3).filter((s) => (scores[s] ?? 0) > 0);
-  const primarySlug = topSlugs[0] as Slug | undefined;
-  const secondarySlugs = topSlugs.slice(1);
+  const topRecs = recommendations.filter((r) => r.score > 0);
+  const primary = topRecs[0] ?? null;
+  const secondaryRecs = topRecs.slice(1, 3);
 
-  const allRanked = rankedSlugs.filter((s) => (scores[s] ?? 0) > 0) as Slug[];
+  const summary = primary ? buildPersonalisedSummary(recommendations, scores) : "";
+
+  // Split on **...** for bold rendering
+  const summaryParts = summary.split(/\*\*(.+?)\*\*/g);
 
   return (
     <Layout>
@@ -216,7 +228,7 @@ export default function QuickWinResultsPage() {
         description="Personalised Microsoft 365 Quick Win recommendations based on your quiz answers."
       />
 
-      {/* ── Hero ─────────────────────────────────────────────────────────────── */}
+      {/* ── Hero ──────────────────────────────────────────────────────────────── */}
       <section className="bg-[#0A2540] pt-32 pb-20 relative overflow-hidden">
         <div
           className="absolute inset-0 pointer-events-none"
@@ -234,13 +246,14 @@ export default function QuickWinResultsPage() {
             Your Personalised Quick Win Recommendations
           </h1>
           <p className="text-white/70 text-lg mt-5 max-w-xl mx-auto leading-relaxed">
-            Based on your 10 answers, here's the fastest way to get measurable value from your Microsoft 365 environment.
+            Based on your 10 answers, here's the fastest way to get measurable value from your
+            Microsoft 365 environment.
           </p>
         </div>
       </section>
 
       {/* ── Personalised Summary ─────────────────────────────────────────────── */}
-      {primarySlug && (
+      {primary && (
         <section className="bg-white border-b border-border py-14">
           <div className="max-w-[760px] mx-auto px-6">
             <div className="flex items-start gap-4">
@@ -252,7 +265,13 @@ export default function QuickWinResultsPage() {
                   What your answers tell us
                 </p>
                 <p className="text-[#0A2540] text-base leading-relaxed">
-                  {getPrimaryInsight(primarySlug)}
+                  {summaryParts.map((part, i) =>
+                    i % 2 === 1 ? (
+                      <strong key={i}>{part}</strong>
+                    ) : (
+                      <span key={i}>{part}</span>
+                    )
+                  )}
                 </p>
               </div>
             </div>
@@ -260,8 +279,8 @@ export default function QuickWinResultsPage() {
         </section>
       )}
 
-      {/* ── Primary Recommendation ───────────────────────────────────────────── */}
-      {primarySlug && (
+      {/* ── Primary Recommendation ────────────────────────────────────────────── */}
+      {primary && (
         <section className="bg-[#F7F9FC] py-16">
           <div className="max-w-[900px] mx-auto px-6">
             <p className="text-xs font-bold uppercase tracking-widest text-[#0078D4] mb-5 text-center">
@@ -276,21 +295,26 @@ export default function QuickWinResultsPage() {
                   <span className="inline-block text-xs font-bold uppercase tracking-wider px-2.5 py-1 rounded-full bg-[#0078D4]/10 text-[#0078D4] border border-[#0078D4]/20 mb-3">
                     Primary Recommendation
                   </span>
-                  <h2 className="text-xl font-extrabold text-[#0A2540] mb-3 leading-snug">
-                    {getPackageName(primarySlug, services)}
+                  <h2 className="text-xl font-extrabold text-[#0A2540] mb-2 leading-snug">
+                    {getPackageName(primary)}
                   </h2>
-                  <p className="text-muted-foreground text-sm leading-relaxed mb-6">
-                    {getPackageTagline(primarySlug, services)}
-                  </p>
+                  {primary.tagline && (
+                    <p className="text-muted-foreground text-sm leading-relaxed mb-6">
+                      {primary.tagline}
+                    </p>
+                  )}
                   <div className="flex flex-col sm:flex-row gap-3">
                     <CTAButton
-                      href={getPackageHref(primarySlug, services)}
+                      href={getPackageHref(primary)}
                       className="px-6 py-2.5 text-sm"
                     >
-                      View Package Details
+                      Start This Quick Win
                     </CTAButton>
-                    <CTAButton href="/book" className="px-6 py-2.5 text-sm !bg-[#0A2540] hover:!bg-[#0A2540]/90">
-                      Book a Free Call
+                    <CTAButton
+                      href="/book"
+                      className="px-6 py-2.5 text-sm !bg-[#0A2540] hover:!bg-[#0A2540]/90"
+                    >
+                      Book a Free Call First
                     </CTAButton>
                   </div>
                 </div>
@@ -301,30 +325,32 @@ export default function QuickWinResultsPage() {
       )}
 
       {/* ── Secondary Recommendations ─────────────────────────────────────────── */}
-      {secondarySlugs.length > 0 && (
+      {secondaryRecs.length > 0 && (
         <section className="bg-[#F7F9FC] pb-16">
           <div className="max-w-[900px] mx-auto px-6">
             <p className="text-xs font-bold uppercase tracking-widest text-muted-foreground mb-5">
               Also Worth Considering
             </p>
             <div className="space-y-4">
-              {secondarySlugs.map((slug, i) => (
+              {secondaryRecs.map((rec) => (
                 <div
-                  key={slug}
+                  key={rec.slug}
                   className="bg-white rounded-2xl border border-border shadow-sm p-6 flex flex-col sm:flex-row sm:items-start gap-5"
                 >
                   <div className="flex-shrink-0 w-10 h-10 rounded-xl bg-[#F7F9FC] border border-border flex items-center justify-center">
-                    <span className="text-[#0A2540] font-extrabold text-sm">{i + 2}</span>
+                    <span className="text-[#0A2540] font-extrabold text-sm">{rec.rank}</span>
                   </div>
                   <div className="flex-1 min-w-0">
                     <h3 className="font-extrabold text-[#0A2540] text-base mb-1 leading-snug">
-                      {getPackageName(slug, services)}
+                      {getPackageName(rec)}
                     </h3>
-                    <p className="text-muted-foreground text-sm leading-relaxed mb-4">
-                      {getPackageTagline(slug, services)}
-                    </p>
+                    {rec.tagline && (
+                      <p className="text-muted-foreground text-sm leading-relaxed mb-4">
+                        {rec.tagline}
+                      </p>
+                    )}
                     <Link
-                      href={getPackageHref(slug, services)}
+                      href={getPackageHref(rec)}
                       className="inline-flex items-center gap-1.5 text-[#0078D4] font-semibold text-sm hover:underline"
                     >
                       View package details <ArrowRight className="w-3.5 h-3.5" />
@@ -337,122 +363,176 @@ export default function QuickWinResultsPage() {
         </section>
       )}
 
-      {/* ── Readiness Profile ─────────────────────────────────────────────────── */}
-      {allRanked.length > 0 && (
-        <section className="bg-white border-t border-border py-16">
-          <div className="max-w-[760px] mx-auto px-6">
-            <div className="flex items-center gap-3 mb-8">
-              <div className="w-9 h-9 rounded-xl bg-[#0078D4]/10 flex items-center justify-center flex-shrink-0">
-                <BarChart3 className="w-4.5 h-4.5 text-[#0078D4]" />
-              </div>
-              <div>
-                <p className="text-xs font-bold uppercase tracking-widest text-[#0078D4]">
-                  Your Readiness Profile
-                </p>
-                <p className="text-sm text-muted-foreground mt-0.5">
-                  How each area scored based on your answers
-                </p>
-              </div>
-            </div>
-            <div className="space-y-4">
-              {allRanked.map((slug) => {
-                const pct = getScorePct(slug, scores);
-                const label = DIMENSION_LABELS[slug] ?? slug;
-                return (
-                  <div key={slug}>
-                    <div className="flex items-center justify-between mb-1.5">
-                      <span className="text-sm font-semibold text-[#0A2540]">{label}</span>
-                      <span className="text-xs font-bold text-[#0078D4]">{pct}%</span>
-                    </div>
-                    <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
-                      <div
-                        className="h-full rounded-full transition-all duration-700"
-                        style={{
-                          width: `${pct}%`,
-                          background:
-                            pct >= 70
-                              ? "#0078D4"
-                              : pct >= 40
-                              ? "#00B4D8"
-                              : "#94a3b8",
-                        }}
-                      />
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        </section>
-      )}
-
-      {/* ── Next Steps ────────────────────────────────────────────────────────── */}
-      <section className="bg-[#F7F9FC] border-t border-border py-16">
+      {/* ── Readiness Profile — all 6 dimensions ─────────────────────────────── */}
+      <section className="bg-white border-t border-border py-16">
         <div className="max-w-[760px] mx-auto px-6">
-          <div className="flex items-center gap-3 mb-8">
+          <div className="flex items-center gap-3 mb-3">
             <div className="w-9 h-9 rounded-xl bg-[#0078D4]/10 flex items-center justify-center flex-shrink-0">
-              <TrendingUp className="w-4.5 h-4.5 text-[#0078D4]" />
+              <BarChart3 className="w-4 h-4 text-[#0078D4]" />
             </div>
-            <p className="text-xs font-bold uppercase tracking-widest text-[#0078D4]">Next Steps</p>
+            <div>
+              <p className="text-xs font-bold uppercase tracking-widest text-[#0078D4]">
+                Your Readiness Profile
+              </p>
+              <p className="text-sm text-muted-foreground mt-0.5">
+                How each area scored across all 10 questions
+              </p>
+            </div>
           </div>
-          <div className="space-y-5">
-            {[
-              {
-                icon: <Star className="w-4 h-4 text-[#0078D4]" />,
-                title: "Review your top recommendation",
-                body: primarySlug
-                  ? `Start with the ${getPackageName(primarySlug, services)} page — it covers exactly what's included, how it works, and what you'll have at the end.`
-                  : "Explore the Quick Wins packages to find the right starting point.",
-                href: primarySlug ? getPackageHref(primarySlug, services) : "/micro-offers",
-                cta: "View package",
-              },
-              {
-                icon: <CalendarDays className="w-4 h-4 text-[#0078D4]" />,
-                title: "Book a free 30-minute discovery call",
-                body: "Talk through your results with Shane directly. No commitment — just a focused conversation about what would move the needle fastest in your environment.",
-                href: "/book",
-                cta: "Book a call",
-              },
-            ].map((step, i) => (
-              <div key={i} className="bg-white rounded-2xl border border-border p-6 flex gap-5">
-                <div className="flex-shrink-0 w-9 h-9 rounded-xl bg-[#0078D4]/10 flex items-center justify-center">
-                  {step.icon}
+          {primary && (
+            <p className="text-sm text-muted-foreground mb-7 pl-12">
+              Strongest area: <strong className="text-[#0A2540]">{DIMENSION_LABELS[primary.slug as QuizSlug] ?? primary.slug}</strong> at{" "}
+              {getScorePct(primary.slug, scores)}%. Lowest-scoring areas represent either strengths or lower priorities given your current situation.
+            </p>
+          )}
+          <div className="space-y-4">
+            {ALL_SLUGS.map((slug) => {
+              const pct = getScorePct(slug, scores);
+              const label = DIMENSION_LABELS[slug];
+              const indicator = getReadingIndicator(slug, scores, recommendations);
+              const isPrimary = primary?.slug === slug;
+              return (
+                <div key={slug}>
+                  <div className="flex items-center justify-between mb-1">
+                    <span
+                      className={`text-sm font-semibold ${isPrimary ? "text-[#0078D4]" : "text-[#0A2540]"}`}
+                    >
+                      {label}
+                    </span>
+                    <span className="text-xs text-muted-foreground">{indicator}</span>
+                  </div>
+                  <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+                    <div
+                      className="h-full rounded-full transition-all duration-700"
+                      style={{
+                        width: `${pct}%`,
+                        background:
+                          isPrimary
+                            ? "#0078D4"
+                            : pct >= 40
+                            ? "#00B4D8"
+                            : "#e2e8f0",
+                      }}
+                    />
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-0.5 text-right">{pct}%</p>
                 </div>
-                <div className="flex-1 min-w-0">
-                  <p className="font-bold text-[#0A2540] text-sm mb-1">{step.title}</p>
-                  <p className="text-muted-foreground text-sm leading-relaxed mb-3">{step.body}</p>
-                  <Link
-                    href={step.href}
-                    className="inline-flex items-center gap-1.5 text-[#0078D4] font-semibold text-sm hover:underline"
-                  >
-                    {step.cta} <ArrowRight className="w-3.5 h-3.5" />
-                  </Link>
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       </section>
 
-      {/* ── CTA ────────────────────────────────────────────────────────────────── */}
+      {/* ── Next Steps — dynamic from ranked results ──────────────────────────── */}
+      <section className="bg-[#F7F9FC] border-t border-border py-16">
+        <div className="max-w-[760px] mx-auto px-6">
+          <div className="flex items-center gap-3 mb-6">
+            <div className="w-9 h-9 rounded-xl bg-[#0078D4]/10 flex items-center justify-center flex-shrink-0">
+              <TrendingUp className="w-4 h-4 text-[#0078D4]" />
+            </div>
+            <p className="text-xs font-bold uppercase tracking-widest text-[#0078D4]">
+              Recommended Next Steps
+            </p>
+          </div>
+          <div className="space-y-4">
+            {/* Step 1: start the top Quick Win */}
+            {primary && (
+              <div className="bg-white rounded-2xl border border-border p-6 flex gap-5">
+                <div className="flex-shrink-0 w-9 h-9 rounded-xl bg-[#0078D4]/10 flex items-center justify-center">
+                  <span className="text-[#0078D4] font-extrabold text-sm">1</span>
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="font-bold text-[#0A2540] text-sm mb-1">
+                    Review {getPackageName(primary)}
+                  </p>
+                  <p className="text-muted-foreground text-sm leading-relaxed mb-3">
+                    This is your highest-scoring area. See exactly what's included, the timeline,
+                    and what your environment will look like when we're done.
+                  </p>
+                  <Link
+                    href={getPackageHref(primary)}
+                    className="inline-flex items-center gap-1.5 text-[#0078D4] font-semibold text-sm hover:underline"
+                  >
+                    View package details <ArrowRight className="w-3.5 h-3.5" />
+                  </Link>
+                </div>
+              </div>
+            )}
+
+            {/* Step 2: book a call */}
+            <div className="bg-white rounded-2xl border border-border p-6 flex gap-5">
+              <div className="flex-shrink-0 w-9 h-9 rounded-xl bg-[#0078D4]/10 flex items-center justify-center">
+                <CalendarDays className="w-4 h-4 text-[#0078D4]" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="font-bold text-[#0A2540] text-sm mb-1">
+                  Book a free 30-minute discovery call
+                </p>
+                <p className="text-muted-foreground text-sm leading-relaxed mb-3">
+                  Talk through your results with Shane directly. No commitment — a focused
+                  conversation about what would move the needle fastest in your environment.
+                </p>
+                <Link
+                  href="/book"
+                  className="inline-flex items-center gap-1.5 text-[#0078D4] font-semibold text-sm hover:underline"
+                >
+                  Book a call <ArrowRight className="w-3.5 h-3.5" />
+                </Link>
+              </div>
+            </div>
+
+            {/* Step 3: secondary quick wins if they scored */}
+            {secondaryRecs.length > 0 && (
+              <div className="bg-white rounded-2xl border border-border p-6 flex gap-5">
+                <div className="flex-shrink-0 w-9 h-9 rounded-xl bg-[#0078D4]/10 flex items-center justify-center">
+                  <span className="text-[#0078D4] font-extrabold text-sm">3</span>
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="font-bold text-[#0A2540] text-sm mb-1">
+                    Plan for your secondary priorities
+                  </p>
+                  <p className="text-muted-foreground text-sm leading-relaxed mb-3">
+                    Your answers also signalled need in{" "}
+                    {secondaryRecs.map((r, i) => (
+                      <span key={r.slug}>
+                        {i > 0 && " and "}
+                        <strong>{getPackageName(r)}</strong>
+                      </span>
+                    ))}
+                    . These are natural follow-ons once your primary quick win is delivered.
+                  </p>
+                  <Link
+                    href="/micro-offers"
+                    className="inline-flex items-center gap-1.5 text-[#0078D4] font-semibold text-sm hover:underline"
+                  >
+                    Browse all quick wins <ArrowRight className="w-3.5 h-3.5" />
+                  </Link>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      </section>
+
+      {/* ── CTA ──────────────────────────────────────────────────────────────────── */}
       <section className="bg-[#0A2540] py-20">
         <div className="max-w-[760px] mx-auto px-6 text-center">
           <h2 className="text-2xl md:text-3xl font-extrabold text-white mb-4 leading-tight">
             Ready to turn your results into action?
           </h2>
           <p className="text-white/70 text-base leading-relaxed mb-8 max-w-lg mx-auto">
-            Every Quick Win package is scoped, priced, and delivered by Shane personally — no juniors, no subcontractors.
+            Every Quick Win is scoped, priced, and delivered by Shane personally — no juniors, no
+            subcontractors.
           </p>
           <div className="flex flex-col sm:flex-row gap-3 justify-center">
-            <CTAButton href="/book" className="px-8 py-3.5 text-sm">
-              Book a Free Discovery Call
+            {primary && (
+              <CTAButton href={getPackageHref(primary)} className="px-8 py-3.5 text-sm">
+                Start This Quick Win
+              </CTAButton>
+            )}
+            <CTAButton href="/book" className="px-8 py-3.5 text-sm !bg-white !text-[#0A2540] hover:!bg-[#F7F9FC]">
+              Book a Free Call
             </CTAButton>
-            <a
-              href="/micro-offers"
-              className="inline-flex items-center justify-center gap-2 text-white/80 font-semibold hover:text-white transition-colors text-sm border border-white/20 px-8 py-3.5 rounded hover:border-white/40"
-            >
-              Browse All Quick Wins <ArrowRight className="w-4 h-4" />
-            </a>
           </div>
           <div className="mt-8 text-center">
             <Link

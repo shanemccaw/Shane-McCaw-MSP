@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Link, useLocation } from "wouter";
 import { CheckCircle, ChevronRight, RotateCcw, ArrowRight, Loader2 } from "lucide-react";
 import { CTAButton } from "./CTAButton";
+import { useToast } from "@/hooks/use-toast";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -297,7 +298,7 @@ const QUESTIONS: Question[] = [
 
 // ── Component ──────────────────────────────────────────────────────────────────
 
-type Phase = "intro" | "quiz" | "submitting" | "error";
+type Phase = "intro" | "quiz" | "submitting" | "results";
 
 const INITIAL_SCORES: Record<Slug, number> = {
   "tenant-health-audit": 0,
@@ -315,6 +316,7 @@ export function QuickWinsSelectorQuiz() {
   const [answers, setAnswers] = useState<Record<string, number>>({});
   const [selected, setSelected] = useState<number | null>(null);
   const [, navigate] = useLocation();
+  const { toast } = useToast();
 
   const total = QUESTIONS.length;
   const question = QUESTIONS[currentQ];
@@ -356,7 +358,12 @@ export function QuickWinsSelectorQuiz() {
         const data = (await res.json()) as { resultId: number };
         navigate(`/quick-win/results/${data.resultId}`);
       } catch {
-        setPhase("error");
+        toast({
+          title: "Couldn't save your results",
+          description: "Your recommendations are shown below — save or bookmark this page.",
+          variant: "destructive",
+        });
+        setPhase("results");
       }
     }
   }
@@ -368,6 +375,12 @@ export function QuickWinsSelectorQuiz() {
     setScores({ ...INITIAL_SCORES });
     setAnswers({});
   }
+
+  const topSlugs = (Object.entries(scores) as [Slug, number][])
+    .sort(([, a], [, b]) => b - a)
+    .slice(0, 3)
+    .filter(([, s]) => s > 0)
+    .map(([slug]) => slug);
 
   // ── Intro ──────────────────────────────────────────────────────────────────
   if (phase === "intro") {
@@ -411,17 +424,72 @@ export function QuickWinsSelectorQuiz() {
     );
   }
 
-  // ── Error ──────────────────────────────────────────────────────────────────
-  if (phase === "error") {
+  // ── Inline Results (fallback when API submit fails) ────────────────────────
+  if (phase === "results") {
     return (
-      <div className="max-w-2xl mx-auto">
-        <div className="bg-white rounded-2xl border border-border shadow-sm p-10 text-center">
-          <p className="text-[#0A2540] font-semibold text-base mb-4">
-            Something went wrong saving your results.
+      <div className="max-w-3xl mx-auto">
+        <div className="text-center mb-10">
+          <div className="inline-flex items-center gap-2 bg-[#0078D4]/10 text-[#0078D4] px-4 py-1.5 rounded-full text-sm font-semibold mb-4">
+            <CheckCircle className="w-4 h-4" />
+            Quiz complete
+          </div>
+          <h2 className="text-2xl md:text-3xl font-extrabold text-[#0A2540] mb-3">
+            Your Recommended Quick Wins
+          </h2>
+          <p className="text-muted-foreground max-w-xl mx-auto leading-relaxed">
+            Based on your answers, these packages are the best match for your current situation.
           </p>
+        </div>
+
+        <div className="space-y-4 mb-10">
+          {topSlugs.map((slug, i) => {
+            const pkg = PACKAGES[slug];
+            return (
+              <div
+                key={slug}
+                className={`bg-white rounded-2xl border shadow-sm p-6 flex flex-col sm:flex-row sm:items-start gap-5 ${
+                  i === 0 ? "border-[#0078D4]/40 ring-1 ring-[#0078D4]/20" : "border-border"
+                }`}
+              >
+                <div className="flex-shrink-0 flex items-center justify-center w-10 h-10 rounded-xl bg-[#0A2540] text-white font-extrabold text-sm">
+                  {i + 1}
+                </div>
+                <div className="flex-1 min-w-0">
+                  {i === 0 && (
+                    <span className="inline-block text-xs font-bold uppercase tracking-wider px-2.5 py-1 rounded-full bg-[#0078D4]/10 text-[#0078D4] border border-[#0078D4]/20 mb-2">
+                      Best Match
+                    </span>
+                  )}
+                  <h3 className="font-extrabold text-[#0A2540] text-base mb-1">{pkg.name}</h3>
+                  <p className="text-muted-foreground text-sm leading-relaxed mb-4">{pkg.tagline}</p>
+                  <Link
+                    href={pkg.href}
+                    className="inline-flex items-center gap-1.5 text-[#0078D4] font-semibold text-sm hover:underline"
+                  >
+                    View package details <ArrowRight className="w-3.5 h-3.5" />
+                  </Link>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        <div className="flex flex-col sm:flex-row gap-3 justify-center mb-8">
+          <CTAButton href="/micro-offers" className="px-7 py-3 text-sm">
+            View All Quick Wins
+          </CTAButton>
+          <a
+            href="/book"
+            className="inline-flex items-center justify-center gap-2 text-[#0A2540] font-semibold hover:text-[#0078D4] transition-colors text-sm border border-border px-7 py-3 rounded-xl hover:border-[#0078D4]/40"
+          >
+            Book a Discovery Call <ArrowRight className="w-4 h-4" />
+          </a>
+        </div>
+
+        <div className="text-center">
           <button
             onClick={restart}
-            className="inline-flex items-center gap-2 text-[#0078D4] font-semibold text-sm hover:underline"
+            className="inline-flex items-center gap-2 text-muted-foreground hover:text-[#0A2540] text-sm transition-colors"
           >
             <RotateCcw className="w-3.5 h-3.5" />
             Start over

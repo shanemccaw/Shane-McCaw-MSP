@@ -281,6 +281,13 @@
       "when": 1782153600000,
       "tag": "0039_add_service_page_slug",
       "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1782159142883,
+      "tag": "0040_quick_win_quiz_results",
+      "breakpoints": true
     }
   ]
 }

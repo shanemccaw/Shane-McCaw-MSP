@@ -24,6 +24,8 @@ const VALID_SLUGS = [
   "m365-training-enablement",
 ] as const;
 
+type QuizSlug = typeof VALID_SLUGS[number];
+
 const submitSchema = z.object({
   answers: z.record(z.string(), z.number()),
   scores: z.record(z.string(), z.number()),
@@ -71,32 +73,56 @@ router.get("/quiz/quick-win/results/:resultId", async (req, res) => {
       return;
     }
 
-    const slugsToFetch = (result.rankedSlugs as string[]).filter((s): s is typeof VALID_SLUGS[number] =>
-      VALID_SLUGS.includes(s as typeof VALID_SLUGS[number])
+    const rankedSlugs = result.rankedSlugs as string[];
+    const scores = result.scores as Record<string, number>;
+    const answers = result.answers as Record<string, number>;
+
+    const validSlugs = rankedSlugs.filter((s): s is QuizSlug =>
+      VALID_SLUGS.includes(s as QuizSlug)
     );
 
+    // Query services by page_slug (the quiz slug values match the page_slug column)
     const services =
-      slugsToFetch.length > 0
+      validSlugs.length > 0
         ? await db
             .select({
-              slug: servicesTable.slug,
+              pageSlug: servicesTable.pageSlug,
               name: servicesTable.name,
               tagline: servicesTable.tagline,
               price: servicesTable.price,
               pageHref: servicesTable.pageHref,
+              description: servicesTable.description,
             })
             .from(servicesTable)
-            .where(inArray(servicesTable.slug, slugsToFetch))
+            .where(inArray(servicesTable.pageSlug, validSlugs))
         : [];
 
-    const servicesBySlug = Object.fromEntries(services.map((s) => [s.slug, s]));
+    const servicesByPageSlug = Object.fromEntries(services.map((s) => [s.pageSlug, s]));
+
+    // Build ordered recommendations array with rank
+    const recommendations = rankedSlugs
+      .filter((s): s is QuizSlug => VALID_SLUGS.includes(s as QuizSlug))
+      .map((slug, index) => {
+        const svc = servicesByPageSlug[slug];
+        return {
+          rank: index + 1,
+          slug,
+          score: scores[slug] ?? 0,
+          name: svc?.name ?? null,
+          tagline: svc?.tagline ?? null,
+          price: svc?.price ?? null,
+          pageHref: svc?.pageHref ?? null,
+          description: svc?.description ?? null,
+        };
+      });
 
     res.json({
       id: result.id,
-      scores: result.scores,
-      rankedSlugs: result.rankedSlugs,
+      answers,
+      scores,
+      rankedSlugs,
+      recommendations,
       createdAt: result.createdAt,
-      services: servicesBySlug,
     });
   } catch (err) {
     logger.error({ err }, "Failed to fetch quick win quiz result");
