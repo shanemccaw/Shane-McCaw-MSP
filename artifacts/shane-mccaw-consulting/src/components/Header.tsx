@@ -17,6 +17,7 @@ const SERVICES_ITEMS = [
 ];
 
 const RETAINER_ITEMS = [
+  { label: "All Retainer Plans",   href: "/retainers" },
   { label: "Architect Essentials", href: "/retainers/architect-essentials" },
   { label: "Architect Growth",     href: "/retainers/architect-growth" },
   { label: "Architect Enterprise", href: "/retainers/architect-enterprise" },
