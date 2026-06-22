@@ -3,14 +3,6 @@ import { useAuth } from "@/contexts/AuthContext";
 
 type Tier = "Beginner" | "Developing" | "Emerging" | "Advanced" | "Ready";
 
-interface CategoryScores {
-  infrastructure: number;
-  data: number;
-  aiLiteracy: number;
-  changeManagement: number;
-  businessProcess: number;
-}
-
 interface QuizLead {
   id: number;
   name: string;
@@ -19,10 +11,11 @@ interface QuizLead {
   totalScore: number;
   tier: Tier;
   recommendedService: string | null;
-  categoryScores: CategoryScores;
+  categoryScores: Record<string, number>;
   conversation: { role: "user" | "assistant"; content: string }[];
   createdAt: string;
   contactedAt: string | null;
+  quizType: string;
 }
 
 interface QuizLeadList {
@@ -46,13 +39,24 @@ const TIER_COLORS: Record<Tier, string> = {
   Ready: "bg-green-100 text-green-700",
 };
 
-const CATEGORY_LABELS: Record<keyof CategoryScores, string> = {
-  infrastructure: "Infrastructure & Identity",
-  data: "Data & Compliance",
-  aiLiteracy: "AI Literacy",
-  changeManagement: "Change Management",
-  businessProcess: "Business Process",
+const QUIZ_TYPE_LABELS: Record<string, string> = {
+  copilot: "Copilot Readiness",
+  "m365-health": "M365 Health",
+  sharepoint: "SharePoint",
+  "power-platform": "Power Platform",
+  security: "Security",
+  teams: "Teams",
+  migration: "Migration",
+  governance: "Governance",
 };
+
+function formatCategoryKey(key: string): string {
+  return key
+    .replace(/([A-Z])/g, " $1")
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (c) => c.toUpperCase())
+    .trim();
+}
 
 function ScoreBar({ score, max = 10 }: { score: number; max?: number }) {
   const pct = Math.round((score / max) * 100);
@@ -132,7 +136,8 @@ function SlideOver({ lead, onClose, onRefresh }: {
   };
 
   const scores = lead.categoryScores;
-  const totalMax = 50;
+  const categoryKeys = Object.keys(scores);
+  const totalMax = categoryKeys.length * 10;
 
   return (
     <div className="fixed inset-0 z-50 flex">
@@ -160,7 +165,13 @@ function SlideOver({ lead, onClose, onRefresh }: {
                 <p className="text-[#0A2540] text-sm">{lead.company}</p>
               </div>
             )}
-            <div className="flex gap-6">
+            <div className="flex gap-6 flex-wrap">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1">Quiz Type</p>
+                <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-[#0078D4]/10 text-[#0078D4]">
+                  {QUIZ_TYPE_LABELS[lead.quizType] ?? lead.quizType}
+                </span>
+              </div>
               <div>
                 <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1">Date</p>
                 <p className="text-sm text-[#0A2540]">{new Date(lead.createdAt).toLocaleDateString()}</p>
@@ -192,20 +203,22 @@ function SlideOver({ lead, onClose, onRefresh }: {
             </div>
           </div>
 
-          {/* Category breakdown */}
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">Category Breakdown</p>
-            <div className="space-y-3">
-              {(Object.keys(CATEGORY_LABELS) as (keyof CategoryScores)[]).map(key => (
-                <div key={key}>
-                  <div className="flex items-center justify-between mb-1">
-                    <p className="text-xs text-[#0A2540] font-medium">{CATEGORY_LABELS[key]}</p>
+          {/* Category breakdown — dynamic keys for all quiz types */}
+          {categoryKeys.length > 0 && (
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">Category Breakdown</p>
+              <div className="space-y-3">
+                {categoryKeys.map((key) => (
+                  <div key={key}>
+                    <div className="flex items-center justify-between mb-1">
+                      <p className="text-xs text-[#0A2540] font-medium">{formatCategoryKey(key)}</p>
+                    </div>
+                    <ScoreBar score={scores[key] ?? 0} />
                   </div>
-                  <ScoreBar score={scores[key] ?? 0} />
-                </div>
-              ))}
+                ))}
+              </div>
             </div>
-          </div>
+          )}
 
           {/* Recommended service */}
           {lead.recommendedService && (
@@ -244,6 +257,7 @@ function SlideOver({ lead, onClose, onRefresh }: {
 }
 
 const TIER_OPTIONS = ["all", "Beginner", "Developing", "Emerging", "Advanced", "Ready"] as const;
+const QUIZ_TYPE_OPTIONS = ["all", "copilot", "m365-health", "sharepoint", "power-platform", "security", "teams", "migration", "governance"] as const;
 const LIMIT = 20;
 
 export default function QuizLeadsPage() {
@@ -256,18 +270,20 @@ export default function QuizLeadsPage() {
   const [page, setPage] = useState(1);
   const [tierFilter, setTierFilter] = useState("all");
   const [contactedFilter, setContactedFilter] = useState("all");
+  const [quizTypeFilter, setQuizTypeFilter] = useState("all");
 
   const fetchStats = useCallback(async () => {
     const res = await fetchWithAuth("/api/admin/quiz-leads/stats");
     if (res.ok) setStats(await res.json() as QuizLeadStats);
   }, [fetchWithAuth]);
 
-  const fetchLeads = useCallback(async (p = 1, tier = "all", contacted = "all") => {
+  const fetchLeads = useCallback(async (p = 1, tier = "all", contacted = "all", quizType = "all") => {
     setLoading(true);
     try {
       const params = new URLSearchParams({ page: String(p), limit: String(LIMIT) });
       if (tier !== "all") params.set("tier", tier);
       if (contacted !== "all") params.set("contacted", contacted);
+      if (quizType !== "all") params.set("quizType", quizType);
       const res = await fetchWithAuth(`/api/admin/quiz-leads?${params.toString()}`);
       if (res.ok) {
         const data = await res.json() as QuizLeadList;
@@ -280,11 +296,11 @@ export default function QuizLeadsPage() {
   }, [fetchWithAuth]);
 
   useEffect(() => {
-    void Promise.all([fetchStats(), fetchLeads(1, "all", "all")]);
+    void Promise.all([fetchStats(), fetchLeads(1, "all", "all", "all")]);
   }, [fetchStats, fetchLeads]);
 
   const handleRefresh = () => {
-    void Promise.all([fetchLeads(page, tierFilter, contactedFilter), fetchStats()]);
+    void Promise.all([fetchLeads(page, tierFilter, contactedFilter, quizTypeFilter), fetchStats()]);
   };
 
   const totalPages = Math.ceil(total / LIMIT);
@@ -293,7 +309,7 @@ export default function QuizLeadsPage() {
     <div className="p-6 max-w-[1200px]">
       <div className="mb-6">
         <h1 className="text-xl font-bold text-[#0A2540]">Quiz Leads</h1>
-        <p className="text-sm text-muted-foreground mt-0.5">Prospects who completed the Copilot Readiness Assessment.</p>
+        <p className="text-sm text-muted-foreground mt-0.5">Prospects who completed any assessment quiz.</p>
       </div>
 
       {/* Stats */}
@@ -311,25 +327,32 @@ export default function QuizLeadsPage() {
 
       <div className="bg-white border border-border rounded-xl overflow-hidden">
         {/* Filters */}
-        <div className="px-5 pt-5 pb-4 border-b border-border">
-          <div className="flex flex-col sm:flex-row sm:items-center gap-3">
-            <div className="flex flex-wrap gap-1.5">
-              {TIER_OPTIONS.map(t => (
-                <button key={t} onClick={() => { setTierFilter(t); setPage(1); void fetchLeads(1, t, contactedFilter); }}
-                  className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-colors ${tierFilter === t ? "bg-[#0078D4] text-white" : "bg-[#F7F9FC] text-muted-foreground hover:bg-[#0078D4]/10 hover:text-[#0078D4]"}`}>
-                  {t === "all" ? "All Tiers" : t}
-                </button>
+        <div className="px-5 pt-5 pb-4 border-b border-border space-y-3">
+          {/* Tier filter */}
+          <div className="flex flex-wrap gap-1.5">
+            {TIER_OPTIONS.map(t => (
+              <button key={t} onClick={() => { setTierFilter(t); setPage(1); void fetchLeads(1, t, contactedFilter, quizTypeFilter); }}
+                className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-colors ${tierFilter === t ? "bg-[#0078D4] text-white" : "bg-[#F7F9FC] text-muted-foreground hover:bg-[#0078D4]/10 hover:text-[#0078D4]"}`}>
+                {t === "all" ? "All Tiers" : t}
+              </button>
+            ))}
+          </div>
+          {/* Quiz type + contacted filters */}
+          <div className="flex flex-col sm:flex-row gap-3">
+            <select value={quizTypeFilter}
+              onChange={e => { setQuizTypeFilter(e.target.value); setPage(1); void fetchLeads(1, tierFilter, contactedFilter, e.target.value); }}
+              className="border border-border rounded-lg px-3 py-1.5 text-xs font-medium bg-white focus:outline-none focus:ring-2 focus:ring-[#0078D4]">
+              {QUIZ_TYPE_OPTIONS.map(q => (
+                <option key={q} value={q}>{q === "all" ? "All Quiz Types" : (QUIZ_TYPE_LABELS[q] ?? q)}</option>
               ))}
-            </div>
-            <div className="sm:ml-auto">
-              <select value={contactedFilter}
-                onChange={e => { setContactedFilter(e.target.value); setPage(1); void fetchLeads(1, tierFilter, e.target.value); }}
-                className="border border-border rounded-lg px-3 py-1.5 text-xs font-medium bg-white focus:outline-none focus:ring-2 focus:ring-[#0078D4]">
-                <option value="all">All Statuses</option>
-                <option value="no">Not Contacted</option>
-                <option value="yes">Contacted</option>
-              </select>
-            </div>
+            </select>
+            <select value={contactedFilter}
+              onChange={e => { setContactedFilter(e.target.value); setPage(1); void fetchLeads(1, tierFilter, e.target.value, quizTypeFilter); }}
+              className="border border-border rounded-lg px-3 py-1.5 text-xs font-medium bg-white focus:outline-none focus:ring-2 focus:ring-[#0078D4]">
+              <option value="all">All Statuses</option>
+              <option value="no">Not Contacted</option>
+              <option value="yes">Contacted</option>
+            </select>
           </div>
         </div>
 
@@ -354,6 +377,7 @@ export default function QuizLeadsPage() {
                     <th className="text-left px-5 py-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Name</th>
                     <th className="text-left px-5 py-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Email</th>
                     <th className="text-left px-5 py-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground hidden md:table-cell">Company</th>
+                    <th className="text-left px-5 py-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground hidden lg:table-cell">Quiz</th>
                     <th className="text-left px-5 py-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Score</th>
                     <th className="text-left px-5 py-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Tier</th>
                     <th className="text-left px-5 py-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground hidden lg:table-cell">Date</th>
@@ -367,7 +391,12 @@ export default function QuizLeadsPage() {
                       <td className="px-5 py-3.5 font-semibold text-[#0A2540]">{lead.name}</td>
                       <td className="px-5 py-3.5 text-muted-foreground">{lead.email}</td>
                       <td className="px-5 py-3.5 text-muted-foreground hidden md:table-cell">{lead.company ?? "—"}</td>
-                      <td className="px-5 py-3.5 font-semibold text-[#0A2540]">{lead.totalScore}<span className="text-xs font-normal text-muted-foreground">/50</span></td>
+                      <td className="px-5 py-3.5 hidden lg:table-cell">
+                        <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-[#0078D4]/10 text-[#0078D4]">
+                          {QUIZ_TYPE_LABELS[lead.quizType] ?? lead.quizType}
+                        </span>
+                      </td>
+                      <td className="px-5 py-3.5 font-semibold text-[#0A2540]">{lead.totalScore}</td>
                       <td className="px-5 py-3.5">
                         <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${TIER_COLORS[lead.tier] ?? "bg-gray-100 text-gray-600"}`}>
                           {lead.tier}
@@ -398,10 +427,11 @@ export default function QuizLeadsPage() {
                     <p className="text-sm font-semibold text-[#0A2540] truncate">{lead.name}</p>
                     <p className="text-xs text-muted-foreground truncate">{lead.email}</p>
                     {lead.company && <p className="text-xs text-muted-foreground/70 truncate">{lead.company}</p>}
+                    <p className="text-[10px] text-[#0078D4] font-medium mt-0.5">{QUIZ_TYPE_LABELS[lead.quizType] ?? lead.quizType}</p>
                   </div>
                   <div className="flex flex-col items-end gap-1 flex-shrink-0">
                     <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${TIER_COLORS[lead.tier] ?? "bg-gray-100 text-gray-600"}`}>{lead.tier}</span>
-                    <span className="text-xs text-muted-foreground font-semibold">{lead.totalScore}/50</span>
+                    <span className="text-xs text-muted-foreground font-semibold">{lead.totalScore}</span>
                     {lead.contactedAt && <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-green-100 text-green-700">Contacted</span>}
                   </div>
                 </div>
@@ -417,12 +447,12 @@ export default function QuizLeadsPage() {
             </p>
             <div className="flex gap-2">
               <button disabled={page <= 1}
-                onClick={() => { const p = page - 1; setPage(p); void fetchLeads(p, tierFilter, contactedFilter); }}
+                onClick={() => { const p = page - 1; setPage(p); void fetchLeads(p, tierFilter, contactedFilter, quizTypeFilter); }}
                 className="px-3 py-1.5 border border-border rounded-lg text-xs font-medium disabled:opacity-40 hover:bg-[#F7F9FC] transition-colors">
                 Prev
               </button>
               <button disabled={page >= totalPages}
-                onClick={() => { const p = page + 1; setPage(p); void fetchLeads(p, tierFilter, contactedFilter); }}
+                onClick={() => { const p = page + 1; setPage(p); void fetchLeads(p, tierFilter, contactedFilter, quizTypeFilter); }}
                 className="px-3 py-1.5 border border-border rounded-lg text-xs font-medium disabled:opacity-40 hover:bg-[#F7F9FC] transition-colors">
                 Next
               </button>

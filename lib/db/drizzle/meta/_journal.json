@@ -225,6 +225,13 @@
       "when": 1782072610817,
       "tag": "0031_asset_library_categories",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1782098634145,
+      "tag": "0032_quiz_type_column",
+      "breakpoints": true
     }
   ]
 }

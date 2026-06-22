@@ -15,11 +15,14 @@ router.get("/admin/quiz-leads", requireAdmin, async (req, res) => {
   const tierParam = req.query.tier;
   const tier = typeof tierParam === "string" && tierParam !== "all" ? tierParam : null;
   const contacted = req.query.contacted;
+  const quizTypeParam = req.query.quizType;
+  const quizType = typeof quizTypeParam === "string" && quizTypeParam !== "all" ? quizTypeParam : null;
 
   const filters: SQL[] = [];
   if (tier) filters.push(eq(quizLeadsTable.tier, tier));
   if (contacted === "yes") filters.push(isNotNull(quizLeadsTable.contactedAt));
   else if (contacted === "no") filters.push(isNull(quizLeadsTable.contactedAt));
+  if (quizType) filters.push(eq(quizLeadsTable.quizType, quizType));
 
   const where = filters.length > 0 ? and(...filters) : undefined;
 

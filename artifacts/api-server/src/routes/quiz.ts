@@ -205,6 +205,14 @@ interface ScoringConfig {
   pdfFilename: string;
 }
 
+const COPILOT_SERVICE_MAP: Record<string, string> = {
+  "Microsoft 365 Essentials Audit": "A comprehensive tenant audit revealing quick wins and critical gaps in your M365 environment.",
+  "Copilot AI Readiness & Deployment": "End-to-end Copilot enablement: licensing, data governance, training, and governed rollout.",
+  "Microsoft 365 Governance Setup": "Establish DLP policies, sensitivity labels, and compliance controls that protect your data.",
+  "AI Adoption & Change Management": "Drive Copilot adoption through executive alignment, champion networks, and structured change management.",
+  "SharePoint & Teams Modernisation": "Redesign your intranet and collaboration spaces so Copilot has clean, well-structured data to work with.",
+};
+
 const SCORING_CONFIGS: Record<string, ScoringConfig> = {
   copilot: {
     categories: `- infrastructure: M365 licensing, Entra ID, MFA, device compliance
@@ -521,7 +529,7 @@ Respond ONLY with valid JSON in this exact shape:
     tier,
     recommendedService,
     categoryScores: scores,
-    serviceDescription: "",
+    serviceDescription: quizType === "copilot" ? (COPILOT_SERVICE_MAP[recommendedService ?? ""] ?? "") : "",
     whatThisMeans,
     whyThisFits,
     roiProjection,

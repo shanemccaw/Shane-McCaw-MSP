@@ -502,6 +502,25 @@ export default function CloudMigration() {
       </section>
 
       {/* CTA */}
+      {/* ── ASSESSMENT CTA ───────────────────────────────────────────────── */}
+      <section className="bg-white py-16">
+        <div className="max-w-[1200px] mx-auto px-6">
+          <div className="bg-[#F7F9FC] border border-border rounded-2xl p-8 md:p-12 flex flex-col md:flex-row items-center gap-8">
+            <div className="flex-1">
+              <p className="text-[#0078D4] text-xs font-semibold uppercase tracking-widest mb-2">Free · 5 Minutes</p>
+              <h3 className="text-2xl font-extrabold text-[#0A2540] mb-3">Migration Readiness Assessment</h3>
+              <p className="text-muted-foreground leading-relaxed">
+                Get an AI-powered snapshot of your migration readiness across infrastructure, data, security, and project management — with a free PDF report.
+              </p>
+            </div>
+            <a href="/migration-quiz"
+              className="flex-shrink-0 inline-flex items-center gap-2 bg-[#0078D4] hover:bg-[#0078D4]/90 text-white font-bold px-8 py-4 rounded-xl transition-colors text-base">
+              Take the Free Assessment
+            </a>
+          </div>
+        </div>
+      </section>
+
       <section className="bg-[#0A2540] py-24 relative overflow-hidden">
         <div
           className="absolute inset-0 pointer-events-none"
