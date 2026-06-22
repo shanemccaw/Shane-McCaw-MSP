@@ -68,10 +68,10 @@ const MICRO_OFFERS_ITEMS: NavItem[] = withIcons([
 
 const RETAINER_ITEMS: NavItem[] = withIcons([
   { label: "All Retainer Plans",   href: "/retainers" },
+  { label: "Start Here",           href: "/retainer-quiz" },
   { label: "Architect Essentials", href: "/retainers/architect-essentials" },
   { label: "Architect Growth",     href: "/retainers/architect-growth" },
   { label: "Architect Enterprise", href: "/retainers/architect-enterprise" },
-  { label: "Retainer Quiz",        href: "/retainer-quiz" },
 ]);
 
 const ASSESSMENTS_ITEMS: NavItem[] = withIcons([
