@@ -232,6 +232,13 @@
       "when": 1782098634145,
       "tag": "0032_quiz_type_column",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1750464002000,
+      "tag": "0033_quiz_analytics_events",
+      "breakpoints": true
     }
   ]
 }

@@ -653,3 +653,11 @@ export type QuizLead = typeof quizLeadsTable.$inferSelect;
 
 export type InsertClientM365Profile = typeof clientM365ProfilesTable.$inferInsert;
 export type ClientM365Profile = typeof clientM365ProfilesTable.$inferSelect;
+
+// Quiz Analytics Events — click-tracking for upsell CTA conversions
+export const quizAnalyticsEventsTable = pgTable("quiz_analytics_events", {
+  id: serial("id").primaryKey(),
+  eventName: text("event_name").notNull(),
+  properties: jsonb("properties").$type<Record<string, string | number | boolean>>().notNull().default({}),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});

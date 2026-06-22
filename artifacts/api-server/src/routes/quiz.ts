@@ -3,7 +3,7 @@ import { Router } from "express";
 import rateLimit from "express-rate-limit";
 import { z } from "zod";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
-import { db, quizLeadsTable } from "@workspace/db";
+import { db, quizLeadsTable, quizAnalyticsEventsTable } from "@workspace/db";
 import { logger } from "../lib/logger";
 import { generateQuizPdf } from "../lib/quiz-pdf";
 import { sendEmailWithAttachment, sendEmailWithAttachmentOrThrow, sendEmail, brandedEmail, quizLeadNotificationEmail } from "../lib/mailer";
@@ -658,6 +658,30 @@ router.post("/quiz/resend-pdf", resendLimiter, async (req, res) => {
     logger.warn({ err }, "quiz/resend-pdf: failed");
     return res.status(500).json({ error: "Failed to send the report. Please try again." });
   }
+});
+
+// ─── Analytics event capture ──────────────────────────────────────────────────
+const analyticsEventSchema = z.object({
+  name: z.string().min(1).max(100),
+  properties: z.record(z.union([z.string(), z.number(), z.boolean()])).optional(),
+});
+
+const analyticsLimiter = rateLimit({ windowMs: 60_000, max: 120, standardHeaders: true, legacyHeaders: false });
+
+router.post("/quiz/analytics-event", analyticsLimiter, async (req, res) => {
+  const parsed = analyticsEventSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: "Invalid payload" });
+
+  const { name, properties = {} } = parsed.data;
+  req.log.info({ event: name, properties }, "quiz analytics event");
+
+  try {
+    await db.insert(quizAnalyticsEventsTable).values({ eventName: name, properties });
+  } catch {
+    req.log.warn({ event: name }, "quiz analytics event: db insert failed");
+  }
+
+  return res.json({ ok: true });
 });
 
 export default router;

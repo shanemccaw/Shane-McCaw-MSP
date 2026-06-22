@@ -6,6 +6,7 @@ import { Layout } from "@/components/Layout";
 import { CTAButton } from "@/components/CTAButton";
 import { Brain, X, ChevronRight, CheckCircle, Loader2, BarChart3, Award, Zap, ShieldCheck, AlertTriangle, FileText, Target, Users, Building2, ArrowRight, Lock, Database, Globe } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { trackEvent } from "@/lib/analytics";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface Message {
@@ -574,6 +575,7 @@ function QuizModal({ onClose }: { onClose: () => void }) {
                     <a
                       href={`/crm/portal/onboarding/select?service=${upsell.slug}`}
                       className="w-full py-3 px-6 bg-primary hover:bg-primary/90 text-white font-semibold rounded-lg transition-colors flex items-center justify-center gap-2"
+                      onClick={() => trackEvent("quiz_upsell_cta_click", { quiz_type: "copilot", tier: results.tier, score: results.totalScore, upsell_slug: upsell.slug })}
                     >
                       {upsell.ctaText} <ChevronRight className="w-4 h-4" />
                     </a>
@@ -581,6 +583,7 @@ function QuizModal({ onClose }: { onClose: () => void }) {
                       <a
                         href={`/micro-offers#${upsell.slug}`}
                         className="text-primary/80 hover:text-primary text-sm transition-colors"
+                        onClick={() => trackEvent("quiz_upsell_details_click", { quiz_type: "copilot", tier: results.tier, score: results.totalScore, upsell_slug: upsell.slug })}
                       >
                         See full offer details →
                       </a>

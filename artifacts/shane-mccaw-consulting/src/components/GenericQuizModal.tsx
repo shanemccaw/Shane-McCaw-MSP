@@ -4,6 +4,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { X, ChevronRight, CheckCircle, Loader2, BarChart3, Award, Zap, ArrowRight } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { trackEvent } from "@/lib/analytics";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface Message {
@@ -446,12 +447,14 @@ export function GenericQuizModal({ config, onClose }: { config: QuizConfig; onCl
                     <a
                       href={`/crm/portal/onboarding/select?service=${upsell.slug}`}
                       className="flex-1 py-2.5 px-4 bg-primary hover:bg-primary/90 text-white font-semibold rounded-lg text-sm transition-colors flex items-center justify-center gap-1.5"
+                      onClick={() => results && trackEvent("quiz_upsell_cta_click", { quiz_type: config.quizType, tier: results.tier, score: results.totalScore, upsell_slug: upsell.slug })}
                     >
                       {upsell.ctaText} <ArrowRight className="w-3.5 h-3.5" />
                     </a>
                     <a
                       href="/book"
                       className="flex-1 py-2.5 px-4 border border-white/20 hover:border-white/40 text-white/80 hover:text-white font-semibold rounded-lg text-sm transition-colors flex items-center justify-center gap-1.5"
+                      onClick={() => results && trackEvent("quiz_upsell_details_click", { quiz_type: config.quizType, tier: results.tier, score: results.totalScore, destination: "book-call" })}
                     >
                       Book a Free Call
                     </a>
