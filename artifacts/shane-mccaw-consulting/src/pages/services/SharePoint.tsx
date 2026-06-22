@@ -181,25 +181,24 @@ export default function SharePoint() {
         </div>
       </section>
 
-      {/* Three Offers */}
+      {/* Fixed-Price Engagements */}
       <section className="bg-[#F7F9FC] py-20">
         <div className="max-w-[1200px] mx-auto px-6">
-          <div className="text-center mb-14">
-            <p className="text-[#0078D4] text-sm font-semibold uppercase tracking-[0.1em] mb-4">Engagements</p>
-            <h2 className="text-3xl md:text-4xl font-extrabold text-[#0A2540]">Three Ways to Work With Shane</h2>
+          <div className="text-center mb-12">
+            <p className="text-[#0078D4] text-sm font-semibold uppercase tracking-[0.1em] mb-3">Fixed-Price Engagements</p>
+            <h2 className="text-3xl md:text-4xl font-extrabold text-[#0A2540]">Two Ways to Start</h2>
+            <p className="text-muted-foreground mt-4 max-w-xl mx-auto">
+              Fixed scope, fixed price — no open-ended billing. Both engagements deliver a clear output and a defined next step.
+            </p>
           </div>
-
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+          <div className="space-y-8">
             <FixedPriceOfferCard
               slug="governance-foundations-package"
-              variant="compact"
               ctaLabel="Get Started"
               ctaHref="/crm/portal/onboarding/select?service=governance-foundations-package"
             />
             <FixedPriceOfferCard
               slug="migration-readiness-assessment"
-              variant="compact"
-              accentColor="#00B4D8"
               ctaLabel="Get Started"
               ctaHref="/crm/portal/onboarding/select?service=migration-readiness-assessment"
             />
@@ -209,33 +208,37 @@ export default function SharePoint() {
           <div className="mt-12">
             <FollowOnProjects triggerKeys={["Governance Foundations Package", "Migration Readiness Assessment"]} />
           </div>
+        </div>
+      </section>
 
-          {/* Track 03: Fractional Architecture Retainers */}
-          <div className="mt-12">
-            <p className="text-center text-sm font-semibold text-muted-foreground uppercase tracking-widest mb-2">Track 03 · Strategic Tier</p>
-            <h3 className="text-center text-2xl font-extrabold text-[#0A2540] mb-3">Fractional M365 Architect Retainers</h3>
-            <p className="text-center text-muted-foreground text-sm mb-10 max-w-2xl mx-auto">
+      {/* Retainers */}
+      <section className="bg-white py-20">
+        <div className="max-w-[1200px] mx-auto px-6">
+          <div className="text-center mb-10">
+            <p className="text-[#0078D4] text-sm font-semibold uppercase tracking-[0.1em] mb-3">Ongoing Advisory</p>
+            <h2 className="text-3xl md:text-4xl font-extrabold text-[#0A2540]">Fractional M365 Architect Retainers</h2>
+            <p className="text-muted-foreground mt-4 max-w-2xl mx-auto">
               Ongoing strategic access to Shane — your senior SharePoint architect on call without the full-time hire. All tiers include architecture reviews, governance oversight, and direct Slack/Teams access.
             </p>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              {retainerLoading
-                ? [0, 1, 2].map((i) => (
-                    <div key={i} className="rounded-2xl p-8 border bg-white border-border animate-pulse">
-                      <div className="h-5 w-32 bg-gray-200 rounded mb-4" />
-                      <div className="h-10 w-24 bg-gray-200 rounded mb-2" />
-                      <div className="h-4 w-20 bg-gray-200 rounded mb-4" />
-                      <div className="h-16 bg-gray-100 rounded" />
-                    </div>
-                  ))
-                : retainerServices.map((tier, i) => (
-                    <RetainerCard key={tier.slug ?? tier.name} plan={tier} index={i} />
-                  ))}
-            </div>
-            <p className="text-center text-sm text-muted-foreground mt-6">
-              All retainers are month-to-month.{" "}
-              <a href="/pricing" className="text-[#0078D4] hover:underline font-medium">See full pricing →</a>
-            </p>
           </div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            {retainerLoading
+              ? [0, 1, 2].map((i) => (
+                  <div key={i} className="rounded-2xl p-8 border bg-white border-border animate-pulse">
+                    <div className="h-5 w-32 bg-gray-200 rounded mb-4" />
+                    <div className="h-10 w-24 bg-gray-200 rounded mb-2" />
+                    <div className="h-4 w-20 bg-gray-200 rounded mb-4" />
+                    <div className="h-16 bg-gray-100 rounded" />
+                  </div>
+                ))
+              : retainerServices.map((tier, i) => (
+                  <RetainerCard key={tier.slug ?? tier.name} plan={tier} index={i} />
+                ))}
+          </div>
+          <p className="text-center text-sm text-muted-foreground mt-6">
+            All retainers are month-to-month.{" "}
+            <a href="/pricing" className="text-[#0078D4] hover:underline font-medium">See full pricing →</a>
+          </p>
         </div>
       </section>
 
