@@ -252,8 +252,6 @@ export default function Services() {
                   key={s.slug ?? s.id}
                   offer={s}
                   index={i}
-                  ctaHref={s.pageHref || undefined}
-                  ctaLabel={s.pageHref ? "Learn More" : "Get Started"}
                 />
               ))}
             </TrackSection>
