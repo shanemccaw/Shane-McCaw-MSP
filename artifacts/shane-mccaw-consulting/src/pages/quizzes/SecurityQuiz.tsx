@@ -552,7 +552,7 @@ export default function SecurityQuiz() {
                 },
                 {
                   n: "06",
-                  title: "Suggested micro-offers",
+                  title: "Suggested Quick Wins",
                   desc: "Targeted service recommendations matched to your most critical gaps — with fixed pricing so you can plan budget immediately.",
                 },
                 {

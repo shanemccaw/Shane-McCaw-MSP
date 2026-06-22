@@ -562,7 +562,7 @@ export default function MigrationQuiz() {
               },
               {
                 num: "06",
-                title: "Suggested micro-offers",
+                title: "Suggested Quick Wins",
                 desc: "Based on your score and risk profile, one or two specific Shane McCaw Consulting services recommended as the highest-value next steps: Migration Readiness Assessment, Governance Foundations, or Tenant Health Audit.",
               },
               {

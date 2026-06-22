@@ -180,7 +180,7 @@ const REPORT_SECTIONS = [
   { label: "Architecture Heatmap", desc: "A visual representation of your maturity across all five dimensions — instantly shows where your environment is thriving and where it is failing." },
   { label: "Gap Analysis", desc: "A detailed catalogue of the specific IA, governance, security, and content quality issues discovered, ranked by severity and business impact." },
   { label: "Remediation Path", desc: "A prioritised, step-by-step remediation guide aligned to your maturity tier — so you know what to fix first and why." },
-  { label: "Micro-Offer Suggestions", desc: "Specific Shane McCaw Consulting service recommendations that directly address your highest-priority gaps, with pricing guidance." },
+  { label: "Quick Win Suggestions", desc: "Specific Shane McCaw Consulting service recommendations that directly address your highest-priority gaps, with pricing guidance." },
 ];
 
 const ICP_PROFILES = [

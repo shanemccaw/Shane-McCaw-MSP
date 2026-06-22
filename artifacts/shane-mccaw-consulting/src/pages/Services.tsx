@@ -95,7 +95,7 @@ export default function Services() {
     <Layout>
       <SEOMeta
         title="All Microsoft 365 Services | Shane McCaw Consulting"
-        description="Complete directory of every Microsoft 365 consulting service offered by Shane McCaw — fixed-price micro-offers, project-based engagements, and fractional architecture retainers."
+        description="Complete directory of every Microsoft 365 consulting service offered by Shane McCaw — fixed-price Quick Wins, project-based engagements, and fractional architecture retainers."
         jsonLd={{
           "@context": "https://schema.org",
           "@type": "ProfessionalService",
@@ -139,7 +139,7 @@ export default function Services() {
           {/* Track overview chips */}
           <div className="mt-12 grid grid-cols-1 sm:grid-cols-3 gap-4">
             {[
-              { num: "Track 01", tier: "Entry", title: "Fixed-Price Micro-Offers", icon: Zap, anchor: "#track-01" },
+              { num: "Track 01", tier: "Entry", title: "Fixed-Price Quick Wins", icon: Zap, anchor: "#track-01" },
               { num: "Track 02", tier: "Core", title: "Project-Based Engagements", icon: FolderOpen, anchor: "#track-02" },
               { num: "Track 03", tier: "Strategic", title: "Fractional Architecture", icon: Calendar, anchor: "#track-03" },
             ].map((t, i) => {
@@ -211,12 +211,12 @@ export default function Services() {
         </section>
       ) : (
         <div className="bg-[#F7F9FC]">
-          {/* Track 01 — Micro-Offers */}
+          {/* Track 01 — Quick Wins */}
           <div id="track-01">
             <TrackSection
               trackNumber="Track 01"
               trackLabel="Entry Tier"
-              title="Fixed-Price Micro-Offers"
+              title="Fixed-Price Quick Wins"
               description="Scoped deliverables with a defined price, a defined output, and a defined turnaround. No discovery call required — pick the package that matches your need and get in the queue."
               accent="text-emerald-700"
               isEmpty={microOffers.length === 0}
@@ -268,7 +268,7 @@ export default function Services() {
               isEmpty={visibleProjects.length === 0 && !projectsLoading}
               headerExtra={
                 <p className="text-sm text-muted-foreground leading-relaxed border-l-2 border-[#0078D4]/40 pl-4">
-                  Track 02 projects are always triggered by Track 01 micro-offers. Each project is scoped only after the initial assessment is complete.
+                  Track 02 projects are always triggered by Track 01 Quick Wins. Each project is scoped only after the initial assessment is complete.
                 </p>
               }
             >

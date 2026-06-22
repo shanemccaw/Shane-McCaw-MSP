@@ -28,7 +28,7 @@ const comparisonRows = [
   },
   {
     label: "Price",
-    fixedPrice: "Varies by micro-offer — see the pricing page",
+    fixedPrice: "Varies by package — see the pricing page",
     essentials: "$2,500/mo",
     growth: "$6,000–$11,000/mo",
   },
@@ -91,13 +91,13 @@ export default function Microsoft365() {
     <Layout>
       <SEOMeta
         title="Microsoft 365 Architecture, Governance & Optimization | Shane McCaw Consulting"
-        description="NASA-proven Microsoft 365 expertise for mid-market and regulated organizations. Fixed-price micro-offers and fractional architecture retainers from Lead M365 Architect Shane McCaw."
+        description="NASA-proven Microsoft 365 expertise for mid-market and regulated organizations. Fixed-price Quick Win packages and fractional architecture retainers from Lead M365 Architect Shane McCaw."
         ogUrl="https://shanemccawconsulting.com/services/microsoft-365"
         jsonLd={{
           "@context": "https://schema.org",
           "@type": "Service",
           "name": "Microsoft 365 Architecture, Governance & Optimization",
-          "description": "Senior-level Microsoft 365 architecture, governance, and modernization services through fixed-price micro-offers and fractional retainers.",
+          "description": "Senior-level Microsoft 365 architecture, governance, and modernization services through fixed-price Quick Wins and fractional retainers.",
           "url": "https://shanemccawconsulting.com/services/microsoft-365",
           "serviceType": "Microsoft 365 Consulting",
           "areaServed": { "@type": "Country", "name": "United States" },
@@ -159,7 +159,7 @@ export default function Microsoft365() {
               Microsoft 365 is the operating system of the modern organization — email, identity, collaboration, compliance, and automation all run through it. Yet most deployments are under-configured, under-governed, and under-utilized.
             </p>
             <p className="text-muted-foreground text-lg leading-relaxed mt-4">
-              Shane provides senior-level architecture, governance, and modernization services through fixed-price micro-offers and fractional architecture retainers — so you get NASA-grade expertise without the cost of a full-time hire.
+              Shane provides senior-level architecture, governance, and modernization services through fixed-price Quick Win packages and fractional architecture retainers — so you get NASA-grade expertise without the cost of a full-time hire.
             </p>
           </div>
         </div>
@@ -176,12 +176,12 @@ export default function Microsoft365() {
         </div>
       </section>
 
-      {/* ── MICRO-OFFER SUITE ────────────────────────────────────────────── */}
+      {/* ── QUICK WIN SUITE ──────────────────────────────────────────────── */}
       <section className="bg-[#F7F9FC] py-20">
         <div className="max-w-[1200px] mx-auto px-6">
           <div className="text-center mb-12">
             <p className="text-[#0078D4] text-sm font-semibold uppercase tracking-[0.12em] mb-3">Fixed-Price Engagements</p>
-            <h2 className="text-3xl md:text-4xl font-extrabold text-[#0A2540]">Micro-Offer Suite</h2>
+            <h2 className="text-3xl md:text-4xl font-extrabold text-[#0A2540]">Quick Win Suite</h2>
             <p className="text-muted-foreground mt-4 max-w-xl mx-auto">
               Scoped, delivered, and priced upfront. No retainer required to get started.
             </p>
@@ -226,7 +226,7 @@ export default function Microsoft365() {
               href="/micro-offers"
               className="inline-flex items-center gap-2 text-[#0078D4] font-semibold hover:underline"
             >
-              View all micro-offer packages <ArrowRight className="w-4 h-4" />
+              View all Quick Win packages <ArrowRight className="w-4 h-4" />
             </Link>
           </div>
         </div>
@@ -359,7 +359,7 @@ export default function Microsoft365() {
                       <Zap className="w-4 h-4 text-[#00B4D8]" />
                       <span className="text-xs font-semibold text-[#00B4D8] uppercase tracking-widest">Fixed-Price</span>
                     </div>
-                    <p className="text-base font-extrabold leading-snug">Micro-Offer (Project)</p>
+                    <p className="text-base font-extrabold leading-snug">Quick Win (Project)</p>
                   </th>
                   <th className="text-left px-6 py-5 w-[27%] border-l border-white/10">
                     <div className="flex items-center gap-2 mb-1">
@@ -398,7 +398,7 @@ export default function Microsoft365() {
                   <td className="px-6 py-5 border-r border-white/10"></td>
                   <td className="px-6 py-5">
                     <a href="/micro-offers" className="inline-flex items-center gap-1.5 text-[#00B4D8] text-sm font-semibold hover:underline">
-                      View Micro-Offers <ArrowRight className="w-3.5 h-3.5" />
+                      View Quick Wins <ArrowRight className="w-3.5 h-3.5" />
                     </a>
                   </td>
                   <td className="px-6 py-5 border-l border-white/10">
@@ -418,7 +418,7 @@ export default function Microsoft365() {
 
           <div className="md:hidden space-y-6">
             {[
-              { icon: <Zap className="w-5 h-5 text-[#0078D4]" />, badge: "Fixed-Price", title: "Micro-Offer (Project)", key: "fixedPrice" as const },
+              { icon: <Zap className="w-5 h-5 text-[#0078D4]" />, badge: "Fixed-Price", title: "Quick Win (Project)", key: "fixedPrice" as const },
               { icon: <Shield className="w-5 h-5 text-[#0078D4]" />, badge: "Retainer", title: "Architect Essentials — $2,500/mo", key: "essentials" as const },
               { icon: <Users className="w-5 h-5 text-[#0078D4]" />, badge: "Retainer", title: "Architect Growth & Enterprise", key: "growth" as const },
             ].map((col) => (

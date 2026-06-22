@@ -233,7 +233,7 @@ const REPORT_SECTIONS = [
   { title: "Risk Heatmap", desc: "Visual representation of high, medium, and low risk areas across your M365 environment." },
   { title: "Gap Analysis", desc: "Line-by-line catalogue of configuration gaps, with severity ratings and direct Microsoft documentation references." },
   { title: "Remediation Path", desc: "Step-by-step remediation guidance ordered by impact and implementation effort." },
-  { title: "Suggested Micro-Offers", desc: "Targeted service recommendations matched to your specific gaps — so you know exactly what help is available if you need it." },
+  { title: "Suggested Quick Wins", desc: "Targeted service recommendations matched to your specific gaps — so you know exactly what help is available if you need it." },
 ];
 
 const WHY_SHANE = [

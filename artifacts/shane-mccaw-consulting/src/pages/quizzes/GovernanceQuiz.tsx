@@ -135,7 +135,7 @@ const PDF_SECTIONS = [
   { title: "Governance Maturity Heatmap", desc: "A visual representation of your governance posture — showing strengths, gaps, and critical risk areas at a glance." },
   { title: "Gap Analysis", desc: "A detailed breakdown of specific control gaps, policy omissions, and lifecycle risks identified by your responses." },
   { title: "Remediation Path", desc: "A sequenced remediation plan — what to fix first, what to fix next, and what can wait without increasing risk." },
-  { title: "Suggested Micro-Offers", desc: "Targeted service recommendations drawn from the Governance Foundations Package, Tenant Health Audit, and SharePoint IA Rebuild — mapped directly to your gaps." },
+  { title: "Suggested Quick Wins", desc: "Targeted service recommendations drawn from the Governance Foundations Package, Tenant Health Audit, and SharePoint IA Rebuild — mapped directly to your gaps." },
 ];
 
 const WHY_SHANE = [

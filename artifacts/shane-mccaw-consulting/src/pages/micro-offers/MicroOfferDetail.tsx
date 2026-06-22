@@ -122,7 +122,7 @@ export default function MicroOfferDetail({ params }: MicroOfferDetailProps) {
               </span>
             )}
             <span className="text-white/40 text-xs uppercase tracking-widest font-semibold">
-              Fixed-Price Micro-Offer
+              Fixed-Price Quick Win
             </span>
           </div>
 
@@ -460,7 +460,7 @@ export default function MicroOfferDetail({ params }: MicroOfferDetailProps) {
               href="/micro-offers"
               className="text-white/60 hover:text-white underline underline-offset-2"
             >
-              view all micro-offer packages →
+              view all Quick Win packages →
             </Link>
           </p>
         </div>

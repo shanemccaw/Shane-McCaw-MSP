@@ -17,7 +17,7 @@ import { RetainerCard } from "@/components/RetainerCard";
 const faqs = [
   {
     q: "How quickly can an engagement start?",
-    a: "Fixed-price micro-offer packages typically begin within 3\u20135 business days of payment. Retainer engagements and project work usually start within 1\u20132 weeks of signing. If you have a time-sensitive situation, mention it on the discovery call \u2014 Shane can often accelerate.",
+    a: "Fixed-price Quick Win packages typically begin within 3\u20135 business days of payment. Retainer engagements and project work usually start within 1\u20132 weeks of signing. If you have a time-sensitive situation, mention it on the discovery call \u2014 Shane can often accelerate.",
   },
   {
     q: "Do you work with small businesses or only enterprises?",
@@ -32,8 +32,8 @@ const faqs = [
     a: "After the free discovery call, Shane provides a fixed-fee proposal with defined deliverables, a timeline, and a single project price. No hourly billing, no scope creep without a signed change order. Project pricing typically ranges from $7,500 to $35,000+ depending on complexity.",
   },
   {
-    q: "Can I start with a micro-offer and move to a retainer?",
-    a: "That\u2019s the most common path. Most clients start with a fixed-price assessment to establish baseline and build confidence, then move into a retainer once they know the working relationship. Any micro-offer investment can be credited toward the first month of a retainer if you decide to continue.",
+    q: "Can I start with a Quick Win and move to a retainer?",
+    a: "That\u2019s the most common path. Most clients start with a fixed-price assessment to establish baseline and build confidence, then move into a retainer once they know the working relationship. Any Quick Win investment can be credited toward the first month of a retainer if you decide to continue.",
   },
   {
     q: "What does a retainer actually look like month to month?",
@@ -133,7 +133,7 @@ export default function Pricing() {
     <Layout>
       <SEOMeta
         title="Pricing — Transparent Microsoft 365 Consulting | Shane McCaw Consulting"
-        description="Transparent Microsoft 365 consulting pricing by Shane McCaw. Fixed-price micro-offer packages and retainer options — know your investment before you commit."
+        description="Transparent Microsoft 365 consulting pricing by Shane McCaw. Fixed-price Quick Win packages and retainer options — know your investment before you commit."
         jsonLd={jsonLd}
       />
 
@@ -248,7 +248,7 @@ export default function Pricing() {
                 icon: Zap,
                 label: "Track 01",
                 tier: "Entry",
-                title: "Fixed-Price Micro-Offers",
+                title: "Fixed-Price Quick Wins",
                 range: "$3,000 \u2013 $18,000",
                 desc: "Scoped deliverables with a defined price, a defined output, and a defined turnaround. No discovery call required to start \u2014 pick the package that matches your need and get in the queue.",
                 bestFor: "Mid-market organizations (200–2,000 employees), regulated industries, and government contractors that need a fast, low-risk diagnostic before committing to a larger engagement.",
@@ -353,7 +353,7 @@ export default function Pricing() {
               </div>
               <span className="text-[#0078D4] text-xs font-bold uppercase tracking-wider">Track 01 — Entry Tier</span>
             </div>
-            <h2 className="text-3xl md:text-4xl font-extrabold text-[#0A2540] mb-3">Fixed-Price Micro-Offers</h2>
+            <h2 className="text-3xl md:text-4xl font-extrabold text-[#0A2540] mb-3">Fixed-Price Quick Wins</h2>
             <p className="text-muted-foreground max-w-2xl leading-relaxed mb-4">
               Each package has a fixed price, a specific deliverable, and a committed turnaround time. No discovery call required — the scope is defined in advance so you know what you're getting.
             </p>
@@ -477,7 +477,7 @@ export default function Pricing() {
                       <Zap className="w-4 h-4 text-[#00B4D8]" />
                       <span className="text-xs font-semibold text-[#00B4D8] uppercase tracking-widest">Track 01 — Entry</span>
                     </div>
-                    <p className="text-base font-extrabold leading-snug">Fixed-Price Micro-Offers</p>
+                    <p className="text-base font-extrabold leading-snug">Fixed-Price Quick Wins</p>
                   </th>
                   <th className="text-left px-6 py-5 w-[28%] border-l border-white/10">
                     <div className="flex items-center gap-2 mb-1">
@@ -594,7 +594,7 @@ export default function Pricing() {
               {
                 icon: <Zap className="w-5 h-5 text-[#0078D4]" />,
                 badge: "Track 01 — Entry",
-                title: "Fixed-Price Micro-Offers",
+                title: "Fixed-Price Quick Wins",
                 price: "$3,000 – $18,000 fixed",
                 timeline: "5–15 business days",
                 bestFor: "Fast, low-risk diagnostics or defined point solutions",

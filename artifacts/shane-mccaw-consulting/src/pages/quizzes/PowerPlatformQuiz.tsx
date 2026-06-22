@@ -211,7 +211,7 @@ const PDF_SECTIONS = [
     desc: "A sequenced action plan mapping your gaps to concrete remediation steps, with recommended sequencing and effort estimates.",
   },
   {
-    title: "Suggested Micro-Offers",
+    title: "Suggested Quick Wins",
     desc: "Matched service recommendations — Power Platform Quick-Start, Governance Foundations, or Automation Hardening — based on your exact maturity tier.",
   },
 ];
@@ -491,7 +491,7 @@ export default function PowerPlatformQuiz() {
             ))}
           </div>
           <div className="mt-10 bg-[#0A2540]/5 border border-[#0078D4]/15 rounded-2xl p-6 text-center">
-            <p className="text-[#0A2540] font-semibold mb-1">Suggested micro-offers included in every report</p>
+            <p className="text-[#0A2540] font-semibold mb-1">Suggested Quick Wins included in every report</p>
             <p className="text-slate-500 text-sm">
               Based on your maturity tier, your report includes a matched service recommendation — Power Platform Quick-Start, Governance Foundations Package, or Automation Hardening — with full scope and pricing detail.
             </p>

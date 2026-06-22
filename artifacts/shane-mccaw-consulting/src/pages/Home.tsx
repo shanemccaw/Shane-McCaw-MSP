@@ -444,7 +444,7 @@ export default function Home() {
           </div>
 
           <p className="text-center text-foreground font-medium mb-6 max-w-2xl mx-auto">
-            My fractional architecture engagements are structured in three tiers — micro-offers for quick wins, project-based engagements for defined outcomes, and retainer arrangements for ongoing advisory work.
+            My fractional architecture engagements are structured in three tiers — quick win packages for fast, defined results, project-based engagements for larger outcomes, and retainer arrangements for ongoing advisory work.
           </p>
 
           {servicesLoading && dbServices.length === 0 ? (

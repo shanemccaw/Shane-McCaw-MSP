@@ -563,7 +563,7 @@ export default function TeamsQuiz() {
               },
               {
                 num: "06",
-                title: "Suggested micro-offers",
+                title: "Suggested Quick Wins",
                 desc: "Based on your score and risk profile, one or two specific Shane McCaw Consulting services recommended as the highest-value next steps for your maturity tier.",
               },
               {
