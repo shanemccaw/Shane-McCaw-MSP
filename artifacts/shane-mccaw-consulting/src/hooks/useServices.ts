@@ -11,6 +11,7 @@ export interface PublicService {
   basePrice: string | null;
   maxPrice: string | null;
   turnaround: string | null;
+  durationDays: number | null;
   billingType: "one_time" | "recurring_monthly";
   serviceType: string | null;
   tagline: string | null;
@@ -22,9 +23,11 @@ export interface PublicService {
   hoursPerMonth: string | null;
   iconName: string | null;
   pageHref: string | null;
+  pageSlug: string | null;
   sortOrder: number;
   tier: string | null;
   hasPdf: boolean;
+  workflowTasks: { title: string; description: string | null; order: number }[];
 }
 
 export function formatPrice(price: string | null): string | null {

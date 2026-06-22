@@ -82,6 +82,7 @@ export const servicesTable = pgTable("services", {
   hoursPerMonth: text("hours_per_month"),
   iconName: text("icon_name"),
   pageHref: text("page_href"),
+  pageSlug: text("page_slug"),
   sortOrder: integer("sort_order").notNull().default(0),
   tier: text("tier"),
   // Direct link to workflow template (replaces the project_templates join table).

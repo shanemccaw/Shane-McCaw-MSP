@@ -274,6 +274,13 @@
       "when": 1750607807000,
       "tag": "0038_add_email_templates",
       "breakpoints": true
+    },
+    {
+      "idx": 39,
+      "version": "7",
+      "when": 1782153600000,
+      "tag": "0039_add_service_page_slug",
+      "breakpoints": true
     }
   ]
 }
