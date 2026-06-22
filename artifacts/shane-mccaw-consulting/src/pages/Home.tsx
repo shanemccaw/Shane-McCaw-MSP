@@ -3,104 +3,203 @@ import { Layout } from "@/components/Layout";
 import { SEOMeta } from "@/components/SEOMeta";
 import { CTAButton } from "@/components/CTAButton";
 import {
-  CheckCircle, ArrowRight, Shield, Building2, Rocket, Briefcase, Brain,
-  AlertCircle,
+  CheckCircle, ArrowRight, Shield, Building2, Rocket, Briefcase,
+  Clock, Star, Zap, Lock, BarChart2, Server, GitBranch,
 } from "lucide-react";
 
-const nasaCompliance = [
-  { label: "FedRAMP", desc: "Federal Risk and Authorization Management Program — cloud authorization at the highest level." },
-  { label: "FISMA", desc: "Federal Information Security Management Act — data security controls for government-level risk." },
-  { label: "ITAR", desc: "International Traffic in Arms Regulations — export-controlled data handling across M365 tenants." },
-  { label: "GCC / GCC High", desc: "Government Community Cloud configurations for regulated and defense-adjacent workloads." },
-  { label: "Multi-Stakeholder Governance", desc: "Cross-agency, multi-department policy design for complex organizational hierarchies." },
-  { label: "High-Risk Compliance Environments", desc: "Architecture designed for environments where misconfiguration carries real legal and mission consequences." },
-];
-
-const whoIServe = [
+const whoIWorkWith = [
   {
     icon: Building2,
     title: "Mid-Market Enterprises",
     subtitle: "200–2,000 Employees",
+    description:
+      "You've deployed Microsoft 365, but governance never followed. Now Copilot is on the roadmap and the tenant isn't ready for it.",
     painPoints: [
       "M365 sprawl from years of ungoverned growth",
       "Governance gaps blocking Copilot adoption",
-      "Shadow IT undermining security posture",
+      "Shadow IT undermining your security posture",
       "Failed or stalled migration projects",
     ],
-    value: "You get NASA-level architecture discipline applied to your tenant — without hiring a full-time team.",
     color: "#0078D4",
   },
   {
     icon: Shield,
-    title: "Regulated Industries",
-    subtitle: "Healthcare · Legal · Financial · Gov Contractors",
+    title: "Regulated Industries & Gov Contractors",
+    subtitle: "Healthcare · Legal · Financial · Federal",
+    description:
+      "Your compliance frameworks demand senior-level architecture. Hiring a full-time M365 architect costs $150k–$220k/year — and takes months to recruit.",
     painPoints: [
-      "HIPAA compliance for healthcare orgs on M365",
-      "Data residency and sovereignty for legal firms",
-      "SOC 2 readiness for financial services",
-      "CMMC, FedRAMP, and ITAR for government contractors",
+      "HIPAA, SOC 2, and CMMC readiness on M365",
+      "Data residency and sovereignty requirements",
+      "FedRAMP, FISMA, and ITAR for gov contractors",
+      "GCC High configuration for defense-adjacent workloads",
     ],
-    value: "Your compliance requirements aren't a constraint — they're Shane's native environment.",
     color: "#00B4D8",
   },
   {
     icon: Rocket,
     title: "Startups & Scale-Ups",
     subtitle: "Rapid Growth · First-Time Architecture",
+    description:
+      "Headcount is outpacing your initial M365 setup. Build it right before scale makes it exponentially harder to fix.",
     painPoints: [
-      "Rapid headcount growth outpacing initial M365 setup",
       "Poor tenant foundation from early configuration shortcuts",
       "Audit preparation with no existing governance framework",
-      "First-time enterprise architecture needs",
+      "Rapid headcount growth with no onboarding automation",
+      "First-time enterprise architecture requirements",
     ],
-    value: "Build it right from the start — or fix it before scale makes it exponentially harder.",
     color: "#0A2540",
   },
 ];
 
-const whoThisIsNotFor = [
-  "Organizations looking for low-cost IT support",
-  "Companies without a Microsoft 365 tenant",
-  "Teams unwilling to adopt governance standards",
-];
-
-const decisionMakerTriggers = [
-  "Microsoft 365 is deployed but nobody's using it effectively",
-  "Copilot is on your radar but your tenant isn't ready for it",
-  "A compliance audit revealed gaps in your M365 governance",
-  "A migration project has stalled or previously failed",
-  "Shadow IT is undermining your security posture",
-  "You need senior-level expertise without a full-time hire",
-];
-
-const servicesSummary = [
+const productizedServices = [
   {
-    title: "Fractional Architecture",
-    desc: "Three monthly tiers providing ongoing M365 architecture leadership.",
-    cta: "View Retainer Tiers",
-    href: "/retainers",
+    icon: BarChart2,
+    name: "M365 Tenant Health Audit",
+    price: "$3,500 – $5,000",
+    timeline: "5 business days",
+    deliverable: "Full tenant assessment with a prioritized remediation roadmap.",
+    value: "Know exactly where your tenant stands before committing to anything larger.",
+    badge: "Quick Entry Engagement",
+    href: "/micro-offers",
     color: "#0078D4",
   },
   {
-    title: "Quick Wins",
-    desc: "Fast, fixed-price engagements like Tenant Health Audits and Migration Readiness.",
-    cta: "View Quick Wins",
+    icon: Server,
+    name: "Migration Readiness Assessment",
+    price: "$3,500 – $5,000",
+    timeline: "5 business days",
+    deliverable: "Risk-ranked data mapping, blockers list, and migration sequencing plan.",
+    value: "Prevent the most common migration failures before they cost you months.",
+    badge: "Quick Entry Engagement",
+    href: "/micro-offers",
+    color: "#0078D4",
+  },
+  {
+    icon: Zap,
+    name: "Copilot Readiness Assessment",
+    price: "$4,500 – $6,500",
+    timeline: "7 business days",
+    deliverable: "Tenant readiness score, data exposure risk analysis, and a Copilot deployment plan.",
+    value: "Don't light up Copilot on a dirty tenant — know your risks first.",
+    badge: null,
     href: "/micro-offers",
     color: "#00B4D8",
   },
   {
-    title: "Projects",
-    desc: "Governance, Power Platform, and Copilot readiness projects with clear deliverables.",
-    cta: "View Projects",
-    href: "/services",
-    color: "#0A2540",
+    icon: Lock,
+    name: "Governance Foundations Package",
+    price: "$4,000 – $7,500",
+    timeline: "2–3 weeks",
+    deliverable: "DLP policies, sensitivity labels, retention framework, and governance runbook.",
+    value: "A defensible governance baseline — delivered, not just documented.",
+    badge: null,
+    href: "/micro-offers",
+    color: "#0078D4",
   },
   {
-    title: "Training",
-    desc: "Live Microsoft 365 and Copilot training for teams and leadership.",
-    cta: "View Training",
-    href: "/services",
+    icon: GitBranch,
+    name: "Power Platform Quick-Start",
+    price: "$5,000 – $8,500",
+    timeline: "2–3 weeks",
+    deliverable: "Two production-ready flows or apps, environment strategy, and connector governance.",
+    value: "Automation that runs in production — not a proof-of-concept that dies in a sandbox.",
+    badge: null,
+    href: "/micro-offers",
+    color: "#00B4D8",
+  },
+  {
+    icon: Building2,
+    name: "SharePoint Architecture Sprint",
+    price: "$5,500 – $9,500",
+    timeline: "2–4 weeks",
+    deliverable: "Redesigned information architecture, site templates, metadata taxonomy, and owner training.",
+    value: "A SharePoint structure people actually use — findable, governed, and scalable.",
+    badge: null,
+    href: "/micro-offers",
     color: "#0078D4",
+  },
+  {
+    icon: Shield,
+    name: "Security & Compliance Quick-Win",
+    price: "$5,000 – $9,000",
+    timeline: "2–3 weeks",
+    deliverable: "Conditional Access redesign, MFA hardening, PIM implementation, and compliance documentation.",
+    value: "Close the highest-risk security gaps in your tenant before your next audit.",
+    badge: null,
+    href: "/micro-offers",
+    color: "#00B4D8",
+  },
+];
+
+const retainerTiers = [
+  {
+    name: "Essentials",
+    price: "$2,500",
+    hours: "10 hrs/mo",
+    description: "Strategic oversight and tenant governance for organizations that need a senior architect on call — without a full-time commitment.",
+    includes: [
+      "Monthly architecture review",
+      "Governance and policy guidance",
+      "Async Q&A and advisory",
+      "Priority access for urgent issues",
+    ],
+    highlight: false,
+  },
+  {
+    name: "Growth",
+    price: "$6,000",
+    hours: "25 hrs/mo",
+    description: "Hands-on delivery alongside strategic direction — the right tier for active M365 initiatives, Copilot rollouts, and compliance projects.",
+    includes: [
+      "Everything in Essentials",
+      "Active project delivery",
+      "Copilot and AI readiness support",
+      "Monthly executive briefing",
+    ],
+    highlight: true,
+  },
+  {
+    name: "Enterprise",
+    price: "$11,000",
+    hours: "50 hrs/mo",
+    description: "Embedded fractional architect — equivalent to part-time senior staff without the overhead of a full-time hire.",
+    includes: [
+      "Everything in Growth",
+      "Embedded delivery cadence",
+      "Multi-workload architecture coverage",
+      "Stakeholder and board-level reporting",
+    ],
+    highlight: false,
+  },
+];
+
+const complianceBadges = ["FedRAMP", "FISMA", "ITAR", "GCC High"];
+
+const engagementSteps = [
+  {
+    step: "01",
+    title: "Discover",
+    description:
+      "A free 30-minute discovery call to understand your current M365 environment, key pain points, and what success looks like for your organization.",
+    note: "No pitch. No obligation.",
+    color: "#0078D4",
+  },
+  {
+    step: "02",
+    title: "Diagnose",
+    description:
+      "A Quick Entry Engagement — Tenant Health Audit or Migration Readiness Assessment — gives you a clear, prioritized picture of your environment before committing to a larger project.",
+    note: "Fixed price. Delivered in 5 business days.",
+    color: "#00B4D8",
+  },
+  {
+    step: "03",
+    title: "Architect & Execute",
+    description:
+      "Based on the findings, we scope a fixed-price project, a fractional retainer, or both. Every engagement is delivered personally by Shane.",
+    note: "No handoffs. No junior staff.",
+    color: "#0A2540",
   },
 ];
 
@@ -123,14 +222,14 @@ export default function Home() {
             "@type": "OfferCatalog",
             "name": "Microsoft 365 Consulting Services",
             "itemListElement": [
-              { "@type": "Offer", "itemOffered": { "@type": "Service", "name": "Microsoft 365 Consulting" } },
-              { "@type": "Offer", "itemOffered": { "@type": "Service", "name": "Copilot AI Readiness" } },
-              { "@type": "Offer", "itemOffered": { "@type": "Service", "name": "SharePoint Architecture" } },
-              { "@type": "Offer", "itemOffered": { "@type": "Service", "name": "Power Platform Development" } },
-              { "@type": "Offer", "itemOffered": { "@type": "Service", "name": "Governance & Compliance" } },
-              { "@type": "Offer", "itemOffered": { "@type": "Service", "name": "Cloud Migration" } }
-            ]
-          }
+              { "@type": "Offer", "itemOffered": { "@type": "Service", "name": "M365 Tenant Health Audit" } },
+              { "@type": "Offer", "itemOffered": { "@type": "Service", "name": "Copilot AI Readiness Assessment" } },
+              { "@type": "Offer", "itemOffered": { "@type": "Service", "name": "Migration Readiness Assessment" } },
+              { "@type": "Offer", "itemOffered": { "@type": "Service", "name": "Governance Foundations Package" } },
+              { "@type": "Offer", "itemOffered": { "@type": "Service", "name": "SharePoint Architecture Sprint" } },
+              { "@type": "Offer", "itemOffered": { "@type": "Service", "name": "Power Platform Quick-Start" } },
+            ],
+          },
         }}
       />
 
@@ -175,28 +274,28 @@ export default function Home() {
             The Architect Who Built at NASA Scale — Available to You.
           </h1>
           <p className="text-base md:text-lg text-[#00B4D8] font-semibold max-w-2xl mx-auto mb-5">
-            Enterprise-grade Microsoft 365 and Copilot architecture for mid-market and regulated organizations.
+            Mission-critical Microsoft 365 architecture for mid-market and regulated organizations — without a full-time hire.
           </p>
           <p className="text-lg md:text-xl text-white/70 max-w-3xl mx-auto mb-12 leading-relaxed">
-            Shane McCaw brings the same mission-critical Microsoft 365 discipline he built at NASA to regulated industries and mid-market companies. No generalists. No offshore handoffs. Senior Microsoft expertise, available to your organization on a fractional basis.
+            Shane McCaw brings the same discipline he built at NASA to your organization. Fixed-price assessments. Fractional architecture retainers. Senior Microsoft expertise delivered personally — no account managers, no offshore handoffs.
           </p>
           <div className="flex flex-wrap items-center justify-center gap-4">
             <CTAButton href="/book" className="text-base px-10 py-4 shadow-lg shadow-[#0078D4]/30" data-testid="hero-cta-primary">
-              Book a Consultation
+              Book a Discovery Call
             </CTAButton>
-            <a
-              href="/services"
+            <Link
+              href="/micro-offers"
               className="inline-flex items-center gap-2 text-white/80 font-semibold text-base hover:text-white transition-colors border border-white/20 px-8 py-3.5 rounded-xl hover:border-white/40"
             >
-              See Services <ArrowRight className="w-4 h-4" />
-            </a>
+              See Fixed-Price Packages <ArrowRight className="w-4 h-4" />
+            </Link>
           </div>
           <div className="mt-14 pt-10 border-t border-white/10 flex flex-wrap items-center justify-center gap-x-8 gap-y-3 text-white/50 text-sm font-medium">
             {[
               "Fractional M365 Architecture",
               "Copilot AI Readiness",
-              "Cloud Modernization",
               "Governance & Compliance",
+              "Cloud Migration",
               "30+ Years Microsoft Experience",
             ].map((badge, i) => (
               <span key={i} className="flex items-center gap-2">
@@ -209,336 +308,308 @@ export default function Home() {
         <div className="absolute bottom-0 left-0 right-0 h-16 bg-gradient-to-t from-[#F7F9FC] to-transparent" />
       </section>
 
-      {/* ── WHY THIS SITE EXISTS ─────────────────────────────────────────── */}
-      <section className="bg-[#F7F9FC] py-20" data-testid="why-site-exists-section">
-        <div className="max-w-[860px] mx-auto px-6 text-center">
-          <p className="text-[#0078D4] text-sm font-semibold uppercase tracking-[0.1em] mb-3">Why This Site Exists</p>
-          <h2 className="text-3xl md:text-4xl font-extrabold text-[#0A2540] mb-6">
-            Senior M365 Architecture Shouldn't Require a Full-Time Hire
-          </h2>
-          <p className="text-lg text-foreground leading-relaxed mb-6 font-medium">
-            Most organizations are running Microsoft 365 without governance, architecture, or Copilot readiness. That creates risk, inefficiency, and stalled digital transformation. I help companies fix their tenant, secure their data, and build a scalable M365 foundation.
-          </p>
-          <div className="text-lg text-foreground leading-relaxed space-y-4 text-left md:text-center">
-            <p>
-              Mid-market companies and regulated-industry organizations — healthcare, legal, financial services, and government contractors — face a quiet crisis. Their Microsoft 365 tenants are deployed, but ungoverned. Copilot is on the roadmap, but the tenant isn't ready for it. Compliance frameworks demand senior-level architecture, but hiring a full-time M365 architect costs $250,000+ per year.
-            </p>
-            <p>
-              The large enterprise has a team. The small business doesn't need one. It's the organizations in between — and those operating in regulated environments — that fall into the gap. This site exists to close that gap.
-            </p>
-          </div>
-          <div className="mt-10">
-            <CTAButton href="/book" className="text-base px-8 py-3.5">
-              Book a Call
-            </CTAButton>
-          </div>
-        </div>
-      </section>
-
-      {/* ── START HERE ───────────────────────────────────────────────────── */}
-      <section className="bg-white py-20" data-testid="start-here-section">
+      {/* ── WHO I WORK WITH ──────────────────────────────────────────────── */}
+      <section className="bg-[#F7F9FC] py-20" data-testid="who-i-work-with-section">
         <div className="max-w-[1200px] mx-auto px-6">
-          <div className="text-center mb-12">
-            <p className="text-[#0078D4] text-sm font-semibold uppercase tracking-[0.1em] mb-3">Start Here</p>
+          <div className="text-center mb-14">
+            <p className="text-[#0078D4] text-sm font-semibold uppercase tracking-[0.1em] mb-3">Who I Work With</p>
             <h2 className="text-3xl md:text-4xl font-extrabold text-[#0A2540]">
-              Where Do You Need to Start?
+              Organizations With Real Complexity — and the Ambition to Fix It
             </h2>
-            <p className="text-muted-foreground mt-4 max-w-xl mx-auto leading-relaxed">
-              Three paths into Shane's work — pick the one that matches where you are right now.
+            <p className="text-muted-foreground mt-4 max-w-2xl mx-auto leading-relaxed">
+              Shane works best with organizations that have outgrown generic IT support and need a senior Microsoft architect who has solved problems at mission-critical scale.
             </p>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-
-            {/* Card 1 — Diagnose */}
-            <div className="bg-[#F7F9FC] rounded-xl border border-border p-8 flex flex-col" data-testid="start-here-diagnose">
-              <div className="w-12 h-12 rounded-lg bg-[#0078D4]/10 flex items-center justify-center mb-5">
-                <Shield className="w-6 h-6 text-[#0078D4]" />
-              </div>
-              <h3 className="text-xl font-extrabold text-[#0A2540] mb-2">I need to diagnose my environment</h3>
-              <p className="text-[#0078D4] text-xs font-semibold uppercase tracking-widest mb-3">Quick Wins</p>
-              <p className="text-muted-foreground text-sm leading-relaxed mb-3">
-                Fast, fixed-price solutions that solve immediate M365 problems.
-              </p>
-              <p className="text-muted-foreground text-sm leading-relaxed flex-1 mb-2">
-                Not sure where your tenant stands? Start with a readiness assessment or tenant health audit — you'll get a clear picture and a prioritized action plan before committing to anything larger.
-              </p>
-              <p className="text-xs font-semibold text-[#0A2540]/60 italic mb-6">
-                Recommended for you if: you're not sure where your M365 tenant stands.
-              </p>
-              <div className="flex flex-col gap-2">
-                <CTAButton href="/m365-health-quiz" className="text-sm px-5 py-2.5 w-full">
-                  Take the M365 Health Assessment
-                </CTAButton>
-                <Link href="/micro-offers" className="inline-flex items-center justify-center gap-1.5 text-[#0078D4] font-semibold text-sm hover:underline">
-                  See Tenant Health Audit <ArrowRight className="w-3.5 h-3.5" />
-                </Link>
-              </div>
-            </div>
-
-            {/* Card 2 — Quick Win */}
-            <div className="bg-[#F7F9FC] rounded-xl border border-border p-8 flex flex-col" data-testid="start-here-quick-win">
-              <div className="w-12 h-12 rounded-lg bg-[#00B4D8]/10 flex items-center justify-center mb-5">
-                <Rocket className="w-6 h-6 text-[#00B4D8]" />
-              </div>
-              <h3 className="text-xl font-extrabold text-[#0A2540] mb-2">I need a fast, high-impact win</h3>
-              <p className="text-[#00B4D8] text-xs font-semibold uppercase tracking-widest mb-3">Projects</p>
-              <p className="text-muted-foreground text-sm leading-relaxed mb-3">
-                Structured engagements with clear deliverables and timelines.
-              </p>
-              <p className="text-muted-foreground text-sm leading-relaxed flex-1 mb-2">
-                Fixed-price packages with clear deliverables and defined timelines — results in days, not months. No retainer required. Ideal when you need to demonstrate progress quickly or solve one focused problem.
-              </p>
-              <p className="text-xs font-semibold text-[#0A2540]/60 italic mb-6">
-                Recommended for you if: you have a specific, scoped problem to solve quickly.
-              </p>
-              <CTAButton href="/micro-offers" className="text-sm px-5 py-2.5 w-full" style={{ backgroundColor: "#00B4D8" }}>
-                Browse Quick Win Packages
-              </CTAButton>
-            </div>
-
-            {/* Card 3 — Fractional */}
-            <div className="bg-[#0A2540] rounded-xl border border-[#0A2540] p-8 flex flex-col" data-testid="start-here-fractional">
-              <div className="w-12 h-12 rounded-lg bg-white/10 flex items-center justify-center mb-5">
-                <Briefcase className="w-6 h-6 text-white" />
-              </div>
-              <h3 className="text-xl font-extrabold text-white mb-2">I need ongoing architecture leadership</h3>
-              <p className="text-[#00B4D8] text-xs font-semibold uppercase tracking-widest mb-3">Fractional Architecture</p>
-              <p className="text-white/70 text-sm leading-relaxed mb-3">
-                Ongoing senior architecture leadership without a full-time hire.
-              </p>
-              <p className="text-white/70 text-sm leading-relaxed flex-1 mb-2">
-                Fractional architecture retainers give you a dedicated senior architect without the cost of a full-time hire. Monthly engagements — strategic oversight, hands-on delivery, and direct access to Shane.
-              </p>
-              <p className="text-xs font-semibold text-white/40 italic mb-6">
-                Recommended for you if: you need embedded architecture support on an ongoing basis.
-              </p>
-              <CTAButton href="/retainers" className="text-sm px-5 py-2.5 w-full bg-[#0078D4] hover:bg-[#005A9E]">
-                View Fractional Architecture Tiers
-              </CTAButton>
-            </div>
-          </div>
-
-          <div className="text-center mt-10">
-            <CTAButton href="/copilot-quiz" className="text-sm px-8 py-3">
-              Take the Quiz
-            </CTAButton>
-          </div>
-        </div>
-      </section>
-
-      {/* ── COPILOT READINESS QUIZ ───────────────────────────────────────── */}
-      <section className="relative bg-[#0A2540] py-20 overflow-hidden" data-testid="quiz-cta-section">
-        <div
-          className="absolute inset-0 pointer-events-none opacity-[0.07]"
-          style={{
-            backgroundImage:
-              "linear-gradient(#0078D4 1px, transparent 1px), linear-gradient(90deg, #0078D4 1px, transparent 1px)",
-            backgroundSize: "48px 48px",
-          }}
-        />
-        <div
-          className="absolute inset-0 pointer-events-none"
-          style={{
-            background:
-              "radial-gradient(ellipse 80% 70% at 50% 50%, rgba(0,180,216,0.12) 0%, transparent 70%)",
-          }}
-        />
-        <div className="relative max-w-[860px] mx-auto px-6 text-center">
-          <div className="w-16 h-16 rounded-2xl bg-[#00B4D8]/15 border border-[#00B4D8]/30 flex items-center justify-center mx-auto mb-7">
-            <Brain className="w-8 h-8 text-[#00B4D8]" />
-          </div>
-
-          <div className="inline-flex items-center gap-2 bg-[#00B4D8]/15 border border-[#00B4D8]/35 rounded-full px-5 py-2 mb-7">
-            <span className="w-2 h-2 rounded-full bg-[#00B4D8] animate-pulse" />
-            <span className="text-[#00B4D8] text-sm font-semibold uppercase tracking-[0.1em]">
-              Free Assessment
-            </span>
-          </div>
-
-          <h2 className="text-3xl md:text-4xl lg:text-5xl font-extrabold text-white leading-tight mb-5">
-            Is Your Organization Ready for Copilot AI?
-          </h2>
-          <p className="text-[#00B4D8] font-bold text-lg mb-4">
-            Don't light up Copilot on a dirty tenant.
-          </p>
-          <p className="text-white/70 text-lg max-w-2xl mx-auto mb-8 leading-relaxed">
-            Most deployments fail not because of the technology — but because the Microsoft 365 tenant isn't ready for it. Take the Copilot Readiness Quiz and find out exactly where you stand.
-          </p>
-
-          <CTAButton href="/copilot-quiz" className="text-base px-10 py-4 shadow-lg shadow-[#00B4D8]/20 mb-8" data-testid="quiz-cta-button">
-            Take the 3-Minute Quiz
-          </CTAButton>
-
-          <div className="flex flex-wrap items-center justify-center gap-6">
-            {[
-              { value: "3 min", label: "to complete" },
-              { value: "Free", label: "no cost, no signup" },
-              { value: "Instant", label: "PDF report" },
-            ].map((stat, i) => (
-              <div key={i} className="flex flex-col items-center gap-1">
-                <span className="text-2xl font-extrabold text-[#00B4D8]">{stat.value}</span>
-                <span className="text-white/50 text-xs font-medium uppercase tracking-wider">{stat.label}</span>
-              </div>
-            ))}
-          </div>
-          <p className="mt-6 text-white/35 text-sm tracking-wide">
-            Personalized readiness score + actionable next steps delivered instantly.
-          </p>
-        </div>
-      </section>
-
-      {/* ── NASA COMPLIANCE CREDENTIALS ──────────────────────────────────── */}
-      <section className="bg-[#F7F9FC] py-20" data-testid="nasa-compliance-section">
-        <div className="max-w-[1200px] mx-auto px-6">
-          <div className="text-center mb-10">
-            <p className="text-[#0078D4] text-sm font-semibold uppercase tracking-[0.1em] mb-3">NASA Compliance Credentials</p>
-            <h2 className="text-3xl md:text-4xl font-extrabold text-[#0A2540]">Built on the Standards That Matter Most</h2>
-            <p className="text-muted-foreground mt-4 max-w-2xl mx-auto leading-relaxed">
-              Shane's tenure as Lead M365 Architect at NASA required mastery of the most demanding compliance frameworks in existence. That expertise now benefits mid-market companies, regulated industries, government contractors, and startups scaling into their first compliance obligations.
-            </p>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5 mb-10">
-            {nasaCompliance.map((item, i) => (
-              <div key={i} className="bg-white rounded-lg border border-border p-6 flex items-start gap-4">
-                <div className="flex-shrink-0 w-10 h-10 rounded-lg bg-[#0078D4]/10 flex items-center justify-center">
-                  <Shield className="w-5 h-5 text-[#0078D4]" />
-                </div>
-                <div>
-                  <h3 className="font-bold text-[#0A2540] mb-1">{item.label}</h3>
-                  <p className="text-muted-foreground text-sm leading-relaxed">{item.desc}</p>
-                </div>
-              </div>
-            ))}
-          </div>
-          <p className="text-center text-[#0078D4] font-semibold italic max-w-2xl mx-auto">
-            Even if you're not in a regulated industry, NASA-level governance ensures your tenant is secure, scalable, and ready for AI.
-          </p>
-        </div>
-      </section>
-
-      {/* ── IDEAL CLIENTS ────────────────────────────────────────────────── */}
-      <section className="bg-white py-20" data-testid="who-i-serve-section">
-        <div className="max-w-[1200px] mx-auto px-6">
-          <div className="text-center mb-14">
-            <p className="text-[#0078D4] text-sm font-semibold uppercase tracking-[0.1em] mb-3">Ideal Clients</p>
-            <h2 className="text-3xl md:text-4xl font-extrabold text-[#0A2540]">Who I Serve</h2>
-            <p className="text-muted-foreground mt-4 max-w-2xl mx-auto leading-relaxed">
-              Shane works best with organizations that have real complexity — and the ambition to fix it properly.
-            </p>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
-            {whoIServe.map((segment, i) => {
+            {whoIWorkWith.map((segment, i) => {
               const Icon = segment.icon;
               return (
-                <div key={i} className="bg-[#F7F9FC] rounded-xl border border-border p-8 flex flex-col" data-testid={`segment-${i}`}>
-                  <div className="flex items-center gap-3 mb-2">
-                    <div className="w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0" style={{ backgroundColor: `${segment.color}18` }}>
-                      <Icon className="w-5 h-5" style={{ color: segment.color }} />
-                    </div>
-                    <div>
-                      <h3 className="font-extrabold text-[#0A2540] text-lg leading-tight">{segment.title}</h3>
-                      <p className="text-xs text-muted-foreground font-medium mt-0.5">{segment.subtitle}</p>
-                    </div>
+                <div key={i} className="bg-white rounded-xl border border-border p-8 flex flex-col" data-testid={`who-segment-${i}`}>
+                  <div
+                    className="w-12 h-12 rounded-lg flex items-center justify-center mb-5 flex-shrink-0"
+                    style={{ backgroundColor: `${segment.color}18` }}
+                  >
+                    <Icon className="w-6 h-6" style={{ color: segment.color }} />
                   </div>
-                  <div className="w-12 h-0.5 mt-4 mb-5 rounded-full" style={{ backgroundColor: segment.color }} />
-                  <ul className="space-y-2.5 flex-1 mb-6">
+                  <h3 className="text-xl font-extrabold text-[#0A2540] mb-1">{segment.title}</h3>
+                  <p className="text-xs font-semibold uppercase tracking-widest mb-3" style={{ color: segment.color }}>
+                    {segment.subtitle}
+                  </p>
+                  <p className="text-muted-foreground text-sm leading-relaxed mb-5">{segment.description}</p>
+                  <ul className="space-y-2 flex-1">
                     {segment.painPoints.map((point, j) => (
-                      <li key={j} className="flex items-start gap-2.5 text-sm text-foreground leading-snug">
-                        <span className="w-1.5 h-1.5 rounded-full mt-1.5 flex-shrink-0" style={{ backgroundColor: segment.color }} />
+                      <li key={j} className="flex items-start gap-2 text-sm text-[#0A2540]">
+                        <CheckCircle className="w-4 h-4 text-[#0078D4] flex-shrink-0 mt-0.5" />
                         {point}
                       </li>
                     ))}
                   </ul>
-                  <div className="border-t border-border pt-5">
-                    <p className="text-sm font-semibold text-[#0A2540] leading-snug italic">"{segment.value}"</p>
-                  </div>
                 </div>
               );
             })}
           </div>
+        </div>
+      </section>
 
-          {/* Who This Is NOT For */}
-          <div className="max-w-2xl mx-auto bg-[#F7F9FC] border border-border rounded-xl p-8 mb-12">
-            <h3 className="font-extrabold text-[#0A2540] text-lg mb-4 flex items-center gap-2">
-              <AlertCircle className="w-5 h-5 text-muted-foreground flex-shrink-0" />
-              Who This Is Not For
-            </h3>
-            <ul className="space-y-3">
-              {whoThisIsNotFor.map((item, i) => (
-                <li key={i} className="flex items-start gap-3 text-sm text-muted-foreground leading-relaxed">
-                  <span className="w-1.5 h-1.5 rounded-full bg-muted-foreground mt-1.5 flex-shrink-0" />
-                  {item}
-                </li>
-              ))}
-            </ul>
+      {/* ── PRODUCTIZED SERVICES ─────────────────────────────────────────── */}
+      <section className="bg-white py-20" data-testid="productized-services-section">
+        <div className="max-w-[1200px] mx-auto px-6">
+          <div className="text-center mb-14">
+            <p className="text-[#0078D4] text-sm font-semibold uppercase tracking-[0.1em] mb-3">Fixed-Price Engagements</p>
+            <h2 className="text-3xl md:text-4xl font-extrabold text-[#0A2540]">
+              Productized Services
+            </h2>
+            <p className="text-muted-foreground mt-4 max-w-2xl mx-auto leading-relaxed">
+              Seven scoped packages with fixed pricing, defined timelines, and clear deliverables. No open-ended consulting fees. No scope creep.
+            </p>
           </div>
-
-          <div className="text-center">
-            <CTAButton href="/book" className="text-base px-8 py-3.5">
-              Book a Call
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {productizedServices.map((service, i) => {
+              const Icon = service.icon;
+              return (
+                <div
+                  key={i}
+                  className="bg-[#F7F9FC] rounded-xl border border-border p-7 flex flex-col hover:border-[#0078D4]/30 hover:bg-white transition-all"
+                  data-testid={`service-card-${i}`}
+                >
+                  {service.badge && (
+                    <span className="inline-flex self-start items-center gap-1.5 bg-[#0078D4]/10 text-[#0078D4] text-xs font-bold uppercase tracking-wider px-3 py-1 rounded-full mb-4">
+                      <Star className="w-3 h-3" />
+                      {service.badge}
+                    </span>
+                  )}
+                  <div
+                    className="w-10 h-10 rounded-lg flex items-center justify-center mb-4 flex-shrink-0"
+                    style={{ backgroundColor: `${service.color}18` }}
+                  >
+                    <Icon className="w-5 h-5" style={{ color: service.color }} />
+                  </div>
+                  <h3 className="font-extrabold text-[#0A2540] text-lg mb-1 leading-snug">{service.name}</h3>
+                  <div className="flex items-center gap-3 mb-4">
+                    <span className="text-sm font-bold text-[#0078D4]">{service.price}</span>
+                    <span className="text-xs text-muted-foreground">·</span>
+                    <span className="flex items-center gap-1 text-xs text-muted-foreground font-medium">
+                      <Clock className="w-3 h-3" />
+                      {service.timeline}
+                    </span>
+                  </div>
+                  <p className="text-muted-foreground text-sm leading-relaxed mb-3 flex-1">{service.deliverable}</p>
+                  <p className="text-sm font-semibold text-[#0A2540] italic mb-5">{service.value}</p>
+                  <Link
+                    href={service.href}
+                    className="inline-flex items-center gap-1.5 text-[#0078D4] text-sm font-semibold hover:underline"
+                  >
+                    Learn more <ArrowRight className="w-3.5 h-3.5" />
+                  </Link>
+                </div>
+              );
+            })}
+          </div>
+          <div className="text-center mt-10">
+            <CTAButton href="/micro-offers" className="text-base px-8 py-3.5">
+              View All Fixed-Price Packages
             </CTAButton>
           </div>
         </div>
       </section>
 
-      {/* ── ENGAGEMENT SIGNALS ───────────────────────────────────────────── */}
-      <section className="bg-[#F7F9FC] py-20" data-testid="decision-maker-triggers-section">
-        <div className="max-w-[860px] mx-auto px-6">
-          <div className="text-center mb-10">
-            <p className="text-[#0078D4] text-sm font-semibold uppercase tracking-[0.1em] mb-3">Engagement Signals</p>
-            <h2 className="text-2xl md:text-3xl font-extrabold text-[#0A2540]">Are any of these familiar?</h2>
-            <p className="text-muted-foreground mt-3 max-w-xl mx-auto leading-relaxed">
-              These are the situations that typically bring organizations to Shane.
+      {/* ── FRACTIONAL ARCHITECT RETAINERS ───────────────────────────────── */}
+      <section className="bg-[#F7F9FC] py-20" data-testid="retainers-section">
+        <div className="max-w-[1200px] mx-auto px-6">
+          <div className="text-center mb-6">
+            <p className="text-[#0078D4] text-sm font-semibold uppercase tracking-[0.1em] mb-3">Fractional Architecture</p>
+            <h2 className="text-3xl md:text-4xl font-extrabold text-[#0A2540]">
+              Fractional Architect Retainers
+            </h2>
+            <p className="text-muted-foreground mt-4 max-w-2xl mx-auto leading-relaxed">
+              Ongoing senior M365 architecture leadership on a monthly basis — strategic direction, hands-on delivery, and direct access to Shane.
             </p>
           </div>
-          <ul className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {decisionMakerTriggers.map((trigger, i) => (
-              <li key={i} className="flex items-start gap-3 bg-white border border-border rounded-lg px-5 py-4">
-                <span className="flex-shrink-0 w-2 h-2 rounded-full bg-[#0078D4] mt-2" />
-                <span className="text-foreground text-sm leading-relaxed">{trigger}</span>
-              </li>
+
+          <div className="inline-flex items-center justify-center w-full mb-12">
+            <div className="bg-[#0A2540] text-white text-sm font-semibold px-6 py-3 rounded-xl text-center max-w-xl">
+              A full-time M365 Architect costs $150,000–$220,000/year — plus benefits, equity, and months to recruit.
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            {retainerTiers.map((tier, i) => (
+              <div
+                key={i}
+                className={`rounded-xl border p-8 flex flex-col ${
+                  tier.highlight
+                    ? "bg-[#0A2540] border-[#0078D4]/50 shadow-xl shadow-[#0A2540]/20"
+                    : "bg-white border-border"
+                }`}
+                data-testid={`retainer-tier-${i}`}
+              >
+                {tier.highlight && (
+                  <span className="inline-flex self-start items-center gap-1.5 bg-[#0078D4]/20 text-[#00B4D8] text-xs font-bold uppercase tracking-wider px-3 py-1 rounded-full mb-4">
+                    Most Popular
+                  </span>
+                )}
+                <h3 className={`text-2xl font-extrabold mb-1 ${tier.highlight ? "text-white" : "text-[#0A2540]"}`}>
+                  {tier.name}
+                </h3>
+                <div className="flex items-baseline gap-1 mb-1">
+                  <span className={`text-3xl font-extrabold ${tier.highlight ? "text-white" : "text-[#0078D4]"}`}>
+                    {tier.price}
+                  </span>
+                  <span className={`text-sm font-medium ${tier.highlight ? "text-white/60" : "text-muted-foreground"}`}>
+                    /mo
+                  </span>
+                </div>
+                <p className={`text-sm font-semibold mb-4 ${tier.highlight ? "text-[#00B4D8]" : "text-[#0078D4]"}`}>
+                  {tier.hours}
+                </p>
+                <p className={`text-sm leading-relaxed mb-6 flex-1 ${tier.highlight ? "text-white/70" : "text-muted-foreground"}`}>
+                  {tier.description}
+                </p>
+                <ul className="space-y-2 mb-8">
+                  {tier.includes.map((item, j) => (
+                    <li key={j} className="flex items-start gap-2 text-sm">
+                      <CheckCircle className={`w-4 h-4 flex-shrink-0 mt-0.5 ${tier.highlight ? "text-[#00B4D8]" : "text-[#0078D4]"}`} />
+                      <span className={tier.highlight ? "text-white/80" : "text-[#0A2540]"}>{item}</span>
+                    </li>
+                  ))}
+                </ul>
+                <CTAButton
+                  href="/book"
+                  className={`text-sm w-full ${tier.highlight ? "bg-[#0078D4] hover:bg-[#005A9E]" : ""}`}
+                >
+                  Book a Discovery Call
+                </CTAButton>
+              </div>
             ))}
-          </ul>
+          </div>
+          <div className="text-center mt-8">
+            <Link href="/retainers" className="inline-flex items-center gap-1.5 text-[#0078D4] font-semibold text-sm hover:underline">
+              Compare all retainer tiers in detail <ArrowRight className="w-3.5 h-3.5" />
+            </Link>
+          </div>
         </div>
       </section>
 
-      {/* ── SERVICES OVERVIEW (COLLAPSED SUMMARY GRID) ───────────────────── */}
-      <section className="bg-white py-20" data-testid="services-section">
+      {/* ── WHY SHANE ────────────────────────────────────────────────────── */}
+      <section className="bg-[#0A2540] py-20" data-testid="why-shane-section">
         <div className="max-w-[1200px] mx-auto px-6">
-          <div className="text-center mb-12">
-            <p className="text-[#0078D4] text-sm font-semibold uppercase tracking-[0.1em] mb-3">Services & Engagements</p>
-            <h2 className="text-3xl md:text-4xl font-extrabold text-[#0A2540]">Four Ways to Engage</h2>
-            <p className="text-muted-foreground mt-4 max-w-xl mx-auto leading-relaxed">
-              Every engagement is scoped and delivered personally by Shane. No project managers, no junior consultants.
+          <div className="max-w-[860px] mx-auto text-center mb-12">
+            <p className="text-[#00B4D8] text-sm font-semibold uppercase tracking-[0.1em] mb-3">Why Shane</p>
+            <h2 className="text-3xl md:text-4xl font-extrabold text-white mb-6">
+              30 Years of Microsoft Ecosystem Depth — Built at Mission-Critical Scale
+            </h2>
+            <p className="text-white/70 text-lg leading-relaxed mb-6">
+              Shane McCaw has spent three decades inside the Microsoft ecosystem — from early infrastructure deployments to leading Microsoft 365 architecture for one of the most compliance-intensive organizations on earth: NASA. As Lead M365 Architect, Shane designed and governed the systems used by scientists, engineers, and administrators whose work cannot fail. That discipline is now available to your organization on a fractional basis.
+            </p>
+            <p className="text-white/70 text-lg leading-relaxed">
+              Most consultants learn compliance frameworks from documentation. Shane learned them under real-world conditions where misconfiguration carried legal and mission consequences. FedRAMP, FISMA, ITAR, and GCC High aren't checklists to him — they're the environment he operated in daily.
             </p>
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-            {servicesSummary.map((service, i) => (
-              <div
+
+          <div className="flex flex-wrap items-center justify-center gap-3 mb-12">
+            {complianceBadges.map((badge, i) => (
+              <span
                 key={i}
-                className="bg-[#F7F9FC] rounded-xl border border-border p-7 flex flex-col hover:border-[#0078D4]/30 hover:bg-white transition-all"
+                className="inline-flex items-center gap-2 bg-white/10 border border-white/20 rounded-lg px-5 py-2.5 text-white font-bold text-sm"
               >
-                <div
-                  className="w-10 h-10 rounded-lg flex items-center justify-center mb-5 flex-shrink-0"
-                  style={{ backgroundColor: `${service.color}15` }}
-                >
-                  <CheckCircle className="w-5 h-5" style={{ color: service.color }} />
-                </div>
-                <h3 className="font-extrabold text-[#0A2540] text-lg mb-3 leading-snug">{service.title}</h3>
-                <p className="text-muted-foreground text-sm leading-relaxed flex-1 mb-6">{service.desc}</p>
-                <a
-                  href={service.href}
-                  className="inline-flex items-center gap-1.5 text-[#0078D4] text-sm font-semibold hover:underline"
-                >
-                  {service.cta} <ArrowRight className="w-3.5 h-3.5" />
-                </a>
+                <Shield className="w-4 h-4 text-[#00B4D8] flex-shrink-0" />
+                {badge}
+              </span>
+            ))}
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-[860px] mx-auto">
+            {[
+              { stat: "30+", label: "Years in the Microsoft Ecosystem" },
+              { stat: "NASA", label: "Lead M365 Architect — Current Role" },
+              { stat: "100%", label: "Senior Delivery — No Junior Staff" },
+            ].map((item, i) => (
+              <div key={i} className="bg-white/5 border border-white/10 rounded-xl p-6 text-center">
+                <div className="text-3xl font-extrabold text-[#00B4D8] mb-2">{item.stat}</div>
+                <div className="text-white/60 text-sm font-medium">{item.label}</div>
               </div>
             ))}
           </div>
         </div>
       </section>
 
-      {/* ── FINAL CTA ────────────────────────────────────────────────────── */}
+      {/* ── HOW ENGAGEMENTS WORK ─────────────────────────────────────────── */}
+      <section className="bg-white py-20" data-testid="how-it-works-section">
+        <div className="max-w-[1200px] mx-auto px-6">
+          <div className="text-center mb-14">
+            <p className="text-[#0078D4] text-sm font-semibold uppercase tracking-[0.1em] mb-3">The Process</p>
+            <h2 className="text-3xl md:text-4xl font-extrabold text-[#0A2540]">
+              How Engagements Work
+            </h2>
+            <p className="text-muted-foreground mt-4 max-w-xl mx-auto leading-relaxed">
+              Every engagement follows the same three-step discipline — no surprises, no open-ended scope.
+            </p>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-8 relative">
+            {/* Connector line (desktop only) */}
+            <div className="hidden md:block absolute top-10 left-[calc(16.67%+1rem)] right-[calc(16.67%+1rem)] h-0.5 bg-gradient-to-r from-[#0078D4] via-[#00B4D8] to-[#0A2540] opacity-20" />
+            {engagementSteps.map((step, i) => (
+              <div key={i} className="flex flex-col items-center text-center" data-testid={`step-${i}`}>
+                <div
+                  className="w-20 h-20 rounded-2xl flex items-center justify-center mb-6 text-white text-2xl font-extrabold"
+                  style={{ backgroundColor: step.color }}
+                >
+                  {step.step}
+                </div>
+                <h3 className="text-xl font-extrabold text-[#0A2540] mb-3">{step.title}</h3>
+                <p className="text-muted-foreground text-sm leading-relaxed mb-3">{step.description}</p>
+                <p className="text-xs font-semibold text-[#0078D4] italic">{step.note}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ── WHAT WE'LL COVER IN YOUR DISCOVERY CALL ─────────────────────── */}
+      <section className="bg-[#F7F9FC] py-20" data-testid="discovery-call-section">
+        <div className="max-w-[860px] mx-auto px-6 text-center">
+          <p className="text-[#0078D4] text-sm font-semibold uppercase tracking-[0.1em] mb-3">Free Discovery Call</p>
+          <h2 className="text-3xl md:text-4xl font-extrabold text-[#0A2540] mb-5">
+            What We'll Cover in Your Discovery Call
+          </h2>
+          <p className="text-muted-foreground text-lg mb-10 leading-relaxed">
+            A 30-minute conversation to understand your environment and give you a clear sense of what's possible — before you commit to anything.
+          </p>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12 text-left">
+            {[
+              {
+                number: "1",
+                title: "Your Current Landscape",
+                desc: "Where your Microsoft 365 environment stands today — what's working, what's broken, and what's been deferred.",
+              },
+              {
+                number: "2",
+                title: "Key Risks & Opportunities",
+                desc: "The compliance gaps, governance liabilities, and adoption blockers most likely to be holding your organization back.",
+              },
+              {
+                number: "3",
+                title: "Which Offer Fits Best",
+                desc: "An honest recommendation — Quick Entry Assessment, fixed-price package, or fractional retainer — based on your actual situation.",
+              },
+            ].map((item, i) => (
+              <div key={i} className="bg-white rounded-xl border border-border p-6">
+                <div className="w-8 h-8 rounded-lg bg-[#0078D4] text-white text-sm font-extrabold flex items-center justify-center mb-4">
+                  {item.number}
+                </div>
+                <h3 className="font-extrabold text-[#0A2540] mb-2">{item.title}</h3>
+                <p className="text-muted-foreground text-sm leading-relaxed">{item.desc}</p>
+              </div>
+            ))}
+          </div>
+          <CTAButton href="/book" className="text-base px-10 py-4" data-testid="discovery-call-cta">
+            Book Your Discovery Call
+          </CTAButton>
+          <p className="mt-4 text-muted-foreground text-sm">No pitch. No obligation. Just clarity on your Microsoft 365 environment.</p>
+        </div>
+      </section>
+
+      {/* ── CLOSING CTA ──────────────────────────────────────────────────── */}
       <section className="relative bg-[#0A2540] py-28 overflow-hidden" data-testid="final-cta-section">
         <div
           className="absolute inset-0 pointer-events-none"
@@ -560,13 +631,13 @@ export default function Home() {
             Free 30-Minute Discovery Call
           </p>
           <h2 className="text-4xl md:text-5xl font-extrabold text-white leading-tight mb-6">
-            Your Microsoft 365 Environment Deserves Senior Expertise
+            Your Microsoft 365 Environment Deserves Senior Expertise.
           </h2>
           <p className="text-white/70 text-lg md:text-xl max-w-2xl mx-auto mb-10 leading-relaxed">
-            Work directly with Shane — a 30-year Microsoft veteran and Lead M365 Architect at NASA. No account managers, no junior staff. Just clear, actionable guidance from day one.
+            Work directly with a 30-year Microsoft veteran and NASA's Lead M365 Architect. No account managers. No junior staff. Clear, actionable guidance — starting with a free call.
           </p>
           <CTAButton href="/book" className="text-lg px-12 py-5" data-testid="final-cta-button">
-            Book a Consultation
+            Book Your Discovery Call
           </CTAButton>
           <p className="mt-5 text-white/40 text-sm tracking-wide">
             No pitch. No obligation. Just clarity.
