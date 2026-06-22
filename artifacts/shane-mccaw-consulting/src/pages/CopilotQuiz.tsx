@@ -74,6 +74,58 @@ const TIER_COLOURS: Record<string, string> = {
   Ready: "bg-teal-500",
 };
 
+// ─── Tier-specific upsell config ───────────────────────────────────────────────
+interface TierUpsell {
+  badge: string;
+  name: string;
+  description: string;
+  slug: string;
+  ctaText: string;
+}
+
+const TIER_UPSELLS: Record<string, TierUpsell> = {
+  Beginner: {
+    badge: "Start Here · From $4,500",
+    name: "M365 Tenant Health Audit",
+    description:
+      "Before Copilot can succeed, your tenant needs a clean foundation. A comprehensive NASA-methodology assessment identifies every configuration gap, licensing issue, and security risk — with a prioritised roadmap so you know exactly where to start.",
+    slug: "m365-tenant-health-audit",
+    ctaText: "Book Your Audit",
+  },
+  Developing: {
+    badge: "Recommended · From $5,000",
+    name: "Copilot for M365 Readiness Assessment",
+    description:
+      "You're building the right habits, but gaps remain before Copilot is safe to deploy. A targeted readiness assessment pinpoints exactly what to fix — and in what order — so your rollout doesn't stall or expose sensitive data.",
+    slug: "copilot-for-m365-readiness-assessment",
+    ctaText: "Get Your Readiness Report",
+  },
+  Emerging: {
+    badge: "Next Step · From $5,000",
+    name: "Copilot for M365 Readiness Assessment",
+    description:
+      "You're making solid progress. A formal Copilot readiness assessment will validate your environment, surface the remaining gaps, and give you a prioritised rollout roadmap so you can deploy with confidence — not guesswork.",
+    slug: "copilot-for-m365-readiness-assessment",
+    ctaText: "Validate Your Readiness",
+  },
+  Advanced: {
+    badge: "High Impact · From $6,000",
+    name: "Power Platform Quick‑Start",
+    description:
+      "Your M365 environment is mature and you're ready to start automating. A focused 30-day sprint to design, build, and deploy one production-ready Power App or Power Automate flow — turning your Copilot investment into measurable business impact.",
+    slug: "power-platform-quickstart",
+    ctaText: "Start Automating",
+  },
+  Ready: {
+    badge: "Enterprise Grade · From $12,000",
+    name: "Governance Foundations Package",
+    description:
+      "Your environment is Copilot-ready — now make sure it scales safely. A complete Microsoft 365 governance framework built to enterprise standards, ensuring your Copilot deployment remains secure, compliant, and audit-ready as adoption grows.",
+    slug: "governance-foundations-package",
+    ctaText: "Build Your Governance Framework",
+  },
+};
+
 // ─── Helper ────────────────────────────────────────────────────────────────────
 async function apiPost<T>(path: string, body: unknown): Promise<T> {
   const base = import.meta.env.BASE_URL.replace(/\/$/, "");
@@ -505,32 +557,37 @@ function QuizModal({ onClose }: { onClose: () => void }) {
                 )}
               </div>
 
-              {/* Upsell: Copilot for M365 Readiness Assessment */}
-              <div className="bg-[#0A2540] border border-primary/40 rounded-xl p-5 space-y-3">
-                <div className="flex items-center gap-2">
-                  <span className="bg-primary/20 text-primary text-xs font-bold uppercase tracking-wider px-2.5 py-1 rounded-full">Fixed-Price · $3,500</span>
-                </div>
-                <div>
-                  <h4 className="text-white font-bold text-lg leading-snug">Copilot for M365 Readiness Assessment</h4>
-                  <p className="text-white/65 text-sm mt-1 leading-relaxed">
-                    Get a comprehensive, expert-led audit of your Microsoft 365 environment and a prioritised roadmap so your Copilot rollout succeeds from day one. Delivered in 5 business days — no retainer required.
-                  </p>
-                </div>
-                <a
-                  href="/crm/portal/onboarding/select?service=copilot-for-m365-readiness-assessment"
-                  className="w-full py-3 px-6 bg-primary hover:bg-primary/90 text-white font-semibold rounded-lg transition-colors flex items-center justify-center gap-2"
-                >
-                  Get Started — $3,500 <ChevronRight className="w-4 h-4" />
-                </a>
-                <div className="text-center">
-                  <a
-                    href="/micro-offers#copilot-for-m365-readiness-assessment"
-                    className="text-primary/80 hover:text-primary text-sm transition-colors"
-                  >
-                    See full offer details →
-                  </a>
-                </div>
-              </div>
+              {/* Upsell: tier-personalised offer */}
+              {(() => {
+                const upsell = TIER_UPSELLS[results.tier] ?? TIER_UPSELLS["Developing"];
+                return (
+                  <div className="bg-[#0A2540] border border-primary/40 rounded-xl p-5 space-y-3">
+                    <div className="flex items-center gap-2">
+                      <span className="bg-primary/20 text-primary text-xs font-bold uppercase tracking-wider px-2.5 py-1 rounded-full">
+                        {upsell.badge}
+                      </span>
+                    </div>
+                    <div>
+                      <h4 className="text-white font-bold text-lg leading-snug">{upsell.name}</h4>
+                      <p className="text-white/65 text-sm mt-1 leading-relaxed">{upsell.description}</p>
+                    </div>
+                    <a
+                      href={`/crm/portal/onboarding/select?service=${upsell.slug}`}
+                      className="w-full py-3 px-6 bg-primary hover:bg-primary/90 text-white font-semibold rounded-lg transition-colors flex items-center justify-center gap-2"
+                    >
+                      {upsell.ctaText} <ChevronRight className="w-4 h-4" />
+                    </a>
+                    <div className="text-center">
+                      <a
+                        href={`/micro-offers#${upsell.slug}`}
+                        className="text-primary/80 hover:text-primary text-sm transition-colors"
+                      >
+                        See full offer details →
+                      </a>
+                    </div>
+                  </div>
+                );
+              })()}
             </div>
           )}
         </div>
