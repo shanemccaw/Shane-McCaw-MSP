@@ -57,6 +57,43 @@ function dt(
   page.drawText(sanitize(text), { x, y, font, size, color });
 }
 
+const DELIVERABLE_CATEGORIES: Array<{ name: string; keywords: string[] }> = [
+  { name: "Assessment & Discovery",       keywords: ["assess", "audit", "review", "discover", "analysis", "analys", "diagnos", "evaluat", "survey", "gap", "inventory", "benchmark", "baselining", "baseline"] },
+  { name: "Strategy & Roadmap",           keywords: ["strateg", "roadmap", "plan", "design", "architect", "recommend", "blueprint", "framework", "vision", "approach", "proposal"] },
+  { name: "Configuration & Implementation", keywords: ["configur", "implement", "deploy", "setup", "set up", "instal", "enabl", "build", "creat", "provision", "migrat", "integrat", "connect", "activat"] },
+  { name: "Governance & Security",        keywords: ["governance", "govern", "secur", "complian", "policy", "policies", "control", "protect", "access", "permission", "dlp", "label", "retention", "conditional", "mfa", "identity", "zero trust", "audit log"] },
+  { name: "Training & Enablement",        keywords: ["train", "workshop", "session", "enablement", "onboard", "adoption", "coaching", "demonstration", "demo", "walkthrough", "guidance", "user education"] },
+  { name: "Documentation & Reporting",    keywords: ["document", "report", "guide", "template", "handbook", "playbook", "record", "runbook", "knowledge", "deliverable", "artefact", "artifact", "summary", "register"] },
+];
+
+function groupDeliverables(items: string[]): Array<{ category: string; items: string[] }> {
+  const buckets = new Map<string, string[]>();
+  const unassigned: string[] = [];
+
+  for (const item of items) {
+    const lower = item.toLowerCase();
+    let placed = false;
+    for (const cat of DELIVERABLE_CATEGORIES) {
+      if (cat.keywords.some(k => lower.includes(k))) {
+        const arr = buckets.get(cat.name) ?? [];
+        arr.push(item);
+        buckets.set(cat.name, arr);
+        placed = true;
+        break;
+      }
+    }
+    if (!placed) unassigned.push(item);
+  }
+
+  if (unassigned.length > 0) {
+    buckets.set("Additional Deliverables", unassigned);
+  }
+
+  return Array.from(buckets.entries())
+    .map(([category, list]) => ({ category, items: list }))
+    .filter(g => g.items.length > 0);
+}
+
 export async function generateServiceOverviewPdf(serviceName: string): Promise<Buffer | null> {
   const pageW  = 595;
   const pageH  = 842;
@@ -224,13 +261,25 @@ export async function generateServiceOverviewPdf(serviceName: string): Promise<B
     para(service.description);
   }
 
-  // What's Included
+  // What's Included — grouped into logical categories
   const deliverables = service.deliverables ?? [];
   const inclusions   = service.inclusions   ?? [];
   const combined = [...new Set([...deliverables, ...inclusions])];
   if (combined.length > 0) {
     sectionHeading("What's Included");
-    for (const d of combined) bullet(d);
+    const groups = groupDeliverables(combined);
+    if (groups.length <= 1) {
+      // Too few items to sub-group — render flat
+      for (const d of combined) bullet(d);
+    } else {
+      for (const group of groups) {
+        ensureSpace(20);
+        dt(page, group.category, margin, y, bold, 9, navy);
+        y -= 13;
+        for (const item of group.items) bullet(item, 8);
+        y -= 4;
+      }
+    }
   }
 
   // Engagement Phases
