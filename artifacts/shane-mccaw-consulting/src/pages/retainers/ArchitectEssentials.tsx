@@ -179,7 +179,7 @@ export default function ArchitectEssentials() {
             </div>
             <div className="inline-flex items-center gap-2 bg-white/10 text-white text-xs font-bold uppercase tracking-wider px-3 py-1.5 rounded-full">
               <ShieldCheck className="w-3.5 h-3.5 text-[#00B4D8]" />
-              Former NASA Lead M365 Architect
+              Current NASA Lead M365 Architect
             </div>
           </div>
 
