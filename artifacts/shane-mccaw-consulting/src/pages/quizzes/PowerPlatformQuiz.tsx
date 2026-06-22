@@ -23,6 +23,7 @@ import {
   Map,
   Target,
   Star,
+  Download,
 } from "lucide-react";
 
 const config: QuizConfig = {
@@ -495,6 +496,17 @@ export default function PowerPlatformQuiz() {
             <p className="text-slate-500 text-sm">
               Based on your maturity tier, your report includes a matched service recommendation — Power Platform Quick-Start, Governance Foundations Package, or Automation Hardening — with full scope and pricing detail.
             </p>
+          </div>
+          <div className="mt-8 text-center">
+            <a
+              href="/power-platform-maturity-report-sample.pdf"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-2 rounded-lg border border-[#0078D4]/30 px-6 py-2.5 text-sm font-semibold text-[#0078D4] hover:bg-[#0078D4]/5 hover:border-[#0078D4] transition-colors"
+            >
+              <Download className="w-4 h-4" />
+              View Sample Report (PDF)
+            </a>
           </div>
         </div>
       </section>

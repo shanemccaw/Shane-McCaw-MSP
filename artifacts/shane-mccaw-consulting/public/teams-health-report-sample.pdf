@@ -1,0 +1,62 @@
+%PDF-1.4
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [3 0 R] /Count 1 >>
+endobj
+3 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>
+endobj
+4 0 obj
+<< /Length 661 >>
+stream
+BT
+/F1 20 Tf
+72 740 Td
+(SAMPLE REPORT) Tj
+/F1 16 Tf
+0 -30 Td
+(Microsoft Teams Health Report) Tj
+/F1 11 Tf
+0 -22 Td
+(Assessment Date: June 2026) Tj
+0 -22 Td
+(Prepared by Shane McCaw Consulting) Tj
+0 -20 Td
+(---------------------------------------------------) Tj
+0 -18 Td
+(Overall Teams Score: 26/50) Tj
+0 -18 Td
+(Health Tier: At Risk) Tj
+0 -18 Td
+(Governance Gaps: 5 identified) Tj
+0 -18 Td
+(External Sharing Controls: Misconfigured) Tj
+0 -18 Td
+(Teams Sprawl: 120+ orphaned teams detected) Tj
+0 -18 Td
+(Guest Access Policy: Overly permissive) Tj
+0 -18 Td
+(Adoption Rate: Below industry benchmark) Tj
+0 -18 Td
+(Recommended Action: Teams Governance Sprint) Tj
+ET
+endstream
+endobj
+5 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>
+endobj
+xref
+0 6
+0000000000 65535 f 
+0000000009 00000 n 
+0000000058 00000 n 
+0000000115 00000 n 
+0000000241 00000 n 
+0000000953 00000 n 
+trailer
+<< /Size 6 /Root 1 0 R >>
+startxref
+1023
+%%EOF

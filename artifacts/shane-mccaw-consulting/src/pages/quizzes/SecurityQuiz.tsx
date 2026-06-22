@@ -18,6 +18,7 @@ import {
   Award,
   BarChart3,
   Zap,
+  Download,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -570,6 +571,17 @@ export default function SecurityQuiz() {
                 </div>
               ))}
             </div>
+          </div>
+          <div className="mt-10 text-center">
+            <a
+              href="/security-compliance-report-sample.pdf"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-2 rounded-lg border border-[#0078D4]/30 px-6 py-2.5 text-sm font-semibold text-[#0078D4] hover:bg-[#0078D4]/5 hover:border-[#0078D4] transition-colors"
+            >
+              <Download className="w-4 h-4" />
+              View Sample Report (PDF)
+            </a>
           </div>
         </div>
       </section>

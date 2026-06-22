@@ -6,7 +6,7 @@ import { SEOMeta } from "@/components/SEOMeta";
 import {
   CheckCircle, MessageSquare, Building2, ShieldCheck, Globe,
   AlertTriangle, Target, Users, ArrowRight, BarChart3, FileText,
-  Zap, Award, Activity, Layers, Settings2, TrendingUp, Star, Network,
+  Zap, Award, Activity, Layers, Settings2, TrendingUp, Star, Network, Download,
 } from "lucide-react";
 
 const config: QuizConfig = {
@@ -580,6 +580,17 @@ export default function TeamsQuiz() {
                 </div>
               </div>
             ))}
+          </div>
+          <div className="mt-10 text-center">
+            <a
+              href="/teams-health-report-sample.pdf"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-2 rounded-lg border border-white/20 px-6 py-2.5 text-sm font-semibold text-white/80 hover:bg-white/10 hover:text-white transition-colors"
+            >
+              <Download className="w-4 h-4" />
+              View Sample Report (PDF)
+            </a>
           </div>
         </div>
       </section>

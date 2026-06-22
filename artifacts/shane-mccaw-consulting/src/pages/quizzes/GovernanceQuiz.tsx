@@ -3,7 +3,7 @@ import { Layout } from "@/components/Layout";
 import { CTAButton } from "@/components/CTAButton";
 import { GenericQuizModal, type QuizConfig } from "@/components/GenericQuizModal";
 import { SEOMeta } from "@/components/SEOMeta";
-import { CheckCircle, Shield, Building2, Users, AlertTriangle, FileText, BarChart3, Award, Lock, ClipboardList, Target, BookOpen, ShieldCheck } from "lucide-react";
+import { CheckCircle, Shield, Building2, Users, AlertTriangle, FileText, BarChart3, Award, Lock, ClipboardList, Target, BookOpen, ShieldCheck, Download } from "lucide-react";
 
 const config: QuizConfig = {
   quizType: "governance",
@@ -345,6 +345,17 @@ export default function GovernanceQuiz() {
                 <p className="text-white/55 text-sm leading-relaxed">{section.desc}</p>
               </div>
             ))}
+          </div>
+          <div className="mt-10 text-center">
+            <a
+              href="/governance-maturity-report-sample.pdf"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-2 rounded-lg border border-white/20 px-6 py-2.5 text-sm font-semibold text-white/80 hover:bg-white/10 hover:text-white transition-colors"
+            >
+              <Download className="w-4 h-4" />
+              View Sample Report (PDF)
+            </a>
           </div>
         </div>
       </section>
