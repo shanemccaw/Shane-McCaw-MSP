@@ -2,7 +2,13 @@ import { Router, type IRouter, type Request, type Response } from "express";
 import { db, leadsTable, emailsTable } from "@workspace/db";
 import { eq, desc, count, gte, and, type SQL } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/requireAuth";
-import { sendEmailOrThrow, contactInquiryNotificationEmail } from "../lib/mailer";
+import {
+  sendEmailOrThrow,
+  sendEmail,
+  contactInquiryNotificationEmail,
+  serviceOverviewConfirmationEmail,
+  serviceOverviewLeadNotificationEmail,
+} from "../lib/mailer";
 import { createAuditLog } from "../lib/audit";
 
 const router: IRouter = Router();
@@ -30,6 +36,7 @@ router.post("/leads", async (req: Request, res: Response) => {
     return;
   }
 
+  const isServiceOverviewDownload = source === "service_overview_download";
   const validSources = ["contact_form", "lead_magnet"];
   const leadSource = validSources.includes(source ?? "") ? (source as "contact_form" | "lead_magnet") : "contact_form";
 
@@ -45,7 +52,33 @@ router.post("/leads", async (req: Request, res: Response) => {
     status: "new",
   }).returning();
 
-  if (leadSource === "contact_form") {
+  if (isServiceOverviewDownload) {
+    const adminEmail = process.env.CONTACT_NOTIFICATION_EMAIL ?? process.env.CRM_ADMIN_EMAIL ?? "info@shanemccaw.com";
+    const trimmedName = name.trim();
+    const trimmedEmail = email.toLowerCase().trim();
+    const serviceName = serviceArea ?? "M365 Governance";
+    try {
+      await sendEmailOrThrow(
+        trimmedEmail,
+        `Your ${serviceName} Overview Request — Shane McCaw Consulting`,
+        serviceOverviewConfirmationEmail({ name: trimmedName, serviceName }),
+      );
+    } catch (err) {
+      req.log.error({ err }, "Failed to send service overview confirmation email");
+      res.status(503).json({ error: "Could not send confirmation email. Please try again or email info@shanemccaw.com directly." });
+      return;
+    }
+    void sendEmail(
+      adminEmail,
+      `New service overview request from ${trimmedName} — ${company ?? ""}`,
+      serviceOverviewLeadNotificationEmail({
+        name: trimmedName,
+        email: trimmedEmail,
+        company: company ?? "",
+        serviceName,
+      }),
+    );
+  } else if (leadSource === "contact_form") {
     const adminEmail = process.env.CONTACT_NOTIFICATION_EMAIL ?? process.env.CRM_ADMIN_EMAIL ?? "info@shanemccaw.com";
     try {
       await sendEmailOrThrow(

@@ -427,6 +427,46 @@ export function retainerResumedEmail(opts: {
   `;
 }
 
+export function serviceOverviewConfirmationEmail(opts: {
+  name: string;
+  serviceName: string;
+}): string {
+  const name = escapeHtml(opts.name.split(" ")[0] ?? opts.name);
+  const service = escapeHtml(opts.serviceName);
+  return `
+    <p>Hi ${name},</p>
+    <p>Thanks for your interest in Shane's <strong>${service}</strong> services. Shane personally reviews every request and will send you the overview document and follow up within <strong>one business day</strong>.</p>
+    <p>In the meantime, if you have any urgent questions you can reach Shane directly at <a href="mailto:info@shanemccaw.com" style="color:${BLUE};">info@shanemccaw.com</a> or book a free discovery call below.</p>
+    ${emailButton("Book a Free Discovery Call", "https://shanemccaw.consulting/book")}
+    <p style="margin-top:24px;">— Shane McCaw</p>
+  `;
+}
+
+export function serviceOverviewLeadNotificationEmail(opts: {
+  name: string;
+  email: string;
+  company: string;
+  serviceName: string;
+}): string {
+  const name = escapeHtml(opts.name);
+  const email = escapeHtml(opts.email);
+  const company = escapeHtml(opts.company);
+  const service = escapeHtml(opts.serviceName);
+  return `
+    <p>Hi Shane,</p>
+    <p>A new lead just requested the <strong>${service}</strong> service overview. Here are their details:</p>
+    <table cellpadding="0" cellspacing="0" style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:16px 20px;margin:16px 0;width:100%;">
+      <tr><td style="padding:4px 0;color:#64748b;font-size:13px;width:160px;">Name</td><td style="padding:4px 0;font-weight:600;">${name}</td></tr>
+      <tr><td style="padding:4px 0;color:#64748b;font-size:13px;">Email</td><td style="padding:4px 0;"><a href="mailto:${email}" style="color:#0078D4;">${email}</a></td></tr>
+      <tr><td style="padding:4px 0;color:#64748b;font-size:13px;">Company</td><td style="padding:4px 0;">${company}</td></tr>
+      <tr><td style="padding:4px 0;color:#64748b;font-size:13px;">Requested Overview</td><td style="padding:4px 0;font-weight:600;">${service}</td></tr>
+    </table>
+    <p>They've been sent a confirmation email. Reply directly to follow up with the overview document.</p>
+    ${emailButton("Reply to " + name, `mailto:${email}`)}
+    <p style="margin-top:24px;">— Shane McCaw Consulting (automated notification)</p>
+  `;
+}
+
 export function quizLeadNotificationEmail(opts: {
   name: string;
   email: string;
