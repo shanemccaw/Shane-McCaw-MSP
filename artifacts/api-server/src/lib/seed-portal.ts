@@ -76,6 +76,24 @@ export async function seedMarketingServices(): Promise<void> {
     .update(servicesTable)
     .set({ serviceType: "retainer", pageHref: "/pricing" })
     .where(inArray(servicesTable.slug, staleSlugs));
+
+  // Patch micro-offer pageHref values to their dedicated detail pages.
+  // These records were created via the admin panel; the seed ensures the
+  // pageHref stays in sync regardless of when or how they were created.
+  const microOfferPageHrefs: Array<{ slug: string; pageHref: string }> = [
+    { slug: "m365-tenant-health-audit",              pageHref: "/micro-offers/tenant-health-audit" },
+    { slug: "migration-readiness-assessment",         pageHref: "/micro-offers/migration-readiness-assessment" },
+    { slug: "power-platform-quickstart",              pageHref: "/micro-offers/power-platform-quick-start" },
+    { slug: "copilot-for-m365-readiness-assessment",  pageHref: "/micro-offers/copilot-readiness-assessment" },
+    { slug: "governance-foundations-package",          pageHref: "/micro-offers/governance-foundations" },
+    { slug: "microsoft-365-training--enablement",     pageHref: "/micro-offers/m365-training-enablement" },
+  ];
+  for (const { slug, pageHref } of microOfferPageHrefs) {
+    await db
+      .update(servicesTable)
+      .set({ pageHref })
+      .where(eq(servicesTable.slug, slug));
+  }
   const microOffers = [
     {
       slug: "m365-health-check",
