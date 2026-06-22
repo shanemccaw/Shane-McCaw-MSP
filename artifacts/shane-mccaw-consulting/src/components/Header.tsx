@@ -16,6 +16,12 @@ const SERVICES_ITEMS = [
   { label: "Micro-Offers",      href: "/micro-offers" },
 ];
 
+const RETAINER_ITEMS = [
+  { label: "Architect Essentials", href: "/retainers/architect-essentials" },
+  { label: "Architect Growth",     href: "/retainers/architect-growth" },
+  { label: "Architect Enterprise", href: "/retainers/architect-enterprise" },
+];
+
 const NAV_LINKS = [
   { label: "About",     href: "/about" },
   { label: "Pricing",   href: "/pricing" },
@@ -30,7 +36,9 @@ export function Header() {
   const [scrolled, setScrolled] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [servicesOpen, setServicesOpen] = useState(false);
+  const [retainersOpen, setRetainersOpen] = useState(false);
   const servicesRef = useRef<HTMLLIElement>(null);
+  const retainersRef = useRef<HTMLLIElement>(null);
 
   useEffect(() => {
     const handleScroll = () => setScrolled(window.scrollY > 20);
@@ -43,12 +51,16 @@ export function Header() {
       if (servicesRef.current && !servicesRef.current.contains(e.target as Node)) {
         setServicesOpen(false);
       }
+      if (retainersRef.current && !retainersRef.current.contains(e.target as Node)) {
+        setRetainersOpen(false);
+      }
     };
     document.addEventListener("mousedown", handleClick);
     return () => document.removeEventListener("mousedown", handleClick);
   }, []);
 
   const isServicesActive = location.startsWith("/services") || location === "/micro-offers";
+  const isRetainersActive = location.startsWith("/retainers");
 
   const headerClasses = cn(
     "fixed top-0 left-0 right-0 z-50 transition-all duration-300",
@@ -91,6 +103,42 @@ export function Header() {
                       key={item.href}
                       href={item.href}
                       onClick={() => setServicesOpen(false)}
+                      className={cn(
+                        "block px-4 py-2 text-sm transition-colors",
+                        location === item.href
+                          ? "text-primary font-medium"
+                          : "text-white/75 hover:text-white hover:bg-white/5"
+                      )}
+                    >
+                      {item.label}
+                    </Link>
+                  ))}
+                </div>
+              )}
+            </li>
+
+            {/* Retainers dropdown */}
+            <li ref={retainersRef} className="relative">
+              <button
+                onClick={() => setRetainersOpen((o) => !o)}
+                className={cn(
+                  "flex items-center gap-1 px-3 py-2 rounded-md text-sm font-medium transition-colors",
+                  isRetainersActive
+                    ? "text-primary"
+                    : "text-white/80 hover:text-white hover:bg-white/5"
+                )}
+              >
+                Retainers
+                <ChevronDown className={cn("w-3.5 h-3.5 transition-transform duration-200", retainersOpen && "rotate-180")} />
+              </button>
+
+              {retainersOpen && (
+                <div className="absolute top-full left-0 mt-1.5 w-52 bg-[#0A2540] border border-white/10 rounded-xl shadow-2xl overflow-hidden py-1.5">
+                  {RETAINER_ITEMS.map((item) => (
+                    <Link
+                      key={item.href}
+                      href={item.href}
+                      onClick={() => setRetainersOpen(false)}
                       className={cn(
                         "block px-4 py-2 text-sm transition-colors",
                         location === item.href
@@ -155,6 +203,24 @@ export function Header() {
                 href={item.href}
                 onClick={() => setMobileMenuOpen(false)}
                 className="block px-3 py-2 rounded-lg text-sm text-white/75 hover:text-white hover:bg-white/5 transition-colors"
+              >
+                {item.label}
+              </Link>
+            ))}
+
+            <div className="my-2 border-t border-white/10" />
+
+            {/* Retainers section */}
+            <p className="px-3 pt-1 pb-1.5 text-[10px] font-bold uppercase tracking-widest text-white/30">Retainers</p>
+            {RETAINER_ITEMS.map((item) => (
+              <Link
+                key={item.href}
+                href={item.href}
+                onClick={() => setMobileMenuOpen(false)}
+                className={cn(
+                  "block px-3 py-2 rounded-lg text-sm transition-colors",
+                  location === item.href ? "text-primary font-medium" : "text-white/75 hover:text-white hover:bg-white/5"
+                )}
               >
                 {item.label}
               </Link>
