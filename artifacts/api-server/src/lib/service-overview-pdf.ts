@@ -15,8 +15,20 @@ const teal  = rgb(0,     0.706, 0.847);
 const white = rgb(1, 1, 1);
 const grey  = rgb(0.42, 0.49, 0.56);
 
+function sanitize(text: string): string {
+  return text
+    .replace(/\u2011/g, "-")          // non-breaking hyphen → hyphen-minus
+    .replace(/\u2013/g, "-")          // en dash → hyphen-minus
+    .replace(/\u2014/g, "--")         // em dash → double hyphen
+    .replace(/[\u2018\u2019]/g, "'")  // curly single quotes → straight
+    .replace(/[\u201C\u201D]/g, '"')  // curly double quotes → straight
+    .replace(/\u2026/g, "...")        // ellipsis → three dots
+    .replace(/\u00A0/g, " ")          // non-breaking space → regular space
+    .replace(/[^\x00-\xFF]/g, "?");   // strip remaining non-Latin-1 chars
+}
+
 function wrap(text: string, maxW: number, font: PDFFont, size: number): string[] {
-  const words = text.split(" ");
+  const words = sanitize(text).split(" ");
   const lines: string[] = [];
   let cur = "";
   for (const w of words) {
@@ -41,7 +53,7 @@ function dt(
   size: number,
   color: ReturnType<typeof rgb>,
 ) {
-  page.drawText(text, { x, y, font, size, color });
+  page.drawText(sanitize(text), { x, y, font, size, color });
 }
 
 export async function generateServiceOverviewPdf(serviceName: string): Promise<Buffer | null> {
