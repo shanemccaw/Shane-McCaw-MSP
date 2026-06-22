@@ -3,6 +3,21 @@ import { db, servicesTable, clientServicesTable, contractsTable, workflowTemplat
 import { eq } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/requireAuth";
 import { z } from "zod";
+import fs from "fs";
+import path from "path";
+import { generateServiceOverviewPdf } from "../lib/service-overview-pdf";
+
+const UPLOADS_BASE = process.env.UPLOADS_DIR
+  ? path.resolve(process.env.UPLOADS_DIR)
+  : path.resolve("../../data/uploads");
+
+const SERVICE_PDF_DIR = path.join(UPLOADS_BASE, "service-pdfs");
+
+function ensureServicePdfDir() {
+  if (!fs.existsSync(SERVICE_PDF_DIR)) {
+    fs.mkdirSync(SERVICE_PDF_DIR, { recursive: true });
+  }
+}
 
 const stringArraySchema = z.array(z.string()).nullish();
 
@@ -160,6 +175,70 @@ router.delete("/admin/services/:id", requireAdmin, async (req: Request, res: Res
       return;
     }
     res.status(500).json({ error: "Failed to delete service" });
+  }
+});
+
+router.post("/admin/services/:id/generate-pdf", requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const id = Number(req.params.id);
+    if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
+
+    const [service] = await db.select().from(servicesTable).where(eq(servicesTable.id, id)).limit(1);
+    if (!service) { res.status(404).json({ error: "Service not found" }); return; }
+
+    const pdfBuffer = await generateServiceOverviewPdf(service.name);
+    if (!pdfBuffer) {
+      res.status(422).json({ error: "Could not generate PDF — service data may be incomplete" });
+      return;
+    }
+
+    ensureServicePdfDir();
+    const filename = `${id}.pdf`;
+    const filePath = path.join(SERVICE_PDF_DIR, filename);
+    fs.writeFileSync(filePath, pdfBuffer);
+
+    const pdfKey = `service-pdfs/${filename}`;
+    const generatedAt = new Date();
+
+    const [updated] = await db
+      .update(servicesTable)
+      .set({ overviewPdfKey: pdfKey, overviewPdfGeneratedAt: generatedAt })
+      .where(eq(servicesTable.id, id))
+      .returning();
+
+    req.log.info({ serviceId: id, pdfKey }, "Service overview PDF generated");
+    res.json({ overviewPdfKey: updated.overviewPdfKey, overviewPdfGeneratedAt: updated.overviewPdfGeneratedAt });
+  } catch (err: unknown) {
+    req.log.error({ err }, "Failed to generate service overview PDF");
+    res.status(500).json({ error: "Failed to generate PDF" });
+  }
+});
+
+router.get("/admin/services/:id/overview-pdf", requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const id = Number(req.params.id);
+    if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
+
+    const [service] = await db
+      .select({ id: servicesTable.id, name: servicesTable.name, overviewPdfKey: servicesTable.overviewPdfKey })
+      .from(servicesTable)
+      .where(eq(servicesTable.id, id))
+      .limit(1);
+
+    if (!service) { res.status(404).json({ error: "Service not found" }); return; }
+    if (!service.overviewPdfKey) { res.status(404).json({ error: "No PDF generated yet" }); return; }
+
+    const filePath = path.join(UPLOADS_BASE, service.overviewPdfKey);
+    if (!fs.existsSync(filePath)) {
+      res.status(404).json({ error: "PDF file not found on disk — regenerate it" });
+      return;
+    }
+
+    const safeName = service.name.replace(/[^a-z0-9]/gi, "-").toLowerCase();
+    res.download(filePath, `${safeName}-overview.pdf`);
+  } catch (err: unknown) {
+    req.log.error({ err }, "Failed to serve service overview PDF");
+    res.status(500).json({ error: "Failed to serve PDF" });
   }
 });
 

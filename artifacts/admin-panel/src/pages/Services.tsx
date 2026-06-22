@@ -68,6 +68,8 @@ interface Service {
   tier: string | null;
   orderWorkflow: WizardStep[] | null;
   workflowTemplateId: number | null;
+  overviewPdfKey: string | null;
+  overviewPdfGeneratedAt: string | null;
 }
 
 interface Client {
@@ -517,6 +519,8 @@ export default function ServicesPage() {
   const [form, setForm] = useState<Partial<Service>>({});
   const [saving, setSaving] = useState(false);
 
+  const [generatingPdf, setGeneratingPdf] = useState(false);
+
   const [showCreate, setShowCreate] = useState(false);
   const [createForm, setCreateForm] = useState({ name: "", slug: "", billingType: "one_time" as "one_time" | "recurring_monthly" });
   const [creating, setCreating] = useState(false);
@@ -624,6 +628,30 @@ export default function ServicesPage() {
       await fetchAll();
     } finally {
       setDeleting(false);
+    }
+  }
+
+  async function handleGeneratePdf() {
+    if (!selected) return;
+    setGeneratingPdf(true);
+    try {
+      const res = await fetchWithAuth(`/api/admin/services/${selected.id}/generate-pdf`, { method: "POST" });
+      const body = await res.json() as { overviewPdfKey?: string; overviewPdfGeneratedAt?: string; error?: string };
+      if (!res.ok) {
+        toast({ title: body.error ?? "PDF generation failed", variant: "destructive" });
+        return;
+      }
+      const updated: Service = {
+        ...selected,
+        overviewPdfKey: body.overviewPdfKey ?? null,
+        overviewPdfGeneratedAt: body.overviewPdfGeneratedAt ?? null,
+      };
+      setSelected(updated);
+      setForm(f => ({ ...f, overviewPdfKey: updated.overviewPdfKey, overviewPdfGeneratedAt: updated.overviewPdfGeneratedAt }));
+      toast({ title: "PDF generated successfully" });
+      await fetchAll();
+    } finally {
+      setGeneratingPdf(false);
     }
   }
 
@@ -1133,6 +1161,49 @@ export default function ServicesPage() {
                 </button>
               </div>
             </form>
+
+            {/* Service Overview PDF */}
+            <div className="bg-white rounded-xl border border-gray-200 p-6 mt-5">
+              <div className="flex items-center justify-between mb-3 gap-3 flex-wrap">
+                <div>
+                  <p className="text-xs font-bold text-gray-500 uppercase tracking-wider">Service Overview PDF</p>
+                  <p className="text-xs text-gray-400 mt-0.5">Pre-generate a PDF brochure to send with overview download requests.</p>
+                </div>
+                <div className="flex items-center gap-2">
+                  {form.overviewPdfKey && (
+                    <a
+                      href={`/api/admin/services/${selected?.id}/overview-pdf`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-1.5 text-xs font-semibold text-[#0078D4] border border-[#0078D4]/30 px-3 py-1.5 rounded-lg hover:bg-[#0078D4]/5 transition-colors"
+                    >
+                      <FileText className="w-3.5 h-3.5" />
+                      View PDF
+                    </a>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => void handleGeneratePdf()}
+                    disabled={generatingPdf}
+                    className="flex items-center gap-1.5 text-xs font-semibold bg-[#0A2540] text-white px-3 py-1.5 rounded-lg hover:bg-[#0A2540]/90 disabled:opacity-50 transition-colors"
+                  >
+                    {generatingPdf ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
+                    {generatingPdf ? "Generating…" : (form.overviewPdfKey ? "Regenerate PDF" : "Generate PDF")}
+                  </button>
+                </div>
+              </div>
+              {form.overviewPdfGeneratedAt ? (
+                <p className="text-xs text-gray-400 flex items-center gap-1.5">
+                  <CheckCircle className="w-3.5 h-3.5 text-green-500 flex-shrink-0" />
+                  Last generated {new Date(form.overviewPdfGeneratedAt).toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short" })}
+                </p>
+              ) : (
+                <p className="text-xs text-gray-400 flex items-center gap-1.5">
+                  <Clock className="w-3.5 h-3.5 flex-shrink-0" />
+                  No PDF generated yet — click Generate PDF to create one
+                </p>
+              )}
+            </div>
               </div>{/* end form column */}
 
               {/* Live card preview */}

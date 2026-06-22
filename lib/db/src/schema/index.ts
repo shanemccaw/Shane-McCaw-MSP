@@ -89,6 +89,9 @@ export const servicesTable = pgTable("services", {
   // (via migrate-prod.ts) to avoid a circular TypeScript inference loop — both tables
   // already reference each other.
   workflowTemplateId: integer("workflow_template_id"),
+  // Pre-generated service overview PDF (stored on disk under data/uploads/service-pdfs/)
+  overviewPdfKey: text("overview_pdf_key"),
+  overviewPdfGeneratedAt: timestamp("overview_pdf_generated_at"),
 });
 
 export type InsertService = typeof servicesTable.$inferInsert;

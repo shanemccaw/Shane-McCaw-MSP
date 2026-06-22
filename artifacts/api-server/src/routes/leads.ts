@@ -1,6 +1,6 @@
 import { Router, type IRouter, type Request, type Response } from "express";
-import { db, leadsTable, emailsTable } from "@workspace/db";
-import { eq, desc, count, gte, and, type SQL } from "drizzle-orm";
+import { db, leadsTable, emailsTable, servicesTable } from "@workspace/db";
+import { eq, desc, count, gte, and, ilike, or, type SQL } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/requireAuth";
 import {
   sendEmailOrThrow,
@@ -11,7 +11,12 @@ import {
   serviceOverviewLeadNotificationEmail,
 } from "../lib/mailer";
 import { createAuditLog } from "../lib/audit";
-import { generateServiceOverviewPdf } from "../lib/service-overview-pdf";
+import fs from "fs";
+import path from "path";
+
+const UPLOADS_BASE = process.env.UPLOADS_DIR
+  ? path.resolve(process.env.UPLOADS_DIR)
+  : path.resolve("../../data/uploads");
 
 const router: IRouter = Router();
 
@@ -62,14 +67,31 @@ router.post("/leads", async (req: Request, res: Response) => {
 
     void (async () => {
       try {
-        const pdfBuffer = await generateServiceOverviewPdf(serviceName);
+        const matchedServices = await db
+          .select({ id: servicesTable.id, name: servicesTable.name, overviewPdfKey: servicesTable.overviewPdfKey })
+          .from(servicesTable)
+          .where(or(
+            ilike(servicesTable.name, serviceName),
+            ilike(servicesTable.name, `%${serviceName}%`),
+          ))
+          .limit(1);
+        const matchedService = matchedServices[0] ?? null;
+
         const subject = `Your ${serviceName} Overview — Shane McCaw Consulting`;
         const html = serviceOverviewConfirmationEmail({ name: trimmedName, serviceName });
-        if (pdfBuffer) {
-          const safeName = serviceName.replace(/[^a-z0-9]/gi, "-").toLowerCase();
-          await sendEmailWithAttachment(trimmedEmail, subject, html, [
-            { filename: `${safeName}-overview.pdf`, content: pdfBuffer },
-          ]);
+
+        if (matchedService?.overviewPdfKey) {
+          const filePath = path.join(UPLOADS_BASE, matchedService.overviewPdfKey);
+          if (fs.existsSync(filePath)) {
+            const pdfBuffer = fs.readFileSync(filePath);
+            const safeName = serviceName.replace(/[^a-z0-9]/gi, "-").toLowerCase();
+            await sendEmailWithAttachment(trimmedEmail, subject, html, [
+              { filename: `${safeName}-overview.pdf`, content: pdfBuffer },
+            ]);
+          } else {
+            req.log.warn({ serviceId: matchedService.id, overviewPdfKey: matchedService.overviewPdfKey }, "Service overview PDF key set but file missing on disk");
+            await sendEmail(trimmedEmail, subject, html);
+          }
         } else {
           await sendEmail(trimmedEmail, subject, html);
         }
