@@ -4,7 +4,7 @@ import { ReplitConnectors } from "@replit/connectors-sdk";
 import { logger } from "./logger";
 
 // ─── Brand constants ──────────────────────────────────────────────────────────
-const BRAND_FROM = "Shane McCaw Consulting <noreply@shanemccaw.consulting>";
+const BRAND_FROM = "Shane McCaw Consulting <noreply@shanemccaw.com>";
 const PORTAL_URL = "https://shanemccaw.consulting/crm/portal";
 const NAVY = "#0A2540";
 const BLUE = "#0078D4";
