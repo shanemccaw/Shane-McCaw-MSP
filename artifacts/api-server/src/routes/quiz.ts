@@ -206,12 +206,51 @@ interface ScoringConfig {
   pdfFilename: string;
 }
 
-const COPILOT_SERVICE_MAP: Record<string, string> = {
-  "Microsoft 365 Essentials Audit": "A comprehensive tenant audit revealing quick wins and critical gaps in your M365 environment.",
-  "Copilot AI Readiness & Deployment": "End-to-end Copilot enablement: licensing, data governance, training, and governed rollout.",
-  "Microsoft 365 Governance Setup": "Establish DLP policies, sensitivity labels, and compliance controls that protect your data.",
-  "AI Adoption & Change Management": "Drive Copilot adoption through executive alignment, champion networks, and structured change management.",
-  "SharePoint & Teams Modernisation": "Redesign your intranet and collaboration spaces so Copilot has clean, well-structured data to work with.",
+// ─── Service descriptions per quiz type ───────────────────────────────────────
+// Used to populate serviceDescription in the submit response for all quiz types.
+const SERVICE_DESCRIPTIONS: Record<string, Record<string, string>> = {
+  copilot: {
+    "Microsoft 365 Essentials Audit": "A comprehensive tenant audit revealing quick wins and critical gaps in your M365 environment.",
+    "Copilot AI Readiness & Deployment": "End-to-end Copilot enablement: licensing, data governance, training, and governed rollout.",
+    "Microsoft 365 Governance Setup": "Establish DLP policies, sensitivity labels, and compliance controls that protect your data.",
+    "AI Adoption & Change Management": "Drive Copilot adoption through executive alignment, champion networks, and structured change management.",
+    "SharePoint & Teams Modernisation": "Redesign your intranet and collaboration spaces so Copilot has clean, well-structured data to work with.",
+  },
+  "m365-health": {
+    "M365 Tenant Health Audit": "A structured end-to-end audit of your Microsoft 365 tenant covering security posture, identity controls, collaboration governance, admin role hygiene, and data protection readiness.",
+    "Copilot for M365 Readiness Assessment": "A focused evaluation of your tenant's readiness to deploy Microsoft Copilot — licensing, data governance, security controls, and adoption planning.",
+    "Governance Foundations Package": "A full governance framework build-out: DLP policies, sensitivity labels, lifecycle management, and compliance controls tailored to your regulatory environment.",
+  },
+  sharepoint: {
+    "M365 Tenant Health Audit": "A comprehensive review of your Microsoft 365 tenant to resolve the underlying configuration and governance issues limiting your SharePoint environment.",
+    "Governance Foundations Package": "Naming conventions, lifecycle policies, permission models, and hub site architecture — everything needed to bring order and scalability to your SharePoint environment.",
+    "Copilot for M365 Readiness Assessment": "Evaluate your readiness to deploy Microsoft Copilot, which relies on well-governed, well-structured SharePoint content to deliver accurate AI-generated results.",
+  },
+  "power-platform": {
+    "Power Platform Quick-Start": "A focused 4-week sprint to stand up your Power Platform governance framework, deploy the CoE Toolkit, and deliver one production-ready app or flow as a repeatable template.",
+    "Governance Foundations Package": "Enterprise-scale governance across your full Microsoft 365 environment, including Power Platform DLP policies, environment strategy, and maker lifecycle management.",
+    "Copilot for M365 Readiness Assessment": "Assess your readiness to add AI to your Power Platform practice — including AI Builder, Copilot Studio, and Copilot-powered app and flow generation.",
+  },
+  "security-compliance": {
+    "Governance Foundations Package": "A complete M365 security and governance build-out: Conditional Access policies, sensitivity labels, DLP rules, retention schedules, and compliance framework alignment.",
+    "M365 Tenant Health Audit": "A comprehensive tenant audit that surfaces every security misconfiguration, licensing gap, and governance deficiency creating risk in your environment.",
+    "Copilot for M365 Readiness Assessment": "Validate that your security and compliance controls are strong enough to deploy Microsoft Copilot safely — including data classification, DLP, and information barriers.",
+  },
+  teams: {
+    "M365 Tenant Health Audit": "A full Microsoft 365 tenant audit to resolve the underlying configuration gaps that are limiting your Teams environment's governance and performance.",
+    "Governance Foundations Package": "Teams lifecycle policies, naming conventions, guest access governance, and channel structure standards — everything needed to make your Teams environment auditable and manageable.",
+    "Copilot for M365 Readiness Assessment": "Assess your readiness to deploy Copilot for Microsoft Teams — meeting summaries, chat drafting, intelligent recaps, and AI-powered channel assistance.",
+  },
+  migration: {
+    "Migration Readiness Assessment": "A structured pre-migration assessment that evaluates your source environment complexity, identity readiness, governance posture, and stakeholder alignment — producing a formal go/no-go recommendation.",
+    "Governance Foundations Package": "Establish the DLP policies, sensitivity labels, retention schedules, and lifecycle controls that should be in place in your Microsoft 365 tenant before or alongside migration execution.",
+    "M365 Tenant Health Audit": "A post-migration tenant health audit to validate that your newly migrated Microsoft 365 environment is correctly configured, secured, and governed.",
+  },
+  governance: {
+    "Governance Foundations Package": "A complete Microsoft 365 governance framework: acceptable use policies, data classification standards, DLP enforcement, retention schedules, lifecycle management, and compliance framework alignment.",
+    "Copilot for M365 Readiness Assessment": "With strong governance in place, evaluate your full Microsoft Copilot readiness — ensuring the data governance controls Copilot relies on are already operational.",
+    "M365 Tenant Health Audit": "A comprehensive tenant audit that validates your governance controls are correctly implemented and identifies gaps between your policies and the technical configuration.",
+  },
 };
 
 const SCORING_CONFIGS: Record<string, ScoringConfig> = {
@@ -401,6 +440,10 @@ router.post("/quiz/chat", chatLimiter, async (req, res) => {
   if (!parsed.success) return res.status(400).json({ error: "Invalid request body" });
 
   const { messages, quizType } = parsed.data;
+  const knownQuizTypes = Object.keys(SYSTEM_PROMPTS);
+  if (!knownQuizTypes.includes(quizType)) {
+    req.log.warn({ quizType }, "quiz/chat: unknown quizType — falling back to copilot");
+  }
   const systemPrompt = SYSTEM_PROMPTS[quizType] ?? SYSTEM_PROMPTS.copilot;
 
   try {
@@ -439,6 +482,10 @@ router.post("/quiz/submit", submitLimiter, async (req, res) => {
   if (!parsed.success) return res.status(400).json({ error: "Invalid request body" });
 
   const { name, email, company, conversation, quizType } = parsed.data;
+  const knownQuizTypes = Object.keys(SCORING_CONFIGS);
+  if (!knownQuizTypes.includes(quizType)) {
+    req.log.warn({ quizType }, "quiz/submit: unknown quizType — falling back to copilot scoring");
+  }
   const cfg = SCORING_CONFIGS[quizType] ?? SCORING_CONFIGS.copilot;
 
   const conversationText = conversation
@@ -586,7 +633,7 @@ Respond ONLY with valid JSON in this exact shape:
     tier,
     recommendedService,
     categoryScores: scores,
-    serviceDescription: quizType === "copilot" ? (COPILOT_SERVICE_MAP[recommendedService ?? ""] ?? "") : "",
+    serviceDescription: SERVICE_DESCRIPTIONS[quizType]?.[recommendedService ?? ""] ?? "",
     whatThisMeans,
     whyThisFits,
     roiProjection,
