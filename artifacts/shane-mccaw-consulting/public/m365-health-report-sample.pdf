@@ -1,0 +1,456 @@
+%PDF-1.4
+%‚„œ”
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [3 0 R] /Count 1 >>
+endobj
+3 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 7 0 R /Resources << /Font << /FB 4 0 R /FR 5 0 R /FO 6 0 R >> >> >>
+endobj
+4 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>
+endobj
+5 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>
+endobj
+6 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Oblique /Encoding /WinAnsiEncoding >>
+endobj
+7 0 obj
+<< /Length 4909 >>
+stream
+q
+0.92 0.85 0.85 rg
+BT
+/FB 72 Tf
+0.707 0.707 -0.707 0.707 145 270 Tm
+(SAMPLE) Tj
+ET
+Q
+q
+0.039 0.145 0.251 rg
+0 702 612 90 re f
+Q
+q
+0 0.471 0.831 rg
+0 696 612 6 re f
+Q
+BT
+/FB 9 Tf
+1 1 1 rg
+50 757 Td
+(PREPARED BY SHANE McCAW CONSULTING) Tj
+ET
+BT
+/FB 20 Tf
+1 1 1 rg
+50 727 Td
+(Microsoft 365 Tenant Health Report) Tj
+ET
+BT
+/FR 9 Tf
+0.6 0.7 0.85 rg
+50 710 Td
+(NASA-Methodology Assessment  |  CONFIDENTIAL  |  Sample Report with Placeholder Data) Tj
+ET
+q
+0.97 0.976 0.988 rg
+40 602 532 85 re f
+Q
+q
+0 0.471 0.831 RG
+0.5 w
+40 602 532 85 re s
+Q
+BT
+/FB 10 Tf
+0.039 0.145 0.251 rg
+56 672 Td
+(Client Organisation:) Tj
+/FR 10 Tf
+130 0 Td
+(Contoso Corporation \(Sample\)) Tj
+ET
+BT
+/FB 10 Tf
+0.039 0.145 0.251 rg
+56 652 Td
+(Assessment Date:) Tj
+/FR 10 Tf
+110 0 Td
+(January 2025) Tj
+ET
+BT
+/FB 10 Tf
+0.039 0.145 0.251 rg
+56 632 Td
+(Prepared By:) Tj
+/FR 10 Tf
+82 0 Td
+(Shane McCaw, Lead Microsoft 365 Architect) Tj
+ET
+BT
+/FB 10 Tf
+0.039 0.145 0.251 rg
+300 672 Td
+(M365 Tenant:) Tj
+/FR 10 Tf
+76 0 Td
+(contoso.onmicrosoft.com) Tj
+ET
+BT
+/FB 10 Tf
+0.039 0.145 0.251 rg
+300 652 Td
+(Report Reference:) Tj
+/FR 10 Tf
+104 0 Td
+(M365-HA-2025-001) Tj
+ET
+BT
+/FB 13 Tf
+0.039 0.145 0.251 rg
+40 567 Td
+(OVERALL HEALTH SCORE) Tj
+ET
+q
+0 0.471 0.831 rg
+40 507 100 55 re f
+Q
+BT
+/FB 26 Tf
+1 1 1 rg
+55 527 Td
+(34) Tj
+ET
+BT
+/FR 9 Tf
+1 1 1 rg
+48 512 Td
+(out of 50) Tj
+ET
+q
+0.949 0.976 0.996 rg
+150 507 170 55 re f
+Q
+BT
+/FB 9 Tf
+0 0.471 0.831 rg
+158 547 Td
+(MATURITY TIER) Tj
+ET
+BT
+/FB 16 Tf
+0.039 0.145 0.251 rg
+158 524 Td
+(Developing) Tj
+ET
+q
+0.996 0.949 0.949 rg
+330 507 242 55 re f
+Q
+BT
+/FB 9 Tf
+0.7 0.1 0.1 rg
+338 547 Td
+(HIGH-RISK AREAS) Tj
+ET
+BT
+/FB 16 Tf
+0.039 0.145 0.251 rg
+338 524 Td
+(3 Critical  |  5 Medium) Tj
+ET
+0.5 w
+40 492 m
+572 492 l
+S
+BT
+/FB 13 Tf
+0.039 0.145 0.251 rg
+40 467 Td
+(HEALTH DIMENSION SCORES) Tj
+ET
+BT
+/FR 10 Tf
+0.039 0.145 0.251 rg
+40 442 Td
+(Security Posture) Tj
+ET
+BT
+/FB 10 Tf
+0.8 0.2 0.2 rg
+390 442 Td
+(6/10) Tj
+ET
+q
+0.88 0.88 0.88 rg
+200 440 180 10 re f
+Q
+q
+0.8 0.2 0.2 rg
+200 440 108 10 re f
+Q
+BT
+/FR 10 Tf
+0.039 0.145 0.251 rg
+40 417 Td
+(Identity & Conditional Access) Tj
+ET
+BT
+/FB 10 Tf
+0.85 0.45 0.1 rg
+390 417 Td
+(5/10) Tj
+ET
+q
+0.88 0.88 0.88 rg
+200 415 180 10 re f
+Q
+q
+0.85 0.45 0.1 rg
+200 415 90 10 re f
+Q
+BT
+/FR 10 Tf
+0.039 0.145 0.251 rg
+40 392 Td
+(Teams / SharePoint Sprawl) Tj
+ET
+BT
+/FB 10 Tf
+0.1 0.55 0.2 rg
+390 392 Td
+(8/10) Tj
+ET
+q
+0.88 0.88 0.88 rg
+200 390 180 10 re f
+Q
+q
+0.1 0.55 0.2 rg
+200 390 144 10 re f
+Q
+BT
+/FR 10 Tf
+0.039 0.145 0.251 rg
+40 367 Td
+(Admin Roles & Shadow IT) Tj
+ET
+BT
+/FB 10 Tf
+0.85 0.45 0.1 rg
+390 367 Td
+(7/10) Tj
+ET
+q
+0.88 0.88 0.88 rg
+200 365 180 10 re f
+Q
+q
+0.85 0.45 0.1 rg
+200 365 126 10 re f
+Q
+BT
+/FR 10 Tf
+0.039 0.145 0.251 rg
+40 342 Td
+(DLP & Sensitivity Labels) Tj
+ET
+BT
+/FB 10 Tf
+0.1 0.55 0.2 rg
+390 342 Td
+(8/10) Tj
+ET
+q
+0.88 0.88 0.88 rg
+200 340 180 10 re f
+Q
+q
+0.1 0.55 0.2 rg
+200 340 144 10 re f
+Q
+0.5 w
+40 312 m
+572 312 l
+S
+BT
+/FB 13 Tf
+0.039 0.145 0.251 rg
+40 292 Td
+(KEY FINDINGS) Tj
+ET
+q
+0.8 0.1 0.1 rg
+40 269 55 13 re f
+Q
+BT
+/FB 7 Tf
+1 1 1 rg
+43 272 Td
+(CRITICAL) Tj
+ET
+BT
+/FR 9 Tf
+0.039 0.145 0.251 rg
+102 272 Td
+(MFA not enforced for 23 accounts including 4 admin accounts) Tj
+ET
+q
+0.8 0.1 0.1 rg
+40 251 55 13 re f
+Q
+BT
+/FB 7 Tf
+1 1 1 rg
+43 254 Td
+(CRITICAL) Tj
+ET
+BT
+/FR 9 Tf
+0.039 0.145 0.251 rg
+102 254 Td
+(No Conditional Access policies configured for legacy authentication block) Tj
+ET
+q
+0.8 0.1 0.1 rg
+40 233 55 13 re f
+Q
+BT
+/FB 7 Tf
+1 1 1 rg
+43 236 Td
+(CRITICAL) Tj
+ET
+BT
+/FR 9 Tf
+0.039 0.145 0.251 rg
+102 236 Td
+(DMARC policy set to p=none  domain spoofing risk unmitigated) Tj
+ET
+q
+0.85 0.45 0.1 rg
+40 215 55 13 re f
+Q
+BT
+/FB 7 Tf
+1 1 1 rg
+43 218 Td
+(MEDIUM) Tj
+ET
+BT
+/FR 9 Tf
+0.039 0.145 0.251 rg
+102 218 Td
+(148 Teams with no owner assigned in the past 6 months) Tj
+ET
+q
+0.85 0.45 0.1 rg
+40 197 55 13 re f
+Q
+BT
+/FB 7 Tf
+1 1 1 rg
+43 200 Td
+(MEDIUM) Tj
+ET
+BT
+/FR 9 Tf
+0.039 0.145 0.251 rg
+102 200 Td
+(No DLP policies configured for financial data or PII) Tj
+ET
+q
+0.85 0.45 0.1 rg
+40 179 55 13 re f
+Q
+BT
+/FB 7 Tf
+1 1 1 rg
+43 182 Td
+(MEDIUM) Tj
+ET
+BT
+/FR 9 Tf
+0.039 0.145 0.251 rg
+102 182 Td
+(6 Global Administrator accounts  least-privilege not applied) Tj
+ET
+q
+0.1 0.45 0.75 rg
+40 161 55 13 re f
+Q
+BT
+/FB 7 Tf
+1 1 1 rg
+43 164 Td
+(LOW) Tj
+ET
+BT
+/FR 9 Tf
+0.039 0.145 0.251 rg
+102 164 Td
+(Sensitivity labels created but auto-labelling not configured) Tj
+ET
+q
+0.1 0.45 0.75 rg
+40 143 55 13 re f
+Q
+BT
+/FB 7 Tf
+1 1 1 rg
+43 146 Td
+(LOW) Tj
+ET
+BT
+/FR 9 Tf
+0.039 0.145 0.251 rg
+102 146 Td
+(Microsoft Secure Score: 34%  47 improvement actions available) Tj
+ET
+0.5 w
+40 123 m
+572 123 l
+S
+q
+0.039 0.145 0.251 rg
+0 0 612 45 re f
+Q
+BT
+/FR 8 Tf
+0.6 0.7 0.85 rg
+40 20 Td
+(Shane McCaw Consulting  |  www.shanemccaw.com  |  This report contains placeholder data for illustrative purposes only.) Tj
+ET
+BT
+/FR 8 Tf
+0.6 0.7 0.85 rg
+40 8 Td
+(Confidential  |  Not for distribution  |  SAMPLE DOCUMENT) Tj
+ET
+BT
+/FR 8 Tf
+0.6 0.7 0.85 rg
+500 20 Td
+(Page 1 of 1) Tj
+ET
+endstream
+endobj
+xref
+0 8
+0000000000 65535 f 
+0000000015 00000 n 
+0000000015 00000 n 
+0000000015 00000 n 
+0000000015 00000 n 
+0000000015 00000 n 
+0000000015 00000 n 
+0000000015 00000 n 
+trailer
+<< /Size 8 /Root 1 0 R >>
+startxref
+5532
+%%EOF

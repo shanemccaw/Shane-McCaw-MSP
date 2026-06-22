@@ -17,6 +17,7 @@ import {
   Database,
   Globe,
   ArrowRight,
+  Download,
 } from "lucide-react";
 
 const config: QuizConfig = {
@@ -472,6 +473,15 @@ export default function M365HealthQuiz() {
               <CTAButton onClick={() => setModalOpen(true)} className="mt-8 w-full">
                 Get Your Report Free <ArrowRight className="w-4 h-4" />
               </CTAButton>
+              <a
+                href="/m365-health-report-sample.pdf"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="mt-3 flex items-center justify-center gap-2 w-full rounded-lg border border-white/20 py-2.5 text-sm font-semibold text-white/80 hover:bg-white/10 hover:text-white transition-colors"
+              >
+                <Download className="w-4 h-4" />
+                View Sample Report (PDF)
+              </a>
             </div>
           </div>
         </div>
