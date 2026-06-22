@@ -988,6 +988,14 @@ export default function ProjectDetailPage() {
   const [confirmRegenerateTarget, setConfirmRegenerateTarget] = useState<string | null>(null);
   const [generateProgress, setGenerateProgress] = useState<{ count: number; total: number; currentName: string } | null>(null);
   const [artifactErrors, setArtifactErrors] = useState<Record<string, string>>({});
+  const [draftLoading, setDraftLoading] = useState(false);
+  const [draftProgress, setDraftProgress] = useState<{ count: number; total: number; currentName: string } | null>(null);
+  const [draftModalOpen, setDraftModalOpen] = useState(false);
+  const [drafts, setDrafts] = useState<Record<string, string>>({});
+  const [draftStreamErrors, setDraftStreamErrors] = useState<Record<string, string>>({});
+  const [selectedDraftName, setSelectedDraftName] = useState<string | null>(null);
+  const [finalizeProgress, setFinalizeProgress] = useState<{ done: number; total: number } | null>(null);
+  const [finalizeErrors, setFinalizeErrors] = useState<Record<string, string>>({});
 
   const allTasksClosed = tasks.length > 0 && tasks.every(t => t.column === "completed");
 
@@ -1140,6 +1148,123 @@ export default function ProjectDetailPage() {
       toast({ title: "Network error", description: "Could not reach the server.", variant: "destructive" });
     } finally {
       setRegeneratingArtifact(null);
+    }
+  };
+
+  type SseDraftEvent =
+    | { type: "progress"; artifactName: string; count: number; total: number }
+    | { type: "artifactDraft"; artifactName: string; markdown: string }
+    | { type: "artifactError"; artifactName: string; error: string }
+    | { type: "done"; drafts: Array<{ artifactName: string; markdown: string }>; errors?: string[] }
+    | { type: "error"; error: string };
+
+  const handleStartDrafting = async () => {
+    if (!projectId) return;
+    setDraftLoading(true);
+    setDraftProgress(null);
+    setDrafts({});
+    setDraftStreamErrors({});
+    setFinalizeErrors({});
+    setGenerateArtifactsError(null);
+    try {
+      const res = await fetchWithAuth(`/api/admin/projects/${projectId}/draft-artifacts`, { method: "POST" });
+      const contentType = res.headers.get("content-type") ?? "";
+      if (!res.ok || !contentType.includes("text/event-stream")) {
+        const data = await res.json() as { error?: string };
+        setGenerateArtifactsError(data.error ?? "Unknown error");
+        return;
+      }
+
+      const reader = res.body!.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      const accDrafts: Record<string, string> = {};
+      const accErrors: Record<string, string> = {};
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const messages = buffer.split("\n\n");
+        buffer = messages.pop() ?? "";
+        for (const message of messages) {
+          const dataLine = message.split("\n").find(l => l.startsWith("data: "));
+          if (!dataLine) continue;
+          try {
+            const event = JSON.parse(dataLine.slice(6)) as SseDraftEvent;
+            if (event.type === "progress") {
+              setDraftProgress({ count: event.count, total: event.total, currentName: event.artifactName });
+            } else if (event.type === "artifactDraft") {
+              accDrafts[event.artifactName] = event.markdown;
+              setDrafts({ ...accDrafts });
+            } else if (event.type === "artifactError") {
+              accErrors[event.artifactName] = event.error;
+              setDraftStreamErrors({ ...accErrors });
+            } else if (event.type === "done") {
+              setDraftProgress(null);
+              if (Object.keys(accDrafts).length > 0) {
+                setDrafts({ ...accDrafts });
+                setDraftStreamErrors({ ...accErrors });
+                setSelectedDraftName(Object.keys(accDrafts)[0] ?? null);
+                setDraftModalOpen(true);
+              } else {
+                setGenerateArtifactsError("All draft generations failed.");
+              }
+            } else if (event.type === "error") {
+              setDraftProgress(null);
+              setGenerateArtifactsError(event.error);
+            }
+          } catch { /* malformed SSE */ }
+        }
+      }
+    } catch {
+      setGenerateArtifactsError("Network error — could not reach the server.");
+      setDraftProgress(null);
+    } finally {
+      setDraftLoading(false);
+      setDraftProgress(null);
+    }
+  };
+
+  const handleFinalizeAll = async () => {
+    if (!projectId) return;
+    const entries = Object.entries(drafts);
+    if (entries.length === 0) return;
+    setFinalizeProgress({ done: 0, total: entries.length });
+    setFinalizeErrors({});
+    let completed = 0;
+    const newErrors: Record<string, string> = {};
+    for (const [artifactName, markdown] of entries) {
+      try {
+        const res = await fetchWithAuth(`/api/admin/projects/${projectId}/finalize-artifact`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ artifactName, markdown }),
+        });
+        type FinalizeResult = { sharepointUrl?: string; artifacts?: Array<{ artifactName: string; sharepointUrl: string; generatedAt: string }>; error?: string };
+        const data = await res.json() as FinalizeResult;
+        if (res.ok && data.artifacts) {
+          setProject(prev => prev ? { ...prev, generatedArtifacts: data.artifacts! } : prev);
+        } else {
+          newErrors[artifactName] = data.error ?? "Failed to save";
+        }
+      } catch {
+        newErrors[artifactName] = "Network error";
+      }
+      completed++;
+      setFinalizeProgress({ done: completed, total: entries.length });
+    }
+    setFinalizeErrors(newErrors);
+    setFinalizeProgress(null);
+    if (Object.keys(newErrors).length === 0) {
+      setDraftModalOpen(false);
+      setDrafts({});
+      toast({ title: `${entries.length} artifact${entries.length !== 1 ? "s" : ""} saved as PDF${entries.length !== 1 ? "s" : ""}`, description: "All PDFs uploaded to SharePoint." });
+    } else if (Object.keys(newErrors).length < entries.length) {
+      const ok = entries.length - Object.keys(newErrors).length;
+      toast({ title: `${ok} of ${entries.length} artifacts saved`, description: `${Object.keys(newErrors).length} failed — see editor for details.` });
+    } else {
+      toast({ title: "All artifacts failed to save", description: "Check the editor for error details.", variant: "destructive" });
     }
   };
 
@@ -1899,6 +2024,29 @@ export default function ProjectDetailPage() {
           </div>
         </div>
 
+        {/* ── Draft progress bar ── */}
+        {draftProgress && (
+          <div className="mb-4 bg-[#F7F9FC] border border-[#0078D4]/30 rounded-xl px-4 py-3">
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-xs font-semibold text-[#0A2540]">
+                Drafting {draftProgress.count} of {draftProgress.total}
+              </p>
+              <p className="text-[11px] text-muted-foreground">
+                {Math.round((draftProgress.count / draftProgress.total) * 100)}%
+              </p>
+            </div>
+            <div className="w-full h-2 bg-[#0A2540]/10 rounded-full overflow-hidden">
+              <div
+                className="h-full bg-gradient-to-r from-[#0078D4] to-[#00B4D8] rounded-full transition-all duration-500 ease-out"
+                style={{ width: `${(draftProgress.count / draftProgress.total) * 100}%` }}
+              />
+            </div>
+            <p className="mt-2 text-[11px] text-muted-foreground truncate">
+              <span className="font-medium text-[#0A2540]">{draftProgress.currentName}</span>
+            </p>
+          </div>
+        )}
+
         {/* ── Live progress bar ── */}
         {generateProgress && (
           <div className="mb-4 bg-[#F7F9FC] border border-[#0078D4]/30 rounded-xl px-4 py-3">
@@ -2044,9 +2192,9 @@ export default function ProjectDetailPage() {
               <AlertDialogDescription asChild>
                 <div className="space-y-3">
                   <p>
-                    The following artifacts will be drafted by AI, rendered as PDFs, and uploaded to the client's SharePoint.
+                    The AI will draft each artifact below as Markdown. A review editor will open so you can edit before any PDF is saved to SharePoint.
                     {project.generatedArtifacts && project.generatedArtifacts.length > 0 && (
-                      <span className="block mt-1 text-amber-700 font-medium">Existing PDFs will be overwritten.</span>
+                      <span className="block mt-1 text-amber-700 font-medium">Existing PDFs will only be overwritten if you save the reviewed drafts.</span>
                     )}
                   </p>
                   {(() => {
@@ -2073,9 +2221,9 @@ export default function ProjectDetailPage() {
               <AlertDialogCancel>Cancel</AlertDialogCancel>
               <AlertDialogAction
                 className="bg-[#0A2540] hover:bg-[#0A2540]/90 text-white"
-                onClick={() => void handleGenerateArtifacts()}
+                onClick={() => void handleStartDrafting()}
               >
-                Generate
+                Draft & Review
               </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>
@@ -2110,6 +2258,149 @@ export default function ProjectDetailPage() {
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
+
+        {/* ── Draft Review Modal ─────────────────────────────────────────── */}
+        <Dialog
+          open={draftModalOpen}
+          onOpenChange={open => {
+            if (!open && !finalizeProgress) {
+              setDraftModalOpen(false);
+              setDrafts({});
+              setDraftStreamErrors({});
+              setFinalizeErrors({});
+            }
+          }}
+        >
+          <DialogContent className="max-w-5xl flex flex-col" style={{ height: "82vh", maxHeight: "82vh" }}>
+            <DialogHeader className="flex-shrink-0">
+              <DialogTitle>Review &amp; Edit Artifact Drafts</DialogTitle>
+              <p className="text-xs text-muted-foreground mt-1">
+                Edit the AI-drafted Markdown below. Click <strong>Save as PDFs</strong> when ready — each artifact will be rendered and uploaded to SharePoint.
+              </p>
+            </DialogHeader>
+
+            <div className="flex gap-4 flex-1 min-h-0 overflow-hidden mt-4">
+              {/* Sidebar — artifact list */}
+              <div className="w-52 flex-shrink-0 border border-border rounded-xl overflow-y-auto bg-[#F7F9FC]">
+                {Object.keys(drafts).map(name => {
+                  const hasFinalizeError = !!finalizeErrors[name];
+                  return (
+                    <button
+                      key={name}
+                      onClick={() => setSelectedDraftName(name)}
+                      className={`w-full text-left px-3 py-2.5 text-xs font-semibold border-b border-border last:border-b-0 transition-colors ${
+                        selectedDraftName === name
+                          ? "bg-[#0078D4] text-white"
+                          : hasFinalizeError
+                          ? "bg-red-50 text-red-700 hover:bg-red-100"
+                          : "text-[#0A2540] hover:bg-[#0078D4]/10"
+                      }`}
+                    >
+                      <span className="block truncate">{name}</span>
+                      {hasFinalizeError && (
+                        <span className={`block text-[10px] font-normal mt-0.5 ${selectedDraftName === name ? "text-red-200" : "text-red-500"}`}>
+                          Failed to save
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
+                {Object.entries(draftStreamErrors).map(([name]) => (
+                  <div key={`derr-${name}`} className="px-3 py-2.5 text-xs border-b border-border last:border-b-0 bg-red-50">
+                    <span className="block truncate font-semibold text-red-700">{name}</span>
+                    <span className="block text-[10px] text-red-500 font-normal">Draft failed</span>
+                  </div>
+                ))}
+              </div>
+
+              {/* Markdown editor */}
+              <div className="flex-1 flex flex-col min-h-0">
+                {selectedDraftName && drafts[selectedDraftName] !== undefined ? (
+                  <>
+                    <div className="flex items-center justify-between mb-2 flex-shrink-0">
+                      <h3 className="text-sm font-bold text-[#0A2540] truncate">{selectedDraftName}</h3>
+                      <span className="text-[11px] text-muted-foreground ml-3 flex-shrink-0">Markdown</span>
+                    </div>
+                    <textarea
+                      className="flex-1 w-full font-mono text-xs border border-border rounded-xl px-4 py-3 resize-none focus:outline-none focus:ring-2 focus:ring-[#0078D4] bg-white"
+                      value={drafts[selectedDraftName]}
+                      onChange={e => {
+                        const name = selectedDraftName;
+                        if (name) setDrafts(prev => ({ ...prev, [name]: e.target.value }));
+                      }}
+                      disabled={!!finalizeProgress}
+                    />
+                    {finalizeErrors[selectedDraftName] && (
+                      <p className="mt-2 text-xs text-red-600 flex-shrink-0">
+                        <span className="font-semibold">Save failed:</span> {finalizeErrors[selectedDraftName]}
+                      </p>
+                    )}
+                  </>
+                ) : (
+                  <div className="flex-1 flex items-center justify-center text-sm text-muted-foreground">
+                    Select an artifact on the left to review and edit.
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Finalize progress bar */}
+            {finalizeProgress && (
+              <div className="mt-4 flex-shrink-0 bg-[#F7F9FC] border border-[#0078D4]/30 rounded-xl px-4 py-3">
+                <div className="flex items-center justify-between mb-1.5">
+                  <p className="text-xs font-semibold text-[#0A2540]">
+                    Saving {finalizeProgress.done} of {finalizeProgress.total}
+                  </p>
+                  <p className="text-[11px] text-muted-foreground">
+                    {Math.round((finalizeProgress.done / finalizeProgress.total) * 100)}%
+                  </p>
+                </div>
+                <div className="w-full h-1.5 bg-[#0A2540]/10 rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-gradient-to-r from-[#0078D4] to-[#00B4D8] rounded-full transition-all duration-500 ease-out"
+                    style={{ width: `${(finalizeProgress.done / finalizeProgress.total) * 100}%` }}
+                  />
+                </div>
+              </div>
+            )}
+
+            <DialogFooter className="mt-4 flex-shrink-0">
+              <button
+                onClick={() => {
+                  if (!finalizeProgress) {
+                    setDraftModalOpen(false);
+                    setDrafts({});
+                    setDraftStreamErrors({});
+                    setFinalizeErrors({});
+                  }
+                }}
+                disabled={!!finalizeProgress}
+                className="px-4 py-2 text-sm font-semibold text-[#0A2540] border border-border rounded-lg hover:bg-[#F7F9FC] transition-colors disabled:opacity-40"
+              >
+                Discard Drafts
+              </button>
+              <button
+                onClick={() => void handleFinalizeAll()}
+                disabled={!!finalizeProgress || Object.keys(drafts).length === 0}
+                className="flex items-center gap-2 px-4 py-2 text-sm font-semibold bg-[#0A2540] text-white rounded-lg hover:bg-[#0A2540]/90 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                {finalizeProgress ? (
+                  <>
+                    <div className="w-3.5 h-3.5 border border-white/40 border-t-white rounded-full animate-spin" />
+                    Saving PDFs…
+                  </>
+                ) : (
+                  <>
+                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    Save {Object.keys(drafts).length} artifact{Object.keys(drafts).length !== 1 ? "s" : ""} as PDF{Object.keys(drafts).length !== 1 ? "s" : ""}
+                  </>
+                )}
+              </button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </section>
 
       {/* ── Workflow Phases & Milestones ───────────────────────────────── */}

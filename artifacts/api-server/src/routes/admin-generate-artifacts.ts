@@ -123,41 +123,175 @@ async function generateArtifactPdf(
   return Buffer.from(pdfBytes);
 }
 
+type ProjectRow = typeof projectsTable.$inferSelect;
+type TaskRow    = typeof kanbanTasksTable.$inferSelect;
+
+function buildProjectContext(
+  project: Pick<ProjectRow, "title" | "description" | "phase">,
+  tasks: TaskRow[],
+  clientName: string,
+): string {
+  return [
+    `Project: ${project.title}`,
+    project.description ? `Description: ${project.description}` : null,
+    `Client: ${clientName}`,
+    `Phase: ${project.phase ?? "N/A"}`,
+    "",
+    "Completed Tasks:",
+    ...tasks.map(t => {
+      const meta = (t.taskMetadata ?? {}) as Record<string, unknown>;
+      const parts = [`- [${t.taskType ?? "task"}] ${t.title}`];
+      if (t.groupName) parts.push(`  Group: ${t.groupName}`);
+      if (t.description) parts.push(`  Description: ${t.description}`);
+      if (t.completionStatus) parts.push(`  Completion Status: ${t.completionStatus}`);
+      if (t.completionNotes) parts.push(`  Completion Notes: ${t.completionNotes}`);
+
+      const instructions = Array.isArray(meta.instructions) ? (meta.instructions as string[]) : [];
+      if (instructions.length > 0) parts.push(`  Instructions: ${instructions.join("; ")}`);
+
+      const checklist = Array.isArray(meta.checklist)
+        ? (meta.checklist as Array<{ id: string; label: string }>)
+        : [];
+      const checklistState = (meta.checklistState ?? {}) as Record<string, boolean>;
+      if (checklist.length > 0) {
+        const done = checklist.filter(i => checklistState[i.id]).length;
+        parts.push(`  Checklist (${done}/${checklist.length} completed):`);
+        for (const item of checklist) {
+          parts.push(`    [${checklistState[item.id] ? "x" : " "}] ${item.label}`);
+        }
+      }
+
+      const checklistItemData = (meta.checklistItemData ?? {}) as Record<string, Record<string, unknown>>;
+      const closureEntries = Object.entries(checklistItemData);
+      if (closureEntries.length > 0) {
+        parts.push(`  Captured Closure Data:`);
+        for (const [itemId, data] of closureEntries) {
+          const label = checklist.find(i => i.id === itemId)?.label ?? itemId;
+          const flat = Object.entries(data)
+            .map(([k, v]) => `${k}: ${typeof v === "string" ? v : JSON.stringify(v)}`)
+            .join(", ");
+          parts.push(`    ${label}: ${flat}`);
+        }
+      }
+
+      for (const field of [
+        "postureSummary", "findingsSummary", "outputSummary",
+        "riskLevel", "remediationSummary", "recommendation",
+      ] as const) {
+        if (typeof meta[field] === "string" && meta[field]) {
+          const label = field.replace(/([A-Z])/g, " $1").trim();
+          parts.push(`  ${label}: ${meta[field] as string}`);
+        }
+      }
+
+      const artifactsProduced = Array.isArray(meta.artifactsProduced) ? (meta.artifactsProduced as string[]) : [];
+      if (artifactsProduced.length > 0) parts.push(`  Artifacts Produced: ${artifactsProduced.join(", ")}`);
+      const clientDeliverables = Array.isArray(meta.clientDeliverables) ? (meta.clientDeliverables as string[]) : [];
+      if (clientDeliverables.length > 0) parts.push(`  Client Deliverables: ${clientDeliverables.join(", ")}`);
+      const uploadedArtifacts = Array.isArray(meta.uploadedArtifacts) ? (meta.uploadedArtifacts as string[]) : [];
+      if (uploadedArtifacts.length > 0) parts.push(`  Uploaded Files: ${uploadedArtifacts.join(", ")}`);
+
+      return parts.join("\n");
+    }),
+  ].filter(Boolean).join("\n");
+}
+
+const AI_PROMPT = (artifactName: string, projectContext: string) =>
+  `You are a senior Microsoft 365 consultant. Generate a professional project artifact document in Markdown format.
+
+Project Context:
+${projectContext}
+
+Generate the artifact: "${artifactName}"
+
+Requirements:
+- Use proper Markdown headings (##, ###) to structure the document
+- Be professional, detailed, and specific to the project context
+- Include all relevant sections for this type of document
+- Use bullet points for lists
+- Length: 400-800 words
+- Do NOT include a top-level title (# heading) — that will be added automatically
+- Start directly with the first section heading (## ...)`;
+
+// ── Shared pre-flight helper ───────────────────────────────────────────────
+async function loadProjectAndClient(projectId: number): Promise<
+  | { ok: false; status: number; body: object }
+  | { ok: true; project: ProjectRow; tasks: TaskRow[]; clientName: string; sharepointSiteId: string }
+> {
+  const [project] = await db.select().from(projectsTable).where(eq(projectsTable.id, projectId)).limit(1);
+  if (!project) return { ok: false, status: 404, body: { error: "Project not found" } };
+
+  const tasks = await db.select().from(kanbanTasksTable).where(eq(kanbanTasksTable.projectId, projectId));
+  if (tasks.length === 0) return { ok: false, status: 400, body: { error: "No tasks found for this project" } };
+
+  if (!graphCredentialsPresent()) {
+    return {
+      ok: false, status: 503,
+      body: {
+        error: "Microsoft Graph credentials are not configured. Set GRAPH_CLIENT_ID, GRAPH_CLIENT_SECRET, and GRAPH_TENANT_ID in Replit Secrets.",
+        code: "GRAPH_CREDENTIALS_MISSING",
+      },
+    };
+  }
+
+  let clientName = "Client";
+  let sharepointSiteId: string | null = null;
+  if (project.clientUserId) {
+    const [user] = await db.select().from(usersTable).where(eq(usersTable.id, project.clientUserId)).limit(1);
+    if (user) {
+      clientName = user.company ?? user.name ?? user.email ?? "Client";
+      sharepointSiteId = user.sharepointSiteId ?? null;
+    }
+  }
+
+  if (!sharepointSiteId) {
+    return {
+      ok: false, status: 503,
+      body: {
+        error: "The client does not have a SharePoint site ID configured. Edit the client profile in the CRM to add it.",
+        code: "SHAREPOINT_SITE_ID_MISSING",
+      },
+    };
+  }
+
+  return { ok: true, project, tasks, clientName, sharepointSiteId };
+}
+
+function collectArtifactNames(tasks: TaskRow[]): Set<string> {
+  const names = new Set<string>();
+  for (const task of tasks) {
+    const meta = task.taskMetadata as Record<string, unknown> | null;
+    if (meta) {
+      for (const field of ["artifactsProduced", "clientDeliverables"] as const) {
+        if (Array.isArray(meta[field])) {
+          for (const name of meta[field] as string[]) {
+            if (typeof name === "string" && name.trim()) names.add(name.trim());
+          }
+        }
+      }
+    }
+  }
+  return names;
+}
+
+const GENERATED_ARTIFACTS_FOLDER = "Generated Artifacts";
+
+// ── 1. Original: generate-artifacts (full draft + PDF + upload in one step) ─
 router.post(
   "/admin/projects/:projectId/generate-artifacts",
   requireAdmin,
   async (req, res) => {
     const projectId = parseInt(String(req.params.projectId), 10);
-    if (isNaN(projectId)) {
-      res.status(400).json({ error: "Invalid project ID" });
-      return;
-    }
+    if (isNaN(projectId)) { res.status(400).json({ error: "Invalid project ID" }); return; }
 
     const singleArtifactName: string | undefined =
       typeof req.body?.artifactName === "string" && req.body.artifactName.trim()
         ? req.body.artifactName.trim()
         : undefined;
 
-    const [project] = await db
-      .select()
-      .from(projectsTable)
-      .where(eq(projectsTable.id, projectId))
-      .limit(1);
-
-    if (!project) {
-      res.status(404).json({ error: "Project not found" });
-      return;
-    }
-
-    const tasks = await db
-      .select()
-      .from(kanbanTasksTable)
-      .where(eq(kanbanTasksTable.projectId, projectId));
-
-    if (tasks.length === 0) {
-      res.status(400).json({ error: "No tasks found for this project" });
-      return;
-    }
+    const loaded = await loadProjectAndClient(projectId);
+    if (!loaded.ok) { res.status(loaded.status).json(loaded.body); return; }
+    const { project, tasks, clientName, sharepointSiteId } = loaded;
 
     const incomplete = tasks.filter(t => t.column !== "completed");
     if (incomplete.length > 0 && !singleArtifactName) {
@@ -167,53 +301,8 @@ router.post(
       return;
     }
 
-    if (!graphCredentialsPresent()) {
-      res.status(503).json({
-        error: "Microsoft Graph credentials are not configured. Set GRAPH_CLIENT_ID, GRAPH_CLIENT_SECRET, and GRAPH_TENANT_ID in Replit Secrets.",
-        code: "GRAPH_CREDENTIALS_MISSING",
-      });
-      return;
-    }
-
-    let clientName = "Client";
-    let sharepointSiteId: string | null = null;
-    if (project.clientUserId) {
-      const [user] = await db
-        .select()
-        .from(usersTable)
-        .where(eq(usersTable.id, project.clientUserId))
-        .limit(1);
-      if (user) {
-        clientName = user.company ?? user.name ?? user.email ?? "Client";
-        sharepointSiteId = user.sharepointSiteId ?? null;
-      }
-    }
-
-    if (!sharepointSiteId) {
-      res.status(503).json({
-        error: "The client does not have a SharePoint site ID configured. Edit the client profile in the CRM to add it.",
-        code: "SHAREPOINT_SITE_ID_MISSING",
-      });
-      return;
-    }
-
-    const allArtifactNamesFromTasks = new Set<string>();
-    for (const task of tasks) {
-      const meta = task.taskMetadata as Record<string, unknown> | null;
-      if (meta) {
-        for (const field of ["artifactsProduced", "clientDeliverables"] as const) {
-          if (Array.isArray(meta[field])) {
-            for (const name of meta[field] as string[]) {
-              if (typeof name === "string" && name.trim()) {
-                allArtifactNamesFromTasks.add(name.trim());
-              }
-            }
-          }
-        }
-      }
-    }
-
-    if (allArtifactNamesFromTasks.size === 0 && !singleArtifactName) {
+    const allFromTasks = collectArtifactNames(tasks);
+    if (allFromTasks.size === 0 && !singleArtifactName) {
       res.status(400).json({
         error: "No artifacts are defined in the project tasks. Add artifact names to the 'Artifacts Produced' or 'Client Deliverables' fields on each task before generating.",
         code: "NO_ARTIFACTS_DEFINED",
@@ -223,70 +312,12 @@ router.post(
 
     const allArtifactNames: Set<string> = singleArtifactName
       ? new Set([singleArtifactName])
-      : allArtifactNamesFromTasks;
+      : allFromTasks;
 
-    const projectContext = [
-      `Project: ${project.title}`,
-      project.description ? `Description: ${project.description}` : null,
-      `Client: ${clientName}`,
-      `Phase: ${project.phase ?? "N/A"}`,
-      "",
-      "Completed Tasks:",
-      ...tasks.map(t => {
-        const meta = (t.taskMetadata ?? {}) as Record<string, unknown>;
-        const parts = [`- [${t.taskType ?? "task"}] ${t.title}`];
-        if (t.groupName) parts.push(`  Group: ${t.groupName}`);
-        if (t.description) parts.push(`  Description: ${t.description}`);
-        if (t.completionStatus) parts.push(`  Completion Status: ${t.completionStatus}`);
-        if (t.completionNotes) parts.push(`  Completion Notes: ${t.completionNotes}`);
+    const projectContext = buildProjectContext(project, tasks, clientName);
 
-        const instructions = Array.isArray(meta.instructions) ? (meta.instructions as string[]) : [];
-        if (instructions.length > 0) parts.push(`  Instructions: ${instructions.join("; ")}`);
-
-        const checklist = Array.isArray(meta.checklist) ? (meta.checklist as Array<{ id: string; label: string }>) : [];
-        const checklistState = (meta.checklistState ?? {}) as Record<string, boolean>;
-        if (checklist.length > 0) {
-          const done = checklist.filter(i => checklistState[i.id]).length;
-          parts.push(`  Checklist (${done}/${checklist.length} completed):`);
-          for (const item of checklist) {
-            parts.push(`    [${checklistState[item.id] ? "x" : " "}] ${item.label}`);
-          }
-        }
-
-        const checklistItemData = (meta.checklistItemData ?? {}) as Record<string, Record<string, unknown>>;
-        const closureEntries = Object.entries(checklistItemData);
-        if (closureEntries.length > 0) {
-          parts.push(`  Captured Closure Data:`);
-          for (const [itemId, data] of closureEntries) {
-            const label = checklist.find(i => i.id === itemId)?.label ?? itemId;
-            const flat = Object.entries(data).map(([k, v]) => `${k}: ${typeof v === "string" ? v : JSON.stringify(v)}`).join(", ");
-            parts.push(`    ${label}: ${flat}`);
-          }
-        }
-
-        for (const field of ["postureSummary", "findingsSummary", "outputSummary", "riskLevel", "remediationSummary", "recommendation"] as const) {
-          if (typeof meta[field] === "string" && meta[field]) {
-            const label = field.replace(/([A-Z])/g, " $1").trim();
-            parts.push(`  ${label}: ${meta[field] as string}`);
-          }
-        }
-
-        const artifactsProduced = Array.isArray(meta.artifactsProduced) ? (meta.artifactsProduced as string[]) : [];
-        if (artifactsProduced.length > 0) parts.push(`  Artifacts Produced: ${artifactsProduced.join(", ")}`);
-        const clientDeliverables = Array.isArray(meta.clientDeliverables) ? (meta.clientDeliverables as string[]) : [];
-        if (clientDeliverables.length > 0) parts.push(`  Client Deliverables: ${clientDeliverables.join(", ")}`);
-
-        const uploadedArtifacts = Array.isArray(meta.uploadedArtifacts) ? (meta.uploadedArtifacts as string[]) : [];
-        if (uploadedArtifacts.length > 0) parts.push(`  Uploaded Files: ${uploadedArtifacts.join(", ")}`);
-
-        return parts.join("\n");
-      }),
-    ].filter(Boolean).join("\n");
-
-    const GENERATED_ARTIFACTS_FOLDER = "Generated Artifacts";
     await ensureSharePointFolderAtRoot(sharepointSiteId, GENERATED_ARTIFACTS_FOLDER);
 
-    // ── Switch to SSE streaming ──────────────────────────────────────────────
     res.setHeader("Content-Type", "text/event-stream");
     res.setHeader("Cache-Control", "no-cache");
     res.setHeader("Connection", "keep-alive");
@@ -295,8 +326,8 @@ router.post(
 
     const sendEvent = (data: object) => {
       res.write(`data: ${JSON.stringify(data)}\n\n`);
-      const resWithFlush = res as unknown as { flush?: () => void };
-      if (typeof resWithFlush.flush === "function") resWithFlush.flush();
+      const r = res as unknown as { flush?: () => void };
+      if (typeof r.flush === "function") r.flush();
     };
 
     const generatedAt = new Date();
@@ -314,53 +345,20 @@ router.post(
         const aiResponse = await anthropic.messages.create({
           model: "claude-sonnet-4-6",
           max_tokens: 8192,
-          messages: [
-            {
-              role: "user",
-              content: `You are a senior Microsoft 365 consultant. Generate a professional project artifact document in Markdown format.
-
-Project Context:
-${projectContext}
-
-Generate the artifact: "${artifactName}"
-
-Requirements:
-- Use proper Markdown headings (##, ###) to structure the document
-- Be professional, detailed, and specific to the project context
-- Include all relevant sections for this type of document
-- Use bullet points for lists
-- Length: 400-800 words
-- Do NOT include a top-level title (# heading) — that will be added automatically
-- Start directly with the first section heading (## ...)`,
-            },
-          ],
+          messages: [{ role: "user", content: AI_PROMPT(artifactName, projectContext) }],
         });
-
         const textBlock = aiResponse.content.find(b => b.type === "text");
         const markdownContent = textBlock && textBlock.type === "text" ? textBlock.text : "";
 
-        const pdfBuffer = await generateArtifactPdf(
-          artifactName,
-          markdownContent,
-          project.title,
-          clientName,
-          generatedAt,
-        );
-
+        const pdfBuffer = await generateArtifactPdf(artifactName, markdownContent, project.title, clientName, generatedAt);
         const safeName = artifactName.replace(/[^a-zA-Z0-9_\- ]/g, "").replace(/\s+/g, "_");
         const filename = `${safeName}_${generatedAt.toISOString().slice(0, 10)}.pdf`;
 
-        const webUrl = await uploadFileToSharePoint(
-          sharepointSiteId,
-          "Generated Artifacts",
-          filename,
-          pdfBuffer,
-          "application/pdf",
-        );
-
+        const webUrl = await uploadFileToSharePoint(sharepointSiteId, GENERATED_ARTIFACTS_FOLDER, filename, pdfBuffer, "application/pdf");
         if (!webUrl) {
-          errors.push(`Failed to upload "${artifactName}" to SharePoint`);
-          sendEvent({ type: "artifactError", artifactName, error: `Failed to upload "${artifactName}" to SharePoint` });
+          const msg = `Failed to upload "${artifactName}" to SharePoint`;
+          errors.push(msg);
+          sendEvent({ type: "artifactError", artifactName, error: msg });
           continue;
         }
 
@@ -382,19 +380,157 @@ Requirements:
     }
 
     const merged = [
-      ...(project.generatedArtifacts ?? []).filter(
-        existing => !results.some(r => r.artifactName === existing.artifactName),
-      ),
+      ...(project.generatedArtifacts ?? []).filter(e => !results.some(r => r.artifactName === e.artifactName)),
       ...results,
     ];
-
-    await db
-      .update(projectsTable)
-      .set({ generatedArtifacts: merged, updatedAt: new Date() })
-      .where(eq(projectsTable.id, projectId));
-
+    await db.update(projectsTable).set({ generatedArtifacts: merged, updatedAt: new Date() }).where(eq(projectsTable.id, projectId));
     sendEvent({ type: "done", artifacts: merged, errors: errors.length > 0 ? errors : undefined });
     res.end();
+  },
+);
+
+// ── 2. draft-artifacts: AI drafts only (no PDF / no SharePoint) ─────────────
+router.post(
+  "/admin/projects/:projectId/draft-artifacts",
+  requireAdmin,
+  async (req, res) => {
+    const projectId = parseInt(String(req.params.projectId), 10);
+    if (isNaN(projectId)) { res.status(400).json({ error: "Invalid project ID" }); return; }
+
+    const singleArtifactName: string | undefined =
+      typeof req.body?.artifactName === "string" && req.body.artifactName.trim()
+        ? req.body.artifactName.trim()
+        : undefined;
+
+    const loaded = await loadProjectAndClient(projectId);
+    if (!loaded.ok) { res.status(loaded.status).json(loaded.body); return; }
+    const { project, tasks, clientName } = loaded;
+
+    const incomplete = tasks.filter(t => t.column !== "completed");
+    if (incomplete.length > 0 && !singleArtifactName) {
+      res.status(400).json({
+        error: `${incomplete.length} task${incomplete.length === 1 ? "" : "s"} not yet completed. All tasks must be in the Completed column.`,
+      });
+      return;
+    }
+
+    const allFromTasks = collectArtifactNames(tasks);
+    if (allFromTasks.size === 0 && !singleArtifactName) {
+      res.status(400).json({
+        error: "No artifacts are defined in the project tasks.",
+        code: "NO_ARTIFACTS_DEFINED",
+      });
+      return;
+    }
+
+    const allArtifactNames: Set<string> = singleArtifactName
+      ? new Set([singleArtifactName])
+      : allFromTasks;
+
+    const projectContext = buildProjectContext(project, tasks, clientName);
+
+    res.setHeader("Content-Type", "text/event-stream");
+    res.setHeader("Cache-Control", "no-cache");
+    res.setHeader("Connection", "keep-alive");
+    res.setHeader("X-Accel-Buffering", "no");
+    res.flushHeaders();
+
+    const sendEvent = (data: object) => {
+      res.write(`data: ${JSON.stringify(data)}\n\n`);
+      const r = res as unknown as { flush?: () => void };
+      if (typeof r.flush === "function") r.flush();
+    };
+
+    const drafts: Array<{ artifactName: string; markdown: string }> = [];
+    const errors: string[] = [];
+    const total = allArtifactNames.size;
+    let count = 0;
+
+    for (const artifactName of allArtifactNames) {
+      count++;
+      sendEvent({ type: "progress", artifactName, count, total });
+
+      try {
+        req.log.info({ artifactName }, "Drafting artifact with AI");
+        const aiResponse = await anthropic.messages.create({
+          model: "claude-sonnet-4-6",
+          max_tokens: 8192,
+          messages: [{ role: "user", content: AI_PROMPT(artifactName, projectContext) }],
+        });
+        const textBlock = aiResponse.content.find(b => b.type === "text");
+        const markdown = textBlock && textBlock.type === "text" ? textBlock.text : "";
+
+        drafts.push({ artifactName, markdown });
+        req.log.info({ artifactName }, "Artifact draft generated");
+        sendEvent({ type: "artifactDraft", artifactName, markdown });
+      } catch (err) {
+        logger.error({ err, artifactName }, "Error drafting artifact");
+        const msg = `Error drafting "${artifactName}": ${err instanceof Error ? err.message : String(err)}`;
+        errors.push(msg);
+        sendEvent({ type: "artifactError", artifactName, error: msg });
+      }
+    }
+
+    if (drafts.length === 0) {
+      sendEvent({ type: "error", error: "All draft generations failed.", details: errors });
+      res.end();
+      return;
+    }
+
+    sendEvent({ type: "done", drafts, errors: errors.length > 0 ? errors : undefined });
+    res.end();
+  },
+);
+
+// ── 3. finalize-artifact: render PDF + upload for ONE artifact ───────────────
+router.post(
+  "/admin/projects/:projectId/finalize-artifact",
+  requireAdmin,
+  async (req, res) => {
+    const projectId = parseInt(String(req.params.projectId), 10);
+    if (isNaN(projectId)) { res.status(400).json({ error: "Invalid project ID" }); return; }
+
+    const artifactName: string | undefined =
+      typeof req.body?.artifactName === "string" && req.body.artifactName.trim()
+        ? req.body.artifactName.trim()
+        : undefined;
+    const markdown: string | undefined =
+      typeof req.body?.markdown === "string" ? req.body.markdown : undefined;
+
+    if (!artifactName) { res.status(400).json({ error: "artifactName is required" }); return; }
+    if (markdown === undefined) { res.status(400).json({ error: "markdown is required" }); return; }
+
+    const loaded = await loadProjectAndClient(projectId);
+    if (!loaded.ok) { res.status(loaded.status).json(loaded.body); return; }
+    const { project, clientName, sharepointSiteId } = loaded;
+
+    try {
+      await ensureSharePointFolderAtRoot(sharepointSiteId, GENERATED_ARTIFACTS_FOLDER);
+
+      const generatedAt = new Date();
+      const pdfBuffer = await generateArtifactPdf(artifactName, markdown, project.title, clientName, generatedAt);
+      const safeName = artifactName.replace(/[^a-zA-Z0-9_\- ]/g, "").replace(/\s+/g, "_");
+      const filename = `${safeName}_${generatedAt.toISOString().slice(0, 10)}.pdf`;
+
+      const webUrl = await uploadFileToSharePoint(sharepointSiteId, GENERATED_ARTIFACTS_FOLDER, filename, pdfBuffer, "application/pdf");
+      if (!webUrl) {
+        res.status(502).json({ error: `Failed to upload "${artifactName}" to SharePoint` });
+        return;
+      }
+
+      const newEntry = { artifactName, sharepointUrl: webUrl, generatedAt: generatedAt.toISOString() };
+      const merged = [
+        ...(project.generatedArtifacts ?? []).filter(e => e.artifactName !== artifactName),
+        newEntry,
+      ];
+      await db.update(projectsTable).set({ generatedArtifacts: merged, updatedAt: new Date() }).where(eq(projectsTable.id, projectId));
+
+      req.log.info({ artifactName, webUrl }, "Artifact finalized and uploaded");
+      res.json({ sharepointUrl: webUrl, artifacts: merged });
+    } catch (err) {
+      logger.error({ err, artifactName }, "Error finalizing artifact");
+      res.status(500).json({ error: `Failed to finalize "${artifactName}": ${err instanceof Error ? err.message : String(err)}` });
+    }
   },
 );
 
