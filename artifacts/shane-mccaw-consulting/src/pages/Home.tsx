@@ -88,15 +88,6 @@ export default function Home() {
     "You need senior-level expertise without a full-time hire",
   ];
 
-  const entryKeywords = ["audit", "assessment", "readiness", "health"];
-  const allEntryPool = [...dbServiceAreas, ...dbOffers];
-  const entryPointServices = allEntryPool
-    .filter(s => {
-      const haystack = `${s.name ?? ""} ${s.category ?? ""} ${s.slug ?? ""}`.toLowerCase();
-      return entryKeywords.some(kw => haystack.includes(kw));
-    })
-    .slice(0, 2);
-
   return (
     <Layout>
       <SEOMeta
@@ -183,12 +174,6 @@ export default function Home() {
               Explore the Client Portal <ArrowRight className="w-4 h-4" />
             </a>
           </div>
-          <p className="mt-5 text-white/50 text-sm">
-            Not sure where to start?{" "}
-            <a href="/quick-win-quiz" className="text-white/70 hover:text-white underline underline-offset-2 transition-colors">
-              Take the 2-min quiz →
-            </a>
-          </p>
           <div className="mt-14 pt-10 border-t border-white/10 flex flex-wrap items-center justify-center gap-x-8 gap-y-3 text-white/50 text-sm font-medium">
             {[
               "Fractional M365 Architecture",
@@ -205,6 +190,87 @@ export default function Home() {
           </div>
         </div>
         <div className="absolute bottom-0 left-0 right-0 h-16 bg-gradient-to-t from-[#F7F9FC] to-transparent" />
+      </section>
+
+      {/* WHY THIS SITE EXISTS */}
+      <section className="bg-[#F7F9FC] py-20" data-testid="why-site-exists-section">
+        <div className="max-w-[860px] mx-auto px-6 text-center">
+          <p className="text-[#0078D4] text-sm font-semibold uppercase tracking-[0.1em] mb-3">Why This Site Exists</p>
+          <h2 className="text-3xl md:text-4xl font-extrabold text-[#0A2540] mb-8">
+            Senior M365 Architecture Shouldn't Require a Full-Time Hire
+          </h2>
+          <div className="text-lg text-foreground leading-relaxed space-y-4 text-left md:text-center">
+            <p>
+              Mid-market companies and regulated-industry organizations — healthcare, legal, financial services, and government contractors — face a quiet crisis. Their Microsoft 365 tenants are deployed, but ungoverned. Copilot is on the roadmap, but the tenant isn't ready for it. Compliance frameworks demand senior-level architecture, but hiring a full-time M365 architect costs $250,000+ per year.
+            </p>
+            <p>
+              The large enterprise has a team. The small business doesn't need one. It's the organizations in between — and those operating in regulated environments — that fall into the gap.
+            </p>
+            <p>
+              This site exists to close that gap. Shane McCaw spent six years applying NASA-grade M365 architecture to one of the most demanding compliance environments in the world. That same discipline — FedRAMP, FISMA, ITAR, GCC High — is now available to your organization on a fractional basis: fixed-price packages, senior-level delivery, and no layers between you and the architect doing the work.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      {/* START HERE */}
+      <section className="bg-white py-20" data-testid="start-here-section">
+        <div className="max-w-[1200px] mx-auto px-6">
+          <div className="text-center mb-12">
+            <p className="text-[#0078D4] text-sm font-semibold uppercase tracking-[0.1em] mb-3">Start Here</p>
+            <h2 className="text-3xl md:text-4xl font-extrabold text-[#0A2540]">
+              Where Do You Need to Start?
+            </h2>
+            <p className="text-muted-foreground mt-4 max-w-xl mx-auto leading-relaxed">
+              Three paths into Shane's work — pick the one that matches where you are right now.
+            </p>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div className="bg-[#F7F9FC] rounded-xl border border-border p-8 flex flex-col" data-testid="start-here-diagnose">
+              <div className="w-12 h-12 rounded-lg bg-[#0078D4]/10 flex items-center justify-center mb-5">
+                <Shield className="w-6 h-6 text-[#0078D4]" />
+              </div>
+              <h3 className="text-xl font-extrabold text-[#0A2540] mb-3">I need to diagnose my environment</h3>
+              <p className="text-muted-foreground text-sm leading-relaxed flex-1 mb-6">
+                Not sure where your tenant stands? Start with a readiness assessment or tenant health audit — you'll get a clear picture and a prioritized action plan before committing to anything larger.
+              </p>
+              <div className="flex flex-col gap-2">
+                <CTAButton href="/copilot-quiz" className="text-sm px-5 py-2.5 w-full">
+                  Take the Copilot Readiness Quiz
+                </CTAButton>
+                <Link href="/micro-offers" className="inline-flex items-center justify-center gap-1.5 text-[#0078D4] font-semibold text-sm hover:underline">
+                  See Tenant Health Audit <ArrowRight className="w-3.5 h-3.5" />
+                </Link>
+              </div>
+            </div>
+
+            <div className="bg-[#F7F9FC] rounded-xl border border-border p-8 flex flex-col" data-testid="start-here-quick-win">
+              <div className="w-12 h-12 rounded-lg bg-[#00B4D8]/10 flex items-center justify-center mb-5">
+                <Rocket className="w-6 h-6 text-[#00B4D8]" />
+              </div>
+              <h3 className="text-xl font-extrabold text-[#0A2540] mb-3">I need a fast, high-impact win</h3>
+              <p className="text-muted-foreground text-sm leading-relaxed flex-1 mb-6">
+                Fixed-price packages with clear deliverables and defined timelines — results in days, not months. No retainer required. Ideal when you need to demonstrate progress quickly or solve one focused problem.
+              </p>
+              <CTAButton href="/micro-offers" className="text-sm px-5 py-2.5 w-full" style={{ backgroundColor: "#00B4D8" }}>
+                Browse Quick Win Packages
+              </CTAButton>
+            </div>
+
+            <div className="bg-[#0A2540] rounded-xl border border-[#0A2540] p-8 flex flex-col" data-testid="start-here-fractional">
+              <div className="w-12 h-12 rounded-lg bg-white/10 flex items-center justify-center mb-5">
+                <Briefcase className="w-6 h-6 text-white" />
+              </div>
+              <h3 className="text-xl font-extrabold text-white mb-3">I need ongoing architecture leadership</h3>
+              <p className="text-white/70 text-sm leading-relaxed flex-1 mb-6">
+                Fractional architecture retainers give you a dedicated senior architect without the cost of a full-time hire. Monthly engagements — strategic oversight, hands-on delivery, and direct access to Shane.
+              </p>
+              <CTAButton href="/pricing" className="text-sm px-5 py-2.5 w-full bg-[#0078D4] hover:bg-[#005A9E]">
+                View Fractional Architecture Tiers
+              </CTAButton>
+            </div>
+          </div>
+        </div>
       </section>
 
       {/* COPILOT READINESS QUIZ CTA */}
@@ -427,25 +493,6 @@ export default function Home() {
             </p>
             <p className="text-muted-foreground mt-3 max-w-2xl mx-auto leading-relaxed">
               Every engagement is scoped and delivered personally by Shane. No project managers between you and the architect. No junior consultants doing the work.
-            </p>
-          </div>
-
-          {/* Quick Win Strategy */}
-          <div className="max-w-2xl mx-auto mb-10 text-center">
-            <p className="text-foreground leading-relaxed">
-              Not ready for a full retainer? A great place to start is a focused audit or readiness assessment
-              {entryPointServices.length > 0 && (
-                <> — such as {entryPointServices.map((s, i) => (
-                  <span key={s.slug ?? i}>
-                    {i > 0 && " or "}
-                    <strong>{s.name}</strong>
-                  </span>
-                ))}</>
-              )}
-              {" "}— that delivers clear findings and a prioritized action plan in days, not months.
-            </p>
-            <p className="text-sm text-muted-foreground italic mt-3">
-              For the first few clients, discounted entry‑point engagements may be offered — reach out to discuss availability.
             </p>
           </div>
 
