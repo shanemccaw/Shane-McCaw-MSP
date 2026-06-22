@@ -23,10 +23,20 @@ const RETAINER_ITEMS = [
   { label: "Architect Enterprise", href: "/retainers/architect-enterprise" },
 ];
 
+const QUIZ_ITEMS = [
+  { label: "Copilot AI Quiz",          href: "/copilot-quiz" },
+  { label: "M365 Health Check",        href: "/m365-health-quiz" },
+  { label: "SharePoint Readiness",     href: "/sharepoint-readiness-quiz" },
+  { label: "Power Platform Readiness", href: "/power-platform-quiz" },
+  { label: "Security & Compliance",    href: "/security-compliance-quiz" },
+  { label: "Teams Maturity",           href: "/teams-maturity-quiz" },
+  { label: "Migration Readiness",      href: "/migration-readiness-quiz" },
+  { label: "Governance Maturity",      href: "/governance-maturity-quiz" },
+];
+
 const NAV_LINKS = [
   { label: "About",     href: "/about" },
   { label: "Pricing",   href: "/pricing" },
-  { label: "AI Quiz",   href: "/copilot-quiz" },
   { label: "Resources", href: "/resources" },
   { label: "Contact",   href: "/contact" },
 ];
@@ -38,8 +48,10 @@ export function Header() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [servicesOpen, setServicesOpen] = useState(false);
   const [retainersOpen, setRetainersOpen] = useState(false);
+  const [quizzesOpen, setQuizzesOpen] = useState(false);
   const servicesRef = useRef<HTMLLIElement>(null);
   const retainersRef = useRef<HTMLLIElement>(null);
+  const quizzesRef = useRef<HTMLLIElement>(null);
 
   useEffect(() => {
     const handleScroll = () => setScrolled(window.scrollY > 20);
@@ -55,6 +67,9 @@ export function Header() {
       if (retainersRef.current && !retainersRef.current.contains(e.target as Node)) {
         setRetainersOpen(false);
       }
+      if (quizzesRef.current && !quizzesRef.current.contains(e.target as Node)) {
+        setQuizzesOpen(false);
+      }
     };
     document.addEventListener("mousedown", handleClick);
     return () => document.removeEventListener("mousedown", handleClick);
@@ -62,6 +77,7 @@ export function Header() {
 
   const isServicesActive = location.startsWith("/services") || location === "/micro-offers";
   const isRetainersActive = location.startsWith("/retainers");
+  const isQuizzesActive = QUIZ_ITEMS.some((item) => location === item.href);
 
   const headerClasses = cn(
     "fixed top-0 left-0 right-0 z-50 transition-all duration-300",
@@ -156,6 +172,43 @@ export function Header() {
               )}
             </li>
 
+            {/* Quizzes dropdown */}
+            <li ref={quizzesRef} className="relative">
+              <button
+                onClick={() => setQuizzesOpen((o) => !o)}
+                className={cn(
+                  "flex items-center gap-1 px-3 py-2 rounded-md text-sm font-medium transition-colors",
+                  isQuizzesActive
+                    ? "text-primary"
+                    : "text-white/80 hover:text-white hover:bg-white/5"
+                )}
+              >
+                Quizzes
+                <ChevronDown className={cn("w-3.5 h-3.5 transition-transform duration-200", quizzesOpen && "rotate-180")} />
+              </button>
+
+              {quizzesOpen && (
+                <div className="absolute top-full left-0 mt-1.5 w-56 bg-[#0A2540] border border-white/10 rounded-xl shadow-2xl overflow-hidden py-1.5">
+                  {QUIZ_ITEMS.map((item) => (
+                    <Link
+                      key={item.href}
+                      href={item.href}
+                      onClick={() => setQuizzesOpen(false)}
+                      data-track="nav"
+                      className={cn(
+                        "block px-4 py-2 text-sm transition-colors",
+                        location === item.href
+                          ? "text-primary font-medium"
+                          : "text-white/75 hover:text-white hover:bg-white/5"
+                      )}
+                    >
+                      {item.label}
+                    </Link>
+                  ))}
+                </div>
+              )}
+            </li>
+
             {NAV_LINKS.map((link) => (
               <li key={link.href}>
                 <Link
@@ -217,6 +270,24 @@ export function Header() {
             {/* Retainers section */}
             <p className="px-3 pt-1 pb-1.5 text-[10px] font-bold uppercase tracking-widest text-white/30">Retainers</p>
             {RETAINER_ITEMS.map((item) => (
+              <Link
+                key={item.href}
+                href={item.href}
+                onClick={() => setMobileMenuOpen(false)}
+                className={cn(
+                  "block px-3 py-2 rounded-lg text-sm transition-colors",
+                  location === item.href ? "text-primary font-medium" : "text-white/75 hover:text-white hover:bg-white/5"
+                )}
+              >
+                {item.label}
+              </Link>
+            ))}
+
+            <div className="my-2 border-t border-white/10" />
+
+            {/* Quizzes section */}
+            <p className="px-3 pt-1 pb-1.5 text-[10px] font-bold uppercase tracking-widest text-white/30">Quizzes</p>
+            {QUIZ_ITEMS.map((item) => (
               <Link
                 key={item.href}
                 href={item.href}
