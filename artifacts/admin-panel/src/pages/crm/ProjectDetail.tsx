@@ -1014,6 +1014,61 @@ export default function ProjectDetailPage() {
     return Array.from(names);
   };
 
+  const SONNET_INPUT_COST_PER_M  = 3;
+  const SONNET_OUTPUT_COST_PER_M = 15;
+  const EST_OUTPUT_TOKENS_PER_ARTIFACT = 600;
+  const EST_PROMPT_OVERHEAD_CHARS = 250;
+
+  const estimateArtifactCost = (names: string[]): {
+    perArtifact: { tokens: number; costUsd: number };
+    total: { tokens: number; costUsd: number };
+  } | null => {
+    if (names.length === 0 || !project) return null;
+    const contextLines: string[] = [
+      `Project: ${project.title}`,
+      ...(project.description ? [`Description: ${project.description}`] : []),
+      `Phase: ${project.phase ?? "N/A"}`,
+      "",
+      "Completed Tasks:",
+    ];
+    for (const t of tasks) {
+      const meta = (t.taskMetadata ?? {}) as Record<string, unknown>;
+      const parts = [`- [${t.taskType ?? "task"}] ${t.title}`];
+      if (t.groupName) parts.push(`  Group: ${t.groupName}`);
+      if (t.description) parts.push(`  Description: ${t.description}`);
+      if (t.completionStatus) parts.push(`  Completion Status: ${t.completionStatus}`);
+      if (t.completionNotes) parts.push(`  Completion Notes: ${t.completionNotes}`);
+      const instructions = Array.isArray(meta.instructions) ? (meta.instructions as string[]) : [];
+      if (instructions.length > 0) parts.push(`  Instructions: ${instructions.join("; ")}`);
+      const checklist = Array.isArray(meta.checklist)
+        ? (meta.checklist as Array<{ id: string; label: string }>)
+        : [];
+      if (checklist.length > 0) {
+        for (const item of checklist) parts.push(`    [ ] ${item.label}`);
+      }
+      const artifactsProduced = Array.isArray(meta.artifactsProduced)
+        ? (meta.artifactsProduced as string[])
+        : [];
+      if (artifactsProduced.length > 0) parts.push(`  Artifacts Produced: ${artifactsProduced.join(", ")}`);
+      const clientDeliverables = Array.isArray(meta.clientDeliverables)
+        ? (meta.clientDeliverables as string[])
+        : [];
+      if (clientDeliverables.length > 0) parts.push(`  Client Deliverables: ${clientDeliverables.join(", ")}`);
+      contextLines.push(parts.join("\n"));
+    }
+    const contextChars = contextLines.join("\n").length;
+    const inputTokensPerCall = Math.round((contextChars + EST_PROMPT_OVERHEAD_CHARS) / 4);
+    const perArtifactTokens = inputTokensPerCall + EST_OUTPUT_TOKENS_PER_ARTIFACT;
+    const perArtifactCost =
+      (inputTokensPerCall * SONNET_INPUT_COST_PER_M +
+        EST_OUTPUT_TOKENS_PER_ARTIFACT * SONNET_OUTPUT_COST_PER_M) /
+      1_000_000;
+    return {
+      perArtifact: { tokens: perArtifactTokens, costUsd: perArtifactCost },
+      total: { tokens: perArtifactTokens * names.length, costUsd: perArtifactCost * names.length },
+    };
+  };
+
   type SseEvent =
     | { type: "progress"; artifactName: string; count: number; total: number }
     | { type: "artifactDone"; artifactName: string; sharepointUrl: string }
@@ -2199,15 +2254,55 @@ export default function ProjectDetailPage() {
                   </p>
                   {(() => {
                     const names = artifactNamesToGenerate();
+                    const estimate = estimateArtifactCost(names);
+                    const fmtCost = (c: number) =>
+                      c < 0.01 ? `$${c.toFixed(4)}` : `$${c.toFixed(2)}`;
                     return names.length > 0 ? (
-                      <ul className="text-sm text-foreground space-y-1 border border-border rounded-lg px-3 py-2 bg-[#F7F9FC]">
-                        {names.map(n => (
-                          <li key={n} className="flex items-center gap-2">
-                            <span className="w-1.5 h-1.5 rounded-full bg-[#0078D4] flex-shrink-0" />
-                            {n}
-                          </li>
-                        ))}
-                      </ul>
+                      <>
+                        <ul className="text-sm text-foreground space-y-0 border border-border rounded-lg overflow-hidden bg-[#F7F9FC] divide-y divide-border">
+                          {names.map(n => (
+                            <li key={n} className="flex items-center justify-between gap-2 px-3 py-2">
+                              <span className="flex items-center gap-2 min-w-0">
+                                <span className="w-1.5 h-1.5 rounded-full bg-[#0078D4] flex-shrink-0" />
+                                <span className="truncate">{n}</span>
+                              </span>
+                              {estimate && (
+                                <span className="flex-shrink-0 text-[10px] text-muted-foreground font-medium tabular-nums whitespace-nowrap">
+                                  ~{estimate.perArtifact.tokens.toLocaleString()} tok · {fmtCost(estimate.perArtifact.costUsd)}
+                                </span>
+                              )}
+                            </li>
+                          ))}
+                        </ul>
+                        {estimate && names.length > 1 && (
+                          <div className="flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">
+                            <svg className="w-3.5 h-3.5 text-amber-600 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
+                            </svg>
+                            <p className="text-[11px] text-amber-800">
+                              Total estimated AI spend:{" "}
+                              <span className="font-semibold">~{estimate.total.tokens.toLocaleString()} tokens</span>
+                              {" · "}
+                              <span className="font-semibold">~{fmtCost(estimate.total.costUsd)}</span>
+                              {" "}({names.length} artifacts × claude-sonnet-4-6)
+                            </p>
+                          </div>
+                        )}
+                        {estimate && names.length === 1 && (
+                          <div className="flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">
+                            <svg className="w-3.5 h-3.5 text-amber-600 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
+                            </svg>
+                            <p className="text-[11px] text-amber-800">
+                              Estimated AI spend:{" "}
+                              <span className="font-semibold">~{estimate.total.tokens.toLocaleString()} tokens</span>
+                              {" · "}
+                              <span className="font-semibold">~{fmtCost(estimate.total.costUsd)}</span>
+                              {" "}(claude-sonnet-4-6)
+                            </p>
+                          </div>
+                        )}
+                      </>
                     ) : (
                       <p className="text-sm text-muted-foreground italic">
                         No artifact names found in task metadata yet.
