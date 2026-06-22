@@ -69,11 +69,13 @@ export default function Contact() {
   const [isLoading, setIsLoading] = useState(false);
   const [isSubmitted, setIsSubmitted] = useState(false);
   const [initError, setInitError] = useState(false);
-  const bottomRef = useRef<HTMLDivElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
   const scrollToBottom = () => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    if (containerRef.current) {
+      containerRef.current.scrollTop = containerRef.current.scrollHeight;
+    }
   };
 
   useEffect(() => {
@@ -248,7 +250,7 @@ export default function Contact() {
                   </span>
                 </div>
 
-                <div className="flex-1 overflow-y-auto px-6 py-6" style={{ maxHeight: "440px" }}>
+                <div ref={containerRef} className="flex-1 overflow-y-auto px-6 py-6" style={{ maxHeight: "440px" }}>
                   {initError && messages.length === 0 && !isLoading && (
                     <div className="text-sm text-muted-foreground text-center py-8">
                       Couldn't connect to the assistant.{" "}
@@ -262,7 +264,6 @@ export default function Contact() {
                     <ChatBubble key={i} message={msg} />
                   ))}
                   {isLoading && <TypingIndicator />}
-                  <div ref={bottomRef} />
                 </div>
 
                 <div className="border-t border-border px-4 py-4">
