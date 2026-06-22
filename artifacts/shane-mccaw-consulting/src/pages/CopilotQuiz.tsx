@@ -505,12 +505,32 @@ function QuizModal({ onClose }: { onClose: () => void }) {
                 )}
               </div>
 
-              <a
-                href="/contact"
-                className="w-full py-3 px-6 bg-primary hover:bg-primary/90 text-white font-semibold rounded-lg transition-colors flex items-center justify-center gap-2"
-              >
-                Book a Strategy Call <ChevronRight className="w-4 h-4" />
-              </a>
+              {/* Upsell: Copilot for M365 Readiness Assessment */}
+              <div className="bg-[#0A2540] border border-primary/40 rounded-xl p-5 space-y-3">
+                <div className="flex items-center gap-2">
+                  <span className="bg-primary/20 text-primary text-xs font-bold uppercase tracking-wider px-2.5 py-1 rounded-full">Fixed-Price · $3,500</span>
+                </div>
+                <div>
+                  <h4 className="text-white font-bold text-lg leading-snug">Copilot for M365 Readiness Assessment</h4>
+                  <p className="text-white/65 text-sm mt-1 leading-relaxed">
+                    Get a comprehensive, expert-led audit of your Microsoft 365 environment and a prioritised roadmap so your Copilot rollout succeeds from day one. Delivered in 5 business days — no retainer required.
+                  </p>
+                </div>
+                <a
+                  href="/crm/portal/onboarding/select?service=copilot-for-m365-readiness-assessment"
+                  className="w-full py-3 px-6 bg-primary hover:bg-primary/90 text-white font-semibold rounded-lg transition-colors flex items-center justify-center gap-2"
+                >
+                  Get Started — $3,500 <ChevronRight className="w-4 h-4" />
+                </a>
+                <div className="text-center">
+                  <a
+                    href="/micro-offers#copilot-for-m365-readiness-assessment"
+                    className="text-primary/80 hover:text-primary text-sm transition-colors"
+                  >
+                    See full offer details →
+                  </a>
+                </div>
+              </div>
             </div>
           )}
         </div>
