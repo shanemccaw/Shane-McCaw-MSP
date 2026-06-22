@@ -674,6 +674,7 @@ export const analyticsSessionsTable = pgTable("analytics_sessions", {
   utmTerm: text("utm_term"),
   deviceType: text("device_type"),
   browser: text("browser"),
+  country: text("country"),
   startedAt: timestamp("started_at").notNull().defaultNow(),
   lastSeenAt: timestamp("last_seen_at").notNull().defaultNow(),
   totalSeconds: integer("total_seconds").notNull().default(0),

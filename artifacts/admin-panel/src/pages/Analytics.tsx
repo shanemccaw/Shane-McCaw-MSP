@@ -18,6 +18,7 @@ interface TopPage { page: string; views: number; avgDuration: number | null; bou
 interface TopEvent { eventType: string; label: string; page: string; count: number }
 interface TopReferrer { source: string; sessions: number; pct: number }
 interface TopLink { href: string; label: string; count: number }
+interface TopCta { page: string; label: string; clicks: number; pageViews: number; ctr: number }
 
 function fmt(n: number) {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
@@ -79,44 +80,45 @@ export default function AnalyticsPage() {
   const [topLinks, setTopLinks] = useState<TopLink[] | null>(null);
   const [topLinksLoading, setTopLinksLoading] = useState(true);
 
+  const [topCtas, setTopCtas] = useState<TopCta[] | null>(null);
+  const [topCtasLoading, setTopCtasLoading] = useState(true);
+
   const [live, setLive] = useState<number | null>(null);
 
   const load = useCallback(async (r: Range) => {
     setKpisLoading(true); setKpisError(null);
     setSeriesLoading(true); setTopPagesLoading(true);
     setTopEventsLoading(true); setTopReferrersLoading(true);
-    setTopLinksLoading(true);
+    setTopLinksLoading(true); setTopCtasLoading(true);
 
     await Promise.allSettled([
       fetchWithAuth(`/api/admin/analytics/kpis?range=${r}`)
-        .then(res => res.json() as Promise<KPIs>)
-        .then(d => { setKpis(d); setKpisLoading(false); })
+        .then(async res => { const d = await res.json(); if (d && typeof d === "object" && !("error" in d)) { setKpis(d as KPIs); } else { setKpisError("Could not load KPIs"); } setKpisLoading(false); })
         .catch(() => { setKpisError("Could not load KPIs"); setKpisLoading(false); }),
 
       fetchWithAuth(`/api/admin/analytics/pageviews-series?range=${r}`)
-        .then(res => res.json() as Promise<Series[]>)
-        .then(d => { setSeries(d); setSeriesLoading(false); })
-        .catch(() => setSeriesLoading(false)),
+        .then(async res => { const d = await res.json(); setSeries(Array.isArray(d) ? d as Series[] : []); setSeriesLoading(false); })
+        .catch(() => { setSeries([]); setSeriesLoading(false); }),
 
       fetchWithAuth(`/api/admin/analytics/top-pages?range=${r}`)
-        .then(res => res.json() as Promise<TopPage[]>)
-        .then(d => { setTopPages(d); setTopPagesLoading(false); })
-        .catch(() => setTopPagesLoading(false)),
+        .then(async res => { const d = await res.json(); setTopPages(Array.isArray(d) ? d as TopPage[] : []); setTopPagesLoading(false); })
+        .catch(() => { setTopPages([]); setTopPagesLoading(false); }),
 
       fetchWithAuth(`/api/admin/analytics/top-events?range=${r}`)
-        .then(res => res.json() as Promise<TopEvent[]>)
-        .then(d => { setTopEvents(d); setTopEventsLoading(false); })
-        .catch(() => setTopEventsLoading(false)),
+        .then(async res => { const d = await res.json(); setTopEvents(Array.isArray(d) ? d as TopEvent[] : []); setTopEventsLoading(false); })
+        .catch(() => { setTopEvents([]); setTopEventsLoading(false); }),
 
       fetchWithAuth(`/api/admin/analytics/top-referrers?range=${r}`)
-        .then(res => res.json() as Promise<TopReferrer[]>)
-        .then(d => { setTopReferrers(d); setTopReferrersLoading(false); })
-        .catch(() => setTopReferrersLoading(false)),
+        .then(async res => { const d = await res.json(); setTopReferrers(Array.isArray(d) ? d as TopReferrer[] : []); setTopReferrersLoading(false); })
+        .catch(() => { setTopReferrers([]); setTopReferrersLoading(false); }),
 
       fetchWithAuth(`/api/admin/analytics/top-links?range=${r}`)
-        .then(res => res.json() as Promise<TopLink[]>)
-        .then(d => { setTopLinks(d); setTopLinksLoading(false); })
-        .catch(() => setTopLinksLoading(false)),
+        .then(async res => { const d = await res.json(); setTopLinks(Array.isArray(d) ? d as TopLink[] : []); setTopLinksLoading(false); })
+        .catch(() => { setTopLinks([]); setTopLinksLoading(false); }),
+
+      fetchWithAuth(`/api/admin/analytics/top-ctas?range=${r}`)
+        .then(async res => { const d = await res.json(); setTopCtas(Array.isArray(d) ? d as TopCta[] : []); setTopCtasLoading(false); })
+        .catch(() => { setTopCtas([]); setTopCtasLoading(false); }),
     ]);
   }, [fetchWithAuth]);
 
@@ -241,14 +243,18 @@ export default function AnalyticsPage() {
           <ResponsiveContainer width="100%" height={220}>
             <LineChart data={series} margin={{ top: 4, right: 8, left: -16, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" vertical={false} />
+              {/* @ts-expect-error recharts types incompatible with this React version */}
               <XAxis dataKey="date" tick={{ fontSize: 10, fill: "#9ca3af" }} axisLine={false} tickLine={false}
-                tickFormatter={d => { const [, m, day] = d.split("-"); return `${m}/${day}`; }}
+                tickFormatter={(d: string) => { const [, m, day] = d.split("-"); return `${m}/${day}`; }}
               />
+              {/* @ts-expect-error recharts types incompatible with this React version */}
               <YAxis tick={{ fontSize: 10, fill: "#9ca3af" }} axisLine={false} tickLine={false} allowDecimals={false} />
+              {/* @ts-expect-error recharts types incompatible with this React version */}
               <RechartsTooltip
                 contentStyle={{ fontSize: 12, borderRadius: 8, border: "1px solid #e5e7eb" }}
                 formatter={(v: number) => [v, "Views"]}
               />
+              {/* @ts-expect-error recharts types incompatible with this React version */}
               <Line type="monotone" dataKey="views" stroke="#0078D4" strokeWidth={2} dot={false} activeDot={{ r: 4 }} />
             </LineChart>
           </ResponsiveContainer>
@@ -387,6 +393,48 @@ export default function AnalyticsPage() {
           )}
         </section>
       </div>
+
+      {/* Top CTAs with CTR */}
+      <section className="bg-white border border-gray-100 rounded-xl p-5 shadow-sm">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-sm font-bold text-[#0A2540] uppercase tracking-widest">Top CTAs — Click-Through Rates</h2>
+          <span className="text-[10px] text-gray-400">CTR = clicks ÷ page views</span>
+        </div>
+        {topCtasLoading ? (
+          <div className="space-y-2">{Array.from({ length: 8 }).map((_, i) => <div key={i} className="h-8 bg-gray-50 rounded-lg animate-pulse" />)}</div>
+        ) : !topCtas || topCtas.length === 0 ? (
+          <p className="text-xs text-gray-400 text-center py-8">No CTA click data yet — CTAs and nav links will appear here once visitors click them.</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="border-b border-gray-100">
+                  <th className="text-left py-2 pr-3 font-semibold text-gray-400 uppercase tracking-widest text-[10px]">CTA Label</th>
+                  <th className="text-left py-2 pr-3 font-semibold text-gray-400 uppercase tracking-widest text-[10px]">Page</th>
+                  <th className="text-right py-2 pr-3 font-semibold text-gray-400 uppercase tracking-widest text-[10px]">Clicks</th>
+                  <th className="text-right py-2 pr-3 font-semibold text-gray-400 uppercase tracking-widest text-[10px]">Page Views</th>
+                  <th className="text-right py-2 font-semibold text-gray-400 uppercase tracking-widest text-[10px]">CTR</th>
+                </tr>
+              </thead>
+              <tbody>
+                {topCtas.map((row, i) => (
+                  <tr key={i} className="border-b border-gray-50 hover:bg-gray-50 transition-colors">
+                    <td className="py-2 pr-3 text-[#0A2540] font-medium truncate max-w-[180px]">{row.label}</td>
+                    <td className="py-2 pr-3 text-gray-500 truncate max-w-[160px]">{row.page || "/"}</td>
+                    <td className="py-2 pr-3 text-right font-semibold text-gray-700">{fmt(row.clicks)}</td>
+                    <td className="py-2 pr-3 text-right text-gray-500">{fmt(row.pageViews)}</td>
+                    <td className="py-2 text-right">
+                      <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${row.ctr >= 5 ? "bg-emerald-100 text-emerald-700" : row.ctr >= 2 ? "bg-blue-100 text-[#0078D4]" : "bg-gray-100 text-gray-500"}`}>
+                        {row.ctr}%
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
     </div>
   );
 }

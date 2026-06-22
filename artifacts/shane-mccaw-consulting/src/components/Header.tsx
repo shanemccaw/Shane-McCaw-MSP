@@ -104,6 +104,7 @@ export function Header() {
                       key={item.href}
                       href={item.href}
                       onClick={() => setServicesOpen(false)}
+                      data-track="nav"
                       className={cn(
                         "block px-4 py-2 text-sm transition-colors",
                         location === item.href
@@ -140,6 +141,7 @@ export function Header() {
                       key={item.href}
                       href={item.href}
                       onClick={() => setRetainersOpen(false)}
+                      data-track="nav"
                       className={cn(
                         "block px-4 py-2 text-sm transition-colors",
                         location === item.href
@@ -158,6 +160,7 @@ export function Header() {
               <li key={link.href}>
                 <Link
                   href={link.href}
+                  data-track="nav"
                   className={cn(
                     "block px-3 py-2 rounded-md text-sm font-medium transition-colors",
                     location === link.href

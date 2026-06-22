@@ -15,20 +15,20 @@ export function CTAButton({ href, children, className, ...props }: CTAButtonProp
     const isCrossApp = href.startsWith("http://") || href.startsWith("https://") || href.startsWith("/crm");
     if (isCrossApp) {
       return (
-        <a href={href} className={cn(baseClasses, className)}>
+        <a href={href} className={cn(baseClasses, className)} data-track="cta">
           {children}
         </a>
       );
     }
     return (
-      <Link href={href} className={cn(baseClasses, className)}>
+      <Link href={href} className={cn(baseClasses, className)} data-track="cta">
         {children}
       </Link>
     );
   }
 
   return (
-    <button className={cn(baseClasses, className)} {...props}>
+    <button className={cn(baseClasses, className)} data-track="cta" {...props}>
       {children}
     </button>
   );
