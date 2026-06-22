@@ -1,7 +1,8 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { Layout } from "@/components/Layout";
 import { CTAButton } from "@/components/CTAButton";
 import { GenericQuizModal, type QuizConfig } from "@/components/GenericQuizModal";
+import { SEOMeta } from "@/components/SEOMeta";
 import { CheckCircle, FolderOpen } from "lucide-react";
 
 const config: QuizConfig = {
@@ -86,12 +87,13 @@ const PILLARS = [
 
 export default function SharePointQuiz() {
   const [modalOpen, setModalOpen] = useState(false);
-  useEffect(() => {
-    document.title = "SharePoint Architecture Assessment | Shane McCaw Consulting";
-    return () => { document.title = "Shane McCaw Consulting"; };
-  }, []);
   return (
     <Layout>
+      <SEOMeta
+        title="SharePoint Readiness Assessment | Free Quiz | Shane McCaw Consulting"
+        description="How well-architected is your SharePoint environment? Answer 10 expert questions and receive a personalised maturity report from a NASA-certified Microsoft 365 Architect."
+        ogUrl="https://shanemccaw.com/sharepoint-readiness-quiz"
+      />
       <section className="bg-[#0A2540] pt-32 pb-24 relative overflow-hidden">
         <div className="absolute inset-0 pointer-events-none" style={{ background: "radial-gradient(ellipse 900px 500px at 60% 0%, rgba(0,120,212,0.12) 0%, transparent 70%)" }} />
         <div className="max-w-[1200px] mx-auto px-6 relative">

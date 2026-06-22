@@ -1,7 +1,8 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { Layout } from "@/components/Layout";
 import { CTAButton } from "@/components/CTAButton";
 import { GenericQuizModal, type QuizConfig } from "@/components/GenericQuizModal";
+import { SEOMeta } from "@/components/SEOMeta";
 import { CheckCircle, Server } from "lucide-react";
 
 const config: QuizConfig = {
@@ -86,12 +87,13 @@ const PILLARS = [
 
 export default function MigrationQuiz() {
   const [modalOpen, setModalOpen] = useState(false);
-  useEffect(() => {
-    document.title = "Cloud Migration Readiness Assessment | Shane McCaw Consulting";
-    return () => { document.title = "Shane McCaw Consulting"; };
-  }, []);
   return (
     <Layout>
+      <SEOMeta
+        title="Cloud Migration Readiness Assessment | Microsoft 365 | Shane McCaw Consulting"
+        description="Is your organisation ready to migrate to Microsoft 365? Take our free readiness quiz and receive a personalised migration roadmap from a 30-year Microsoft ecosystem veteran."
+        ogUrl="https://shanemccaw.com/migration-readiness-quiz"
+      />
       <section className="bg-[#0A2540] pt-32 pb-24 relative overflow-hidden">
         <div className="absolute inset-0 pointer-events-none" style={{ background: "radial-gradient(ellipse 900px 500px at 60% 0%, rgba(0,120,212,0.12) 0%, transparent 70%)" }} />
         <div className="max-w-[1200px] mx-auto px-6 relative">

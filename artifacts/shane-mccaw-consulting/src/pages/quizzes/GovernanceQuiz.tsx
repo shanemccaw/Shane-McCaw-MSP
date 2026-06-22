@@ -1,7 +1,8 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { Layout } from "@/components/Layout";
 import { CTAButton } from "@/components/CTAButton";
 import { GenericQuizModal, type QuizConfig } from "@/components/GenericQuizModal";
+import { SEOMeta } from "@/components/SEOMeta";
 import { CheckCircle, Shield } from "lucide-react";
 
 const config: QuizConfig = {
@@ -86,12 +87,13 @@ const PILLARS = [
 
 export default function GovernanceQuiz() {
   const [modalOpen, setModalOpen] = useState(false);
-  useEffect(() => {
-    document.title = "M365 Governance Maturity Assessment | Shane McCaw Consulting";
-    return () => { document.title = "Shane McCaw Consulting"; };
-  }, []);
   return (
     <Layout>
+      <SEOMeta
+        title="Microsoft 365 Governance Maturity Assessment | Shane McCaw Consulting"
+        description="How mature is your M365 governance framework? Take our free assessment to benchmark your policies, lifecycle management, and compliance posture — with a personalised PDF report."
+        ogUrl="https://shanemccaw.com/governance-maturity-quiz"
+      />
       <section className="bg-[#0A2540] pt-32 pb-24 relative overflow-hidden">
         <div className="absolute inset-0 pointer-events-none" style={{ background: "radial-gradient(ellipse 900px 500px at 60% 0%, rgba(0,120,212,0.12) 0%, transparent 70%)" }} />
         <div className="max-w-[1200px] mx-auto px-6 relative">

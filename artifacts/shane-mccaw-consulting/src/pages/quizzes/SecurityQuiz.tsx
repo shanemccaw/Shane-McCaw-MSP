@@ -1,7 +1,8 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { Layout } from "@/components/Layout";
 import { CTAButton } from "@/components/CTAButton";
 import { GenericQuizModal, type QuizConfig } from "@/components/GenericQuizModal";
+import { SEOMeta } from "@/components/SEOMeta";
 import { CheckCircle, ShieldCheck } from "lucide-react";
 
 const config: QuizConfig = {
@@ -86,12 +87,13 @@ const PILLARS = [
 
 export default function SecurityQuiz() {
   const [modalOpen, setModalOpen] = useState(false);
-  useEffect(() => {
-    document.title = "M365 Security & Compliance Assessment | Shane McCaw Consulting";
-    return () => { document.title = "Shane McCaw Consulting"; };
-  }, []);
   return (
     <Layout>
+      <SEOMeta
+        title="Microsoft 365 Security & Compliance Assessment | Shane McCaw Consulting"
+        description="How secure is your Microsoft 365 environment? Take our free security posture quiz covering Defender, Conditional Access, DLP, and sensitivity labels — with a PDF report included."
+        ogUrl="https://shanemccaw.com/security-compliance-quiz"
+      />
       <section className="bg-[#0A2540] pt-32 pb-24 relative overflow-hidden">
         <div className="absolute inset-0 pointer-events-none" style={{ background: "radial-gradient(ellipse 900px 500px at 60% 0%, rgba(0,120,212,0.12) 0%, transparent 70%)" }} />
         <div className="max-w-[1200px] mx-auto px-6 relative">

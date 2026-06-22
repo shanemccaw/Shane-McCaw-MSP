@@ -1,7 +1,8 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { Layout } from "@/components/Layout";
 import { CTAButton } from "@/components/CTAButton";
 import { GenericQuizModal, type QuizConfig } from "@/components/GenericQuizModal";
+import { SEOMeta } from "@/components/SEOMeta";
 import { CheckCircle, Activity } from "lucide-react";
 
 const config: QuizConfig = {
@@ -86,12 +87,13 @@ const PILLARS = [
 
 export default function M365HealthQuiz() {
   const [modalOpen, setModalOpen] = useState(false);
-  useEffect(() => {
-    document.title = "M365 Tenant Health Assessment | Shane McCaw Consulting";
-    return () => { document.title = "Shane McCaw Consulting"; };
-  }, []);
   return (
     <Layout>
+      <SEOMeta
+        title="Microsoft 365 Health Check | Free Tenant Assessment | Shane McCaw Consulting"
+        description="Take our free M365 tenant health assessment. Score your security posture, identity, governance, and DLP in 5 minutes — and receive a personalised PDF report by email."
+        ogUrl="https://shanemccaw.com/m365-health-quiz"
+      />
       <section className="bg-[#0A2540] pt-32 pb-24 relative overflow-hidden">
         <div className="absolute inset-0 pointer-events-none" style={{ background: "radial-gradient(ellipse 900px 500px at 60% 0%, rgba(0,120,212,0.12) 0%, transparent 70%)" }} />
         <div className="max-w-[1200px] mx-auto px-6 relative">
