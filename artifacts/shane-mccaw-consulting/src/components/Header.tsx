@@ -57,13 +57,13 @@ const SERVICES_ITEMS: NavItem[] = withIcons([
 
 const MICRO_OFFERS_ITEMS: NavItem[] = withIcons([
   { label: "All Quick Wins",                       href: "/micro-offers" },
+  { label: "Start Here",                           href: "/quick-win-quiz" },
   { label: "Tenant Health Audit",                 href: "/micro-offers/tenant-health-audit" },
   { label: "Power Platform Quick-Start",          href: "/micro-offers/power-platform-quick-start" },
   { label: "Governance Foundations",              href: "/micro-offers/governance-foundations" },
   { label: "Migration Readiness Assessment",      href: "/micro-offers/migration-readiness-assessment" },
   { label: "Copilot Readiness Assessment",        href: "/micro-offers/copilot-readiness-assessment" },
   { label: "Microsoft 365 Training & Enablement", href: "/micro-offers/m365-training-enablement" },
-  { label: "Quick Win Quiz",                      href: "/quick-win-quiz" },
 ]);
 
 const RETAINER_ITEMS: NavItem[] = withIcons([
