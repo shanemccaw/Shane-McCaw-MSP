@@ -8,9 +8,11 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { useServices, type PublicService } from "@/hooks/useServices";
+import { useEngagementProjects } from "@/hooks/useEngagementProjects";
 import { OfferCard } from "@/components/OfferCard";
 import { ServiceProjectCard } from "@/components/ServiceProjectCard";
 import { RetainerCard } from "@/components/RetainerCard";
+import { EngagementProjectCard } from "@/components/EngagementProjectCard";
 import { CopilotQuizCTA } from "@/components/CopilotQuizCTA";
 
 // ─── Tier configuration ───────────────────────────────────────────────────────
@@ -157,6 +159,10 @@ function renderCards(items: PublicService[]) {
 
 export default function Services() {
   const { services, loading, error } = useServices();
+  const { projects, loading: projectsLoading } = useEngagementProjects();
+
+  // Only show projects the API marks visible (API already filters, but be defensive)
+  const visibleProjects = useMemo(() => projects.filter((p) => p.isVisible), [projects]);
 
   // Group by tier (normalised to lowercase), unknown tiers fall to "other"
   const grouped = useMemo(() => {
@@ -170,16 +176,21 @@ export default function Services() {
   }, [services]);
 
   // Ordered: known tiers first (in TIER_ORDER sequence), then any unrecognised
-  // tiers alphabetically, then "other" at the end
+  // tiers alphabetically, then "other" at the end.
+  // "core" is injected when there are visible engagement projects even if no
+  // services table rows carry tier = 'core'.
   const orderedTiers = useMemo(() => {
-    const present = Object.keys(grouped);
+    const present = [...Object.keys(grouped)];
+    if (visibleProjects.length > 0 && !present.includes("core")) {
+      present.push("core");
+    }
     const known = TIER_ORDER.filter((t) => present.includes(t));
     const unknown = present
       .filter((t) => !TIER_ORDER.includes(t) && t !== "other")
       .sort();
     const other = present.includes("other") ? ["other"] : [];
     return [...known, ...unknown, ...other];
-  }, [grouped]);
+  }, [grouped, visibleProjects]);
 
   // First three tiers that have data, used for hero anchor chips
   const heroChips = useMemo(() => {
@@ -198,7 +209,7 @@ export default function Services() {
     });
   }, [orderedTiers]);
 
-  const isLoading = loading && services.length === 0;
+  const isLoading = (loading || projectsLoading) && services.length === 0 && projects.length === 0;
 
   return (
     <Layout>
@@ -323,7 +334,10 @@ export default function Services() {
         <div className="bg-[#F7F9FC]">
           {orderedTiers.map((tier, sectionIndex) => {
             const items = grouped[tier] ?? [];
-            if (items.length === 0) return null;
+            const isCoreWithProjects = tier === "core" && visibleProjects.length > 0;
+
+            // Skip empty tiers — except when core has engagement projects to show
+            if (items.length === 0 && !isCoreWithProjects) return null;
 
             const cfg = TIER_CONFIG[tier];
             const accent = cfg?.accent ?? "text-[#0078D4]";
@@ -393,7 +407,11 @@ export default function Services() {
                   ) : undefined
                 }
               >
-                {renderCards(items)}
+                {isCoreWithProjects
+                  ? visibleProjects.map((p, i) => (
+                      <EngagementProjectCard key={p.id} project={p} index={i} />
+                    ))
+                  : renderCards(items)}
               </TrackSection>
             );
           })}
