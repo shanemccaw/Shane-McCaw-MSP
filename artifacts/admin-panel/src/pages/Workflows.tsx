@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
+import { GenerateAssetsDialog } from "@/components/GenerateAssetsDialog";
 import {
   DndContext,
   closestCenter,
@@ -859,7 +860,7 @@ export default function WorkflowsPage() {
   const [jsonImportOpen, setJsonImportOpen] = useState(false);
 
   // AI asset generation
-  const [generating, setGenerating] = useState(false);
+  const [generateDialogOpen, setGenerateDialogOpen] = useState(false);
   const [jsonImportText, setJsonImportText] = useState("");
   const [jsonImporting, setJsonImporting] = useState(false);
   const [engImportOpen, setEngImportOpen] = useState(false);
@@ -1372,35 +1373,14 @@ export default function WorkflowsPage() {
 
   // ── AI: Generate asset sets ────────────────────────────────────────────────
 
-  async function handleGenerateAssetSets() {
-    if (!selected || generating) return;
-    setGenerating(true);
-    try {
-      const res = await fetchWithAuth(`/api/admin/workflow-templates/${selected.id}/generate-asset-sets`, { method: "POST" });
-      const data = await res.json() as { processed?: number; setsCreated?: number; error?: string };
-      if (!res.ok) {
-        toast({ title: "Generation failed", description: data.error ?? "Unknown error", variant: "destructive" });
-        return;
-      }
-      if (data.processed === 0) {
-        toast({ title: "Nothing to generate", description: "All tasks already have asset sets linked." });
-      } else {
-        const failedCount = (data as { failed?: number }).failed ?? 0;
-        toast({
-          title: failedCount > 0 ? "Asset sets generated (with errors)" : "Asset sets generated",
-          description: [
-            `Processed ${data.processed} task${data.processed === 1 ? "" : "s"}, created ${data.setsCreated} set${data.setsCreated === 1 ? "" : "s"}.`,
-            failedCount > 0 ? `${failedCount} task${failedCount === 1 ? "" : "s"} failed to generate.` : "",
-          ].filter(Boolean).join(" "),
-          variant: failedCount > 0 ? "destructive" : "default",
-        });
-        await Promise.all([fetchTemplates(), refreshSelected()]);
-      }
-    } catch {
-      toast({ title: "Generation failed", description: "Network error", variant: "destructive" });
-    } finally {
-      setGenerating(false);
-    }
+  function handleGenerateAssetSets() {
+    if (!selected || generateDialogOpen) return;
+    setGenerateDialogOpen(true);
+  }
+
+  async function handleGenerateDialogClose() {
+    setGenerateDialogOpen(false);
+    await refreshSelected();
   }
 
   // ── Derived values ─────────────────────────────────────────────────────────
@@ -1533,7 +1513,7 @@ export default function WorkflowsPage() {
                 <button
                   type="button"
                   onClick={handleGenerateAssetSets}
-                  disabled={generating || tasksMissingAssets === 0}
+                  disabled={generateDialogOpen || tasksMissingAssets === 0}
                   title={
                     tasksMissingAssets > 0
                       ? `Generate asset sets for ${tasksMissingAssets} task${tasksMissingAssets === 1 ? "" : "s"} missing sets`
@@ -1541,15 +1521,7 @@ export default function WorkflowsPage() {
                   }
                   className="flex items-center gap-1.5 text-xs text-purple-700 hover:text-purple-900 px-3 py-1.5 border border-purple-200 rounded-lg hover:bg-purple-50 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                 >
-                  {generating ? (
-                    <>
-                      <svg className="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24">
-                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                      </svg>
-                      Generating…
-                    </>
-                  ) : tasksMissingAssets === 0 ? (
+                  {tasksMissingAssets === 0 ? (
                     <>
                       <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
@@ -1894,6 +1866,15 @@ export default function WorkflowsPage() {
         artifactSets={artifactSets}
         deliverableSets={deliverableSets}
       />
+
+      {/* ── Generate assets dialog ──────────────────────────────────────────── */}
+      {selected && (
+        <GenerateAssetsDialog
+          templateId={selected.id}
+          open={generateDialogOpen}
+          onClose={() => void handleGenerateDialogClose()}
+        />
+      )}
     </div>
   );
 }

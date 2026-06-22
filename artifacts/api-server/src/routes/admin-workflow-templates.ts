@@ -393,9 +393,18 @@ Keep content specific to Microsoft 365 / "${templateName}" context.`;
 }
 
 router.post("/admin/workflow-templates/:id/generate-asset-sets", requireAdmin, async (req: Request, res: Response) => {
+  const acceptsSSE = (req.headers.accept ?? "").includes("text/event-stream");
+
+  const sendSSE = (data: object) => {
+    res.write(`data: ${JSON.stringify(data)}\n\n`);
+  };
+
   try {
     const id = Number(req.params.id);
-    if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
+    if (isNaN(id)) {
+      if (acceptsSSE) { res.status(400).end(); return; }
+      res.status(400).json({ error: "Invalid id" }); return;
+    }
 
     // 1. Fetch template
     const [template] = await db
@@ -403,7 +412,10 @@ router.post("/admin/workflow-templates/:id/generate-asset-sets", requireAdmin, a
       .from(workflowTemplatesTable)
       .where(eq(workflowTemplatesTable.id, id))
       .limit(1);
-    if (!template) { res.status(404).json({ error: "Template not found" }); return; }
+    if (!template) {
+      if (acceptsSSE) { res.status(404).end(); return; }
+      res.status(404).json({ error: "Template not found" }); return;
+    }
 
     // 2. Fetch all steps for this template
     const steps = await db
@@ -413,7 +425,17 @@ router.post("/admin/workflow-templates/:id/generate-asset-sets", requireAdmin, a
       .orderBy(asc(workflowTemplateStepsTable.order));
 
     const stepIds = steps.map(s => s.id);
-    if (stepIds.length === 0) { res.json({ processed: 0, setsCreated: 0 }); return; }
+    if (stepIds.length === 0) {
+      if (acceptsSSE) {
+        res.setHeader("Content-Type", "text/event-stream");
+        res.setHeader("Cache-Control", "no-cache");
+        res.setHeader("Connection", "keep-alive");
+        res.flushHeaders();
+        sendSSE({ type: "done", processed: 0, setsCreated: 0, failed: 0 });
+        res.end(); return;
+      }
+      res.json({ processed: 0, setsCreated: 0 }); return;
+    }
 
     // 3. Fetch all tasks for those steps
     const allTasks = await db
@@ -427,11 +449,27 @@ router.post("/admin/workflow-templates/:id/generate-asset-sets", requireAdmin, a
     );
 
     if (incompleteTasks.length === 0) {
+      if (acceptsSSE) {
+        res.setHeader("Content-Type", "text/event-stream");
+        res.setHeader("Cache-Control", "no-cache");
+        res.setHeader("Connection", "keep-alive");
+        res.flushHeaders();
+        sendSSE({ type: "done", processed: 0, setsCreated: 0, failed: 0 });
+        res.end(); return;
+      }
       res.json({ processed: 0, setsCreated: 0 });
       return;
     }
 
-    // 5. Ensure category exists for this template name
+    // 5. Set up SSE headers now if streaming
+    if (acceptsSSE) {
+      res.setHeader("Content-Type", "text/event-stream");
+      res.setHeader("Cache-Control", "no-cache");
+      res.setHeader("Connection", "keep-alive");
+      res.flushHeaders();
+    }
+
+    // 6. Ensure category exists for this template name
     const categoryName = template.name;
     const existing = await db
       .select()
@@ -442,17 +480,24 @@ router.post("/admin/workflow-templates/:id/generate-asset-sets", requireAdmin, a
       await db.insert(assetLibraryCategoriesTable).values({ name: categoryName }).onConflictDoNothing();
     }
 
-    // 6. Build step map for titles
+    // 7. Build step map for titles
     const stepMap = new Map(steps.map(s => [s.id, s]));
 
     let setsCreated = 0;
     let processed = 0;
     let failed = 0;
+    const total = incompleteTasks.length;
 
-    // 7. Process each incomplete task sequentially
-    for (const task of incompleteTasks) {
+    // 8. Process each incomplete task sequentially
+    for (let i = 0; i < incompleteTasks.length; i++) {
+      const task = incompleteTasks[i]!;
       const step = task.workflowTemplateStepId != null ? stepMap.get(task.workflowTemplateStepId) : null;
       const stepTitle = step?.title ?? "Unknown Step";
+
+      // Emit progress event before starting this task
+      if (acceptsSSE) {
+        sendSSE({ type: "progress", current: i, total, stepTitle, taskTitle: task.title });
+      }
 
       const aiResult = await generateAssetSetsForTask({
         templateName: template.name,
@@ -460,7 +505,13 @@ router.post("/admin/workflow-templates/:id/generate-asset-sets", requireAdmin, a
         taskTitle: task.title,
       });
 
-      if (!aiResult) { failed++; continue; }
+      if (!aiResult) {
+        failed++;
+        if (acceptsSSE) {
+          sendSSE({ type: "task_done", current: i + 1, total, stepTitle, taskTitle: task.title, setsCreated: 0, failed: true });
+        }
+        continue;
+      }
 
       const updates: {
         instructionSetId?: number;
@@ -469,12 +520,14 @@ router.post("/admin/workflow-templates/:id/generate-asset-sets", requireAdmin, a
         deliverablesId?: number;
       } = {};
 
+      let taskSetsCreated = 0;
+
       if (task.instructionSetId == null && aiResult.instructionSet.length > 0) {
         const [ins] = await db
           .insert(instructionSetsTable)
           .values({ title: `${task.title} — Instructions`, instructions: aiResult.instructionSet, category: categoryName })
           .returning();
-        if (ins) { updates.instructionSetId = ins.id; setsCreated++; }
+        if (ins) { updates.instructionSetId = ins.id; setsCreated++; taskSetsCreated++; }
       }
 
       if (task.checklistId == null && aiResult.checklist.length > 0) {
@@ -482,7 +535,7 @@ router.post("/admin/workflow-templates/:id/generate-asset-sets", requireAdmin, a
           .insert(checklistsTable)
           .values({ title: `${task.title} — Checklist`, items: aiResult.checklist, category: categoryName })
           .returning();
-        if (chk) { updates.checklistId = chk.id; setsCreated++; }
+        if (chk) { updates.checklistId = chk.id; setsCreated++; taskSetsCreated++; }
       }
 
       if (task.artifactsId == null && aiResult.artifactSet.length > 0) {
@@ -490,7 +543,7 @@ router.post("/admin/workflow-templates/:id/generate-asset-sets", requireAdmin, a
           .insert(artifactSetsTable)
           .values({ title: `${task.title} — Artifacts`, artifacts: aiResult.artifactSet, category: categoryName })
           .returning();
-        if (art) { updates.artifactsId = art.id; setsCreated++; }
+        if (art) { updates.artifactsId = art.id; setsCreated++; taskSetsCreated++; }
       }
 
       if (task.deliverablesId == null && aiResult.deliverableSet.length > 0) {
@@ -498,7 +551,7 @@ router.post("/admin/workflow-templates/:id/generate-asset-sets", requireAdmin, a
           .insert(deliverableSetsTable)
           .values({ title: `${task.title} — Deliverables`, deliverables: aiResult.deliverableSet, category: categoryName })
           .returning();
-        if (del) { updates.deliverablesId = del.id; setsCreated++; }
+        if (del) { updates.deliverablesId = del.id; setsCreated++; taskSetsCreated++; }
       }
 
       if (Object.keys(updates).length > 0) {
@@ -509,12 +562,26 @@ router.post("/admin/workflow-templates/:id/generate-asset-sets", requireAdmin, a
       }
 
       processed++;
+
+      if (acceptsSSE) {
+        sendSSE({ type: "task_done", current: i + 1, total, stepTitle, taskTitle: task.title, setsCreated: taskSetsCreated, failed: false });
+      }
     }
 
-    res.json({ processed, setsCreated, failed });
+    if (acceptsSSE) {
+      sendSSE({ type: "done", processed, setsCreated, failed });
+      res.end();
+    } else {
+      res.json({ processed, setsCreated, failed });
+    }
   } catch (err) {
     logger.error({ err }, "generate-asset-sets: endpoint failed");
-    res.status(500).json({ error: "Failed to generate asset sets" });
+    if (acceptsSSE) {
+      sendSSE({ type: "error", message: "Failed to generate asset sets" });
+      res.end();
+    } else {
+      res.status(500).json({ error: "Failed to generate asset sets" });
+    }
   }
 });
 
