@@ -165,7 +165,7 @@ export default function Services() {
       </section>
 
       {/* NASA Authority Strip */}
-      <section className="bg-[#0A2540] border-t border-white/10 py-16">
+      <section className="bg-[#0D2F52] border-t-2 border-[#00B4D8] py-16">
         <div className="max-w-[1200px] mx-auto px-6">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-start">
             <div>
