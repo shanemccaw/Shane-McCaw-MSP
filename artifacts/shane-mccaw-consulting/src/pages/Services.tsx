@@ -4,7 +4,7 @@ import { Layout } from "@/components/Layout";
 import { CTAButton } from "@/components/CTAButton";
 import {
   Zap, FolderOpen, Calendar, ArrowRight,
-  CheckCircle, Clock, GraduationCap,
+  CheckCircle, Clock,
 } from "lucide-react";
 import { useServices } from "@/hooks/useServices";
 import { OfferCard } from "@/components/OfferCard";
@@ -314,75 +314,6 @@ export default function Services() {
           </div>
         </div>
       )}
-
-      {/* Track 04 — Training & Enablement */}
-      <div id="track-04">
-        <section className="py-20 border-b border-border bg-[#F7F9FC]">
-          <div className="max-w-[1200px] mx-auto px-6">
-            <div className="mb-12">
-              <div className="flex items-center gap-3 mb-3">
-                <span className="text-[#0078D4]/50 text-xs font-bold uppercase tracking-[0.15em]">Track 04</span>
-                <span className="text-xs font-bold uppercase tracking-[0.1em] text-purple-600">Enablement Tier</span>
-              </div>
-              <h2 className="text-2xl md:text-3xl font-extrabold text-[#0A2540] mb-4">Training &amp; Enablement</h2>
-              <p className="text-muted-foreground max-w-2xl leading-relaxed">
-                Instructor-led Microsoft 365 training built around your tenant, your tools, and your team — not a generic vendor demo.
-              </p>
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 items-start">
-              <div className="rounded-xl border border-border bg-white p-8 flex flex-col hover:shadow-lg hover:-translate-y-1 transition-all duration-300 h-full">
-                <div className="flex items-start justify-between mb-4">
-                  <div className="w-11 h-11 rounded-lg flex items-center justify-center flex-shrink-0 bg-[#0078D4]/10">
-                    <GraduationCap className="w-5 h-5 text-[#0078D4]" />
-                  </div>
-                  <span className="text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-700">New</span>
-                </div>
-                <h3 className="text-xl font-bold leading-snug mb-2 text-[#0A2540]">M365 Training &amp; Enablement</h3>
-                <p className="text-sm italic mb-3 text-muted-foreground">Real-world training from a practitioner, not a slide deck reader</p>
-                <p className="text-sm leading-relaxed mb-4 text-muted-foreground">
-                  Live, instructor-led training across Outlook, Teams, SharePoint, OneDrive, Copilot, and Power Platform — custom-built for your organization's configuration and delivered remotely or on-site.
-                </p>
-                <div className="flex flex-wrap gap-2 mb-4">
-                  <span className="inline-flex items-center gap-1 text-xs font-medium rounded-full px-2.5 py-1 bg-[#F7F9FC] border border-border text-muted-foreground">
-                    <Clock className="w-3 h-3" /> Half-day to multi-day
-                  </span>
-                  <span className="inline-flex items-center gap-1 text-xs font-medium rounded-full px-2.5 py-1 bg-[#F7F9FC] border border-border text-muted-foreground">
-                    One-time
-                  </span>
-                </div>
-                <p className="text-sm mb-4 text-muted-foreground">
-                  <span className="font-semibold text-[#0A2540]">Best for:</span> Organizations onboarding to M365, migrating from Google Workspace, or rolling out Copilot and needing structured change management.
-                </p>
-                <div className="border-t pt-4 mb-4 border-border">
-                  <p className="text-sm font-semibold mb-3 text-[#0A2540]">What's Included:</p>
-                  <ul className="space-y-2">
-                    {[
-                      "Live instructor-led sessions (remote or on-site)",
-                      "Custom agenda built around your M365 configuration",
-                      "Session recordings for employees who can't attend live",
-                      "Quick-reference cards, tip sheets, and resource packs",
-                      "Post-training support window",
-                    ].map((item, i) => (
-                      <li key={i} className="flex items-start gap-2 text-sm text-muted-foreground">
-                        <CheckCircle className="w-4 h-4 flex-shrink-0 mt-0.5 text-[#0078D4]" />
-                        {item}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-                <div className="mt-auto pt-4">
-                  <Link
-                    href="/services/m365-training"
-                    className="inline-flex items-center justify-center w-full gap-2 bg-[#0078D4] hover:bg-[#006BBE] text-white font-semibold text-sm px-5 py-2.5 rounded transition-colors"
-                  >
-                    Learn More <ArrowRight className="w-4 h-4" />
-                  </Link>
-                </div>
-              </div>
-            </div>
-          </div>
-        </section>
-      </div>
 
       {/* Closing CTA */}
       <section className="bg-[#0A2540] py-20">
