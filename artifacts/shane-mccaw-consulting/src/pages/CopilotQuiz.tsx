@@ -4,7 +4,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { Layout } from "@/components/Layout";
 import { CTAButton } from "@/components/CTAButton";
-import { Brain, X, ChevronRight, CheckCircle, Loader2, BarChart3, Award, Zap } from "lucide-react";
+import { Brain, X, ChevronRight, CheckCircle, Loader2, BarChart3, Award, Zap, ShieldCheck, AlertTriangle, FileText, Target, Users, Building2, ArrowRight, Lock, Database, Globe } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -536,46 +536,42 @@ export default function CopilotQuiz() {
     <Layout>
       {/* Hero */}
       <section className="relative min-h-[90vh] flex items-center justify-center overflow-hidden bg-[#0A2540]">
-        {/* Background gradient */}
         <div className="absolute inset-0 bg-gradient-to-br from-[#0A2540] via-[#0d2f50] to-[#0A2540]" />
         <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_30%_50%,rgba(0,120,212,0.15),transparent_60%)]" />
         <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_70%_20%,rgba(0,180,216,0.1),transparent_50%)]" />
-
-        {/* Decorative dots grid */}
         <div
           className="absolute inset-0 opacity-[0.04]"
-          style={{
-            backgroundImage: "radial-gradient(circle, #ffffff 1px, transparent 1px)",
-            backgroundSize: "32px 32px",
-          }}
+          style={{ backgroundImage: "radial-gradient(circle, #ffffff 1px, transparent 1px)", backgroundSize: "32px 32px" }}
         />
 
         <div className="relative z-10 max-w-[900px] mx-auto px-6 text-center">
-          {/* Badge */}
           <div className="inline-flex items-center gap-2 bg-primary/20 border border-primary/30 rounded-full px-4 py-1.5 mb-8">
             <Brain className="w-4 h-4 text-primary" />
-            <span className="text-primary text-sm font-medium">AI-Powered Assessment</span>
+            <span className="text-primary text-sm font-semibold uppercase tracking-wide">Copilot AI Readiness Assessment</span>
           </div>
 
-          <h1 className="text-4xl md:text-6xl font-bold text-white leading-tight mb-6">
-            Is Your Organisation{" "}
-            <span className="text-primary">Copilot-Ready?</span>
+          <h1 className="text-4xl md:text-6xl font-extrabold text-white leading-tight mb-6">
+            Most Copilot Deployments{" "}
+            <span className="text-[#00B4D8]">Fail.</span>
+            <br className="hidden md:block" /> Yours Doesn't Have To.
           </h1>
-          <p className="text-white/70 text-lg md:text-xl leading-relaxed max-w-2xl mx-auto mb-10">
-            Take our free 10-question AI assessment to benchmark your Microsoft 365 Copilot readiness
-            across five dimensions. Receive a personalised PDF report and expert recommendation instantly.
+
+          <p className="text-white/70 text-lg md:text-xl leading-relaxed max-w-2xl mx-auto mb-4">
+            Copilot underperforms when governance, data classification, identity, and change management aren't ready. Most organizations skip the pre-deployment assessment and pay for it in adoption failures and compliance exposure.
+          </p>
+          <p className="text-white/60 text-base md:text-lg leading-relaxed max-w-2xl mx-auto mb-10">
+            This 10-question assessment — built on the same readiness framework Shane applied as Lead M365 Architect at NASA — identifies exactly where your deployment will break before it does.
           </p>
 
-          {/* Stats */}
-          <div className="flex flex-wrap items-center justify-center gap-8 mb-12 text-sm">
+          <div className="flex flex-wrap items-center justify-center gap-8 mb-12">
             {[
-              { value: "5 min", label: "to complete" },
-              { value: "5", label: "readiness categories" },
-              { value: "Free", label: "personalised PDF report" },
+              { value: "10", label: "targeted questions" },
+              { value: "5", label: "readiness dimensions" },
+              { value: "Free", label: "personalized PDF report" },
             ].map((stat) => (
               <div key={stat.label} className="text-center">
-                <p className="text-2xl font-bold text-primary">{stat.value}</p>
-                <p className="text-white/50">{stat.label}</p>
+                <p className="text-3xl font-extrabold text-[#00B4D8]">{stat.value}</p>
+                <p className="text-white/50 text-sm mt-1">{stat.label}</p>
               </div>
             ))}
           </div>
@@ -584,108 +580,280 @@ export default function CopilotQuiz() {
             onClick={() => setModalOpen(true)}
             className="group inline-flex items-center gap-3 bg-primary hover:bg-primary/90 text-white font-semibold text-lg px-8 py-4 rounded-xl transition-all duration-200 shadow-lg shadow-primary/25 hover:shadow-primary/40 hover:-translate-y-0.5"
           >
-            Start the Free Assessment
+            Take the Free Assessment
             <ChevronRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
           </button>
 
-          <p className="text-white/30 text-sm mt-4">No account required · Results emailed instantly</p>
+          <p className="text-white/30 text-sm mt-4">No account required · Results and PDF delivered instantly</p>
         </div>
       </section>
 
-      {/* How it works */}
+      {/* Why This Quiz Exists */}
       <section className="py-20 bg-white">
-        <div className="max-w-[1200px] mx-auto px-6">
-          <h2 className="text-3xl font-bold text-[#0A2540] text-center mb-4">How the Assessment Works</h2>
-          <p className="text-slate-500 text-center max-w-xl mx-auto mb-12">
-            Our AI evaluates your answers across five critical readiness dimensions used by Microsoft's own deployment framework.
+        <div className="max-w-[1100px] mx-auto px-6">
+          <p className="text-center text-xs font-bold uppercase tracking-widest text-[#0078D4] mb-3">Why This Assessment Exists</p>
+          <h2 className="text-3xl font-extrabold text-[#0A2540] text-center mb-4">
+            Copilot readiness isn't optional — it's what separates a successful deployment from an expensive failure.
+          </h2>
+          <p className="text-slate-500 text-center max-w-2xl mx-auto mb-14 text-lg leading-relaxed">
+            Microsoft Copilot doesn't run on intention. It runs on infrastructure. Organizations that skip pre-deployment readiness work consistently see the same outcome: low adoption, high support burden, and compliance exposure they didn't anticipate. This quiz identifies the gaps before you spend your deployment budget.
           </p>
-          <div className="grid md:grid-cols-3 gap-8">
+          <div className="grid md:grid-cols-3 gap-6">
             {[
               {
-                step: "01",
-                title: "Answer 10 Questions",
-                desc: "Our AI asks targeted questions about your M365 environment, data governance, team skills, and business readiness.",
+                icon: ShieldCheck,
+                colour: "bg-blue-500/10 text-blue-600",
+                title: "Governance must come first",
+                body: "Copilot surfaces data from across your tenant. Without sensitivity labels, DLP policies, and information barriers, it surfaces the wrong data to the wrong people. Every time.",
               },
               {
-                step: "02",
-                title: "Get Scored Instantly",
-                desc: "Receive a 0–50 readiness score with a breakdown across all five dimensions and your maturity tier.",
+                icon: Lock,
+                colour: "bg-violet-500/10 text-violet-600",
+                title: "Identity and security must be in place",
+                body: "MFA enforcement, device compliance, and Entra ID health directly affect what Copilot can access. Gaps in identity posture become Copilot vulnerabilities at scale.",
               },
               {
-                step: "03",
-                title: "Receive Your PDF Report",
-                desc: "A branded PDF report lands in your inbox with your score, analysis, recommended service, and ROI projection.",
+                icon: Users,
+                colour: "bg-teal-500/10 text-teal-600",
+                title: "Change management determines adoption",
+                body: "AI tools fail when change management is treated as an afterthought. Executive buy-in, training programmes, and pilot readiness predict success more reliably than any technical factor.",
               },
-            ].map((item) => (
-              <div key={item.step} className="relative">
-                <div className="text-6xl font-black text-primary/10 mb-4">{item.step}</div>
-                <h3 className="text-xl font-bold text-[#0A2540] mb-2">{item.title}</h3>
-                <p className="text-slate-500 text-sm leading-relaxed">{item.desc}</p>
-              </div>
-            ))}
+            ].map((item, i) => {
+              const Icon = item.icon;
+              return (
+                <div key={i} className="bg-[#F7F9FC] rounded-2xl border border-border p-6">
+                  <div className={cn("w-11 h-11 rounded-xl flex items-center justify-center mb-4", item.colour)}>
+                    <Icon className="w-5 h-5" />
+                  </div>
+                  <h3 className="font-extrabold text-[#0A2540] mb-2">{item.title}</h3>
+                  <p className="text-slate-500 text-sm leading-relaxed">{item.body}</p>
+                </div>
+              );
+            })}
           </div>
         </div>
       </section>
 
-      {/* What's assessed */}
+      {/* Who This Is For */}
+      <section className="py-20 bg-[#0A2540]">
+        <div className="max-w-[1100px] mx-auto px-6">
+          <p className="text-center text-xs font-bold uppercase tracking-widest text-[#00B4D8] mb-3">Who This Assessment Is For</p>
+          <h2 className="text-3xl font-extrabold text-white text-center mb-4">
+            Built for organizations where a failed Copilot deployment is not an option.
+          </h2>
+          <p className="text-white/60 text-center max-w-xl mx-auto mb-12 text-lg">
+            If you're in any of these groups, you need this assessment before your deployment begins.
+          </p>
+          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {[
+              {
+                icon: Building2,
+                title: "Mid-market organizations",
+                body: "200–2,000 employees planning or mid-stream on a Copilot rollout who need to know where their environment stands before committing more budget.",
+              },
+              {
+                icon: ShieldCheck,
+                title: "Regulated industries",
+                body: "Healthcare, finance, insurance, and legal organizations where data governance gaps in a Copilot deployment create direct compliance exposure.",
+              },
+              {
+                icon: Globe,
+                title: "Government contractors",
+                body: "Federal and state contractors operating under CMMC, ITAR, FedRAMP, or other frameworks where AI governance requirements are non-negotiable.",
+              },
+              {
+                icon: AlertTriangle,
+                title: "Compliance and governance risk orgs",
+                body: "Organizations that have received an audit finding, failed a security review, or know their M365 governance posture is undocumented — and are now evaluating Copilot.",
+              },
+              {
+                icon: Target,
+                title: "IT teams planning Copilot",
+                body: "Technical leads who want an objective, scored framework to assess readiness across all five dimensions — not a vendor checklist, not a marketing scorecard.",
+              },
+              {
+                icon: Database,
+                title: "Organizations unsure of data readiness",
+                body: "Any org that hasn't completed a data classification exercise but is being pushed toward Copilot deployment by business leadership. Know your risk before you proceed.",
+              },
+            ].map((item, i) => {
+              const Icon = item.icon;
+              return (
+                <div key={i} className="bg-white/5 border border-white/10 rounded-2xl p-5">
+                  <div className="w-10 h-10 rounded-xl bg-[#0078D4]/20 flex items-center justify-center mb-4">
+                    <Icon className="w-5 h-5 text-[#00B4D8]" />
+                  </div>
+                  <h3 className="font-extrabold text-white mb-1">{item.title}</h3>
+                  <p className="text-white/50 text-sm leading-relaxed">{item.body}</p>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </section>
+
+      {/* How It Works */}
+      <section className="py-20 bg-white">
+        <div className="max-w-[1100px] mx-auto px-6">
+          <p className="text-center text-xs font-bold uppercase tracking-widest text-[#0078D4] mb-3">How It Works</p>
+          <h2 className="text-3xl font-extrabold text-[#0A2540] text-center mb-4">From first question to PDF in under five minutes.</h2>
+          <p className="text-slate-500 text-center max-w-xl mx-auto mb-14">
+            Ten questions. Five readiness dimensions. A NASA-grade scoring model. An instant readiness score, a personalized PDF report, and a recommended next step — delivered to your inbox the moment you finish.
+          </p>
+          <div className="grid md:grid-cols-3 gap-10">
+            {[
+              {
+                step: "01",
+                title: "Answer 10 targeted questions",
+                desc: "Each question maps to one of five readiness dimensions. No generic questionnaire — these are the same diagnostics Shane uses in a paid Copilot Readiness Assessment engagement, compressed into a 5-minute format.",
+              },
+              {
+                step: "02",
+                title: "Receive an instant readiness score",
+                desc: "Your answers are scored across all five dimensions using a 0–50 NASA-grade scoring model. You receive a total score, a maturity tier (Early / Developing / Ready / Advanced), and a per-dimension breakdown.",
+              },
+              {
+                step: "03",
+                title: "Get your personalized PDF report",
+                desc: "A branded, personalized PDF lands in your inbox immediately. It includes your score, dimension analysis, the deployment risks specific to your environment, and Shane's recommended next step — no sales call required.",
+              },
+            ].map((item) => (
+              <div key={item.step} className="relative">
+                <div className="text-7xl font-black text-primary/8 mb-4 leading-none">{item.step}</div>
+                <h3 className="text-xl font-extrabold text-[#0A2540] mb-3">{item.title}</h3>
+                <p className="text-slate-500 text-sm leading-relaxed">{item.desc}</p>
+              </div>
+            ))}
+          </div>
+          <div className="mt-14 text-center">
+            <button
+              onClick={() => setModalOpen(true)}
+              className="group inline-flex items-center gap-2 text-[#0078D4] font-semibold hover:text-[#005A9E] transition-colors"
+            >
+              Start the assessment now <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+            </button>
+          </div>
+        </div>
+      </section>
+
+      {/* The Five Dimensions */}
       <section className="py-20 bg-[#F7F9FC]">
-        <div className="max-w-[1200px] mx-auto px-6">
-          <h2 className="text-3xl font-bold text-[#0A2540] text-center mb-4">What Gets Assessed</h2>
-          <p className="text-slate-500 text-center max-w-xl mx-auto mb-12">
-            Five critical dimensions that determine whether Copilot will deliver value or get stuck at rollout.
+        <div className="max-w-[1100px] mx-auto px-6">
+          <p className="text-center text-xs font-bold uppercase tracking-widest text-[#0078D4] mb-3">The Five Readiness Dimensions</p>
+          <h2 className="text-3xl font-extrabold text-[#0A2540] text-center mb-4">What the assessment measures — and why it matters.</h2>
+          <p className="text-slate-500 text-center max-w-xl mx-auto mb-14">
+            These five dimensions determine whether a Copilot deployment delivers value or creates liability. Each is scored independently so you know exactly where to focus before deployment begins.
           </p>
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
             {[
               {
-                title: "Infrastructure & Identity",
-                desc: "M365 licensing status, Entra ID health, MFA deployment, device compliance policies.",
                 colour: "bg-blue-500",
+                accent: "text-blue-600",
+                label: "Dimension 1",
+                title: "Infrastructure & Identity",
+                measures: "M365 licensing status, Entra ID health, MFA enforcement, device compliance policies, and Conditional Access coverage.",
+                matters: "Copilot's access scope is determined by your identity architecture. Misconfigured Conditional Access or incomplete MFA becomes an attack surface when Copilot begins indexing.",
+                fail: "MFA not universally enforced; no device compliance baseline; Entra ID in hybrid with unmanaged devices.",
+                ready: "All users on MFA, Intune-managed devices, Conditional Access policies covering all apps, Entra ID health score above 80%.",
               },
               {
-                title: "Data & Compliance",
-                desc: "Sensitivity labels, DLP policies, data governance maturity, information barriers.",
                 colour: "bg-teal-500",
+                accent: "text-teal-600",
+                label: "Dimension 2",
+                title: "Data & Compliance",
+                measures: "Sensitivity label coverage, DLP policy maturity, data governance framework, information barriers, and retention policies.",
+                matters: "Copilot surfaces files, emails, and chats from across your tenant. Without classification, it surfaces everything — including what shouldn't be accessible to every user.",
+                fail: "No sensitivity labels deployed; DLP policies absent or unenforced; no documented data governance framework.",
+                ready: "Labels applied to >80% of files, DLP policies enforced across Exchange and SharePoint, governance framework documented and current.",
               },
               {
-                title: "AI Literacy",
-                desc: "Employee AI skills baseline, training programmes, adoption culture, AI champions.",
                 colour: "bg-violet-500",
+                accent: "text-violet-600",
+                label: "Dimension 3",
+                title: "AI Literacy",
+                measures: "Employee AI skills baseline, existence of a training programme, AI champion network, and adoption culture readiness.",
+                matters: "Copilot adoption correlates directly with AI literacy. Without a baseline and a structured enablement programme, licence utilization stays below 30%.",
+                fail: "No AI training programme; no champions; employees unaware of Copilot capabilities; no adoption tracking.",
+                ready: "Structured enablement programme in place; AI champions identified; pilot group trained and reporting outcomes.",
               },
               {
-                title: "Change Management",
-                desc: "Executive buy-in, policy documentation, pilot programme readiness, rollout planning.",
                 colour: "bg-orange-500",
+                accent: "text-orange-600",
+                label: "Dimension 4",
+                title: "Change Management",
+                measures: "Executive sponsorship, IT readiness for support burden, rollout planning maturity, and policy documentation.",
+                matters: "Change management failures are the most common cause of AI deployment failure — more common than technical issues. Without executive sponsorship and documented policy, pilots stall.",
+                fail: "No executive sponsor; IT team not trained on Copilot support; no rollout plan; no acceptable use policy.",
+                ready: "Exec sponsor confirmed; IT trained on Copilot administration; rollout plan documented; AUP drafted and approved.",
               },
               {
-                title: "Business Process",
-                desc: "Identified use cases, success metrics, ROI tracking plans, process ownership.",
                 colour: "bg-green-500",
+                accent: "text-green-600",
+                label: "Dimension 5",
+                title: "Business Process",
+                measures: "Identified priority use cases, success metrics, ROI tracking methodology, and process ownership accountability.",
+                matters: "Copilot delivers ROI when it's applied to specific, measurable use cases. Deployments without defined use cases produce vague outputs and no defensible business case.",
+                fail: "No use cases identified; no success metrics; no owner accountable for adoption outcomes.",
+                ready: "Three or more priority use cases defined; success metrics agreed; ROI baseline established; named owner per use case.",
               },
               {
-                title: "Your Report",
-                desc: "All five dimensions scored, ranked, and mapped to a tailored service recommendation.",
                 colour: "bg-primary",
+                accent: "text-white/80",
+                label: "Your Output",
+                title: "Your Report",
+                measures: "",
+                matters: "",
+                fail: "",
+                ready: "",
                 cta: true,
               },
             ].map((item) => (
               <div
                 key={item.title}
                 className={cn(
-                  "bg-white rounded-xl p-6 border border-slate-100 shadow-sm",
-                  item.cta && "bg-[#0A2540] border-[#0A2540]"
+                  "rounded-2xl p-6 border",
+                  item.cta ? "bg-[#0A2540] border-[#0A2540] flex flex-col justify-between" : "bg-white border-slate-100 shadow-sm"
                 )}
               >
-                <div className={cn("w-2 h-8 rounded-full mb-4", item.colour)} />
-                <h3 className={cn("font-bold text-lg mb-2", item.cta ? "text-white" : "text-[#0A2540]")}>
-                  {item.title}
-                </h3>
-                <p className={cn("text-sm leading-relaxed", item.cta ? "text-white/60" : "text-slate-500")}>
-                  {item.desc}
-                </p>
+                <div>
+                  <div className="flex items-center gap-3 mb-4">
+                    <div className={cn("w-2 h-10 rounded-full", item.colour)} />
+                    <div>
+                      <p className={cn("text-xs font-bold uppercase tracking-wide", item.cta ? "text-white/40" : "text-muted-foreground")}>{item.label}</p>
+                      <h3 className={cn("font-extrabold text-lg", item.cta ? "text-white" : "text-[#0A2540]")}>{item.title}</h3>
+                    </div>
+                  </div>
+                  {item.cta ? (
+                    <p className="text-white/60 text-sm leading-relaxed">
+                      All five dimensions scored, ranked by risk level, and mapped to a tailored service recommendation. Personalized PDF delivered to your inbox the moment you finish.
+                    </p>
+                  ) : (
+                    <div className="space-y-3 text-sm">
+                      <div>
+                        <p className="font-semibold text-[#0A2540] text-xs uppercase tracking-wide mb-1">What it measures</p>
+                        <p className="text-slate-500 leading-relaxed">{item.measures}</p>
+                      </div>
+                      <div>
+                        <p className="font-semibold text-[#0A2540] text-xs uppercase tracking-wide mb-1">Why it matters</p>
+                        <p className="text-slate-500 leading-relaxed">{item.matters}</p>
+                      </div>
+                      <div className="flex gap-3">
+                        <div className="flex-1 bg-red-50 rounded-lg p-3">
+                          <p className="text-xs font-bold text-red-500 uppercase tracking-wide mb-1">Failure looks like</p>
+                          <p className="text-xs text-slate-600 leading-relaxed">{item.fail}</p>
+                        </div>
+                        <div className="flex-1 bg-emerald-50 rounded-lg p-3">
+                          <p className="text-xs font-bold text-emerald-600 uppercase tracking-wide mb-1">Readiness looks like</p>
+                          <p className="text-xs text-slate-600 leading-relaxed">{item.ready}</p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
                 {item.cta && (
                   <button
                     onClick={() => setModalOpen(true)}
-                    className="mt-4 text-primary text-sm font-semibold flex items-center gap-1 hover:gap-2 transition-all"
+                    className="mt-6 inline-flex items-center gap-1.5 text-[#00B4D8] text-sm font-semibold hover:gap-2.5 transition-all"
                   >
                     Start Assessment <ChevronRight className="w-4 h-4" />
                   </button>
@@ -696,19 +864,83 @@ export default function CopilotQuiz() {
         </div>
       </section>
 
-      {/* CTA */}
+      {/* What You Receive */}
+      <section className="py-20 bg-white">
+        <div className="max-w-[1100px] mx-auto px-6">
+          <p className="text-center text-xs font-bold uppercase tracking-widest text-[#0078D4] mb-3">What You Receive</p>
+          <h2 className="text-3xl font-extrabold text-[#0A2540] text-center mb-4">
+            A personalized deployment risk report. Free. Instant.
+          </h2>
+          <p className="text-slate-500 text-center max-w-xl mx-auto mb-14 text-lg">
+            Not a generic score. Not a newsletter signup. A real report — the same diagnostic framework Shane applies in paid engagements — delivered to your inbox the moment you finish.
+          </p>
+          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-5">
+            {[
+              {
+                icon: BarChart3,
+                title: "Readiness score (0–50)",
+                body: "A total score across all five dimensions with your maturity tier: Early, Developing, Ready, or Advanced.",
+              },
+              {
+                icon: Target,
+                title: "Dimension-by-dimension breakdown",
+                body: "Each of the five dimensions scored independently so you know exactly where you're strong and where you're exposed.",
+              },
+              {
+                icon: AlertTriangle,
+                title: "Deployment risk summary",
+                body: "The specific risks identified in your environment — the gaps that are most likely to cause adoption failure or compliance exposure in your deployment.",
+              },
+              {
+                icon: Award,
+                title: "Recommended next service",
+                body: "Based on your score and risk profile, a specific Shane McCaw Consulting service recommended as the highest-value next step.",
+              },
+              {
+                icon: FileText,
+                title: "Personalized PDF report",
+                body: "A branded, downloadable PDF with your full results — shareable with IT leadership, your procurement team, or your executive sponsor.",
+              },
+              {
+                icon: Zap,
+                title: "Clear action plan",
+                body: "A prioritized list of the three to five actions that will most improve your readiness score — written for your specific environment, not a generic checklist.",
+              },
+            ].map((item, i) => {
+              const Icon = item.icon;
+              return (
+                <div key={i} className="flex items-start gap-4 bg-[#F7F9FC] rounded-2xl border border-border p-5">
+                  <div className="w-10 h-10 rounded-xl bg-[#0078D4]/10 flex items-center justify-center flex-shrink-0">
+                    <Icon className="w-5 h-5 text-[#0078D4]" />
+                  </div>
+                  <div>
+                    <h3 className="font-extrabold text-[#0A2540] mb-1">{item.title}</h3>
+                    <p className="text-slate-500 text-sm leading-relaxed">{item.body}</p>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </section>
+
+      {/* Bottom CTA */}
       <section className="py-20 bg-[#0A2540]">
         <div className="max-w-[700px] mx-auto px-6 text-center">
-          <h2 className="text-3xl md:text-4xl font-bold text-white mb-4">
-            Don't Leave Your Copilot Rollout to Chance
+          <p className="text-[#00B4D8] text-xs font-bold uppercase tracking-widest mb-4">Don't Deploy Blind</p>
+          <h2 className="text-3xl md:text-4xl font-extrabold text-white mb-4">
+            Know your deployment risk before you spend your Copilot budget.
           </h2>
-          <p className="text-white/60 text-lg mb-8">
-            Most Copilot deployments underperform because organisations skip the readiness work.
-            Know exactly where you stand before you spend a dollar.
+          <p className="text-white/60 text-lg mb-3 leading-relaxed">
+            Most organizations discover their readiness gaps after deployment — when adoption is low, support burden is high, and the business case is already under scrutiny.
+          </p>
+          <p className="text-white/60 text-lg mb-10 leading-relaxed">
+            This assessment takes five minutes. The PDF report is free. The gaps it surfaces are not.
           </p>
           <CTAButton onClick={() => setModalOpen(true)} className="text-base px-8 py-4">
             Take the Free Assessment Now
           </CTAButton>
+          <p className="text-white/30 text-sm mt-4">No account required · No sales follow-up · Results delivered instantly</p>
         </div>
       </section>
 
