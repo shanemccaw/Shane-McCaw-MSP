@@ -1,4 +1,4 @@
-import { CheckCircle, Clock, DollarSign } from "lucide-react";
+import { CheckCircle, Clock, DollarSign, Phone } from "lucide-react";
 import { useServices, formatPriceDisplay, type PublicService } from "../hooks/useServices";
 import { CTAButton } from "./CTAButton";
 
@@ -120,9 +120,18 @@ function FeaturedCard({
             </ul>
           ) : null}
         </div>
-        <CTAButton href={ctaHref} className="flex-shrink-0 whitespace-nowrap self-center">
-          {ctaLabel}
-        </CTAButton>
+        <div className="flex flex-col gap-3 flex-shrink-0 self-center">
+          <CTAButton href={ctaHref} className="whitespace-nowrap">
+            {ctaLabel}
+          </CTAButton>
+          <a
+            href="/book"
+            className="inline-flex items-center justify-center gap-2 border border-[#0078D4] text-[#0078D4] font-semibold px-6 py-3 rounded hover:bg-[#0078D4]/5 transition-colors text-sm whitespace-nowrap"
+          >
+            <Phone className="w-4 h-4" />
+            Book a Call
+          </a>
+        </div>
       </div>
     </div>
   );
@@ -201,15 +210,27 @@ function CompactCard({
         </div>
       )}
 
-      <a
-        href={ctaHref}
-        className="inline-flex items-center justify-center gap-2 text-white font-semibold px-5 py-3 rounded-xl transition-colors text-sm mt-auto"
-        style={{ backgroundColor: accentColor }}
-        onMouseEnter={(e) => (e.currentTarget.style.opacity = "0.9")}
-        onMouseLeave={(e) => (e.currentTarget.style.opacity = "1")}
-      >
-        {ctaLabel}
-      </a>
+      <div className="flex flex-col gap-2 mt-auto">
+        <a
+          href={ctaHref}
+          className="inline-flex items-center justify-center gap-2 text-white font-semibold px-5 py-3 rounded-xl transition-colors text-sm"
+          style={{ backgroundColor: accentColor }}
+          onMouseEnter={(e) => (e.currentTarget.style.opacity = "0.9")}
+          onMouseLeave={(e) => (e.currentTarget.style.opacity = "1")}
+        >
+          {ctaLabel}
+        </a>
+        <a
+          href="/book"
+          className="inline-flex items-center justify-center gap-2 font-semibold px-5 py-3 rounded-xl transition-colors text-sm border"
+          style={{ color: accentColor, borderColor: accentColor }}
+          onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = `${accentColor}10`)}
+          onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "transparent")}
+        >
+          <Phone className="w-4 h-4" />
+          Book a Call
+        </a>
+      </div>
     </div>
   );
 }
