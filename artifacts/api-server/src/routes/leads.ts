@@ -14,6 +14,7 @@ import {
   serviceOverviewLeadNotificationEmail,
 } from "../lib/mailer";
 import { createAuditLog } from "../lib/audit";
+import { generateServiceOverviewPdf } from "../lib/service-overview-pdf";
 import fs from "fs";
 import path from "path";
 
@@ -92,6 +93,19 @@ router.post("/leads", async (req: Request, res: Response) => {
             pdfAttached = true;
           } else {
             req.log.warn({ serviceId: matchedService.id, overviewPdfKey: matchedService.overviewPdfKey }, "Service overview PDF key set but file missing on disk");
+          }
+        }
+
+        if (!pdfAttached && matchedService) {
+          try {
+            const dynamicBuffer = await generateServiceOverviewPdf(serviceName);
+            if (dynamicBuffer) {
+              const safeName = serviceName.replace(/[^a-z0-9]/gi, "-").toLowerCase();
+              attachments = [{ filename: `${safeName}-overview.pdf`, content: dynamicBuffer }];
+              pdfAttached = true;
+            }
+          } catch (pdfErr) {
+            req.log.warn({ pdfErr, serviceName }, "Dynamic PDF generation failed; sending email without attachment");
           }
         }
 
