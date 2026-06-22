@@ -226,7 +226,7 @@ export default function PowerPlatform() {
               Power Platform Quick&#8209;Start
             </h2>
           </div>
-          <FixedPriceOfferCard slug="power-platform-quickstart" ctaLabel="Book a Free Discovery Call" />
+          <FixedPriceOfferCard slug="power-platform-quickstart" ctaLabel="Get Started" />
         </div>
       </section>
 

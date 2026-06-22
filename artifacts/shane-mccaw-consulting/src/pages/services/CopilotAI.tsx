@@ -197,7 +197,7 @@ export default function CopilotAI() {
             <p className="text-[#0078D4] text-sm font-semibold uppercase tracking-[0.12em] mb-3">Fixed-Price Engagement</p>
             <h2 className="text-3xl md:text-4xl font-extrabold text-[#0A2540]">Copilot for M365 Readiness Assessment</h2>
           </div>
-          <FixedPriceOfferCard slug="copilot-for-m365-readiness-assessment" ctaLabel="Book This Assessment" />
+          <FixedPriceOfferCard slug="copilot-for-m365-readiness-assessment" ctaLabel="Get Started" />
         </div>
       </section>
 

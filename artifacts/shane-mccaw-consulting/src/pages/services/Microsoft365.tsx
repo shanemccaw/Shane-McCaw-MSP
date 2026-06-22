@@ -159,7 +159,7 @@ export default function Microsoft365() {
             <p className="text-[#0078D4] text-sm font-semibold uppercase tracking-[0.12em] mb-3">Fixed-Price Engagement</p>
             <h2 className="text-3xl md:text-4xl font-extrabold text-[#0A2540]">M365 Tenant Health Audit</h2>
           </div>
-          <FixedPriceOfferCard slug="m365-tenant-health-audit" ctaLabel="Book This Engagement" />
+          <FixedPriceOfferCard slug="m365-tenant-health-audit" ctaLabel="Get Started" />
         </div>
       </section>
 

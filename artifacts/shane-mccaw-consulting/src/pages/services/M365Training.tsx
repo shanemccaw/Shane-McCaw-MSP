@@ -214,7 +214,7 @@ export default function M365Training() {
             <p className="text-[#0078D4] text-sm font-semibold uppercase tracking-[0.12em] mb-3">Fixed-Price Engagement</p>
             <h2 className="text-3xl md:text-4xl font-extrabold text-[#0A2540]">Microsoft 365 Training &amp; Enablement</h2>
           </div>
-          <FixedPriceOfferCard slug="microsoft-365-training--enablement" ctaLabel="Book This Training" />
+          <FixedPriceOfferCard slug="microsoft-365-training--enablement" ctaLabel="Get Started" />
         </div>
       </section>
 
