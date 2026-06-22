@@ -442,7 +442,9 @@ export function GenericQuizModal({ config, onClose }: { config: QuizConfig; onCl
                     </span>
                   </div>
                   <p className="text-white font-bold text-base">{upsell.name}</p>
-                  <p className="text-white/70 text-sm leading-relaxed">{upsell.description}</p>
+                  <p className="text-white/70 text-sm leading-relaxed">
+                    {results?.whyThisFits || upsell.description}
+                  </p>
                   <div className="flex flex-col sm:flex-row gap-2 pt-1">
                     <a
                       href={`/crm/portal/onboarding/select?service=${upsell.slug}`}
