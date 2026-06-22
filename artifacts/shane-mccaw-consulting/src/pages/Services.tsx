@@ -4,7 +4,7 @@ import { Link } from "wouter";
 import { Layout } from "@/components/Layout";
 import { CTAButton } from "@/components/CTAButton";
 import {
-  Zap, FolderOpen, Calendar, ArrowRight, CheckCircle,
+  Zap, FolderOpen, Calendar, ArrowRight, CheckCircle, Tag,
   type LucideIcon,
 } from "lucide-react";
 import { useServices, type PublicService } from "@/hooks/useServices";
@@ -387,9 +387,16 @@ export default function Services() {
                           )}
                         </p>
                       </div>
-                      <p className="text-sm text-muted-foreground italic">
-                        Early clients may receive discounted entry-point engagements in exchange for a testimonial or case study.
-                      </p>
+                      <div className="mt-4 rounded-lg border border-[#0078D4]/40 bg-[#0078D4]/5 px-5 py-4">
+                        <p className="text-sm font-semibold text-[#0A2540] mb-1">Early Client Offer</p>
+                        <p className="text-sm text-muted-foreground mb-3">
+                          Early clients receive 10% off any entry-point engagement — saving $300 or more — in exchange for a short written testimonial or case study after project completion.
+                        </p>
+                        <span className="inline-flex items-center gap-1.5 rounded-full bg-[#0078D4] px-3 py-1 text-xs font-bold text-white tracking-wide">
+                          <Tag className="w-3.5 h-3.5" />
+                          TESTIMONIAL — 10% off, save $300+
+                        </span>
+                      </div>
                     </div>
                   ) : isCore ? (
                     <p className="text-sm text-muted-foreground leading-relaxed border-l-2 border-[#0078D4]/40 pl-4">

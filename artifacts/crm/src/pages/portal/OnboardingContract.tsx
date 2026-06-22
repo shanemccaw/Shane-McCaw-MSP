@@ -372,6 +372,7 @@ export default function OnboardingContract() {
           signatureData,
           signerName,
           wizardSelections: Object.keys(wizardSelectionsInput).length > 0 ? wizardSelectionsInput : undefined,
+          couponCode: appliedCoupon?.code ?? undefined,
         }),
       });
       if (!contractRes.ok) {

@@ -737,6 +737,7 @@ export const couponsTable = pgTable("coupons", {
   usesCount: integer("uses_count").notNull().default(0),
   active: boolean("active").notNull().default(true),
   expiresAt: timestamp("expires_at"),
+  requiresTestimonial: boolean("requires_testimonial").notNull().default(false),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 

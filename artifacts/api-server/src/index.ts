@@ -74,4 +74,24 @@ app.listen(port, (err) => {
   }).catch((err: unknown) => {
     logger.warn({ err }, "Migration: failed to add coupon columns to invoices (non-fatal)");
   });
+
+  pool.query(`
+    ALTER TABLE coupons
+    ADD COLUMN IF NOT EXISTS requires_testimonial BOOLEAN NOT NULL DEFAULT false
+  `).then(() => {
+    logger.info("Migration: coupons.requires_testimonial column ensured");
+    return pool.query(`
+      INSERT INTO coupons (code, discount_type, discount_value, active, requires_testimonial)
+      VALUES ('TESTIMONIAL', 'percentage', 10, true, true)
+      ON CONFLICT (code) DO UPDATE
+        SET discount_type = 'percentage',
+            discount_value = 10,
+            active = true,
+            requires_testimonial = true
+    `);
+  }).then(() => {
+    logger.info("Seed: TESTIMONIAL coupon upserted");
+  }).catch((err: unknown) => {
+    logger.warn({ err }, "Migration/seed: coupons.requires_testimonial or TESTIMONIAL coupon failed (non-fatal)");
+  });
 });

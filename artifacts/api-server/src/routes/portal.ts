@@ -1898,13 +1898,14 @@ interface ContractPdfOptions {
   signatureDataUrl?: string;
   contractTemplateBody?: string; // When provided, replaces hardcoded sections with admin-authored content
   selectionsSummary?: string;    // Plain-text wizard selection summary, injected after price row
+  appendBody?: string;           // Extra clauses appended after template/standard sections (before signature)
 }
 
 async function generateContractPdf(opts: ContractPdfOptions): Promise<{ filename: string; buffer: Buffer; localFilePath: string }> {
   const {
     contractId, signerName, serviceName, servicePrice,
     billingType = "one_time", serviceDeliverables, serviceTurnaround,
-    signedAt, signatureDataUrl, contractTemplateBody, selectionsSummary,
+    signedAt, signatureDataUrl, contractTemplateBody, selectionsSummary, appendBody,
   } = opts;
 
   const pdfDoc = await PDFDocument.create();
@@ -2177,6 +2178,38 @@ async function generateContractPdf(opts: ContractPdfOptions): Promise<{ filename
         y -= 13;
       }
       y -= 10;
+    }
+  }
+
+  // ── APPEND BODY (extra clauses, e.g. testimonial obligation) ─────────────────
+  if (appendBody) {
+    y -= 10;
+    for (const rawLine of appendBody.split("\n")) {
+      const trimmed = rawLine.trimEnd();
+      if (trimmed.startsWith("# ")) {
+        ensureSpace(32);
+        y = drawSectionHeading(currentPage, trimmed.slice(2), MARGIN, y);
+      } else if (trimmed.startsWith("## ")) {
+        ensureSpace(22);
+        currentPage.drawText(trimmed.slice(3), { x: MARGIN, y, font: boldFont, size: 10, color: navy });
+        y -= 16;
+      } else if (trimmed === "---") {
+        ensureSpace(14);
+        currentPage.drawLine({ start: { x: MARGIN, y }, end: { x: MARGIN + CONTENT_W, y }, thickness: 0.75, color: borderC });
+        y -= 10;
+      } else if (trimmed === "") {
+        y -= 6;
+      } else if (trimmed.startsWith("**") && trimmed.endsWith("**")) {
+        ensureSpace(22);
+        currentPage.drawText(trimmed.slice(2, -2), { x: MARGIN, y, font: boldFont, size: 10, color: navy });
+        y -= 16;
+      } else {
+        for (const wl of wrapText(trimmed, CONTENT_W - 10, 9.5)) {
+          ensureSpace(14);
+          currentPage.drawText(wl, { x: MARGIN + 4, y, font: regFont, size: 9.5, color: darkTxt });
+          y -= 13;
+        }
+      }
     }
   }
 
@@ -5197,9 +5230,10 @@ router.get("/portal/onboarding/services", async (_req: Request, res: Response) =
 // ─── ONBOARDING: Sign a contract (supports multi-service) ────────────────────
 router.post("/portal/onboarding/contract", requireAuth, async (req: Request, res: Response) => {
   const userId = req.user!.id;
-  const { serviceId, serviceIds: rawServiceIds, signatureData, signerName, wizardSelections } = req.body as {
+  const { serviceId, serviceIds: rawServiceIds, signatureData, signerName, wizardSelections, couponCode: bodyCouponCode } = req.body as {
     serviceId?: number; serviceIds?: number[]; signatureData?: string; signerName?: string;
     wizardSelections?: Record<string, { stepId: string; stepTitle?: string; optionId: string; optionLabel?: string; priceAdjustment?: number }[]>;
+    couponCode?: string;
   };
 
   // Support both single serviceId (legacy) and serviceIds array (multi-service)
@@ -5321,7 +5355,7 @@ router.post("/portal/onboarding/contract", requireAuth, async (req: Request, res
       }
     }
 
-    const templateBody = contractTemplate?.body?.trim()
+    let templateBody = contractTemplate?.body?.trim()
       ? contractTemplate.body
           .replace(/\{\{client_name\}\}/g, signerName.trim())
           .replace(/\{\{service_name\}\}/g, svc.name)
@@ -5329,6 +5363,32 @@ router.post("/portal/onboarding/contract", requireAuth, async (req: Request, res
           .replace(/\{\{date\}\}/g, signedDate)
           .replace(/\{\{selections_summary\}\}/g, selectionsSummary)
       : undefined;
+
+    // ── Testimonial obligation clause (TESTIMONIAL coupon) ────────────────
+    // The coupon code is passed from the frontend at signing time (before checkout).
+    // Checkout also authoritatively re-checks and updates agreementBody if needed.
+    const TESTIMONIAL_MARKER = "Testimonial & Case Study Obligation";
+    const TESTIMONIAL_CLAUSE = `\n\n---\n\n**Testimonial & Case Study Obligation**\n\nThe discounted rate applied to this engagement was granted in exchange for the Client's agreement to provide a written testimonial or short case study within 90 days of project completion. The testimonial or case study will describe the Client's experience working with Shane McCaw Consulting and may be used by Shane McCaw Consulting for marketing purposes. Failure to deliver the testimonial or case study within the stated period does not retroactively alter the agreed service price, but the discount benefit will not be available on future engagements until the obligation is fulfilled.`;
+    let pdfAppendBody: string | undefined;
+
+    if (bodyCouponCode?.trim()) {
+      const [appliedCouponRow] = await db
+        .select({ requiresTestimonial: couponsTable.requiresTestimonial })
+        .from(couponsTable)
+        .where(eq(couponsTable.code, bodyCouponCode.trim().toUpperCase()))
+        .limit(1);
+      if (appliedCouponRow?.requiresTestimonial) {
+        if (templateBody) {
+          // Append clause to admin-authored template (both DB record and PDF use it)
+          templateBody = templateBody + TESTIMONIAL_CLAUSE;
+        } else {
+          // No admin template: standard PDF sections render via the normal path.
+          // The testimonial clause is appended separately via appendBody so the
+          // standard legal sections are preserved in the generated PDF.
+          pdfAppendBody = TESTIMONIAL_CLAUSE.trimStart();
+        }
+      }
+    }
 
     const [contract] = await db.insert(contractsTable).values({
       userId,
@@ -5340,7 +5400,9 @@ router.post("/portal/onboarding/contract", requireAuth, async (req: Request, res
       contractVersion: contractTemplate?.version ?? "v1",
       finalPrice: computedFinalPrice != null ? String(computedFinalPrice) : null,
       wizardSelections: svcSelections.length > 0 ? svcSelections as never : null,
-      agreementBody: templateBody ?? null,
+      // When no template exists but a testimonial clause applies, store the clause
+      // in agreementBody so there is a DB record; the PDF renders it via appendBody.
+      agreementBody: templateBody ?? (pdfAppendBody ?? null),
     }).returning();
 
     // ── Generate signed PDF immediately at signing time ──────────────────
@@ -5359,6 +5421,7 @@ router.post("/portal/onboarding/contract", requireAuth, async (req: Request, res
         signatureDataUrl: signatureData,
         contractTemplateBody: templateBody,
         selectionsSummary: selectionsSummary || undefined,
+        appendBody: pdfAppendBody,
       });
 
       // ── Upload to SharePoint Contracts folder ──────────────────────────
@@ -5687,6 +5750,29 @@ router.post("/portal/checkout/create-session", requireAuth, async (req: Request,
         : Math.round(discountCents * raw / totalCartCents);
       discountedPriceCents.set(id, Math.max(0, raw - share));
       remaining -= share;
+    }
+
+    // ── Authoritative testimonial clause enforcement ────────────────────────
+    // If the server-validated coupon requires a testimonial, ensure every
+    // associated contract's agreementBody contains the obligation clause,
+    // regardless of whether the client passed the coupon code at signing time.
+    if (couponResult.coupon.requiresTestimonial) {
+      const TESTIMONIAL_MARKER = "Testimonial & Case Study Obligation";
+      const TESTIMONIAL_CLAUSE = `\n\n---\n\n**Testimonial & Case Study Obligation**\n\nThe discounted rate applied to this engagement was granted in exchange for the Client's agreement to provide a written testimonial or short case study within 90 days of project completion. The testimonial or case study will describe the Client's experience working with Shane McCaw Consulting and may be used by Shane McCaw Consulting for marketing purposes. Failure to deliver the testimonial or case study within the stated period does not retroactively alter the agreed service price, but the discount benefit will not be available on future engagements until the obligation is fulfilled.`;
+      for (const contractId of resolvedContractIds) {
+        const [existingContract] = await db
+          .select({ id: contractsTable.id, agreementBody: contractsTable.agreementBody })
+          .from(contractsTable)
+          .where(eq(contractsTable.id, contractId));
+        if (existingContract && !existingContract.agreementBody?.includes(TESTIMONIAL_MARKER)) {
+          const updatedBody = existingContract.agreementBody
+            ? existingContract.agreementBody + TESTIMONIAL_CLAUSE
+            : TESTIMONIAL_CLAUSE.trimStart();
+          await db.update(contractsTable)
+            .set({ agreementBody: updatedBody })
+            .where(eq(contractsTable.id, contractId));
+        }
+      }
     }
   }
   // ─────────────────────────────────────────────────────────────────────────
