@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useLocation } from "wouter";
 import { Menu, X, Rocket, ChevronDown } from "lucide-react";
 import { CTAButton } from "./CTAButton";
@@ -10,7 +10,7 @@ interface NavItem { label: string; href: string; icon?: React.ReactNode; }
 const START_HERE_ITEMS: NavItem[] = [
   { label: "Copilot Readiness Assessment", href: "/copilot-quiz" },
   { label: "M365 Health Assessment",       href: "/m365-health-quiz" },
-  { label: "Tenant Health Audit",          href: "/micro-offers" }, // TODO: no dedicated page yet
+  { label: "Tenant Health Audit",          href: "/micro-offers" },
   { label: "Book a Call",                  href: "/book" },
 ];
 
@@ -25,14 +25,14 @@ const SERVICES_ITEMS: NavItem[] = [
   { label: "Cloud Migration",               href: "/services/cloud-migration" },
 ];
 
+// 6 offer items, all pointing to /micro-offers (no per-offer routes exist yet)
 const MICRO_OFFERS_ITEMS: NavItem[] = [
-  { label: "All Micro-Offers",                    href: "/micro-offers" },
-  { label: "Tenant Health Audit",                 href: "/micro-offers" }, // TODO: no dedicated page yet
-  { label: "Power Platform Quick-Start",          href: "/micro-offers" }, // TODO: no dedicated page yet
-  { label: "Governance Foundations",              href: "/micro-offers" }, // TODO: no dedicated page yet
-  { label: "Migration Readiness Assessment",      href: "/migration-readiness-quiz" },
-  { label: "Copilot Readiness Assessment",        href: "/copilot-quiz" },
-  { label: "Microsoft 365 Training & Enablement", href: "/services/m365-training" },
+  { label: "Tenant Health Audit",                  href: "/micro-offers" },
+  { label: "Power Platform Quick-Start",           href: "/micro-offers" },
+  { label: "Governance Foundations",               href: "/micro-offers" },
+  { label: "Migration Readiness Assessment",       href: "/micro-offers" },
+  { label: "Copilot Readiness Assessment",         href: "/micro-offers" },
+  { label: "Microsoft 365 Training & Enablement",  href: "/micro-offers" },
 ];
 
 const RETAINER_ITEMS: NavItem[] = [
@@ -55,9 +55,9 @@ const ASSESSMENTS_ITEMS: NavItem[] = [
 
 const RESOURCES_ITEMS: NavItem[] = [
   { label: "Resource Library", href: "/resources" },
-  { label: "Articles",         href: "/resources" }, // TODO: no dedicated page yet
-  { label: "Templates",        href: "/resources" }, // TODO: no dedicated page yet
-  { label: "Tools",            href: "/resources" }, // TODO: no dedicated page yet
+  { label: "Articles",         href: "/resources" },
+  { label: "Templates",        href: "/resources" },
+  { label: "Tools",            href: "/resources" },
 ];
 
 const PLAIN_LINKS: NavItem[] = [
@@ -71,16 +71,18 @@ type MenuKey = "startHere" | "services" | "microOffers" | "retainers" | "assessm
 
 // ─── Dropdown trigger ──────────────────────────────────────────────────────────
 function DropdownTrigger({
-  menuKey, label, isActive, isOpen, onToggle,
+  menuKey, label, isActive, isOpen, onToggle, triggerRef,
 }: {
   menuKey: MenuKey;
   label: string;
   isActive: boolean;
   isOpen: boolean;
   onToggle: (key: MenuKey) => void;
+  triggerRef?: React.RefObject<HTMLButtonElement | null>;
 }) {
   return (
     <button
+      ref={triggerRef}
       onClick={() => onToggle(menuKey)}
       aria-haspopup="true"
       aria-expanded={isOpen}
@@ -99,17 +101,45 @@ function DropdownTrigger({
 
 // ─── Dropdown panel ────────────────────────────────────────────────────────────
 function DropdownPanel({
-  items, location, twoCol, width, onClose,
+  items, location, twoCol, width, onClose, triggerRef,
 }: {
   items: NavItem[];
   location: string;
   twoCol?: boolean;
   width?: string;
   onClose: () => void;
+  triggerRef?: React.RefObject<HTMLButtonElement | null>;
 }) {
+  const panelRef = useRef<HTMLDivElement>(null);
+
+  // Arrow key navigation within the open dropdown
+  const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (!panelRef.current) return;
+    const focusable = Array.from(
+      panelRef.current.querySelectorAll<HTMLElement>('[role="menuitem"]')
+    );
+    const idx = focusable.indexOf(document.activeElement as HTMLElement);
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      const next = focusable[(idx + 1) % focusable.length];
+      next?.focus();
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      const prev = focusable[(idx - 1 + focusable.length) % focusable.length];
+      prev?.focus();
+    } else if (e.key === "Escape") {
+      onClose();
+      triggerRef?.current?.focus();
+    } else if (e.key === "Tab") {
+      onClose();
+    }
+  }, [onClose, triggerRef]);
+
   return (
     <div
+      ref={panelRef}
       role="menu"
+      onKeyDown={handleKeyDown}
       className={cn(
         "absolute top-full left-0 mt-1.5 bg-[#0A2540] border border-white/10 rounded-xl shadow-2xl overflow-hidden py-1.5",
         width ?? (twoCol ? "w-[28rem]" : "w-60")
@@ -121,16 +151,18 @@ function DropdownPanel({
             key={`${item.href}::${item.label}`}
             href={item.href}
             role="menuitem"
+            tabIndex={0}
             onClick={onClose}
             data-track="nav"
             className={cn(
-              "flex items-center gap-2 px-4 py-2 text-sm transition-colors",
+              "flex items-center gap-2 px-4 py-2 text-sm transition-colors focus:outline-none focus:bg-white/10",
               location === item.href
                 ? "text-primary font-medium"
                 : "text-white/75 hover:text-white hover:bg-white/5"
             )}
           >
             {item.icon && <span className="shrink-0 w-4 h-4 opacity-60">{item.icon}</span>}
+            {!item.icon && <span className="shrink-0 w-4 h-4" aria-hidden="true" />}
             {item.label}
           </Link>
         ))}
@@ -148,6 +180,16 @@ export function Header() {
   const [openMenu, setOpenMenu] = useState<MenuKey | null>(null);
   const [mobileExpanded, setMobileExpanded] = useState<Record<string, boolean>>({});
   const navRef = useRef<HTMLUListElement>(null);
+
+  // Per-trigger refs so Escape can return focus to the button that opened the menu
+  const triggerRefs: Record<MenuKey, React.RefObject<HTMLButtonElement | null>> = {
+    startHere:   useRef<HTMLButtonElement>(null),
+    services:    useRef<HTMLButtonElement>(null),
+    microOffers: useRef<HTMLButtonElement>(null),
+    retainers:   useRef<HTMLButtonElement>(null),
+    assessments: useRef<HTMLButtonElement>(null),
+    resources:   useRef<HTMLButtonElement>(null),
+  };
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 20);
@@ -167,11 +209,17 @@ export function Header() {
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") { setOpenMenu(null); setMobileMenuOpen(false); }
+      if (e.key === "Escape") {
+        setOpenMenu((prev) => {
+          if (prev) triggerRefs[prev].current?.focus();
+          return null;
+        });
+        setMobileMenuOpen(false);
+      }
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, []);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     setMobileMenuOpen(false);
@@ -188,12 +236,12 @@ export function Header() {
     setMobileExpanded((prev) => ({ ...prev, [key]: !prev[key] }));
   }
 
-  const isStartHereActive = START_HERE_ITEMS.some((i) => location === i.href);
-  const isServicesActive  = location.startsWith("/services");
-  const isMicroActive     = location === "/micro-offers";
-  const isRetainersActive = location.startsWith("/retainers");
+  const isStartHereActive   = START_HERE_ITEMS.some((i) => location === i.href);
+  const isServicesActive    = location.startsWith("/services");
+  const isMicroActive       = location === "/micro-offers";
+  const isRetainersActive   = location.startsWith("/retainers");
   const isAssessmentsActive = ASSESSMENTS_ITEMS.some((i) => location === i.href);
-  const isResourcesActive = location.startsWith("/resources");
+  const isResourcesActive   = location.startsWith("/resources");
 
   const headerClasses = cn(
     "fixed top-0 left-0 right-0 z-50 transition-all duration-300",
@@ -226,41 +274,41 @@ export function Header() {
 
             {/* Start Here */}
             <li className="relative">
-              <DropdownTrigger menuKey="startHere" label="Start Here" isActive={isStartHereActive} isOpen={openMenu === "startHere"} onToggle={toggle} />
+              <DropdownTrigger menuKey="startHere" label="Start Here" isActive={isStartHereActive} isOpen={openMenu === "startHere"} onToggle={toggle} triggerRef={triggerRefs.startHere} />
               {openMenu === "startHere" && (
-                <DropdownPanel items={START_HERE_ITEMS} location={location} width="w-64" onClose={closeAll} />
+                <DropdownPanel items={START_HERE_ITEMS} location={location} width="w-64" onClose={closeAll} triggerRef={triggerRefs.startHere} />
               )}
             </li>
 
             {/* Services */}
             <li className="relative">
-              <DropdownTrigger menuKey="services" label="Services" isActive={isServicesActive} isOpen={openMenu === "services"} onToggle={toggle} />
+              <DropdownTrigger menuKey="services" label="Services" isActive={isServicesActive} isOpen={openMenu === "services"} onToggle={toggle} triggerRef={triggerRefs.services} />
               {openMenu === "services" && (
-                <DropdownPanel items={SERVICES_ITEMS} location={location} twoCol onClose={closeAll} />
+                <DropdownPanel items={SERVICES_ITEMS} location={location} twoCol onClose={closeAll} triggerRef={triggerRefs.services} />
               )}
             </li>
 
             {/* Micro-Offers */}
             <li className="relative">
-              <DropdownTrigger menuKey="microOffers" label="Micro-Offers" isActive={isMicroActive} isOpen={openMenu === "microOffers"} onToggle={toggle} />
+              <DropdownTrigger menuKey="microOffers" label="Micro-Offers" isActive={isMicroActive} isOpen={openMenu === "microOffers"} onToggle={toggle} triggerRef={triggerRefs.microOffers} />
               {openMenu === "microOffers" && (
-                <DropdownPanel items={MICRO_OFFERS_ITEMS} location={location} twoCol onClose={closeAll} />
+                <DropdownPanel items={MICRO_OFFERS_ITEMS} location={location} twoCol onClose={closeAll} triggerRef={triggerRefs.microOffers} />
               )}
             </li>
 
             {/* Retainers */}
             <li className="relative">
-              <DropdownTrigger menuKey="retainers" label="Retainers" isActive={isRetainersActive} isOpen={openMenu === "retainers"} onToggle={toggle} />
+              <DropdownTrigger menuKey="retainers" label="Retainers" isActive={isRetainersActive} isOpen={openMenu === "retainers"} onToggle={toggle} triggerRef={triggerRefs.retainers} />
               {openMenu === "retainers" && (
-                <DropdownPanel items={RETAINER_ITEMS} location={location} width="w-56" onClose={closeAll} />
+                <DropdownPanel items={RETAINER_ITEMS} location={location} width="w-56" onClose={closeAll} triggerRef={triggerRefs.retainers} />
               )}
             </li>
 
             {/* Assessments */}
             <li className="relative">
-              <DropdownTrigger menuKey="assessments" label="Assessments" isActive={isAssessmentsActive} isOpen={openMenu === "assessments"} onToggle={toggle} />
+              <DropdownTrigger menuKey="assessments" label="Assessments" isActive={isAssessmentsActive} isOpen={openMenu === "assessments"} onToggle={toggle} triggerRef={triggerRefs.assessments} />
               {openMenu === "assessments" && (
-                <DropdownPanel items={ASSESSMENTS_ITEMS} location={location} twoCol onClose={closeAll} />
+                <DropdownPanel items={ASSESSMENTS_ITEMS} location={location} twoCol onClose={closeAll} triggerRef={triggerRefs.assessments} />
               )}
             </li>
 
@@ -282,9 +330,9 @@ export function Header() {
 
             {/* Resources dropdown */}
             <li className="relative">
-              <DropdownTrigger menuKey="resources" label="Resources" isActive={isResourcesActive} isOpen={openMenu === "resources"} onToggle={toggle} />
+              <DropdownTrigger menuKey="resources" label="Resources" isActive={isResourcesActive} isOpen={openMenu === "resources"} onToggle={toggle} triggerRef={triggerRefs.resources} />
               {openMenu === "resources" && (
-                <DropdownPanel items={RESOURCES_ITEMS} location={location} width="w-52" onClose={closeAll} />
+                <DropdownPanel items={RESOURCES_ITEMS} location={location} width="w-52" onClose={closeAll} triggerRef={triggerRefs.resources} />
               )}
             </li>
 
