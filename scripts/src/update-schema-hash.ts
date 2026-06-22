@@ -21,7 +21,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const SCHEMA_PATH = path.resolve(__dirname, "../../lib/db/src/schema/index.ts");
-const HASH_PATH = path.resolve(__dirname, "../../lib/db/drizzle/meta/schema-hash.txt");
+const HASH_PATH = path.resolve(__dirname, "../../lib/db/drizzle/schema-hash.txt");
 
 const schemaContent = fs.readFileSync(SCHEMA_PATH);
 const hash = crypto.createHash("sha256").update(schemaContent).digest("hex");

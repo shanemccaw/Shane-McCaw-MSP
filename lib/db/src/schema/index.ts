@@ -724,6 +724,22 @@ export const emailTemplatesTable = pgTable("email_templates", {
 export type InsertEmailTemplate = typeof emailTemplatesTable.$inferInsert;
 export type EmailTemplate = typeof emailTemplatesTable.$inferSelect;
 
+// Coupons / Promo Codes
+export const couponsTable = pgTable("coupons", {
+  id: serial("id").primaryKey(),
+  code: text("code").notNull().unique(),
+  discountType: text("discount_type", { enum: ["fixed", "percentage"] }).notNull(),
+  discountValue: numeric("discount_value", { precision: 10, scale: 2 }).notNull(),
+  maxUses: integer("max_uses"),
+  usesCount: integer("uses_count").notNull().default(0),
+  active: boolean("active").notNull().default(true),
+  expiresAt: timestamp("expires_at"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export type Coupon = typeof couponsTable.$inferSelect;
+export type InsertCoupon = typeof couponsTable.$inferInsert;
+
 // Quick Win Quiz Results — persisted quiz submissions for shareable results pages
 export const quickWinQuizResultsTable = pgTable("quick_win_quiz_results", {
   id: serial("id").primaryKey(),

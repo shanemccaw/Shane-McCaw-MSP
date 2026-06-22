@@ -37,6 +37,7 @@ import ArtifactSetsPage from "@/pages/asset-library/ArtifactSetsPage";
 import DeliverableSetsPage from "@/pages/asset-library/DeliverableSetsPage";
 import CategoriesPage from "@/pages/asset-library/CategoriesPage";
 import EmailTemplatesPage from "@/pages/EmailTemplates";
+import CouponsPage from "@/pages/Coupons";
 import type { ReactNode } from "react";
 
 const queryClient = new QueryClient({
@@ -208,6 +209,9 @@ function Router() {
       </Route>
       <Route path="/email-templates">
         <RequireAdmin><DashboardShell><EmailTemplatesPage /></DashboardShell></RequireAdmin>
+      </Route>
+      <Route path="/coupons">
+        <RequireAdmin><DashboardShell><CouponsPage /></DashboardShell></RequireAdmin>
       </Route>
 
       <Route>

@@ -41,7 +41,7 @@ const __dirname = path.dirname(__filename);
 
 const DRIZZLE_DIR = path.resolve(__dirname, "../../lib/db/drizzle");
 const JOURNAL_PATH = path.join(DRIZZLE_DIR, "meta/_journal.json");
-const SCHEMA_HASH_PATH = path.join(DRIZZLE_DIR, "meta/schema-hash.txt");
+const SCHEMA_HASH_PATH = path.join(DRIZZLE_DIR, "schema-hash.txt");
 const SCHEMA_PATH = path.resolve(__dirname, "../../lib/db/src/schema/index.ts");
 
 // ---------------------------------------------------------------------------

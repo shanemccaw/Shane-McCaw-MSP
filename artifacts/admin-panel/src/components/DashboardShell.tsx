@@ -166,6 +166,15 @@ const NAV_GROUPS: NavGroup[] = [
           </svg>
         ),
       },
+      {
+        label: "Coupons",
+        path: "/coupons",
+        icon: (
+          <svg className="w-4.5 h-4.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 7h.01M17 17h.01M9 3H5a2 2 0 00-2 2v4l9.5 9.5a2 2 0 002.83 0l4.17-4.17a2 2 0 000-2.83L10 3H9z" />
+          </svg>
+        ),
+      },
     ],
   },
   {

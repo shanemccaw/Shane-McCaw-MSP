@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useLocation, useSearch } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
-import { ShieldCheck, Loader2, ArrowRight, ArrowLeft, PenLine, X, RefreshCw, Sparkles } from "lucide-react";
+import { ShieldCheck, Loader2, ArrowRight, ArrowLeft, PenLine, X, RefreshCw, Sparkles, Tag, ChevronDown, Check } from "lucide-react";
 
 interface Service {
   id: number;
@@ -216,6 +216,18 @@ export default function OnboardingContract() {
   const [stripeError, setStripeError] = useState("");
   const [hasScrolled, setHasScrolled] = useState(false);
 
+  const [couponOpen, setCouponOpen] = useState(false);
+  const [couponInput, setCouponInput] = useState("");
+  const [couponLoading, setCouponLoading] = useState(false);
+  const [couponError, setCouponError] = useState("");
+  const [appliedCoupon, setAppliedCoupon] = useState<{
+    code: string;
+    discountType: string;
+    discountValue: string;
+    discountAmount: number;
+    discountedTotal: number;
+  } | null>(null);
+
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const contractScrollRef = useRef<HTMLDivElement>(null);
   const drawing = useRef(false);
@@ -377,6 +389,7 @@ export default function OnboardingContract() {
           contractIds,
           startDate,
           returnUrl: window.location.origin + import.meta.env.BASE_URL.replace(/\/$/, ""),
+          ...(appliedCoupon ? { couponCode: appliedCoupon.code } : {}),
         }),
       });
 
@@ -412,6 +425,37 @@ export default function OnboardingContract() {
         setError(msg);
       }
       setSubmitting(false);
+    }
+  };
+
+  const handleApplyCoupon = async () => {
+    if (!couponInput.trim()) return;
+    setCouponError("");
+    setCouponLoading(true);
+    const cartTotal = services.reduce((sum, s) => sum + getDisplayPrice(s), 0);
+    try {
+      const res = await fetchWithAuth("/api/portal/coupons/validate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code: couponInput.trim(), cartTotal }),
+      });
+      const data = await res.json() as { error?: string; code?: string; discountType?: string; discountValue?: string; discountAmount?: number; discountedTotal?: number };
+      if (!res.ok) {
+        setCouponError(data.error ?? "Invalid coupon code");
+        return;
+      }
+      setAppliedCoupon({
+        code: data.code!,
+        discountType: data.discountType!,
+        discountValue: data.discountValue!,
+        discountAmount: data.discountAmount!,
+        discountedTotal: data.discountedTotal!,
+      });
+      setCouponInput("");
+    } catch {
+      setCouponError("Could not validate coupon. Please try again.");
+    } finally {
+      setCouponLoading(false);
     }
   };
 
@@ -510,17 +554,86 @@ export default function OnboardingContract() {
             })}
           </div>
           {(oneTimeTotal > 0 || monthlyTotal > 0) && (
-            <div className="border-t border-border mt-3 pt-3 flex flex-wrap gap-4">
-              {oneTimeTotal > 0 && (
-                <div>
-                  <span className="text-xs text-muted-foreground">One-time: </span>
-                  <span className="text-sm font-bold text-[#0A2540]">${oneTimeTotal.toLocaleString("en-US")}</span>
-                </div>
-              )}
-              {monthlyTotal > 0 && (
-                <div>
-                  <span className="text-xs text-muted-foreground">Monthly: </span>
-                  <span className="text-sm font-bold text-emerald-700">${monthlyTotal.toLocaleString("en-US")}/mo</span>
+            <div className="border-t border-border mt-3 pt-3">
+              <div className="flex flex-wrap gap-4">
+                {oneTimeTotal > 0 && (
+                  <div>
+                    <span className="text-xs text-muted-foreground">One-time: </span>
+                    {appliedCoupon ? (
+                      <>
+                        <span className="text-sm font-bold text-[#0A2540] line-through opacity-50">${oneTimeTotal.toLocaleString("en-US")}</span>
+                        <span className="text-sm font-bold text-emerald-700 ml-1.5">
+                          ${Math.max(0, oneTimeTotal - appliedCoupon.discountAmount * (oneTimeTotal / (oneTimeTotal + monthlyTotal || 1))).toLocaleString("en-US", { maximumFractionDigits: 2 })}
+                        </span>
+                      </>
+                    ) : (
+                      <span className="text-sm font-bold text-[#0A2540]">${oneTimeTotal.toLocaleString("en-US")}</span>
+                    )}
+                  </div>
+                )}
+                {monthlyTotal > 0 && (
+                  <div>
+                    <span className="text-xs text-muted-foreground">Monthly: </span>
+                    {appliedCoupon ? (
+                      <>
+                        <span className="text-sm font-bold text-emerald-700 line-through opacity-50">${monthlyTotal.toLocaleString("en-US")}/mo</span>
+                        <span className="text-sm font-bold text-emerald-700 ml-1.5">
+                          ${Math.max(0, monthlyTotal - appliedCoupon.discountAmount * (monthlyTotal / (oneTimeTotal + monthlyTotal || 1))).toLocaleString("en-US", { maximumFractionDigits: 2 })}/mo
+                        </span>
+                      </>
+                    ) : (
+                      <span className="text-sm font-bold text-emerald-700">${monthlyTotal.toLocaleString("en-US")}/mo</span>
+                    )}
+                  </div>
+                )}
+                {appliedCoupon && (
+                  <div className="flex items-center gap-1.5 text-xs font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-full px-2.5 py-0.5">
+                    <Check className="w-3 h-3" />
+                    {appliedCoupon.code}: −${appliedCoupon.discountAmount.toLocaleString("en-US", { minimumFractionDigits: 2 })}
+                    <button
+                      onClick={() => setAppliedCoupon(null)}
+                      className="ml-0.5 text-emerald-500 hover:text-red-500 transition-colors"
+                      title="Remove coupon"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {/* Promo code toggle */}
+              {!appliedCoupon && (
+                <div className="mt-3">
+                  <button
+                    onClick={() => { setCouponOpen(o => !o); setCouponError(""); }}
+                    className="flex items-center gap-1.5 text-xs text-[#0078D4] hover:underline font-medium"
+                  >
+                    <Tag className="w-3 h-3" />
+                    Have a promo code?
+                    <ChevronDown className={`w-3 h-3 transition-transform ${couponOpen ? "rotate-180" : ""}`} />
+                  </button>
+                  {couponOpen && (
+                    <div className="mt-2 flex items-stretch gap-2">
+                      <input
+                        type="text"
+                        value={couponInput}
+                        onChange={e => { setCouponInput(e.target.value.toUpperCase()); setCouponError(""); }}
+                        onKeyDown={e => { if (e.key === "Enter") void handleApplyCoupon(); }}
+                        placeholder="PROMO CODE"
+                        className="flex-1 border border-border rounded-lg px-3 py-2 text-sm font-mono uppercase focus:outline-none focus:ring-2 focus:ring-[#0078D4]"
+                      />
+                      <button
+                        onClick={() => void handleApplyCoupon()}
+                        disabled={couponLoading || !couponInput.trim()}
+                        className="flex items-center gap-1.5 bg-[#0078D4] text-white text-xs font-semibold px-3 py-2 rounded-lg hover:bg-[#005A9E] disabled:opacity-50 transition-colors"
+                      >
+                        {couponLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "Apply"}
+                      </button>
+                    </div>
+                  )}
+                  {couponError && (
+                    <p className="text-xs text-red-600 mt-1.5">{couponError}</p>
+                  )}
                 </div>
               )}
             </div>

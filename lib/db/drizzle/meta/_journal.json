@@ -295,6 +295,20 @@
       "when": 1782160000000,
       "tag": "0041_add_service_best_for_triggers",
       "breakpoints": true
+    },
+    {
+      "idx": 42,
+      "version": "7",
+      "when": 1782163165741,
+      "tag": "0042_add_coupons",
+      "breakpoints": true
+    },
+    {
+      "idx": 43,
+      "version": "7",
+      "when": 1782163495579,
+      "tag": "0043_coupon_idempotency",
+      "breakpoints": true
     }
   ]
 }

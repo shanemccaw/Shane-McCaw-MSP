@@ -1,5 +1,5 @@
 import { Router, type IRouter, type Request, type Response } from "express";
-import { db, projectsTable, clientServicesTable, servicesTable, workflowStepsTable, kanbanTasksTable, documentsTable, reportsTable, invoicesTable, messagesTable, notificationsTable, projectUpdatesTable, usersTable, contractsTable, passwordResetTokensTable, workflowTemplateStepsTable, workflowTemplateStepTasksTable, contractTemplatesTable, impersonationTokensTable, statusReportsTable, deviceTokensTable, projectClosuresTable, auditLogsTable, instructionSetsTable, checklistsTable, artifactSetsTable, deliverableSetsTable, emailsTable, emailDomainRulesTable, clientM365ProfilesTable } from "@workspace/db";
+import { db, projectsTable, clientServicesTable, servicesTable, workflowStepsTable, kanbanTasksTable, documentsTable, reportsTable, invoicesTable, messagesTable, notificationsTable, projectUpdatesTable, usersTable, contractsTable, passwordResetTokensTable, workflowTemplateStepsTable, workflowTemplateStepTasksTable, contractTemplatesTable, impersonationTokensTable, statusReportsTable, deviceTokensTable, projectClosuresTable, auditLogsTable, instructionSetsTable, checklistsTable, artifactSetsTable, deliverableSetsTable, emailsTable, emailDomainRulesTable, clientM365ProfilesTable, couponsTable } from "@workspace/db";
 import { eq, and, desc, asc, count, sql, inArray, gte, isNotNull } from "drizzle-orm";
 import { requireAuth, requireAdmin } from "../middlewares/requireAuth";
 import { sendEmail, sendEmailFromTemplate, getEmailTemplateOrFallback, purchaseConfirmationEmail, onboardingConfirmationEmail, adminPurchaseAlertEmail, closureRequestEmail, statusReportReplyEmail, clientThreadReplyEmail, adminThreadReplyEmail, retainerResumedEmail, PORTAL_URL } from "../lib/mailer";
@@ -2869,6 +2869,32 @@ async function processStripeEvent(req: Request, event: import("stripe").Stripe.E
         .catch(() => null);
     }
 
+    // Increment coupon uses atomically and idempotently.
+    // We INSERT a redemption record keyed by checkout_session_id. If Stripe retries the
+    // same webhook event, the UNIQUE constraint fires and rowCount=0 — we skip the increment.
+    if (session.payment_status === "paid" && session.metadata?.couponCode) {
+      const couponCodeUsed = session.metadata.couponCode;
+      const sessionId = session.id;
+      try {
+        const insertResult = await db.execute(
+          sql`INSERT INTO coupon_redemptions (coupon_code, checkout_session_id)
+              VALUES (${couponCodeUsed}, ${sessionId})
+              ON CONFLICT (checkout_session_id) DO NOTHING`,
+        );
+        // Only increment if this is the first time we're processing this session
+        if ((insertResult as { rowCount?: number }).rowCount ?? 0 > 0) {
+          await db.update(couponsTable)
+            .set({
+              usesCount: sql`${couponsTable.usesCount} + 1`,
+              active: sql`CASE WHEN ${couponsTable.maxUses} IS NOT NULL AND ${couponsTable.usesCount} + 1 >= ${couponsTable.maxUses} THEN false ELSE ${couponsTable.active} END`,
+            })
+            .where(eq(couponsTable.code, couponCodeUsed));
+        }
+      } catch (err) {
+        req.log.warn({ err, couponCode: couponCodeUsed, sessionId }, "processStripeEvent: failed to increment coupon uses");
+      }
+    }
+
     // Onboarding purchase — auto-provision project + workflow steps
     if (session.metadata?.type === "onboarding_purchase" && session.payment_status === "paid") {
       const subId = typeof session.subscription === "string"
@@ -5396,16 +5422,64 @@ router.post("/portal/onboarding/provision/:sessionId", requireAuth, async (req: 
 });
 
 // ─── ONBOARDING: Create Stripe checkout session (multi-service, mixed-cart) ──
+// ─── Shared coupon helper ─────────────────────────────────────────────────────
+async function lookupAndValidateCoupon(
+  code: string,
+  cartTotal: number,
+): Promise<{ ok: true; coupon: typeof couponsTable.$inferSelect; discountAmount: number } | { ok: false; error: string }> {
+  const upper = code.trim().toUpperCase();
+  const [coupon] = await db.select().from(couponsTable).where(eq(couponsTable.code, upper));
+  if (!coupon) return { ok: false, error: "Coupon code not found" };
+  if (!coupon.active) return { ok: false, error: "This coupon is inactive" };
+  if (coupon.expiresAt && coupon.expiresAt < new Date()) return { ok: false, error: "This coupon has expired" };
+  if (coupon.maxUses != null && coupon.usesCount >= coupon.maxUses) return { ok: false, error: "This coupon has reached its usage limit" };
+
+  const value = parseFloat(String(coupon.discountValue));
+  let discountAmount: number;
+  if (coupon.discountType === "percentage") {
+    discountAmount = Math.round((cartTotal * value / 100) * 100) / 100;
+  } else {
+    discountAmount = Math.min(value, cartTotal);
+  }
+  return { ok: true, coupon, discountAmount };
+}
+
+// ─── CLIENT: Coupon Validate ──────────────────────────────────────────────────
+router.post("/portal/coupons/validate", requireAuth, async (req: Request, res: Response) => {
+  const { code, cartTotal } = req.body as { code?: string; cartTotal?: number };
+  if (!code?.trim()) { res.status(400).json({ error: "code is required" }); return; }
+  if (cartTotal == null || isNaN(Number(cartTotal)) || Number(cartTotal) < 0) {
+    res.status(400).json({ error: "cartTotal is required" });
+    return;
+  }
+
+  const result = await lookupAndValidateCoupon(code, Number(cartTotal));
+  if (!result.ok) {
+    res.status(422).json({ error: result.error });
+    return;
+  }
+  res.json({
+    code: result.coupon.code,
+    discountType: result.coupon.discountType,
+    discountValue: result.coupon.discountValue,
+    discountAmount: result.discountAmount,
+    discountedTotal: Math.max(0, Number(cartTotal) - result.discountAmount),
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+
 router.post("/portal/checkout/create-session", requireAuth, async (req: Request, res: Response) => {
   const userId = req.user!.id;
   const {
     serviceId, serviceIds: rawServiceIds,
     contractId, contractIds: rawContractIds,
-    returnUrl, startDate,
+    returnUrl, startDate, couponCode,
   } = req.body as {
     serviceId?: number; serviceIds?: number[];
     contractId?: number; contractIds?: number[];
     returnUrl?: string; startDate?: string;
+    couponCode?: string;
   };
 
   // Support legacy single-service and new multi-service formats
@@ -5493,6 +5567,42 @@ router.post("/portal/checkout/create-session", requireAuth, async (req: Request,
   let subscriptionUrl: string | null = null;
   const startDateStr = startDate ?? new Date().toISOString();
 
+  // ── Coupon: server-side re-validation ─────────────────────────────────────
+  // Build raw price map (before discount) for all services
+  const rawPriceCents = new Map<number, number>();
+  for (const s of services) {
+    rawPriceCents.set(s.id, Math.round((contractFinalPrices.get(s.id) ?? parseFloat(String(s.price!))) * 100));
+  }
+  const totalCartCents = [...rawPriceCents.values()].reduce((a, b) => a + b, 0);
+
+  // Per-service discounted price in cents
+  const discountedPriceCents = new Map<number, number>(rawPriceCents);
+  let validatedCouponCode: string | null = null;
+
+  if (couponCode?.trim()) {
+    const couponResult = await lookupAndValidateCoupon(couponCode, totalCartCents / 100);
+    if (!couponResult.ok) {
+      res.status(422).json({ error: `Coupon error: ${couponResult.error}` });
+      return;
+    }
+    validatedCouponCode = couponResult.coupon.code;
+    const discountCents = Math.round(couponResult.discountAmount * 100);
+    // Distribute the discount proportionally across all services
+    let remaining = discountCents;
+    const svcIds = [...rawPriceCents.keys()];
+    for (let i = 0; i < svcIds.length; i++) {
+      const id = svcIds[i];
+      const raw = rawPriceCents.get(id)!;
+      const isLast = i === svcIds.length - 1;
+      const share = isLast
+        ? remaining
+        : Math.round(discountCents * raw / totalCartCents);
+      discountedPriceCents.set(id, Math.max(0, raw - share));
+      remaining -= share;
+    }
+  }
+  // ─────────────────────────────────────────────────────────────────────────
+
   try {
     // ── One-time Checkout Session (payment mode) ───────────────────────────
     if (oneTimeServices.length > 0) {
@@ -5505,7 +5615,7 @@ router.post("/portal/checkout/create-session", requireAuth, async (req: Request,
           price_data: {
             currency: "usd",
             product_data: { name: s.name, description: s.description ?? undefined },
-            unit_amount: Math.round((contractFinalPrices.get(s.id) ?? parseFloat(String(s.price!))) * 100),
+            unit_amount: discountedPriceCents.get(s.id)!,
           },
           quantity: 1,
         })),
@@ -5521,6 +5631,7 @@ router.post("/portal/checkout/create-session", requireAuth, async (req: Request,
           serviceName: oneTimeServices.map(s => s.name).join(", "),
           startDate: startDateStr,
           servicePrices: oneTimeServices.map(s => (contractFinalPrices.get(s.id) ?? parseFloat(String(s.price ?? 0))).toFixed(2)).join(","),
+          ...(validatedCouponCode ? { couponCode: validatedCouponCode } : {}),
         },
       });
       oneTimeUrl = session.url;
@@ -5537,7 +5648,7 @@ router.post("/portal/checkout/create-session", requireAuth, async (req: Request,
           price_data: {
             currency: "usd",
             product_data: { name: s.name, description: s.description ?? undefined },
-            unit_amount: Math.round((contractFinalPrices.get(s.id) ?? parseFloat(String(s.price!))) * 100),
+            unit_amount: discountedPriceCents.get(s.id)!,
             recurring: { interval: "month" as const },
           },
           quantity: 1,
@@ -5553,6 +5664,11 @@ router.post("/portal/checkout/create-session", requireAuth, async (req: Request,
           serviceName: recurringServices.map(s => s.name).join(", "),
           startDate: startDateStr,
           servicePrices: recurringServices.map(s => (contractFinalPrices.get(s.id) ?? parseFloat(String(s.price ?? 0))).toFixed(2)).join(","),
+          // Only attach couponCode to this session if there is no one-time session.
+          // In mixed carts the one-time session already carries the couponCode, so the
+          // webhook only increments usesCount once (idempotency is also backed by
+          // coupon_redemptions.checkout_session_id UNIQUE).
+          ...(validatedCouponCode && oneTimeServices.length === 0 ? { couponCode: validatedCouponCode } : {}),
         },
       });
       subscriptionUrl = session.url;

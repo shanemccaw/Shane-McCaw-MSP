@@ -27,6 +27,7 @@ import contactChatRouter from "./contact-chat";
 import analyticsRouter from "./analytics";
 import adminGenerateArtifactsRouter from "./admin-generate-artifacts";
 import adminEmailTemplatesRouter from "./admin-email-templates";
+import adminCouponsRouter from "./admin-coupons";
 import quizQuickWinRouter from "./quiz-quick-win";
 import quizSelectorRouter from "./quiz-selector";
 
@@ -60,6 +61,7 @@ router.use(contactChatRouter);
 router.use(analyticsRouter);
 router.use(adminGenerateArtifactsRouter);
 router.use(adminEmailTemplatesRouter);
+router.use(adminCouponsRouter);
 router.use(quizQuickWinRouter);
 router.use(quizSelectorRouter);
 
