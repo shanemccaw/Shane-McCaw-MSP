@@ -13,6 +13,8 @@ import {
 import { useServices, formatPriceDisplay, useServiceHasPdf } from "@/hooks/useServices";
 import { FollowOnProjects } from "@/components/FollowOnProjects";
 import FixedPriceOfferCard from "@/components/FixedPriceOfferCard";
+import { EngagementProjectCard } from "@/components/EngagementProjectCard";
+import { useEngagementProjects } from "@/hooks/useEngagementProjects";
 
 const comparisonRows = [
   {
@@ -99,6 +101,13 @@ export default function CopilotAI() {
     governance: livePrice(govSvc, "$12,000–$18,000"),
     retainer: "$2,500 / $6,000 / $11,000 per month",
   };
+  const { projects: engagementProjects, loading: engagementLoading } = useEngagementProjects();
+  const matchedProjects = engagementProjects.filter((p) =>
+    p.isVisible &&
+    p.triggeredBy.some((k) =>
+      ["copilot readiness assessment", "copilot for m365 readiness assessment"].includes(k.toLowerCase())
+    )
+  );
   const [modalOpen, setModalOpen] = useState(false);
   const hasPdf = useServiceHasPdf("/services/copilot-ai");
 
@@ -214,6 +223,34 @@ export default function CopilotAI() {
           <FixedPriceOfferCard slug="copilot-for-m365-readiness-assessment" ctaLabel="Get Started" />
         </div>
       </section>
+
+      {/* ── PROJECT ENGAGEMENTS ──────────────────────────────────────────── */}
+      {(engagementLoading || matchedProjects.length > 0) && (
+        <section className="bg-white py-20">
+          <div className="max-w-[1200px] mx-auto px-6">
+            <div className="text-center mb-12">
+              <p className="text-[#0078D4] text-sm font-semibold uppercase tracking-[0.12em] mb-3">Project Engagements</p>
+              <h2 className="text-3xl md:text-4xl font-extrabold text-[#0A2540]">Common Project Engagements</h2>
+              <p className="text-muted-foreground mt-4 max-w-xl mx-auto">
+                Most Copilot readiness assessments surface deeper work. Shane can lead that work through a scoped project engagement.
+              </p>
+            </div>
+            {engagementLoading ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {[0, 1].map((i) => (
+                  <div key={i} className="rounded-xl border bg-white border-border p-8 h-56 animate-pulse" />
+                ))}
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 items-stretch">
+                {matchedProjects.map((project, i) => (
+                  <EngagementProjectCard key={project.id} project={project} index={i} />
+                ))}
+              </div>
+            )}
+          </div>
+        </section>
+      )}
 
       {/* ── FOLLOW-ON ENGAGEMENTS ────────────────────────────────────────── */}
       <section className="bg-white py-20">
