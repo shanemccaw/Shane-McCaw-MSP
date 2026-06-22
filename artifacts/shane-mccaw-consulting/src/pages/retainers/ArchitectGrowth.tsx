@@ -154,7 +154,7 @@ export default function ArchitectGrowth() {
       {/* Breadcrumb */}
       <div className="bg-white border-b border-border">
         <div className="max-w-[1200px] mx-auto px-6 py-3 flex items-center gap-2 text-sm text-muted-foreground">
-          <Link href="/pricing#retainers" className="hover:text-[#0078D4] transition-colors">
+          <Link href="/retainers" className="hover:text-[#0078D4] transition-colors">
             Retainer Plans
           </Link>
           <ChevronRight className="w-4 h-4" />

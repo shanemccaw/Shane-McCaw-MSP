@@ -121,7 +121,7 @@ export default function Microsoft365() {
           <div className="mt-10 flex flex-wrap gap-4 items-center">
             <CTAButton href="/book">Book a Free Discovery Call</CTAButton>
             <a
-              href="/crm/portal/onboarding/select"
+              href="/book"
               className="inline-flex items-center gap-2 text-white/80 font-semibold hover:text-white transition-colors text-sm border border-white/20 px-6 py-3 rounded-xl hover:border-white/40"
             >
               Get Started <ArrowRight className="w-4 h-4" />
