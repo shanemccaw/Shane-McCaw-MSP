@@ -8,8 +8,9 @@ import { CTAButton } from "@/components/CTAButton";
 interface ServiceRecord {
   slug: string;
   name: string;
-  basePrice: number | null;
-  maxPrice: number | null;
+  price: number | string | null;
+  basePrice: number | string | null;
+  maxPrice: number | string | null;
   hoursPerMonth: string | null;
   features: string[] | null;
   inclusions: string[] | null;
@@ -104,20 +105,29 @@ export default function ArchitectEssentials() {
       .finally(() => setLoading(false));
   }, []);
 
-  const displayPrice = service?.basePrice
-    ? service.basePrice.toLocaleString()
+  const numericPrice = (() => {
+    const raw = service?.price ?? service?.basePrice ?? null;
+    if (raw === null || raw === undefined) return null;
+    const n = parseFloat(String(raw));
+    return isNaN(n) ? null : n;
+  })();
+
+  const displayPrice = numericPrice != null
+    ? numericPrice.toLocaleString()
     : FALLBACK_PRICE;
 
   const displayHours = service?.hoursPerMonth
     ? service.hoursPerMonth.replace(/[^0-9]/g, "")
     : FALLBACK_HOURS;
 
+  const pickNonEmpty = (...arrays: (string[] | null | undefined)[]): string[] | null =>
+    arrays.find((a) => Array.isArray(a) && a.length > 0) ?? null;
+
   const displayDeliverables: string[] =
-    (service?.deliverables && service.deliverables.length > 0
-      ? service.deliverables
-      : service?.inclusions && service.inclusions.length > 0
-      ? service.inclusions
-      : null) ?? FALLBACK_DELIVERABLES;
+    pickNonEmpty(service?.features, service?.inclusions, service?.deliverables) ??
+    FALLBACK_DELIVERABLES;
+
+  const jsonLdPrice = numericPrice != null ? numericPrice.toFixed(2) : "1500.00";
 
   const jsonLd = {
     "@context": "https://schema.org",
@@ -125,11 +135,11 @@ export default function ArchitectEssentials() {
     name: "Architect Essentials Retainer — Shane McCaw Consulting",
     description:
       "Fractional senior Microsoft 365 architecture for mid-market and regulated organizations. 10 hours/month of predictable expert access — strategy calls, async support, and a monthly written summary — from the former Lead M365 Architect at NASA.",
-    price: service?.basePrice ? String(service.basePrice) + ".00" : "1500.00",
+    price: jsonLdPrice,
     priceCurrency: "USD",
     priceSpecification: {
       "@type": "UnitPriceSpecification",
-      price: service?.basePrice ? String(service.basePrice) + ".00" : "1500.00",
+      price: jsonLdPrice,
       priceCurrency: "USD",
       unitText: "MONTH",
     },
