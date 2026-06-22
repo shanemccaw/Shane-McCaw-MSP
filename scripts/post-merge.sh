@@ -2,6 +2,15 @@
 set -e
 pnpm install --frozen-lockfile
 
+# Guard: static drift check (no DB connection required).
+# Fails (exit 1) and blocks the merge if:
+#   - The schema file changed since the last `generate` run (hash mismatch)
+#   - A journal entry is missing its .sql file
+#   - A .sql file exists on disk but is NOT tracked in the journal (orphan —
+#     invisible to both migrate-dev and migrate-prod, silently never applied)
+echo "Running migration drift check…"
+pnpm --filter @workspace/scripts run check-drift
+
 # Apply pending Drizzle-generated SQL migrations to the dev database.
 # Uses the journal-based migrate-dev runner (not drizzle-kit push) so that:
 #   - Each migration is tracked in __drizzle_migrations and never re-applied.

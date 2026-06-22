@@ -166,20 +166,21 @@ function main(): void {
     // =========================================================================
     if (orphanedFiles.length > 0) {
       console.log("");
-      console.warn(
-        yellow(bold(`   WARNING: ${orphanedFiles.length} SQL file(s) not tracked in the journal:`))
+      console.error(
+        red(bold(`   ERROR: ${orphanedFiles.length} SQL file(s) not tracked in the journal:`))
       );
       for (const tag of orphanedFiles) {
-        console.warn(yellow(`     ! ${tag}.sql`));
+        console.error(red(`     ✗ ${tag}.sql`));
       }
-      console.warn(
-        yellow(
-          `     These were created manually and will NOT be auto-applied by migrate-prod.`
+      console.error(
+        red(
+          `     These files will NOT be applied by migrate-dev or migrate-prod — they are invisible to both runners.`
         )
       );
-      console.warn(
-        yellow(`     Either remove them or incorporate them via a proper migration.\n`)
+      console.error(
+        red(`     Fix: run pnpm --filter @workspace/db run generate to register them, or remove them.\n`)
       );
+      hasError = true;
     } else {
       console.log(
         dim(
