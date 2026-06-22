@@ -24,6 +24,7 @@ function sanitize(text: string): string {
     .replace(/[\u201C\u201D]/g, '"')  // curly double quotes → straight
     .replace(/\u2026/g, "...")        // ellipsis → three dots
     .replace(/\u00A0/g, " ")          // non-breaking space → regular space
+    .replace(/\u2022/g, "-")          // bullet point → ASCII hyphen (WinAnsi safe)
     .replace(/[^\x00-\xFF]/g, "?");   // strip remaining non-Latin-1 chars
 }
 
