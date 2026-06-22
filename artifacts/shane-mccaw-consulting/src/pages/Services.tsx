@@ -177,11 +177,13 @@ export default function Services() {
 
   // Ordered: known tiers first (in TIER_ORDER sequence), then any unrecognised
   // tiers alphabetically, then "other" at the end.
-  // "core" is injected when there are visible engagement projects even if no
-  // services table rows carry tier = 'core'.
+  // Core visibility is driven exclusively by engagement projects — services
+  // rows with tier='core' are NOT used to include the Core section on the
+  // public page. "core" is stripped from the services-derived key set and
+  // re-added only when visible engagement projects exist.
   const orderedTiers = useMemo(() => {
-    const present = [...Object.keys(grouped)];
-    if (visibleProjects.length > 0 && !present.includes("core")) {
+    const present = Object.keys(grouped).filter((t) => t !== "core");
+    if (visibleProjects.length > 0) {
       present.push("core");
     }
     const known = TIER_ORDER.filter((t) => present.includes(t));
@@ -209,7 +211,7 @@ export default function Services() {
     });
   }, [orderedTiers]);
 
-  const isLoading = (loading || projectsLoading) && services.length === 0 && projects.length === 0;
+  const isLoading = loading || projectsLoading;
 
   return (
     <Layout>
