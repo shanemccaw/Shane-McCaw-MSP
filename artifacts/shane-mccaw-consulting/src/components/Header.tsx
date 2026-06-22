@@ -28,8 +28,8 @@ function getNavIcon(label: string): React.ReactNode {
   if (l.includes("essentials"))                               return <Star        className="w-5 h-5" aria-hidden="true" />;
   if (l.includes("growth"))                                   return <TrendingUp  className="w-5 h-5" aria-hidden="true" />;
   if (l.includes("enterprise"))                               return <Award       className="w-5 h-5" aria-hidden="true" />;
-  if (l.includes("retainer") || l.includes("all ") || l.includes("overview") || l.includes("service")) return <LayoutGrid className="w-5 h-5" aria-hidden="true" />;
   if (l.includes("quiz"))                                     return <ClipboardList className="w-5 h-5" aria-hidden="true" />;
+  if (l.includes("retainer") || l.includes("all ") || l.includes("overview") || l.includes("service")) return <LayoutGrid className="w-5 h-5" aria-hidden="true" />;
   if (l.includes("about"))                                    return <Info        className="w-5 h-5" aria-hidden="true" />;
   if (l.includes("pric"))                                     return <Tag         className="w-5 h-5" aria-hidden="true" />;
   if (l.includes("contact"))                                  return <Mail        className="w-5 h-5" aria-hidden="true" />;

@@ -215,8 +215,8 @@ export function RetainerSelectorQuiz() {
           </p>
 
           <div className="flex flex-col sm:flex-row gap-4 justify-center mb-8">
-            <CTAButton href={config.bookHref} className="px-8 py-4 text-base">
-              Get Started — {config.price}/mo
+            <CTAButton href={config.href} className="px-8 py-4 text-base">
+              See the {config.headline} Plan
             </CTAButton>
             <Link
               href="/book"
