@@ -2,20 +2,10 @@ import { Link } from "wouter";
 import { Layout } from "@/components/Layout";
 import { SEOMeta } from "@/components/SEOMeta";
 import { CTAButton } from "@/components/CTAButton";
-import { OfferCard } from "@/components/OfferCard";
-import { EngagementProjectCard } from "@/components/EngagementProjectCard";
 import {
-  CheckCircle, ArrowRight, Shield, Building2, Rocket, Briefcase,
+  CheckCircle, ArrowRight, Shield, Building2, Rocket, Briefcase, Brain,
+  AlertCircle,
 } from "lucide-react";
-import { useServices } from "@/hooks/useServices";
-import { useEngagementProjects } from "@/hooks/useEngagementProjects";
-
-const whyPoints = [
-  "NASA-grade thinking from 6+ years as Lead M365 Architect — mission-critical standards applied to your business.",
-  "30 years of Microsoft ecosystem expertise — from code to cloud, across every major platform evolution.",
-  "Direct access to Shane always — no junior consultants, no offshore teams, no handoffs.",
-  "Forum of Innovation Award winner, 20+ former Microsoft certifications, ex-Microsoft engineer, founder of McCawSoft.",
-];
 
 const nasaCompliance = [
   { label: "FedRAMP", desc: "Federal Risk and Authorization Management Program — cloud authorization at the highest level." },
@@ -34,7 +24,6 @@ const whoIServe = [
     painPoints: [
       "M365 sprawl from years of ungoverned growth",
       "Governance gaps blocking Copilot adoption",
-      "Copilot readiness blocked by data hygiene issues",
       "Shadow IT undermining security posture",
       "Failed or stalled migration projects",
     ],
@@ -69,25 +58,53 @@ const whoIServe = [
   },
 ];
 
+const whoThisIsNotFor = [
+  "Organizations looking for low-cost IT support",
+  "Companies without a Microsoft 365 tenant",
+  "Teams unwilling to adopt governance standards",
+];
+
+const decisionMakerTriggers = [
+  "Microsoft 365 is deployed but nobody's using it effectively",
+  "Copilot is on your radar but your tenant isn't ready for it",
+  "A compliance audit revealed gaps in your M365 governance",
+  "A migration project has stalled or previously failed",
+  "Shadow IT is undermining your security posture",
+  "You need senior-level expertise without a full-time hire",
+];
+
+const servicesSummary = [
+  {
+    title: "Fractional Architecture",
+    desc: "Three monthly tiers providing ongoing M365 architecture leadership.",
+    cta: "View Retainer Tiers",
+    href: "/retainers",
+    color: "#0078D4",
+  },
+  {
+    title: "Quick Wins",
+    desc: "Fast, fixed-price engagements like Tenant Health Audits and Migration Readiness.",
+    cta: "View Quick Wins",
+    href: "/micro-offers",
+    color: "#00B4D8",
+  },
+  {
+    title: "Projects",
+    desc: "Governance, Power Platform, and Copilot readiness projects with clear deliverables.",
+    cta: "View Projects",
+    href: "/services",
+    color: "#0A2540",
+  },
+  {
+    title: "Training",
+    desc: "Live Microsoft 365 and Copilot training for teams and leadership.",
+    cta: "View Training",
+    href: "/services",
+    color: "#0078D4",
+  },
+];
 
 export default function Home() {
-  const { services: dbServiceAreas, loading: serviceAreasLoading } = useServices("service_area");
-  const { services: dbRetainers, loading: retainersLoading } = useServices("retainer");
-  const { services: dbOffers, loading: offersLoading } = useServices("micro_offer");
-  const { projects: engagementProjects, loading: projectsLoading } = useEngagementProjects();
-  const visibleProjects = engagementProjects.filter(p => p.isVisible);
-  const dbServices = [...dbServiceAreas, ...dbRetainers];
-  const servicesLoading = serviceAreasLoading || retainersLoading;
-
-  const decisionMakerTriggers = [
-    "Microsoft 365 is deployed but nobody's using it effectively",
-    "Copilot is on your radar but your tenant isn't ready for it",
-    "A compliance audit revealed gaps in your M365 governance",
-    "A migration project has stalled or previously failed",
-    "Shadow IT is undermining your security posture",
-    "You need senior-level expertise without a full-time hire",
-  ];
-
   return (
     <Layout>
       <SEOMeta
@@ -117,9 +134,8 @@ export default function Home() {
         }}
       />
 
-      {/* HERO */}
+      {/* ── HERO ─────────────────────────────────────────────────────────── */}
       <section className="relative min-h-screen flex items-center justify-center bg-[#0A2540] overflow-hidden">
-        {/* Grid overlay */}
         <div
           className="absolute inset-0 opacity-10"
           style={{
@@ -130,7 +146,6 @@ export default function Home() {
             backgroundSize: "60px 60px",
           }}
         />
-        {/* Radial glow */}
         <div
           className="absolute inset-0 opacity-20"
           style={{
@@ -145,7 +160,6 @@ export default function Home() {
             </p>
           </div>
 
-          {/* Credential labels */}
           <div className="flex flex-wrap items-center justify-center gap-3 mb-6">
             <span className="inline-flex items-center gap-2 bg-white/10 border border-white/20 rounded px-4 py-1.5 text-white/90 text-sm font-semibold">
               <Briefcase className="w-3.5 h-3.5 text-[#00B4D8] flex-shrink-0" />
@@ -157,10 +171,13 @@ export default function Home() {
             </span>
           </div>
 
-          <h1 className="text-4xl md:text-5xl lg:text-[3.75rem] font-extrabold text-white leading-[1.1] mb-7 max-w-5xl mx-auto">
+          <h1 className="text-4xl md:text-5xl lg:text-[3.75rem] font-extrabold text-white leading-[1.1] mb-5 max-w-5xl mx-auto">
             The Architect Who Built at NASA Scale — Available to You.
           </h1>
-          <p className="text-lg md:text-xl text-white/75 max-w-3xl mx-auto mb-12 leading-relaxed">
+          <p className="text-base md:text-lg text-[#00B4D8] font-semibold max-w-2xl mx-auto mb-5">
+            Enterprise-grade Microsoft 365 and Copilot architecture for mid-market and regulated organizations.
+          </p>
+          <p className="text-lg md:text-xl text-white/70 max-w-3xl mx-auto mb-12 leading-relaxed">
             Shane McCaw brings the same mission-critical Microsoft 365 discipline he built at NASA to regulated industries and mid-market companies. No generalists. No offshore handoffs. Senior Microsoft expertise, available to your organization on a fractional basis.
           </p>
           <div className="flex flex-wrap items-center justify-center gap-4">
@@ -168,10 +185,10 @@ export default function Home() {
               Book a Consultation
             </CTAButton>
             <a
-              href="/customer-command-center"
-              className="inline-flex items-center gap-2 text-white/80 font-semibold text-base hover:text-white transition-colors"
+              href="/services"
+              className="inline-flex items-center gap-2 text-white/80 font-semibold text-base hover:text-white transition-colors border border-white/20 px-8 py-3.5 rounded-xl hover:border-white/40"
             >
-              Explore the Client Portal <ArrowRight className="w-4 h-4" />
+              See Services <ArrowRight className="w-4 h-4" />
             </a>
           </div>
           <div className="mt-14 pt-10 border-t border-white/10 flex flex-wrap items-center justify-center gap-x-8 gap-y-3 text-white/50 text-sm font-medium">
@@ -192,28 +209,33 @@ export default function Home() {
         <div className="absolute bottom-0 left-0 right-0 h-16 bg-gradient-to-t from-[#F7F9FC] to-transparent" />
       </section>
 
-      {/* WHY THIS SITE EXISTS */}
+      {/* ── WHY THIS SITE EXISTS ─────────────────────────────────────────── */}
       <section className="bg-[#F7F9FC] py-20" data-testid="why-site-exists-section">
         <div className="max-w-[860px] mx-auto px-6 text-center">
           <p className="text-[#0078D4] text-sm font-semibold uppercase tracking-[0.1em] mb-3">Why This Site Exists</p>
-          <h2 className="text-3xl md:text-4xl font-extrabold text-[#0A2540] mb-8">
+          <h2 className="text-3xl md:text-4xl font-extrabold text-[#0A2540] mb-6">
             Senior M365 Architecture Shouldn't Require a Full-Time Hire
           </h2>
+          <p className="text-lg text-foreground leading-relaxed mb-6 font-medium">
+            Most organizations are running Microsoft 365 without governance, architecture, or Copilot readiness. That creates risk, inefficiency, and stalled digital transformation. I help companies fix their tenant, secure their data, and build a scalable M365 foundation.
+          </p>
           <div className="text-lg text-foreground leading-relaxed space-y-4 text-left md:text-center">
             <p>
               Mid-market companies and regulated-industry organizations — healthcare, legal, financial services, and government contractors — face a quiet crisis. Their Microsoft 365 tenants are deployed, but ungoverned. Copilot is on the roadmap, but the tenant isn't ready for it. Compliance frameworks demand senior-level architecture, but hiring a full-time M365 architect costs $250,000+ per year.
             </p>
             <p>
-              The large enterprise has a team. The small business doesn't need one. It's the organizations in between — and those operating in regulated environments — that fall into the gap.
+              The large enterprise has a team. The small business doesn't need one. It's the organizations in between — and those operating in regulated environments — that fall into the gap. This site exists to close that gap.
             </p>
-            <p>
-              This site exists to close that gap. Shane McCaw spent six years applying NASA-grade M365 architecture to one of the most demanding compliance environments in the world. That same discipline — FedRAMP, FISMA, ITAR, GCC High — is now available to your organization on a fractional basis: fixed-price packages, senior-level delivery, and no layers between you and the architect doing the work.
-            </p>
+          </div>
+          <div className="mt-10">
+            <CTAButton href="/book" className="text-base px-8 py-3.5">
+              Book a Call
+            </CTAButton>
           </div>
         </div>
       </section>
 
-      {/* START HERE */}
+      {/* ── START HERE ───────────────────────────────────────────────────── */}
       <section className="bg-white py-20" data-testid="start-here-section">
         <div className="max-w-[1200px] mx-auto px-6">
           <div className="text-center mb-12">
@@ -226,13 +248,22 @@ export default function Home() {
             </p>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+
+            {/* Card 1 — Diagnose */}
             <div className="bg-[#F7F9FC] rounded-xl border border-border p-8 flex flex-col" data-testid="start-here-diagnose">
               <div className="w-12 h-12 rounded-lg bg-[#0078D4]/10 flex items-center justify-center mb-5">
                 <Shield className="w-6 h-6 text-[#0078D4]" />
               </div>
-              <h3 className="text-xl font-extrabold text-[#0A2540] mb-3">I need to diagnose my environment</h3>
-              <p className="text-muted-foreground text-sm leading-relaxed flex-1 mb-6">
+              <h3 className="text-xl font-extrabold text-[#0A2540] mb-2">I need to diagnose my environment</h3>
+              <p className="text-[#0078D4] text-xs font-semibold uppercase tracking-widest mb-3">Quick Wins</p>
+              <p className="text-muted-foreground text-sm leading-relaxed mb-3">
+                Fast, fixed-price solutions that solve immediate M365 problems.
+              </p>
+              <p className="text-muted-foreground text-sm leading-relaxed flex-1 mb-2">
                 Not sure where your tenant stands? Start with a readiness assessment or tenant health audit — you'll get a clear picture and a prioritized action plan before committing to anything larger.
+              </p>
+              <p className="text-xs font-semibold text-[#0A2540]/60 italic mb-6">
+                Recommended for you if: you're not sure where your M365 tenant stands.
               </p>
               <div className="flex flex-col gap-2">
                 <CTAButton href="/m365-health-quiz" className="text-sm px-5 py-2.5 w-full">
@@ -244,36 +275,58 @@ export default function Home() {
               </div>
             </div>
 
+            {/* Card 2 — Quick Win */}
             <div className="bg-[#F7F9FC] rounded-xl border border-border p-8 flex flex-col" data-testid="start-here-quick-win">
               <div className="w-12 h-12 rounded-lg bg-[#00B4D8]/10 flex items-center justify-center mb-5">
                 <Rocket className="w-6 h-6 text-[#00B4D8]" />
               </div>
-              <h3 className="text-xl font-extrabold text-[#0A2540] mb-3">I need a fast, high-impact win</h3>
-              <p className="text-muted-foreground text-sm leading-relaxed flex-1 mb-6">
+              <h3 className="text-xl font-extrabold text-[#0A2540] mb-2">I need a fast, high-impact win</h3>
+              <p className="text-[#00B4D8] text-xs font-semibold uppercase tracking-widest mb-3">Projects</p>
+              <p className="text-muted-foreground text-sm leading-relaxed mb-3">
+                Structured engagements with clear deliverables and timelines.
+              </p>
+              <p className="text-muted-foreground text-sm leading-relaxed flex-1 mb-2">
                 Fixed-price packages with clear deliverables and defined timelines — results in days, not months. No retainer required. Ideal when you need to demonstrate progress quickly or solve one focused problem.
+              </p>
+              <p className="text-xs font-semibold text-[#0A2540]/60 italic mb-6">
+                Recommended for you if: you have a specific, scoped problem to solve quickly.
               </p>
               <CTAButton href="/micro-offers" className="text-sm px-5 py-2.5 w-full" style={{ backgroundColor: "#00B4D8" }}>
                 Browse Quick Win Packages
               </CTAButton>
             </div>
 
+            {/* Card 3 — Fractional */}
             <div className="bg-[#0A2540] rounded-xl border border-[#0A2540] p-8 flex flex-col" data-testid="start-here-fractional">
               <div className="w-12 h-12 rounded-lg bg-white/10 flex items-center justify-center mb-5">
                 <Briefcase className="w-6 h-6 text-white" />
               </div>
-              <h3 className="text-xl font-extrabold text-white mb-3">I need ongoing architecture leadership</h3>
-              <p className="text-white/70 text-sm leading-relaxed flex-1 mb-6">
+              <h3 className="text-xl font-extrabold text-white mb-2">I need ongoing architecture leadership</h3>
+              <p className="text-[#00B4D8] text-xs font-semibold uppercase tracking-widest mb-3">Fractional Architecture</p>
+              <p className="text-white/70 text-sm leading-relaxed mb-3">
+                Ongoing senior architecture leadership without a full-time hire.
+              </p>
+              <p className="text-white/70 text-sm leading-relaxed flex-1 mb-2">
                 Fractional architecture retainers give you a dedicated senior architect without the cost of a full-time hire. Monthly engagements — strategic oversight, hands-on delivery, and direct access to Shane.
+              </p>
+              <p className="text-xs font-semibold text-white/40 italic mb-6">
+                Recommended for you if: you need embedded architecture support on an ongoing basis.
               </p>
               <CTAButton href="/retainers" className="text-sm px-5 py-2.5 w-full bg-[#0078D4] hover:bg-[#005A9E]">
                 View Fractional Architecture Tiers
               </CTAButton>
             </div>
           </div>
+
+          <div className="text-center mt-10">
+            <CTAButton href="/copilot-quiz" className="text-sm px-8 py-3">
+              Take the Quiz
+            </CTAButton>
+          </div>
         </div>
       </section>
 
-      {/* COPILOT READINESS QUIZ CTA */}
+      {/* ── COPILOT READINESS QUIZ ───────────────────────────────────────── */}
       <section className="relative bg-[#0A2540] py-20 overflow-hidden" data-testid="quiz-cta-section">
         <div
           className="absolute inset-0 pointer-events-none opacity-[0.07]"
@@ -291,26 +344,34 @@ export default function Home() {
           }}
         />
         <div className="relative max-w-[860px] mx-auto px-6 text-center">
+          <div className="w-16 h-16 rounded-2xl bg-[#00B4D8]/15 border border-[#00B4D8]/30 flex items-center justify-center mx-auto mb-7">
+            <Brain className="w-8 h-8 text-[#00B4D8]" />
+          </div>
+
           <div className="inline-flex items-center gap-2 bg-[#00B4D8]/15 border border-[#00B4D8]/35 rounded-full px-5 py-2 mb-7">
             <span className="w-2 h-2 rounded-full bg-[#00B4D8] animate-pulse" />
             <span className="text-[#00B4D8] text-sm font-semibold uppercase tracking-[0.1em]">
               Free Assessment
             </span>
           </div>
+
           <h2 className="text-3xl md:text-4xl lg:text-5xl font-extrabold text-white leading-tight mb-5">
             Is Your Organization Ready for Copilot AI?
           </h2>
           <p className="text-[#00B4D8] font-bold text-lg mb-4">
             Don't light up Copilot on a dirty tenant.
           </p>
-          <p className="text-white/70 text-lg max-w-2xl mx-auto mb-10 leading-relaxed">
+          <p className="text-white/70 text-lg max-w-2xl mx-auto mb-8 leading-relaxed">
             Most deployments fail not because of the technology — but because the Microsoft 365 tenant isn't ready for it. Take the Copilot Readiness Quiz and find out exactly where you stand.
           </p>
 
-          {/* Stat strip */}
-          <div className="flex flex-wrap items-center justify-center gap-6 mb-10">
+          <CTAButton href="/copilot-quiz" className="text-base px-10 py-4 shadow-lg shadow-[#00B4D8]/20 mb-8" data-testid="quiz-cta-button">
+            Take the 3-Minute Quiz
+          </CTAButton>
+
+          <div className="flex flex-wrap items-center justify-center gap-6">
             {[
-              { value: "5 min", label: "to complete" },
+              { value: "3 min", label: "to complete" },
               { value: "Free", label: "no cost, no signup" },
               { value: "Instant", label: "PDF report" },
             ].map((stat, i) => (
@@ -320,30 +381,23 @@ export default function Home() {
               </div>
             ))}
           </div>
-
-          <CTAButton href="/copilot-quiz" className="text-base px-10 py-4 shadow-lg shadow-[#00B4D8]/20" data-testid="quiz-cta-button">
-            Take the Free Quiz
-          </CTAButton>
-          <p className="mt-5 text-white/35 text-sm tracking-wide">
+          <p className="mt-6 text-white/35 text-sm tracking-wide">
             Personalized readiness score + actionable next steps delivered instantly.
           </p>
         </div>
       </section>
 
-      {/* NASA COMPLIANCE CREDENTIALS */}
+      {/* ── NASA COMPLIANCE CREDENTIALS ──────────────────────────────────── */}
       <section className="bg-[#F7F9FC] py-20" data-testid="nasa-compliance-section">
         <div className="max-w-[1200px] mx-auto px-6">
-          <div className="text-center mb-14">
+          <div className="text-center mb-10">
             <p className="text-[#0078D4] text-sm font-semibold uppercase tracking-[0.1em] mb-3">NASA Compliance Credentials</p>
             <h2 className="text-3xl md:text-4xl font-extrabold text-[#0A2540]">Built on the Standards That Matter Most</h2>
             <p className="text-muted-foreground mt-4 max-w-2xl mx-auto leading-relaxed">
               Shane's tenure as Lead M365 Architect at NASA required mastery of the most demanding compliance frameworks in existence. That expertise now benefits mid-market companies, regulated industries, government contractors, and startups scaling into their first compliance obligations.
             </p>
           </div>
-          <p className="text-center text-[#0078D4] font-semibold italic mt-2 mb-10 max-w-2xl mx-auto">
-            This experience translates directly into value for mid-market and regulated-industry clients.
-          </p>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5 mb-10">
             {nasaCompliance.map((item, i) => (
               <div key={i} className="bg-white rounded-lg border border-border p-6 flex items-start gap-4">
                 <div className="flex-shrink-0 w-10 h-10 rounded-lg bg-[#0078D4]/10 flex items-center justify-center">
@@ -356,47 +410,14 @@ export default function Home() {
               </div>
             ))}
           </div>
+          <p className="text-center text-[#0078D4] font-semibold italic max-w-2xl mx-auto">
+            Even if you're not in a regulated industry, NASA-level governance ensures your tenant is secure, scalable, and ready for AI.
+          </p>
         </div>
       </section>
 
-      {/* POSITIONING STATEMENT CALLOUT */}
-      <section className="bg-[#0078D4] py-16" data-testid="positioning-callout">
-        <div className="max-w-[1200px] mx-auto px-6 text-center">
-          <p className="text-white/80 text-sm font-semibold uppercase tracking-[0.15em] mb-4">Core Positioning</p>
-          <blockquote className="text-2xl md:text-3xl lg:text-4xl font-extrabold text-white leading-tight max-w-4xl mx-auto">
-            "The Architect Who Built at NASA Scale — Available to You."
-          </blockquote>
-        </div>
-      </section>
-
-      {/* ELEVATOR PITCH */}
-      <section className="bg-white py-20" data-testid="elevator-pitch-section">
-        <div className="max-w-[860px] mx-auto px-6 text-center">
-          <p className="text-[#0078D4] text-sm font-semibold uppercase tracking-[0.1em] mb-3">Why Shane</p>
-          <h2 className="text-3xl md:text-4xl font-extrabold text-[#0A2540] mb-8">
-            30 Years. One Architect. Your Organization.
-          </h2>
-          <div className="text-lg text-foreground leading-relaxed space-y-4 text-left md:text-center">
-            <p>
-              Shane McCaw has spent three decades inside the Microsoft ecosystem — as an engineer, director, founder, and now Lead M365 Architect at NASA — building the deep technical fluency that most consultants simply don't have.
-            </p>
-            <p>
-              For mid-market companies and regulated-industry organizations, that means access to an architect who has designed governance frameworks, led Copilot rollouts, and navigated the most complex compliance environments in the world — on a fractional basis, without the cost of a full-time hire.
-            </p>
-            <p>
-              If Microsoft 365 is holding your business back, Shane can fix it. Let's connect.
-            </p>
-          </div>
-          <div className="mt-10">
-            <CTAButton href="/about" className="text-base px-8 py-3.5" data-testid="pitch-cta">
-              Learn More About Shane
-            </CTAButton>
-          </div>
-        </div>
-      </section>
-
-      {/* WHO I SERVE */}
-      <section className="bg-[#F7F9FC] py-20" data-testid="who-i-serve-section">
+      {/* ── IDEAL CLIENTS ────────────────────────────────────────────────── */}
+      <section className="bg-white py-20" data-testid="who-i-serve-section">
         <div className="max-w-[1200px] mx-auto px-6">
           <div className="text-center mb-14">
             <p className="text-[#0078D4] text-sm font-semibold uppercase tracking-[0.1em] mb-3">Ideal Clients</p>
@@ -405,11 +426,11 @@ export default function Home() {
               Shane works best with organizations that have real complexity — and the ambition to fix it properly.
             </p>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
             {whoIServe.map((segment, i) => {
               const Icon = segment.icon;
               return (
-                <div key={i} className="bg-white rounded-xl border border-border p-8 flex flex-col" data-testid={`segment-${i}`}>
+                <div key={i} className="bg-[#F7F9FC] rounded-xl border border-border p-8 flex flex-col" data-testid={`segment-${i}`}>
                   <div className="flex items-center gap-3 mb-2">
                     <div className="w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0" style={{ backgroundColor: `${segment.color}18` }}>
                       <Icon className="w-5 h-5" style={{ color: segment.color }} />
@@ -435,34 +456,33 @@ export default function Home() {
               );
             })}
           </div>
-        </div>
-      </section>
 
-      {/* CREDIBILITY BAR */}
-      <section className="bg-[#F7F9FC] border-y border-border py-8" data-testid="credibility-bar">
-        <div className="max-w-[1200px] mx-auto px-6">
-          <div className="flex flex-wrap items-center justify-center gap-4 text-center">
-            {[
-              { name: "Microsoft", detail: "30+ Years | Former Employee" },
-              { name: "NASA", detail: "Current Lead M365 Architect | 6 Years" },
-              { name: "Planet Technologies", detail: "Former Director of Technologies" },
-              { name: "McCawSoft", detail: "Founder & Principal Architect" },
-              { name: "Forum of Innovation", detail: "Award Winner" },
-            ].map((item, i) => (
-              <div key={i} className="flex items-center gap-4">
-                <div className="text-center">
-                  <div className="font-bold text-[#0A2540] text-sm md:text-base">{item.name}</div>
-                  <div className="text-muted-foreground text-xs md:text-sm">{item.detail}</div>
-                </div>
-                {i < 4 && <div className="hidden sm:block h-10 w-px bg-border" />}
-              </div>
-            ))}
+          {/* Who This Is NOT For */}
+          <div className="max-w-2xl mx-auto bg-[#F7F9FC] border border-border rounded-xl p-8 mb-12">
+            <h3 className="font-extrabold text-[#0A2540] text-lg mb-4 flex items-center gap-2">
+              <AlertCircle className="w-5 h-5 text-muted-foreground flex-shrink-0" />
+              Who This Is Not For
+            </h3>
+            <ul className="space-y-3">
+              {whoThisIsNotFor.map((item, i) => (
+                <li key={i} className="flex items-start gap-3 text-sm text-muted-foreground leading-relaxed">
+                  <span className="w-1.5 h-1.5 rounded-full bg-muted-foreground mt-1.5 flex-shrink-0" />
+                  {item}
+                </li>
+              ))}
+            </ul>
+          </div>
+
+          <div className="text-center">
+            <CTAButton href="/book" className="text-base px-8 py-3.5">
+              Book a Call
+            </CTAButton>
           </div>
         </div>
       </section>
 
-      {/* DECISION-MAKER TRIGGERS */}
-      <section className="bg-white py-20" data-testid="decision-maker-triggers-section">
+      {/* ── ENGAGEMENT SIGNALS ───────────────────────────────────────────── */}
+      <section className="bg-[#F7F9FC] py-20" data-testid="decision-maker-triggers-section">
         <div className="max-w-[860px] mx-auto px-6">
           <div className="text-center mb-10">
             <p className="text-[#0078D4] text-sm font-semibold uppercase tracking-[0.1em] mb-3">Engagement Signals</p>
@@ -473,7 +493,7 @@ export default function Home() {
           </div>
           <ul className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {decisionMakerTriggers.map((trigger, i) => (
-              <li key={i} className="flex items-start gap-3 bg-[#F7F9FC] border border-border rounded-lg px-5 py-4">
+              <li key={i} className="flex items-start gap-3 bg-white border border-border rounded-lg px-5 py-4">
                 <span className="flex-shrink-0 w-2 h-2 rounded-full bg-[#0078D4] mt-2" />
                 <span className="text-foreground text-sm leading-relaxed">{trigger}</span>
               </li>
@@ -482,174 +502,44 @@ export default function Home() {
         </div>
       </section>
 
-      {/* SERVICES GRID */}
-      <section className="bg-[#F7F9FC] py-20" data-testid="services-section">
+      {/* ── SERVICES OVERVIEW (COLLAPSED SUMMARY GRID) ───────────────────── */}
+      <section className="bg-white py-20" data-testid="services-section">
         <div className="max-w-[1200px] mx-auto px-6">
-          <div className="text-center mb-6">
+          <div className="text-center mb-12">
             <p className="text-[#0078D4] text-sm font-semibold uppercase tracking-[0.1em] mb-3">Services & Engagements</p>
-            <h2 className="text-3xl md:text-4xl font-extrabold text-[#0A2540]">Six Ways to Engage — All Backed by NASA-Level Expertise</h2>
-            <p className="text-[#00B4D8] font-semibold mt-3 text-base">
-              Productized offers. Fractional architecture. NASA‑grade governance.
-            </p>
-            <p className="text-muted-foreground mt-3 max-w-2xl mx-auto leading-relaxed">
-              Every engagement is scoped and delivered personally by Shane. No project managers between you and the architect. No junior consultants doing the work.
+            <h2 className="text-3xl md:text-4xl font-extrabold text-[#0A2540]">Four Ways to Engage</h2>
+            <p className="text-muted-foreground mt-4 max-w-xl mx-auto leading-relaxed">
+              Every engagement is scoped and delivered personally by Shane. No project managers, no junior consultants.
             </p>
           </div>
-
-          <p className="text-center text-foreground font-medium mb-6 max-w-2xl mx-auto">
-            My fractional architecture engagements are structured in three tiers — quick win packages for fast, defined results, project-based engagements for larger outcomes, and retainer arrangements for ongoing advisory work.
-          </p>
-
-          {servicesLoading && dbServices.length === 0 ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {[...Array(6)].map((_, i) => <div key={i} className="h-96 rounded-xl border border-border bg-gray-100 animate-pulse" />)}
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {dbServices.map((s, i) => {
-                const isRetainer = s.billingType === "recurring_monthly";
-                return (
-                  <OfferCard
-                    key={s.slug ?? i}
-                    offer={s}
-                    index={i}
-                    ctaHref={isRetainer ? undefined : (s.pageHref ?? "/services")}
-                    ctaLabel={isRetainer ? "Get Started" : "Learn More"}
-                  />
-                );
-              })}
-            </div>
-          )}
-
-          <p className="text-center text-sm text-muted-foreground mt-6">
-            Retainer arrangements require a minimum 3-month commitment.
-          </p>
-
-          <div className="text-center mt-4">
-            <Link href="/micro-offers" className="inline-flex items-center gap-1.5 text-muted-foreground text-sm hover:text-[#0078D4] transition-colors" data-testid="view-all-services">
-              View all fixed-price packages and retainer options <ArrowRight className="w-3.5 h-3.5" />
-            </Link>
-          </div>
-        </div>
-      </section>
-
-      {/* WHY SHANE */}
-      <section className="bg-[#F7F9FC] py-20" data-testid="why-shane-section">
-        <div className="max-w-[1200px] mx-auto px-6">
-          <div className="text-center mb-14">
-            <p className="text-[#0078D4] text-sm font-semibold uppercase tracking-[0.1em] mb-3">The Difference</p>
-            <h2 className="text-3xl md:text-4xl font-extrabold text-[#0A2540]">Why Work With Shane McCaw?</h2>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {whyPoints.map((point, i) => (
-              <div key={i} className="flex items-start gap-4 bg-white p-6 rounded-lg border border-border" data-testid={`why-point-${i}`}>
-                <div className="flex-shrink-0 w-8 h-8 rounded-full bg-[#0078D4]/10 flex items-center justify-center">
-                  <CheckCircle className="w-5 h-5 text-[#0078D4]" />
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+            {servicesSummary.map((service, i) => (
+              <div
+                key={i}
+                className="bg-[#F7F9FC] rounded-xl border border-border p-7 flex flex-col hover:border-[#0078D4]/30 hover:bg-white transition-all"
+              >
+                <div
+                  className="w-10 h-10 rounded-lg flex items-center justify-center mb-5 flex-shrink-0"
+                  style={{ backgroundColor: `${service.color}15` }}
+                >
+                  <CheckCircle className="w-5 h-5" style={{ color: service.color }} />
                 </div>
-                <p className="text-foreground leading-relaxed">{point}</p>
+                <h3 className="font-extrabold text-[#0A2540] text-lg mb-3 leading-snug">{service.title}</h3>
+                <p className="text-muted-foreground text-sm leading-relaxed flex-1 mb-6">{service.desc}</p>
+                <a
+                  href={service.href}
+                  className="inline-flex items-center gap-1.5 text-[#0078D4] text-sm font-semibold hover:underline"
+                >
+                  {service.cta} <ArrowRight className="w-3.5 h-3.5" />
+                </a>
               </div>
             ))}
           </div>
         </div>
       </section>
 
-      {/* HOW IT WORKS */}
-      <section className="bg-white py-20" data-testid="how-it-works-section">
-        <div className="max-w-[1200px] mx-auto px-6">
-          <div className="text-center mb-14">
-            <p className="text-[#0078D4] text-sm font-semibold uppercase tracking-[0.1em] mb-3">Process</p>
-            <h2 className="text-3xl md:text-4xl font-extrabold text-[#0A2540]">How It Works</h2>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8 relative">
-            {[
-              { step: "01", title: "Free Discovery Call", desc: "30-minute assessment of your Microsoft 365 environment, pain points, and goals. No pitch — just clarity." },
-              { step: "02", title: "Custom Roadmap", desc: "Tailored plan with transparent scope, timeline, and pricing. You know exactly what you're getting before a single dollar changes hands." },
-              { step: "03", title: "Hands-On Execution", desc: "Shane personally builds, configures, and delivers. No handoffs to junior staff. No surprises." },
-            ].map((item, i) => (
-              <div key={i} className="relative text-center px-4" data-testid={`step-${i}`}>
-                <div className="w-16 h-16 rounded-full bg-[#0078D4]/10 border-2 border-[#0078D4] flex items-center justify-center mx-auto mb-6">
-                  <span className="text-[#0078D4] font-extrabold text-lg">{item.step}</span>
-                </div>
-                <h3 className="text-xl font-bold text-[#0A2540] mb-3">{item.title}</h3>
-                <p className="text-muted-foreground leading-relaxed">{item.desc}</p>
-                {i < 2 && (
-                  <div className="hidden md:block absolute top-8 left-[calc(100%-1rem)] w-8 h-px bg-[#0078D4]/30" />
-                )}
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* PROJECT-BASED ENGAGEMENTS */}
-      {(projectsLoading || visibleProjects.length > 0) && (
-        <section className="bg-[#F7F9FC] py-20" data-testid="engagement-projects-section">
-          <div className="max-w-[1200px] mx-auto px-6">
-            <div className="text-center mb-14">
-              <p className="text-[#0078D4] text-sm font-semibold uppercase tracking-[0.1em] mb-3">Track 02 · Core Tier</p>
-              <h2 className="text-3xl md:text-4xl font-extrabold text-[#0A2540]">Project-Based Engagements</h2>
-              <p className="text-muted-foreground mt-4 max-w-2xl mx-auto leading-relaxed">
-                For larger, multi-phase work — tenant migrations, governance overhauls, Copilot deployments, and intranet builds. Fixed-price after a free scoping call.
-              </p>
-            </div>
-            {projectsLoading ? (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {[...Array(3)].map((_, i) => (
-                  <div key={i} className="h-56 rounded-xl border border-border bg-gray-100 animate-pulse" />
-                ))}
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {visibleProjects.map((p, i) => (
-                  <EngagementProjectCard key={p.id} project={p} index={i} />
-                ))}
-              </div>
-            )}
-            <div className="text-center mt-10">
-              <Link href="/services#track-02" className="inline-flex items-center gap-1.5 text-muted-foreground text-sm hover:text-[#0078D4] transition-colors">
-                See all project types <ArrowRight className="w-3.5 h-3.5" />
-              </Link>
-            </div>
-          </div>
-        </section>
-      )}
-
-      {/* FEATURED MICRO-OFFERS */}
-      <section className="bg-[#F7F9FC] py-20" data-testid="micro-offers-section">
-        <div className="max-w-[1200px] mx-auto px-6">
-          <div className="text-center mb-14">
-            <p className="text-[#0078D4] text-sm font-semibold uppercase tracking-[0.1em] mb-3">Quick Wins</p>
-            <h2 className="text-3xl md:text-4xl font-extrabold text-[#0A2540]">Start Small. Win Big.</h2>
-            <p className="text-muted-foreground mt-4 max-w-xl mx-auto">Fixed-price packages with clear deliverables. Get results fast without a long commitment.</p>
-          </div>
-          {offersLoading && dbOffers.length === 0 ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-10">
-              {[...Array(6)].map((_, i) => <div key={i} className="h-96 rounded-xl border border-border bg-gray-100 animate-pulse" />)}
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-10">
-              {dbOffers.map((offer, i) => (
-                <OfferCard key={offer.slug ?? i} offer={offer} index={i} />
-              ))}
-            </div>
-          )}
-          <div className="text-center space-y-3">
-            <Link href="/micro-offers" className="text-[#0078D4] font-semibold hover:underline flex items-center justify-center gap-1" data-testid="view-all-offers">
-              View All Quick Win Packages <ArrowRight className="w-4 h-4" />
-            </Link>
-            <p className="text-muted-foreground text-sm">
-              Not sure which package fits?{" "}
-              <Link href="/quick-win-quiz" className="text-[#0078D4] hover:underline font-medium">
-                Take the 2-minute quiz →
-              </Link>
-            </p>
-          </div>
-        </div>
-      </section>
-
-      {/* CONSULTATION CTA SECTION */}
+      {/* ── FINAL CTA ────────────────────────────────────────────────────── */}
       <section className="relative bg-[#0A2540] py-28 overflow-hidden" data-testid="final-cta-section">
-        {/* Radial glow overlay */}
         <div
           className="absolute inset-0 pointer-events-none"
           style={{
@@ -657,7 +547,6 @@ export default function Home() {
               "radial-gradient(ellipse 70% 60% at 50% 50%, rgba(0,120,212,0.18) 0%, transparent 75%)",
           }}
         />
-        {/* Subtle grid overlay */}
         <div
           className="absolute inset-0 pointer-events-none opacity-[0.04]"
           style={{
@@ -666,7 +555,6 @@ export default function Home() {
             backgroundSize: "40px 40px",
           }}
         />
-
         <div className="relative max-w-[860px] mx-auto px-6 text-center">
           <p className="text-[#00B4D8] text-sm font-semibold uppercase tracking-widest mb-4">
             Free 30-Minute Discovery Call
