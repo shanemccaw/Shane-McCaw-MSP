@@ -4,80 +4,196 @@ import { Menu, X, Rocket, ChevronDown } from "lucide-react";
 import { CTAButton } from "./CTAButton";
 import { cn } from "@/lib/utils";
 
-const SERVICES_ITEMS = [
-  { label: "All Services",      href: "/services" },
-  { label: "Microsoft 365",     href: "/services/microsoft-365" },
-  { label: "M365 Training",     href: "/services/m365-training" },
-  { label: "Copilot & AI",      href: "/services/copilot-ai" },
-  { label: "SharePoint",        href: "/services/sharepoint" },
-  { label: "Power Platform",    href: "/services/power-platform" },
-  { label: "Governance",        href: "/services/governance" },
-  { label: "Cloud Migration",   href: "/services/cloud-migration" },
-  { label: "Micro-Offers",      href: "/micro-offers" },
+// ─── Nav data ─────────────────────────────────────────────────────────────────
+interface NavItem { label: string; href: string; icon?: React.ReactNode; }
+
+const START_HERE_ITEMS: NavItem[] = [
+  { label: "Copilot Readiness Assessment", href: "/copilot-quiz" },
+  { label: "M365 Health Assessment",       href: "/m365-health-quiz" },
+  { label: "Tenant Health Audit",          href: "/micro-offers" }, // TODO: no dedicated page yet
+  { label: "Book a Call",                  href: "/book" },
 ];
 
-const RETAINER_ITEMS = [
-  { label: "All Retainer Plans",   href: "/retainers" },
-  { label: "Architect Essentials", href: "/retainers/architect-essentials" },
-  { label: "Architect Growth",     href: "/retainers/architect-growth" },
-  { label: "Architect Enterprise", href: "/retainers/architect-enterprise" },
+const SERVICES_ITEMS: NavItem[] = [
+  { label: "Service Overview",              href: "/services" },
+  { label: "M365 Architecture & Strategy",  href: "/services/microsoft-365" },
+  { label: "M365 Training",                 href: "/services/m365-training" },
+  { label: "Copilot & AI",                  href: "/services/copilot-ai" },
+  { label: "SharePoint",                    href: "/services/sharepoint" },
+  { label: "Power Platform",                href: "/services/power-platform" },
+  { label: "Governance",                    href: "/services/governance" },
+  { label: "Cloud Migration",               href: "/services/cloud-migration" },
 ];
 
-const QUIZ_ITEMS = [
-  { label: "Copilot AI Quiz",          href: "/copilot-quiz" },
-  { label: "M365 Health Check",        href: "/m365-health-quiz" },
-  { label: "SharePoint Readiness",     href: "/sharepoint-readiness-quiz" },
-  { label: "Power Platform Readiness", href: "/power-platform-quiz" },
-  { label: "Security & Compliance",    href: "/security-compliance-quiz" },
-  { label: "Teams Maturity",           href: "/teams-maturity-quiz" },
-  { label: "Migration Readiness",      href: "/migration-readiness-quiz" },
-  { label: "Governance Maturity",      href: "/governance-maturity-quiz" },
+const MICRO_OFFERS_ITEMS: NavItem[] = [
+  { label: "All Micro-Offers",                    href: "/micro-offers" },
+  { label: "Tenant Health Audit",                 href: "/micro-offers" }, // TODO: no dedicated page yet
+  { label: "Power Platform Quick-Start",          href: "/micro-offers" }, // TODO: no dedicated page yet
+  { label: "Governance Foundations",              href: "/micro-offers" }, // TODO: no dedicated page yet
+  { label: "Migration Readiness Assessment",      href: "/migration-readiness-quiz" },
+  { label: "Copilot Readiness Assessment",        href: "/copilot-quiz" },
+  { label: "Microsoft 365 Training & Enablement", href: "/services/m365-training" },
 ];
 
-const NAV_LINKS = [
-  { label: "About",     href: "/about" },
-  { label: "Pricing",   href: "/pricing" },
-  { label: "Resources", href: "/resources" },
-  { label: "Contact",   href: "/contact" },
+const RETAINER_ITEMS: NavItem[] = [
+  { label: "All Retainer Plans",    href: "/retainers" },
+  { label: "Architect Essentials",  href: "/retainers/architect-essentials" },
+  { label: "Architect Growth",      href: "/retainers/architect-growth" },
+  { label: "Architect Enterprise",  href: "/retainers/architect-enterprise" },
 ];
 
+const ASSESSMENTS_ITEMS: NavItem[] = [
+  { label: "Copilot Readiness Assessment",     href: "/copilot-quiz" },
+  { label: "M365 Health Assessment",           href: "/m365-health-quiz" },
+  { label: "SharePoint Readiness Assessment",  href: "/sharepoint-readiness-quiz" },
+  { label: "Power Platform Risk Assessment",   href: "/power-platform-quiz" },
+  { label: "Security & Compliance Assessment", href: "/security-compliance-quiz" },
+  { label: "Teams Maturity Assessment",        href: "/teams-maturity-quiz" },
+  { label: "Migration Readiness Assessment",   href: "/migration-readiness-quiz" },
+  { label: "Governance Maturity Assessment",   href: "/governance-maturity-quiz" },
+];
+
+const RESOURCES_ITEMS: NavItem[] = [
+  { label: "Resource Library", href: "/resources" },
+  { label: "Articles",         href: "/resources" }, // TODO: no dedicated page yet
+  { label: "Templates",        href: "/resources" }, // TODO: no dedicated page yet
+  { label: "Tools",            href: "/resources" }, // TODO: no dedicated page yet
+];
+
+const PLAIN_LINKS: NavItem[] = [
+  { label: "About",   href: "/about" },
+  { label: "Pricing", href: "/pricing" },
+  { label: "Contact", href: "/contact" },
+];
+
+// ─── Menu key type ─────────────────────────────────────────────────────────────
+type MenuKey = "startHere" | "services" | "microOffers" | "retainers" | "assessments" | "resources";
+
+// ─── Dropdown trigger ──────────────────────────────────────────────────────────
+function DropdownTrigger({
+  menuKey, label, isActive, isOpen, onToggle,
+}: {
+  menuKey: MenuKey;
+  label: string;
+  isActive: boolean;
+  isOpen: boolean;
+  onToggle: (key: MenuKey) => void;
+}) {
+  return (
+    <button
+      onClick={() => onToggle(menuKey)}
+      aria-haspopup="true"
+      aria-expanded={isOpen}
+      className={cn(
+        "flex items-center gap-1 px-3 py-2 rounded-md text-sm font-medium transition-colors whitespace-nowrap",
+        isActive || isOpen
+          ? "text-primary"
+          : "text-white/80 hover:text-white hover:bg-white/5"
+      )}
+    >
+      {label}
+      <ChevronDown className={cn("w-3.5 h-3.5 transition-transform duration-200", isOpen && "rotate-180")} />
+    </button>
+  );
+}
+
+// ─── Dropdown panel ────────────────────────────────────────────────────────────
+function DropdownPanel({
+  items, location, twoCol, width, onClose,
+}: {
+  items: NavItem[];
+  location: string;
+  twoCol?: boolean;
+  width?: string;
+  onClose: () => void;
+}) {
+  return (
+    <div
+      role="menu"
+      className={cn(
+        "absolute top-full left-0 mt-1.5 bg-[#0A2540] border border-white/10 rounded-xl shadow-2xl overflow-hidden py-1.5",
+        width ?? (twoCol ? "w-[28rem]" : "w-60")
+      )}
+    >
+      <div className={cn(twoCol && "grid grid-cols-2")}>
+        {items.map((item) => (
+          <Link
+            key={`${item.href}::${item.label}`}
+            href={item.href}
+            role="menuitem"
+            onClick={onClose}
+            data-track="nav"
+            className={cn(
+              "flex items-center gap-2 px-4 py-2 text-sm transition-colors",
+              location === item.href
+                ? "text-primary font-medium"
+                : "text-white/75 hover:text-white hover:bg-white/5"
+            )}
+          >
+            {item.icon && <span className="shrink-0 w-4 h-4 opacity-60">{item.icon}</span>}
+            {item.label}
+          </Link>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ─── Header ───────────────────────────────────────────────────────────────────
 export function Header() {
   const [location] = useLocation();
   const isHome = location === "/";
   const [scrolled, setScrolled] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [servicesOpen, setServicesOpen] = useState(false);
-  const [retainersOpen, setRetainersOpen] = useState(false);
-  const [quizzesOpen, setQuizzesOpen] = useState(false);
-  const servicesRef = useRef<HTMLLIElement>(null);
-  const retainersRef = useRef<HTMLLIElement>(null);
-  const quizzesRef = useRef<HTMLLIElement>(null);
+  const [openMenu, setOpenMenu] = useState<MenuKey | null>(null);
+  const [mobileExpanded, setMobileExpanded] = useState<Record<string, boolean>>({});
+  const navRef = useRef<HTMLUListElement>(null);
 
   useEffect(() => {
-    const handleScroll = () => setScrolled(window.scrollY > 20);
-    window.addEventListener("scroll", handleScroll, { passive: true });
-    return () => window.removeEventListener("scroll", handleScroll);
+    const onScroll = () => setScrolled(window.scrollY > 20);
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
   }, []);
 
   useEffect(() => {
-    const handleClick = (e: MouseEvent) => {
-      if (servicesRef.current && !servicesRef.current.contains(e.target as Node)) {
-        setServicesOpen(false);
-      }
-      if (retainersRef.current && !retainersRef.current.contains(e.target as Node)) {
-        setRetainersOpen(false);
-      }
-      if (quizzesRef.current && !quizzesRef.current.contains(e.target as Node)) {
-        setQuizzesOpen(false);
+    const onMouseDown = (e: MouseEvent) => {
+      if (navRef.current && !navRef.current.contains(e.target as Node)) {
+        setOpenMenu(null);
       }
     };
-    document.addEventListener("mousedown", handleClick);
-    return () => document.removeEventListener("mousedown", handleClick);
+    document.addEventListener("mousedown", onMouseDown);
+    return () => document.removeEventListener("mousedown", onMouseDown);
   }, []);
 
-  const isServicesActive = location.startsWith("/services") || location === "/micro-offers";
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") { setOpenMenu(null); setMobileMenuOpen(false); }
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, []);
+
+  useEffect(() => {
+    setMobileMenuOpen(false);
+    setOpenMenu(null);
+  }, [location]);
+
+  function toggle(key: MenuKey) {
+    setOpenMenu((prev) => (prev === key ? null : key));
+  }
+
+  function closeAll() { setOpenMenu(null); }
+
+  function toggleMobileSection(key: string) {
+    setMobileExpanded((prev) => ({ ...prev, [key]: !prev[key] }));
+  }
+
+  const isStartHereActive = START_HERE_ITEMS.some((i) => location === i.href);
+  const isServicesActive  = location.startsWith("/services");
+  const isMicroActive     = location === "/micro-offers";
   const isRetainersActive = location.startsWith("/retainers");
-  const isQuizzesActive = QUIZ_ITEMS.some((item) => location === item.href);
+  const isAssessmentsActive = ASSESSMENTS_ITEMS.some((i) => location === i.href);
+  const isResourcesActive = location.startsWith("/resources");
 
   const headerClasses = cn(
     "fixed top-0 left-0 right-0 z-50 transition-all duration-300",
@@ -86,163 +202,119 @@ export function Header() {
       : "bg-[#0A2540]/95 backdrop-blur-md py-3.5 shadow-[0_1px_0_rgba(255,255,255,0.08)]"
   );
 
+  const MOBILE_SECTIONS = [
+    { key: "startHere",   label: "Start Here",   items: START_HERE_ITEMS },
+    { key: "services",    label: "Services",      items: SERVICES_ITEMS },
+    { key: "microOffers", label: "Micro-Offers",  items: MICRO_OFFERS_ITEMS },
+    { key: "retainers",   label: "Retainers",     items: RETAINER_ITEMS },
+    { key: "assessments", label: "Assessments",   items: ASSESSMENTS_ITEMS },
+    { key: "resources",   label: "Resources",     items: RESOURCES_ITEMS },
+  ];
+
   return (
     <header className={headerClasses}>
-      <div className="max-w-[1200px] mx-auto px-6 flex items-center gap-8">
+      <div className="max-w-[1200px] mx-auto px-6 flex items-center gap-6">
         {/* Logo */}
         <Link href="/" className="flex items-center gap-2 text-white hover:opacity-90 transition-opacity shrink-0">
           <Rocket className="w-5 h-5 text-primary" />
           <span className="font-semibold text-base tracking-tight">Shane McCaw Consulting</span>
         </Link>
 
-        {/* Desktop Nav */}
-        <nav className="hidden lg:flex flex-1 items-center justify-between">
-          <ul className="flex items-center gap-1">
-            {/* Services dropdown */}
-            <li ref={servicesRef} className="relative">
-              <button
-                onClick={() => setServicesOpen((o) => !o)}
-                className={cn(
-                  "flex items-center gap-1 px-3 py-2 rounded-md text-sm font-medium transition-colors",
-                  isServicesActive
-                    ? "text-primary"
-                    : "text-white/80 hover:text-white hover:bg-white/5"
-                )}
-              >
-                Services
-                <ChevronDown className={cn("w-3.5 h-3.5 transition-transform duration-200", servicesOpen && "rotate-180")} />
-              </button>
+        {/* Desktop nav */}
+        <nav className="hidden lg:flex flex-1 items-center justify-between" aria-label="Main navigation" role="navigation">
+          <ul ref={navRef} className="flex items-center gap-0.5">
 
-              {servicesOpen && (
-                <div className="absolute top-full left-0 mt-1.5 w-52 bg-[#0A2540] border border-white/10 rounded-xl shadow-2xl overflow-hidden py-1.5">
-                  {SERVICES_ITEMS.map((item) => (
-                    <Link
-                      key={item.href}
-                      href={item.href}
-                      onClick={() => setServicesOpen(false)}
-                      data-track="nav"
-                      className={cn(
-                        "block px-4 py-2 text-sm transition-colors",
-                        location === item.href
-                          ? "text-primary font-medium"
-                          : "text-white/75 hover:text-white hover:bg-white/5"
-                      )}
-                    >
-                      {item.label}
-                    </Link>
-                  ))}
-                </div>
+            {/* Start Here */}
+            <li className="relative">
+              <DropdownTrigger menuKey="startHere" label="Start Here" isActive={isStartHereActive} isOpen={openMenu === "startHere"} onToggle={toggle} />
+              {openMenu === "startHere" && (
+                <DropdownPanel items={START_HERE_ITEMS} location={location} width="w-64" onClose={closeAll} />
               )}
             </li>
 
-            {/* Retainers dropdown */}
-            <li ref={retainersRef} className="relative">
-              <button
-                onClick={() => setRetainersOpen((o) => !o)}
-                className={cn(
-                  "flex items-center gap-1 px-3 py-2 rounded-md text-sm font-medium transition-colors",
-                  isRetainersActive
-                    ? "text-primary"
-                    : "text-white/80 hover:text-white hover:bg-white/5"
-                )}
-              >
-                Retainers
-                <ChevronDown className={cn("w-3.5 h-3.5 transition-transform duration-200", retainersOpen && "rotate-180")} />
-              </button>
-
-              {retainersOpen && (
-                <div className="absolute top-full left-0 mt-1.5 w-52 bg-[#0A2540] border border-white/10 rounded-xl shadow-2xl overflow-hidden py-1.5">
-                  {RETAINER_ITEMS.map((item) => (
-                    <Link
-                      key={item.href}
-                      href={item.href}
-                      onClick={() => setRetainersOpen(false)}
-                      data-track="nav"
-                      className={cn(
-                        "block px-4 py-2 text-sm transition-colors",
-                        location === item.href
-                          ? "text-primary font-medium"
-                          : "text-white/75 hover:text-white hover:bg-white/5"
-                      )}
-                    >
-                      {item.label}
-                    </Link>
-                  ))}
-                </div>
+            {/* Services */}
+            <li className="relative">
+              <DropdownTrigger menuKey="services" label="Services" isActive={isServicesActive} isOpen={openMenu === "services"} onToggle={toggle} />
+              {openMenu === "services" && (
+                <DropdownPanel items={SERVICES_ITEMS} location={location} twoCol onClose={closeAll} />
               )}
             </li>
 
-            {/* Quizzes dropdown */}
-            <li ref={quizzesRef} className="relative">
-              <button
-                onClick={() => setQuizzesOpen((o) => !o)}
-                className={cn(
-                  "flex items-center gap-1 px-3 py-2 rounded-md text-sm font-medium transition-colors",
-                  isQuizzesActive
-                    ? "text-primary"
-                    : "text-white/80 hover:text-white hover:bg-white/5"
-                )}
-              >
-                Quizzes
-                <ChevronDown className={cn("w-3.5 h-3.5 transition-transform duration-200", quizzesOpen && "rotate-180")} />
-              </button>
-
-              {quizzesOpen && (
-                <div className="absolute top-full left-0 mt-1.5 w-56 bg-[#0A2540] border border-white/10 rounded-xl shadow-2xl overflow-hidden py-1.5">
-                  {QUIZ_ITEMS.map((item) => (
-                    <Link
-                      key={item.href}
-                      href={item.href}
-                      onClick={() => setQuizzesOpen(false)}
-                      data-track="nav"
-                      className={cn(
-                        "block px-4 py-2 text-sm transition-colors",
-                        location === item.href
-                          ? "text-primary font-medium"
-                          : "text-white/75 hover:text-white hover:bg-white/5"
-                      )}
-                    >
-                      {item.label}
-                    </Link>
-                  ))}
-                </div>
+            {/* Micro-Offers */}
+            <li className="relative">
+              <DropdownTrigger menuKey="microOffers" label="Micro-Offers" isActive={isMicroActive} isOpen={openMenu === "microOffers"} onToggle={toggle} />
+              {openMenu === "microOffers" && (
+                <DropdownPanel items={MICRO_OFFERS_ITEMS} location={location} twoCol onClose={closeAll} />
               )}
             </li>
 
-            {NAV_LINKS.map((link) => (
-              <li key={link.href}>
-                <Link
-                  href={link.href}
-                  data-track="nav"
-                  className={cn(
-                    "block px-3 py-2 rounded-md text-sm font-medium transition-colors",
-                    location === link.href
-                      ? "text-primary"
-                      : "text-white/80 hover:text-white hover:bg-white/5"
-                  )}
-                >
-                  {link.label}
-                </Link>
-              </li>
-            ))}
+            {/* Retainers */}
+            <li className="relative">
+              <DropdownTrigger menuKey="retainers" label="Retainers" isActive={isRetainersActive} isOpen={openMenu === "retainers"} onToggle={toggle} />
+              {openMenu === "retainers" && (
+                <DropdownPanel items={RETAINER_ITEMS} location={location} width="w-56" onClose={closeAll} />
+              )}
+            </li>
+
+            {/* Assessments */}
+            <li className="relative">
+              <DropdownTrigger menuKey="assessments" label="Assessments" isActive={isAssessmentsActive} isOpen={openMenu === "assessments"} onToggle={toggle} />
+              {openMenu === "assessments" && (
+                <DropdownPanel items={ASSESSMENTS_ITEMS} location={location} twoCol onClose={closeAll} />
+              )}
+            </li>
+
+            {/* About */}
+            <li>
+              <Link href="/about" data-track="nav"
+                className={cn("block px-3 py-2 rounded-md text-sm font-medium transition-colors whitespace-nowrap",
+                  location === "/about" ? "text-primary" : "text-white/80 hover:text-white hover:bg-white/5")}
+              >About</Link>
+            </li>
+
+            {/* Pricing */}
+            <li>
+              <Link href="/pricing" data-track="nav"
+                className={cn("block px-3 py-2 rounded-md text-sm font-medium transition-colors whitespace-nowrap",
+                  location === "/pricing" ? "text-primary" : "text-white/80 hover:text-white hover:bg-white/5")}
+              >Pricing</Link>
+            </li>
+
+            {/* Resources dropdown */}
+            <li className="relative">
+              <DropdownTrigger menuKey="resources" label="Resources" isActive={isResourcesActive} isOpen={openMenu === "resources"} onToggle={toggle} />
+              {openMenu === "resources" && (
+                <DropdownPanel items={RESOURCES_ITEMS} location={location} width="w-52" onClose={closeAll} />
+              )}
+            </li>
+
+            {/* Contact */}
+            <li>
+              <Link href="/contact" data-track="nav"
+                className={cn("block px-3 py-2 rounded-md text-sm font-medium transition-colors whitespace-nowrap",
+                  location === "/contact" ? "text-primary" : "text-white/80 hover:text-white hover:bg-white/5")}
+              >Contact</Link>
+            </li>
+
           </ul>
 
-          <div className="flex items-center gap-2 shrink-0">
+          <div className="flex items-center gap-2 shrink-0 ml-4">
             <a
               href="/crm/"
-              className="text-sm font-semibold px-4 py-2 rounded-lg border border-white/20 text-white/80 hover:text-white hover:border-white/40 hover:bg-white/5 transition-colors"
+              className="text-sm font-semibold px-4 py-2 rounded-lg border border-white/20 text-white/80 hover:text-white hover:border-white/40 hover:bg-white/5 transition-colors whitespace-nowrap"
             >
               Client Login
             </a>
-            <CTAButton href="/book" className="text-sm px-5 py-2">Book a Call</CTAButton>
+            <CTAButton href="/book" className="text-sm px-5 py-2 whitespace-nowrap">Book a Call</CTAButton>
           </div>
         </nav>
 
         {/* Mobile toggle */}
         <button
           className="lg:hidden ml-auto text-white/80 hover:text-white transition-colors"
-          onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-          aria-label="Toggle menu"
+          onClick={() => setMobileMenuOpen((o) => !o)}
+          aria-label={mobileMenuOpen ? "Close menu" : "Open menu"}
+          aria-expanded={mobileMenuOpen}
         >
           {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
         </button>
@@ -250,72 +322,63 @@ export function Header() {
 
       {/* Mobile menu */}
       {mobileMenuOpen && (
-        <div className="lg:hidden absolute top-full left-0 right-0 bg-[#0A2540] border-t border-white/10 shadow-xl">
-          <div className="px-5 py-4 space-y-1">
-            {/* Services section */}
-            <p className="px-3 pt-1 pb-1.5 text-[10px] font-bold uppercase tracking-widest text-white/30">Services</p>
-            {SERVICES_ITEMS.map((item) => (
-              <Link
-                key={item.href}
-                href={item.href}
-                onClick={() => setMobileMenuOpen(false)}
-                className="block px-3 py-2 rounded-lg text-sm text-white/75 hover:text-white hover:bg-white/5 transition-colors"
-              >
-                {item.label}
-              </Link>
-            ))}
+        <div
+          className="lg:hidden absolute top-full left-0 right-0 bg-[#0A2540] border-t border-white/10 shadow-xl overflow-y-auto max-h-[calc(100vh-4rem)]"
+          role="navigation"
+          aria-label="Mobile navigation"
+        >
+          <div className="px-5 py-3 space-y-0.5">
 
-            <div className="my-2 border-t border-white/10" />
+            {MOBILE_SECTIONS.map(({ key, label, items }) => (
+              <div key={key}>
+                <button
+                  onClick={() => toggleMobileSection(key)}
+                  aria-expanded={mobileExpanded[key] ?? false}
+                  className="w-full flex items-center justify-between px-3 py-2.5 text-[11px] font-bold uppercase tracking-widest text-white/40 hover:text-white/60 transition-colors"
+                >
+                  {label}
+                  <ChevronDown className={cn("w-3.5 h-3.5 transition-transform duration-200", mobileExpanded[key] && "rotate-180")} />
+                </button>
 
-            {/* Retainers section */}
-            <p className="px-3 pt-1 pb-1.5 text-[10px] font-bold uppercase tracking-widest text-white/30">Retainers</p>
-            {RETAINER_ITEMS.map((item) => (
-              <Link
-                key={item.href}
-                href={item.href}
-                onClick={() => setMobileMenuOpen(false)}
-                className={cn(
-                  "block px-3 py-2 rounded-lg text-sm transition-colors",
-                  location === item.href ? "text-primary font-medium" : "text-white/75 hover:text-white hover:bg-white/5"
+                {mobileExpanded[key] && (
+                  <div className="pb-2">
+                    {items.map((item) => (
+                      <Link
+                        key={`${item.href}::${item.label}`}
+                        href={item.href}
+                        onClick={() => setMobileMenuOpen(false)}
+                        className={cn(
+                          "flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors",
+                          location === item.href ? "text-primary font-medium" : "text-white/75 hover:text-white hover:bg-white/5"
+                        )}
+                      >
+                        {item.icon && <span className="shrink-0 opacity-60">{item.icon}</span>}
+                        {item.label}
+                      </Link>
+                    ))}
+                  </div>
                 )}
-              >
-                {item.label}
-              </Link>
+
+                <div className="border-t border-white/10 mx-3" />
+              </div>
             ))}
 
-            <div className="my-2 border-t border-white/10" />
+            <div className="pt-1">
+              {PLAIN_LINKS.map((link) => (
+                <Link
+                  key={link.href}
+                  href={link.href}
+                  onClick={() => setMobileMenuOpen(false)}
+                  className={cn(
+                    "block px-3 py-2.5 rounded-lg text-sm font-medium transition-colors",
+                    location === link.href ? "text-primary" : "text-white/80 hover:text-white hover:bg-white/5"
+                  )}
+                >
+                  {link.label}
+                </Link>
+              ))}
+            </div>
 
-            {/* Quizzes section */}
-            <p className="px-3 pt-1 pb-1.5 text-[10px] font-bold uppercase tracking-widest text-white/30">Quizzes</p>
-            {QUIZ_ITEMS.map((item) => (
-              <Link
-                key={item.href}
-                href={item.href}
-                onClick={() => setMobileMenuOpen(false)}
-                className={cn(
-                  "block px-3 py-2 rounded-lg text-sm transition-colors",
-                  location === item.href ? "text-primary font-medium" : "text-white/75 hover:text-white hover:bg-white/5"
-                )}
-              >
-                {item.label}
-              </Link>
-            ))}
-
-            <div className="my-2 border-t border-white/10" />
-
-            {NAV_LINKS.map((link) => (
-              <Link
-                key={link.href}
-                href={link.href}
-                onClick={() => setMobileMenuOpen(false)}
-                className={cn(
-                  "block px-3 py-2 rounded-lg text-sm font-medium transition-colors",
-                  location === link.href ? "text-primary" : "text-white/80 hover:text-white hover:bg-white/5"
-                )}
-              >
-                {link.label}
-              </Link>
-            ))}
           </div>
 
           <div className="px-5 py-4 border-t border-white/10 flex flex-col gap-2.5">
