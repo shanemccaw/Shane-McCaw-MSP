@@ -11,14 +11,59 @@ interface AppRegRecord {
 }
 
 const REQUIRED_PERMISSIONS = [
-  { permission: "Sites.FullControl.All", type: "Application", reason: "Read, write, and manage all SharePoint sites and document libraries in the tenant" },
-  { permission: "User.Read.All", type: "Application", reason: "Enumerate users, resolve UPNs, and assign licenses across the M365 tenant" },
-  { permission: "GroupMember.ReadWrite.All", type: "Application", reason: "Add and remove members from Microsoft 365 groups and Teams" },
-  { permission: "Group.ReadWrite.All", type: "Application", reason: "Create and manage Microsoft 365 groups used by SharePoint and Teams" },
-  { permission: "Directory.ReadWrite.All", type: "Application", reason: "Manage directory objects — required for governance and provisioning runbooks" },
-  { permission: "Application.ReadWrite.All", type: "Application", reason: "Register and update app registrations on your tenant as part of automation workflows" },
-  { permission: "Mail.Send", type: "Application", reason: "Send automated notification emails from within the tenant on behalf of runbooks" },
-  { permission: "TeamMember.ReadWrite.All", type: "Application", reason: "Add members to Teams channels created during provisioning" },
+  {
+    category: "Entra ID",
+    permissions: [
+      { permission: "Directory.Read.All", reason: "Read all directory objects — users, groups, and organisational structure" },
+      { permission: "User.Read.All", reason: "Enumerate users and resolve UPNs across the M365 tenant" },
+      { permission: "Group.Read.All", reason: "Read Microsoft 365 groups used by SharePoint and Teams" },
+      { permission: "RoleManagement.Read.Directory", reason: "Inspect directory role assignments for governance reporting" },
+    ],
+  },
+  {
+    category: "Audit & Security",
+    permissions: [
+      { permission: "AuditLog.Read.All", reason: "Access audit logs for compliance and security reporting runbooks" },
+      { permission: "SecurityEvents.Read.All", reason: "Read security alerts and events for threat-assessment reports" },
+    ],
+  },
+  {
+    category: "Exchange",
+    permissions: [
+      { permission: "Exchange.ManageAsApp", reason: "Connect to Exchange Online PowerShell as an application identity" },
+      { permission: "Mail.Read", reason: "Read mailbox messages for reporting and compliance runbooks" },
+      { permission: "MailboxSettings.Read", reason: "Read mailbox settings such as OOF configurations and language preferences" },
+    ],
+  },
+  {
+    category: "SharePoint / OneDrive",
+    permissions: [
+      { permission: "Sites.Read.All", reason: "Read SharePoint sites and document libraries for reporting and auditing" },
+      { permission: "Files.Read.All", reason: "Read files across all OneDrive and SharePoint document libraries" },
+    ],
+  },
+  {
+    category: "Teams",
+    permissions: [
+      { permission: "Team.ReadBasic.All", reason: "List all teams and read basic team properties" },
+      { permission: "TeamSettings.Read.All", reason: "Read team settings and configurations for governance runbooks" },
+      { permission: "Channel.ReadBasic.All", reason: "List channels and read basic channel properties" },
+    ],
+  },
+  {
+    category: "Licensing",
+    permissions: [
+      { permission: "Organization.Read.All", reason: "Read organisation profile and subscribed SKUs for licensing runbooks" },
+      { permission: "Reports.Read.All", reason: "Access Microsoft 365 usage reports for adoption and compliance dashboards" },
+    ],
+  },
+  {
+    category: "Compliance",
+    permissions: [
+      { permission: "Compliance.Read.All", reason: "Read compliance-related data for policy and regulatory reporting runbooks" },
+      { permission: "ThreatAssessment.Read.All", reason: "Read threat assessment requests for security health reports" },
+    ],
+  },
 ];
 
 function StatusBadge({ status }: { status: AppRegRecord["status"] | null }) {
@@ -188,14 +233,21 @@ export default function PortalAppRegistration() {
             <p className="text-[10px] font-bold uppercase tracking-wider text-gray-500">Required API Permissions</p>
             <p className="text-xs text-gray-500 mt-0.5">Grant all of these as <strong>Application</strong> permissions (not delegated) in your App Registration</p>
           </div>
-          <div className="divide-y divide-border">
-            {REQUIRED_PERMISSIONS.map(p => (
-              <div key={p.permission} className="px-5 py-3 grid grid-cols-1 sm:grid-cols-[200px_1fr] gap-1 sm:gap-3 items-start">
-                <div>
-                  <code className="text-xs font-mono font-semibold text-[#0078D4] bg-[#0078D4]/8 px-1.5 py-0.5 rounded">{p.permission}</code>
-                  <span className="ml-2 text-[10px] font-semibold text-gray-400 uppercase tracking-wide">{p.type}</span>
+          <div>
+            {REQUIRED_PERMISSIONS.map(group => (
+              <div key={group.category}>
+                <div className="px-5 py-2 bg-[#0A2540]/[0.04] border-b border-border">
+                  <span className="text-[10px] font-bold uppercase tracking-widest text-[#0A2540]/50">{group.category}</span>
                 </div>
-                <p className="text-xs text-gray-600">{p.reason}</p>
+                {group.permissions.map((p, i) => (
+                  <div
+                    key={p.permission}
+                    className={`px-5 py-3 ${i < group.permissions.length - 1 ? "border-b border-border" : ""}`}
+                  >
+                    <code className="inline-block text-xs font-mono font-semibold text-[#0078D4] bg-[#0078D4]/8 px-2 py-0.5 rounded">{p.permission}</code>
+                    <p className="text-xs text-gray-500 mt-1 leading-relaxed">{p.reason}</p>
+                  </div>
+                ))}
               </div>
             ))}
           </div>
@@ -231,7 +283,7 @@ export default function PortalAppRegistration() {
               {
                 n: 4,
                 title: "Grant the required API permissions",
-                body: "Go to API Permissions → Add a permission → Microsoft Graph → Application permissions. Search for and add every permission listed in the table above. Once added, click Grant admin consent for [Your Organisation].",
+                body: "Go to API Permissions → Add a permission → Microsoft Graph → Application permissions. Search for and add each permission listed in the table above — all are Application type (not Delegated). Once all permissions are added, click Grant admin consent for [Your Organisation].",
               },
               {
                 n: 5,
