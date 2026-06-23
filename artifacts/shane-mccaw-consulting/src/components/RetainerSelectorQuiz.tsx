@@ -3,7 +3,7 @@ import { Link } from "wouter";
 import { CTAButton } from "./CTAButton";
 import { ArrowRight, CheckCircle, ChevronLeft, Star, TrendingUp, Award } from "lucide-react";
 
-type TierKey = "Essentials" | "Growth" | "Enterprise";
+export type TierKey = "Essentials" | "Growth" | "Enterprise";
 
 interface Question {
   text: string;
@@ -93,7 +93,7 @@ const QUESTIONS: Question[] = [
   },
 ];
 
-const TIER_CONFIG: Record<TierKey, {
+export const TIER_CONFIG: Record<TierKey, {
   href: string;
   bookHref: string;
   price: string;
@@ -138,13 +138,17 @@ const TIER_CONFIG: Record<TierKey, {
   },
 };
 
-function determineTier(scores: Record<TierKey, number>): TierKey {
+export function determineTier(scores: Record<TierKey, number>): TierKey {
   if (scores.Enterprise >= scores.Growth && scores.Enterprise >= scores.Essentials) return "Enterprise";
   if (scores.Growth >= scores.Essentials) return "Growth";
   return "Essentials";
 }
 
-export function RetainerSelectorQuiz() {
+interface Props {
+  onComplete?: (scores: Record<TierKey, number>) => void;
+}
+
+export function RetainerSelectorQuiz({ onComplete }: Props) {
   const [step, setStep] = useState<"quiz" | "results">("quiz");
   const [currentQ, setCurrentQ] = useState(0);
   const [scores, setScores] = useState<Record<TierKey, number>>({ Essentials: 0, Growth: 0, Enterprise: 0 });
@@ -166,7 +170,11 @@ export function RetainerSelectorQuiz() {
     if (currentQ + 1 >= QUESTIONS.length) {
       setScores(newScores);
       setAnswers(newAnswers);
-      setStep("results");
+      if (onComplete) {
+        onComplete(newScores);
+      } else {
+        setStep("results");
+      }
     } else {
       setScores(newScores);
       setAnswers(newAnswers);

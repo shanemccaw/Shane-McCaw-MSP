@@ -1,8 +1,21 @@
+import { useState } from "react";
 import { Layout } from "@/components/Layout";
 import { SEOMeta } from "@/components/SEOMeta";
-import { RetainerSelectorQuiz } from "@/components/RetainerSelectorQuiz";
+import { RetainerSelectorQuiz, type TierKey } from "@/components/RetainerSelectorQuiz";
+import RetainerQuizResults from "./RetainerQuizResults";
 
 export default function RetainerQuiz() {
+  const [quizScores, setQuizScores] = useState<Record<TierKey, number> | null>(null);
+
+  if (quizScores) {
+    return (
+      <RetainerQuizResults
+        scores={quizScores}
+        onRetake={() => setQuizScores(null)}
+      />
+    );
+  }
+
   return (
     <Layout>
       <SEOMeta
@@ -30,7 +43,7 @@ export default function RetainerQuiz() {
             </div>
           </div>
 
-          <RetainerSelectorQuiz />
+          <RetainerSelectorQuiz onComplete={setQuizScores} />
         </div>
       </section>
     </Layout>
