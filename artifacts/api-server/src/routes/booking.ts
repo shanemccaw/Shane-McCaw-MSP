@@ -123,7 +123,7 @@ function isTooFarAhead(dateStr: string): boolean {
 
 // ─── GET /api/booking/slots ───────────────────────────────────────────────────
 
-router.get("/api/booking/slots", async (req: Request, res: Response) => {
+router.get("/booking/slots", async (req: Request, res: Response) => {
   const date = req.query.date as string | undefined;
 
   if (!date || !DATE_RE.test(date)) {
@@ -177,7 +177,7 @@ const bookingBodySchema = z.object({
   endIso: z.string().min(1),
 });
 
-router.post("/api/booking", bookingLimiter, async (req: Request, res: Response) => {
+router.post("/booking", bookingLimiter, async (req: Request, res: Response) => {
   const parsed = bookingBodySchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: "Invalid request", details: parsed.error.flatten() });
