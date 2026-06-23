@@ -41,6 +41,59 @@ async function ensureClientAccount(email: string, name?: string): Promise<{ id: 
 }
 
 /**
+ * Atomically finds or creates an account-setup token for a freshly-provisioned client.
+ *
+ * Uses a PostgreSQL advisory lock (namespace 0xACCT=43083, key=userId) scoped to the
+ * surrounding transaction so that concurrent webhook + success-page calls for the same
+ * user are serialized at the DB level — producing exactly one valid token and ensuring
+ * the setup email is sent only once.
+ *
+ * Returns { token, isNew } where isNew=true means this invocation created the token
+ * (i.e. the caller owns responsibility for sending the account-setup email).
+ */
+async function ensureClientSetupToken(userId: number): Promise<{ token: string; isNew: boolean }> {
+  return db.transaction(async (tx) => {
+    // Advisory lock: namespace 43083 (0xACCT) + userId.
+    // Two concurrent calls with the same userId block here until the first commits.
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(43083, ${userId})`);
+
+    const now = new Date();
+    const [existing] = await tx
+      .select({ token: accountSetupTokensTable.token })
+      .from(accountSetupTokensTable)
+      .where(
+        and(
+          eq(accountSetupTokensTable.userId, userId),
+          gte(accountSetupTokensTable.expiresAt, now),
+          isNull(accountSetupTokensTable.usedAt),
+        ),
+      )
+      .limit(1);
+
+    if (existing) return { token: existing.token, isNew: false };
+
+    // Purge stale (expired or already-used) tokens before creating a fresh one
+    // to prevent unbounded accumulation from repeated purchases.
+    await tx.delete(accountSetupTokensTable)
+      .where(
+        and(
+          eq(accountSetupTokensTable.userId, userId),
+          or(
+            lt(accountSetupTokensTable.expiresAt, now),
+            isNotNull(accountSetupTokensTable.usedAt),
+          ),
+        ),
+      );
+
+    const { randomBytes } = await import("crypto");
+    const token = randomBytes(32).toString("hex");
+    const expiresAt = new Date(Date.now() + 72 * 60 * 60 * 1000);
+    await tx.insert(accountSetupTokensTable).values({ userId, token, expiresAt });
+    return { token, isNew: true };
+  });
+}
+
+/**
  * Returns the number of messages that Shane has not yet read.
  * Used to set the iOS app icon badge count in outgoing push payloads so that
  * consecutive background pushes show 2, 3, … rather than always 1.
@@ -3348,36 +3401,10 @@ async function processStripeEvent(req: Request, event: import("stripe").Stripe.E
             ?? `${process.env.REPLIT_DEV_DOMAIN ? `https://${process.env.REPLIT_DEV_DOMAIN}` : ""}/crm`;
 
           if (!buyer.passwordHash) {
-            // New client — generate a setup token (idempotent: skip if one already exists).
-            const now = new Date();
-            const [existingToken] = await db
-              .select({ id: accountSetupTokensTable.userId })
-              .from(accountSetupTokensTable)
-              .where(
-                and(
-                  eq(accountSetupTokensTable.userId, buyer.id),
-                  gte(accountSetupTokensTable.expiresAt, now),
-                  isNull(accountSetupTokensTable.usedAt),
-                ),
-              )
-              .limit(1);
-            if (!existingToken) {
-              // Purge any stale (expired or already-used) tokens for this user before
-              // creating a fresh one — prevents unbounded accumulation from repeated purchases.
-              await db.delete(accountSetupTokensTable)
-                .where(
-                  and(
-                    eq(accountSetupTokensTable.userId, buyer.id),
-                    or(
-                      lt(accountSetupTokensTable.expiresAt, now),
-                      isNotNull(accountSetupTokensTable.usedAt),
-                    ),
-                  ),
-                );
-              const { randomBytes: rb } = await import("crypto");
-              const setupToken = rb(32).toString("hex");
-              const setupExpiresAt = new Date(Date.now() + 72 * 60 * 60 * 1000);
-              await db.insert(accountSetupTokensTable).values({ userId: buyer.id, token: setupToken, expiresAt: setupExpiresAt });
+            // Atomic: advisory-locked transaction finds an existing valid token or
+            // creates one — concurrent webhook + success-page calls produce exactly one.
+            const { token: setupToken, isNew: tokenIsNew } = await ensureClientSetupToken(buyer.id);
+            if (tokenIsNew) {
               const setupUrl = `${clientBaseUrl}/portal/onboarding/success?setup_token=${setupToken}`;
               void sendEmailFromTemplate(
                 "account-setup",
@@ -6030,50 +6057,13 @@ router.post("/portal/onboarding/provision/:sessionId", async (req: Request, res:
     const baseUrl = process.env.PORTAL_BASE_URL
       ?? `${process.env.REPLIT_DEV_DOMAIN ? `https://${process.env.REPLIT_DEV_DOMAIN}` : ""}/crm`;
     if (!hasPassword && provUser?.email) {
-      // Idempotency: if a valid (non-expired, non-used) setup token already exists for this user
-      // (e.g., the Stripe webhook already ran first), reuse it so the client gets exactly one email.
-      const now = new Date();
-      const [existingToken] = await db
-        .select({ token: accountSetupTokensTable.token })
-        .from(accountSetupTokensTable)
-        .where(
-          and(
-            eq(accountSetupTokensTable.userId, resolvedUserId),
-            gte(accountSetupTokensTable.expiresAt, now),
-            isNull(accountSetupTokensTable.usedAt),
-          ),
-        )
-        .limit(1);
-
-      const setupTokenValue = existingToken?.token ?? (() => {
-        // No valid token exists — will be created below
-        return null;
-      })();
-
-      let activeToken: string;
-      if (setupTokenValue) {
-        // Webhook already created a token — don't send another email
-        activeToken = setupTokenValue;
-        sentSetupEmail = false; // email already sent by webhook
-      } else {
-        // Purge stale (expired or already-used) tokens before creating a fresh one.
-        const nowCleanup = new Date();
-        await db.delete(accountSetupTokensTable)
-          .where(
-            and(
-              eq(accountSetupTokensTable.userId, resolvedUserId),
-              or(
-                lt(accountSetupTokensTable.expiresAt, nowCleanup),
-                isNotNull(accountSetupTokensTable.usedAt),
-              ),
-            ),
-          );
-        const { randomBytes } = await import("crypto");
-        activeToken = randomBytes(32).toString("hex");
-        const expiresAt = new Date(Date.now() + 72 * 60 * 60 * 1000);
-        await db.insert(accountSetupTokensTable).values({ userId: resolvedUserId, token: activeToken, expiresAt });
-
-        // Send setup link via email — token never leaves the server in the API response
+      // Atomic: advisory-locked transaction finds an existing valid token or
+      // creates one — concurrent webhook + success-page calls produce exactly one.
+      // isNew=true means this call created the token and owns the email send.
+      const { token: activeToken, isNew: tokenIsNew } = await ensureClientSetupToken(resolvedUserId);
+      sentSetupEmail = tokenIsNew;
+      if (tokenIsNew) {
+        // Send setup link via email — token never leaves the server in the API response.
         const setupUrl = `${baseUrl}/portal/onboarding/success?setup_token=${activeToken}`;
         void sendEmailFromTemplate(
           "account-setup",
@@ -6082,7 +6072,6 @@ router.post("/portal/onboarding/provision/:sessionId", async (req: Request, res:
           "Set up your Shane McCaw Consulting portal",
           `<p>Hi ${provUser.name ?? ""},</p><p>Your project workspace is ready. Click the link below to set your portal password:</p><p><a href="${setupUrl}" style="color:#0078D4;">Set my password →</a></p><p>This link expires in 72 hours.</p><p>— Shane McCaw</p>`,
         ).catch(() => null);
-        sentSetupEmail = true;
       }
     } else if (hasPassword && provUser?.email && !webhookAlreadyRan) {
       // Returning client — send a "project is ready" email with portal login link.
