@@ -78,8 +78,13 @@ function buildContractHtml(
           </td>
         </tr>`
       : "";
-    const deliverableHtml = s.deliverables
-      ? `<ul style="margin:4px 0 0 0;padding-left:16px;font-size:0.85em;color:#6B7280;">${s.deliverables.split("\n").filter((l: string) => l.trim()).map((l: string) => `<li style="margin-bottom:2px;">${l.trim()}</li>`).join("")}</ul>`
+    const deliverableLines: string[] = Array.isArray(s.deliverables)
+      ? (s.deliverables as string[]).filter((l: string) => l.trim())
+      : typeof s.deliverables === "string"
+        ? (s.deliverables as string).split("\n").filter((l: string) => l.trim())
+        : [];
+    const deliverableHtml = deliverableLines.length > 0
+      ? `<ul style="margin:4px 0 0 0;padding-left:16px;font-size:0.85em;color:#6B7280;">${deliverableLines.map((l: string) => `<li style="margin-bottom:2px;">${l.trim()}</li>`).join("")}</ul>`
       : `<span style="font-size:0.85em;color:#9CA3AF;">As described on the service page</span>`;
     return `
     <tr style="${rowBg}">
