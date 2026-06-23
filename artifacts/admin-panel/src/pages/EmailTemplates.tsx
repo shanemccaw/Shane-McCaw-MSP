@@ -22,8 +22,6 @@ interface TemplateDetail {
   updatedAt: string;
 }
 
-const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
-
 function relativeTime(iso: string): string {
   const diff = Date.now() - new Date(iso).getTime();
   if (diff < 60_000) return "just now";
@@ -140,7 +138,7 @@ export default function EmailTemplatesPage() {
   const { data: templates = [], isLoading: listLoading } = useQuery<TemplateListItem[]>({
     queryKey: ["email-templates"],
     queryFn: async () => {
-      const r = await fetchWithAuth(`${BASE}/api/admin/email-templates`);
+      const r = await fetchWithAuth(`/api/admin/email-templates`);
       if (!r.ok) throw new Error("Failed to load templates");
       return r.json() as Promise<TemplateListItem[]>;
     },
@@ -149,7 +147,7 @@ export default function EmailTemplatesPage() {
   const { data: detail, isLoading: detailLoading } = useQuery<TemplateDetail>({
     queryKey: ["email-template", selected],
     queryFn: async () => {
-      const r = await fetchWithAuth(`${BASE}/api/admin/email-templates/${selected}`);
+      const r = await fetchWithAuth(`/api/admin/email-templates/${selected}`);
       if (!r.ok) throw new Error("Failed to load template");
       return r.json() as Promise<TemplateDetail>;
     },
@@ -175,7 +173,7 @@ export default function EmailTemplatesPage() {
 
   const saveMutation = useMutation({
     mutationFn: async () => {
-      const r = await fetchWithAuth(`${BASE}/api/admin/email-templates/${selected}`, {
+      const r = await fetchWithAuth(`/api/admin/email-templates/${selected}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ subject: editSubject, bodyHtml: editBody }),
@@ -196,7 +194,7 @@ export default function EmailTemplatesPage() {
 
   const testMutation = useMutation({
     mutationFn: async () => {
-      const r = await fetchWithAuth(`${BASE}/api/admin/email-templates/${selected}/test`, {
+      const r = await fetchWithAuth(`/api/admin/email-templates/${selected}/test`, {
         method: "POST",
       });
       if (!r.ok) throw new Error((await r.json() as { error?: string }).error ?? "Send failed");
