@@ -94,6 +94,18 @@ function groupDeliverables(items: string[]): Array<{ category: string; items: st
     .filter(g => g.items.length > 0);
 }
 
+/** Fetch a QR-code PNG from qrserver.com. Returns null on any network/parse error. */
+async function fetchQrPng(url: string): Promise<Uint8Array | null> {
+  try {
+    const api = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(url)}&format=png&margin=1`;
+    const res = await fetch(api, { signal: AbortSignal.timeout(5000) });
+    if (!res.ok) return null;
+    return new Uint8Array(await res.arrayBuffer());
+  } catch {
+    return null;
+  }
+}
+
 export async function generateServiceOverviewPdf(serviceName: string): Promise<Buffer | null> {
   const pageW  = 595;
   const pageH  = 842;
@@ -164,6 +176,15 @@ export async function generateServiceOverviewPdf(serviceName: string): Promise<B
   const pdfDoc = await PDFDocument.create();
   const bold    = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
   const regular = await pdfDoc.embedFont(StandardFonts.Helvetica);
+
+  // Pre-fetch QR code PNG for the title page (graceful no-op on network error)
+  let qrEmbed: Awaited<ReturnType<typeof pdfDoc.embedPng>> | null = null;
+  if (service.pageHref) {
+    const qrPng = await fetchQrPng(`https://shanemccaw.com${service.pageHref}`);
+    if (qrPng) {
+      try { qrEmbed = await pdfDoc.embedPng(qrPng); } catch { /* skip on corrupt data */ }
+    }
+  }
 
   const dateStr = new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
 
@@ -282,6 +303,17 @@ export async function generateServiceOverviewPdf(serviceName: string): Promise<B
 
   // Date near the bottom of the title page
   dt(page, dateStr, margin, 80, regular, 9, grey);
+
+  // QR code — bottom-right corner of the title page, above the footer band
+  if (qrEmbed) {
+    const qrSize = 80;
+    page.drawImage(qrEmbed, {
+      x: pageW - margin - qrSize,
+      y: 34, // 10pt gap above the 24pt navy footer band
+      width: qrSize,
+      height: qrSize,
+    });
+  }
 
   // ── 2. Content pages start here ────────────────────────────────────────────
   newPage();
