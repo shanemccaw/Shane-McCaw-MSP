@@ -322,6 +322,11 @@ router.patch("/admin/clients/:id/app-registration", requireAdmin, async (req: Re
 
   if (!existing) { res.status(404).json({ error: "No App Registration found for this client" }); return; }
 
+  // Fetch client name for audit log label
+  const [clientUser] = await db.select({ name: usersTable.name, email: usersTable.email })
+    .from(usersTable).where(eq(usersTable.id, clientId)).limit(1);
+  const clientLabel = clientUser?.name ?? clientUser?.email ?? String(clientId);
+
   // When marking as verified, test the credentials against Azure first
   if (status === "verified") {
     try {
@@ -336,6 +341,22 @@ router.patch("/admin/clients/:id/app-registration", requireAdmin, async (req: Re
       const userMessage = isAuthErr
         ? "Invalid credentials — check the Client ID, Tenant ID, and Client Secret"
         : "Could not verify credentials — Azure returned an unexpected error. Check Key Vault access and try again.";
+      void createAuditLog({
+        actorUserId: req.user!.id,
+        actorName: req.user!.name ?? req.user!.email,
+        actorRole: "admin",
+        actionType: "credential_verification_failed",
+        entityType: "app_registration",
+        entityId: clientId,
+        entityLabel: clientLabel,
+        clientId,
+        metadata: {
+          tenantId: existing.tenantId,
+          azureClientId: existing.azureClientId,
+          outcome: "failed",
+          errorMessage: msg.slice(0, 500),
+        },
+      });
       res.status(400).json({ error: userMessage });
       return;
     }
@@ -351,6 +372,25 @@ router.patch("/admin/clients/:id/app-registration", requireAdmin, async (req: Re
   await db.update(clientAppRegistrationsTable)
     .set(updates)
     .where(eq(clientAppRegistrationsTable.clientUserId, clientId));
+
+  if (status === "verified") {
+    void createAuditLog({
+      actorUserId: req.user!.id,
+      actorName: req.user!.name ?? req.user!.email,
+      actorRole: "admin",
+      actionType: "credential_verification_passed",
+      entityType: "app_registration",
+      entityId: clientId,
+      entityLabel: clientLabel,
+      clientId,
+      metadata: {
+        tenantId: existing.tenantId,
+        azureClientId: existing.azureClientId,
+        outcome: "passed",
+        verifiedAt: now.toISOString(),
+      },
+    });
+  }
 
   res.json({ ok: true, status });
 });

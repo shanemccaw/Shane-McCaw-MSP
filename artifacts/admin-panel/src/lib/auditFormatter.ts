@@ -119,6 +119,12 @@ export function formatAuditEntry(entry: AuditLogEntry): string {
       const client = meta.clientName ? ` for ${meta.clientName}` : "";
       return `${date} ${actorName} uploaded '${label}'${client}`;
     }
+    case "credential_verification_passed":
+      return `${date} ${actorName} verified Azure credentials for ${label} — passed`;
+    case "credential_verification_failed": {
+      const errMsg = meta.errorMessage ? ` (${String(meta.errorMessage).slice(0, 120)})` : "";
+      return `${date} ${actorName} attempted Azure credential verification for ${label} — failed${errMsg}`;
+    }
     default:
       return `${date} ${actorName} performed ${actionType.replace(/_/g, " ")} on ${label}`;
   }
@@ -135,4 +141,5 @@ export const ENTITY_TYPE_LABELS: Record<string, string> = {
   lead: "Leads",
   user: "Clients & Accounts",
   document: "Documents",
+  app_registration: "Credential Verifications",
 };
