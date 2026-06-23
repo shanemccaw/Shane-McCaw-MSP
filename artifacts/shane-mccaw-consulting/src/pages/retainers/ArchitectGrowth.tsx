@@ -103,17 +103,19 @@ export default function ArchitectGrowth() {
       current: s.pageHref === "/retainers/architect-growth",
     }));
 
+  const growthLivePrice = growthSvc?.price ?? "6000.00";
+
   const jsonLd = {
     "@context": "https://schema.org",
     "@type": "Offer",
     name: "Architect Growth Retainer",
     description:
       "25 hours/month of senior Microsoft 365 consulting from a former NASA Lead M365 Architect — 2-hour priority response, two strategy calls, Copilot readiness scoring, governance framework builds, and proactive tenant health monitoring for mid-market and regulated organisations.",
-    price: "6000.00",
+    price: growthLivePrice,
     priceCurrency: "USD",
     priceSpecification: {
       "@type": "UnitPriceSpecification",
-      price: "6000.00",
+      price: growthLivePrice,
       priceCurrency: "USD",
       unitText: "MONTH",
     },

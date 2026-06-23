@@ -116,6 +116,9 @@ const WHY_SHANE = [
 export default function ArchitectEnterprise() {
   const { services, loading: tiersLoading } = useServices("retainer");
 
+  const enterpriseSvc = services.find((s) => s.slug === "architect-enterprise");
+  const displayPrice = formatPrice(enterpriseSvc?.price ?? null) ?? "$11,000";
+
   const tiers = [...services]
     .sort((a, b) => a.sortOrder - b.sortOrder)
     .map((s) => ({
@@ -126,17 +129,19 @@ export default function ArchitectEnterprise() {
       current: s.pageHref === "/retainers/architect-enterprise",
     }));
 
+  const livePrice = enterpriseSvc?.price ?? "11000.00";
+
   const jsonLd = {
     "@context": "https://schema.org",
     "@type": "Offer",
     name: "Architect Enterprise Retainer — Shane McCaw Consulting",
     description:
       "Enterprise-grade Microsoft 365 architecture from the former Lead M365 Architect at NASA. 50 hours/month of senior-only consulting — weekly leadership sessions, same-day response, governance builds, Copilot deployment leadership, and a monthly written architecture summary.",
-    price: "11000.00",
+    price: livePrice,
     priceCurrency: "USD",
     priceSpecification: {
       "@type": "UnitPriceSpecification",
-      price: "11000.00",
+      price: livePrice,
       priceCurrency: "USD",
       unitText: "MONTH",
     },
@@ -191,7 +196,7 @@ export default function ArchitectEnterprise() {
             Architect Enterprise Retainer
           </p>
 
-          <p className="text-[#00B4D8] text-5xl font-extrabold mb-2">$11,000</p>
+          <p className="text-[#00B4D8] text-5xl font-extrabold mb-2">{displayPrice}</p>
           <p className="text-white/50 mb-8 text-lg">/month · cancel anytime</p>
 
           <p className="text-white/70 text-lg max-w-2xl mx-auto leading-relaxed mb-4">
