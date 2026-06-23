@@ -2880,8 +2880,10 @@ async function seedDefaultWorkflowSteps(
 //  in production), then compares against registered Stripe endpoints.
 //
 //  Stripe keys by environment:
-//   STRIPE_SECRET_KEY      — dev (sk_test_…), used when REPLIT_DOMAINS is absent
-//   STRIPE_SECRET_KEY_PROD — prod (sk_live_…), used when REPLIT_DOMAINS is present
+//   STRIPE_SECRET_KEY      — dev (sk_test_…), used in the Replit editor workspace
+//                            (REPLIT_DOMAINS absent, or all domains end in .replit.dev)
+//   STRIPE_SECRET_KEY_PROD — prod (sk_live_…), used in real deployments
+//                            (REPLIT_DOMAINS present with at least one non-.replit.dev domain)
 //
 //  If you change the webhook path or add a new domain, re-run the script.
 //
