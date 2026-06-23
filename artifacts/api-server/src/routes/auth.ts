@@ -5,7 +5,7 @@ import jwt from "jsonwebtoken";
 import { db, usersTable, passwordResetTokensTable, impersonationTokensTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import type { CookieOptions } from "express";
-import { sendEmailFromTemplate, passwordResetEmail } from "../lib/mailer";
+import { sendEmailFromTemplate, passwordResetEmail, PORTAL_URL } from "../lib/mailer";
 
 const registerLimiter = rateLimit({
   windowMs: 60 * 60 * 1000,
@@ -154,6 +154,19 @@ router.post("/auth/register", registerLimiter, async (req: Request, res: Respons
 
   res.cookie("refreshToken", refreshToken, cookieOpts());
   res.status(201).json({ accessToken, user: payload });
+
+  void sendEmailFromTemplate(
+    "welcome-email",
+    user.email,
+    { clientName: user.name ?? user.email, portalLink: PORTAL_URL },
+    "Welcome to Shane McCaw Consulting — your portal is ready",
+    `
+    <p>Hi ${user.name ?? ""},</p>
+    <p>Welcome! Your Shane McCaw Consulting client portal has been set up and is ready for you.</p>
+    <p style="margin:24px 0 0;"><a href="${PORTAL_URL}" style="display:inline-block;background:#0078D4;color:#ffffff;text-decoration:none;font-weight:600;font-size:14px;padding:12px 24px;border-radius:6px;">Go to your portal →</a></p>
+    <p style="margin-top:24px;">— Shane McCaw</p>
+    `,
+  );
 });
 
 router.post("/auth/logout", (_req: Request, res: Response) => {

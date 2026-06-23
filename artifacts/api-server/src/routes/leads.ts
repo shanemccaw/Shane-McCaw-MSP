@@ -110,8 +110,8 @@ router.post("/leads", async (req: Request, res: Response) => {
         }
 
         const { subject, bodyHtml } = await getEmailTemplateOrFallback(
-          "service-overview-confirmation",
-          { firstName: trimmedName.split(" ")[0] ?? trimmedName, serviceName, pdfAttached: String(pdfAttached), bookingLink: "https://shanemccaw.consulting/book" },
+          "service-overview-email",
+          { firstName: trimmedName.split(" ")[0] ?? trimmedName, serviceName, bookingLink: "https://shanemccaw.consulting/book" },
           `Your ${serviceName} Overview — Shane McCaw Consulting`,
           serviceOverviewConfirmationEmail({ name: trimmedName, serviceName, pdfAttached }),
         );

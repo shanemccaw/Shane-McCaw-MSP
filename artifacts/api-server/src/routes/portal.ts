@@ -3389,6 +3389,19 @@ router.post("/admin/clients", requireAdmin, async (req: Request, res: Response) 
     entityLabel: client.name ?? client.email,
   });
 
+  void sendEmailFromTemplate(
+    "welcome-email",
+    client.email,
+    { clientName: client.name ?? client.email, portalLink: PORTAL_URL },
+    "Welcome to Shane McCaw Consulting — your portal is ready",
+    `
+    <p>Hi ${client.name ?? ""},</p>
+    <p>Welcome! Your Shane McCaw Consulting client portal has been set up and is ready for you.</p>
+    <p style="margin:24px 0 0;"><a href="${PORTAL_URL}" style="display:inline-block;background:#0078D4;color:#ffffff;text-decoration:none;font-weight:600;font-size:14px;padding:12px 24px;border-radius:6px;">Go to your portal →</a></p>
+    <p style="margin-top:24px;">— Shane McCaw</p>
+    `,
+  );
+
   res.status(201).json({ ...client, passwordHash: undefined });
 });
 
