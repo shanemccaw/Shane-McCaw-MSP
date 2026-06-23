@@ -62,10 +62,9 @@ interface FormState {
   name: string;
   company: string;
   phone: string;
-  password: string;
 }
 
-const EMPTY_FORM: FormState = { email: "", name: "", company: "", phone: "", password: "" };
+const EMPTY_FORM: FormState = { email: "", name: "", company: "", phone: "" };
 
 function timeAgo(ts: string) {
   const diff = Date.now() - new Date(ts).getTime();
@@ -617,6 +616,7 @@ export default function ClientsPage() {
   const [expandedClientId, setExpandedClientId] = useState<number | null>(null);
   const [expandedSpClientId, setExpandedSpClientId] = useState<number | null>(null);
   const [m365ClientId, setM365ClientId] = useState<number | null>(null);
+  const [resendingInviteId, setResendingInviteId] = useState<number | null>(null);
 
   const load = async () => {
     const res = await fetchWithAuth("/api/admin/clients");
@@ -653,13 +653,16 @@ export default function ClientsPage() {
         res = await fetchWithAuth("/api/admin/clients", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(form),
+          body: JSON.stringify({ email: form.email, name: form.name, company: form.company, phone: form.phone }),
         });
       }
       if (!res.ok) {
         const err = await res.json() as { error: string };
         setError(err.error);
       } else {
+        if (!editingId) {
+          toast({ title: "Client created", description: `A portal invite has been sent to ${form.email}.` });
+        }
         setShowForm(false);
         setEditingId(null);
         setForm(EMPTY_FORM);
@@ -667,6 +670,23 @@ export default function ClientsPage() {
       }
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleResendInvite = async (c: Client) => {
+    setResendingInviteId(c.id);
+    try {
+      const res = await fetchWithAuth(`/api/admin/clients/${c.id}/resend-invite`, { method: "POST" });
+      if (res.ok) {
+        toast({ title: "Invite resent", description: `A new setup link was emailed to ${c.email}.` });
+      } else {
+        const err = await res.json() as { error?: string };
+        toast({ title: "Failed to resend invite", description: err.error ?? "Unknown error", variant: "destructive" });
+      }
+    } catch {
+      toast({ title: "Network error", variant: "destructive" });
+    } finally {
+      setResendingInviteId(null);
     }
   };
 
@@ -691,7 +711,7 @@ export default function ClientsPage() {
 
   const handleEdit = (c: Client) => {
     setEditingId(c.id);
-    setForm({ email: c.email, name: c.name ?? "", company: c.company ?? "", phone: c.phone ?? "", password: "" });
+    setForm({ email: c.email, name: c.name ?? "", company: c.company ?? "", phone: c.phone ?? "" });
     setShowForm(true);
   };
 
@@ -765,20 +785,18 @@ export default function ClientsPage() {
 
       {showForm && (
         <div className="bg-[#F7F9FC] border border-border rounded-xl p-5 mb-6">
-          <h3 className="text-sm font-bold text-[#0A2540] mb-4">{editingId ? "Edit Client" : "Add New Client"}</h3>
+          <h3 className="text-sm font-bold text-[#0A2540] mb-1">{editingId ? "Edit Client" : "Add New Client"}</h3>
+          {!editingId && (
+            <p className="text-xs text-muted-foreground mb-4">
+              A portal invite email will be sent automatically so the client can set their own password.
+            </p>
+          )}
           <form onSubmit={handleSubmit} className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="block text-xs font-semibold text-[#0A2540] mb-1">Email *</label>
               <input type="email" required value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))}
                 className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4]" />
             </div>
-            {!editingId && (
-              <div>
-                <label className="block text-xs font-semibold text-[#0A2540] mb-1">Password *</label>
-                <input type="password" required={!editingId} value={form.password} onChange={e => setForm(f => ({ ...f, password: e.target.value }))}
-                  className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4]" />
-              </div>
-            )}
             <div>
               <label className="block text-xs font-semibold text-[#0A2540] mb-1">Name</label>
               <input type="text" value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
@@ -797,7 +815,7 @@ export default function ClientsPage() {
             {error && <div className="sm:col-span-2 text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{error}</div>}
             <div className="sm:col-span-2 flex gap-3">
               <button type="submit" disabled={saving} className="bg-[#0078D4] text-white text-sm font-semibold px-5 py-2 rounded-lg hover:bg-[#0078D4]/90 disabled:opacity-50 transition-colors">
-                {saving ? "Saving…" : editingId ? "Save Changes" : "Create Client"}
+                {saving ? "Saving…" : editingId ? "Save Changes" : "Create & Send Invite"}
               </button>
               <button type="button" onClick={() => { setShowForm(false); setEditingId(null); setError(""); }}
                 className="border border-border text-sm font-medium px-5 py-2 rounded-lg hover:bg-[#F7F9FC] transition-colors">
@@ -869,6 +887,21 @@ export default function ClientsPage() {
                           Details
                         </button>
                         <button onClick={() => handleEdit(c)} className="text-xs font-semibold text-gray-500 hover:text-[#0078D4]">Edit</button>
+                        <button
+                          onClick={() => void handleResendInvite(c)}
+                          disabled={resendingInviteId === c.id}
+                          className="flex items-center gap-1 text-xs font-semibold text-indigo-600 hover:text-indigo-800 disabled:opacity-50 transition-colors"
+                          title="Send a new portal invite link to this client"
+                        >
+                          {resendingInviteId === c.id ? (
+                            <span className="w-3 h-3 border-2 border-indigo-400 border-t-transparent rounded-full animate-spin inline-block" />
+                          ) : (
+                            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M21.75 6.75v10.5a2.25 2.25 0 01-2.25 2.25h-15a2.25 2.25 0 01-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25m19.5 0v.243a2.25 2.25 0 01-1.07 1.916l-7.5 4.615a2.25 2.25 0 01-2.36 0L3.32 8.91a2.25 2.25 0 01-1.07-1.916V6.75" />
+                            </svg>
+                          )}
+                          {resendingInviteId === c.id ? "Sending…" : "Resend Invite"}
+                        </button>
                         <button
                           onClick={() => handleViewAs(c)}
                           disabled={viewAsLoading === c.id}

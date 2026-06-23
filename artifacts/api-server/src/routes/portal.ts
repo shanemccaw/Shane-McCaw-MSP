@@ -3714,15 +3714,18 @@ router.get("/admin/clients/:id", requireAdmin, async (req: Request, res: Respons
 });
 
 router.post("/admin/clients", requireAdmin, async (req: Request, res: Response) => {
-  const { email, name, company, phone, password } = req.body as { email?: string; name?: string; company?: string; phone?: string; password?: string };
-  if (!email || !password) { res.status(400).json({ error: "email and password are required" }); return; }
+  const { email, name, company, phone } = req.body as { email?: string; name?: string; company?: string; phone?: string };
+  if (!email) { res.status(400).json({ error: "email is required" }); return; }
 
-  const { default: bcrypt } = await import("bcryptjs");
-  const passwordHash = await bcrypt.hash(password, 12);
+  const normalizedEmail = email.toLowerCase().trim();
+
+  const [existing] = await db.select({ id: usersTable.id }).from(usersTable)
+    .where(eq(usersTable.email, normalizedEmail)).limit(1);
+  if (existing) { res.status(409).json({ error: "An account with this email already exists" }); return; }
 
   const [client] = await db.insert(usersTable).values({
-    email: email.toLowerCase().trim(),
-    passwordHash,
+    email: normalizedEmail,
+    passwordHash: null,
     role: "client",
     name: name ?? null,
     company: company ?? null,
@@ -3739,20 +3742,72 @@ router.post("/admin/clients", requireAdmin, async (req: Request, res: Response) 
     entityLabel: client.name ?? client.email,
   });
 
-  void sendEmailFromTemplate(
-    "welcome-email",
-    client.email,
-    { clientName: client.name ?? client.email, portalLink: PORTAL_URL },
-    "Welcome to Shane McCaw Consulting — your portal is ready",
-    `
-    <p>Hi ${client.name ?? ""},</p>
-    <p>Welcome! Your Shane McCaw Consulting client portal has been set up and is ready for you.</p>
-    <p style="margin:24px 0 0;"><a href="${PORTAL_URL}" style="display:inline-block;background:#0078D4;color:#ffffff;text-decoration:none;font-weight:600;font-size:14px;padding:12px 24px;border-radius:6px;">Go to your portal →</a></p>
-    <p style="margin-top:24px;">— Shane McCaw</p>
-    `,
-  );
+  // Generate a setup token and send the portal invite email
+  try {
+    const { token: setupToken } = await ensureClientSetupToken(client.id);
+    const baseUrl = process.env.PORTAL_BASE_URL
+      ?? `${process.env.REPLIT_DEV_DOMAIN ? `https://${process.env.REPLIT_DEV_DOMAIN}` : ""}/crm`;
+    const setupUrl = `${baseUrl}/portal/onboarding/success?setup_token=${setupToken}`;
+    void sendEmailFromTemplate(
+      "account-setup",
+      client.email,
+      { setupLink: setupUrl, clientName: client.name ?? client.email },
+      "You've been invited to Shane McCaw Consulting — set up your portal",
+      `<p>Hi ${client.name ?? ""},</p><p>Shane McCaw has set up a client portal for you. Click the link below to create your password and access your workspace:</p><p style="margin:24px 0;"><a href="${setupUrl}" style="display:inline-block;background:#0078D4;color:#ffffff;text-decoration:none;font-weight:600;font-size:14px;padding:12px 24px;border-radius:6px;">Set up my portal →</a></p><p style="color:#888;font-size:13px;">This link expires in 72 hours. If it expires, you can request a new one from the login page.</p><p>— Shane McCaw</p>`,
+    ).catch(() => null);
+  } catch (err) {
+    req.log.warn({ err, clientId: client.id }, "Failed to send invite email after client creation");
+  }
 
   res.status(201).json({ ...client, passwordHash: undefined });
+});
+
+// ─── Resend portal invite ─────────────────────────────────────────────────────
+router.post("/admin/clients/:id/resend-invite", requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const id = parseInt(String(req.params.id ?? ""), 10);
+    if (isNaN(id)) { res.status(400).json({ error: "Invalid client ID" }); return; }
+
+    const [client] = await db.select().from(usersTable)
+      .where(and(eq(usersTable.id, id), eq(usersTable.role, "client"))).limit(1);
+    if (!client) { res.status(404).json({ error: "Client not found" }); return; }
+
+    // Force a fresh token: delete any existing tokens (expired, used, or still valid)
+    // so the resent link is always a brand-new 72-hour window.
+    await db.delete(accountSetupTokensTable).where(eq(accountSetupTokensTable.userId, id));
+
+    const { randomBytes } = await import("crypto");
+    const token = randomBytes(32).toString("hex");
+    const expiresAt = new Date(Date.now() + 72 * 60 * 60 * 1000);
+    await db.insert(accountSetupTokensTable).values({ userId: id, token, expiresAt });
+
+    const baseUrl = process.env.PORTAL_BASE_URL
+      ?? `${process.env.REPLIT_DEV_DOMAIN ? `https://${process.env.REPLIT_DEV_DOMAIN}` : ""}/crm`;
+    const setupUrl = `${baseUrl}/portal/onboarding/success?setup_token=${token}`;
+
+    await sendEmailFromTemplate(
+      "account-setup",
+      client.email,
+      { setupLink: setupUrl, clientName: client.name ?? client.email },
+      "Your Shane McCaw Consulting portal invite (resent)",
+      `<p>Hi ${client.name ?? ""},</p><p>Here is a new link to set up your portal password:</p><p style="margin:24px 0;"><a href="${setupUrl}" style="display:inline-block;background:#0078D4;color:#ffffff;text-decoration:none;font-weight:600;font-size:14px;padding:12px 24px;border-radius:6px;">Set up my portal →</a></p><p style="color:#888;font-size:13px;">This link expires in 72 hours.</p><p>— Shane McCaw</p>`,
+    );
+
+    void createAuditLog({
+      actorUserId: req.user!.id,
+      actorName: req.user!.name ?? req.user!.email,
+      actorRole: "admin",
+      actionType: "client_invite_resent",
+      entityType: "user",
+      entityId: client.id,
+      entityLabel: client.name ?? client.email,
+    });
+
+    res.json({ ok: true });
+  } catch (err) {
+    req.log.error(err, "Failed to resend client invite");
+    res.status(500).json({ error: "Failed to resend invite" });
+  }
 });
 
 router.patch("/admin/clients/:id", requireAdmin, async (req: Request, res: Response) => {
