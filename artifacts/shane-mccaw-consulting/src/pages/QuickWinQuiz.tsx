@@ -11,7 +11,7 @@ export default function QuickWinQuiz() {
       />
 
       {/* Hero */}
-      <section className="bg-[#0A2540] pt-32 pb-20 relative overflow-hidden">
+      <section className="bg-[#0A2540] pt-[172px] pb-20 relative overflow-hidden">
         <div
           className="absolute inset-0 pointer-events-none"
           style={{

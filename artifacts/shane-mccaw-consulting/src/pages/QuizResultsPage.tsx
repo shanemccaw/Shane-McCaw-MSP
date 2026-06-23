@@ -4,7 +4,6 @@ import { Layout } from "@/components/Layout";
 import { SEOMeta } from "@/components/SEOMeta";
 import { cn } from "@/lib/utils";
 import { CheckCircle, Loader2, AlertTriangle, ArrowRight, Link2, Check } from "lucide-react";
-import { TestimonialDiscountCallout } from "@/components/TestimonialDiscountCallout";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface CategoryConfig { key: string; label: string; }
@@ -235,7 +234,6 @@ export default function QuizResultsPage() {
                 </div>
               )}
 
-              <TestimonialDiscountCallout variant="banner" />
               {/* Footer attribution */}
               <p className="text-center text-white/30 text-xs pt-2">
                 Powered by{" "}

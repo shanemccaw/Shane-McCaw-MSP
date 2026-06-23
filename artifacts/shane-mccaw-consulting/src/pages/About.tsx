@@ -101,7 +101,7 @@ export default function About() {
         description="Meet Shane McCaw — NASA's Lead Microsoft 365 Architect, 30-year Microsoft veteran, and Copilot SME. Learn why top organizations trust Shane to transform their M365 environments."
       />
       {/* Hero */}
-      <section className="relative bg-[#0A2540] pt-32 pb-24 overflow-hidden">
+      <section className="relative bg-[#0A2540] pt-[172px] pb-24 overflow-hidden">
         <div
           className="absolute inset-0 opacity-10"
           style={{

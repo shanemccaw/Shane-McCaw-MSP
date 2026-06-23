@@ -147,7 +147,7 @@ export default function SharePoint() {
       />
 
       {/* Hero */}
-      <section className="bg-[#0A2540] pt-32 pb-20">
+      <section className="bg-[#0A2540] pt-[172px] pb-20">
         <div className="max-w-[1200px] mx-auto px-6">
           <LayoutIcon className="w-10 h-10 text-[#0078D4] mb-6" />
           <p className="text-[#0078D4] text-sm font-semibold uppercase tracking-[0.1em] mb-4">SharePoint</p>

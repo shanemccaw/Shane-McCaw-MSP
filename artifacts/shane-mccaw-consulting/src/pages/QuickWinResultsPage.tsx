@@ -3,7 +3,6 @@ import { useParams, Link } from "wouter";
 import { Layout } from "@/components/Layout";
 import { SEOMeta } from "@/components/SEOMeta";
 import { CTAButton } from "@/components/CTAButton";
-import { TestimonialDiscountCallout } from "@/components/TestimonialDiscountCallout";
 import {
   CheckCircle,
   ArrowRight,
@@ -234,7 +233,7 @@ export default function QuickWinResultsPage() {
           title="Your Quick Win Results | Shane McCaw Consulting"
           description="Personalised Microsoft 365 Quick Win recommendations based on your quiz answers."
         />
-        <section className="bg-[#0A2540] pt-32 pb-20">
+        <section className="bg-[#0A2540] pt-[172px] pb-20">
           <div className="max-w-[1200px] mx-auto px-6 text-center">
             <Loader2 className="w-10 h-10 text-[#0078D4] animate-spin mx-auto mb-4" />
             <p className="text-white/60 text-sm">Loading your results…</p>
@@ -248,7 +247,7 @@ export default function QuickWinResultsPage() {
     return (
       <Layout>
         <SEOMeta title="Results Not Found | Shane McCaw Consulting" description="" />
-        <section className="bg-[#0A2540] pt-32 pb-20">
+        <section className="bg-[#0A2540] pt-[172px] pb-20">
           <div className="max-w-[760px] mx-auto px-6 text-center">
             <AlertCircle className="w-12 h-12 text-yellow-400 mx-auto mb-4" />
             <h1 className="text-2xl font-extrabold text-white mb-3">Results not found</h1>
@@ -270,7 +269,7 @@ export default function QuickWinResultsPage() {
     return (
       <Layout>
         <SEOMeta title="Error Loading Results | Shane McCaw Consulting" description="" />
-        <section className="bg-[#0A2540] pt-32 pb-20">
+        <section className="bg-[#0A2540] pt-[172px] pb-20">
           <div className="max-w-[760px] mx-auto px-6 text-center">
             <RefreshCw className="w-12 h-12 text-red-400 mx-auto mb-4" />
             <h1 className="text-2xl font-extrabold text-white mb-3">
@@ -312,7 +311,7 @@ export default function QuickWinResultsPage() {
       />
 
       {/* ── Hero ──────────────────────────────────────────────────────────────── */}
-      <section className="bg-[#0A2540] pt-32 pb-20 relative overflow-hidden">
+      <section className="bg-[#0A2540] pt-[172px] pb-20 relative overflow-hidden">
         <div className="absolute inset-0 pointer-events-none bg-[radial-gradient(ellipse_800px_400px_at_60%_0%,rgba(0,120,212,0.14)_0%,transparent_70%)]" />
         <div className="max-w-[1200px] mx-auto px-6 relative text-center">
           <div className="inline-flex items-center gap-2 bg-[#0078D4]/20 text-[#60B4FF] px-4 py-1.5 rounded-full text-sm font-semibold mb-6">
@@ -661,7 +660,6 @@ export default function QuickWinResultsPage() {
           </div>
         </div>
       </section>
-      <TestimonialDiscountCallout variant="banner" />
     </Layout>
   );
 }

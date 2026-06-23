@@ -151,7 +151,7 @@ export default function ArticlePage() {
         jsonLd={articleJsonLd}
       />
 
-      <section className="bg-[#0A2540] pt-32 pb-20">
+      <section className="bg-[#0A2540] pt-[172px] pb-20">
         <div className="max-w-[800px] mx-auto px-6">
           <Link
             href="/resources"

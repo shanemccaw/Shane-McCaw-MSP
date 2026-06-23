@@ -14,7 +14,6 @@ import { ServiceProjectCard } from "@/components/ServiceProjectCard";
 import { RetainerCard } from "@/components/RetainerCard";
 import { EngagementProjectCard } from "@/components/EngagementProjectCard";
 import { AssessmentSelector } from "@/components/AssessmentSelector";
-import { TestimonialDiscountCallout } from "@/components/TestimonialDiscountCallout";
 
 // ─── Tier configuration ───────────────────────────────────────────────────────
 // Keys must be lowercase to match the normalised tier value from the DB.
@@ -238,7 +237,7 @@ export default function Services() {
       />
 
       {/* Hero */}
-      <section className="bg-[#0A2540] pt-32 pb-20">
+      <section className="bg-[#0A2540] pt-[172px] pb-20">
         <div className="max-w-[1200px] mx-auto px-6">
           <p className="text-[#0078D4] text-sm font-semibold uppercase tracking-[0.1em] mb-4">Service Directory</p>
           <h1 className="text-4xl md:text-5xl lg:text-6xl font-extrabold text-white leading-tight max-w-4xl">
@@ -420,7 +419,6 @@ export default function Services() {
 
       <AssessmentSelector />
 
-      <TestimonialDiscountCallout variant="banner" />
       {/* Closing CTA */}
       <section className="bg-[#0A2540] py-20">
         <div className="max-w-[1200px] mx-auto px-6 text-center">

@@ -23,7 +23,7 @@ function splitLines(text: string | null): string[] {
 function OfferSkeleton() {
   return (
     <Layout>
-      <div className="bg-[#0A2540] pt-32 pb-24 animate-pulse">
+      <div className="bg-[#0A2540] pt-[172px] pb-24 animate-pulse">
         <div className="max-w-[1200px] mx-auto px-6">
           <div className="h-4 bg-white/10 rounded-full w-32 mb-6" />
           <div className="h-14 bg-white/10 rounded-xl w-3/4 mb-4" />
@@ -164,7 +164,7 @@ export default function MicroOfferDetail({ params }: MicroOfferDetailProps) {
       />
 
       {/* ══ SECTION 1 — HERO ════════════════════════════════════════════════ */}
-      <section className="bg-[#0A2540] pt-32 pb-28 relative overflow-hidden">
+      <section className="bg-[#0A2540] pt-[172px] pb-28 relative overflow-hidden">
         <div
           className="absolute inset-0 pointer-events-none opacity-[0.07]"
           style={{

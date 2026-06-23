@@ -148,7 +148,7 @@ export default function M365Training() {
       />
 
       {/* ── HERO ─────────────────────────────────────────────────────────── */}
-      <section className="bg-[#0A2540] pt-32 pb-24 relative overflow-hidden">
+      <section className="bg-[#0A2540] pt-[172px] pb-24 relative overflow-hidden">
         <div
           className="absolute inset-0 pointer-events-none"
           style={{ background: "radial-gradient(ellipse 900px 500px at 60% 0%, rgba(0,120,212,0.12) 0%, transparent 70%)" }}

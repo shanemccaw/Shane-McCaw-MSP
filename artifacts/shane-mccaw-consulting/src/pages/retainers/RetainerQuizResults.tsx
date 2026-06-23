@@ -132,7 +132,7 @@ export default function RetainerQuizResults({ scores, onRetake }: Props) {
       />
 
       {/* ── Hero ──────────────────────────────────────────────────────────────── */}
-      <section className="bg-[#0A2540] pt-32 pb-20 relative overflow-hidden">
+      <section className="bg-[#0A2540] pt-[172px] pb-20 relative overflow-hidden">
         <div className="absolute inset-0 pointer-events-none bg-[radial-gradient(ellipse_800px_400px_at_60%_0%,rgba(0,120,212,0.14)_0%,transparent_70%)]" />
         <div className="max-w-[1200px] mx-auto px-6 relative text-center">
           <div className="inline-flex items-center gap-2 bg-[#0078D4]/20 text-[#60B4FF] px-4 py-1.5 rounded-full text-sm font-semibold mb-6">

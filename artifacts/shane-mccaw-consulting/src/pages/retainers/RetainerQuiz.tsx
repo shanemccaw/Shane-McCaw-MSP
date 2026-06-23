@@ -23,7 +23,7 @@ export default function RetainerQuiz() {
         description="Not sure which retainer plan is right for you? Answer 10 questions and get an instant recommendation — Architect Essentials, Growth, or Enterprise — based on your organization's needs."
       />
 
-      <section className="bg-[#0A2540] pt-32 pb-24 px-6">
+      <section className="bg-[#0A2540] pt-[172px] pb-24 px-6">
         <div className="max-w-[1100px] mx-auto">
           <div className="text-center mb-12">
             <p className="text-[#0078D4] text-sm font-semibold uppercase tracking-[0.12em] mb-4">2-Minute Quiz</p>
