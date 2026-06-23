@@ -99,7 +99,87 @@ const PREVIEW_WRAPPER = `
 </html>
 `;
 
-function PreviewPane({ bodyHtml, subject }: { bodyHtml: string; subject: string }) {
+const SAMPLE_DATA: Record<string, string> = {
+  clientName: "Sarah Johnson",
+  firstName: "Sarah",
+  name: "James Whitfield",
+  email: "james.whitfield@contoso.com",
+  clientEmail: "sarah.johnson@contoso.com",
+  company: "Contoso Ltd",
+  companySize: "501–1,000 employees",
+  serviceName: "Microsoft 365 Copilot Readiness",
+  serviceArea: "Microsoft 365 & Copilot AI Strategy",
+  amountDollars: "2,497",
+  portalLink: "https://portal.shanemccaw.com/dashboard",
+  projectUrl: "https://portal.shanemccaw.com/projects/m365-copilot-readiness",
+  adminPanelUrl: "https://admin.shanemccaw.com/projects/42",
+  bookingLink: "https://shanemccaw.com/book",
+  resetLink: "https://portal.shanemccaw.com/reset-password?token=abc123xyz456",
+  resultsUrl: "https://shanemccaw.com/quiz/results/abc123def456",
+  projectTitle: "SharePoint Intranet Redesign",
+  reportTitle: "Week 4 Progress Update",
+  reportName: "Microsoft Copilot Readiness Assessment",
+  howFound: "LinkedIn",
+  message:
+    "We've been on M365 for three years and are exploring Copilot, but we aren't sure our environment is ready. I'd love to understand what gaps we need to close before rolling it out to 600 users.",
+  adminReply:
+    "The document library migration has been moved to next Thursday. I've spoken with IT about the permission restructure and we're aligned on the approach — nothing you need to do right now. I'll update the task board by end of day.",
+  replyContent:
+    "Thanks Shane — that makes sense. Should we loop in the IT lead before Thursday, or are you handling that directly?",
+  messageBody:
+    "Hi Sarah, the SharePoint site structure we discussed is now live in your test environment. Please take a look when you get a chance and let me know if anything needs adjusting before we move to production next week.",
+  purchaseType: "Service purchase",
+  nextBillingDate: "July 15, 2026",
+  totalScore: "34",
+  tier: "Intermediate",
+  recommendedService: "Microsoft 365 Copilot Accelerator",
+  whatThisMeans:
+    "Your organisation has a solid M365 foundation with strong Teams adoption, but identity governance and data classification practices need attention before a wide Copilot rollout. Unmanaged external sharing in SharePoint is the biggest risk area to address first.",
+  whyThisFits:
+    "The Copilot Accelerator is designed specifically for organisations at your maturity level — it closes governance gaps, configures sensitivity labels, and delivers a phased rollout plan that gets your most productive teams on Copilot within 90 days while keeping compliance risk low.",
+  roiProjection:
+    "Enabling Copilot for 200 knowledge workers typically yields 1–2 hours of saved time per person per week. At $75/hr fully-loaded, that represents $780k–$1.56M in annual value against a one-time engagement of $14,997.",
+  categoryScoresRows: [
+    '<tr><td colspan="2" style="padding:8px 0 4px;border-top:1px solid #e2e8f0;">',
+    '<span style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:#64748b;">Category Breakdown</span>',
+    "</td></tr>",
+    '<tr><td style="padding:2px 0;color:#64748b;font-size:13px;">Identity &amp; Access</td><td style="padding:2px 0;font-weight:600;">7 / 10</td></tr>',
+    '<tr><td style="padding:2px 0;color:#64748b;font-size:13px;">Data Governance</td><td style="padding:2px 0;font-weight:600;">5 / 10</td></tr>',
+    '<tr><td style="padding:2px 0;color:#64748b;font-size:13px;">Collaboration &amp; Teams</td><td style="padding:2px 0;font-weight:600;">8 / 10</td></tr>',
+    '<tr><td style="padding:2px 0;color:#64748b;font-size:13px;">Security &amp; Compliance</td><td style="padding:2px 0;font-weight:600;">6 / 10</td></tr>',
+    '<tr><td style="padding:2px 0;color:#64748b;font-size:13px;">AI Readiness</td><td style="padding:2px 0;font-weight:600;">8 / 10</td></tr>',
+  ].join(""),
+};
+
+function toFallbackLabel(varName: string): string {
+  return `[${varName.replace(/([A-Z])/g, "_$1").toUpperCase()}]`;
+}
+
+function fillSampleData(
+  html: string,
+  subject: string,
+  variables: Array<{ name: string; description: string }>,
+): { filledHtml: string; filledSubject: string } {
+  let filledHtml = html;
+  let filledSubject = subject;
+  for (const v of variables) {
+    const placeholder = new RegExp(`\\{\\{${v.name}\\}\\}`, "g");
+    const value = SAMPLE_DATA[v.name] ?? toFallbackLabel(v.name);
+    filledHtml = filledHtml.replace(placeholder, value);
+    filledSubject = filledSubject.replace(placeholder, value);
+  }
+  return { filledHtml, filledSubject };
+}
+
+function PreviewPane({
+  bodyHtml,
+  subject,
+  isSample,
+}: {
+  bodyHtml: string;
+  subject: string;
+  isSample?: boolean;
+}) {
   const iframeRef = useRef<HTMLIFrameElement>(null);
 
   useEffect(() => {
@@ -115,8 +195,16 @@ function PreviewPane({ bodyHtml, subject }: { bodyHtml: string; subject: string 
   return (
     <div className="flex flex-col h-full">
       <div className="px-3 py-2 bg-gray-50 border-b text-xs text-gray-500 font-medium flex items-center gap-2">
-        <span>Subject preview:</span>
-        <span className="text-gray-800 truncate">{subject || "(no subject)"}</span>
+        <span className="shrink-0">Subject preview:</span>
+        <span className="text-gray-800 truncate flex-1">{subject || "(no subject)"}</span>
+        {isSample && (
+          <span className="shrink-0 inline-flex items-center gap-1 rounded-full bg-gray-100 border border-gray-200 px-2 py-0.5 text-[10px] font-medium text-gray-500">
+            <svg className="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            Sample data
+          </span>
+        )}
       </div>
       <iframe
         ref={iframeRef}
@@ -557,11 +645,18 @@ export default function EmailTemplatesPage() {
                     </div>
                   )}
                 </div>
-              ) : (
-                <div className="flex-1 overflow-hidden">
-                  <PreviewPane bodyHtml={editBody} subject={editSubject} />
-                </div>
-              )}
+              ) : (() => {
+                const { filledHtml, filledSubject } = fillSampleData(
+                  editBody,
+                  editSubject,
+                  detail.variables,
+                );
+                return (
+                  <div className="flex-1 overflow-hidden">
+                    <PreviewPane bodyHtml={filledHtml} subject={filledSubject} isSample />
+                  </div>
+                );
+              })()}
             </>
           ) : null}
         </div>
