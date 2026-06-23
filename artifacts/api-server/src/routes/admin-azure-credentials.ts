@@ -108,4 +108,99 @@ router.delete("/admin/azure-credentials/:id", requireAdmin, async (req: Request,
   }
 });
 
+// ─── Client-scoped credential endpoints ──────────────────────────────────────
+// GET  /admin/clients/:id/azure-credential  — fetch credential linked to this client (or null)
+// POST /admin/clients/:id/azure-credential  — upsert credential for this client
+// DELETE /admin/clients/:id/azure-credential — remove credential linked to this client
+
+router.get("/admin/clients/:id/azure-credential", requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const clientId = Number(req.params.id);
+    if (isNaN(clientId)) { res.status(400).json({ error: "Invalid client id" }); return; }
+
+    const [row] = await db
+      .select()
+      .from(azureTenantCredentialsTable)
+      .where(eq(azureTenantCredentialsTable.clientUserId, clientId))
+      .limit(1);
+
+    res.json(row ?? null);
+  } catch {
+    res.status(500).json({ error: "Failed to fetch Azure credential" });
+  }
+});
+
+router.post("/admin/clients/:id/azure-credential", requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const clientId = Number(req.params.id);
+    if (isNaN(clientId)) { res.status(400).json({ error: "Invalid client id" }); return; }
+
+    const { displayName, tenantId, clientId: appClientId, credentialType, keyVaultSecretName } =
+      req.body as {
+        displayName?: string;
+        tenantId?: string;
+        clientId?: string;
+        credentialType?: "secret" | "certificate";
+        keyVaultSecretName?: string;
+      };
+
+    if (!displayName || !tenantId || !appClientId || !keyVaultSecretName) {
+      res.status(400).json({ error: "displayName, tenantId, clientId, and keyVaultSecretName are required" });
+      return;
+    }
+
+    const [existing] = await db
+      .select({ id: azureTenantCredentialsTable.id })
+      .from(azureTenantCredentialsTable)
+      .where(eq(azureTenantCredentialsTable.clientUserId, clientId))
+      .limit(1);
+
+    if (existing) {
+      const [row] = await db
+        .update(azureTenantCredentialsTable)
+        .set({
+          displayName,
+          tenantId,
+          clientId: appClientId,
+          credentialType: credentialType ?? "secret",
+          keyVaultSecretName,
+          updatedAt: new Date(),
+        })
+        .where(eq(azureTenantCredentialsTable.id, existing.id))
+        .returning();
+      res.json(row);
+    } else {
+      const [row] = await db
+        .insert(azureTenantCredentialsTable)
+        .values({
+          displayName,
+          tenantId,
+          clientId: appClientId,
+          credentialType: credentialType ?? "secret",
+          keyVaultSecretName,
+          clientUserId: clientId,
+        })
+        .returning();
+      res.status(201).json(row);
+    }
+  } catch {
+    res.status(500).json({ error: "Failed to save Azure credential" });
+  }
+});
+
+router.delete("/admin/clients/:id/azure-credential", requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const clientId = Number(req.params.id);
+    if (isNaN(clientId)) { res.status(400).json({ error: "Invalid client id" }); return; }
+
+    await db
+      .delete(azureTenantCredentialsTable)
+      .where(eq(azureTenantCredentialsTable.clientUserId, clientId));
+
+    res.json({ ok: true });
+  } catch {
+    res.status(500).json({ error: "Failed to delete Azure credential" });
+  }
+});
+
 export default router;

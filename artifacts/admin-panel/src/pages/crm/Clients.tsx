@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from "react";
+import { useLocation } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import { useAssignEmail } from "@/hooks/useAssignEmail";
@@ -600,6 +601,7 @@ function DeleteConfirmDialog({
 
 // ─── Main page ────────────────────────────────────────────────────────────────
 export default function ClientsPage() {
+  const [, navigate] = useLocation();
   const { fetchWithAuth } = useAuth();
   const { toast } = useToast();
   const [clients, setClients] = useState<Client[]>([]);
@@ -833,8 +835,13 @@ export default function ClientsPage() {
                 <>
                   <tr key={c.id} className={`border-b border-border last:border-0 hover:bg-[#F7F9FC] transition-colors ${expandedClientId === c.id ? "bg-blue-50/30" : ""}`}>
                     <td className="px-5 py-3.5">
-                      <p className="font-semibold text-[#0A2540]">{c.name ?? "—"}</p>
-                      <p className="text-xs text-muted-foreground">{c.email}</p>
+                      <button
+                        onClick={() => navigate(`/crm/clients/${c.id}`)}
+                        className="text-left group"
+                      >
+                        <p className="font-semibold text-[#0A2540] group-hover:text-[#0078D4] transition-colors">{c.name ?? "—"}</p>
+                        <p className="text-xs text-muted-foreground">{c.email}</p>
+                      </button>
                     </td>
                     <td className="px-5 py-3.5 text-muted-foreground hidden sm:table-cell">{c.company ?? "—"}</td>
                     <td className="px-5 py-3.5 text-muted-foreground hidden md:table-cell">{c.phone ?? "—"}</td>
@@ -855,7 +862,13 @@ export default function ClientsPage() {
                           </svg>
                           Emails
                         </button>
-                        <button onClick={() => handleEdit(c)} className="text-xs font-semibold text-[#0078D4] hover:underline">Edit</button>
+                        <button
+                          onClick={() => navigate(`/crm/clients/${c.id}`)}
+                          className="text-xs font-semibold text-[#0078D4] hover:underline"
+                        >
+                          Details
+                        </button>
+                        <button onClick={() => handleEdit(c)} className="text-xs font-semibold text-gray-500 hover:text-[#0078D4]">Edit</button>
                         <button
                           onClick={() => handleViewAs(c)}
                           disabled={viewAsLoading === c.id}
