@@ -8,7 +8,8 @@ import { sendPushNotifications } from "../lib/push";
 import { createAuditLog } from "../lib/audit";
 import { getStripeKey } from "../lib/stripe";
 import { listDriveItems, graphCredentialsPresent, createProjectFolder, uploadFileToClientContracts, getDriveItemDownloadUrl } from "../lib/graph";
-import { setSecretValue } from "../lib/azure-keyvault";
+import { setSecretValue, getSecretValue } from "../lib/azure-keyvault";
+import { ClientSecretCredential } from "@azure/identity";
 import { uploadInvoiceToSharePoint } from "../lib/invoice-sharepoint";
 import { generateM365ProfilePdf } from "../lib/m365-profile-pdf";
 import multer from "multer";
@@ -320,6 +321,25 @@ router.patch("/admin/clients/:id/app-registration", requireAdmin, async (req: Re
     .where(eq(clientAppRegistrationsTable.clientUserId, clientId));
 
   if (!existing) { res.status(404).json({ error: "No App Registration found for this client" }); return; }
+
+  // When marking as verified, test the credentials against Azure first
+  if (status === "verified") {
+    try {
+      const clientSecret = await getSecretValue(existing.keyVaultSecretName);
+      const credential = new ClientSecretCredential(existing.tenantId, existing.azureClientId, clientSecret);
+      // A token request to the Azure Management API confirms all three values are valid
+      await credential.getToken("https://management.azure.com/.default");
+    } catch (err) {
+      req.log.warn({ err, clientId }, "app-registration verify: Azure credential test failed");
+      const msg = err instanceof Error ? err.message : String(err);
+      const isAuthErr = /AADSTS|unauthorized|invalid_client|invalid_grant|credentials|tenant/i.test(msg);
+      const userMessage = isAuthErr
+        ? "Invalid credentials — check the Client ID, Tenant ID, and Client Secret"
+        : "Could not verify credentials — Azure returned an unexpected error. Check Key Vault access and try again.";
+      res.status(400).json({ error: userMessage });
+      return;
+    }
+  }
 
   const updates: Partial<typeof clientAppRegistrationsTable.$inferInsert> = {
     status: status as "pending" | "submitted" | "verified",
