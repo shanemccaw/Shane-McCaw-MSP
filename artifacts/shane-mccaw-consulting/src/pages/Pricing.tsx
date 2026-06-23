@@ -132,14 +132,19 @@ export default function Pricing() {
 
   return (
     <Layout>
+      {/* Sticky coupon bar — sits just below the fixed nav (top-16 = 64px) */}
+      <div className="fixed top-16 left-0 right-0 z-40 shadow-sm">
+        <TestimonialDiscountCallout variant="banner" />
+      </div>
+
       <SEOMeta
         title="Pricing — Transparent Microsoft 365 Consulting | Shane McCaw Consulting"
         description="Transparent Microsoft 365 consulting pricing by Shane McCaw. Fixed-price Quick Win packages and retainer options — know your investment before you commit."
         jsonLd={jsonLd}
       />
 
-      {/* Hero */}
-      <section className="relative bg-[#0A2540] pt-32 pb-24 overflow-hidden">
+      {/* Hero — pt increased by ~44 px to clear both fixed nav (64 px) and sticky coupon bar (44 px) */}
+      <section className="relative bg-[#0A2540] pt-[172px] pb-24 overflow-hidden">
         <div
           className="absolute inset-0 opacity-10"
           style={{
@@ -812,7 +817,6 @@ export default function Pricing() {
         </div>
       </section>
 
-      <TestimonialDiscountCallout variant="banner" />
       <ConsultationCTA />
     </Layout>
   );
