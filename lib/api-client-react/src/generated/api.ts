@@ -28,6 +28,7 @@ import type {
   AuthResponse,
   AzureCredential,
   AzureCredentialInput,
+  AzureNotConfiguredResponse,
   Checklist,
   ChecklistInput,
   ClientM365ProfileInput,
@@ -61,7 +62,7 @@ import type {
   PublicService,
   RunbookJobCreated,
   RunbookJobOutput,
-  RunbookSummary,
+  RunbooksResult,
   SuccessResponse
 } from './api.schemas';
 
@@ -3434,9 +3435,9 @@ export const getListRunbooksUrl = () => {
 /**
  * @summary List Azure Automation Runbooks
  */
-export const listRunbooks = async ( options?: RequestInit): Promise<RunbookSummary[]> => {
+export const listRunbooks = async ( options?: RequestInit): Promise<RunbooksResult> => {
 
-  return customFetch<RunbookSummary[]>(getListRunbooksUrl(),
+  return customFetch<RunbooksResult>(getListRunbooksUrl(),
   {
     ...options,
     method: 'GET'
@@ -3456,7 +3457,7 @@ export const getListRunbooksQueryKey = () => {
     }
 
 
-export const getListRunbooksQueryOptions = <TData = Awaited<ReturnType<typeof listRunbooks>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listRunbooks>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+export const getListRunbooksQueryOptions = <TData = Awaited<ReturnType<typeof listRunbooks>>, TError = ErrorType<AzureNotConfiguredResponse>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listRunbooks>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
 ) => {
 
 const {query: queryOptions, request: requestOptions} = options ?? {};
@@ -3475,14 +3476,14 @@ const {query: queryOptions, request: requestOptions} = options ?? {};
 }
 
 export type ListRunbooksQueryResult = NonNullable<Awaited<ReturnType<typeof listRunbooks>>>
-export type ListRunbooksQueryError = ErrorType<unknown>
+export type ListRunbooksQueryError = ErrorType<AzureNotConfiguredResponse>
 
 
 /**
  * @summary List Azure Automation Runbooks
  */
 
-export function useListRunbooks<TData = Awaited<ReturnType<typeof listRunbooks>>, TError = ErrorType<unknown>>(
+export function useListRunbooks<TData = Awaited<ReturnType<typeof listRunbooks>>, TError = ErrorType<AzureNotConfiguredResponse>>(
   options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listRunbooks>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
 
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {

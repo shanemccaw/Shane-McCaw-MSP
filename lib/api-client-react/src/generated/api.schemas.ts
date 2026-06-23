@@ -372,6 +372,17 @@ export interface RunbookSummary {
   state?: string;
 }
 
+export interface RunbooksResult {
+  configured: boolean;
+  runbooks: RunbookSummary[];
+}
+
+export interface AzureNotConfiguredResponse {
+  configured: false;
+  error: string;
+  message?: string;
+}
+
 export interface CreateRunbookJobInput {
   credentialId: number;
   runbookName: string;

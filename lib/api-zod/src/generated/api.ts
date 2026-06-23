@@ -793,12 +793,14 @@ export const DeleteAzureCredentialParams = zod.object({
 /**
  * @summary List Azure Automation Runbooks
  */
-export const ListRunbooksResponseItem = zod.object({
+export const ListRunbooksResponse = zod.object({
+  "configured": zod.boolean(),
+  "runbooks": zod.array(zod.object({
   "name": zod.string(),
   "description": zod.string().optional(),
   "state": zod.string().optional()
+}))
 })
-export const ListRunbooksResponse = zod.array(ListRunbooksResponseItem)
 
 
 /**

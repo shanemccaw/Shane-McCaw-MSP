@@ -1008,9 +1008,13 @@ paths:
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/RunbookSummary"
+                $ref: "#/components/schemas/RunbooksResult"
+        "503":
+          description: Azure Automation secrets not configured
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AzureNotConfiguredResponse"
 
   /admin/runbook-jobs:
     post:
@@ -1605,6 +1609,29 @@ components:
           type: string
           enum: [secret, certificate]
         keyVaultSecretName:
+          type: string
+
+    RunbooksResult:
+      type: object
+      required: [configured, runbooks]
+      properties:
+        configured:
+          type: boolean
+        runbooks:
+          type: array
+          items:
+            $ref: "#/components/schemas/RunbookSummary"
+
+    AzureNotConfiguredResponse:
+      type: object
+      required: [configured, error]
+      properties:
+        configured:
+          type: boolean
+          enum: [false]
+        error:
+          type: string
+        message:
           type: string
 
     RunbookSummary:
