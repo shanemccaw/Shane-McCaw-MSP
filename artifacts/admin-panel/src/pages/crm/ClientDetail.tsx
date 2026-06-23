@@ -24,6 +24,39 @@ interface AzureCredential {
   clientUserId: number | null;
   createdAt: string;
   updatedAt: string;
+  expiresOn: string | null;
+}
+
+const EXPIRY_WARN_DAYS = 60;
+
+function daysUntil(iso: string): number {
+  return Math.ceil((new Date(iso).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+}
+
+function ExpiryBadge({ expiresOn }: { expiresOn: string | null }) {
+  if (!expiresOn) return null;
+  const days = daysUntil(expiresOn);
+  if (days > EXPIRY_WARN_DAYS) return null;
+
+  const expired = days <= 0;
+  const critical = days > 0 && days <= 14;
+  const color = expired
+    ? "bg-red-100 text-red-700 border-red-200"
+    : critical
+      ? "bg-red-100 text-red-600 border-red-200"
+      : "bg-amber-100 text-amber-700 border-amber-200";
+  const label = expired
+    ? "Expired"
+    : `Expires in ${days} day${days !== 1 ? "s" : ""}`;
+
+  return (
+    <span className={`inline-flex items-center gap-1 text-[10px] font-bold border px-2 py-0.5 rounded-full ${color}`}>
+      <svg className="w-2.5 h-2.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+      </svg>
+      {label}
+    </span>
+  );
 }
 
 interface CredForm {
@@ -593,31 +626,57 @@ export default function ClientDetailPage() {
             </div>
           </form>
         ) : azureCred ? (
-          <div className="p-5 grid grid-cols-2 sm:grid-cols-3 gap-5">
-            <Field label="Display Name" value={azureCred.displayName} />
-            <Field
-              label="Credential Type"
-              value={azureCred.credentialType === "certificate" ? "Certificate" : "Client Secret"}
-            />
-            <Field
-              label="Last Updated"
-              value={new Date(azureCred.updatedAt).toLocaleDateString("en-US", {
-                month: "short",
-                day: "numeric",
-                year: "numeric",
-              })}
-            />
-            <div>
-              <p className={labelCls}>Tenant ID</p>
-              <p className="text-xs text-[#0A2540] font-mono break-all">{azureCred.tenantId}</p>
-            </div>
-            <div>
-              <p className={labelCls}>Client ID (App Reg)</p>
-              <p className="text-xs text-[#0A2540] font-mono break-all">{azureCred.clientId}</p>
-            </div>
-            <div>
-              <p className={labelCls}>Key Vault Secret</p>
-              <p className="text-xs text-[#0A2540] font-mono">{azureCred.keyVaultSecretName}</p>
+          <div className="p-5 space-y-4">
+            {azureCred.expiresOn && daysUntil(azureCred.expiresOn) <= EXPIRY_WARN_DAYS && (
+              <div className={`flex items-start gap-3 rounded-lg border px-4 py-3 ${daysUntil(azureCred.expiresOn) <= 0 ? "bg-red-50 border-red-200" : daysUntil(azureCred.expiresOn) <= 14 ? "bg-red-50 border-red-200" : "bg-amber-50 border-amber-200"}`}>
+                <svg className={`w-4 h-4 flex-shrink-0 mt-0.5 ${daysUntil(azureCred.expiresOn) <= 14 ? "text-red-500" : "text-amber-500"}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <div>
+                  <p className={`text-xs font-bold ${daysUntil(azureCred.expiresOn) <= 14 ? "text-red-700" : "text-amber-800"}`}>
+                    {daysUntil(azureCred.expiresOn) <= 0
+                      ? "Client secret has expired — Script Runner will fail for this client"
+                      : `Client secret expires in ${daysUntil(azureCred.expiresOn)} day${daysUntil(azureCred.expiresOn) !== 1 ? "s" : ""} — rotate it before it expires`}
+                  </p>
+                  <p className={`text-[11px] mt-0.5 ${daysUntil(azureCred.expiresOn) <= 14 ? "text-red-600" : "text-amber-700"}`}>
+                    Expiry: {new Date(azureCred.expiresOn).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}
+                    {" — "}Create a new client secret in Azure AD, then update this credential.
+                  </p>
+                </div>
+              </div>
+            )}
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-5">
+              <div>
+                <p className={labelCls}>Display Name</p>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <p className="text-sm text-[#0A2540]">{azureCred.displayName}</p>
+                  <ExpiryBadge expiresOn={azureCred.expiresOn} />
+                </div>
+              </div>
+              <Field
+                label="Credential Type"
+                value={azureCred.credentialType === "certificate" ? "Certificate" : "Client Secret"}
+              />
+              <Field
+                label="Last Updated"
+                value={new Date(azureCred.updatedAt).toLocaleDateString("en-US", {
+                  month: "short",
+                  day: "numeric",
+                  year: "numeric",
+                })}
+              />
+              <div>
+                <p className={labelCls}>Tenant ID</p>
+                <p className="text-xs text-[#0A2540] font-mono break-all">{azureCred.tenantId}</p>
+              </div>
+              <div>
+                <p className={labelCls}>Client ID (App Reg)</p>
+                <p className="text-xs text-[#0A2540] font-mono break-all">{azureCred.clientId}</p>
+              </div>
+              <div>
+                <p className={labelCls}>Key Vault Secret</p>
+                <p className="text-xs text-[#0A2540] font-mono">{azureCred.keyVaultSecretName}</p>
+              </div>
             </div>
           </div>
         ) : (

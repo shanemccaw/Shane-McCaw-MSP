@@ -10,17 +10,44 @@ import { Router, type IRouter, type Request, type Response } from "express";
 import { db, azureTenantCredentialsTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/requireAuth";
-import { setSecretValue } from "../lib/azure-keyvault";
+import { setSecretValue, getSecretMetadata } from "../lib/azure-keyvault";
+
+const EXPIRY_WARN_DAYS = 60;
+
+/**
+ * Safely fetch expiry metadata for a single Key Vault secret.
+ * Returns null (no warning) if Azure is not configured or the call fails.
+ */
+async function safeGetExpiry(
+  secretName: string,
+  log: { warn: (obj: object, msg: string) => void },
+): Promise<string | null> {
+  try {
+    const meta = await getSecretMetadata(secretName);
+    return meta.expiresOn ? meta.expiresOn.toISOString() : null;
+  } catch (err) {
+    log.warn({ err, secretName }, "admin-azure-credentials: could not fetch KV expiry");
+    return null;
+  }
+}
 
 const router: IRouter = Router();
 
-router.get("/admin/azure-credentials", requireAdmin, async (_req: Request, res: Response) => {
+router.get("/admin/azure-credentials", requireAdmin, async (req: Request, res: Response) => {
   try {
     const rows = await db
       .select()
       .from(azureTenantCredentialsTable)
       .orderBy(azureTenantCredentialsTable.displayName);
-    res.json(rows);
+
+    const enriched = await Promise.all(
+      rows.map(async row => ({
+        ...row,
+        expiresOn: await safeGetExpiry(row.keyVaultSecretName, req.log),
+      })),
+    );
+
+    res.json(enriched);
   } catch {
     res.status(500).json({ error: "Failed to fetch Azure credentials" });
   }
@@ -151,9 +178,50 @@ router.get("/admin/clients/:id/azure-credential", requireAdmin, async (req: Requ
       .where(eq(azureTenantCredentialsTable.clientUserId, clientId))
       .limit(1);
 
-    res.json(row ?? null);
+    if (!row) { res.json(null); return; }
+
+    const expiresOn = await safeGetExpiry(row.keyVaultSecretName, req.log);
+    res.json({ ...row, expiresOn });
   } catch {
     res.status(500).json({ error: "Failed to fetch Azure credential" });
+  }
+});
+
+/**
+ * GET /admin/azure-credentials/expiring-summary
+ * Returns credentials whose Key Vault secret expires within EXPIRY_WARN_DAYS days.
+ * Used by the dashboard to surface a count badge.
+ * Credentials where KV metadata is unavailable are silently excluded.
+ */
+router.get("/admin/azure-credentials/expiring-summary", requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const rows = await db
+      .select()
+      .from(azureTenantCredentialsTable)
+      .orderBy(azureTenantCredentialsTable.displayName);
+
+    const warnCutoff = new Date(Date.now() + EXPIRY_WARN_DAYS * 24 * 60 * 60 * 1000);
+
+    const enriched = await Promise.all(
+      rows.map(async row => ({
+        ...row,
+        expiresOn: await safeGetExpiry(row.keyVaultSecretName, req.log),
+      })),
+    );
+
+    const expiring = enriched.filter(r => r.expiresOn && new Date(r.expiresOn) <= warnCutoff);
+
+    res.json({
+      count: expiring.length,
+      items: expiring.map(r => ({
+        id: r.id,
+        displayName: r.displayName,
+        clientUserId: r.clientUserId,
+        expiresOn: r.expiresOn,
+      })),
+    });
+  } catch {
+    res.status(500).json({ error: "Failed to fetch expiring credentials" });
   }
 });
 

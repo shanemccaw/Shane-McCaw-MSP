@@ -61,6 +61,18 @@ interface AiInsight {
   metric: string;
 }
 
+interface ExpiringCredItem {
+  id: number;
+  displayName: string;
+  clientUserId: number | null;
+  expiresOn: string;
+}
+
+interface ExpiringCredSummary {
+  count: number;
+  items: ExpiringCredItem[];
+}
+
 function fmt(n: number) {
   if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(1)}M`;
   if (n >= 1_000) return `$${(n / 1_000).toFixed(1)}k`;
@@ -212,6 +224,7 @@ export default function OverviewPage() {
   const [aiInsights, setAiInsights] = useState<AiInsight[] | null>(null);
   const [aiLoading, setAiLoading] = useState(true);
   const [aiError, setAiError] = useState<string | null>(null);
+  const [expiringCreds, setExpiringCreds] = useState<ExpiringCredSummary | null>(null);
 
   useEffect(() => {
     void fetchWithAuth("/api/admin/overview")
@@ -221,6 +234,15 @@ export default function OverviewPage() {
       })
       .catch((e: unknown) => setError(e instanceof Error ? e.message : "Failed to load overview"))
       .finally(() => setLoading(false));
+  }, [fetchWithAuth]);
+
+  useEffect(() => {
+    void fetchWithAuth("/api/admin/azure-credentials/expiring-summary")
+      .then(async res => {
+        if (!res.ok) return;
+        setExpiringCreds(await res.json() as ExpiringCredSummary);
+      })
+      .catch(() => {});
   }, [fetchWithAuth]);
 
   const fetchAiInsights = useCallback(async () => {
@@ -559,6 +581,52 @@ export default function OverviewPage() {
           )}
         </section>
       </div>
+
+      {/* ── Expiring Azure Credentials Alert ── */}
+      {expiringCreds && expiringCreds.count > 0 && (
+        <section>
+          <div className="flex items-center gap-2 mb-3">
+            <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
+            <h2 className="text-sm font-bold text-[#0A2540] uppercase tracking-widest">Expiring Credentials</h2>
+            <span className="text-xs font-bold bg-red-100 text-red-700 border border-red-200 px-2 py-0.5 rounded-full">
+              {expiringCreds.count} expiring soon
+            </span>
+          </div>
+          <div className="space-y-2">
+            {expiringCreds.items.map(cred => {
+              const days = Math.ceil((new Date(cred.expiresOn).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+              const expired = days <= 0;
+              const critical = days > 0 && days <= 14;
+              return (
+                <div key={cred.id} className={`border rounded-xl px-4 py-3.5 flex items-center gap-3 ${expired || critical ? "bg-red-50 border-red-200" : "bg-amber-50 border-amber-200"}`}>
+                  <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${expired || critical ? "bg-red-200" : "bg-amber-200"}`}>
+                    <svg className={`w-4 h-4 ${expired || critical ? "text-red-700" : "text-amber-700"}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <span className={`text-xs font-bold ${expired || critical ? "text-red-900" : "text-amber-900"}`}>
+                      {cred.displayName}
+                    </span>
+                    <p className={`text-[11px] mt-0.5 ${expired || critical ? "text-red-700" : "text-amber-700"}`}>
+                      {expired
+                        ? `Expired on ${new Date(cred.expiresOn).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })} — Script Runner will fail`
+                        : `Expires in ${days} day${days !== 1 ? "s" : ""} — ${new Date(cred.expiresOn).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}`}
+                    </p>
+                  </div>
+                  {cred.clientUserId && (
+                    <Link href={`/crm/clients/${cred.clientUserId}`}>
+                      <span className={`flex-shrink-0 text-xs font-semibold border bg-white px-3 py-1.5 rounded-lg transition-colors whitespace-nowrap cursor-pointer ${expired || critical ? "text-red-700 border-red-300 hover:bg-red-50" : "text-amber-700 border-amber-300 hover:bg-amber-100"}`}>
+                        Go to Client →
+                      </span>
+                    </Link>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </section>
+      )}
 
       {/* ── Outstanding Actions ── */}
       {(loading || (data && (data.unpaidInvoiceCount > 0 || data.staleLeadCount > 0 || data.clientsWithoutProjectsCount > 0))) && (

@@ -91,6 +91,23 @@ export async function setSecretValue(
 }
 
 /**
+ * Read Key Vault secret metadata (expiry, enabled, tags) without returning the value.
+ * Returns `expiresOn: undefined` if the secret has no expiry set.
+ * Throws if the secret does not exist or Azure is misconfigured.
+ */
+export async function getSecretMetadata(
+  secretName: string,
+): Promise<{ expiresOn: Date | undefined; enabled: boolean | undefined }> {
+  const credential = getCredentialClient();
+  const client = new SecretClient(getKeyVaultUrl(), credential);
+  const secret = await client.getSecret(secretName);
+  return {
+    expiresOn: secret.properties.expiresOn,
+    enabled: secret.properties.enabled,
+  };
+}
+
+/**
  * Generic helper: retrieve the credential value based on type.
  * For "secret" → returns the raw secret string.
  * For "certificate" → returns the PEM-encoded certificate/key bundle.
