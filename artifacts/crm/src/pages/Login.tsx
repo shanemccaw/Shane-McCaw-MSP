@@ -299,7 +299,7 @@ export default function LoginPage() {
 
           {/* Dashboard mockup — floats at the bottom of the hero */}
           <div className="max-w-[820px] mx-auto relative">
-            <div className="absolute inset-0 bg-gradient-to-t from-[#0A2540] via-transparent to-transparent z-10 pointer-events-none" style={{ top: "60%" }} />
+            <div className="absolute top-[60%] inset-x-0 bottom-0 bg-gradient-to-t from-[#0A2540] via-transparent to-transparent z-10 pointer-events-none" />
             <DashboardMockup />
           </div>
         </div>
@@ -315,7 +315,7 @@ export default function LoginPage() {
               No more chasing status updates over email. Every aspect of your consulting engagement lives in a single, secure portal.
             </p>
           </div>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
             {FEATURES.map(({ icon, label, desc }) => (
               <div key={label} className="bg-[#F7F9FC] border border-border rounded-2xl p-5 hover:border-[#0078D4]/30 hover:shadow-md transition-all duration-200 group">
                 <div className="w-10 h-10 rounded-xl bg-[#0078D4]/10 border border-[#0078D4]/20 flex items-center justify-center text-[#0078D4] mb-4 group-hover:bg-[#0078D4]/15 transition-colors">
@@ -357,18 +357,18 @@ export default function LoginPage() {
           <div className="bg-white border border-border rounded-2xl shadow-sm p-6 space-y-5 select-none">
             <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Active Engagements</p>
             {[
-              { label: "M365 Architecture & Strategy", pct: 68, phase: "Phase 3 — IAM Design", color: "#0078D4" },
-              { label: "Copilot Readiness Assessment", pct: 100, phase: "Complete", color: "#00B4D8" },
-              { label: "Governance Foundations", pct: 25, phase: "Phase 1 — Discovery", color: "#0078D4" },
-              { label: "SharePoint Intranet Redesign", pct: 45, phase: "Phase 2 — Information Architecture", color: "#00B4D8" },
-            ].map(({ label, pct, phase, color }) => (
+              { label: "M365 Architecture & Strategy", pct: "68%", barClass: "w-[68%] bg-[#0078D4]", textClass: "text-[#0078D4]", phase: "Phase 3 — IAM Design" },
+              { label: "Copilot Readiness Assessment", pct: "100%", barClass: "w-full bg-[#00B4D8]", textClass: "text-[#00B4D8]", phase: "Complete" },
+              { label: "Governance Foundations", pct: "25%", barClass: "w-1/4 bg-[#0078D4]", textClass: "text-[#0078D4]", phase: "Phase 1 — Discovery" },
+              { label: "SharePoint Intranet Redesign", pct: "45%", barClass: "w-[45%] bg-[#00B4D8]", textClass: "text-[#00B4D8]", phase: "Phase 2 — Information Architecture" },
+            ].map(({ label, pct, barClass, textClass, phase }) => (
               <div key={label}>
                 <div className="flex items-center justify-between mb-1.5">
                   <span className="text-sm font-semibold text-[#0A2540] truncate pr-2">{label}</span>
-                  <span className="text-sm font-bold flex-shrink-0" style={{ color }}>{pct}%</span>
+                  <span className={`text-sm font-bold flex-shrink-0 ${textClass}`}>{pct}</span>
                 </div>
                 <div className="h-2 bg-gray-100 rounded-full overflow-hidden mb-1">
-                  <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, backgroundColor: color }} />
+                  <div className={`h-full rounded-full transition-all ${barClass}`} />
                 </div>
                 <p className="text-[11px] text-muted-foreground">{phase}</p>
               </div>
@@ -484,11 +484,18 @@ export default function LoginPage() {
             <div className="bg-[#F7F9FC] border border-border rounded-2xl px-4 py-4">
               <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-3">Monthly Reports</p>
               <div className="flex items-end gap-1.5 h-12">
-                {[35, 55, 42, 68, 52, 80, 60].map((h, i) => (
+                {[
+                  { h: "h-[35%]", active: false },
+                  { h: "h-[55%]", active: false },
+                  { h: "h-[42%]", active: false },
+                  { h: "h-[68%]", active: false },
+                  { h: "h-[52%]", active: false },
+                  { h: "h-[80%]", active: true  },
+                  { h: "h-[60%]", active: false },
+                ].map(({ h, active }, i) => (
                   <div
                     key={i}
-                    className="flex-1 rounded-sm transition-all"
-                    style={{ height: `${h}%`, backgroundColor: i === 5 ? "#0078D4" : "#0078D4" + "30" }}
+                    className={`flex-1 rounded-sm transition-all ${h} ${active ? "bg-[#0078D4]" : "bg-[#0078D4]/20"}`}
                   />
                 ))}
               </div>
