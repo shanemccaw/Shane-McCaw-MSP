@@ -3062,6 +3062,13 @@ router.post("/portal/stripe/webhook", async (req: Request, res: Response) => {
 });
 
 async function processStripeEvent(req: Request, event: import("stripe").Stripe.Event): Promise<void> {
+  // Top-level guard: any unhandled error inside this function is logged with full
+  // context (event type, session ID, message, stack) before being re-thrown so
+  // that the caller's .catch() also has visibility.
+  const _sessionObj = event.type === "checkout.session.completed"
+    ? (event.data.object as import("stripe").Stripe.Checkout.Session)
+    : null;
+  try {
   if (event.type === "checkout.session.completed") {
     const session = event.data.object as import("stripe").Stripe.Checkout.Session;
 
@@ -3157,7 +3164,7 @@ async function processStripeEvent(req: Request, event: import("stripe").Stripe.E
             originalAmountDollars: hasDiscount ? amountDollars : undefined,
             discountAmountDollars,
           }),
-        ).catch(() => null);
+        ).catch((e) => req.log.warn({ err: e, sessionId: session.id, template: "purchase-confirmation" }, "processStripeEvent: buyer confirmation email failed (non-fatal)"));
       }
 
       // Send admin notification email (fire-and-forget)
@@ -3176,7 +3183,7 @@ async function processStripeEvent(req: Request, event: import("stripe").Stripe.E
           },
           `New purchase: ${serviceName} — $${amountDollars}`,
           adminPurchaseAlertEmail({ clientName: buyer?.name ?? "", clientEmail: buyer?.email ?? "", serviceName, amountDollars, type: "service_purchase" }),
-        ).catch(() => null);
+        ).catch((e) => req.log.warn({ err: e, sessionId: session.id, template: "admin-purchase-alert" }, "processStripeEvent: admin purchase alert email failed (non-fatal)"));
       }
 
       // Audit log
@@ -3195,7 +3202,7 @@ async function processStripeEvent(req: Request, event: import("stripe").Stripe.E
       // SMS alert to Shane
       sendAdminSms(
         `New order: ${buyer?.name ?? buyer?.email ?? "A client"} — ${serviceName} — $${amountDollars}`,
-      ).catch(() => null);
+      ).catch((e) => req.log.warn({ err: e, sessionId: session.id }, "processStripeEvent: SMS alert failed (non-fatal)"));
 
       // Push notification to Shane's devices
       db.select({ token: deviceTokensTable.token }).from(deviceTokensTable)
@@ -3212,7 +3219,7 @@ async function processStripeEvent(req: Request, event: import("stripe").Stripe.E
             badge,
           );
         })
-        .catch(() => null);
+        .catch((e) => req.log.warn({ err: e, sessionId: session.id }, "processStripeEvent: push notification failed (non-fatal)"));
     }
 
     // Increment coupon uses atomically and idempotently.
@@ -3301,7 +3308,7 @@ async function processStripeEvent(req: Request, event: import("stripe").Stripe.E
         const totalDollars = session.amount_total ? (session.amount_total / 100).toFixed(2) : "—";
         sendAdminSms(
           `New order: ${buyer?.name ?? buyer?.email ?? "A client"} — ${serviceLabel} — $${totalDollars}`,
-        ).catch(() => null);
+        ).catch((e) => req.log.warn({ err: e, sessionId: session.id }, "processStripeEvent: onboarding SMS alert failed (non-fatal)"));
 
         // Push notification to Shane's devices — look up the invoice ID created during provisioning
         const buyerLabel = buyer?.name ?? buyer?.email ?? "A client";
@@ -3328,7 +3335,7 @@ async function processStripeEvent(req: Request, event: import("stripe").Stripe.E
               badge,
             );
           })
-          .catch(() => null);
+          .catch((e) => req.log.warn({ err: e, sessionId: session.id }, "processStripeEvent: onboarding push notification failed (non-fatal)"));
 
         // Client welcome emails — sent once per session using idempotency checks.
         if (buyer?.email) {
@@ -3361,7 +3368,7 @@ async function processStripeEvent(req: Request, event: import("stripe").Stripe.E
                 { setupLink: setupUrl, clientName: buyer.name ?? buyer.email },
                 "Set up your Shane McCaw Consulting portal",
                 `<p>Hi ${buyer.name ?? ""},</p><p>Your project workspace is ready. Click the link below to set your portal password:</p><p><a href="${setupUrl}" style="color:#0078D4;">Set my password →</a></p><p>This link expires in 72 hours.</p><p>— Shane McCaw</p>`,
-              ).catch(() => null);
+              ).catch((e) => req.log.warn({ err: e, sessionId: session.id, template: "account-setup" }, "processStripeEvent: account-setup email failed (non-fatal)"));
             }
           } else {
             // Returning client — send "project is ready" email.
@@ -3378,7 +3385,7 @@ async function processStripeEvent(req: Request, event: import("stripe").Stripe.E
               },
               "Your project workspace is ready — Shane McCaw Consulting",
               `<p>Hi ${buyer.name ?? ""},</p><p>Your <strong>${serviceLabel}</strong> project workspace is ready. Log in to your portal to track progress.</p><p><a href="${clientBaseUrl}" style="color:#0078D4;">View your portal →</a></p><p>— Shane McCaw</p>`,
-            ).catch(() => null);
+            ).catch((e) => req.log.warn({ err: e, sessionId: session.id, template: "onboarding-confirmation" }, "processStripeEvent: onboarding-confirmation email failed (non-fatal)"));
           }
         }
       } catch (notifyErr) {
@@ -3386,6 +3393,19 @@ async function processStripeEvent(req: Request, event: import("stripe").Stripe.E
         req.log.warn({ err: notifyErr, sessionId: session.id, eventType: event.type }, "processStripeEvent: post-provision notification failed (non-fatal)");
       }
     }
+  }
+  } catch (err) {
+    req.log.error(
+      {
+        err,
+        eventType: event.type,
+        sessionId: _sessionObj?.id ?? null,
+        errorMessage: err instanceof Error ? err.message : String(err),
+        stack: err instanceof Error ? err.stack : undefined,
+      },
+      "processStripeEvent: unhandled error — provisioning may be incomplete",
+    );
+    throw err;
   }
 }
 
