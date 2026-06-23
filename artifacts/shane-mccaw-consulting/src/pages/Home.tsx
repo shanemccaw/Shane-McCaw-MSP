@@ -334,7 +334,13 @@ export default function Home() {
                     <div className="w-10 h-10 rounded-lg bg-[#0078D4]/10 flex items-center justify-center mb-4 flex-shrink-0">
                       <ServiceIcon name={service.iconName} className="w-5 h-5 text-[#0078D4]" />
                     </div>
-                    <h3 className="font-extrabold text-[#0A2540] text-lg mb-1 leading-snug">{service.name}</h3>
+                    {service.pageHref ? (
+                      <Link href={service.pageHref} className="font-extrabold text-[#0A2540] text-lg mb-1 leading-snug hover:text-[#0078D4] transition-colors">
+                        {service.name}
+                      </Link>
+                    ) : (
+                      <h3 className="font-extrabold text-[#0A2540] text-lg mb-1 leading-snug">{service.name}</h3>
+                    )}
                     <div className="flex items-center gap-3 mb-4">
                       {priceRange && (
                         <span className="text-sm font-bold text-[#0078D4]">{priceRange}</span>
@@ -362,20 +368,18 @@ export default function Home() {
                         ))}
                       </ul>
                     )}
-                    <div className="flex items-center justify-between gap-3 mt-auto pt-2 border-t border-border">
-                      {service.pageHref ? (
+                    <div className="flex flex-col gap-2 mt-auto pt-2 border-t border-border">
+                      <CTAButton href={`/crm/portal/onboarding/select?service=${service.slug}`} className="text-xs px-4 py-2 w-full">
+                        Get Started
+                      </CTAButton>
+                      {service.pageHref && (
                         <Link
                           href={service.pageHref}
-                          className="inline-flex items-center gap-1.5 text-[#0078D4] text-sm font-semibold hover:underline"
+                          className="inline-flex items-center justify-center gap-1.5 text-[#0078D4] text-sm font-semibold hover:underline"
                         >
                           Learn More <ArrowRight className="w-3.5 h-3.5" />
                         </Link>
-                      ) : (
-                        <span />
                       )}
-                      <CTAButton href="/book" className="text-xs px-4 py-2">
-                        Get Started
-                      </CTAButton>
                     </div>
                   </div>
                 );
@@ -441,9 +445,18 @@ export default function Home() {
                         {tier.badge}
                       </span>
                     )}
-                    <h3 className={`text-2xl font-extrabold mb-1 ${isHighlighted ? "text-white" : "text-[#0A2540]"}`}>
-                      {tier.name.replace(/^Architect\s+/i, "")}
-                    </h3>
+                    {tier.pageHref ? (
+                      <Link
+                        href={tier.pageHref}
+                        className={`text-2xl font-extrabold mb-1 hover:underline underline-offset-2 ${isHighlighted ? "text-white" : "text-[#0A2540] hover:text-[#0078D4]"}`}
+                      >
+                        {tier.name.replace(/^Architect\s+/i, "")}
+                      </Link>
+                    ) : (
+                      <h3 className={`text-2xl font-extrabold mb-1 ${isHighlighted ? "text-white" : "text-[#0A2540]"}`}>
+                        {tier.name.replace(/^Architect\s+/i, "")}
+                      </h3>
+                    )}
                     {monthlyPrice && (
                       <div className="flex items-baseline gap-1 mb-1">
                         <span className={`text-3xl font-extrabold ${isHighlighted ? "text-white" : "text-[#0078D4]"}`}>
@@ -474,7 +487,7 @@ export default function Home() {
                     )}
                     <div className="flex flex-col gap-3 mt-auto">
                       <CTAButton
-                        href="/book"
+                        href={`/crm/portal/onboarding/select?service=${tier.slug}`}
                         className={`text-sm w-full ${isHighlighted ? "bg-[#0078D4] hover:bg-[#005A9E]" : ""}`}
                       >
                         Get Started
