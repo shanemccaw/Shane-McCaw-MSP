@@ -1,156 +1,9 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
-import { useLocation, useSearch } from "wouter";
-import {
-  BarChart2, Kanban, FileText, FileDown,
-  CheckCircle2, CreditCard, MessageSquare, Loader2,
-  Lock, ShieldCheck, Shield, Building2, ArrowRight, Star, Zap,
-} from "lucide-react";
+import { useLocation } from "wouter";
+import { Loader2, Eye, EyeOff } from "lucide-react";
 
-const FEATURES = [
-  {
-    icon: <BarChart2 className="w-5 h-5" />,
-    label: "Project Progress Tracking",
-    desc: "Real-time status on every active engagement — percentage complete, milestones, and next steps.",
-  },
-  {
-    icon: <Kanban className="w-5 h-5" />,
-    label: "Kanban Task Board",
-    desc: "See what's in progress, what's queued, and what's done — updated live as work moves forward.",
-  },
-  {
-    icon: <FileText className="w-5 h-5" />,
-    label: "Weekly & Monthly Reports",
-    desc: "Structured progress updates delivered to your portal automatically — no chasing for status.",
-  },
-  {
-    icon: <FileDown className="w-5 h-5" />,
-    label: "Secure Document Library",
-    desc: "Assessments, deliverables, SOWs, and architecture diagrams — always available, always yours.",
-  },
-  {
-    icon: <CheckCircle2 className="w-5 h-5" />,
-    label: "Service & Package Status",
-    desc: "Track every micro-offer and retainer engagement from purchase through to final delivery.",
-  },
-  {
-    icon: <CreditCard className="w-5 h-5" />,
-    label: "Invoice History & Payments",
-    desc: "View every invoice, confirm payment status, and pay outstanding balances in seconds.",
-  },
-  {
-    icon: <MessageSquare className="w-5 h-5" />,
-    label: "Direct Consultant Messaging",
-    desc: "Structured communication tied directly to your active projects — no lost email threads.",
-  },
-  {
-    icon: <Zap className="w-5 h-5" />,
-    label: "Automated Milestone Alerts",
-    desc: "Get notified when a phase completes, a document is uploaded, or action is required from you.",
-  },
-];
-
-const TRUST_SIGNALS = [
-  { icon: <Lock className="w-4 h-4" />,       label: "Encrypted in transit & at rest" },
-  { icon: <ShieldCheck className="w-4 h-4" />, label: "MFA required on all accounts" },
-  { icon: <Building2 className="w-4 h-4" />,   label: "Regulated-industry compliance — HIPAA, SOC 2, FINRA, CMMC, ITAR" },
-  { icon: <Shield className="w-4 h-4" />,      label: "Zero Trust–aligned access controls" },
-];
-
-const COMPLIANCE_BADGES = ["HIPAA", "SOC 2", "FINRA", "CMMC", "ITAR", "Zero Trust"];
-
-function DashboardMockup() {
-  return (
-    <div className="rounded-xl overflow-hidden border border-white/10 bg-[#0d2e4e] shadow-2xl text-[10px] select-none">
-      {/* Header bar */}
-      <div className="flex items-center justify-between px-3 py-2 bg-[#0A2540] border-b border-white/10">
-        <div className="flex items-center gap-1.5">
-          <div className="w-1.5 h-1.5 rounded-full bg-[#0078D4]" />
-          <span className="text-white/60 font-medium tracking-wide text-[8px] uppercase">Command Center</span>
-        </div>
-        <div className="flex items-center gap-1.5">
-          <div className="w-4 h-4 rounded-full bg-[#0078D4]/40 border border-[#0078D4]/60 flex items-center justify-center">
-            <span className="text-white text-[6px] font-bold">S</span>
-          </div>
-        </div>
-      </div>
-
-      <div className="p-3 space-y-3">
-        {/* Stat cards */}
-        <div className="grid grid-cols-2 gap-2">
-          {[
-            { label: "M365 Migration", pct: 68, color: "#0078D4" },
-            { label: "Governance Audit", pct: 40, color: "#00B4D8" },
-          ].map(({ label, pct, color }) => (
-            <div key={label} className="bg-[#0A2540] rounded-lg px-2.5 py-2 border border-white/10">
-              <p className="text-white/50 mb-1 text-[8px]">{label}</p>
-              <p className="text-white font-bold text-sm">{pct}%</p>
-              <div className="mt-1.5 h-1 bg-white/10 rounded-full overflow-hidden">
-                <div className="h-full rounded-full" style={{ width: `${pct}%`, backgroundColor: color }} />
-              </div>
-            </div>
-          ))}
-        </div>
-
-        {/* Kanban */}
-        <div className="grid grid-cols-2 gap-2">
-          {[
-            { col: "In Progress", items: ["Tenant config", "IAM review", "User pilot"], color: "#0078D4" },
-            { col: "Done", items: ["Requirements", "Discovery", "Scoping"], color: "#00B4D8" },
-          ].map(({ col, items, color }) => (
-            <div key={col}>
-              <div className="flex items-center gap-1 mb-1.5">
-                <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: color }} />
-                <span className="text-white/40 text-[8px] font-semibold uppercase tracking-wide">{col}</span>
-              </div>
-              <div className="space-y-1">
-                {items.map(item => (
-                  <div key={item} className="bg-[#0A2540] border border-white/10 rounded px-2 py-1">
-                    <span className="text-white/70">{item}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          ))}
-        </div>
-
-        {/* Doc list */}
-        <div className="bg-[#0A2540] rounded-lg border border-white/10 divide-y divide-white/5">
-          {["M365 Assessment.pdf", "SOW-2024-001.pdf", "Governance Report.docx"].map(name => (
-            <div key={name} className="flex items-center gap-2 px-2.5 py-1.5">
-              <div className="w-2.5 h-2.5 rounded-sm bg-[#0078D4]/30 flex-shrink-0" />
-              <span className="text-white/60 truncate">{name}</span>
-              <div className="ml-auto w-2.5 h-2.5 rounded text-white/20">↓</div>
-            </div>
-          ))}
-        </div>
-
-        {/* Bar chart stub */}
-        <div className="bg-[#0A2540] rounded-lg border border-white/10 px-2.5 py-2">
-          <p className="text-white/40 text-[8px] mb-2 uppercase tracking-wide font-semibold">Monthly Reports</p>
-          <div className="flex items-end gap-1 h-8">
-            {[30, 55, 40, 70, 50, 85, 60].map((h, i) => (
-              <div
-                key={i}
-                className="flex-1 rounded-sm"
-                style={{
-                  height: `${h}%`,
-                  backgroundColor: i === 5 ? "#0078D4" : "#0078D4" + "40",
-                }}
-              />
-            ))}
-          </div>
-          <div className="flex justify-between mt-1">
-            {["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul"].map(m => (
-              <span key={m} className="text-white/20 text-[6px]">{m}</span>
-            ))}
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
+// ─── Auth helpers ──────────────────────────────────────────────────────────────
 function redirectAfterAuth(role: string, setLocation: (path: string) => void) {
   if (role === "client") {
     const returnTo = sessionStorage.getItem("onboardingReturnTo");
@@ -165,21 +18,288 @@ function redirectAfterAuth(role: string, setLocation: (path: string) => void) {
   }
 }
 
+// ─── Animated left panel ───────────────────────────────────────────────────────
+function AnimatedCommandCenter({ compact = false }: { compact?: boolean }) {
+  return (
+    <>
+      <style>{`
+        @keyframes fillBar1 {
+          0%   { width: 0% }
+          30%  { width: 72% }
+          60%  { width: 72% }
+          72%  { width: 0% }
+          100% { width: 0% }
+        }
+        @keyframes fillBar2 {
+          0%   { width: 0% }
+          30%  { width: 44% }
+          60%  { width: 44% }
+          72%  { width: 0% }
+          100% { width: 0% }
+        }
+        @keyframes fillBar3 {
+          0%   { width: 0% }
+          30%  { width: 88% }
+          60%  { width: 88% }
+          72%  { width: 0% }
+          100% { width: 0% }
+        }
+        @keyframes kanbanAppear {
+          0%   { opacity: 0; transform: translateX(-6px) }
+          8%   { opacity: 1; transform: translateX(0) }
+          42%  { opacity: 1; transform: translateX(0) }
+          52%  { opacity: 0; transform: translateX(6px) }
+          100% { opacity: 0; transform: translateX(6px) }
+        }
+        @keyframes kanbanDone {
+          0%   { opacity: 0 }
+          52%  { opacity: 0 }
+          60%  { opacity: 1 }
+          90%  { opacity: 1 }
+          100% { opacity: 0 }
+        }
+        @keyframes notifFloat {
+          0%   { opacity: 0; transform: translateY(14px) }
+          6%   { opacity: 1; transform: translateY(0) }
+          72%  { opacity: 1; transform: translateY(0) }
+          82%  { opacity: 0; transform: translateY(-6px) }
+          100% { opacity: 0; transform: translateY(-6px) }
+        }
+        @keyframes cmdPulse {
+          0%, 100% { opacity: 0.35 }
+          50%       { opacity: 0.65 }
+        }
+        @keyframes cmdScan {
+          0%   { transform: translateY(-100%) }
+          100% { transform: translateY(600%) }
+        }
+        @media (prefers-reduced-motion: reduce) {
+          .cmd-anim { animation: none !important; }
+        }
+      `}</style>
+
+      <div className={`relative w-full ${compact ? "h-full" : "h-full"} flex flex-col items-center justify-center bg-[#0A2540] overflow-hidden px-5 py-6 select-none`}>
+
+        {/* Radial background glow */}
+        <div
+          className="cmd-anim absolute inset-0 pointer-events-none"
+          style={{
+            background: "radial-gradient(ellipse 75% 55% at 50% 38%, rgba(0,120,212,0.2) 0%, transparent 70%)",
+            animation: "cmdPulse 5s ease-in-out infinite",
+          }}
+        />
+
+        {/* Scan line */}
+        <div
+          className="cmd-anim absolute inset-x-0 h-[1px] pointer-events-none"
+          style={{
+            background: "linear-gradient(90deg, transparent 0%, rgba(0,180,216,0.5) 50%, transparent 100%)",
+            animation: "cmdScan 10s linear infinite",
+            opacity: 0.06,
+          }}
+        />
+
+        {/* Wordmark — hidden on compact (mobile) strip */}
+        {!compact && (
+          <div className="relative z-10 flex flex-col items-center mb-6 text-center">
+            <div className="flex items-center gap-2 mb-1">
+              <div className="w-7 h-7 rounded-lg bg-[#0078D4] flex items-center justify-center shadow-lg shadow-[#0078D4]/30">
+                <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4 text-white" stroke="currentColor" strokeWidth={2.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7" />
+                </svg>
+              </div>
+              <span className="text-white font-bold text-sm tracking-tight">Shane McCaw Consulting</span>
+            </div>
+            <p
+              className="cmd-anim text-[10px] font-bold uppercase tracking-[0.3em]"
+              style={{ color: "#00B4D8", animation: "cmdPulse 3s ease-in-out infinite" }}
+            >
+              Command Center
+            </p>
+          </div>
+        )}
+
+        {/* Dashboard card */}
+        <div className={`relative z-10 w-full ${compact ? "max-w-full flex gap-4 items-center" : "max-w-[260px]"} bg-[#0d2e4e] ${compact ? "rounded-xl p-3" : "rounded-2xl"} border border-white/10 shadow-2xl overflow-hidden text-[9px]`}>
+
+          {/* Card header — hidden in compact mode */}
+          {!compact && (
+            <div className="flex items-center justify-between px-3 py-2 bg-[#061a2e] border-b border-white/10">
+              <div className="flex items-center gap-1.5">
+                <div className="cmd-anim w-1.5 h-1.5 rounded-full bg-[#0078D4]" style={{ animation: "cmdPulse 1.8s ease-in-out infinite" }} />
+                <span className="text-white/40 text-[8px] font-semibold uppercase tracking-widest">Live Dashboard</span>
+              </div>
+              <div className="w-3 h-3 rounded-full bg-[#0078D4]/30 border border-[#0078D4]/50 flex items-center justify-center">
+                <span className="text-white text-[6px] font-bold">S</span>
+              </div>
+            </div>
+          )}
+
+          <div className={`${compact ? "flex-1" : "p-3"} space-y-3`}>
+
+            {/* Animated progress bars */}
+            <div className="space-y-2">
+              {!compact && <p className="text-white/25 text-[8px] font-semibold uppercase tracking-widest">Active Engagements</p>}
+              {[
+                { label: "M365 Migration",    color: "#0078D4", anim: "fillBar1", duration: "7s", delay: "0s"   },
+                { label: "Governance Audit",  color: "#00B4D8", anim: "fillBar2", duration: "7s", delay: "0.7s" },
+                { label: "Copilot Readiness", color: "#0078D4", anim: "fillBar3", duration: "7s", delay: "1.4s" },
+              ].map(({ label, color, anim, duration, delay }) => (
+                <div key={label}>
+                  {!compact && (
+                    <span className="text-white/50 text-[8px] block mb-0.5">{label}</span>
+                  )}
+                  <div className="h-1 bg-white/10 rounded-full overflow-hidden">
+                    <div
+                      className="cmd-anim h-full rounded-full"
+                      style={{
+                        backgroundColor: color,
+                        width: "0%",
+                        animation: `${anim} ${duration} ease-in-out infinite`,
+                        animationDelay: delay,
+                      }}
+                    />
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Kanban — hidden in compact strip */}
+            {!compact && (
+              <div>
+                <p className="text-white/25 text-[8px] font-semibold uppercase tracking-widest mb-1.5">Task Board</p>
+                <div className="grid grid-cols-2 gap-1.5">
+                  <div>
+                    <div className="flex items-center gap-1 mb-1">
+                      <div className="w-1 h-1 rounded-full bg-[#0078D4]" />
+                      <span className="text-[7px] text-white/25 font-bold uppercase tracking-wide">In Progress</span>
+                    </div>
+                    <div className="space-y-1">
+                      <div className="bg-[#0A2540] border border-white/10 rounded px-1.5 py-1">
+                        <span className="text-white/50 text-[8px]">IAM review</span>
+                      </div>
+                      <div
+                        className="cmd-anim bg-[#0078D4]/20 border border-[#0078D4]/40 rounded px-1.5 py-1"
+                        style={{ animation: "kanbanAppear 9s ease-in-out infinite" }}
+                      >
+                        <span className="text-[8px] font-medium" style={{ color: "#0078D4" }}>Tenant config ✦</span>
+                      </div>
+                    </div>
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-1 mb-1">
+                      <div className="w-1 h-1 rounded-full" style={{ backgroundColor: "#00B4D8" }} />
+                      <span className="text-[7px] text-white/25 font-bold uppercase tracking-wide">Done</span>
+                    </div>
+                    <div className="space-y-1">
+                      <div className="bg-[#0A2540] border border-white/10 rounded px-1.5 py-1">
+                        <span className="text-white/50 text-[8px]">Discovery</span>
+                      </div>
+                      <div
+                        className="cmd-anim bg-[#00B4D8]/20 border border-[#00B4D8]/40 rounded px-1.5 py-1"
+                        style={{ animation: "kanbanDone 9s ease-in-out infinite", opacity: 0 }}
+                      >
+                        <span className="text-[8px] font-medium" style={{ color: "#00B4D8" }}>Tenant config ✓</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Notification toast — hidden in compact strip */}
+            {!compact && (
+              <div
+                className="cmd-anim flex items-start gap-2 rounded-lg px-2.5 py-2 border"
+                style={{
+                  background: "rgba(0,120,212,0.12)",
+                  borderColor: "rgba(0,120,212,0.25)",
+                  animation: "notifFloat 8s ease-in-out infinite",
+                  animationDelay: "2.5s",
+                  opacity: 0,
+                }}
+              >
+                <div className="w-3 h-3 rounded-full bg-[#0078D4] flex items-center justify-center flex-shrink-0 mt-0.5">
+                  <span className="text-white text-[6px]">✉</span>
+                </div>
+                <div>
+                  <p className="text-white/75 text-[8px] font-semibold">New message from Shane</p>
+                  <p className="text-white/35 text-[7px]">Phase 3 update ready for review</p>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Bottom label — full panel only */}
+        {!compact && (
+          <p className="relative z-10 mt-5 text-[9px] font-medium uppercase tracking-[0.25em] text-white/20">
+            Secure · Encrypted · Zero Trust
+          </p>
+        )}
+      </div>
+    </>
+  );
+}
+
+// ─── Social login SVG icons ───────────────────────────────────────────────────
+function GoogleIcon() {
+  return (
+    <svg viewBox="0 0 24 24" className="w-4 h-4 flex-shrink-0" aria-hidden="true">
+      <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4" />
+      <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853" />
+      <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05" />
+      <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335" />
+    </svg>
+  );
+}
+
+function MicrosoftIcon() {
+  return (
+    <svg viewBox="0 0 21 21" className="w-4 h-4 flex-shrink-0" aria-hidden="true">
+      <rect x="1"  y="1"  width="9" height="9" fill="#F25022" />
+      <rect x="11" y="1"  width="9" height="9" fill="#7FBA00" />
+      <rect x="1"  y="11" width="9" height="9" fill="#00A4EF" />
+      <rect x="11" y="11" width="9" height="9" fill="#FFB900" />
+    </svg>
+  );
+}
+
+function LinkedInIcon() {
+  return (
+    <svg viewBox="0 0 24 24" className="w-4 h-4 flex-shrink-0" fill="#0077B5" aria-hidden="true">
+      <path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433a2.062 2.062 0 01-2.063-2.065 2.064 2.064 0 112.063 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z" />
+    </svg>
+  );
+}
+
+// ─── Login page ────────────────────────────────────────────────────────────────
 export default function LoginPage() {
   const { login } = useAuth();
   const [, setLocation] = useLocation();
-  const [mode, setMode] = useState<"login" | "forgot">("login");
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [error, setError] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [forgotSent, setForgotSent] = useState(false);
+
+  const [mode, setMode]               = useState<"login" | "forgot">("login");
+  const [email, setEmail]             = useState("");
+  const [password, setPassword]       = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [error, setError]             = useState("");
+  const [loading, setLoading]         = useState(false);
+  const [forgotSent, setForgotSent]   = useState(false);
+  const [mfaRequired, setMfaRequired] = useState(false);
+  const [mfaCode, setMfaCode]         = useState("");
+  const [socialNote, setSocialNote]   = useState("");
 
   const switchMode = (next: "login" | "forgot") => {
     setMode(next);
     setError("");
     setPassword("");
+    setMfaRequired(false);
     if (next !== "forgot") setForgotSent(false);
+  };
+
+  const handleSocialClick = (provider: string) => {
+    setSocialNote(`${provider} sign-in launches shortly`);
+    setTimeout(() => setSocialNote(""), 3000);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -208,458 +328,292 @@ export default function LoginPage() {
       const user = await login(email, password);
       redirectAfterAuth(user.role, setLocation);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Login failed");
+      const msg = err instanceof Error ? err.message : "Login failed";
+      // MFA hook — ready for Task #914: if server signals MFA required, reveal the code step
+      if (/mfa|two.factor|otp/i.test(msg)) {
+        setMfaRequired(true);
+        setError("");
+      } else {
+        setError(msg);
+      }
     } finally {
       setLoading(false);
     }
   };
 
-  const isLogin = mode === "login";
-
-  const scrollToLogin = () => {
-    document.getElementById("login-form")?.scrollIntoView({ behavior: "smooth" });
-  };
-
   return (
-    <div className="min-h-screen bg-[#F7F9FC]">
+    <div className="flex flex-col md:flex-row md:h-screen md:overflow-hidden">
 
-      {/* ── HERO ─────────────────────────────────────────────────────────── */}
-      <section className="bg-[#0A2540] px-6 pt-10 pb-0 overflow-hidden">
-        <div className="max-w-[1100px] mx-auto">
+      {/* ── LEFT PANEL (desktop) — full animated command center ─────────── */}
+      <div className="hidden md:flex md:w-[55%] h-full relative">
+        <AnimatedCommandCenter />
+      </div>
 
-          {/* Nav bar */}
-          <nav className="flex items-center justify-between mb-16">
-            <a href="/" className="flex items-center gap-2.5 group w-fit">
-              <div className="w-8 h-8 rounded-lg bg-[#0078D4] flex items-center justify-center flex-shrink-0">
+      {/* ── LEFT PANEL (mobile) — slim h-40 animated strip ──────────────── */}
+      <div className="md:hidden h-40 flex-shrink-0 relative overflow-hidden">
+        <AnimatedCommandCenter compact />
+      </div>
+
+      {/* ── RIGHT PANEL — login card ─────────────────────────────────────── */}
+      <div className="flex-1 md:w-[45%] flex flex-col items-center justify-center bg-[#F4F7FC] px-5 py-8 overflow-y-auto relative">
+
+        {/* Social login coming-soon toast */}
+        {socialNote && (
+          <div
+            className="absolute top-4 left-1/2 -translate-x-1/2 z-30 bg-[#0A2540] text-white text-xs font-medium px-4 py-2 rounded-lg shadow-lg whitespace-nowrap pointer-events-none"
+            role="status"
+            aria-live="polite"
+          >
+            Coming soon — {socialNote}
+          </div>
+        )}
+
+        <div className="w-full max-w-sm">
+
+          {/* Logo + heading */}
+          <div className="text-center mb-7">
+            <div className="inline-flex items-center justify-center gap-2.5 mb-3">
+              <div className="w-9 h-9 rounded-xl bg-[#0078D4] flex items-center justify-center shadow-lg shadow-[#0078D4]/25 flex-shrink-0">
                 <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5 text-white" stroke="currentColor" strokeWidth={2}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7" />
                 </svg>
               </div>
-              <span className="text-white font-bold text-base group-hover:text-white/80 transition-colors">Shane McCaw Consulting</span>
-            </a>
-            <button
-              onClick={scrollToLogin}
-              className="text-sm font-semibold px-5 py-2 rounded-lg border border-white/20 text-white/80 hover:text-white hover:border-white/40 hover:bg-white/5 transition-colors"
-            >
-              Sign In →
-            </button>
-          </nav>
-
-          {/* Headline + trust badge */}
-          <div className="text-center max-w-[780px] mx-auto mb-12">
-            <div className="inline-flex items-center gap-2 bg-[#0078D4]/15 border border-[#0078D4]/30 rounded-full px-4 py-1.5 mb-6">
-              <Star className="w-3.5 h-3.5 text-[#00B4D8]" />
-              <span className="text-[#00B4D8] text-xs font-semibold tracking-wide">Built by Shane McCaw — Lead Microsoft 365 Architect for NASA</span>
+              <div className="text-left">
+                <p className="text-[#0A2540] font-bold text-sm leading-none">Shane McCaw</p>
+                <p className="text-[11px] font-semibold" style={{ color: "#0078D4" }}>Consulting</p>
+              </div>
             </div>
-            <h1 className="text-4xl md:text-6xl font-extrabold text-white leading-[1.08] mb-5 tracking-tight">
-              The Customer<br />
-              <span className="text-[#0078D4]">Command Center</span>
+            <h1 className="text-2xl font-extrabold text-[#0A2540] tracking-tight leading-tight">
+              Customer Command Center
             </h1>
-            <p className="text-white/60 text-lg md:text-xl leading-relaxed max-w-[620px] mx-auto mb-10">
-              A secure, enterprise-grade portal giving you a 360° real-time view of your Microsoft 365 consulting engagement — from project progress to invoices to direct messaging.
-            </p>
-            <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
-              <button
-                onClick={scrollToLogin}
-                className="inline-flex items-center gap-2 bg-[#0078D4] hover:bg-[#005A9E] text-white font-semibold px-7 py-3.5 rounded-xl transition-colors text-sm shadow-lg shadow-[#0078D4]/30"
-              >
-                Sign In to Your Portal
-                <ArrowRight className="w-4 h-4" />
-              </button>
-            </div>
-          </div>
-
-          {/* Dashboard mockup — floats at the bottom of the hero */}
-          <div className="max-w-[820px] mx-auto relative">
-            <div className="absolute top-[60%] inset-x-0 bottom-0 bg-gradient-to-t from-[#0A2540] via-transparent to-transparent z-10 pointer-events-none" />
-            <DashboardMockup />
-          </div>
-        </div>
-      </section>
-
-      {/* ── FEATURE GRID ─────────────────────────────────────────────────── */}
-      <section className="bg-white py-20 px-6">
-        <div className="max-w-[1100px] mx-auto">
-          <div className="text-center mb-12">
-            <p className="text-[#0078D4] text-xs font-bold uppercase tracking-[0.15em] mb-3">Everything in one place</p>
-            <h2 className="text-3xl md:text-4xl font-extrabold text-[#0A2540] mb-4">Your complete engagement, at a glance</h2>
-            <p className="text-muted-foreground max-w-[540px] mx-auto text-base leading-relaxed">
-              No more chasing status updates over email. Every aspect of your consulting engagement lives in a single, secure portal.
+            <p className="text-muted-foreground text-sm mt-1">
+              {mode === "forgot" ? "Enter your email to receive a reset link" : "Secure client portal — sign in to continue"}
             </p>
           </div>
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-            {FEATURES.map(({ icon, label, desc }) => (
-              <div key={label} className="bg-[#F7F9FC] border border-border rounded-2xl p-5 hover:border-[#0078D4]/30 hover:shadow-md transition-all duration-200 group">
-                <div className="w-10 h-10 rounded-xl bg-[#0078D4]/10 border border-[#0078D4]/20 flex items-center justify-center text-[#0078D4] mb-4 group-hover:bg-[#0078D4]/15 transition-colors">
-                  {icon}
-                </div>
-                <h3 className="text-sm font-bold text-[#0A2540] mb-1.5 leading-snug">{label}</h3>
-                <p className="text-xs text-muted-foreground leading-relaxed">{desc}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
 
-      {/* ── DEEP DIVE: Project Progress ───────────────────────────────────── */}
-      <section className="bg-[#F7F9FC] py-20 px-6">
-        <div className="max-w-[1100px] mx-auto grid md:grid-cols-2 gap-12 items-center">
-          {/* Copy */}
-          <div>
-            <p className="text-[#0078D4] text-xs font-bold uppercase tracking-[0.15em] mb-3">Live engagement tracking</p>
-            <h2 className="text-3xl font-extrabold text-[#0A2540] mb-4 leading-tight">Always know exactly where your project stands</h2>
-            <p className="text-muted-foreground leading-relaxed mb-6">
-              Every active engagement shows a real-time completion percentage, milestone timeline, and current phase — no more wondering what's happening or when you'll get the deliverable.
-            </p>
-            <ul className="space-y-3">
-              {[
-                "Phase-by-phase progress with visual indicators",
-                "Milestone completion timestamps with next-step clarity",
-                "Colour-coded status: on track, needs attention, complete",
-                "Engagement summary always visible on your dashboard",
-              ].map(item => (
-                <li key={item} className="flex items-start gap-3 text-sm text-[#0A2540]">
-                  <CheckCircle2 className="w-4 h-4 text-[#0078D4] mt-0.5 flex-shrink-0" />
-                  {item}
-                </li>
-              ))}
-            </ul>
-          </div>
-          {/* Mockup */}
-          <div className="bg-white border border-border rounded-2xl shadow-sm p-6 space-y-5 select-none">
-            <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Active Engagements</p>
-            {[
-              { label: "M365 Architecture & Strategy", pct: "68%", barClass: "w-[68%] bg-[#0078D4]", textClass: "text-[#0078D4]", phase: "Phase 3 — IAM Design" },
-              { label: "Copilot Readiness Assessment", pct: "100%", barClass: "w-full bg-[#00B4D8]", textClass: "text-[#00B4D8]", phase: "Complete" },
-              { label: "Governance Foundations", pct: "25%", barClass: "w-1/4 bg-[#0078D4]", textClass: "text-[#0078D4]", phase: "Phase 1 — Discovery" },
-              { label: "SharePoint Intranet Redesign", pct: "45%", barClass: "w-[45%] bg-[#00B4D8]", textClass: "text-[#00B4D8]", phase: "Phase 2 — Information Architecture" },
-            ].map(({ label, pct, barClass, textClass, phase }) => (
-              <div key={label}>
-                <div className="flex items-center justify-between mb-1.5">
-                  <span className="text-sm font-semibold text-[#0A2540] truncate pr-2">{label}</span>
-                  <span className={`text-sm font-bold flex-shrink-0 ${textClass}`}>{pct}</span>
-                </div>
-                <div className="h-2 bg-gray-100 rounded-full overflow-hidden mb-1">
-                  <div className={`h-full rounded-full transition-all ${barClass}`} />
-                </div>
-                <p className="text-[11px] text-muted-foreground">{phase}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
+          {/* Card */}
+          <div className="bg-white rounded-2xl shadow-2xl shadow-[#0A2540]/10 border border-[#E4EAF2]">
+            <div className="p-6">
 
-      {/* ── DEEP DIVE: Kanban Workflow ────────────────────────────────────── */}
-      <section className="bg-[#0A2540] py-20 px-6">
-        <div className="max-w-[1100px] mx-auto grid md:grid-cols-2 gap-12 items-center">
-          {/* Mockup */}
-          <div className="rounded-2xl bg-[#0d2e4e] border border-white/10 p-5 select-none">
-            <p className="text-[10px] font-bold uppercase tracking-widest text-white/30 mb-4">Task Board — M365 Migration</p>
-            <div className="grid grid-cols-3 gap-3">
-              {[
-                { col: "To Do", items: ["Teams governance policy", "DLP rule review", "Pilot comms plan"], dot: "#6b7280" },
-                { col: "In Progress", items: ["Tenant config", "IAM role assignment", "User pilot wave 1"], dot: "#0078D4" },
-                { col: "Done", items: ["Requirements scoping", "Discovery workshop", "Stakeholder sign-off"], dot: "#00B4D8" },
-              ].map(({ col, items, dot }) => (
-                <div key={col}>
-                  <div className="flex items-center gap-1.5 mb-2.5">
-                    <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: dot }} />
-                    <span className="text-[9px] font-bold uppercase tracking-wider text-white/40">{col}</span>
+              {/* ── MFA challenge step (hidden until backend signals mfa_required) ── */}
+              {mfaRequired ? (
+                <form
+                  onSubmit={handleSubmit}
+                  aria-label="Two-factor verification form"
+                  className="space-y-5"
+                >
+                  <div className="text-center">
+                    <div className="w-10 h-10 rounded-full bg-[#0078D4]/10 border border-[#0078D4]/20 flex items-center justify-center mx-auto mb-3">
+                      <svg className="w-5 h-5 text-[#0078D4]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                      </svg>
+                    </div>
+                    <p className="font-bold text-[#0A2540] text-sm">Two-Factor Verification</p>
+                    <p className="text-xs text-muted-foreground mt-1">Enter the 6-digit code from your authenticator app</p>
                   </div>
-                  <div className="space-y-1.5">
-                    {items.map(item => (
-                      <div key={item} className="bg-[#0A2540] border border-white/10 rounded-lg px-2.5 py-2">
-                        <span className="text-white/70 text-[9px] leading-snug">{item}</span>
+
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    maxLength={6}
+                    value={mfaCode}
+                    onChange={e => setMfaCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                    placeholder="000 000"
+                    className="w-full text-center text-2xl font-bold tracking-[0.6em] border border-[#E0E6EF] rounded-xl py-3 px-4 focus:outline-none focus:ring-2 focus:ring-[#0078D4] focus:border-transparent transition-all placeholder:text-[#D0D8E4] placeholder:tracking-[0.3em]"
+                    autoFocus
+                    autoComplete="one-time-code"
+                    data-testid="input-mfa-code"
+                  />
+
+                  {error && (
+                    <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2 text-center">
+                      {error}
+                    </p>
+                  )}
+
+                  <button
+                    type="submit"
+                    disabled={loading || mfaCode.length !== 6}
+                    className="w-full bg-[#0078D4] hover:bg-[#005A9E] disabled:opacity-50 text-white font-semibold py-2.5 rounded-xl transition-colors flex items-center justify-center gap-2 focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[#0078D4] focus-visible:outline-none"
+                  >
+                    {loading && <Loader2 className="w-4 h-4 animate-spin" />}
+                    Verify &amp; Sign In
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => { setMfaRequired(false); setMfaCode(""); setError(""); }}
+                    className="w-full text-sm text-muted-foreground hover:text-[#0078D4] transition-colors"
+                  >
+                    ← Back to sign in
+                  </button>
+                </form>
+
+              ) : mode === "forgot" ? (
+                /* ── Forgot password flow ── */
+                <>
+                  {forgotSent ? (
+                    <div className="text-center py-3">
+                      <div className="w-11 h-11 rounded-full bg-green-100 flex items-center justify-center mx-auto mb-3">
+                        <svg className="w-5 h-5 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                        </svg>
                       </div>
+                      <p className="font-bold text-[#0A2540] mb-1">Check your inbox</p>
+                      <p className="text-xs text-muted-foreground leading-relaxed">
+                        If an account exists for <span className="font-semibold text-[#0A2540]">{email}</span>, a reset link has been sent. It expires in 1 hour.
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => switchMode("login")}
+                        className="mt-4 text-sm font-semibold text-[#0078D4] hover:underline"
+                        data-testid="link-back-to-signin"
+                      >
+                        ← Back to sign in
+                      </button>
+                    </div>
+                  ) : (
+                    <form onSubmit={handleSubmit} aria-label="Forgot password form" className="space-y-4">
+                      <div>
+                        <label htmlFor="forgot-email" className="block text-xs font-semibold text-[#0A2540] mb-1.5">
+                          Email address
+                        </label>
+                        <input
+                          id="forgot-email"
+                          type="email"
+                          value={email}
+                          onChange={e => setEmail(e.target.value)}
+                          required
+                          placeholder="you@organization.com"
+                          autoComplete="email"
+                          className="w-full border border-[#E0E6EF] rounded-xl py-2.5 px-3.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4] focus:border-transparent transition-all placeholder:text-muted-foreground"
+                          data-testid="input-forgot-email"
+                        />
+                      </div>
+
+                      {error && (
+                        <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+                          {error}
+                        </p>
+                      )}
+
+                      <button
+                        type="submit"
+                        disabled={loading}
+                        className="w-full bg-[#0078D4] hover:bg-[#005A9E] disabled:opacity-50 text-white font-semibold py-2.5 rounded-xl transition-colors flex items-center justify-center gap-2 shadow-md shadow-[#0078D4]/20 focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[#0078D4] focus-visible:outline-none"
+                        data-testid="button-send-reset"
+                      >
+                        {loading && <Loader2 className="w-4 h-4 animate-spin" />}
+                        Send Reset Link
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => switchMode("login")}
+                        className="w-full text-sm text-muted-foreground hover:text-[#0078D4] transition-colors"
+                        data-testid="link-back-to-signin"
+                      >
+                        ← Back to sign in
+                      </button>
+                    </form>
+                  )}
+                </>
+
+              ) : (
+                /* ── Login flow ── */
+                <>
+                  {/* Social login buttons */}
+                  <div className="space-y-2 mb-5">
+                    {[
+                      { label: "Continue with Google",    icon: <GoogleIcon />,    provider: "Google"    },
+                      { label: "Continue with Microsoft", icon: <MicrosoftIcon />, provider: "Microsoft" },
+                      { label: "Continue with LinkedIn",  icon: <LinkedInIcon />,  provider: "LinkedIn"  },
+                    ].map(({ label, icon, provider }) => (
+                      <button
+                        key={provider}
+                        type="button"
+                        onClick={() => handleSocialClick(provider)}
+                        className="w-full flex items-center gap-3 px-4 py-2.5 bg-white border border-[#E0E6EF] rounded-xl text-sm font-medium text-[#0A2540] hover:bg-[#F7F9FC] hover:border-[#0078D4]/30 transition-all cursor-pointer focus-visible:ring-2 focus-visible:ring-[#0078D4] focus-visible:outline-none"
+                        aria-label={`${label} (coming soon)`}
+                      >
+                        {icon}
+                        <span className="flex-1 text-left">{label}</span>
+                        <span className="text-[10px] text-muted-foreground border border-border rounded px-1.5 py-0.5 font-normal">Soon</span>
+                      </button>
                     ))}
                   </div>
-                </div>
-              ))}
-            </div>
-          </div>
-          {/* Copy */}
-          <div>
-            <p className="text-[#00B4D8] text-xs font-bold uppercase tracking-[0.15em] mb-3">Full task visibility</p>
-            <h2 className="text-3xl font-extrabold text-white mb-4 leading-tight">See the work — not just the status</h2>
-            <p className="text-white/60 leading-relaxed mb-6">
-              Your portal exposes the same kanban board Shane uses internally. You'll see every task, which phase it's in, and what's completed — updated in real time as work progresses.
-            </p>
-            <ul className="space-y-3">
-              {[
-                "Three-column view: To Do, In Progress, Done",
-                "Task-level granularity — not just high-level milestones",
-                "Live updates as items move through the workflow",
-                "Tied directly to your active engagement scope",
-              ].map(item => (
-                <li key={item} className="flex items-start gap-3 text-sm text-white/80">
-                  <CheckCircle2 className="w-4 h-4 text-[#00B4D8] mt-0.5 flex-shrink-0" />
-                  {item}
-                </li>
-              ))}
-            </ul>
-          </div>
-        </div>
-      </section>
 
-      {/* ── DEEP DIVE: Documents & Reports ───────────────────────────────── */}
-      <section className="bg-white py-20 px-6">
-        <div className="max-w-[1100px] mx-auto grid md:grid-cols-2 gap-12 items-center">
-          {/* Copy */}
-          <div>
-            <p className="text-[#0078D4] text-xs font-bold uppercase tracking-[0.15em] mb-3">Deliverables & reporting</p>
-            <h2 className="text-3xl font-extrabold text-[#0A2540] mb-4 leading-tight">Your deliverables, always a click away</h2>
-            <p className="text-muted-foreground leading-relaxed mb-6">
-              Every assessment, SOW, architecture diagram, and governance document is securely stored in your portal. Monthly reports drop in automatically — no need to request them.
-            </p>
-            <ul className="space-y-3">
-              {[
-                "Secure document library with instant download",
-                "SOWs, assessments, diagrams, and governance artefacts",
-                "Automated monthly reports — delivered on schedule",
-                "Full report history with month-by-month archive",
-              ].map(item => (
-                <li key={item} className="flex items-start gap-3 text-sm text-[#0A2540]">
-                  <CheckCircle2 className="w-4 h-4 text-[#0078D4] mt-0.5 flex-shrink-0" />
-                  {item}
-                </li>
-              ))}
-            </ul>
-          </div>
-          {/* Mockup */}
-          <div className="space-y-4 select-none">
-            {/* Document list */}
-            <div className="bg-[#F7F9FC] border border-border rounded-2xl overflow-hidden">
-              <div className="px-4 py-3 border-b border-border">
-                <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Document Library</p>
-              </div>
-              <div className="divide-y divide-border">
-                {[
-                  { name: "M365 Tenant Assessment.pdf", size: "1.4 MB", date: "Jun 2025" },
-                  { name: "SOW-2025-004 — Governance.pdf", size: "980 KB", date: "May 2025" },
-                  { name: "IAM Architecture Diagram.vsdx", size: "2.1 MB", date: "Apr 2025" },
-                  { name: "SharePoint IA Blueprint.docx", size: "540 KB", date: "Mar 2025" },
-                ].map(({ name, size, date }) => (
-                  <div key={name} className="flex items-center gap-3 px-4 py-3">
-                    <div className="w-7 h-7 rounded-md bg-[#0078D4]/10 flex items-center justify-center flex-shrink-0">
-                      <FileDown className="w-3.5 h-3.5 text-[#0078D4]" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-xs font-semibold text-[#0A2540] truncate">{name}</p>
-                      <p className="text-[10px] text-muted-foreground">{size} · {date}</p>
-                    </div>
-                    <span className="text-[10px] text-[#0078D4] font-semibold flex-shrink-0">↓</span>
+                  {/* Divider */}
+                  <div className="relative flex items-center gap-3 mb-5">
+                    <div className="flex-1 h-px bg-[#E8EDF2]" />
+                    <span className="text-[11px] text-muted-foreground font-medium flex-shrink-0">or sign in with email</span>
+                    <div className="flex-1 h-px bg-[#E8EDF2]" />
                   </div>
-                ))}
-              </div>
-            </div>
-            {/* Mini report chart */}
-            <div className="bg-[#F7F9FC] border border-border rounded-2xl px-4 py-4">
-              <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-3">Monthly Reports</p>
-              <div className="flex items-end gap-1.5 h-12">
-                {[
-                  { h: "h-[35%]", active: false },
-                  { h: "h-[55%]", active: false },
-                  { h: "h-[42%]", active: false },
-                  { h: "h-[68%]", active: false },
-                  { h: "h-[52%]", active: false },
-                  { h: "h-[80%]", active: true  },
-                  { h: "h-[60%]", active: false },
-                ].map(({ h, active }, i) => (
-                  <div
-                    key={i}
-                    className={`flex-1 rounded-sm transition-all ${h} ${active ? "bg-[#0078D4]" : "bg-[#0078D4]/20"}`}
-                  />
-                ))}
-              </div>
-              <div className="flex justify-between mt-1.5">
-                {["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul"].map(m => (
-                  <span key={m} className="text-[9px] text-muted-foreground">{m}</span>
-                ))}
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
 
-      {/* ── DEEP DIVE: Billing & Messaging ───────────────────────────────── */}
-      <section className="bg-[#0A2540] py-20 px-6">
-        <div className="max-w-[1100px] mx-auto grid md:grid-cols-2 gap-12 items-center">
-          {/* Mockup */}
-          <div className="space-y-4 select-none">
-            {/* Invoice list */}
-            <div className="bg-[#0d2e4e] border border-white/10 rounded-2xl overflow-hidden">
-              <div className="px-4 py-3 border-b border-white/10">
-                <p className="text-[10px] font-bold uppercase tracking-widest text-white/30">Invoice History</p>
-              </div>
-              <div className="divide-y divide-white/5">
-                {[
-                  { ref: "INV-2025-006", desc: "Retainer — June 2025", amount: "$4,800", status: "Paid", badge: "bg-emerald-900/40 text-emerald-400" },
-                  { ref: "INV-2025-005", desc: "Governance Foundations", amount: "$3,200", status: "Paid", badge: "bg-emerald-900/40 text-emerald-400" },
-                  { ref: "INV-2025-004", desc: "Tenant Health Audit", amount: "$1,500", status: "Paid", badge: "bg-emerald-900/40 text-emerald-400" },
-                  { ref: "INV-2025-007", desc: "Retainer — July 2025", amount: "$4,800", status: "Due Jul 1", badge: "bg-amber-900/40 text-amber-400" },
-                ].map(({ ref, desc, amount, status, badge }) => (
-                  <div key={ref} className="flex items-center gap-3 px-4 py-3">
-                    <div className="flex-1 min-w-0">
-                      <p className="text-xs font-semibold text-white/80 truncate">{desc}</p>
-                      <p className="text-[10px] text-white/30">{ref}</p>
-                    </div>
-                    <span className="text-xs font-bold text-white">{amount}</span>
-                    <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${badge}`}>{status}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-            {/* Message thread preview */}
-            <div className="bg-[#0d2e4e] border border-white/10 rounded-2xl p-4 space-y-2.5">
-              <p className="text-[10px] font-bold uppercase tracking-widest text-white/30 mb-3">Direct Messaging</p>
-              {[
-                { from: "Shane McCaw", msg: "IAM review completed — moving to Phase 4 pilot tomorrow.", align: "left" },
-                { from: "You", msg: "Perfect. Can we schedule a call before the pilot starts?", align: "right" },
-                { from: "Shane McCaw", msg: "Absolutely — I'll send a calendar invite for Thursday 10am.", align: "left" },
-              ].map(({ from, msg, align }) => (
-                <div key={msg} className={`flex ${align === "right" ? "justify-end" : "justify-start"}`}>
-                  <div className={`max-w-[80%] rounded-xl px-3 py-2 ${align === "right" ? "bg-[#0078D4] text-white" : "bg-[#0A2540] border border-white/10 text-white/70"}`}>
-                    <p className={`text-[9px] font-semibold mb-0.5 ${align === "right" ? "text-white/60" : "text-white/40"}`}>{from}</p>
-                    <p className="text-[10px] leading-snug">{msg}</p>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-          {/* Copy */}
-          <div>
-            <p className="text-[#00B4D8] text-xs font-bold uppercase tracking-[0.15em] mb-3">Billing & direct line</p>
-            <h2 className="text-3xl font-extrabold text-white mb-4 leading-tight">Invoices and conversation in one place</h2>
-            <p className="text-white/60 leading-relaxed mb-6">
-              View your complete billing history, pay outstanding invoices, and communicate directly with Shane — all without leaving your portal. No more chasing emails or digging through inboxes.
-            </p>
-            <ul className="space-y-3">
-              {[
-                "Full invoice history with status indicators",
-                "One-click online payment for outstanding balances",
-                "Structured messaging tied to specific engagements",
-                "Conversation history preserved for every project",
-              ].map(item => (
-                <li key={item} className="flex items-start gap-3 text-sm text-white/80">
-                  <CheckCircle2 className="w-4 h-4 text-[#00B4D8] mt-0.5 flex-shrink-0" />
-                  {item}
-                </li>
-              ))}
-            </ul>
-          </div>
-        </div>
-      </section>
-
-      {/* ── SECURITY & COMPLIANCE ────────────────────────────────────────── */}
-      <section className="bg-[#06192e] py-20 px-6">
-        <div className="max-w-[900px] mx-auto text-center">
-          <div className="w-12 h-12 rounded-2xl bg-[#0078D4]/20 border border-[#0078D4]/30 flex items-center justify-center mx-auto mb-6">
-            <ShieldCheck className="w-6 h-6 text-[#00B4D8]" />
-          </div>
-          <p className="text-[#00B4D8] text-xs font-bold uppercase tracking-[0.15em] mb-3">Enterprise-grade protection</p>
-          <h2 className="text-3xl md:text-4xl font-extrabold text-white mb-4">Security built for regulated industries</h2>
-          <p className="text-white/50 max-w-[560px] mx-auto mb-10 leading-relaxed">
-            The Customer Command Center is architected on the same security principles Shane applies to Microsoft 365 deployments at NASA — Zero Trust, MFA enforcement, end-to-end encryption, and compliance with the regulatory frameworks your industry demands.
-          </p>
-
-          {/* Trust signals */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-10 text-left">
-            {TRUST_SIGNALS.map(({ icon, label }) => (
-              <div key={label} className="flex items-start gap-3 bg-white/5 border border-white/10 rounded-xl px-4 py-3.5">
-                <div className="w-8 h-8 rounded-lg bg-[#0078D4]/20 border border-[#0078D4]/30 flex items-center justify-center flex-shrink-0 text-[#00B4D8] mt-0.5">
-                  {icon}
-                </div>
-                <span className="text-white/70 text-sm leading-snug pt-1.5">{label}</span>
-              </div>
-            ))}
-          </div>
-
-          {/* Compliance badges */}
-          <p className="text-white/30 text-xs font-semibold uppercase tracking-wider mb-4">Compliance frameworks</p>
-          <div className="flex flex-wrap items-center justify-center gap-2">
-            {COMPLIANCE_BADGES.map(badge => (
-              <span key={badge} className="px-4 py-1.5 rounded-full border border-white/15 bg-white/5 text-white/60 text-xs font-bold tracking-wide">
-                {badge}
-              </span>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* ── CTA BAND ─────────────────────────────────────────────────────── */}
-      <section className="bg-[#0078D4] py-20 px-6">
-        <div className="max-w-[700px] mx-auto text-center">
-          <h2 className="text-3xl md:text-4xl font-extrabold text-white mb-4 leading-tight">
-            Your portal is ready.<br />Sign in to get started.
-          </h2>
-          <p className="text-white/70 text-lg mb-10 leading-relaxed">
-            Client accounts are created automatically after your first engagement with Shane McCaw Consulting. Use the link in your welcome email to access your portal.
-          </p>
-          <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-            <button
-              onClick={scrollToLogin}
-              className="inline-flex items-center gap-2 bg-white text-[#0078D4] font-bold px-8 py-3.5 rounded-xl hover:bg-white/90 transition-colors text-sm shadow-lg"
-            >
-              Sign In to Your Portal
-              <ArrowRight className="w-4 h-4" />
-            </button>
-          </div>
-        </div>
-      </section>
-
-      {/* ── LOGIN FORM ───────────────────────────────────────────────────── */}
-      <section className="bg-[#F7F9FC] py-20 px-6" id="login-form">
-        <div className="max-w-sm mx-auto">
-
-          {/* Section intro */}
-          <div className="text-center mb-8">
-            <div className="w-10 h-10 rounded-xl bg-[#0078D4]/10 border border-[#0078D4]/20 flex items-center justify-center mx-auto mb-4">
-              <Lock className="w-5 h-5 text-[#0078D4]" />
-            </div>
-            <h2 className="text-2xl font-extrabold text-[#0A2540] mb-1">
-              {mode === "forgot"
-                ? "Reset your password"
-                : "Sign in to your secure Customer Command Center portal"}
-            </h2>
-            <p className="text-muted-foreground text-sm">
-              {mode === "forgot"
-                ? "Enter your email and we'll send you a reset link."
-                : "Sign in with your email and password."}
-            </p>
-          </div>
-
-          {/* ── Forgot-password panel ── */}
-          {mode === "forgot" ? (
-            <>
-              <div className="bg-white border border-border rounded-2xl shadow-sm p-6">
-                {forgotSent ? (
-                  <div className="text-center py-2">
-                    <div className="w-12 h-12 rounded-full bg-green-100 flex items-center justify-center mx-auto mb-4">
-                      <CheckCircle2 className="w-6 h-6 text-green-600" />
-                    </div>
-                    <h3 className="font-bold text-[#0A2540] mb-1">Check your email</h3>
-                    <p className="text-sm text-muted-foreground">
-                      If an account exists for <span className="font-semibold text-[#0A2540]">{email}</span>, we've sent a reset link. It expires in 1 hour.
-                    </p>
-                  </div>
-                ) : (
-                  <form onSubmit={handleSubmit} className="space-y-5">
+                  {/* Email + Password form */}
+                  <form onSubmit={handleSubmit} aria-label="Sign in form" className="space-y-4">
                     <div>
-                      <label className="block text-sm font-semibold text-[#0A2540] mb-1.5">Email</label>
+                      <label htmlFor="login-email" className="block text-xs font-semibold text-[#0A2540] mb-1.5">
+                        Email address
+                      </label>
                       <input
+                        id="login-email"
                         type="email"
                         value={email}
                         onChange={e => setEmail(e.target.value)}
                         required
-                        placeholder="you@example.com"
+                        placeholder="you@organization.com"
                         autoComplete="email"
-                        className="w-full border border-border rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4] transition-shadow"
-                        data-testid="input-forgot-email"
+                        className="w-full border border-[#E0E6EF] rounded-xl py-2.5 px-3.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4] focus:border-transparent transition-all placeholder:text-muted-foreground"
+                        data-testid="input-email"
                       />
                     </div>
 
+                    <div>
+                      <div className="flex items-center justify-between mb-1.5">
+                        <label htmlFor="login-password" className="text-xs font-semibold text-[#0A2540]">
+                          Password
+                        </label>
+                        <button
+                          type="button"
+                          onClick={() => switchMode("forgot")}
+                          className="text-xs font-medium text-[#0078D4] hover:underline focus-visible:ring-1 focus-visible:ring-[#0078D4] focus-visible:outline-none rounded"
+                          data-testid="link-forgot-password"
+                        >
+                          Forgot password?
+                        </button>
+                      </div>
+                      <div className="relative">
+                        <input
+                          id="login-password"
+                          type={showPassword ? "text" : "password"}
+                          value={password}
+                          onChange={e => setPassword(e.target.value)}
+                          required
+                          placeholder="••••••••"
+                          autoComplete="current-password"
+                          className="w-full border border-[#E0E6EF] rounded-xl py-2.5 pl-3.5 pr-10 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4] focus:border-transparent transition-all placeholder:text-muted-foreground"
+                          data-testid="input-password"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowPassword(v => !v)}
+                          tabIndex={-1}
+                          aria-label={showPassword ? "Hide password" : "Show password"}
+                          className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-[#0078D4] transition-colors focus-visible:outline-none"
+                        >
+                          {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                        </button>
+                      </div>
+                    </div>
+
                     {error && (
-                      <div className="bg-red-50 border border-red-200 text-red-700 rounded-lg px-4 py-3 text-sm">
+                      <div
+                        className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2"
+                        data-testid="login-error"
+                        role="alert"
+                      >
                         {error}
                       </div>
                     )}
@@ -667,139 +621,58 @@ export default function LoginPage() {
                     <button
                       type="submit"
                       disabled={loading}
-                      className="w-full bg-[#0078D4] text-white font-semibold rounded-lg py-3 text-sm hover:bg-[#005A9E] transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-                      data-testid="button-send-reset"
+                      className="w-full bg-[#0078D4] hover:bg-[#005A9E] disabled:opacity-50 text-white font-semibold py-2.5 rounded-xl transition-colors shadow-md shadow-[#0078D4]/20 flex items-center justify-center gap-2 focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[#0078D4] focus-visible:outline-none"
+                      data-testid="button-login"
                     >
-                      {loading ? (
-                        <>
-                          <Loader2 className="w-4 h-4 animate-spin" />
-                          Sending…
-                        </>
-                      ) : (
-                        "Send reset link"
-                      )}
+                      {loading && <Loader2 className="w-4 h-4 animate-spin" />}
+                      {loading ? "Signing in…" : "Sign In"}
                     </button>
                   </form>
-                )}
-              </div>
-
-              <p className="text-center text-sm text-muted-foreground mt-5">
-                <button
-                  type="button"
-                  onClick={() => switchMode("login")}
-                  className="text-[#0078D4] hover:underline font-semibold"
-                  data-testid="link-back-to-signin"
-                >
-                  ← Back to sign in
-                </button>
-              </p>
-            </>
-          ) : (
-            <>
-              {/* Email / Password form */}
-              <div className="bg-white border border-border rounded-2xl shadow-sm p-6">
-                <form onSubmit={handleSubmit} className="space-y-5">
-                  <div>
-                    <label className="block text-sm font-semibold text-[#0A2540] mb-1.5">Email</label>
-                    <input
-                      type="email"
-                      value={email}
-                      onChange={e => setEmail(e.target.value)}
-                      required
-                      placeholder="you@example.com"
-                      autoComplete="email"
-                      className="w-full border border-border rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4] transition-shadow"
-                      data-testid="input-email"
-                    />
-                  </div>
-
-                  <div>
-                    <div className="flex items-center justify-between mb-1.5">
-                      <label className="block text-sm font-semibold text-[#0A2540]">Password</label>
-                      {isLogin && (
-                        <button
-                          type="button"
-                          onClick={() => switchMode("forgot")}
-                          className="text-xs text-[#0078D4] hover:underline font-medium"
-                          data-testid="link-forgot-password"
-                        >
-                          Forgot password?
-                        </button>
-                      )}
-                    </div>
-                    <input
-                      type="password"
-                      value={password}
-                      onChange={e => setPassword(e.target.value)}
-                      required
-                      placeholder="••••••••"
-                      autoComplete="current-password"
-                      className="w-full border border-border rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4] transition-shadow"
-                      data-testid="input-password"
-                    />
-                  </div>
-
-                  {error && (
-                    <div className="bg-red-50 border border-red-200 text-red-700 rounded-lg px-4 py-3 text-sm" data-testid="login-error">
-                      {error}
-                    </div>
-                  )}
-
-                  <button
-                    type="submit"
-                    disabled={loading}
-                    className="w-full bg-[#0078D4] text-white font-semibold rounded-lg py-3 text-sm hover:bg-[#005A9E] transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-                    data-testid="button-login"
-                  >
-                    {loading ? (
-                      <>
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                        Signing in…
-                      </>
-                    ) : (
-                      "Sign In to Your Portal"
-                    )}
-                  </button>
-                </form>
-              </div>
-
-              {/* Troubleshooting */}
-              {isLogin && (
-                <div className="mt-4 bg-white border border-border rounded-xl px-4 py-3">
-                  <p className="text-xs font-semibold text-[#0A2540] mb-2">Having trouble signing in?</p>
-                  <ul className="space-y-1.5">
-                    {[
-                      "Check your inbox for a portal invite email from Shane McCaw Consulting.",
-                      "Reset your password using the \"Forgot password?\" link in the form above.",
-                    ].map((tip) => (
-                      <li key={tip} className="flex items-start gap-2 text-xs text-muted-foreground">
-                        <span className="text-[#0078D4] font-bold mt-0.5 shrink-0">·</span>
-                        {tip}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
+                </>
               )}
-            </>
-          )}
-
-          {/* Support contact trust bar */}
-          <div className="mt-4 bg-white border border-border rounded-xl px-4 py-3 flex items-start gap-3">
-            <div className="w-6 h-6 rounded-full bg-[#0078D4]/10 flex items-center justify-center flex-shrink-0 mt-0.5">
-              <CheckCircle2 className="w-3.5 h-3.5 text-[#0078D4]" />
             </div>
-            <p className="text-xs text-muted-foreground leading-relaxed">
-              Need help accessing your portal?{" "}
-              <a href="mailto:support@shanemccaw.com" className="text-[#0078D4] hover:underline font-medium">
-                Contact support@shanemccaw.com
-              </a>{" "}
-              — Shane's team typically responds within one business day.
-            </p>
+
+            {/* Trust badges + compliance row */}
+            <div className="px-6 py-4 border-t border-[#F0F4F8] bg-[#FAFBFD] rounded-b-2xl">
+              <div className="grid grid-cols-4 gap-1 mb-3">
+                {[
+                  { emoji: "🔒", label: "Encrypted"   },
+                  { emoji: "🛡️", label: "MFA Protected" },
+                  { emoji: "⚡", label: "Zero Trust"   },
+                  { emoji: "🏛️", label: "NASA-grade"   },
+                ].map(({ emoji, label }) => (
+                  <div key={label} className="flex flex-col items-center gap-0.5">
+                    <span className="text-sm leading-none">{emoji}</span>
+                    <span className="text-[9px] text-muted-foreground font-medium text-center leading-tight">{label}</span>
+                  </div>
+                ))}
+              </div>
+              <div className="flex flex-wrap justify-center gap-1.5">
+                {["HIPAA", "SOC 2", "FINRA", "CMMC", "ITAR", "Zero Trust"].map(badge => (
+                  <span
+                    key={badge}
+                    className="text-[9px] text-muted-foreground border border-[#E8EDF2] rounded-full px-2 py-0.5 font-medium bg-white"
+                  >
+                    {badge}
+                  </span>
+                ))}
+              </div>
+            </div>
           </div>
 
+          {/* Access by invitation note */}
+          <p className="text-center text-xs text-muted-foreground mt-5 leading-relaxed">
+            Access is by invitation.{" "}
+            <a
+              href="mailto:support@shanemccaw.com"
+              className="text-[#0078D4] hover:underline font-medium"
+            >
+              Contact support
+            </a>{" "}
+            if you need help.
+          </p>
         </div>
-      </section>
-
+      </div>
     </div>
   );
 }
