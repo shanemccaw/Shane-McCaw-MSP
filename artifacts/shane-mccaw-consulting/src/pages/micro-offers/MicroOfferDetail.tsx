@@ -1,7 +1,7 @@
 import {
   CheckCircle, ArrowRight, Clock, Users, Building2, Shield,
   Zap, Star, Award, Rocket, DollarSign, AlertTriangle, Target,
-  TrendingUp, BadgeCheck, ChevronRight,
+  TrendingUp, BadgeCheck,
 } from "lucide-react";
 import { Link } from "wouter";
 import { SEOMeta } from "@/components/SEOMeta";
@@ -552,57 +552,79 @@ export default function MicroOfferDetail({ params }: MicroOfferDetailProps) {
               </p>
             </div>
 
-            {/* Workflow: vertical connected steps */}
-            <div className="relative max-w-3xl mx-auto">
-              {/* vertical connector line */}
-              <div className="absolute left-[27px] top-10 bottom-10 w-px bg-gradient-to-b from-[#0078D4] via-[#00B4D8] to-[#0A2540] opacity-20 hidden md:block" />
-
-              <div className="space-y-4">
-                {steps.map((step, i) => (
-                  <div key={i} className="relative flex gap-5 items-start group">
-                    {/* step number circle */}
-                    <div className="flex-shrink-0 w-14 flex flex-col items-center">
+            {/* Vertical timeline */}
+            <div className="max-w-2xl mx-auto">
+              {steps.map((step, i) => {
+                const isLast = i === steps.length - 1;
+                const isFirst = i === 0;
+                const badgeBg = isFirst
+                  ? "#0078D4"
+                  : isLast
+                  ? "#0A2540"
+                  : `hsl(${200 + i * 8}, 80%, ${42 - i * 2}%)`;
+                return (
+                  <div key={i} className="flex gap-0">
+                    {/* ── Left rail: circle + connector ── */}
+                    <div className="flex flex-col items-center flex-shrink-0 w-16">
+                      {/* numbered badge */}
                       <div
-                        className="w-14 h-14 rounded-2xl flex items-center justify-center text-white font-extrabold text-lg shadow-md relative z-10"
-                        style={{
-                          background:
-                            i === 0
-                              ? "#0078D4"
-                              : i === steps.length - 1
-                              ? "#0A2540"
-                              : `hsl(${200 + i * 10}, 85%, ${44 - i * 2}%)`,
-                        }}
+                        className="w-12 h-12 rounded-full flex items-center justify-center text-white font-extrabold text-sm shadow-md ring-4 ring-[#F7F9FC] relative z-10 flex-shrink-0"
+                        style={{ background: badgeBg }}
                       >
                         {String(i + 1).padStart(2, "0")}
                       </div>
-                      {i < steps.length - 1 && (
-                        <div className="hidden md:flex flex-col items-center mt-1 mb-1 gap-1 opacity-30">
-                          <div className="w-px h-3 bg-[#0078D4]" />
-                          <ChevronRight className="w-3 h-3 text-[#0078D4] rotate-90" />
+                      {/* vertical connector below badge */}
+                      {!isLast && (
+                        <div className="flex flex-col items-center flex-1 py-1">
+                          <div className="w-px flex-1 bg-gradient-to-b from-[#0078D4] to-[#00B4D8] opacity-30" />
+                          {/* downward chevron */}
+                          <svg
+                            className="w-3.5 h-3.5 flex-shrink-0 my-1"
+                            viewBox="0 0 14 14"
+                            fill="none"
+                          >
+                            <path
+                              d="M3 5l4 4 4-4"
+                              stroke="#0078D4"
+                              strokeWidth="2"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              opacity="0.5"
+                            />
+                          </svg>
+                          <div className="w-px flex-1 bg-gradient-to-b from-[#00B4D8] to-[#0078D4] opacity-20" />
                         </div>
                       )}
                     </div>
 
-                    {/* card */}
-                    <div className="flex-1 bg-white rounded-2xl border border-border p-6 group-hover:border-[#0078D4]/30 group-hover:shadow-sm transition-all">
-                      <div className="flex items-start justify-between gap-4">
+                    {/* ── Right: step card ── */}
+                    <div className={`flex-1 pb-6 ${isLast ? "" : ""}`}>
+                      <div className="bg-white rounded-2xl border border-border shadow-sm p-5 ml-3 hover:border-[#0078D4]/30 hover:shadow-md transition-all">
+                        <div className="flex items-start justify-between gap-3 mb-1">
+                          <div className="flex items-center gap-2">
+                            <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+                              Step {i + 1}
+                            </span>
+                          </div>
+                          {isLast ? (
+                            <span className="inline-flex items-center gap-1 bg-green-50 text-green-700 border border-green-200 text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider flex-shrink-0">
+                              <CheckCircle className="w-3 h-3" /> Delivered
+                            </span>
+                          ) : isFirst ? (
+                            <span className="inline-flex items-center gap-1 bg-[#0078D4]/8 text-[#0078D4] text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider flex-shrink-0">
+                              Starts here
+                            </span>
+                          ) : null}
+                        </div>
                         <h3 className="font-extrabold text-[#0A2540] text-base leading-snug">{step.title}</h3>
-                        {i < steps.length - 1 && (
-                          <ArrowRight className="w-4 h-4 text-[#0078D4]/30 flex-shrink-0 mt-0.5 hidden md:block" />
-                        )}
-                        {i === steps.length - 1 && (
-                          <span className="inline-flex items-center gap-1 bg-[#0078D4]/10 text-[#0078D4] text-xs font-bold px-2.5 py-1 rounded-full flex-shrink-0">
-                            <CheckCircle className="w-3 h-3" /> Done
-                          </span>
+                        {step.description && (
+                          <p className="text-muted-foreground text-sm leading-relaxed mt-2">{step.description}</p>
                         )}
                       </div>
-                      {step.description && (
-                        <p className="text-muted-foreground text-sm leading-relaxed mt-2">{step.description}</p>
-                      )}
                     </div>
                   </div>
-                ))}
-              </div>
+                );
+              })}
             </div>
           </div>
         </section>
