@@ -9,10 +9,12 @@
  *   pnpm --filter @workspace/scripts run sync-webhooks -- --fix # check + auto-create missing endpoints
  *
  * Required env vars (set in Replit Secrets):
- *   STRIPE_SECRET_KEY      — dev Stripe secret key (sk_test_…), used when
- *                            REPLIT_DOMAINS is absent (local / dev environment)
- *   STRIPE_SECRET_KEY_PROD — production Stripe secret key (sk_live_…), used
- *                            when REPLIT_DOMAINS is present (deployed app)
+ *   STRIPE_SECRET_KEY      — dev Stripe secret key (sk_test_…), used in the
+ *                            Replit editor workspace (REPLIT_DOMAINS absent, or
+ *                            all domains end in .replit.dev)
+ *   STRIPE_SECRET_KEY_PROD — production Stripe secret key (sk_live_…), used in
+ *                            real deployments (REPLIT_DOMAINS present with no
+ *                            .replit.dev domain)
  *   REPLIT_DOMAINS         — comma-separated list of domains for the deployed app
  *                            (Replit sets this automatically; it contains the
  *                             production custom domain when one is configured)
@@ -41,7 +43,7 @@ function getExpectedUrls(): string[] {
   return raw
     .split(",")
     .map((d) => d.trim())
-    .filter(Boolean)
+    .filter((d) => d.length > 0 && !d.endsWith(".replit.dev")) // skip dev-workspace preview URLs
     .map((domain) => `https://${domain}${WEBHOOK_PATH}`);
 }
 
@@ -49,11 +51,18 @@ function getExpectedUrls(): string[] {
  * Returns the Stripe secret key appropriate for the current environment.
  * Mirrors the getStripeKey() helper in artifacts/api-server/src/lib/stripe.ts.
  *
- *   Dev  (REPLIT_DOMAINS absent)  → STRIPE_SECRET_KEY       (sk_test_…)
- *   Prod (REPLIT_DOMAINS present) → STRIPE_SECRET_KEY_PROD  (sk_live_…)
+ *   - REPLIT_DOMAINS absent                          → dev  → STRIPE_SECRET_KEY       (sk_test_…)
+ *   - REPLIT_DOMAINS present, all domains .replit.dev → dev  → STRIPE_SECRET_KEY       (sk_test_…)
+ *   - REPLIT_DOMAINS present, no domain  .replit.dev → prod → STRIPE_SECRET_KEY_PROD  (sk_live_…)
+ *
+ * Replit sets REPLIT_DOMAINS in both the editor workspace (*.replit.dev) and
+ * deployed apps (*.replit.app / custom domains), so presence alone is not a
+ * reliable production signal — the domain values must be inspected.
  */
 function getStripeKey(): string {
-  const isProd = !!(process.env.REPLIT_DOMAINS);
+  const domains = process.env.REPLIT_DOMAINS ?? "";
+  const isProd = domains.length > 0 &&
+    domains.split(",").every((d) => !d.trim().endsWith(".replit.dev"));
 
   if (isProd) {
     const key = process.env.STRIPE_SECRET_KEY_PROD;
