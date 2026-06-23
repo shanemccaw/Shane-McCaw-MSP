@@ -1,7 +1,7 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useLocation, useSearch, Link } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
-import { CheckCircle, Clock, ArrowRight, Loader2, ShieldCheck, Calendar, Phone, ShoppingCart, RefreshCw, UserPlus, LogIn, Lock } from "lucide-react";
+import { CheckCircle, Clock, ArrowRight, Loader2, ShieldCheck, Calendar, Phone, ShoppingCart, RefreshCw, X, Eye, EyeOff } from "lucide-react";
 import OrderWizard, { type WizardStep, type WizardSelection } from "./OrderWizard";
 
 interface Service {
@@ -43,7 +43,7 @@ function todayIso() {
 }
 
 export default function OnboardingSelect() {
-  const { user } = useAuth();
+  const { user, login, register } = useAuth();
   const [, setLocation] = useLocation();
   const search = useSearch();
   const params = new URLSearchParams(search);
@@ -58,8 +58,17 @@ export default function OnboardingSelect() {
   const [wizardQueue, setWizardQueue] = useState<Service[]>([]);
   const [wizardIndex, setWizardIndex] = useState(0);
 
-  // Auth gate
-  const [showAuthGate, setShowAuthGate] = useState(false);
+  // Auth modal
+  const [showAuthModal, setShowAuthModal] = useState(false);
+  const [authTab, setAuthTab] = useState<"register" | "login">("register");
+  const [authName, setAuthName] = useState("");
+  const [authEmail, setAuthEmail] = useState("");
+  const [authPassword, setAuthPassword] = useState("");
+  const [authConfirm, setAuthConfirm] = useState("");
+  const [authError, setAuthError] = useState("");
+  const [authLoading, setAuthLoading] = useState(false);
+  const [showPw, setShowPw] = useState(false);
+  const modalRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     fetch("/api/portal/onboarding/services")
@@ -106,14 +115,7 @@ export default function OnboardingSelect() {
     setLocation(`/portal/onboarding/contract?${qs.toString()}`);
   };
 
-  const handleContinue = () => {
-    if (selectedIds.size === 0) return;
-    if (!user) {
-      const returnPath = `/portal/onboarding/select?service=${preselectedSlug || ""}`;
-      sessionStorage.setItem("onboardingReturnTo", returnPath);
-      setShowAuthGate(true);
-      return;
-    }
+  const proceedWithCheckout = () => {
     const selected = services.filter(s => selectedIds.has(s.id));
     const needsWizard = selected.filter(s => s.orderWorkflow?.length && s.basePrice);
     if (needsWizard.length > 0) {
@@ -122,6 +124,44 @@ export default function OnboardingSelect() {
       setWizardIndex(0);
     } else {
       navigateToContract();
+    }
+  };
+
+  const handleContinue = () => {
+    if (selectedIds.size === 0) return;
+    if (!user) {
+      setAuthTab("register");
+      setAuthError("");
+      setAuthName("");
+      setAuthEmail("");
+      setAuthPassword("");
+      setAuthConfirm("");
+      setShowAuthModal(true);
+      return;
+    }
+    proceedWithCheckout();
+  };
+
+  const handleAuthSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setAuthError("");
+    if (authTab === "register") {
+      if (authPassword !== authConfirm) { setAuthError("Passwords do not match."); return; }
+      if (authPassword.length < 8) { setAuthError("Password must be at least 8 characters."); return; }
+    }
+    setAuthLoading(true);
+    try {
+      if (authTab === "register") {
+        await register(authEmail.trim(), authPassword, authName.trim() || undefined);
+      } else {
+        await login(authEmail.trim(), authPassword);
+      }
+      setShowAuthModal(false);
+      proceedWithCheckout();
+    } catch (err: unknown) {
+      setAuthError(err instanceof Error ? err.message : "Something went wrong. Please try again.");
+    } finally {
+      setAuthLoading(false);
     }
   };
 
@@ -169,6 +209,157 @@ export default function OnboardingSelect() {
           onComplete={handleWizardComplete}
           onCancel={handleWizardCancel}
         />
+      )}
+
+      {/* ── Auth Modal ─────────────────────────────────────────────── */}
+      {showAuthModal && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4"
+          onClick={e => { if (e.target === e.currentTarget) setShowAuthModal(false); }}
+        >
+          <div ref={modalRef} className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
+            {/* Header */}
+            <div className="bg-[#0A2540] px-6 py-4 flex items-center justify-between">
+              <div>
+                <p className="text-white/60 text-xs font-medium uppercase tracking-wider mb-0.5">One step away</p>
+                <h2 className="text-white font-bold text-base leading-tight">
+                  {authTab === "register" ? "Create your client account" : "Sign in to your account"}
+                </h2>
+              </div>
+              <button
+                onClick={() => setShowAuthModal(false)}
+                className="text-white/50 hover:text-white transition-colors p-1 rounded-lg hover:bg-white/10"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Tabs */}
+            <div className="flex border-b border-border">
+              <button
+                onClick={() => { setAuthTab("register"); setAuthError(""); }}
+                className={`flex-1 py-3 text-sm font-semibold transition-colors ${
+                  authTab === "register"
+                    ? "text-[#0078D4] border-b-2 border-[#0078D4]"
+                    : "text-muted-foreground hover:text-[#0A2540]"
+                }`}
+              >
+                New client
+              </button>
+              <button
+                onClick={() => { setAuthTab("login"); setAuthError(""); }}
+                className={`flex-1 py-3 text-sm font-semibold transition-colors ${
+                  authTab === "login"
+                    ? "text-[#0078D4] border-b-2 border-[#0078D4]"
+                    : "text-muted-foreground hover:text-[#0A2540]"
+                }`}
+              >
+                Existing client
+              </button>
+            </div>
+
+            {/* Form */}
+            <form onSubmit={handleAuthSubmit} className="p-6 space-y-4">
+              {authTab === "register" && (
+                <p className="text-xs text-muted-foreground leading-relaxed bg-[#F7F9FC] rounded-xl px-3 py-2.5 border border-border">
+                  Creating an account is <strong>free</strong> and gives you a secure portal to track your project, download deliverables, and manage invoices.
+                </p>
+              )}
+
+              {authTab === "register" && (
+                <div>
+                  <label className="text-xs font-semibold text-[#0A2540] mb-1.5 block">Your name <span className="text-muted-foreground font-normal">(optional)</span></label>
+                  <input
+                    type="text"
+                    value={authName}
+                    onChange={e => setAuthName(e.target.value)}
+                    placeholder="Jane Smith"
+                    className="w-full border border-border rounded-xl px-3 py-2.5 text-sm text-[#0A2540] placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-[#0078D4]/30 focus:border-[#0078D4]"
+                  />
+                </div>
+              )}
+
+              <div>
+                <label className="text-xs font-semibold text-[#0A2540] mb-1.5 block">Work email</label>
+                <input
+                  type="email"
+                  required
+                  autoFocus
+                  value={authEmail}
+                  onChange={e => setAuthEmail(e.target.value)}
+                  placeholder="jane@company.com"
+                  className="w-full border border-border rounded-xl px-3 py-2.5 text-sm text-[#0A2540] placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-[#0078D4]/30 focus:border-[#0078D4]"
+                />
+              </div>
+
+              <div>
+                <label className="text-xs font-semibold text-[#0A2540] mb-1.5 block">Password</label>
+                <div className="relative">
+                  <input
+                    type={showPw ? "text" : "password"}
+                    required
+                    value={authPassword}
+                    onChange={e => setAuthPassword(e.target.value)}
+                    placeholder={authTab === "register" ? "At least 8 characters" : "Your password"}
+                    className="w-full border border-border rounded-xl px-3 py-2.5 pr-10 text-sm text-[#0A2540] placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-[#0078D4]/30 focus:border-[#0078D4]"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPw(p => !p)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-[#0A2540]"
+                  >
+                    {showPw ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+              </div>
+
+              {authTab === "register" && (
+                <div>
+                  <label className="text-xs font-semibold text-[#0A2540] mb-1.5 block">Confirm password</label>
+                  <input
+                    type={showPw ? "text" : "password"}
+                    required
+                    value={authConfirm}
+                    onChange={e => setAuthConfirm(e.target.value)}
+                    placeholder="Repeat password"
+                    className="w-full border border-border rounded-xl px-3 py-2.5 text-sm text-[#0A2540] placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-[#0078D4]/30 focus:border-[#0078D4]"
+                  />
+                </div>
+              )}
+
+              {authError && (
+                <p className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-xl px-3 py-2.5">
+                  {authError}
+                </p>
+              )}
+
+              <button
+                type="submit"
+                disabled={authLoading}
+                className="w-full flex items-center justify-center gap-2 bg-[#0078D4] text-white font-semibold px-5 py-3 rounded-xl hover:bg-[#005A9E] transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-sm"
+              >
+                {authLoading
+                  ? <Loader2 className="w-4 h-4 animate-spin" />
+                  : authTab === "register"
+                    ? "Create account & continue"
+                    : "Sign in & continue"
+                }
+                {!authLoading && <ArrowRight className="w-4 h-4" />}
+              </button>
+
+              {authTab === "login" && (
+                <p className="text-center">
+                  <a
+                    href={`${import.meta.env.BASE_URL}forgot-password`}
+                    className="text-xs text-muted-foreground hover:text-[#0078D4] transition-colors"
+                  >
+                    Forgot your password?
+                  </a>
+                </p>
+              )}
+            </form>
+          </div>
+        </div>
       )}
 
       <div className="bg-[#0A2540] border-b border-white/10">
@@ -404,72 +595,28 @@ export default function OnboardingSelect() {
                   </div>
                 </div>
 
-                {showAuthGate ? (
-                  <div className="bg-white border border-[#0078D4]/30 rounded-2xl overflow-hidden shadow-sm">
-                    <div className="bg-[#0A2540] px-4 py-3 flex items-center gap-2">
-                      <Lock className="w-4 h-4 text-[#00B4D8]" />
-                      <span className="text-white text-sm font-semibold">Sign in to continue</span>
-                    </div>
-                    <div className="p-4 space-y-4">
-                      <p className="text-sm text-[#0A2540] font-medium leading-snug">
-                        You're one step away from placing your order.
-                      </p>
-                      <p className="text-xs text-muted-foreground leading-relaxed">
-                        To review the service agreement and complete checkout, you'll need a <strong>free client portal account</strong>. It takes under a minute to set up and gives you a secure dashboard to track your project, download deliverables, and manage invoices.
-                      </p>
-                      <div className="space-y-2">
-                        <a
-                          href={`${import.meta.env.BASE_URL}?register=1`}
-                          className="w-full flex items-center justify-center gap-2 bg-[#0078D4] text-white font-semibold px-4 py-2.5 rounded-xl hover:bg-[#005A9E] transition-colors text-sm"
-                        >
-                          <UserPlus className="w-4 h-4" />
-                          Create a free account
-                        </a>
-                        <a
-                          href={import.meta.env.BASE_URL}
-                          className="w-full flex items-center justify-center gap-2 border border-border text-[#0A2540] font-semibold px-4 py-2.5 rounded-xl hover:border-[#0078D4]/40 hover:bg-[#F7F9FC] transition-colors text-sm"
-                        >
-                          <LogIn className="w-4 h-4" />
-                          Sign in to existing account
-                        </a>
-                      </div>
-                      <p className="text-[11px] text-muted-foreground leading-relaxed text-center">
-                        Your selected services are saved. After signing in you'll be brought right back here.
-                      </p>
-                      <button
-                        onClick={() => setShowAuthGate(false)}
-                        className="w-full text-xs text-muted-foreground hover:text-[#0078D4] transition-colors text-center"
-                      >
-                        ← Back to service selection
-                      </button>
-                    </div>
-                  </div>
-                ) : (
-                  <>
-                    <button
-                      onClick={handleContinue}
-                      disabled={selectedIds.size === 0}
-                      className="w-full flex items-center justify-center gap-2 bg-[#0078D4] text-white font-semibold px-5 py-3 rounded-xl hover:bg-[#005A9E] transition-colors disabled:opacity-40 disabled:cursor-not-allowed text-sm"
-                    >
-                      {hasWizardServices ? "Get Your Custom Quote" : "Continue to Agreement"}
-                      <ArrowRight className="w-4 h-4" />
-                    </button>
+                <button
+                  onClick={handleContinue}
+                  disabled={selectedIds.size === 0}
+                  className="w-full flex items-center justify-center gap-2 bg-[#0078D4] text-white font-semibold px-5 py-3 rounded-xl hover:bg-[#005A9E] transition-colors disabled:opacity-40 disabled:cursor-not-allowed text-sm"
+                >
+                  {hasWizardServices ? "Get Your Custom Quote" : "Continue to Agreement"}
+                  <ArrowRight className="w-4 h-4" />
+                </button>
 
-                    <div className="text-center">
-                      <Link
-                        href="/book"
-                        className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-[#0078D4] transition-colors font-medium"
-                      >
-                        <Phone className="w-3.5 h-3.5" />
-                        Prefer to talk first? Schedule a free discovery call →
-                      </Link>
-                    </div>
+                <div className="text-center">
+                  <Link
+                    href="/book"
+                    className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-[#0078D4] transition-colors font-medium"
+                  >
+                    <Phone className="w-3.5 h-3.5" />
+                    Prefer to talk first? Schedule a free discovery call →
+                  </Link>
+                </div>
 
-                    <p className="text-xs text-muted-foreground text-center">
-                      You'll review and sign a short service agreement before checkout.
-                    </p>
-                  </>
-                )}
+                <p className="text-xs text-muted-foreground text-center">
+                  You'll review and sign a short service agreement before checkout.
+                </p>
               </div>
             </div>
           </div>
