@@ -66,6 +66,24 @@ const TEMPLATES: TemplateDefinition[] = [
   `,
   },
   {
+    slug: "account-setup",
+    recipientType: "client",
+    name: "Account Setup (Welcome)",
+    subject: "Set up your Shane McCaw Consulting portal",
+    variables: [
+      { name: "setupLink", description: "One-time password setup URL (expires in 72 hours)" },
+      { name: "clientName", description: "Client's full name or email" },
+    ],
+    bodyHtml: `
+    <p>Hi {{clientName}},</p>
+    <p>Your project workspace has been created and is ready for you. The last step is setting your portal password so you can log in and track your project in real time.</p>
+    <p style="margin:24px 0 0;"><a href="{{setupLink}}" style="display:inline-block;background:${BLUE};color:#ffffff;text-decoration:none;font-weight:600;font-size:14px;padding:12px 24px;border-radius:6px;">Set up my portal →</a></p>
+    <p style="margin-top:16px;color:#64748b;font-size:13px;">This link expires in <strong>72 hours</strong>. If you didn't expect this email, you can safely ignore it.</p>
+    <p style="margin-top:24px;">Looking forward to working with you.</p>
+    <p>— Shane McCaw<br/><span style="color:#64748b;font-size:13px;">Lead Microsoft 365 Architect | Shane McCaw Consulting</span></p>
+  `,
+  },
+  {
     slug: "password-reset",
     recipientType: "client",
     name: "Password Reset",

@@ -3329,8 +3329,44 @@ async function processStripeEvent(req: Request, event: import("stripe").Stripe.E
             );
           })
           .catch(() => null);
+
+        // Welcome / setup email to the client
+        if (buyer?.email) {
+          const clientBaseUrl = process.env.PORTAL_BASE_URL
+            ?? `${process.env.REPLIT_DEV_DOMAIN ? `https://${process.env.REPLIT_DEV_DOMAIN}` : ""}/crm`;
+          const clientHasPassword = !!(buyer.passwordHash);
+          if (!clientHasPassword) {
+            // New client — generate a setup token so they can set their first password
+            const { randomBytes: rb } = await import("crypto");
+            const setupToken = rb(32).toString("hex");
+            const setupExpiresAt = new Date(Date.now() + 72 * 60 * 60 * 1000);
+            await db.insert(accountSetupTokensTable).values({ userId: buyer.id, token: setupToken, expiresAt: setupExpiresAt });
+            const setupUrl = `${clientBaseUrl}/portal/onboarding/success?setup_token=${setupToken}`;
+            void sendEmailFromTemplate(
+              "account-setup",
+              buyer.email,
+              { setupLink: setupUrl, clientName: buyer.name ?? buyer.email },
+              "Set up your Shane McCaw Consulting portal",
+              `<p>Hi ${buyer.name ?? ""},</p><p>Your project workspace is ready. Click the link below to set your portal password:</p><p><a href="${setupUrl}" style="color:#0078D4;">Set my password →</a></p><p>This link expires in 72 hours.</p><p>— Shane McCaw</p>`,
+            ).catch(() => null);
+          } else {
+            // Returning client — send a "project is ready" email with portal login link
+            void sendEmailFromTemplate(
+              "onboarding-confirmation",
+              buyer.email,
+              {
+                clientName: buyer.name ?? buyer.email,
+                serviceName: serviceLabel,
+                amountDollars: session.amount_total ? String(Math.round(session.amount_total / 100)) : "0",
+                projectUrl: clientBaseUrl,
+              },
+              "Your project workspace is ready — Shane McCaw Consulting",
+              `<p>Hi ${buyer.name ?? ""},</p><p>Your <strong>${serviceLabel}</strong> project workspace is ready. Log in to your portal to track progress.</p><p><a href="${clientBaseUrl}" style="color:#0078D4;">View your portal →</a></p><p>— Shane McCaw</p>`,
+            ).catch(() => null);
+          }
+        }
       } catch {
-        // SMS/push failure must never break provisioning
+        // SMS/push/email failure must never break provisioning
       }
     }
   }
@@ -5926,6 +5962,8 @@ router.post("/portal/onboarding/provision/:sessionId", async (req: Request, res:
       .limit(1);
     const hasPassword = !!(provUser?.passwordHash);
     let sentSetupEmail = false;
+    const baseUrl = process.env.PORTAL_BASE_URL
+      ?? `${process.env.REPLIT_DEV_DOMAIN ? `https://${process.env.REPLIT_DEV_DOMAIN}` : ""}/crm`;
     if (!hasPassword && provUser?.email) {
       const { randomBytes } = await import("crypto");
       const token = randomBytes(32).toString("hex");
@@ -5933,17 +5971,38 @@ router.post("/portal/onboarding/provision/:sessionId", async (req: Request, res:
       await db.insert(accountSetupTokensTable).values({ userId: resolvedUserId, token, expiresAt });
 
       // Send setup link via email — token never leaves the server in the API response
-      const baseUrl = process.env.PORTAL_BASE_URL
-        ?? `${process.env.REPLIT_DEV_DOMAIN ? `https://${process.env.REPLIT_DEV_DOMAIN}` : ""}/crm`;
       const setupUrl = `${baseUrl}/portal/onboarding/success?setup_token=${token}`;
       void sendEmailFromTemplate(
         "account-setup",
         provUser.email,
         { setupLink: setupUrl, clientName: provUser.name ?? provUser.email },
-        "Set up your Shane McCaw Consulting portal password",
-        `<p>Hi ${provUser.name ?? ""},</p><p>Your project workspace is ready. Click the link below to set your portal password:</p><p><a href="${setupUrl}">Set my password →</a></p><p>This link expires in 72 hours.</p><p>— Shane McCaw</p>`,
+        "Set up your Shane McCaw Consulting portal",
+        `<p>Hi ${provUser.name ?? ""},</p><p>Your project workspace is ready. Click the link below to set your portal password:</p><p><a href="${setupUrl}" style="color:#0078D4;">Set my password →</a></p><p>This link expires in 72 hours.</p><p>— Shane McCaw</p>`,
       ).catch(() => null);
       sentSetupEmail = true;
+    } else if (hasPassword && provUser?.email) {
+      // Returning client — send a "project is ready" email with portal login link
+      const sidsStr = session.metadata?.serviceIds ?? session.metadata?.serviceId ?? "";
+      const sids = sidsStr.split(",").map((s: string) => parseInt(s.trim(), 10)).filter((n: number) => !isNaN(n));
+      let serviceName = "your service";
+      if (sids.length > 0) {
+        const svcs = await db.select({ name: servicesTable.name }).from(servicesTable)
+          .where(inArray(servicesTable.id, sids));
+        if (svcs.length > 0) serviceName = svcs.map(s => s.name).join(", ");
+      }
+      const amountDollars = session.amount_total ? String(Math.round(session.amount_total / 100)) : "0";
+      void sendEmailFromTemplate(
+        "onboarding-confirmation",
+        provUser.email,
+        {
+          clientName: provUser.name ?? provUser.email,
+          serviceName,
+          amountDollars,
+          projectUrl: baseUrl,
+        },
+        "Your project workspace is ready — Shane McCaw Consulting",
+        `<p>Hi ${provUser.name ?? ""},</p><p>Your <strong>${serviceName}</strong> project workspace is ready. Log in to your portal to track progress.</p><p><a href="${baseUrl}" style="color:#0078D4;">View your portal →</a></p><p>— Shane McCaw</p>`,
+      ).catch(() => null);
     }
 
     res.json({ ok: true, hasPassword, sentSetupEmail });
