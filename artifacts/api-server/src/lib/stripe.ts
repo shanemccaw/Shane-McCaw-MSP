@@ -39,3 +39,41 @@ export function getStripeKey(): string {
   }
   return key;
 }
+
+/**
+ * Validates that the configured Stripe key prefix matches the current
+ * environment. Call once at server startup, before any Stripe SDK usage.
+ *
+ * Rules:
+ *   Dev  → key must start with "sk_test_"  (live key would risk real charges)
+ *   Prod → key must start with "sk_live_"  (test key means payments silently fail)
+ *
+ * Throws when a mismatch is detected so the misconfiguration is caught
+ * immediately rather than at the moment of the first payment attempt.
+ * If no Stripe key is set, this function is a no-op — the missing-key
+ * error is raised later by getStripeKey() only when Stripe is actually used.
+ */
+export function validateStripeKeyOnStartup(): void {
+  const isProd = !!(process.env.REPLIT_DOMAINS);
+
+  if (isProd) {
+    const key = process.env.STRIPE_SECRET_KEY_PROD;
+    if (!key) return; // Missing key handled lazily by getStripeKey()
+    if (!key.startsWith("sk_live_")) {
+      throw new Error(
+        `[Stripe] Production environment detected but STRIPE_SECRET_KEY_PROD does not start with "sk_live_". ` +
+        `Payments will not work in production. Replace the key with a live key from the Stripe dashboard.`,
+      );
+    }
+  } else {
+    const key = process.env.STRIPE_SECRET_KEY;
+    if (!key) return; // Missing key handled lazily by getStripeKey()
+    if (!key.startsWith("sk_test_")) {
+      throw new Error(
+        `[Stripe] Development environment detected but STRIPE_SECRET_KEY does not start with "sk_test_". ` +
+        `A live key in the dev slot risks real charges against real customers. ` +
+        `Move it to STRIPE_SECRET_KEY_PROD and set a test key in STRIPE_SECRET_KEY.`,
+      );
+    }
+  }
+}

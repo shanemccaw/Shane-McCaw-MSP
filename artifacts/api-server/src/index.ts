@@ -1,5 +1,6 @@
 import app from "./app";
 import { logger } from "./lib/logger";
+import { validateStripeKeyOnStartup } from "./lib/stripe";
 import { seedAdminUser } from "./routes/auth";
 import { seedPortalDemo, seedServiceTemplates } from "./lib/seed-portal";
 import { seedEmailTemplates } from "./lib/seed-email-templates";
@@ -20,6 +21,8 @@ const port = Number(rawPort);
 if (Number.isNaN(port) || port <= 0) {
   throw new Error(`Invalid PORT value: "${rawPort}"`);
 }
+
+validateStripeKeyOnStartup();
 
 app.listen(port, (err) => {
   if (err) {
