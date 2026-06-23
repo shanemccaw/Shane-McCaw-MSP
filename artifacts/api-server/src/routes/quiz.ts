@@ -6,7 +6,7 @@ import { anthropic } from "@workspace/integrations-anthropic-ai";
 import { db, quizLeadsTable, quizAnalyticsEventsTable } from "@workspace/db";
 import { logger } from "../lib/logger";
 import { generateQuizPdf } from "../lib/quiz-pdf";
-import { sendEmailWithAttachment, sendEmailWithAttachmentOrThrow, sendEmail, sendEmailFromTemplate, brandedEmail, quizLeadNotificationEmail } from "../lib/mailer";
+import { sendEmailWithAttachment, sendEmailWithAttachmentOrThrow, sendEmail, sendEmailFromTemplate, getEmailTemplateOrFallback, brandedEmail, quizLeadNotificationEmail } from "../lib/mailer";
 
 const RESEND_TOKEN_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 

@@ -306,6 +306,24 @@ const TEMPLATES: TemplateDefinition[] = [
   `,
   },
   {
+    slug: "service-overview-email",
+    name: "Service Overview Email (with PDF, to Lead)",
+    subject: "Your {{serviceName}} overview from Shane McCaw Consulting",
+    variables: [
+      { name: "firstName", description: "Lead's first name" },
+      { name: "serviceName", description: "Name of the service they requested" },
+      { name: "bookingLink", description: "URL for booking a free discovery call" },
+    ],
+    bodyHtml: `
+    <p>Hi {{firstName}},</p>
+    <p>Thank you for your interest in Shane's <strong>{{serviceName}}</strong> services. Please find your personalised overview document attached to this email.</p>
+    <p>The overview covers what's included, typical timelines, and expected outcomes so you can make an informed decision.</p>
+    <p>Shane personally reviews every request and will follow up within <strong>one business day</strong>. In the meantime, feel free to book a free 30-minute discovery call to discuss your specific situation.</p>
+    <p style="margin:24px 0 0;"><a href="{{bookingLink}}" style="display:inline-block;background:${BLUE};color:#ffffff;text-decoration:none;font-weight:600;font-size:14px;padding:12px 24px;border-radius:6px;">Book a Free Discovery Call →</a></p>
+    <p style="margin-top:24px;">— Shane McCaw<br/><span style="color:#64748b;font-size:13px;">Lead Microsoft 365 Architect | Shane McCaw Consulting</span></p>
+  `,
+  },
+  {
     slug: "client-message-notification",
     name: "Client Message Notification (to Client)",
     subject: "New message from Shane McCaw Consulting",

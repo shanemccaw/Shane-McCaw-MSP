@@ -103,6 +103,11 @@ const SAMPLE_VARS: Record<string, Record<string, string>> = {
     purchaseType: "Service purchase",
     portalLink: "https://shanemccaw.consulting/crm/portal",
   },
+  "service-overview-email": {
+    firstName: "Jane",
+    serviceName: "SharePoint Intranet Build",
+    bookingLink: "https://shanemccaw.consulting/book",
+  },
   "client-message-notification": {
     clientName: "Jane Smith",
     messageBody: "Hi, just wanted to check in on the progress of the SharePoint migration. Any updates?",
