@@ -271,6 +271,15 @@ export async function generateServiceOverviewPdf(serviceName: string): Promise<B
   dt(page, "Lead Microsoft 365 Architect", margin, ty, regular, 10, grey);
   ty -= 14;
 
+  // Service page URL — clickable link back to the live service page
+  if (service.pageHref) {
+    const serviceUrl = `shanemccaw.com${service.pageHref}`;
+    const serviceUrlFull = `https://shanemccaw.com${service.pageHref}`;
+    dt(page, serviceUrl, margin, ty, regular, 8, teal);
+    addLink(serviceUrlFull, margin, ty, regular.widthOfTextAtSize(sanitize(serviceUrl), 8), 8);
+    ty -= 13;
+  }
+
   // Date near the bottom of the title page
   dt(page, dateStr, margin, 80, regular, 9, grey);
 
