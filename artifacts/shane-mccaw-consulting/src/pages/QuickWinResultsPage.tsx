@@ -661,7 +661,7 @@ export default function QuickWinResultsPage() {
           </div>
         </div>
       </section>
-      <TestimonialDiscountCallout />
+      <TestimonialDiscountCallout variant="banner" />
     </Layout>
   );
 }

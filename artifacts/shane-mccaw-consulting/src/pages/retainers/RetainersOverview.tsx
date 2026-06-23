@@ -728,7 +728,7 @@ export default function RetainersOverview() {
       </section>
 
       {/* Bottom CTA */}
-      <TestimonialDiscountCallout />
+      <TestimonialDiscountCallout variant="banner" />
       <section className="bg-[#0A2540] py-20 px-6 text-center">
         <div className="max-w-[700px] mx-auto">
           <h2 className="text-3xl font-extrabold text-white mb-4">Book a Free Discovery Call</h2>

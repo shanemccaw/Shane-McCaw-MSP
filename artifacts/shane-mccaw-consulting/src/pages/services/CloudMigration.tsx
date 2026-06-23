@@ -568,6 +568,7 @@ export default function CloudMigration() {
         </div>
       </section>
 
+      <TestimonialDiscountCallout />
       <section className="bg-[#0A2540] py-24 relative overflow-hidden">
         <div
           className="absolute inset-0 pointer-events-none"
@@ -606,7 +607,6 @@ export default function CloudMigration() {
           </div>
         </div>
       </section>
-      <TestimonialDiscountCallout variant="banner" />
       <ServiceOverviewModal
         serviceName="Cloud Migration"
         isOpen={modalOpen}

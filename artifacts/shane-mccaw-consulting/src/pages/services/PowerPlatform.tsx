@@ -581,6 +581,7 @@ export default function PowerPlatform() {
       </section>
 
       {/* ── FINAL CTA ────────────────────────────────────────────────────── */}
+      <TestimonialDiscountCallout />
       <section className="bg-[#0A2540] py-24 relative overflow-hidden">
         <div
           className="absolute inset-0 pointer-events-none"
@@ -613,7 +614,6 @@ export default function PowerPlatform() {
         </div>
       </section>
 
-      <TestimonialDiscountCallout variant="banner" />
       <ConsultationCTA />
       <ServiceOverviewModal
         serviceName="Power Platform"

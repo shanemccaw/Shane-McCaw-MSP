@@ -807,7 +807,7 @@ export default function Pricing() {
         </div>
       </section>
 
-      <TestimonialDiscountCallout />
+      <TestimonialDiscountCallout variant="banner" />
       <ConsultationCTA />
     </Layout>
   );

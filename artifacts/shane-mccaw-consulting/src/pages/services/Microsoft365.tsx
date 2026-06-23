@@ -420,6 +420,7 @@ export default function Microsoft365() {
       />
 
       {/* ── FINAL CTA ────────────────────────────────────────────────────── */}
+      <TestimonialDiscountCallout />
       <section className="bg-[#0A2540] py-24 relative overflow-hidden">
         <div className="absolute inset-0 pointer-events-none" style={{
           background: "radial-gradient(ellipse 700px 400px at 50% 100%, rgba(0,120,212,0.15) 0%, transparent 70%)"
@@ -446,7 +447,6 @@ export default function Microsoft365() {
         </div>
       </section>
 
-      <TestimonialDiscountCallout variant="banner" />
       <ServiceOverviewModal
         serviceName="Microsoft 365"
         isOpen={modalOpen}

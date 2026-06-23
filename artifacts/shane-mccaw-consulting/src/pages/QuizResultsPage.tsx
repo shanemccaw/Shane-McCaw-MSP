@@ -235,7 +235,7 @@ export default function QuizResultsPage() {
                 </div>
               )}
 
-              <TestimonialDiscountCallout />
+              <TestimonialDiscountCallout variant="banner" />
               {/* Footer attribution */}
               <p className="text-center text-white/30 text-xs pt-2">
                 Powered by{" "}

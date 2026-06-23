@@ -545,7 +545,7 @@ export default function SharePoint() {
         </div>
       </section>
 
-      <TestimonialDiscountCallout variant="banner" />
+      <TestimonialDiscountCallout />
       <ConsultationCTA />
       <ServiceOverviewModal
         serviceName="SharePoint Architecture"

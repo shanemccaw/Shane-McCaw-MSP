@@ -691,7 +691,7 @@ export default function MicroOfferDetail({ params }: MicroOfferDetailProps) {
         </div>
       </section>
 
-      <TestimonialDiscountCallout variant="banner" />
+      <TestimonialDiscountCallout />
       <ServiceOverviewModal
         serviceName={service.name}
         isOpen={modalOpen}

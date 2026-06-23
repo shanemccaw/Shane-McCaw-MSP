@@ -493,6 +493,7 @@ export default function CopilotAI() {
       </section>
 
       {/* ── FINAL CTA ────────────────────────────────────────────────────── */}
+      <TestimonialDiscountCallout />
       <section className="bg-[#0A2540] py-24 relative overflow-hidden">
         <div
           className="absolute inset-0 pointer-events-none"
@@ -519,7 +520,6 @@ export default function CopilotAI() {
           </div>
         </div>
       </section>
-      <TestimonialDiscountCallout variant="banner" />
       <ServiceOverviewModal
         serviceName="Copilot for M365"
         isOpen={modalOpen}

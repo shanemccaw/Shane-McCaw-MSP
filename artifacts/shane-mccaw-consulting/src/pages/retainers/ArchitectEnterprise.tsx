@@ -441,7 +441,7 @@ export default function ArchitectEnterprise() {
         </div>
       </section>
 
-      <TestimonialDiscountCallout variant="banner" />
+      <TestimonialDiscountCallout />
       {/* Bottom CTA */}
       <section className="bg-[#0A2540] py-20 px-6 text-center">
         <div className="max-w-[700px] mx-auto">
