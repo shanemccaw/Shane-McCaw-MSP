@@ -212,23 +212,6 @@ const TEMPLATES: TemplateDefinition[] = [
   `,
   },
   {
-    slug: "service-overview-confirmation",
-    name: "Service Overview Confirmation (to Lead)",
-    subject: "Your {{serviceName}} overview is on its way",
-    variables: [
-      { name: "firstName", description: "Lead's first name" },
-      { name: "serviceName", description: "Name of the requested service" },
-      { name: "bookingLink", description: "URL for booking a free discovery call" },
-    ],
-    bodyHtml: `
-    <p>Hi {{firstName}},</p>
-    <p>Thanks for your interest in Shane's <strong>{{serviceName}}</strong> services. Shane personally reviews every request and will send you the overview document and follow up within <strong>one business day</strong>.</p>
-    <p>In the meantime, if you have any urgent questions you can reach Shane directly at <a href="mailto:info@shanemccaw.com" style="color:${BLUE};">info@shanemccaw.com</a> or book a free discovery call below.</p>
-    <p style="margin:24px 0 0;"><a href="{{bookingLink}}" style="display:inline-block;background:${BLUE};color:#ffffff;text-decoration:none;font-weight:600;font-size:14px;padding:12px 24px;border-radius:6px;">Book a Free Discovery Call →</a></p>
-    <p style="margin-top:24px;">— Shane McCaw</p>
-  `,
-  },
-  {
     slug: "service-overview-lead-notification",
     name: "Service Overview Lead Notification (Admin)",
     subject: "New service overview request from {{name}} — {{company}}",
@@ -307,8 +290,8 @@ const TEMPLATES: TemplateDefinition[] = [
   },
   {
     slug: "service-overview-email",
-    name: "Service Overview Email (with PDF, to Lead)",
-    subject: "Your {{serviceName}} overview from Shane McCaw Consulting",
+    name: "Service Overview Email (to Lead)",
+    subject: "Your {{serviceName}} overview — Shane McCaw Consulting",
     variables: [
       { name: "firstName", description: "Lead's first name" },
       { name: "serviceName", description: "Name of the service they requested" },
@@ -316,9 +299,8 @@ const TEMPLATES: TemplateDefinition[] = [
     ],
     bodyHtml: `
     <p>Hi {{firstName}},</p>
-    <p>Thank you for your interest in Shane's <strong>{{serviceName}}</strong> services. Please find your personalised overview document attached to this email.</p>
-    <p>The overview covers what's included, typical timelines, and expected outcomes so you can make an informed decision.</p>
-    <p>Shane personally reviews every request and will follow up within <strong>one business day</strong>. In the meantime, feel free to book a free 30-minute discovery call to discuss your specific situation.</p>
+    <p>Thank you for your interest in Shane's <strong>{{serviceName}}</strong> services. Shane personally reviews every request and will be in touch within <strong>one business day</strong> with your overview document and to answer any questions.</p>
+    <p>In the meantime, if you'd like to jump ahead, feel free to book a free 30-minute discovery call to discuss your specific situation directly with Shane.</p>
     <p style="margin:24px 0 0;"><a href="{{bookingLink}}" style="display:inline-block;background:${BLUE};color:#ffffff;text-decoration:none;font-weight:600;font-size:14px;padding:12px 24px;border-radius:6px;">Book a Free Discovery Call →</a></p>
     <p style="margin-top:24px;">— Shane McCaw<br/><span style="color:#64748b;font-size:13px;">Lead Microsoft 365 Architect | Shane McCaw Consulting</span></p>
   `,

@@ -76,11 +76,6 @@ const SAMPLE_VARS: Record<string, Record<string, string>> = {
     nextBillingDate: "August 1, 2026",
     portalLink: "https://shanemccaw.consulting/crm/portal",
   },
-  "service-overview-confirmation": {
-    firstName: "Jane",
-    serviceName: "SharePoint Intranet Build",
-    bookingLink: "https://shanemccaw.consulting/book",
-  },
   "service-overview-lead-notification": {
     name: "Jane Smith",
     email: "jane@contoso.com",
