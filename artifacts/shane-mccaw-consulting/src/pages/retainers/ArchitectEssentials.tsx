@@ -115,7 +115,7 @@ export default function ArchitectEssentials() {
     "@type": "Offer",
     name: "Architect Essentials Retainer — Shane McCaw Consulting",
     description:
-      "Fractional senior Microsoft 365 architecture for mid-market and regulated organizations. 10 hours/month of predictable expert access — strategy calls, async support, and a monthly written summary — from the former Lead M365 Architect at NASA.",
+      "Fractional senior Microsoft 365 architecture for mid-market and regulated organizations. 10 hours/month of predictable expert access — strategy calls, async support, and a monthly written summary — from NASA's Lead M365 Architect.",
     price: jsonLdPrice,
     priceCurrency: "USD",
     priceSpecification: {
@@ -128,7 +128,7 @@ export default function ArchitectEssentials() {
       "@type": "Person",
       name: "Shane McCaw",
       jobTitle: "Lead Microsoft 365 Architect",
-      description: "30-year Microsoft ecosystem veteran and former Lead M365 Architect at NASA.",
+      description: "30-year Microsoft ecosystem veteran and NASA's Lead M365 Architect.",
     },
     url: "https://shanemccaw.com/retainers/architect-essentials",
   };
@@ -137,7 +137,7 @@ export default function ArchitectEssentials() {
     <Layout>
       <SEOMeta
         title="Architect Essentials — Fractional M365 Architecture from $1,500/mo | Shane McCaw Consulting"
-        description="Senior Microsoft 365 oversight for mid-market and regulated organizations. 10 hours/month of predictable expert access from the former Lead M365 Architect at NASA — no proposals, no retainer lock-in."
+        description="Senior Microsoft 365 oversight for mid-market and regulated organizations. 10 hours/month of predictable expert access from NASA's Lead M365 Architect — no proposals, no retainer lock-in."
         jsonLd={jsonLd}
       />
 

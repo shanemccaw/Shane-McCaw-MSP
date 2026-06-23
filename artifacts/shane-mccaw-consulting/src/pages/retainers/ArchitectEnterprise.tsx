@@ -105,7 +105,7 @@ const WHY_EXISTS = [
 ];
 
 const WHY_SHANE = [
-  "Former Lead Microsoft 365 Architect at NASA — responsible for the governance, security, and architecture of one of the most complex M365 deployments in the US federal space",
+  "Lead Microsoft 365 Architect at NASA — responsible for the governance, security, and architecture of one of the most complex M365 deployments in the US federal space",
   "30 years of continuous Microsoft ecosystem experience — from on-premises roots through every generation of cloud transformation",
   "Senior-only engagement — every hour is Shane. No junior staff, no account managers, no delegated delivery",
   "Federal-grade accountability — the governance standards and architectural discipline built for NASA applied to your environment",
@@ -136,7 +136,7 @@ export default function ArchitectEnterprise() {
     "@type": "Offer",
     name: "Architect Enterprise Retainer — Shane McCaw Consulting",
     description:
-      "Enterprise-grade Microsoft 365 architecture from the former Lead M365 Architect at NASA. 50 hours/month of senior-only consulting — weekly leadership sessions, same-day response, governance builds, Copilot deployment leadership, and a monthly written architecture summary.",
+      "Enterprise-grade Microsoft 365 architecture from NASA's Lead M365 Architect. 50 hours/month of senior-only consulting — weekly leadership sessions, same-day response, governance builds, Copilot deployment leadership, and a monthly written architecture summary.",
     price: livePrice,
     priceCurrency: "USD",
     priceSpecification: {
@@ -149,7 +149,7 @@ export default function ArchitectEnterprise() {
       "@type": "Person",
       name: "Shane McCaw",
       jobTitle: "Lead Microsoft 365 Architect",
-      description: "30-year Microsoft ecosystem veteran and former Lead M365 Architect at NASA.",
+      description: "30-year Microsoft ecosystem veteran and NASA's Lead M365 Architect.",
     },
     url: "https://shanemccaw.com/retainers/architect-enterprise",
   };
@@ -158,7 +158,7 @@ export default function ArchitectEnterprise() {
     <Layout>
       <SEOMeta
         title="Architect Enterprise Retainer — $11,000/mo | Shane McCaw Consulting"
-        description="Enterprise-grade M365 architecture from the former Lead Architect at NASA. 50 hours/month of senior-only consulting — weekly sessions, same-day response, governance builds, and Copilot deployment leadership for regulated and complex organizations."
+        description="Enterprise-grade M365 architecture from NASA's Lead Architect. 50 hours/month of senior-only consulting — weekly sessions, same-day response, governance builds, and Copilot deployment leadership for regulated and complex organizations."
         jsonLd={jsonLd}
       />
 
@@ -189,7 +189,7 @@ export default function ArchitectEnterprise() {
           </div>
 
           <h1 className="text-4xl md:text-5xl font-extrabold text-white mb-4 leading-tight">
-            Enterprise-Grade M365 Architecture,<br className="hidden md:block" /> Delivered by the Former Lead Architect at NASA
+            Enterprise-Grade M365 Architecture,<br className="hidden md:block" /> Delivered by NASA's Lead Architect
           </h1>
 
           <p className="text-white/60 text-sm uppercase tracking-widest font-bold mb-6">

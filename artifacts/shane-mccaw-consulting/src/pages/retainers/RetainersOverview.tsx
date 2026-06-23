@@ -303,7 +303,7 @@ export default function RetainersOverview() {
     "@type": "Service",
     name: "Microsoft 365 Architect Retainer Plans",
     description:
-      "Monthly retainer plans giving you ongoing access to Shane McCaw, former Lead Microsoft 365 Architect at NASA — from 10 to 50 hours per month.",
+      "Monthly retainer plans giving you ongoing access to Shane McCaw, NASA's Lead Microsoft 365 Architect — from 10 to 50 hours per month.",
     provider: {
       "@type": "Person",
       name: "Shane McCaw",
@@ -327,7 +327,7 @@ export default function RetainersOverview() {
     <Layout>
       <SEOMeta
         title="M365 Architect Retainer Plans | Shane McCaw Consulting"
-        description="Monthly Microsoft 365 retainer plans — 10, 25, or 50 hours of senior consulting per month. Strategy calls, async support, proactive monitoring, and full-stack M365 expertise from the former Lead Architect at NASA."
+        description="Monthly Microsoft 365 retainer plans — 10, 25, or 50 hours of senior consulting per month. Strategy calls, async support, proactive monitoring, and full-stack M365 expertise from NASA's Lead Architect."
         jsonLd={jsonLd}
       />
 
@@ -348,7 +348,7 @@ export default function RetainersOverview() {
             Fractional M365 Architecture
           </div>
           <h1 className="text-4xl md:text-5xl font-extrabold text-white mb-6 leading-tight">
-            Fractional M365 Architecture, Delivered by the Former Lead Architect at NASA.
+            Fractional M365 Architecture, Delivered by NASA's Lead Architect.
           </h1>
           <p className="text-white/70 text-lg max-w-2xl mx-auto leading-relaxed mb-8">
             For mid-market and regulated organizations that need senior-level clarity, governance, and modernization — without hiring full-time.

@@ -79,7 +79,7 @@ const WHY_PLAN_EXISTS = [
 ];
 
 const WHY_SHANE = [
-  "Former Lead Microsoft 365 Architect at NASA — accountable for one of the world's most demanding M365 environments",
+  "Lead Microsoft 365 Architect at NASA — accountable for one of the world's most demanding M365 environments",
   "30 years in the Microsoft ecosystem — from Active Directory to Azure AD, SharePoint on-prem to Copilot",
   "Senior-only delivery — Shane does the work personally; no junior staff, no outsourcing, no handoffs",
   "Architecture-first methodology — every engagement produces documented decisions, not just verbal recommendations",
@@ -110,7 +110,7 @@ export default function ArchitectGrowth() {
     "@type": "Offer",
     name: "Architect Growth Retainer",
     description:
-      "25 hours/month of senior Microsoft 365 consulting from a former NASA Lead M365 Architect — 2-hour priority response, two strategy calls, Copilot readiness scoring, governance framework builds, and proactive tenant health monitoring for mid-market and regulated organisations.",
+      "25 hours/month of senior Microsoft 365 consulting from NASA's Lead M365 Architect — 2-hour priority response, two strategy calls, Copilot readiness scoring, governance framework builds, and proactive tenant health monitoring for mid-market and regulated organisations.",
     price: growthLivePrice,
     priceCurrency: "USD",
     priceSpecification: {
@@ -131,7 +131,7 @@ export default function ArchitectGrowth() {
     <Layout>
       <SEOMeta
         title="Architect Growth Retainer — $6,000/mo | Shane McCaw Consulting"
-        description="25 hrs/month of senior M365 architecture from a former NASA Lead Architect. 2-hour priority response, Copilot readiness, governance frameworks, and proactive tenant monitoring for mid-market and regulated organisations."
+        description="25 hrs/month of senior M365 architecture from NASA's Lead Architect. 2-hour priority response, Copilot readiness, governance frameworks, and proactive tenant monitoring for mid-market and regulated organisations."
         jsonLd={jsonLd}
       />
 
