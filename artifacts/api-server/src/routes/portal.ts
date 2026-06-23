@@ -3381,8 +3381,9 @@ async function processStripeEvent(req: Request, event: import("stripe").Stripe.E
             ).catch(() => null);
           }
         }
-      } catch {
-        // SMS/push/email failure must never break provisioning
+      } catch (notifyErr) {
+        // SMS/push/email failure must never break provisioning, but log it
+        req.log.warn({ err: notifyErr, sessionId: session.id, eventType: event.type }, "processStripeEvent: post-provision notification failed (non-fatal)");
       }
     }
   }

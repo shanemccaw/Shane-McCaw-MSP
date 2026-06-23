@@ -1,6 +1,6 @@
 import app from "./app";
 import { logger } from "./lib/logger";
-import { validateStripeKeyOnStartup } from "./lib/stripe";
+import { validateStripeKeyOnStartup, checkWebhookHealthOnStartup } from "./lib/stripe";
 import { seedAdminUser } from "./routes/auth";
 import { seedPortalDemo, seedServiceTemplates } from "./lib/seed-portal";
 import { seedEmailTemplates } from "./lib/seed-email-templates";
@@ -63,6 +63,10 @@ app.listen(port, (err) => {
       logger.warn({ err: seedErr }, "Could not seed portal demo data");
     });
   }
+
+  checkWebhookHealthOnStartup(logger).catch((err) => {
+    logger.warn({ err }, "Stripe webhook health check failed (non-fatal)");
+  });
 
   initGraphSubscription().catch((err) => {
     logger.warn({ err }, "Graph subscription init failed (non-fatal)");

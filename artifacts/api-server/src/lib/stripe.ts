@@ -53,6 +53,63 @@ export function getStripeKey(): string {
  * If no Stripe key is set, this function is a no-op — the missing-key
  * error is raised later by getStripeKey() only when Stripe is actually used.
  */
+/**
+ * Checks whether a Stripe webhook endpoint is registered for the current
+ * domain and logs the result. Designed to be called once at server startup
+ * so that missing-endpoint regressions are immediately visible in logs.
+ *
+ * Non-fatal: any error (Stripe API down, key missing, etc.) is caught and
+ * logged as a warning so it never prevents the server from starting.
+ */
+export async function checkWebhookHealthOnStartup(logger: { info: (obj: Record<string, unknown>, msg: string) => void; warn: (obj: Record<string, unknown>, msg: string) => void }): Promise<void> {
+  const WEBHOOK_PATH = "/api/portal/stripe/webhook";
+
+  let stripeKey: string;
+  try {
+    stripeKey = getStripeKey();
+  } catch {
+    logger.warn({}, "Stripe webhook health: cannot check — Stripe key not configured");
+    return;
+  }
+
+  const domains = (process.env.REPLIT_DOMAINS ?? "").split(",").map((d) => d.trim()).filter(Boolean);
+  if (domains.length === 0) {
+    logger.warn({}, "Stripe webhook health: REPLIT_DOMAINS not set — skipping check");
+    return;
+  }
+
+  const isProd = domains.some((d) => !d.endsWith(".replit.dev"));
+  const relevantDomains = isProd
+    ? domains.filter((d) => !d.endsWith(".replit.dev"))
+    : domains;
+
+  const expectedUrls = relevantDomains.map((d) => `https://${d}${WEBHOOK_PATH}`);
+
+  try {
+    const { default: Stripe } = await import("stripe");
+    const stripe = new Stripe(stripeKey);
+    const endpoints = await stripe.webhookEndpoints.list({ limit: 100 });
+    const registeredUrls = new Set(endpoints.data.map((e) => e.url));
+
+    const missing = expectedUrls.filter((url) => !registeredUrls.has(url));
+    const present = expectedUrls.filter((url) => registeredUrls.has(url));
+
+    if (missing.length === 0) {
+      logger.info(
+        { urls: present, account: isProd ? "live" : "test" },
+        "Stripe webhook health: ✓ endpoint registered",
+      );
+    } else {
+      logger.warn(
+        { missing, present, account: isProd ? "live" : "test", fix: "pnpm --filter @workspace/scripts run sync-webhooks -- --fix" },
+        "Stripe webhook health: ⚠ missing webhook endpoint(s) — payments will NOT trigger provisioning. Run sync-webhooks --fix to register.",
+      );
+    }
+  } catch (err) {
+    logger.warn({ err }, "Stripe webhook health: check failed (non-fatal)");
+  }
+}
+
 export function validateStripeKeyOnStartup(): void {
   const isProd = !!(process.env.REPLIT_DOMAINS);
 
