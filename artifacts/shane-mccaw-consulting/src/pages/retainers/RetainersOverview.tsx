@@ -576,8 +576,8 @@ export default function RetainersOverview() {
                       : <span className="block text-xl font-extrabold text-[#0A2540]">{getTablePrice("architect-essentials", "$2,500")}<span className="text-sm font-normal text-muted-foreground">/mo</span></span>
                     }
                   </th>
-                  <th className="bg-[#0078D4]/5 text-center px-4 py-4 border-b border-[#0078D4]/30 w-[20%] relative">
-                    <span className="absolute -top-3.5 left-1/2 -translate-x-1/2 bg-[#0078D4] text-white text-[10px] font-bold uppercase tracking-wider px-3 py-1 rounded-full whitespace-nowrap">Most Popular</span>
+                  <th className="bg-[#0078D4]/5 text-center px-4 pt-8 pb-4 border-b border-[#0078D4]/30 w-[20%] relative">
+                    <span className="absolute top-2 left-1/2 -translate-x-1/2 bg-[#0078D4] text-white text-[10px] font-bold uppercase tracking-wider px-3 py-1 rounded-full whitespace-nowrap">Most Popular</span>
                     <span className="block text-xs font-bold uppercase tracking-wider text-[#0078D4] mb-1">Growth</span>
                     {loading
                       ? <TablePriceSkeleton />
