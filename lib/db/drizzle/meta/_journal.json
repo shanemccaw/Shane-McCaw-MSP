@@ -337,6 +337,13 @@
       "when": 1750650000000,
       "tag": "0047_add_azure_tenant_credentials",
       "breakpoints": true
+    },
+    {
+      "idx": 48,
+      "version": "7",
+      "when": 1750736400000,
+      "tag": "0048_add_runbook_job_history",
+      "breakpoints": true
     }
   ]
 }

@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { useLocation } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
@@ -23,6 +23,19 @@ interface RunbookSummary {
   state?: string;
 }
 
+interface JobHistoryRow {
+  id: number;
+  jobId: string;
+  runbookName: string;
+  credentialId: number | null;
+  customerName: string;
+  status: string;
+  output: string | null;
+  startedAt: string;
+  completedAt: string | null;
+  createdAt: string;
+}
+
 const JOB_STATUS_CFG: Record<string, { cls: string }> = {
   "Never run":  { cls: "bg-gray-100 text-gray-600" },
   "New":        { cls: "bg-blue-100 text-blue-700" },
@@ -36,6 +49,25 @@ const JOB_STATUS_CFG: Record<string, { cls: string }> = {
 
 const inputCls = "w-full border border-border rounded-lg px-3 py-2 text-sm text-[#0A2540] focus:outline-none focus:ring-2 focus:ring-[#0078D4]/40 bg-white";
 const labelCls = "block text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1";
+
+function formatRelative(dateStr: string): string {
+  const diff = Date.now() - new Date(dateStr).getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  return `${days}d ago`;
+}
+
+function formatDuration(startedAt: string, completedAt: string | null): string {
+  if (!completedAt) return "—";
+  const ms = new Date(completedAt).getTime() - new Date(startedAt).getTime();
+  const secs = Math.round(ms / 1000);
+  if (secs < 60) return `${secs}s`;
+  return `${Math.floor(secs / 60)}m ${secs % 60}s`;
+}
 
 export default function ScriptRunnerPage() {
   const [, navigate] = useLocation();
@@ -54,13 +86,34 @@ export default function ScriptRunnerPage() {
   const [running, setRunning] = useState(false);
   const [jobStatus, setJobStatus] = useState("Never run");
   const [logLines, setLogLines] = useState<string[]>([]);
+  const [logLabel, setLogLabel] = useState<string | null>(null);
   const logEndRef = useRef<HTMLDivElement>(null);
   const [governanceAreas, setGovernanceAreas] = useState<string[] | null>(null);
 
+  // Job history
+  const [history, setHistory] = useState<JobHistoryRow[]>([]);
+  const [loadingHistory, setLoadingHistory] = useState(false);
+  const [replayingJobId, setReplayingJobId] = useState<string | null>(null);
+
+  const loadHistory = useCallback(async () => {
+    setLoadingHistory(true);
+    try {
+      const res = await fetchWithAuth("/api/admin/runbook-jobs/history?limit=50");
+      if (res.ok) {
+        const data = await res.json() as JobHistoryRow[];
+        setHistory(data);
+      }
+    } catch {
+      // non-critical
+    } finally {
+      setLoadingHistory(false);
+    }
+  }, [fetchWithAuth]);
 
   useEffect(() => {
     void loadCredentials();
     void checkAzureConfig();
+    void loadHistory();
   }, []);
 
   useEffect(() => {
@@ -122,6 +175,7 @@ export default function ScriptRunnerPage() {
     if (!selectedCredId || !selectedRunbook) return;
     setRunning(true);
     setLogLines(["[Starting job…]"]);
+    setLogLabel(null);
     setJobStatus("New");
 
     try {
@@ -168,6 +222,7 @@ export default function ScriptRunnerPage() {
           if (data.terminal) {
             setLogLines(prev => [...prev, `[Job ${data.status}]`]);
             setRunning(false);
+            void loadHistory();
             return;
           }
 
@@ -187,6 +242,28 @@ export default function ScriptRunnerPage() {
     }
   };
 
+  const handleReplay = async (row: JobHistoryRow) => {
+    if (replayingJobId === row.jobId) return;
+    setReplayingJobId(row.jobId);
+    try {
+      const res = await fetchWithAuth(`/api/admin/runbook-jobs/${encodeURIComponent(row.jobId)}/replay`);
+      if (!res.ok) {
+        toast({ title: "Could not replay job output", variant: "destructive" });
+        return;
+      }
+      const data = await res.json() as {
+        runbookName: string;
+        customerName: string;
+        status: string;
+        lines: Array<{ sequence: number; text: string }>;
+      };
+      setJobStatus(data.status);
+      setLogLines(data.lines.map(l => l.text));
+      setLogLabel(`${data.runbookName} — ${data.customerName}`);
+    } finally {
+      setReplayingJobId(null);
+    }
+  };
 
   const statusCfg = JOB_STATUS_CFG[jobStatus] ?? { cls: "bg-gray-100 text-gray-600" };
   const canRun = !!selectedCredId && !!selectedRunbook && !running && (governanceAreas === null || governanceAreas.length > 0);
@@ -357,17 +434,22 @@ export default function ScriptRunnerPage() {
         <div className="lg:col-span-2 space-y-3">
           <div className="bg-white border border-border rounded-xl overflow-hidden">
             <div className="flex items-center justify-between px-4 py-3 border-b border-border bg-[#F7F9FC]">
-              <div className="flex items-center gap-2">
-                <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Live Output</p>
+              <div className="flex items-center gap-2 min-w-0">
+                <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground flex-shrink-0">
+                  {logLabel ? "Replayed Output" : "Live Output"}
+                </p>
+                {logLabel && (
+                  <span className="text-[10px] text-muted-foreground truncate">{logLabel}</span>
+                )}
                 {running && (
-                  <div className="w-2 h-2 rounded-full bg-yellow-400 animate-pulse" />
+                  <div className="w-2 h-2 rounded-full bg-yellow-400 animate-pulse flex-shrink-0" />
                 )}
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-shrink-0">
                 <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${statusCfg.cls}`}>{jobStatus}</span>
                 {logLines.length > 0 && !running && (
                   <button
-                    onClick={() => { setLogLines([]); setJobStatus("Never run"); }}
+                    onClick={() => { setLogLines([]); setJobStatus("Never run"); setLogLabel(null); }}
                     className="text-[10px] font-semibold text-muted-foreground hover:text-[#0A2540] transition-colors"
                   >
                     Clear
@@ -390,6 +472,107 @@ export default function ScriptRunnerPage() {
             </div>
           </div>
         </div>
+      </div>
+
+      {/* Job History */}
+      <div className="bg-white border border-border rounded-xl overflow-hidden">
+        <div className="flex items-center justify-between px-4 py-3 border-b border-border bg-[#F7F9FC]">
+          <div className="flex items-center gap-2">
+            <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Run History</p>
+            {history.length > 0 && (
+              <span className="text-[10px] text-muted-foreground">({history.length} runs)</span>
+            )}
+          </div>
+          <button
+            onClick={() => void loadHistory()}
+            disabled={loadingHistory}
+            className="text-[10px] font-semibold text-muted-foreground hover:text-[#0078D4] transition-colors flex items-center gap-1"
+            title="Refresh history"
+          >
+            <svg
+              className={`w-3 h-3 ${loadingHistory ? "animate-spin" : ""}`}
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              strokeWidth={2}
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+            </svg>
+            Refresh
+          </button>
+        </div>
+
+        {loadingHistory ? (
+          <div className="p-6 space-y-3">
+            {[...Array(3)].map((_, i) => (
+              <div key={i} className="h-10 bg-gray-100 rounded-lg animate-pulse" />
+            ))}
+          </div>
+        ) : history.length === 0 ? (
+          <div className="p-8 text-center">
+            <svg className="w-8 h-8 text-muted-foreground/30 mx-auto mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <p className="text-sm text-muted-foreground">No jobs have been run yet.</p>
+            <p className="text-xs text-muted-foreground mt-0.5">History appears here after you run a runbook.</p>
+          </div>
+        ) : (
+          <div className="divide-y divide-border">
+            {/* Header row */}
+            <div className="grid grid-cols-[1fr_1fr_auto_auto_auto] gap-4 px-4 py-2 bg-gray-50">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Runbook</span>
+              <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Customer</span>
+              <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Duration</span>
+              <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Started</span>
+              <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Status</span>
+            </div>
+            {history.map(row => {
+              const cfg = JOB_STATUS_CFG[row.status] ?? { cls: "bg-gray-100 text-gray-600" };
+              const isReplaying = replayingJobId === row.jobId;
+              const hasOutput = !!row.output;
+              return (
+                <div
+                  key={row.id}
+                  onClick={hasOutput && !running ? () => void handleReplay(row) : undefined}
+                  className={`grid grid-cols-[1fr_1fr_auto_auto_auto] gap-4 px-4 py-3 items-center transition-colors group ${hasOutput && !running ? "cursor-pointer hover:bg-blue-50/40" : "hover:bg-gray-50/50"}`}
+                  title={hasOutput ? "Click to replay stored output" : undefined}
+                >
+                  <span className="text-sm font-medium text-[#0A2540] truncate" title={row.runbookName}>
+                    {row.runbookName}
+                  </span>
+                  <span className="text-sm text-muted-foreground truncate" title={row.customerName}>
+                    {row.customerName}
+                  </span>
+                  <span className="text-xs text-muted-foreground tabular-nums">
+                    {formatDuration(row.startedAt, row.completedAt)}
+                  </span>
+                  <span className="text-xs text-muted-foreground tabular-nums whitespace-nowrap">
+                    {formatRelative(row.startedAt)}
+                  </span>
+                  <div className="flex items-center gap-2">
+                    <span className={`text-xs font-semibold px-2 py-0.5 rounded-full whitespace-nowrap ${cfg.cls}`}>
+                      {row.status}
+                    </span>
+                    {hasOutput && (
+                      <div
+                        title="Replay stored output"
+                        className="p-1 rounded text-muted-foreground group-hover:text-[#0078D4] transition-colors"
+                      >
+                        {isReplaying ? (
+                          <div className="w-3.5 h-3.5 border-2 border-gray-300 border-t-[#0078D4] rounded-full animate-spin" />
+                        ) : (
+                          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M5 3l14 9-14 9V3z" />
+                          </svg>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
 
     </div>

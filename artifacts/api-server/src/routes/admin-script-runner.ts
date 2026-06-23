@@ -6,12 +6,14 @@
  *
  * GET  /api/admin/runbooks                        — list runbooks
  * POST /api/admin/runbook-jobs                    — create a job
- * GET  /api/admin/runbook-jobs/:jobId/output      — poll output (since=N seq)
+ * GET  /api/admin/runbook-jobs/output             — poll output (since=N seq)
+ * GET  /api/admin/runbook-jobs/history            — list past job history
+ * GET  /api/admin/runbook-jobs/:jobId/replay      — replay stored output for a past job
  */
 
 import { Router, type IRouter, type Request, type Response } from "express";
-import { db, azureTenantCredentialsTable, kanbanTasksTable } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { db, azureTenantCredentialsTable, kanbanTasksTable, runbookJobHistoryTable } from "@workspace/db";
+import { eq, desc } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/requireAuth";
 import { getCredential } from "../lib/azure-keyvault";
 import {
@@ -115,6 +117,20 @@ router.post("/admin/runbook-jobs", requireAdmin, async (req: Request, res: Respo
       return;
     }
 
+    // Persist job history record immediately
+    try {
+      await db.insert(runbookJobHistoryTable).values({
+        jobId,
+        runbookName,
+        credentialId: cred.id,
+        customerName: cred.displayName,
+        status,
+        startedAt: new Date(),
+      });
+    } catch (histErr) {
+      logger.warn({ histErr, jobId }, "admin-script-runner: could not insert job history record");
+    }
+
     if (kanbanTaskId) {
       try {
         const [task] = await db
@@ -172,6 +188,33 @@ router.get("/admin/runbook-jobs/output", requireAdmin, async (req: Request, res:
     const newLines = outputLines.filter(l => l.sequence > since);
     const terminal = isTerminalStatus(statusResult.status);
 
+    // Update job history when terminal status reached
+    if (terminal) {
+      try {
+        const fullOutput = outputLines.map(l => l.text).join("\n");
+        await db
+          .update(runbookJobHistoryTable)
+          .set({
+            status: statusResult.status,
+            output: fullOutput,
+            completedAt: new Date(),
+          })
+          .where(eq(runbookJobHistoryTable.jobId, jobId));
+      } catch (histErr) {
+        logger.warn({ histErr, jobId }, "admin-script-runner: could not update job history on completion");
+      }
+    } else {
+      // Update running status in history
+      try {
+        await db
+          .update(runbookJobHistoryTable)
+          .set({ status: statusResult.status })
+          .where(eq(runbookJobHistoryTable.jobId, jobId));
+      } catch {
+        // non-critical
+      }
+    }
+
     let kanbanMetaUpdated = false;
     if (terminal && kanbanTaskId) {
       try {
@@ -207,6 +250,80 @@ router.get("/admin/runbook-jobs/output", requireAdmin, async (req: Request, res:
   } catch (err) {
     logger.error({ err, jobId }, "admin-script-runner: output poll error");
     res.status(500).json({ error: "Failed to fetch job output" });
+  }
+});
+
+/**
+ * GET /api/admin/runbook-jobs/history?limit=50&credentialId=N
+ *
+ * Returns the last N runbook job history records, newest first.
+ */
+router.get("/admin/runbook-jobs/history", requireAdmin, async (req: Request, res: Response) => {
+  const rawLimit = Number(req.query.limit ?? 50);
+  const limit = Number.isFinite(rawLimit) && rawLimit > 0 ? Math.min(rawLimit, 200) : 50;
+  const rawCredId = req.query.credentialId ? Number(req.query.credentialId) : NaN;
+  const credentialId = Number.isFinite(rawCredId) && rawCredId > 0 ? rawCredId : undefined;
+
+  try {
+    const query = db
+      .select()
+      .from(runbookJobHistoryTable)
+      .orderBy(desc(runbookJobHistoryTable.startedAt))
+      .limit(limit);
+
+    const rows = credentialId
+      ? await db
+          .select()
+          .from(runbookJobHistoryTable)
+          .where(eq(runbookJobHistoryTable.credentialId, credentialId))
+          .orderBy(desc(runbookJobHistoryTable.startedAt))
+          .limit(limit)
+      : await query;
+
+    res.json(rows);
+  } catch (err) {
+    logger.error({ err }, "admin-script-runner: failed to fetch job history");
+    res.status(500).json({ error: "Failed to fetch job history" });
+  }
+});
+
+/**
+ * GET /api/admin/runbook-jobs/:jobId/replay
+ *
+ * Returns the stored output lines for a completed job from the history table.
+ * Used by the frontend to replay past job output without hitting Azure Automation.
+ */
+router.get("/admin/runbook-jobs/:jobId/replay", requireAdmin, async (req: Request, res: Response) => {
+  const jobId = String(req.params.jobId);
+
+  try {
+    const [row] = await db
+      .select()
+      .from(runbookJobHistoryTable)
+      .where(eq(runbookJobHistoryTable.jobId, jobId))
+      .limit(1);
+
+    if (!row) {
+      res.status(404).json({ error: "Job not found in history" });
+      return;
+    }
+
+    const lines = (row.output ?? "")
+      .split("\n")
+      .map((text, i) => ({ sequence: i, text }));
+
+    res.json({
+      jobId: row.jobId,
+      runbookName: row.runbookName,
+      customerName: row.customerName,
+      status: row.status,
+      startedAt: row.startedAt,
+      completedAt: row.completedAt,
+      lines,
+    });
+  } catch (err) {
+    logger.error({ err, jobId }, "admin-script-runner: failed to replay job output");
+    res.status(500).json({ error: "Failed to replay job output" });
   }
 });
 

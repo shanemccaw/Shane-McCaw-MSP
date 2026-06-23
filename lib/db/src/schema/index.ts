@@ -787,6 +787,23 @@ export const azureTenantCredentialsTable = pgTable("azure_tenant_credentials", {
 export type InsertAzureTenantCredential = typeof azureTenantCredentialsTable.$inferInsert;
 export type AzureTenantCredential = typeof azureTenantCredentialsTable.$inferSelect;
 
+// Runbook job history — persistent audit trail for every Azure Automation job Shane runs
+export const runbookJobHistoryTable = pgTable("runbook_job_history", {
+  id: serial("id").primaryKey(),
+  jobId: text("job_id").notNull().unique(),
+  runbookName: text("runbook_name").notNull(),
+  credentialId: integer("credential_id").references(() => azureTenantCredentialsTable.id, { onDelete: "set null" }),
+  customerName: text("customer_name").notNull(),
+  status: text("status").notNull().default("New"),
+  output: text("output"),
+  startedAt: timestamp("started_at").notNull().defaultNow(),
+  completedAt: timestamp("completed_at"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export type InsertRunbookJobHistory = typeof runbookJobHistoryTable.$inferInsert;
+export type RunbookJobHistory = typeof runbookJobHistoryTable.$inferSelect;
+
 // Service page trigger key mappings — which engagement project trigger keys each service page shows
 export const servicePageTriggerKeysTable = pgTable("service_page_trigger_keys", {
   id: serial("id").primaryKey(),
