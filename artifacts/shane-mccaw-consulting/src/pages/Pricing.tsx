@@ -337,7 +337,12 @@ export default function Pricing() {
             <div>
               <p className="font-semibold text-[#0A2540] mb-1">Not sure where to start?</p>
               <p className="text-muted-foreground text-sm leading-relaxed">
-                Most clients begin with the <Link href="/micro-offers#m365-tenant-health-audit" className="text-[#0078D4] font-medium hover:underline">M365 Tenant Health Audit</Link> or the <Link href="/micro-offers#migration-readiness-assessment" className="text-[#0078D4] font-medium hover:underline">Migration Readiness Assessment</Link> — fast, low-risk engagements that surface the real issues and give you the clarity to decide what comes next.
+                Most clients begin with the <Link href="/micro-offers/tenant-health-audit" className="text-[#0078D4] font-medium hover:underline">M365 Tenant Health Audit</Link> or the <Link href="/micro-offers/migration-readiness-assessment" className="text-[#0078D4] font-medium hover:underline">Migration Readiness Assessment</Link> — fast, low-risk engagements that surface the real issues and give you the clarity to decide what comes next.
+              </p>
+              <p className="text-sm mt-3">
+                <Link href="/quick-win-quiz" className="inline-flex items-center gap-1 text-[#0078D4] font-medium hover:underline">
+                  Not sure which one fits? Take the Quick Wins Start Here quiz →
+                </Link>
               </p>
             </div>
           </div>
