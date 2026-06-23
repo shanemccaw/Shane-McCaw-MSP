@@ -575,6 +575,115 @@ export default function ScriptRunnerPage() {
         )}
       </div>
 
+      {/* ── Stripe Session Replay ── */}
+      <StripeReplayCard />
+    </div>
+  );
+}
+
+function StripeReplayCard() {
+  const { fetchWithAuth } = useAuth();
+  const { toast } = useToast();
+  const [sessionId, setSessionId] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [result, setResult] = useState<{ status: string; invoiceId: number | null } | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  async function handleReplay(e: React.FormEvent) {
+    e.preventDefault();
+    if (!sessionId.trim()) return;
+    setLoading(true);
+    setResult(null);
+    setError(null);
+    try {
+      const res = await fetchWithAuth("/api/admin/stripe/replay-session", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId: sessionId.trim() }),
+      });
+      const body = await res.json() as { status?: string; invoiceId?: number | null; error?: string };
+      if (!res.ok) {
+        setError(body.error ?? `HTTP ${res.status}`);
+        return;
+      }
+      setResult({ status: body.status ?? "unknown", invoiceId: body.invoiceId ?? null });
+      toast({ title: body.status === "created" ? "Session replayed" : "Already processed", description: body.status === "created" ? `Invoice #${body.invoiceId} created` : "No changes made — session was already processed." });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Request failed");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <div className="bg-white border border-border rounded-xl p-5 space-y-4">
+      <div className="flex items-start gap-3">
+        <div className="w-9 h-9 rounded-xl bg-[#0078D4]/10 flex items-center justify-center flex-shrink-0">
+          <svg className="w-4.5 h-4.5 text-[#0078D4]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+          </svg>
+        </div>
+        <div>
+          <h2 className="text-sm font-bold text-[#0A2540]">Replay Stripe Session</h2>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            Manually reprocess a paid Checkout Session that the webhook missed. Idempotent — safe to run if already processed.
+          </p>
+        </div>
+      </div>
+
+      <form onSubmit={handleReplay} className="flex gap-2">
+        <input
+          type="text"
+          value={sessionId}
+          onChange={e => { setSessionId(e.target.value); setResult(null); setError(null); }}
+          placeholder="cs_test_… or cs_live_…"
+          className={`${inputCls} flex-1 font-mono text-xs`}
+          disabled={loading}
+        />
+        <button
+          type="submit"
+          disabled={loading || !sessionId.trim()}
+          className="flex-shrink-0 px-4 py-2 rounded-lg bg-[#0078D4] text-white text-xs font-semibold hover:bg-[#006BBD] disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-1.5"
+        >
+          {loading ? (
+            <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+          ) : (
+            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M5 3l14 9-14 9V3z" />
+            </svg>
+          )}
+          Replay
+        </button>
+      </form>
+
+      {result && (
+        <div className={`flex items-center gap-2 rounded-lg px-3 py-2.5 text-xs font-medium ${result.status === "created" ? "bg-emerald-50 text-emerald-700 border border-emerald-200" : "bg-gray-50 text-gray-600 border border-gray-200"}`}>
+          {result.status === "created" ? (
+            <>
+              <svg className="w-3.5 h-3.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+              </svg>
+              Session replayed — Invoice #{result.invoiceId} created, client provisioned.
+            </>
+          ) : (
+            <>
+              <svg className="w-3.5 h-3.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              Already processed — no changes made.
+            </>
+          )}
+        </div>
+      )}
+
+      {error && (
+        <div className="flex items-center gap-2 rounded-lg px-3 py-2.5 text-xs font-medium bg-red-50 text-red-700 border border-red-200">
+          <svg className="w-3.5 h-3.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+          {error}
+        </div>
+      )}
     </div>
   );
 }

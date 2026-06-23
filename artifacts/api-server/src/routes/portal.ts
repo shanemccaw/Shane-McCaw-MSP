@@ -3076,6 +3076,15 @@ async function seedDefaultWorkflowSteps(
 //   STRIPE_WEBHOOK_SECRET_PROD — prod endpoint (shanemccaw.com)
 // The handler tries each configured secret and accepts the event if any one verifies.
 router.post("/portal/stripe/webhook", async (req: Request, res: Response) => {
+  // Pre-verification trace: confirms the request reached Express regardless of
+  // signature validity. Logging stripe-signature presence (not the value itself).
+  req.log.info({
+    method: req.method,
+    path: req.path,
+    hasStripeSignature: !!req.headers["stripe-signature"],
+    contentLength: req.headers["content-length"] ?? null,
+  }, "stripe webhook: request received");
+
   let stripeKey: string;
   try { stripeKey = getStripeKey(); } catch (e) { res.status(503).send((e as Error).message); return; }
 
@@ -3117,6 +3126,83 @@ router.post("/portal/stripe/webhook", async (req: Request, res: Response) => {
       req.log.error({ err, eventType: event.type }, "processStripeEvent: unhandled error");
     });
   });
+});
+
+// ── Admin: manual Stripe session replay ──────────────────────────────────────
+// POST /api/admin/stripe/replay-session  { sessionId: "cs_…" }
+// Fetches the Checkout Session from Stripe, constructs a synthetic
+// checkout.session.completed event, and runs it through processStripeEvent.
+// Idempotent: if the invoice already exists, returns status "already_processed".
+router.post("/admin/stripe/replay-session", requireAdmin, async (req: Request, res: Response) => {
+  const { sessionId } = req.body as { sessionId?: string };
+  if (!sessionId || typeof sessionId !== "string" || !sessionId.trim()) {
+    res.status(400).json({ error: "sessionId is required (e.g. cs_test_…)" });
+    return;
+  }
+
+  let stripeKey: string;
+  try { stripeKey = getStripeKey(); } catch (e) { res.status(503).json({ error: (e as Error).message }); return; }
+
+  const { default: Stripe } = await import("stripe");
+  const stripe = new Stripe(stripeKey);
+
+  let session: import("stripe").Stripe.Checkout.Session;
+  try {
+    session = await stripe.checkout.sessions.retrieve(sessionId.trim());
+  } catch (e) {
+    res.status(404).json({ error: `Stripe session not found: ${(e as Error).message}` });
+    return;
+  }
+
+  if (session.payment_status !== "paid") {
+    res.status(422).json({
+      error: `Session payment_status is "${session.payment_status}" — only "paid" sessions can be replayed`,
+    });
+    return;
+  }
+
+  // Check whether this session has already been processed
+  const [preExisting] = await db
+    .select({ id: invoicesTable.id })
+    .from(invoicesTable)
+    .where(eq(invoicesTable.stripeSessionId, sessionId.trim()))
+    .limit(1);
+
+  if (preExisting) {
+    req.log.info({ sessionId, invoiceId: preExisting.id }, "admin replay-session: already processed — skipping");
+    res.json({ status: "already_processed", sessionId, invoiceId: preExisting.id });
+    return;
+  }
+
+  // Construct a minimal synthetic Stripe event so processStripeEvent can handle it
+  const syntheticEvent = {
+    id: `replay_${Date.now()}`,
+    object: "event",
+    type: "checkout.session.completed",
+    livemode: session.livemode,
+    created: Math.floor(Date.now() / 1000),
+    api_version: "2024-06-20",
+    pending_webhooks: 0,
+    request: { id: null, idempotency_key: null },
+    data: { object: session },
+  } as unknown as import("stripe").Stripe.Event;
+
+  try {
+    await processStripeEvent(req, syntheticEvent);
+  } catch (e) {
+    req.log.error({ err: e, sessionId }, "admin replay-session: processStripeEvent threw");
+    res.status(500).json({ error: `Processing failed: ${e instanceof Error ? e.message : String(e)}` });
+    return;
+  }
+
+  const [created] = await db
+    .select({ id: invoicesTable.id })
+    .from(invoicesTable)
+    .where(eq(invoicesTable.stripeSessionId, sessionId.trim()))
+    .limit(1);
+
+  req.log.info({ sessionId, invoiceId: created?.id }, "admin replay-session: completed");
+  res.json({ status: "created", sessionId, invoiceId: created?.id ?? null });
 });
 
 async function processStripeEvent(req: Request, event: import("stripe").Stripe.Event): Promise<void> {

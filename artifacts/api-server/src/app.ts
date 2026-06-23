@@ -7,6 +7,10 @@ import { logger } from "./lib/logger";
 
 const app: Express = express();
 
+// Trust Replit's reverse proxy so X-Forwarded-For is honoured and IP-based
+// middleware (rate limiters, etc.) sees Stripe's real source IP correctly.
+app.set("trust proxy", 1);
+
 app.use(
   pinoHttp({
     logger,
