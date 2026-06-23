@@ -57,17 +57,6 @@ export default function ScriptRunnerPage() {
   const logEndRef = useRef<HTMLDivElement>(null);
   const [governanceAreas, setGovernanceAreas] = useState<string[] | null>(null);
 
-  const [manageOpen, setManageOpen] = useState(false);
-  const [editingCred, setEditingCred] = useState<AzureCredential | null>(null);
-  const [deletingId, setDeletingId] = useState<number | null>(null);
-  const [credForm, setCredForm] = useState({
-    displayName: "",
-    tenantId: "",
-    clientId: "",
-    credentialType: "secret" as "secret" | "certificate",
-    keyVaultSecretName: "",
-  });
-  const [savingCred, setSavingCred] = useState(false);
 
   useEffect(() => {
     void loadCredentials();
@@ -198,66 +187,6 @@ export default function ScriptRunnerPage() {
     }
   };
 
-  const openCreate = () => {
-    setEditingCred(null);
-    setCredForm({ displayName: "", tenantId: "", clientId: "", credentialType: "secret", keyVaultSecretName: "" });
-    setManageOpen(true);
-  };
-
-  const openEdit = (c: AzureCredential) => {
-    setEditingCred(c);
-    setCredForm({
-      displayName: c.displayName,
-      tenantId: c.tenantId,
-      clientId: c.clientId,
-      credentialType: c.credentialType,
-      keyVaultSecretName: c.keyVaultSecretName,
-    });
-    setManageOpen(true);
-  };
-
-  const handleSaveCred = async () => {
-    if (!credForm.displayName || !credForm.tenantId || !credForm.clientId || !credForm.keyVaultSecretName) {
-      toast({ title: "All fields are required", variant: "destructive" });
-      return;
-    }
-    setSavingCred(true);
-    try {
-      const url = editingCred ? `/api/admin/azure-credentials/${editingCred.id}` : "/api/admin/azure-credentials";
-      const method = editingCred ? "PUT" : "POST";
-      const res = await fetchWithAuth(url, {
-        method,
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(credForm),
-      });
-      if (res.ok) {
-        toast({ title: editingCred ? "Customer updated" : "Customer added" });
-        setManageOpen(false);
-        void loadCredentials();
-      } else {
-        const err = await res.json() as { error?: string };
-        toast({ title: err.error ?? "Failed to save", variant: "destructive" });
-      }
-    } finally {
-      setSavingCred(false);
-    }
-  };
-
-  const handleDeleteCred = async (id: number) => {
-    setDeletingId(id);
-    try {
-      const res = await fetchWithAuth(`/api/admin/azure-credentials/${id}`, { method: "DELETE" });
-      if (res.ok) {
-        toast({ title: "Customer deleted" });
-        void loadCredentials();
-        if (selectedCredId === id) setSelectedCredId("");
-      } else {
-        toast({ title: "Failed to delete", variant: "destructive" });
-      }
-    } finally {
-      setDeletingId(null);
-    }
-  };
 
   const statusCfg = JOB_STATUS_CFG[jobStatus] ?? { cls: "bg-gray-100 text-gray-600" };
   const canRun = !!selectedCredId && !!selectedRunbook && !running && (governanceAreas === null || governanceAreas.length > 0);
@@ -463,98 +392,6 @@ export default function ScriptRunnerPage() {
         </div>
       </div>
 
-      {/* Add/Edit Customer modal */}
-      {manageOpen && (
-        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-md space-y-4 p-6">
-            <h2 className="text-base font-bold text-[#0A2540]">
-              {editingCred ? "Edit Customer" : "Add Customer"}
-            </h2>
-
-            <div className="space-y-3">
-              <div>
-                <label className={labelCls}>Display Name</label>
-                <input
-                  className={inputCls}
-                  placeholder="Contoso Corp"
-                  value={credForm.displayName}
-                  onChange={e => setCredForm(f => ({ ...f, displayName: e.target.value }))}
-                />
-              </div>
-
-              <div>
-                <label className={labelCls}>Tenant ID</label>
-                <input
-                  className={inputCls}
-                  placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
-                  value={credForm.tenantId}
-                  onChange={e => setCredForm(f => ({ ...f, tenantId: e.target.value }))}
-                />
-              </div>
-
-              <div>
-                <label className={labelCls}>Client ID (App Registration)</label>
-                <input
-                  className={inputCls}
-                  placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
-                  value={credForm.clientId}
-                  onChange={e => setCredForm(f => ({ ...f, clientId: e.target.value }))}
-                />
-              </div>
-
-              <div>
-                <label className={labelCls}>Credential Type</label>
-                <div className="flex gap-4">
-                  {(["secret", "certificate"] as const).map(type => (
-                    <label key={type} className="flex items-center gap-2 cursor-pointer">
-                      <input
-                        type="radio"
-                        name="credentialType"
-                        value={type}
-                        checked={credForm.credentialType === type}
-                        onChange={() => setCredForm(f => ({ ...f, credentialType: type }))}
-                        className="accent-[#0078D4]"
-                      />
-                      <span className="text-sm capitalize">{type}</span>
-                    </label>
-                  ))}
-                </div>
-              </div>
-
-              <div>
-                <label className={labelCls}>Key Vault Secret / Certificate Name</label>
-                <input
-                  className={inputCls}
-                  placeholder="contoso-client-secret"
-                  value={credForm.keyVaultSecretName}
-                  onChange={e => setCredForm(f => ({ ...f, keyVaultSecretName: e.target.value }))}
-                />
-                <p className="text-[10px] text-muted-foreground mt-1">
-                  The name of the secret or certificate in Azure Key Vault. The actual value stays in Key Vault — never stored here.
-                </p>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-2 pt-2">
-              <button
-                onClick={() => void handleSaveCred()}
-                disabled={savingCred}
-                className="flex items-center gap-1.5 bg-[#0A2540] text-white text-sm font-semibold px-4 py-2 rounded-lg hover:bg-[#0A2540]/90 disabled:opacity-50 transition-colors"
-              >
-                {savingCred && <div className="w-3.5 h-3.5 border-2 border-white/40 border-t-white rounded-full animate-spin" />}
-                {savingCred ? "Saving…" : "Save"}
-              </button>
-              <button
-                onClick={() => setManageOpen(false)}
-                disabled={savingCred}
-                className="text-sm font-semibold text-muted-foreground hover:text-[#0A2540] px-3 py-2 transition-colors"
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
