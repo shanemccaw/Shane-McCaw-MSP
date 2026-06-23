@@ -135,8 +135,9 @@ router.post("/admin/services", requireAdmin, async (req: Request, res: Response)
     res.status(201).json(created);
   } catch (err: unknown) {
     req.log?.error(err);
-    const pg = err as { code?: string };
-    if (pg.code === "23505") {
+    const e = err as { code?: string; cause?: { code?: string }; message?: string };
+    const isDupe = e.code === "23505" || e.cause?.code === "23505" || (typeof e.message === "string" && e.message.includes("services_slug_unique"));
+    if (isDupe) {
       res.status(409).json({ error: "A service with that slug already exists." }); return;
     }
     res.status(500).json({ error: "Failed to create service" });
