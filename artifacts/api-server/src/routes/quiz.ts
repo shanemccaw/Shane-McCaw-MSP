@@ -576,6 +576,19 @@ Respond ONLY with valid JSON in this exact shape:
     return res.status(500).json({ error: "Failed to save your results. Please try again." });
   }
 
+  let resendToken: string | null = null;
+  try {
+    resendToken = leadId !== null ? makeResendToken(leadId) : null;
+  } catch (err) {
+    logger.warn({ err }, "quiz/submit: could not generate resend token");
+  }
+  const resultsUrl = leadId !== null && resendToken !== null
+    ? `https://shanemccaw.consulting/quiz/results/${leadId}?token=${resendToken}`
+    : "";
+  const categoryScoresRows = cfg.categoryConfig
+    .map(cat => `<tr><td style="padding:4px 0;color:#64748b;font-size:13px;width:160px;">${cat.label}</td><td style="padding:4px 0;font-weight:600;">${scores[cat.key] ?? 0}/10</td></tr>`)
+    .join("\n");
+
   void (async () => {
     const shaneEmail = process.env.ADMIN_EMAIL ?? process.env.CRM_ADMIN_EMAIL;
     if (shaneEmail) {
@@ -589,6 +602,11 @@ Respond ONLY with valid JSON in this exact shape:
           totalScore: String(totalScore),
           tier,
           recommendedService,
+          whatThisMeans,
+          whyThisFits,
+          roiProjection,
+          categoryScoresRows,
+          resultsUrl,
         },
         `New quiz lead: ${name} (${cfg.reportName} — ${tier} — ${totalScore}/50)`,
         quizLeadNotificationEmail({ name, email, company, totalScore, tier, recommendedService }),
@@ -604,13 +622,17 @@ Respond ONLY with valid JSON in this exact shape:
       const firstName = name.split(" ")[0] || "there";
       const defaultBody = `
         <p>Hi ${firstName},</p>
-        <p>Thank you for completing the <strong>${cfg.reportName}</strong>. Your personalised report is attached to this email.</p>
+        <p>Thank you for completing the <strong>${cfg.reportName}</strong>. Your personalised report is attached to this email — here is a summary of your results.</p>
         <table cellpadding="0" cellspacing="0" style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:16px 20px;margin:16px 0;width:100%;">
           <tr><td style="padding:4px 0;color:#64748b;font-size:13px;width:160px;">Total Score</td><td style="padding:4px 0;font-weight:600;">${totalScore} / 50</td></tr>
           <tr><td style="padding:4px 0;color:#64748b;font-size:13px;">Maturity Tier</td><td style="padding:4px 0;font-weight:600;">${tier}</td></tr>
           <tr><td style="padding:4px 0;color:#64748b;font-size:13px;">Recommended Service</td><td style="padding:4px 0;font-weight:600;">${recommendedService}</td></tr>
+          ${categoryScoresRows}
         </table>
-        <p>Your PDF report includes a full breakdown across all five assessment categories, plus a tailored recommendation and ROI projection.</p>
+        ${whatThisMeans ? `<p style="margin:16px 0 4px;color:#64748b;font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;">What This Means For You</p><p style="margin:0 0 16px;font-size:14px;line-height:1.6;">${whatThisMeans}</p>` : ""}
+        ${whyThisFits ? `<p style="margin:16px 0 4px;color:#64748b;font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;">Recommended Next Step — Why This Fits</p><p style="margin:0 0 16px;font-size:14px;line-height:1.6;">${whyThisFits}</p>` : ""}
+        ${roiProjection ? `<p style="margin:16px 0 4px;color:#64748b;font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;">ROI Projection</p><p style="margin:0 0 16px;font-size:14px;line-height:1.6;">${roiProjection}</p>` : ""}
+        ${resultsUrl ? `<p style="margin:12px 0;"><a href="${resultsUrl}" style="color:#0078D4;font-size:13px;">View your full results online →</a></p>` : ""}
         <p>Ready to discuss your results? Book a complimentary 30-minute strategy call with Shane.</p>
         <p style="margin:24px 0 0;">
           <a href="https://shanemccaw.consulting/contact" style="display:inline-block;background:#0078D4;color:#ffffff;text-decoration:none;font-weight:600;font-size:14px;padding:12px 24px;border-radius:6px;">Book a Strategy Call →</a>
@@ -625,6 +647,11 @@ Respond ONLY with valid JSON in this exact shape:
           totalScore: String(totalScore),
           tier,
           recommendedService,
+          whatThisMeans,
+          whyThisFits,
+          roiProjection,
+          categoryScoresRows,
+          resultsUrl,
         },
         `Your ${cfg.reportName} Report`,
         defaultBody,
@@ -639,13 +666,6 @@ Respond ONLY with valid JSON in this exact shape:
       logger.warn({ err }, "quiz/submit: PDF email failed");
     }
   })();
-
-  let resendToken: string | null = null;
-  try {
-    resendToken = leadId !== null ? makeResendToken(leadId) : null;
-  } catch (err) {
-    logger.warn({ err }, "quiz/submit: could not generate resend token");
-  }
 
   return res.json({
     success: true,
@@ -682,6 +702,11 @@ router.post("/quiz/resend-pdf", resendLimiter, async (req, res) => {
   const analysis = lead.analysisText ?? { whatThisMeans: "", whyThisFits: "", roiProjection: "" };
   const qt = lead.quizType ?? "copilot";
   const cfg = SCORING_CONFIGS[qt] ?? SCORING_CONFIGS.copilot;
+  const leadCategoryScores = lead.categoryScores as unknown as Record<string, number>;
+  const resendResultsUrl = `https://shanemccaw.consulting/quiz/results/${leadId}?token=${resendToken}`;
+  const resendCategoryScoresRows = cfg.categoryConfig
+    .map(cat => `<tr><td style="padding:4px 0;color:#64748b;font-size:13px;width:160px;">${cat.label}</td><td style="padding:4px 0;font-weight:600;">${leadCategoryScores[cat.key] ?? 0}/10</td></tr>`)
+    .join("\n");
 
   try {
     const pdfBuffer = await generateQuizPdf({
@@ -691,7 +716,7 @@ router.post("/quiz/resend-pdf", resendLimiter, async (req, res) => {
       totalScore: lead.totalScore,
       tier: lead.tier,
       recommendedService: lead.recommendedService ?? "",
-      categoryScores: lead.categoryScores as unknown as Record<string, number>,
+      categoryScores: leadCategoryScores,
       whatThisMeans: analysis.whatThisMeans,
       whyThisFits: analysis.whyThisFits,
       roiProjection: analysis.roiProjection,
@@ -702,12 +727,17 @@ router.post("/quiz/resend-pdf", resendLimiter, async (req, res) => {
     const firstName = lead.name.split(" ")[0] || "there";
     const defaultBody = `
       <p>Hi ${firstName},</p>
-      <p>As requested, your <strong>${cfg.reportName}</strong> report is attached to this email.</p>
+      <p>As requested, your <strong>${cfg.reportName}</strong> report is attached to this email — here is a summary of your results.</p>
       <table cellpadding="0" cellspacing="0" style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:16px 20px;margin:16px 0;width:100%;">
         <tr><td style="padding:4px 0;color:#64748b;font-size:13px;width:160px;">Total Score</td><td style="padding:4px 0;font-weight:600;">${lead.totalScore} / 50</td></tr>
         <tr><td style="padding:4px 0;color:#64748b;font-size:13px;">Maturity Tier</td><td style="padding:4px 0;font-weight:600;">${lead.tier}</td></tr>
         <tr><td style="padding:4px 0;color:#64748b;font-size:13px;">Recommended Service</td><td style="padding:4px 0;font-weight:600;">${lead.recommendedService ?? ""}</td></tr>
+        ${resendCategoryScoresRows}
       </table>
+      ${analysis.whatThisMeans ? `<p style="margin:16px 0 4px;color:#64748b;font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;">What This Means For You</p><p style="margin:0 0 16px;font-size:14px;line-height:1.6;">${analysis.whatThisMeans}</p>` : ""}
+      ${analysis.whyThisFits ? `<p style="margin:16px 0 4px;color:#64748b;font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;">Recommended Next Step — Why This Fits</p><p style="margin:0 0 16px;font-size:14px;line-height:1.6;">${analysis.whyThisFits}</p>` : ""}
+      ${analysis.roiProjection ? `<p style="margin:16px 0 4px;color:#64748b;font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;">ROI Projection</p><p style="margin:0 0 16px;font-size:14px;line-height:1.6;">${analysis.roiProjection}</p>` : ""}
+      <p style="margin:12px 0;"><a href="${resendResultsUrl}" style="color:#0078D4;font-size:13px;">View your full results online →</a></p>
       <p>Ready to discuss your results? Book a complimentary 30-minute strategy call with Shane.</p>
       <p style="margin:24px 0 0;">
         <a href="https://shanemccaw.consulting/contact" style="display:inline-block;background:#0078D4;color:#ffffff;text-decoration:none;font-weight:600;font-size:14px;padding:12px 24px;border-radius:6px;">Book a Strategy Call →</a>
@@ -722,6 +752,11 @@ router.post("/quiz/resend-pdf", resendLimiter, async (req, res) => {
         totalScore: String(lead.totalScore),
         tier: lead.tier,
         recommendedService: lead.recommendedService ?? "",
+        whatThisMeans: analysis.whatThisMeans,
+        whyThisFits: analysis.whyThisFits,
+        roiProjection: analysis.roiProjection,
+        categoryScoresRows: resendCategoryScoresRows,
+        resultsUrl: resendResultsUrl,
       },
       `Your ${cfg.reportName} Report`,
       defaultBody,

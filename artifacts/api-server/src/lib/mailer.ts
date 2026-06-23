@@ -601,9 +601,12 @@ export function appRegExpiryAlertEmail(opts: {
 // ─── Database-backed template helpers ─────────────────────────────────────────
 
 function substituteVars(template: string, vars: Record<string, string>): string {
-  return template.replace(/\{\{(\w+)\}\}/g, (_, key: string) =>
-    key in vars ? escapeHtml(vars[key]) : `{{${key}}}`,
-  );
+  return template.replace(/\{\{(\w+)\}\}/g, (_, key: string) => {
+    if (!(key in vars)) return `{{${key}}}`;
+    // Keys ending in "Rows" or "Html" are pre-rendered HTML fragments — skip entity escaping
+    if (key.endsWith("Rows") || key.endsWith("Html")) return vars[key];
+    return escapeHtml(vars[key]);
+  });
 }
 
 /**

@@ -245,10 +245,15 @@ const TEMPLATES: TemplateDefinition[] = [
       { name: "totalScore", description: "Total quiz score out of 50" },
       { name: "tier", description: "Maturity tier (e.g. Beginner, Intermediate, Advanced)" },
       { name: "recommendedService", description: "AI-recommended service for this lead" },
+      { name: "whatThisMeans", description: "AI-generated summary of what the score means for this organisation" },
+      { name: "whyThisFits", description: "AI-generated explanation of why the recommended service fits" },
+      { name: "roiProjection", description: "AI-generated ROI projection for this lead" },
+      { name: "categoryScoresRows", description: "Pre-rendered HTML table rows — one row per assessment category with label and score" },
+      { name: "resultsUrl", description: "URL to the lead's online results page (valid for 7 days)" },
     ],
     bodyHtml: `
     <p>Hi Shane,</p>
-    <p>A new quiz lead just came in — <strong>{{name}}</strong> completed the Microsoft Copilot Readiness Assessment. Their results are below.</p>
+    <p>A new quiz lead just came in — <strong>{{name}}</strong> completed the Microsoft Copilot Readiness Assessment. Their full results are below.</p>
     <table cellpadding="0" cellspacing="0" style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:16px 20px;margin:16px 0;width:100%;">
       <tr><td style="padding:4px 0;color:#64748b;font-size:13px;width:160px;">Name</td><td style="padding:4px 0;font-weight:600;">{{name}}</td></tr>
       <tr><td style="padding:4px 0;color:#64748b;font-size:13px;">Email</td><td style="padding:4px 0;"><a href="mailto:{{email}}" style="color:${BLUE};">{{email}}</a></td></tr>
@@ -256,8 +261,16 @@ const TEMPLATES: TemplateDefinition[] = [
       <tr><td style="padding:4px 0;color:#64748b;font-size:13px;">Total Score</td><td style="padding:4px 0;font-weight:600;">{{totalScore}} / 50</td></tr>
       <tr><td style="padding:4px 0;color:#64748b;font-size:13px;">Maturity Tier</td><td style="padding:4px 0;font-weight:600;">{{tier}}</td></tr>
       <tr><td style="padding:4px 0;color:#64748b;font-size:13px;">Recommended Service</td><td style="padding:4px 0;font-weight:600;">{{recommendedService}}</td></tr>
+      {{categoryScoresRows}}
     </table>
+    <p style="margin:16px 0 4px;color:#64748b;font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;">What This Means</p>
+    <p style="margin:0 0 16px;font-size:14px;line-height:1.6;">{{whatThisMeans}}</p>
+    <p style="margin:16px 0 4px;color:#64748b;font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;">Why This Fits</p>
+    <p style="margin:0 0 16px;font-size:14px;line-height:1.6;">{{whyThisFits}}</p>
+    <p style="margin:16px 0 4px;color:#64748b;font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;">ROI Projection</p>
+    <p style="margin:0 0 16px;font-size:14px;line-height:1.6;">{{roiProjection}}</p>
     <p>The lead has been saved to the admin panel. Follow up while they're warm — their personalised report was emailed to them moments ago.</p>
+    <p style="margin:12px 0;"><a href="{{resultsUrl}}" style="color:${BLUE};font-size:13px;">View their full results online →</a></p>
     <p style="margin:24px 0 0;"><a href="mailto:{{email}}" style="display:inline-block;background:${BLUE};color:#ffffff;text-decoration:none;font-weight:600;font-size:14px;padding:12px 24px;border-radius:6px;">Reply to {{name}} →</a></p>
     <p style="margin-top:24px;">— Shane McCaw Consulting (automated notification)</p>
   `,
@@ -346,16 +359,28 @@ const TEMPLATES: TemplateDefinition[] = [
       { name: "totalScore", description: "Total quiz score (e.g. 38)" },
       { name: "tier", description: "Maturity tier (e.g. Beginner, Intermediate, Advanced)" },
       { name: "recommendedService", description: "AI-recommended service for this lead" },
+      { name: "whatThisMeans", description: "AI-generated summary of what the score means for this organisation" },
+      { name: "whyThisFits", description: "AI-generated explanation of why the recommended service fits" },
+      { name: "roiProjection", description: "AI-generated ROI projection for this lead" },
+      { name: "categoryScoresRows", description: "Pre-rendered HTML table rows — one row per assessment category with label and score" },
+      { name: "resultsUrl", description: "URL to the lead's online results page (valid for 7 days)" },
     ],
     bodyHtml: `
     <p>Hi {{firstName}},</p>
-    <p>Thank you for completing the <strong>{{reportName}}</strong>. Your personalised report is attached to this email.</p>
+    <p>Thank you for completing the <strong>{{reportName}}</strong>. Your personalised report is attached to this email — here is a summary of your results.</p>
     <table cellpadding="0" cellspacing="0" style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:16px 20px;margin:16px 0;width:100%;">
       <tr><td style="padding:4px 0;color:#64748b;font-size:13px;width:160px;">Total Score</td><td style="padding:4px 0;font-weight:600;">{{totalScore}} / 50</td></tr>
       <tr><td style="padding:4px 0;color:#64748b;font-size:13px;">Maturity Tier</td><td style="padding:4px 0;font-weight:600;">{{tier}}</td></tr>
       <tr><td style="padding:4px 0;color:#64748b;font-size:13px;">Recommended Service</td><td style="padding:4px 0;font-weight:600;">{{recommendedService}}</td></tr>
+      {{categoryScoresRows}}
     </table>
-    <p>Your PDF report includes a full breakdown across all five assessment categories, plus a tailored recommendation and ROI projection.</p>
+    <p style="margin:16px 0 4px;color:#64748b;font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;">What This Means For You</p>
+    <p style="margin:0 0 16px;font-size:14px;line-height:1.6;">{{whatThisMeans}}</p>
+    <p style="margin:16px 0 4px;color:#64748b;font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;">Recommended Next Step — Why This Fits</p>
+    <p style="margin:0 0 16px;font-size:14px;line-height:1.6;">{{whyThisFits}}</p>
+    <p style="margin:16px 0 4px;color:#64748b;font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;">ROI Projection</p>
+    <p style="margin:0 0 16px;font-size:14px;line-height:1.6;">{{roiProjection}}</p>
+    <p style="margin:12px 0;"><a href="{{resultsUrl}}" style="color:${BLUE};font-size:13px;">View your full results online →</a></p>
     <p>Ready to discuss your results? Book a complimentary 30-minute strategy call with Shane.</p>
     <p style="margin:24px 0 0;"><a href="https://shanemccaw.consulting/contact" style="display:inline-block;background:${BLUE};color:#ffffff;text-decoration:none;font-weight:600;font-size:14px;padding:12px 24px;border-radius:6px;">Book a Strategy Call →</a></p>
     <p style="margin-top:24px;">— Shane McCaw<br/><span style="color:#64748b;font-size:13px;">Lead Microsoft 365 Architect | Shane McCaw Consulting</span></p>
@@ -395,7 +420,11 @@ export async function seedEmailTemplates(): Promise<void> {
       .limit(1);
 
     if (existing) {
-      logger.debug({ slug: tpl.slug }, "Email template already seeded — skipping");
+      await db
+        .update(emailTemplatesTable)
+        .set({ subject: tpl.subject, bodyHtml: tpl.bodyHtml, variables: tpl.variables })
+        .where(eq(emailTemplatesTable.slug, tpl.slug));
+      logger.debug({ slug: tpl.slug }, "Email template upserted (updated)");
       continue;
     }
 

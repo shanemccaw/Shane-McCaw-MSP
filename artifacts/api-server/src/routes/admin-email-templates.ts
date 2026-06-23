@@ -103,6 +103,11 @@ const SAMPLE_VARS: Record<string, Record<string, string>> = {
     totalScore: "38",
     tier: "Advanced",
     recommendedService: "Copilot AI Deployment",
+    whatThisMeans: "Contoso has strong foundational infrastructure but still has gaps in data governance and AI literacy that need addressing before a full Copilot rollout.",
+    whyThisFits: "A phased Copilot AI Deployment will let Contoso build on its existing M365 licences while closing the readiness gaps identified in categories 2 and 3.",
+    roiProjection: "Based on Contoso's profile, organisations at this maturity level typically see a 15–25% productivity uplift within 6 months of deployment — roughly 2–3 hours per knowledge worker per week.",
+    categoryScoresRows: "<tr><td style=\"padding:4px 0;color:#64748b;font-size:13px;width:160px;\">Infrastructure &amp; Identity</td><td style=\"padding:4px 0;font-weight:600;\">9/10</td></tr>\n<tr><td style=\"padding:4px 0;color:#64748b;font-size:13px;\">Data &amp; Compliance</td><td style=\"padding:4px 0;font-weight:600;\">7/10</td></tr>\n<tr><td style=\"padding:4px 0;color:#64748b;font-size:13px;\">AI Literacy</td><td style=\"padding:4px 0;font-weight:600;\">6/10</td></tr>\n<tr><td style=\"padding:4px 0;color:#64748b;font-size:13px;\">Change Management</td><td style=\"padding:4px 0;font-weight:600;\">8/10</td></tr>\n<tr><td style=\"padding:4px 0;color:#64748b;font-size:13px;\">Business Process</td><td style=\"padding:4px 0;font-weight:600;\">8/10</td></tr>",
+    resultsUrl: "https://shanemccaw.consulting/quiz/results/42?token=sample",
   },
   "admin-purchase-alert": {
     clientName: "Jane Smith",
@@ -132,6 +137,11 @@ const SAMPLE_VARS: Record<string, Record<string, string>> = {
     totalScore: "38",
     tier: "Advanced",
     recommendedService: "Copilot AI Deployment",
+    whatThisMeans: "Contoso has strong foundational infrastructure but still has gaps in data governance and AI literacy that need addressing before a full Copilot rollout.",
+    whyThisFits: "A phased Copilot AI Deployment will let Contoso build on its existing M365 licences while closing the readiness gaps identified in categories 2 and 3.",
+    roiProjection: "Based on Contoso's profile, organisations at this maturity level typically see a 15–25% productivity uplift within 6 months of deployment — roughly 2–3 hours per knowledge worker per week.",
+    categoryScoresRows: "<tr><td style=\"padding:4px 0;color:#64748b;font-size:13px;width:160px;\">Infrastructure &amp; Identity</td><td style=\"padding:4px 0;font-weight:600;\">9/10</td></tr>\n<tr><td style=\"padding:4px 0;color:#64748b;font-size:13px;\">Data &amp; Compliance</td><td style=\"padding:4px 0;font-weight:600;\">7/10</td></tr>\n<tr><td style=\"padding:4px 0;color:#64748b;font-size:13px;\">AI Literacy</td><td style=\"padding:4px 0;font-weight:600;\">6/10</td></tr>\n<tr><td style=\"padding:4px 0;color:#64748b;font-size:13px;\">Change Management</td><td style=\"padding:4px 0;font-weight:600;\">8/10</td></tr>\n<tr><td style=\"padding:4px 0;color:#64748b;font-size:13px;\">Business Process</td><td style=\"padding:4px 0;font-weight:600;\">8/10</td></tr>",
+    resultsUrl: "https://shanemccaw.consulting/quiz/results/42?token=sample",
   },
   "welcome-email": {
     clientName: "Jane Smith",
