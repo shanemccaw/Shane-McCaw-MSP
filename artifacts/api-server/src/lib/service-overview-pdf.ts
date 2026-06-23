@@ -178,8 +178,17 @@ export async function generateServiceOverviewPdf(serviceName: string): Promise<B
     dt(page, "Lead Microsoft 365 Architect", margin, pageH - 38, regular, 8, rgb(0.7, 0.8, 0.9));
 
     page.drawRectangle({ x: 0, y: 0, width: pageW, height: 24, color: navy });
-    dt(page, "shanemccaw.com  ·  info@shanemccaw.com", margin, 8, regular, 7, rgb(0.6, 0.7, 0.8));
+    dt(page, "shanemccaw.com  \u00B7  info@shanemccaw.com", margin, 8, regular, 7, rgb(0.6, 0.7, 0.8));
     dt(page, dateStr, pageW - margin - bold.widthOfTextAtSize(dateStr, 7), 8, regular, 7, rgb(0.5, 0.6, 0.7));
+
+    // Clickable footer links — addLink closes over `page` which is already set above
+    const footerWebsite = "shanemccaw.com";
+    const footerSep     = "  \u00B7  ";
+    const footerEmail   = "info@shanemccaw.com";
+    const footerWebsiteW = regular.widthOfTextAtSize(footerWebsite, 7);
+    const footerSepW     = regular.widthOfTextAtSize(footerSep, 7);
+    addLink("https://shanemccaw.com",       margin,                               8, footerWebsiteW,                                    7);
+    addLink("mailto:info@shanemccaw.com",   margin + footerWebsiteW + footerSepW, 8, regular.widthOfTextAtSize(footerEmail, 7),     7);
 
     y = pageH - 74;
   };
