@@ -1,6 +1,6 @@
 import { SEOMeta } from "@/components/SEOMeta";
 import { Layout } from "@/components/Layout";
-import { MicrosoftBookingsEmbed } from "@/components/MicrosoftBookingsEmbed";
+import { CalendarBooking } from "@/components/CalendarBooking";
 import { CheckCircle, XCircle, Target } from "lucide-react";
 
 const EXPECT_ITEMS = [
@@ -111,9 +111,9 @@ export default function Book() {
 
             </div>
 
-            {/* ── Right column: Bookings embed ── */}
-            <div className="lg:col-span-2" data-testid="bookings-embed">
-              <MicrosoftBookingsEmbed minHeight={700} />
+            {/* ── Right column: Calendar booking ── */}
+            <div className="lg:col-span-2" data-testid="booking-calendar">
+              <CalendarBooking />
             </div>
 
           </div>

@@ -34,6 +34,7 @@ import adminServicePageTriggersRouter from "./admin-service-page-triggers";
 import publicServicePageTriggersRouter from "./public-service-page-triggers";
 import adminAzureCredentialsRouter from "./admin-azure-credentials";
 import adminScriptRunnerRouter from "./admin-script-runner";
+import bookingRouter from "./booking";
 
 const router: IRouter = Router();
 
@@ -72,5 +73,6 @@ router.use(quizSelectorRouter);
 router.use(adminServicePageTriggersRouter);
 router.use(adminAzureCredentialsRouter);
 router.use(adminScriptRunnerRouter);
+router.use(bookingRouter);
 
 export default router;

@@ -622,6 +622,103 @@ export async function uploadFileToSharePoint(
   }
 }
 
+// ─── Calendar ─────────────────────────────────────────────────────────────────
+
+export interface CalendarEvent {
+  start: string; // ISO 8601 UTC
+  end: string;   // ISO 8601 UTC
+}
+
+/**
+ * Fetch calendar events for a user within a time window.
+ * Requires Calendars.Read application permission.
+ * Returns an empty array (never throws) when credentials are absent or Graph fails.
+ */
+export async function getCalendarView(
+  userId: string,
+  start: Date,
+  end: Date,
+): Promise<CalendarEvent[]> {
+  try {
+    const params = new URLSearchParams({
+      startDateTime: start.toISOString(),
+      endDateTime: end.toISOString(),
+      $select: "start,end",
+      $top: "100",
+    });
+    const res = await graphFetch(
+      `/users/${encodeURIComponent(userId)}/calendarView?${params.toString()}`,
+    );
+    if (!res.ok) {
+      const text = await res.text();
+      logger.warn({ status: res.status, body: text }, "Graph getCalendarView failed");
+      return [];
+    }
+    const data = await res.json() as {
+      value: Array<{ start: { dateTime: string; timeZone: string }; end: { dateTime: string; timeZone: string } }>;
+    };
+    return (data.value ?? []).map((ev) => ({
+      // Graph returns dateTime in the event's configured timezone — normalise to UTC via Date
+      start: new Date(ev.start.dateTime + (ev.start.timeZone === "UTC" ? "Z" : "")).toISOString(),
+      end: new Date(ev.end.dateTime + (ev.end.timeZone === "UTC" ? "Z" : "")).toISOString(),
+    }));
+  } catch (err) {
+    logger.error({ err }, "Graph getCalendarView error");
+    return [];
+  }
+}
+
+export interface CreateEventPayload {
+  subject: string;
+  bodyHtml: string;
+  startIso: string; // UTC
+  endIso: string;   // UTC
+  attendeeEmail: string;
+  attendeeName: string;
+  location?: string;
+}
+
+/**
+ * Create a calendar event on behalf of a user.
+ * Requires Calendars.ReadWrite application permission.
+ * Returns the created event ID, or null on failure.
+ */
+export async function createCalendarEvent(
+  userId: string,
+  payload: CreateEventPayload,
+): Promise<string | null> {
+  try {
+    const body = {
+      subject: payload.subject,
+      body: { contentType: "HTML", content: payload.bodyHtml },
+      start: { dateTime: payload.startIso.replace("Z", ""), timeZone: "UTC" },
+      end: { dateTime: payload.endIso.replace("Z", ""), timeZone: "UTC" },
+      attendees: [
+        {
+          emailAddress: { address: payload.attendeeEmail, name: payload.attendeeName },
+          type: "required",
+        },
+      ],
+      location: { displayName: payload.location ?? "Microsoft Teams / Phone call" },
+      isOnlineMeeting: false,
+    };
+    const res = await graphFetch(`/users/${encodeURIComponent(userId)}/events`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) {
+      const text = await res.text();
+      logger.warn({ status: res.status, body: text }, "Graph createCalendarEvent failed");
+      return null;
+    }
+    const data = await res.json() as { id?: string };
+    return data.id ?? null;
+  } catch (err) {
+    logger.error({ err }, "Graph createCalendarEvent error");
+    return null;
+  }
+}
+
 export async function createSiteFolder(
   siteId: string,
   parentPath: string,
