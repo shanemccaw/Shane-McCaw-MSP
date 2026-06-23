@@ -856,7 +856,11 @@ export function GovernanceAreasPicker({
   const isAll = value === null;
 
   const toggleAll = () => {
-    if (!isAll) onChange(null);
+    if (isAll) {
+      onChange([]);
+    } else {
+      onChange(null);
+    }
   };
 
   const toggleArea = (area: string) => {
