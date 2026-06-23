@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { ServiceOverviewModal } from "@/components/ServiceOverviewModal";
+import { TestimonialDiscountCallout } from "@/components/TestimonialDiscountCallout";
 import { SEOMeta } from "@/components/SEOMeta";
 import { Layout } from "@/components/Layout";
 import { Layout as LayoutIcon, CheckCircle, ArrowRight, Building2, Shield, Users } from "lucide-react";
@@ -544,6 +545,7 @@ export default function SharePoint() {
         </div>
       </section>
 
+      <TestimonialDiscountCallout variant="banner" />
       <ConsultationCTA />
       <ServiceOverviewModal
         serviceName="SharePoint Architecture"

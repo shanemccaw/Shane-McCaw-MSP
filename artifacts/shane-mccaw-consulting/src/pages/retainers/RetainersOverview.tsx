@@ -21,6 +21,7 @@ import { Layout } from "@/components/Layout";
 import { SEOMeta } from "@/components/SEOMeta";
 import { CTAButton } from "@/components/CTAButton";
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
+import { TestimonialDiscountCallout } from "@/components/TestimonialDiscountCallout";
 
 interface ServiceRecord {
   id: number;
@@ -727,6 +728,7 @@ export default function RetainersOverview() {
       </section>
 
       {/* Bottom CTA */}
+      <TestimonialDiscountCallout />
       <section className="bg-[#0A2540] py-20 px-6 text-center">
         <div className="max-w-[700px] mx-auto">
           <h2 className="text-3xl font-extrabold text-white mb-4">Book a Free Discovery Call</h2>

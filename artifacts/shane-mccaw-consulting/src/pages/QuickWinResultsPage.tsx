@@ -3,6 +3,7 @@ import { useParams, Link } from "wouter";
 import { Layout } from "@/components/Layout";
 import { SEOMeta } from "@/components/SEOMeta";
 import { CTAButton } from "@/components/CTAButton";
+import { TestimonialDiscountCallout } from "@/components/TestimonialDiscountCallout";
 import {
   CheckCircle,
   ArrowRight,
@@ -660,6 +661,7 @@ export default function QuickWinResultsPage() {
           </div>
         </div>
       </section>
+      <TestimonialDiscountCallout />
     </Layout>
   );
 }

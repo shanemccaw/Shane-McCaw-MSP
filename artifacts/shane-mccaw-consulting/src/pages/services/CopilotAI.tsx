@@ -16,6 +16,7 @@ import { useServicePageTriggerKeys } from "@/hooks/useServicePageTriggerKeys";
 import FixedPriceOfferCard from "@/components/FixedPriceOfferCard";
 import { EngagementProjectCard } from "@/components/EngagementProjectCard";
 import { useEngagementProjects } from "@/hooks/useEngagementProjects";
+import { TestimonialDiscountCallout } from "@/components/TestimonialDiscountCallout";
 
 const comparisonRows = [
   {
@@ -518,6 +519,7 @@ export default function CopilotAI() {
           </div>
         </div>
       </section>
+      <TestimonialDiscountCallout variant="banner" />
       <ServiceOverviewModal
         serviceName="Copilot for M365"
         isOpen={modalOpen}

@@ -14,6 +14,7 @@ import { EngagementProjectCard } from "@/components/EngagementProjectCard";
 import { useEngagementProjects } from "@/hooks/useEngagementProjects";
 import { OfferCard } from "@/components/OfferCard";
 import { useServicePageTriggerKeys } from "@/hooks/useServicePageTriggerKeys";
+import { TestimonialDiscountCallout } from "@/components/TestimonialDiscountCallout";
 
 const WHO_FOR = [
   { icon: <Building2 className="w-5 h-5 text-[#0078D4]" />, label: "Mid-market companies (200–2,000 employees)" },
@@ -445,6 +446,7 @@ export default function Microsoft365() {
         </div>
       </section>
 
+      <TestimonialDiscountCallout variant="banner" />
       <ServiceOverviewModal
         serviceName="Microsoft 365"
         isOpen={modalOpen}

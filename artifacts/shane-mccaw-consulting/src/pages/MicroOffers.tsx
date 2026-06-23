@@ -7,6 +7,7 @@ import { OfferCard } from "@/components/OfferCard";
 import { ServiceOverviewModal } from "@/components/ServiceOverviewModal";
 import { Lightbulb, ArrowRight } from "lucide-react";
 import { Link } from "wouter";
+import { TestimonialDiscountCallout } from "@/components/TestimonialDiscountCallout";
 
 const TIERS = [
   {
@@ -162,6 +163,7 @@ export default function MicroOffers() {
         </div>
       </section>
 
+      <TestimonialDiscountCallout />
       <section className="bg-[#0A2540] py-20">
         <div className="max-w-[1200px] mx-auto px-6 text-center">
           <h2 className="text-3xl font-extrabold text-white mb-4">Not sure which package fits?</h2>

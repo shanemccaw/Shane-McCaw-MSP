@@ -13,6 +13,7 @@ import { OfferCard } from "@/components/OfferCard";
 import { useEngagementProjects } from "@/hooks/useEngagementProjects";
 import { EngagementProjectCard } from "@/components/EngagementProjectCard";
 import { RetainerCard } from "@/components/RetainerCard";
+import { TestimonialDiscountCallout } from "@/components/TestimonialDiscountCallout";
 
 const faqs = [
   {
@@ -806,6 +807,7 @@ export default function Pricing() {
         </div>
       </section>
 
+      <TestimonialDiscountCallout />
       <ConsultationCTA />
     </Layout>
   );

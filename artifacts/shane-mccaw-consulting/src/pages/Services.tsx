@@ -14,6 +14,7 @@ import { ServiceProjectCard } from "@/components/ServiceProjectCard";
 import { RetainerCard } from "@/components/RetainerCard";
 import { EngagementProjectCard } from "@/components/EngagementProjectCard";
 import { AssessmentSelector } from "@/components/AssessmentSelector";
+import { TestimonialDiscountCallout } from "@/components/TestimonialDiscountCallout";
 
 // ─── Tier configuration ───────────────────────────────────────────────────────
 // Keys must be lowercase to match the normalised tier value from the DB.
@@ -429,6 +430,7 @@ export default function Services() {
 
       <AssessmentSelector />
 
+      <TestimonialDiscountCallout />
       {/* Closing CTA */}
       <section className="bg-[#0A2540] py-20">
         <div className="max-w-[1200px] mx-auto px-6 text-center">

@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { ServiceOverviewModal } from "@/components/ServiceOverviewModal";
+import { TestimonialDiscountCallout } from "@/components/TestimonialDiscountCallout";
 import { SEOMeta } from "@/components/SEOMeta";
 import { Layout } from "@/components/Layout";
 import { RetainerCard } from "@/components/RetainerCard";
@@ -605,6 +606,7 @@ export default function CloudMigration() {
           </div>
         </div>
       </section>
+      <TestimonialDiscountCallout variant="banner" />
       <ServiceOverviewModal
         serviceName="Cloud Migration"
         isOpen={modalOpen}

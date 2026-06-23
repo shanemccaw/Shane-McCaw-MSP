@@ -1,4 +1,5 @@
 import { CheckCircle, Clock, ArrowRight, ChevronRight, Shield, Building2, ShieldCheck, Users, Rocket, BarChart3, XCircle } from "lucide-react";
+import { TestimonialDiscountCallout } from "@/components/TestimonialDiscountCallout";
 import { useServices, formatPrice } from "@/hooks/useServices";
 import { Link } from "wouter";
 import { Layout } from "@/components/Layout";
@@ -440,6 +441,7 @@ export default function ArchitectEnterprise() {
         </div>
       </section>
 
+      <TestimonialDiscountCallout variant="banner" />
       {/* Bottom CTA */}
       <section className="bg-[#0A2540] py-20 px-6 text-center">
         <div className="max-w-[700px] mx-auto">

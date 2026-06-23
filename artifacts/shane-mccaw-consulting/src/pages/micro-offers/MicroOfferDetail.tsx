@@ -11,6 +11,7 @@ import { CTAButton } from "@/components/CTAButton";
 import { ServiceOverviewModal } from "@/components/ServiceOverviewModal";
 import { useServices, formatPriceDisplay } from "@/hooks/useServices";
 import NotFound from "@/pages/not-found";
+import { TestimonialDiscountCallout } from "@/components/TestimonialDiscountCallout";
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 function splitLines(text: string | null): string[] {
@@ -690,6 +691,7 @@ export default function MicroOfferDetail({ params }: MicroOfferDetailProps) {
         </div>
       </section>
 
+      <TestimonialDiscountCallout variant="banner" />
       <ServiceOverviewModal
         serviceName={service.name}
         isOpen={modalOpen}

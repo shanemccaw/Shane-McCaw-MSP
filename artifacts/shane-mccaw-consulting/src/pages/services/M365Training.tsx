@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { ServiceOverviewModal } from "@/components/ServiceOverviewModal";
+import { TestimonialDiscountCallout } from "@/components/TestimonialDiscountCallout";
 import { SEOMeta } from "@/components/SEOMeta";
 import { Layout } from "@/components/Layout";
 import { CTAButton } from "@/components/CTAButton";
@@ -393,6 +394,7 @@ export default function M365Training() {
           </div>
         </div>
       </section>
+      <TestimonialDiscountCallout variant="banner" />
       <ServiceOverviewModal
         serviceName="M365 Training & Enablement"
         isOpen={modalOpen}
