@@ -358,7 +358,7 @@ export default function EmailTemplatesPage() {
   const [editSubject, setEditSubject] = useState("");
   const [editBody, setEditBody] = useState("");
   const [dirty, setDirty] = useState(false);
-  const [activeTab, setActiveTab] = useState<"editor" | "preview">("editor");
+  const [activeTab, setActiveTab] = useState<"editor" | "preview">("preview");
   const [filterType, setFilterType] = useState<FilterType>("all");
   const [showAiModal, setShowAiModal] = useState(false);
   const [preAiBody, setPreAiBody] = useState<string | null>(null);
@@ -608,16 +608,6 @@ export default function EmailTemplatesPage() {
               {/* ── Tab switcher ─────────────────────────────────────────────────── */}
               <div className="shrink-0 bg-white border-b px-4 flex gap-1">
                 <button
-                  onClick={() => setActiveTab("editor")}
-                  className={`px-3 py-2 text-sm font-medium border-b-2 transition-colors ${
-                    activeTab === "editor"
-                      ? "border-[#0078D4] text-[#0078D4]"
-                      : "border-transparent text-gray-500 hover:text-gray-700"
-                  }`}
-                >
-                  Editor
-                </button>
-                <button
                   onClick={() => setActiveTab("preview")}
                   className={`px-3 py-2 text-sm font-medium border-b-2 transition-colors ${
                     activeTab === "preview"
@@ -626,6 +616,16 @@ export default function EmailTemplatesPage() {
                   }`}
                 >
                   Preview
+                </button>
+                <button
+                  onClick={() => setActiveTab("editor")}
+                  className={`px-3 py-2 text-sm font-medium border-b-2 transition-colors ${
+                    activeTab === "editor"
+                      ? "border-[#0078D4] text-[#0078D4]"
+                      : "border-transparent text-gray-500 hover:text-gray-700"
+                  }`}
+                >
+                  Editor
                 </button>
               </div>
 
