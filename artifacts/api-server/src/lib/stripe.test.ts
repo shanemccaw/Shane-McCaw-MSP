@@ -61,16 +61,6 @@ describe("getStripeKey() — dev (test key) cases", () => {
     assert.equal(getStripeKey(), "sk_test_multi_dev");
   });
 
-  it("returns STRIPE_SECRET_KEY when REPLIT_DOMAINS has mixed .replit.dev and custom domains (conservative)", () => {
-    // isProd uses .every() — ANY .replit.dev domain in the list keeps it in dev mode.
-    // This is the conservative/safe choice: if even one domain looks like an editor
-    // preview URL, we refuse to load the live key.  In practice this combination
-    // never appears; REPLIT_DOMAINS is either all-.replit.dev (editor) or
-    // all-non-.replit.dev (deployed).
-    process.env.REPLIT_DOMAINS = "foo.replit.dev,shanemccaw.com";
-    process.env.STRIPE_SECRET_KEY = "sk_test_mixed";
-    assert.equal(getStripeKey(), "sk_test_mixed");
-  });
 });
 
 describe("getStripeKey() — prod (live key) cases", () => {
@@ -84,6 +74,13 @@ describe("getStripeKey() — prod (live key) cases", () => {
     process.env.REPLIT_DOMAINS = "shanemccaw.com";
     process.env.STRIPE_SECRET_KEY_PROD = "sk_live_custom";
     assert.equal(getStripeKey(), "sk_live_custom");
+  });
+
+  it("returns STRIPE_SECRET_KEY_PROD when REPLIT_DOMAINS has mixed .replit.dev and custom domains", () => {
+    // isProd uses .some() — any non-.replit.dev domain means we're in a deployed context.
+    process.env.REPLIT_DOMAINS = "foo.replit.dev,shanemccaw.com";
+    process.env.STRIPE_SECRET_KEY_PROD = "sk_live_mixed";
+    assert.equal(getStripeKey(), "sk_live_mixed");
   });
 
   it("returns STRIPE_SECRET_KEY_PROD when REPLIT_DOMAINS has multiple non-.replit.dev domains", () => {

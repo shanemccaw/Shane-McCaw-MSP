@@ -52,8 +52,8 @@ function getExpectedUrls(): string[] {
  * Mirrors the getStripeKey() helper in artifacts/api-server/src/lib/stripe.ts.
  *
  *   - REPLIT_DOMAINS absent                          → dev  → STRIPE_SECRET_KEY       (sk_test_…)
- *   - REPLIT_DOMAINS present, all domains .replit.dev → dev  → STRIPE_SECRET_KEY       (sk_test_…)
- *   - REPLIT_DOMAINS present, no domain  .replit.dev → prod → STRIPE_SECRET_KEY_PROD  (sk_live_…)
+ *   - REPLIT_DOMAINS present, all domains .replit.dev  → dev  → STRIPE_SECRET_KEY       (sk_test_…)
+ *   - REPLIT_DOMAINS present, any domain not .replit.dev → prod → STRIPE_SECRET_KEY_PROD  (sk_live_…)
  *
  * Replit sets REPLIT_DOMAINS in both the editor workspace (*.replit.dev) and
  * deployed apps (*.replit.app / custom domains), so presence alone is not a
@@ -62,7 +62,7 @@ function getExpectedUrls(): string[] {
 function getStripeKey(): string {
   const domains = process.env.REPLIT_DOMAINS ?? "";
   const isProd = domains.length > 0 &&
-    domains.split(",").every((d) => !d.trim().endsWith(".replit.dev"));
+    domains.split(",").some((d) => !d.trim().endsWith(".replit.dev"));
 
   if (isProd) {
     const key = process.env.STRIPE_SECRET_KEY_PROD;

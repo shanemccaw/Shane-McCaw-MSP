@@ -19,7 +19,7 @@
 export function getStripeKey(): string {
   const domains = process.env.REPLIT_DOMAINS ?? "";
   const isProd = domains.length > 0 &&
-    domains.split(",").every(d => !d.trim().endsWith(".replit.dev"));
+    domains.split(",").some(d => !d.trim().endsWith(".replit.dev"));
 
   if (isProd) {
     const key = process.env.STRIPE_SECRET_KEY_PROD;
