@@ -82,21 +82,38 @@ router.post("/admin/runbook-jobs", requireAdmin, async (req: Request, res: Respo
       return;
     }
 
-    const credentialValue = await getCredential(cred.keyVaultSecretName, cred.credentialType);
+    let credentialValue: string;
+    try {
+      credentialValue = await getCredential(cred.keyVaultSecretName, cred.credentialType);
+    } catch (kvErr) {
+      const msg = kvErr instanceof Error ? kvErr.message : String(kvErr);
+      logger.error({ kvErr, secretName: cred.keyVaultSecretName }, "admin-script-runner: Key Vault fetch failed");
+      res.status(502).json({ error: `Key Vault error: ${msg}` });
+      return;
+    }
 
     const hasAreas = Array.isArray(governanceAreas) && governanceAreas.length > 0;
 
-    const { jobId, status } = await createRunbookJob({
-      runbookName,
-      parameters: {
-        TenantId: cred.tenantId,
-        ClientId: cred.clientId,
-        ...(cred.credentialType === "secret"
-          ? { ClientSecret: credentialValue }
-          : { CertificatePem: credentialValue }),
-        ...(hasAreas ? { GovernanceAreas: governanceAreas!.join(",") } : {}),
-      },
-    });
+    let jobId: string;
+    let status: string;
+    try {
+      ({ jobId, status } = await createRunbookJob({
+        runbookName,
+        parameters: {
+          TenantId: cred.tenantId,
+          ClientId: cred.clientId,
+          ...(cred.credentialType === "secret"
+            ? { ClientSecret: credentialValue }
+            : { CertificatePem: credentialValue }),
+          ...(hasAreas ? { GovernanceAreas: governanceAreas!.join(",") } : {}),
+        },
+      }));
+    } catch (azErr) {
+      const raw = azErr instanceof Error ? azErr.message : String(azErr);
+      logger.error({ azErr, runbookName }, "admin-script-runner: Azure Automation job.create failed");
+      res.status(502).json({ error: `Azure Automation error: ${raw}` });
+      return;
+    }
 
     if (kanbanTaskId) {
       try {
