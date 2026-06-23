@@ -3251,12 +3251,22 @@ router.post("/portal/messages", requireAuth, async (req: Request, res: Response)
     const [clientUser] = await db.select({ email: usersTable.email, name: usersTable.name })
       .from(usersTable).where(eq(usersTable.id, clientUserId)).limit(1);
     if (clientUser) {
-      void sendEmail(clientUser.email, "New message from Shane McCaw Consulting", `
+      void sendEmailFromTemplate(
+        "client-message-notification",
+        clientUser.email,
+        {
+          clientName: clientUser.name ?? "",
+          messageBody: body.trim(),
+          portalLink: "https://shanemccaw.consulting/crm/portal/messages",
+        },
+        "New message from Shane McCaw Consulting",
+        `
         <p>Hello ${clientUser.name ?? ""},</p>
         <p>You have a new message from Shane McCaw Consulting:</p>
         <blockquote style="border-left:3px solid #0078D4;padding:8px 12px;color:#333;margin:12px 0;">${body.trim()}</blockquote>
         <p><a href="https://shanemccaw.consulting/crm/portal/messages" style="color:#0078D4;font-weight:bold;">View in your portal →</a></p>
-      `);
+        `,
+      );
     }
   } else {
     const [adminUser] = await db.select({ id: usersTable.id, email: usersTable.email }).from(usersTable).where(eq(usersTable.role, "admin")).limit(1);
@@ -3271,11 +3281,21 @@ router.post("/portal/messages", requireAuth, async (req: Request, res: Response)
       // Email the admin
       const [clientUser] = await db.select({ name: usersTable.name, email: usersTable.email })
         .from(usersTable).where(eq(usersTable.id, senderId)).limit(1);
-      void sendEmail(adminUser.email, `New client message from ${clientUser?.name ?? clientUser?.email ?? "a client"}`, `
+      const senderLabel = clientUser?.name ?? clientUser?.email ?? "a client";
+      void sendEmailFromTemplate(
+        "admin-message-notification",
+        adminUser.email,
+        {
+          clientName: clientUser?.name ?? clientUser?.email ?? "A client",
+          messageBody: body.trim(),
+        },
+        `New client message from ${senderLabel}`,
+        `
         <p>Hello Shane,</p>
         <p>${clientUser?.name ?? "A client"} sent a new message:</p>
         <blockquote style="border-left:3px solid #0078D4;padding:8px 12px;color:#333;margin:12px 0;">${body.trim()}</blockquote>
-      `);
+        `,
+      );
       // Push notification to Shane's devices
       const clientName = clientUser?.name ?? clientUser?.email ?? "A client";
       db.select({ token: deviceTokensTable.token }).from(deviceTokensTable)

@@ -305,6 +305,85 @@ const TEMPLATES: TemplateDefinition[] = [
     <p style="margin-top:24px;">— Shane McCaw Consulting (automated notification)</p>
   `,
   },
+  {
+    slug: "client-message-notification",
+    name: "Client Message Notification (to Client)",
+    subject: "New message from Shane McCaw Consulting",
+    variables: [
+      { name: "clientName", description: "Client's full name" },
+      { name: "messageBody", description: "The message text sent by Shane" },
+      { name: "portalLink", description: "URL to the client's message inbox in the portal" },
+    ],
+    bodyHtml: `
+    <p>Hello {{clientName}},</p>
+    <p>You have a new message from Shane McCaw Consulting:</p>
+    <blockquote style="margin:16px 0;padding:12px 16px;background:#f8fafc;border-left:4px solid ${BLUE};border-radius:0 6px 6px 0;color:#1e293b;font-size:15px;line-height:1.6;">{{messageBody}}</blockquote>
+    <p style="margin:24px 0 0;"><a href="{{portalLink}}" style="display:inline-block;background:${BLUE};color:#ffffff;text-decoration:none;font-weight:600;font-size:14px;padding:12px 24px;border-radius:6px;">View in your portal →</a></p>
+  `,
+  },
+  {
+    slug: "admin-message-notification",
+    name: "Admin Message Notification (to Shane)",
+    subject: "New client message from {{clientName}}",
+    variables: [
+      { name: "clientName", description: "Client's full name or email" },
+      { name: "messageBody", description: "The message text sent by the client" },
+    ],
+    bodyHtml: `
+    <p>Hello Shane,</p>
+    <p><strong>{{clientName}}</strong> sent a new message:</p>
+    <blockquote style="margin:16px 0;padding:12px 16px;background:#f8fafc;border-left:4px solid ${BLUE};border-radius:0 6px 6px 0;color:#1e293b;font-size:15px;line-height:1.6;">{{messageBody}}</blockquote>
+    <p style="margin-top:24px;">— Shane McCaw Consulting (automated notification)</p>
+  `,
+  },
+  {
+    slug: "quiz-report-email",
+    name: "Quiz Report Email (to Lead)",
+    subject: "Your {{reportName}} Report",
+    variables: [
+      { name: "firstName", description: "Lead's first name" },
+      { name: "reportName", description: "Name of the assessment (e.g. Microsoft Copilot Readiness Assessment)" },
+      { name: "totalScore", description: "Total quiz score (e.g. 38)" },
+      { name: "tier", description: "Maturity tier (e.g. Beginner, Intermediate, Advanced)" },
+      { name: "recommendedService", description: "AI-recommended service for this lead" },
+    ],
+    bodyHtml: `
+    <p>Hi {{firstName}},</p>
+    <p>Thank you for completing the <strong>{{reportName}}</strong>. Your personalised report is attached to this email.</p>
+    <table cellpadding="0" cellspacing="0" style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:16px 20px;margin:16px 0;width:100%;">
+      <tr><td style="padding:4px 0;color:#64748b;font-size:13px;width:160px;">Total Score</td><td style="padding:4px 0;font-weight:600;">{{totalScore}} / 50</td></tr>
+      <tr><td style="padding:4px 0;color:#64748b;font-size:13px;">Maturity Tier</td><td style="padding:4px 0;font-weight:600;">{{tier}}</td></tr>
+      <tr><td style="padding:4px 0;color:#64748b;font-size:13px;">Recommended Service</td><td style="padding:4px 0;font-weight:600;">{{recommendedService}}</td></tr>
+    </table>
+    <p>Your PDF report includes a full breakdown across all five assessment categories, plus a tailored recommendation and ROI projection.</p>
+    <p>Ready to discuss your results? Book a complimentary 30-minute strategy call with Shane.</p>
+    <p style="margin:24px 0 0;"><a href="https://shanemccaw.consulting/contact" style="display:inline-block;background:${BLUE};color:#ffffff;text-decoration:none;font-weight:600;font-size:14px;padding:12px 24px;border-radius:6px;">Book a Strategy Call →</a></p>
+    <p style="margin-top:24px;">— Shane McCaw<br/><span style="color:#64748b;font-size:13px;">Lead Microsoft 365 Architect | Shane McCaw Consulting</span></p>
+  `,
+  },
+  {
+    slug: "welcome-email",
+    name: "Welcome Email (New Client)",
+    subject: "Welcome to Shane McCaw Consulting — your portal is ready",
+    variables: [
+      { name: "clientName", description: "Client's full name" },
+      { name: "portalLink", description: "Full URL to the client portal" },
+    ],
+    bodyHtml: `
+    <p>Hi {{clientName}},</p>
+    <p>Welcome! Your Shane McCaw Consulting client portal has been set up and is ready for you.</p>
+    <p>Inside your portal you can:</p>
+    <ul style="padding-left:20px;line-height:2;">
+      <li>Track the progress of your project in real time</li>
+      <li>View status reports and milestones</li>
+      <li>Send messages directly to Shane</li>
+      <li>Access all deliverables and shared files</li>
+    </ul>
+    <p style="margin:24px 0 0;"><a href="{{portalLink}}" style="display:inline-block;background:${BLUE};color:#ffffff;text-decoration:none;font-weight:600;font-size:14px;padding:12px 24px;border-radius:6px;">Go to your portal →</a></p>
+    <p style="margin-top:24px;">Looking forward to working with you.</p>
+    <p>— Shane McCaw</p>
+  `,
+  },
 ];
 
 export async function seedEmailTemplates(): Promise<void> {

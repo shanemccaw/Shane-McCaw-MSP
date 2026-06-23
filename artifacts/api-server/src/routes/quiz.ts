@@ -601,8 +601,9 @@ Respond ONLY with valid JSON in this exact shape:
   void (async () => {
     try {
       const pdfBuffer = await generateQuizPdf(pdfData);
-      const bodyHtml = `
-        <p>Hi ${name.split(" ")[0] || "there"},</p>
+      const firstName = name.split(" ")[0] || "there";
+      const defaultBody = `
+        <p>Hi ${firstName},</p>
         <p>Thank you for completing the <strong>${cfg.reportName}</strong>. Your personalised report is attached to this email.</p>
         <table cellpadding="0" cellspacing="0" style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:16px 20px;margin:16px 0;width:100%;">
           <tr><td style="padding:4px 0;color:#64748b;font-size:13px;width:160px;">Total Score</td><td style="padding:4px 0;font-weight:600;">${totalScore} / 50</td></tr>
@@ -616,9 +617,21 @@ Respond ONLY with valid JSON in this exact shape:
         </p>
         <p style="margin-top:24px;">— Shane McCaw<br/><span style="color:#64748b;font-size:13px;">Lead Microsoft 365 Architect | Shane McCaw Consulting</span></p>
       `;
+      const { subject: emailSubject, bodyHtml } = await getEmailTemplateOrFallback(
+        "quiz-report-email",
+        {
+          firstName,
+          reportName: cfg.reportName,
+          totalScore: String(totalScore),
+          tier,
+          recommendedService,
+        },
+        `Your ${cfg.reportName} Report`,
+        defaultBody,
+      );
       await sendEmailWithAttachment(
         email,
-        `Your ${cfg.reportName} Report`,
+        emailSubject,
         brandedEmail(bodyHtml),
         [{ filename: cfg.pdfFilename, content: pdfBuffer }],
       );
@@ -687,7 +700,7 @@ router.post("/quiz/resend-pdf", resendLimiter, async (req, res) => {
     });
 
     const firstName = lead.name.split(" ")[0] || "there";
-    const bodyHtml = `
+    const defaultBody = `
       <p>Hi ${firstName},</p>
       <p>As requested, your <strong>${cfg.reportName}</strong> report is attached to this email.</p>
       <table cellpadding="0" cellspacing="0" style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:16px 20px;margin:16px 0;width:100%;">
@@ -701,10 +714,22 @@ router.post("/quiz/resend-pdf", resendLimiter, async (req, res) => {
       </p>
       <p style="margin-top:24px;">— Shane McCaw<br/><span style="color:#64748b;font-size:13px;">Lead Microsoft 365 Architect | Shane McCaw Consulting</span></p>
     `;
+    const { subject: emailSubject, bodyHtml } = await getEmailTemplateOrFallback(
+      "quiz-report-email",
+      {
+        firstName,
+        reportName: cfg.reportName,
+        totalScore: String(lead.totalScore),
+        tier: lead.tier,
+        recommendedService: lead.recommendedService ?? "",
+      },
+      `Your ${cfg.reportName} Report`,
+      defaultBody,
+    );
 
     await sendEmailWithAttachmentOrThrow(
       email,
-      `Your ${cfg.reportName} Report`,
+      emailSubject,
       brandedEmail(bodyHtml),
       [{ filename: cfg.pdfFilename, content: pdfBuffer }],
     );

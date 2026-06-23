@@ -103,6 +103,26 @@ const SAMPLE_VARS: Record<string, Record<string, string>> = {
     purchaseType: "Service purchase",
     portalLink: "https://shanemccaw.consulting/crm/portal",
   },
+  "client-message-notification": {
+    clientName: "Jane Smith",
+    messageBody: "Hi, just wanted to check in on the progress of the SharePoint migration. Any updates?",
+    portalLink: "https://shanemccaw.consulting/crm/portal/messages",
+  },
+  "admin-message-notification": {
+    clientName: "Jane Smith",
+    messageBody: "Hi, just wanted to check in on the progress of the SharePoint migration. Any updates?",
+  },
+  "quiz-report-email": {
+    firstName: "Jane",
+    reportName: "Microsoft Copilot Readiness Assessment",
+    totalScore: "38",
+    tier: "Advanced",
+    recommendedService: "Copilot AI Deployment",
+  },
+  "welcome-email": {
+    clientName: "Jane Smith",
+    portalLink: "https://shanemccaw.consulting/crm/portal",
+  },
 };
 
 // ─── GET /admin/email-templates — list all ───────────────────────────────────
