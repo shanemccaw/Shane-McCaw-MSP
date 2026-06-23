@@ -1,4 +1,4 @@
-import { PDFDocument, rgb, StandardFonts, type PDFFont, type PDFPage } from "pdf-lib";
+import { PDFDocument, PDFString, rgb, StandardFonts, type PDFFont, type PDFPage } from "pdf-lib";
 import {
   db,
   servicesTable,
@@ -218,6 +218,19 @@ export async function generateServiceOverviewPdf(serviceName: string): Promise<B
     y -= 3;
   };
 
+  // Adds a clickable URI annotation over a text run already drawn on the current page.
+  // x/yBaseline match the coordinates passed to dt(); fontSize is the text size in pt.
+  const addLink = (url: string, x: number, yBaseline: number, textWidth: number, fontSize: number) => {
+    const annot = pdfDoc.context.obj({
+      Type: "Annot",
+      Subtype: "Link",
+      Rect: [x, yBaseline - 2, x + textWidth, yBaseline + fontSize + 1],
+      Border: [0, 0, 0],
+      A: { Type: "Action", S: "URI", URI: PDFString.of(url) },
+    });
+    page.node.addAnnot(pdfDoc.context.register(annot));
+  };
+
   // ── 1. Title Page ───────────────────────────────────────────────────────────
   newPage();
 
@@ -352,7 +365,11 @@ export async function generateServiceOverviewPdf(serviceName: string): Promise<B
   page.drawRectangle({ x: margin, y: y - 32, width: bodyW, height: 40, color: rgb(0.96, 0.98, 1) });
   page.drawRectangle({ x: margin, y: y + 8 - 32, width: 3, height: 32, color: blue });
   dt(page, "Ready to get started?", margin + 12, y - 4, bold, 10, navy);
-  dt(page, "Book a free 30-minute discovery call at shanemccaw.com/book", margin + 12, y - 18, regular, 8, grey);
+  const ctaLine1 = "Book a free 30-minute discovery call at shanemccaw.com/book";
+  const ctaLineX1 = margin + 12;
+  const ctaLineY1 = y - 18;
+  dt(page, ctaLine1, ctaLineX1, ctaLineY1, regular, 8, grey);
+  addLink("https://shanemccaw.com/book", ctaLineX1, ctaLineY1, regular.widthOfTextAtSize(sanitize(ctaLine1), 8), 8);
   y -= 50;
 
   // Block 2 — Purchase this service
@@ -361,7 +378,11 @@ export async function generateServiceOverviewPdf(serviceName: string): Promise<B
   page.drawRectangle({ x: margin, y: y - 32, width: bodyW, height: 40, color: rgb(0.94, 0.97, 1) });
   page.drawRectangle({ x: margin, y: y + 8 - 32, width: 3, height: 32, color: navy });
   dt(page, "Purchase This Service", margin + 12, y - 4, bold, 10, navy);
-  dt(page, `https://shanemccaw.com/crm/portal/onboarding/select?serviceIds=${service.id}`, margin + 12, y - 18, regular, 8, blue);
+  const purchaseUrl = `https://shanemccaw.com/crm/portal/onboarding/select?serviceIds=${service.id}`;
+  const purchaseUrlX = margin + 12;
+  const purchaseUrlY = y - 18;
+  dt(page, purchaseUrl, purchaseUrlX, purchaseUrlY, regular, 8, blue);
+  addLink(purchaseUrl, purchaseUrlX, purchaseUrlY, regular.widthOfTextAtSize(sanitize(purchaseUrl), 8), 8);
   y -= 46;
 
   const bytes = await pdfDoc.save();
