@@ -122,7 +122,7 @@ function formatPriceRange(base: string | null, max: string | null): string {
   if (!base && !max) return "";
   const fmt = (v: string) => {
     const n = parseFloat(v);
-    return n >= 1000 ? `$${Math.round(n / 1000)}k` : `$${Math.round(n)}`;
+    return `$${n.toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`;
   };
   if (base && max) return `${fmt(base)} – ${fmt(max)}`;
   if (base) return fmt(base);
@@ -423,7 +423,7 @@ export default function Home() {
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               {retainers.map((tier, i) => {
-                const monthlyPrice = tier.price ? `$${parseInt(tier.price).toLocaleString()}` : null;
+                const monthlyPrice = tier.price ? `$${parseFloat(tier.price).toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 2 })}` : null;
                 const items = tier.deliverables ?? tier.inclusions ?? [];
                 const isHighlighted = tier.highlighted;
                 return (
