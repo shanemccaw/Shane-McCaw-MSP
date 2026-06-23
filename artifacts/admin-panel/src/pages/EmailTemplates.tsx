@@ -397,7 +397,7 @@ export default function EmailTemplatesPage() {
     }
     setSelected(slug);
     setDirty(false);
-    setActiveTab("editor");
+    setActiveTab("preview");
     setPreAiBody(null);
   }, [dirty]);
 
