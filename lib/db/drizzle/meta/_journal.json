@@ -344,6 +344,13 @@
       "when": 1750736400000,
       "tag": "0048_add_runbook_job_history",
       "breakpoints": true
+    },
+    {
+      "idx": 49,
+      "version": "7",
+      "when": 1750950000000,
+      "tag": "0049_add_client_app_registrations",
+      "breakpoints": true
     }
   ]
 }
