@@ -79,6 +79,24 @@ _Populate as you build — explicit user instructions worth remembering across s
 
 - See the `pnpm-workspace` skill for workspace structure, TypeScript setup, and package details
 
+## Stripe Secrets
+
+| Secret | Format | Environment |
+|--------|--------|-------------|
+| `STRIPE_SECRET_KEY` | `sk_test_…` | **Dev only** — used when `REPLIT_DOMAINS` is absent (local / Replit dev workspace) |
+| `STRIPE_SECRET_KEY_PROD` | `sk_live_…` | **Production only** — used when `REPLIT_DOMAINS` is present (deployed app); required for live payments |
+| `STRIPE_WEBHOOK_SECRET` | `whsec_…` | Signing secret for the dev webhook endpoint (`*.replit.dev`) |
+| `STRIPE_WEBHOOK_SECRET_PROD` | `whsec_…` | Signing secret for the prod webhook endpoint (e.g. `shanemccaw.com`) |
+
+**Redeploy checklist:** Before going live, ensure `STRIPE_SECRET_KEY_PROD` is set in Replit Secrets. Without it the deployed API will throw on startup and payments will be broken.
+
+**Syncing webhook endpoints:** After every deploy (or if the payment webhook stops firing), run:
+```
+pnpm --filter @workspace/scripts run sync-webhooks          # check only
+pnpm --filter @workspace/scripts run sync-webhooks -- --fix # check + auto-create missing endpoints
+```
+The script automatically picks `STRIPE_SECRET_KEY` in dev and `STRIPE_SECRET_KEY_PROD` in production based on whether `REPLIT_DOMAINS` is set. It will exit with an error and a clear message if the required key is missing.
+
 ## Azure Script Runner Secrets
 
 Required to enable the Script Runner (PowerShell Runbook execution) in the Admin Panel:
