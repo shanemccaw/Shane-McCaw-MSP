@@ -1,4 +1,3 @@
-import QRCode from "qrcode";
 import { PDFDocument, PDFString, rgb, StandardFonts, type PDFFont, type PDFPage } from "pdf-lib";
 import {
   db,
@@ -95,10 +94,13 @@ function groupDeliverables(items: string[]): Array<{ category: string; items: st
     .filter(g => g.items.length > 0);
 }
 
-/** Generate a QR-code PNG locally via the qrcode package. Returns null on error. */
+/** Fetch a QR-code PNG via a public API. Returns null on error. */
 async function generateQrPng(url: string): Promise<Uint8Array | null> {
   try {
-    const buf = await QRCode.toBuffer(url, { type: "png", margin: 1, width: 150 });
+    const apiUrl = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&margin=4&format=png&data=${encodeURIComponent(url)}`;
+    const res = await fetch(apiUrl, { signal: AbortSignal.timeout(5000) });
+    if (!res.ok) return null;
+    const buf = await res.arrayBuffer();
     return new Uint8Array(buf);
   } catch {
     return null;

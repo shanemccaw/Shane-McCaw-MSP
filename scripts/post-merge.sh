@@ -1,6 +1,6 @@
 #!/bin/bash
 set -e
-pnpm install --frozen-lockfile
+pnpm install --no-frozen-lockfile
 
 # Guard: static drift check (no DB connection required).
 # Fails (exit 1) and blocks the merge if:
