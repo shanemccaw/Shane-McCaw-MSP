@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
-import { useLocation } from "wouter";
+import { useLocation, useSearch } from "wouter";
 import {
   BarChart2, Kanban, FileText, FileDown,
   CheckCircle2, CreditCard, MessageSquare, Loader2,
@@ -183,7 +183,10 @@ function redirectAfterAuth(role: string, setLocation: (path: string) => void) {
 export default function LoginPage() {
   const { login, register } = useAuth();
   const [, setLocation] = useLocation();
-  const [mode, setMode] = useState<"login" | "register" | "forgot">("login");
+  const search = useSearch();
+  const [mode, setMode] = useState<"login" | "register" | "forgot">(
+    new URLSearchParams(search).get("register") === "1" ? "register" : "login"
+  );
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");

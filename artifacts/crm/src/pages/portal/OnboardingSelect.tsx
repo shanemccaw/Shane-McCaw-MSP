@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useLocation, useSearch, Link } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
-import { CheckCircle, Clock, ArrowRight, Loader2, ShieldCheck, Calendar, Phone, ShoppingCart, RefreshCw } from "lucide-react";
+import { CheckCircle, Clock, ArrowRight, Loader2, ShieldCheck, Calendar, Phone, ShoppingCart, RefreshCw, UserPlus, LogIn, Lock } from "lucide-react";
 import OrderWizard, { type WizardStep, type WizardSelection } from "./OrderWizard";
 
 interface Service {
@@ -58,6 +58,9 @@ export default function OnboardingSelect() {
   const [wizardQueue, setWizardQueue] = useState<Service[]>([]);
   const [wizardIndex, setWizardIndex] = useState(0);
 
+  // Auth gate
+  const [showAuthGate, setShowAuthGate] = useState(false);
+
   useEffect(() => {
     fetch("/api/portal/onboarding/services")
       .then(r => r.json() as Promise<Service[]>)
@@ -106,8 +109,9 @@ export default function OnboardingSelect() {
   const handleContinue = () => {
     if (selectedIds.size === 0) return;
     if (!user) {
-      sessionStorage.setItem("onboardingReturnTo", `/portal/onboarding/select?service=${preselectedSlug || ""}`);
-      setLocation("/");
+      const returnPath = `/portal/onboarding/select?service=${preselectedSlug || ""}`;
+      sessionStorage.setItem("onboardingReturnTo", returnPath);
+      setShowAuthGate(true);
       return;
     }
     const selected = services.filter(s => selectedIds.has(s.id));
@@ -400,28 +404,72 @@ export default function OnboardingSelect() {
                   </div>
                 </div>
 
-                <button
-                  onClick={handleContinue}
-                  disabled={selectedIds.size === 0}
-                  className="w-full flex items-center justify-center gap-2 bg-[#0078D4] text-white font-semibold px-5 py-3 rounded-xl hover:bg-[#005A9E] transition-colors disabled:opacity-40 disabled:cursor-not-allowed text-sm"
-                >
-                  {hasWizardServices ? "Get Your Custom Quote" : "Continue to Agreement"}
-                  <ArrowRight className="w-4 h-4" />
-                </button>
+                {showAuthGate ? (
+                  <div className="bg-white border border-[#0078D4]/30 rounded-2xl overflow-hidden shadow-sm">
+                    <div className="bg-[#0A2540] px-4 py-3 flex items-center gap-2">
+                      <Lock className="w-4 h-4 text-[#00B4D8]" />
+                      <span className="text-white text-sm font-semibold">Sign in to continue</span>
+                    </div>
+                    <div className="p-4 space-y-4">
+                      <p className="text-sm text-[#0A2540] font-medium leading-snug">
+                        You're one step away from placing your order.
+                      </p>
+                      <p className="text-xs text-muted-foreground leading-relaxed">
+                        To review the service agreement and complete checkout, you'll need a <strong>free client portal account</strong>. It takes under a minute to set up and gives you a secure dashboard to track your project, download deliverables, and manage invoices.
+                      </p>
+                      <div className="space-y-2">
+                        <a
+                          href={`${import.meta.env.BASE_URL}?register=1`}
+                          className="w-full flex items-center justify-center gap-2 bg-[#0078D4] text-white font-semibold px-4 py-2.5 rounded-xl hover:bg-[#005A9E] transition-colors text-sm"
+                        >
+                          <UserPlus className="w-4 h-4" />
+                          Create a free account
+                        </a>
+                        <a
+                          href={import.meta.env.BASE_URL}
+                          className="w-full flex items-center justify-center gap-2 border border-border text-[#0A2540] font-semibold px-4 py-2.5 rounded-xl hover:border-[#0078D4]/40 hover:bg-[#F7F9FC] transition-colors text-sm"
+                        >
+                          <LogIn className="w-4 h-4" />
+                          Sign in to existing account
+                        </a>
+                      </div>
+                      <p className="text-[11px] text-muted-foreground leading-relaxed text-center">
+                        Your selected services are saved. After signing in you'll be brought right back here.
+                      </p>
+                      <button
+                        onClick={() => setShowAuthGate(false)}
+                        className="w-full text-xs text-muted-foreground hover:text-[#0078D4] transition-colors text-center"
+                      >
+                        ← Back to service selection
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    <button
+                      onClick={handleContinue}
+                      disabled={selectedIds.size === 0}
+                      className="w-full flex items-center justify-center gap-2 bg-[#0078D4] text-white font-semibold px-5 py-3 rounded-xl hover:bg-[#005A9E] transition-colors disabled:opacity-40 disabled:cursor-not-allowed text-sm"
+                    >
+                      {hasWizardServices ? "Get Your Custom Quote" : "Continue to Agreement"}
+                      <ArrowRight className="w-4 h-4" />
+                    </button>
 
-                <div className="text-center">
-                  <Link
-                    href="/book"
-                    className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-[#0078D4] transition-colors font-medium"
-                  >
-                    <Phone className="w-3.5 h-3.5" />
-                    Prefer to talk first? Schedule a free discovery call →
-                  </Link>
-                </div>
+                    <div className="text-center">
+                      <Link
+                        href="/book"
+                        className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-[#0078D4] transition-colors font-medium"
+                      >
+                        <Phone className="w-3.5 h-3.5" />
+                        Prefer to talk first? Schedule a free discovery call →
+                      </Link>
+                    </div>
 
-                <p className="text-xs text-muted-foreground text-center">
-                  You'll review and sign a short service agreement before checkout.
-                </p>
+                    <p className="text-xs text-muted-foreground text-center">
+                      You'll review and sign a short service agreement before checkout.
+                    </p>
+                  </>
+                )}
               </div>
             </div>
           </div>
