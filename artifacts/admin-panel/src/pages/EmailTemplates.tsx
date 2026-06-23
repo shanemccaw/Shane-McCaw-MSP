@@ -231,32 +231,41 @@ function RecipientBadge({ type }: { type: "client" | "admin" }) {
   );
 }
 
+type AiMode = "generate" | "edit";
+
 function AiModal({
   onClose,
   onGenerate,
+  hasExistingContent,
 }: {
   onClose: () => void;
-  onGenerate: (instructions: string) => Promise<void>;
+  onGenerate: (instructions: string, mode: AiMode) => Promise<void>;
+  hasExistingContent: boolean;
 }) {
+  const [mode, setMode] = useState<AiMode>(hasExistingContent ? "edit" : "generate");
   const [instructions, setInstructions] = useState("");
   const [loading, setLoading] = useState(false);
 
   async function handleGenerate() {
     setLoading(true);
     try {
-      await onGenerate(instructions);
+      await onGenerate(instructions, mode);
     } finally {
       setLoading(false);
     }
   }
+
+  const isEdit = mode === "edit";
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
       <div className="bg-white rounded-xl shadow-2xl w-full max-w-md mx-4 p-6 flex flex-col gap-4">
         <div className="flex items-center justify-between">
           <div>
-            <h3 className="text-sm font-semibold text-gray-900">Generate with AI</h3>
-            <p className="text-xs text-gray-500 mt-0.5">AI will write an on-brand email body for this template</p>
+            <h3 className="text-sm font-semibold text-gray-900">✨ AI Assistant</h3>
+            <p className="text-xs text-gray-500 mt-0.5">
+              {isEdit ? "AI will refine the existing body based on your instructions" : "AI will write a fresh on-brand email body"}
+            </p>
           </div>
           <button
             onClick={onClose}
@@ -270,18 +279,50 @@ function AiModal({
           </button>
         </div>
 
+        {/* Mode toggle — only shown when there's existing content to edit */}
+        {hasExistingContent && (
+          <div className="flex rounded-lg border border-gray-200 overflow-hidden text-xs font-medium">
+            <button
+              onClick={() => setMode("edit")}
+              disabled={loading}
+              className={`flex-1 py-2 flex items-center justify-center gap-1.5 transition-colors ${
+                isEdit ? "bg-[#0078D4] text-white" : "bg-white text-gray-600 hover:bg-gray-50"
+              }`}
+            >
+              ✏️ Edit existing
+            </button>
+            <button
+              onClick={() => setMode("generate")}
+              disabled={loading}
+              className={`flex-1 py-2 flex items-center justify-center gap-1.5 transition-colors border-l border-gray-200 ${
+                !isEdit ? "bg-[#0078D4] text-white" : "bg-white text-gray-600 hover:bg-gray-50"
+              }`}
+            >
+              ✨ Generate fresh
+            </button>
+          </div>
+        )}
+
         <div>
           <label className="block text-xs font-semibold text-gray-700 mb-1.5 uppercase tracking-wide">
-            Additional instructions — optional
+            {isEdit ? "What to change" : "Instructions"} — {isEdit ? "required" : "optional"}
           </label>
           <textarea
             value={instructions}
             onChange={(e) => setInstructions(e.target.value)}
-            placeholder="e.g. make it warmer, add a PS about the retainer discount, include a urgency note…"
+            placeholder={
+              isEdit
+                ? "e.g. make the tone warmer, add a PS about the retainer discount, shorten the opening paragraph…"
+                : "e.g. make it concise, add urgency, include a note about onboarding timeline…"
+            }
             rows={4}
             disabled={loading}
+            autoFocus
             className="w-full text-sm rounded-md border border-input bg-background px-3 py-2 resize-none focus:outline-none focus:ring-2 focus:ring-ring placeholder:text-gray-400"
           />
+          {isEdit && !instructions.trim() && (
+            <p className="text-[11px] text-amber-600 mt-1">Tell the AI what to change — otherwise it will rewrite the whole email.</p>
+          )}
         </div>
 
         <div className="flex items-center gap-3 pt-1">
@@ -293,10 +334,10 @@ function AiModal({
             {loading ? (
               <span className="flex items-center gap-2">
                 <span className="w-3.5 h-3.5 border border-white border-t-transparent rounded-full animate-spin" />
-                Generating…
+                {isEdit ? "Editing…" : "Generating…"}
               </span>
             ) : (
-              "✨ Generate"
+              isEdit ? "✏️ Apply edits" : "✨ Generate"
             )}
           </Button>
           <Button variant="outline" onClick={onClose} disabled={loading}>
@@ -398,12 +439,14 @@ export default function EmailTemplatesPage() {
     },
   });
 
-  async function handleAiGenerate(instructions: string) {
+  async function handleAiGenerate(instructions: string, mode: AiMode) {
     if (!selected) return;
+    const payload: Record<string, string> = { instructions };
+    if (mode === "edit" && editBody.trim()) payload.currentBodyHtml = editBody;
     const r = await fetchWithAuth(`/api/admin/email-templates/${selected}/ai-generate`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ instructions }),
+      body: JSON.stringify(payload),
     });
     if (!r.ok) {
       const err = (await r.json() as { error?: string }).error ?? "AI generation failed";
@@ -436,6 +479,7 @@ export default function EmailTemplatesPage() {
         <AiModal
           onClose={() => setShowAiModal(false)}
           onGenerate={handleAiGenerate}
+          hasExistingContent={!!editBody.trim()}
         />
       )}
 

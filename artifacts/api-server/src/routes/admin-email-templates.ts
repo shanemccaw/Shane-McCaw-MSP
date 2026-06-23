@@ -249,7 +249,8 @@ router.post("/admin/email-templates/:slug/ai-generate", requireAdmin, async (req
 
   if (!row) { res.status(404).json({ error: "Template not found" }); return; }
 
-  const { instructions } = req.body as { instructions?: string };
+  const { instructions, currentBodyHtml } = req.body as { instructions?: string; currentBodyHtml?: string };
+  const isEditMode = !!(currentBodyHtml && currentBodyHtml.trim());
   const rType = row.recipientType as "client" | "admin";
 
   const variablesList = (row.variables as Array<{ name: string; description: string }>)
@@ -260,13 +261,11 @@ router.post("/admin/email-templates/:slug/ai-generate", requireAdmin, async (req
     ? "Shane McCaw (internal admin notification — direct, informational, no marketing fluff)"
     : "client or lead (external recipient — professional, warm, one clear CTA)";
 
-  const prompt = `You are writing the body HTML for a professional email from Shane McCaw Consulting.
-
-Template: ${row.name}
+  const sharedContext = `Template: ${row.name}
 Purpose: ${row.subject}
 Recipient: ${recipientDesc}
 
-Available template variables — use EXACTLY as shown, including the double curly braces:
+Available template variables — preserve ALL of these EXACTLY as shown (double curly braces intact):
 ${variablesList || "(none)"}
 
 Brand rules:
@@ -282,7 +281,23 @@ Output rules:
 - The branded header/footer wrapper is added automatically — do not include it
 - Use inline styles only (no CSS classes)
 - All links must use style="color:#0078D4;"
-- CTA buttons: style="display:inline-block;background:#0078D4;color:#ffffff;text-decoration:none;font-weight:600;font-size:14px;padding:12px 24px;border-radius:6px;"
+- CTA buttons: style="display:inline-block;background:#0078D4;color:#ffffff;text-decoration:none;font-weight:600;font-size:14px;padding:12px 24px;border-radius:6px;"`;
+
+  const prompt = isEditMode
+    ? `You are editing the body HTML for a professional email from Shane McCaw Consulting.
+
+${sharedContext}
+
+CURRENT EMAIL BODY (edit this — do not start from scratch):
+${currentBodyHtml}
+
+Shane's editing instructions:
+${instructions || "Improve the email — fix any awkward phrasing, tighten the copy, and ensure it matches the brand voice."}
+
+Apply only the changes described above. Keep all template variables ({{variableName}}) exactly intact. Output the complete revised HTML body ONLY — no explanation, no markdown.`
+    : `You are writing the body HTML for a professional email from Shane McCaw Consulting.
+
+${sharedContext}
 ${instructions ? `\nAdditional instructions from Shane:\n${instructions}` : ""}
 
 Write the email body HTML now. Output ONLY the HTML — no explanation, no markdown.`;
