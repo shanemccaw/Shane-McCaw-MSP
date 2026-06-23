@@ -214,8 +214,17 @@ function buildContractHtml(
   `;
 }
 
+function readGuestInfo(): { name: string; email: string } {
+  try {
+    const raw = sessionStorage.getItem("onboardingGuest");
+    if (!raw) return { name: "", email: "" };
+    const parsed = JSON.parse(raw) as { name?: string; email?: string };
+    return { name: parsed.name ?? "", email: parsed.email ?? "" };
+  } catch { return { name: "", email: "" }; }
+}
+
 export default function OnboardingContract() {
-  const { user, fetchWithAuth } = useAuth();
+  const { user, fetchWithAuth, accessToken } = useAuth();
   const [, setLocation] = useLocation();
   const search = useSearch();
   const params = new URLSearchParams(search);
@@ -233,11 +242,14 @@ export default function OnboardingContract() {
     sessionStorage.getItem("wizardSelections") ?? "{}"
   );
 
+  // Guest info (used when user is not logged in)
+  const guestInfo = readGuestInfo();
+
   const [services, setServices] = useState<Service[]>([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
-  const [signerName, setSignerName] = useState(user?.name ?? user?.email?.split("@")[0] ?? "");
+  const [signerName, setSignerName] = useState(user?.name ?? guestInfo.name ?? user?.email?.split("@")[0] ?? "");
   const [company, setCompany] = useState(user?.company ?? "");
   const [phone, setPhone] = useState(user?.phone ?? "");
   const [street, setStreet] = useState(user?.address ?? "");
@@ -276,7 +288,7 @@ export default function OnboardingContract() {
 
   useEffect(() => {
     if (serviceIds.length === 0) { setLocation("/portal/onboarding/select"); return; }
-    if (!user) { setLocation("/"); return; }
+    // No auth check — guests can reach the contract page; account is created at signing time
 
     const servicesReq = fetch("/api/portal/onboarding/services")
       .then(r => r.json() as Promise<Service[]>)
@@ -293,28 +305,30 @@ export default function OnboardingContract() {
       .then(d => setOfferAvailable(d.available))
       .catch(() => setOfferAvailable(false));
 
-    const profileReq = fetchWithAuth("/api/portal/profile")
-      .then(r => r.ok ? r.json() as Promise<{
-        name?: string | null; company?: string | null; phone?: string | null;
-        address?: string | null; addressCity?: string | null;
-        addressState?: string | null; addressZip?: string | null;
-      }> : null)
-      .then(profile => {
-        if (!profile) return;
-        if (profile.name) setSignerName(profile.name);
-        if (profile.company) setCompany(profile.company);
-        if (profile.phone) setPhone(profile.phone);
-        if (profile.address) setStreet(profile.address);
-        if (profile.addressCity) setCity(profile.addressCity);
-        if (profile.addressState) setAddrState(profile.addressState);
-        if (profile.addressZip) setZip(profile.addressZip);
-      })
-      .catch(() => { /* silently ignore — fields remain at auth-context defaults */ });
+    // Only fetch profile if logged in
+    if (user) {
+      void fetchWithAuth("/api/portal/profile")
+        .then(r => r.ok ? r.json() as Promise<{
+          name?: string | null; company?: string | null; phone?: string | null;
+          address?: string | null; addressCity?: string | null;
+          addressState?: string | null; addressZip?: string | null;
+        }> : null)
+        .then(profile => {
+          if (!profile) return;
+          if (profile.name) setSignerName(profile.name);
+          if (profile.company) setCompany(profile.company);
+          if (profile.phone) setPhone(profile.phone);
+          if (profile.address) setStreet(profile.address);
+          if (profile.addressCity) setCity(profile.addressCity);
+          if (profile.addressState) setAddrState(profile.addressState);
+          if (profile.addressZip) setZip(profile.addressZip);
+        })
+        .catch(() => { /* silently ignore */ });
+    }
 
     void servicesReq;
-    void profileReq;
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user]);
+  }, []);
 
   const getPos = (e: MouseEvent | TouchEvent, canvas: HTMLCanvasElement) => {
     const rect = canvas.getBoundingClientRect();
@@ -379,13 +393,14 @@ export default function OnboardingContract() {
     setSubmitting(true);
 
     try {
-      // Save profile fields before creating the contract
-      const fullAddress = [street, city && addrState ? `${city}, ${addrState}` : city || addrState, zip].filter(Boolean).join(" ");
-      await fetchWithAuth("/api/portal/profile", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: signerName, company, phone, address: street, addressCity: city, addressState: addrState, addressZip: zip }),
-      });
+      // Save profile fields — only if logged in
+      if (user) {
+        await fetchWithAuth("/api/portal/profile", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name: signerName, company, phone, address: street, addressCity: city, addressState: addrState, addressZip: zip }),
+        });
+      }
 
       const canvas = canvasRef.current;
       const signatureData = canvas?.toDataURL("image/png") ?? null;
@@ -404,15 +419,24 @@ export default function OnboardingContract() {
         }
       }
 
-      const contractRes = await fetchWithAuth("/api/portal/onboarding/contract", {
+      // Auth header for contract call (logged-in users only; guests use guestEmail body field)
+      const contractAuthHeader: Record<string, string> = {};
+      if (accessToken) {
+        contractAuthHeader["Authorization"] = `Bearer ${accessToken}`;
+      }
+
+      const contractRes = await fetch("/api/portal/onboarding/contract", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        headers: { "Content-Type": "application/json", ...contractAuthHeader },
         body: JSON.stringify({
           serviceIds: services.map(s => s.id),
           signatureData,
           signerName,
           wizardSelections: Object.keys(wizardSelectionsInput).length > 0 ? wizardSelectionsInput : undefined,
           couponCode: appliedCoupon?.code ?? undefined,
+          // Pass guest email when not logged in (account created post-payment, not here)
+          ...(!user ? { guestEmail: guestInfo.email, guestName: guestInfo.name || signerName } : {}),
         }),
       });
       if (!contractRes.ok) {
@@ -422,15 +446,21 @@ export default function OnboardingContract() {
       const contractData = await contractRes.json() as { contractIds: number[] };
       const contractIds = contractData.contractIds;
 
-      const checkoutRes = await fetchWithAuth("/api/portal/checkout/create-session", {
+      // Checkout is now public; logged-in users pass JWT, guests pass guestEmail in body
+      const checkoutAuthHeader: Record<string, string> = {};
+      if (accessToken) checkoutAuthHeader["Authorization"] = `Bearer ${accessToken}`;
+
+      const checkoutRes = await fetch("/api/portal/checkout/create-session", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        headers: { "Content-Type": "application/json", ...checkoutAuthHeader },
         body: JSON.stringify({
           serviceIds: services.map(s => s.id),
           contractIds,
           startDate,
           returnUrl: window.location.origin + import.meta.env.BASE_URL.replace(/\/$/, ""),
           ...(appliedCoupon ? { couponCode: appliedCoupon.code } : {}),
+          ...(!user ? { guestEmail: guestInfo.email } : {}),
         }),
       });
 
@@ -475,7 +505,7 @@ export default function OnboardingContract() {
     setCouponLoading(true);
     const cartTotal = services.reduce((sum, s) => sum + getDisplayPrice(s), 0);
     try {
-      const res = await fetchWithAuth("/api/portal/coupons/validate", {
+      const res = await fetch("/api/portal/coupons/validate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ code: couponInput.trim(), cartTotal }),
@@ -726,7 +756,7 @@ export default function OnboardingContract() {
                   company,
                   address: [street, city && addrState ? `${city}, ${addrState}` : city || addrState, zip].filter(Boolean).join(" "),
                   phone,
-                  email: user?.email,
+                  email: user?.email ?? guestInfo.email,
                 },
                 appliedCoupon,
               ) }}

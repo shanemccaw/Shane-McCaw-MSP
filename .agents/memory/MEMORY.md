@@ -2,3 +2,4 @@
 - [CRM admin vs client routing](crm-admin-routing.md) — CRM artifact handles client portal; admin sections live in Admin Panel at /admin-panel/; admins hitting /crm are redirected via window.location
 - [drizzle-orm/node-postgres db.execute() returns QueryResult](drizzle-exec-rows.md) — use execRows() helper; raw db.execute() result is NOT array-iterable
 - [API server dev script PORT fallback](api-server-port-fix.md) — Replit workflow system doesn't always inject PORT; dev script must export PORT=${PORT:-8080} or server throws on startup before opening any port
+- [Guest onboarding flow](guest-onboarding.md) — Stripe purchase creates account; registration locked; guest gives name+email before contract signing

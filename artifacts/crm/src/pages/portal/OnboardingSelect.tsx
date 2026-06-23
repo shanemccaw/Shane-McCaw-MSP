@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef } from "react";
-import { useLocation, useSearch, Link } from "wouter";
+import { useLocation, useSearch } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
-import { CheckCircle, Clock, ArrowRight, Loader2, ShieldCheck, Calendar, Phone, ShoppingCart, RefreshCw, X, Eye, EyeOff } from "lucide-react";
+import { CheckCircle, Clock, ArrowRight, Loader2, ShieldCheck, Calendar, Phone, ShoppingCart, RefreshCw, X } from "lucide-react";
 import OrderWizard, { type WizardStep, type WizardSelection } from "./OrderWizard";
 
 interface Service {
@@ -43,7 +43,7 @@ function todayIso() {
 }
 
 export default function OnboardingSelect() {
-  const { user, login, register } = useAuth();
+  const { user } = useAuth();
   const [, setLocation] = useLocation();
   const search = useSearch();
   const params = new URLSearchParams(search);
@@ -58,16 +58,11 @@ export default function OnboardingSelect() {
   const [wizardQueue, setWizardQueue] = useState<Service[]>([]);
   const [wizardIndex, setWizardIndex] = useState(0);
 
-  // Auth modal
-  const [showAuthModal, setShowAuthModal] = useState(false);
-  const [authTab, setAuthTab] = useState<"register" | "login">("register");
-  const [authName, setAuthName] = useState("");
-  const [authEmail, setAuthEmail] = useState("");
-  const [authPassword, setAuthPassword] = useState("");
-  const [authConfirm, setAuthConfirm] = useState("");
-  const [authError, setAuthError] = useState("");
-  const [authLoading, setAuthLoading] = useState(false);
-  const [showPw, setShowPw] = useState(false);
+  // Guest info modal (shown when user is not logged in)
+  const [showGuestModal, setShowGuestModal] = useState(false);
+  const [guestName, setGuestName] = useState("");
+  const [guestEmail, setGuestEmail] = useState("");
+  const [guestError, setGuestError] = useState("");
   const modalRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -130,39 +125,21 @@ export default function OnboardingSelect() {
   const handleContinue = () => {
     if (selectedIds.size === 0) return;
     if (!user) {
-      setAuthTab("register");
-      setAuthError("");
-      setAuthName("");
-      setAuthEmail("");
-      setAuthPassword("");
-      setAuthConfirm("");
-      setShowAuthModal(true);
+      setGuestError("");
+      setShowGuestModal(true);
       return;
     }
     proceedWithCheckout();
   };
 
-  const handleAuthSubmit = async (e: React.FormEvent) => {
+  const handleGuestSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    setAuthError("");
-    if (authTab === "register") {
-      if (authPassword !== authConfirm) { setAuthError("Passwords do not match."); return; }
-      if (authPassword.length < 8) { setAuthError("Password must be at least 8 characters."); return; }
-    }
-    setAuthLoading(true);
-    try {
-      if (authTab === "register") {
-        await register(authEmail.trim(), authPassword, authName.trim() || undefined);
-      } else {
-        await login(authEmail.trim(), authPassword);
-      }
-      setShowAuthModal(false);
-      proceedWithCheckout();
-    } catch (err: unknown) {
-      setAuthError(err instanceof Error ? err.message : "Something went wrong. Please try again.");
-    } finally {
-      setAuthLoading(false);
-    }
+    setGuestError("");
+    if (!guestEmail.trim()) { setGuestError("Please enter your email address."); return; }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(guestEmail.trim())) { setGuestError("Please enter a valid email address."); return; }
+    sessionStorage.setItem("onboardingGuest", JSON.stringify({ name: guestName.trim(), email: guestEmail.trim().toLowerCase() }));
+    setShowGuestModal(false);
+    proceedWithCheckout();
   };
 
   const handleWizardComplete = (_finalPrice: number, selections: WizardSelection[]) => {
@@ -211,152 +188,66 @@ export default function OnboardingSelect() {
         />
       )}
 
-      {/* ── Auth Modal ─────────────────────────────────────────────── */}
-      {showAuthModal && (
+      {/* ── Guest Info Modal ────────────────────────────────────────── */}
+      {showGuestModal && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4"
-          onClick={e => { if (e.target === e.currentTarget) setShowAuthModal(false); }}
+          onClick={e => { if (e.target === e.currentTarget) setShowGuestModal(false); }}
         >
-          <div ref={modalRef} className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
-            {/* Header */}
+          <div ref={modalRef} className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden">
             <div className="bg-[#0A2540] px-6 py-4 flex items-center justify-between">
               <div>
                 <p className="text-white/60 text-xs font-medium uppercase tracking-wider mb-0.5">One step away</p>
-                <h2 className="text-white font-bold text-base leading-tight">
-                  {authTab === "register" ? "Create your client account" : "Sign in to your account"}
-                </h2>
+                <h2 className="text-white font-bold text-base leading-tight">Where should we send your agreement?</h2>
               </div>
-              <button
-                onClick={() => setShowAuthModal(false)}
-                className="text-white/50 hover:text-white transition-colors p-1 rounded-lg hover:bg-white/10"
-              >
+              <button onClick={() => setShowGuestModal(false)} className="text-white/50 hover:text-white transition-colors p-1 rounded-lg hover:bg-white/10">
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            {/* Tabs */}
-            <div className="flex border-b border-border">
-              <button
-                onClick={() => { setAuthTab("register"); setAuthError(""); }}
-                className={`flex-1 py-3 text-sm font-semibold transition-colors ${
-                  authTab === "register"
-                    ? "text-[#0078D4] border-b-2 border-[#0078D4]"
-                    : "text-muted-foreground hover:text-[#0A2540]"
-                }`}
-              >
-                New client
-              </button>
-              <button
-                onClick={() => { setAuthTab("login"); setAuthError(""); }}
-                className={`flex-1 py-3 text-sm font-semibold transition-colors ${
-                  authTab === "login"
-                    ? "text-[#0078D4] border-b-2 border-[#0078D4]"
-                    : "text-muted-foreground hover:text-[#0A2540]"
-                }`}
-              >
-                Existing client
-              </button>
-            </div>
-
-            {/* Form */}
-            <form onSubmit={handleAuthSubmit} className="p-6 space-y-4">
-              {authTab === "register" && (
-                <p className="text-xs text-muted-foreground leading-relaxed bg-[#F7F9FC] rounded-xl px-3 py-2.5 border border-border">
-                  Creating an account is <strong>free</strong> and gives you a secure portal to track your project, download deliverables, and manage invoices.
-                </p>
-              )}
-
-              {authTab === "register" && (
-                <div>
-                  <label className="text-xs font-semibold text-[#0A2540] mb-1.5 block">Your name <span className="text-muted-foreground font-normal">(optional)</span></label>
-                  <input
-                    type="text"
-                    value={authName}
-                    onChange={e => setAuthName(e.target.value)}
-                    placeholder="Jane Smith"
-                    className="w-full border border-border rounded-xl px-3 py-2.5 text-sm text-[#0A2540] placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-[#0078D4]/30 focus:border-[#0078D4]"
-                  />
-                </div>
-              )}
+            <form onSubmit={handleGuestSubmit} className="p-6 space-y-4">
+              <p className="text-xs text-muted-foreground leading-relaxed bg-[#F7F9FC] rounded-xl px-3 py-2.5 border border-border">
+                No account needed upfront — you'll set your portal password <strong>after</strong> payment. Already a client?{" "}
+                <a href={`${import.meta.env.BASE_URL}login`} className="text-[#0078D4] hover:underline font-semibold">Sign in →</a>
+              </p>
 
               <div>
-                <label className="text-xs font-semibold text-[#0A2540] mb-1.5 block">Work email</label>
+                <label className="text-xs font-semibold text-[#0A2540] mb-1.5 block">Your name <span className="text-muted-foreground font-normal">(optional)</span></label>
                 <input
-                  type="email"
-                  required
-                  autoFocus
-                  value={authEmail}
-                  onChange={e => setAuthEmail(e.target.value)}
-                  placeholder="jane@company.com"
+                  type="text"
+                  value={guestName}
+                  onChange={e => setGuestName(e.target.value)}
+                  placeholder="Jane Smith"
                   className="w-full border border-border rounded-xl px-3 py-2.5 text-sm text-[#0A2540] placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-[#0078D4]/30 focus:border-[#0078D4]"
                 />
               </div>
 
               <div>
-                <label className="text-xs font-semibold text-[#0A2540] mb-1.5 block">Password</label>
-                <div className="relative">
-                  <input
-                    type={showPw ? "text" : "password"}
-                    required
-                    value={authPassword}
-                    onChange={e => setAuthPassword(e.target.value)}
-                    placeholder={authTab === "register" ? "At least 8 characters" : "Your password"}
-                    className="w-full border border-border rounded-xl px-3 py-2.5 pr-10 text-sm text-[#0A2540] placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-[#0078D4]/30 focus:border-[#0078D4]"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowPw(p => !p)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-[#0A2540]"
-                  >
-                    {showPw ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                  </button>
-                </div>
+                <label className="text-xs font-semibold text-[#0A2540] mb-1.5 block">Work email <span className="text-red-500">*</span></label>
+                <input
+                  type="email"
+                  required
+                  autoFocus
+                  value={guestEmail}
+                  onChange={e => setGuestEmail(e.target.value)}
+                  placeholder="jane@company.com"
+                  className="w-full border border-border rounded-xl px-3 py-2.5 text-sm text-[#0A2540] placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-[#0078D4]/30 focus:border-[#0078D4]"
+                />
               </div>
 
-              {authTab === "register" && (
-                <div>
-                  <label className="text-xs font-semibold text-[#0A2540] mb-1.5 block">Confirm password</label>
-                  <input
-                    type={showPw ? "text" : "password"}
-                    required
-                    value={authConfirm}
-                    onChange={e => setAuthConfirm(e.target.value)}
-                    placeholder="Repeat password"
-                    className="w-full border border-border rounded-xl px-3 py-2.5 text-sm text-[#0A2540] placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-[#0078D4]/30 focus:border-[#0078D4]"
-                  />
-                </div>
-              )}
-
-              {authError && (
+              {guestError && (
                 <p className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-xl px-3 py-2.5">
-                  {authError}
+                  {guestError}
                 </p>
               )}
 
               <button
                 type="submit"
-                disabled={authLoading}
-                className="w-full flex items-center justify-center gap-2 bg-[#0078D4] text-white font-semibold px-5 py-3 rounded-xl hover:bg-[#005A9E] transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-sm"
+                className="w-full flex items-center justify-center gap-2 bg-[#0078D4] text-white font-semibold px-5 py-3 rounded-xl hover:bg-[#005A9E] transition-colors text-sm"
               >
-                {authLoading
-                  ? <Loader2 className="w-4 h-4 animate-spin" />
-                  : authTab === "register"
-                    ? "Create account & continue"
-                    : "Sign in & continue"
-                }
-                {!authLoading && <ArrowRight className="w-4 h-4" />}
+                Continue to sign agreement
+                <ArrowRight className="w-4 h-4" />
               </button>
-
-              {authTab === "login" && (
-                <p className="text-center">
-                  <a
-                    href={`${import.meta.env.BASE_URL}forgot-password`}
-                    className="text-xs text-muted-foreground hover:text-[#0078D4] transition-colors"
-                  >
-                    Forgot your password?
-                  </a>
-                </p>
-              )}
             </form>
           </div>
         </div>

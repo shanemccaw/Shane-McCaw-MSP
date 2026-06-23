@@ -166,25 +166,19 @@ function redirectAfterAuth(role: string, setLocation: (path: string) => void) {
 }
 
 export default function LoginPage() {
-  const { login, register } = useAuth();
+  const { login } = useAuth();
   const [, setLocation] = useLocation();
-  const search = useSearch();
-  const [mode, setMode] = useState<"login" | "register" | "forgot">(
-    new URLSearchParams(search).get("register") === "1" ? "register" : "login"
-  );
-  const [name, setName] = useState("");
+  const [mode, setMode] = useState<"login" | "forgot">("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [forgotSent, setForgotSent] = useState(false);
 
-  const switchMode = (next: "login" | "register" | "forgot") => {
+  const switchMode = (next: "login" | "forgot") => {
     setMode(next);
     setError("");
     setPassword("");
-    setConfirmPassword("");
     if (next !== "forgot") setForgotSent(false);
   };
 
@@ -209,28 +203,12 @@ export default function LoginPage() {
       return;
     }
 
-    if (mode === "register") {
-      if (password !== confirmPassword) {
-        setError("Passwords do not match");
-        return;
-      }
-      if (password.length < 8) {
-        setError("Password must be at least 8 characters");
-        return;
-      }
-    }
-
     setLoading(true);
     try {
-      if (mode === "login") {
-        const user = await login(email, password);
-        redirectAfterAuth(user.role, setLocation);
-      } else {
-        const user = await register(email, password, name.trim() || undefined);
-        redirectAfterAuth(user.role, setLocation);
-      }
+      const user = await login(email, password);
+      redirectAfterAuth(user.role, setLocation);
     } catch (err) {
-      setError(err instanceof Error ? err.message : mode === "login" ? "Login failed" : "Registration failed");
+      setError(err instanceof Error ? err.message : "Login failed");
     } finally {
       setLoading(false);
     }
@@ -287,12 +265,6 @@ export default function LoginPage() {
               >
                 Sign In to Your Portal
                 <ArrowRight className="w-4 h-4" />
-              </button>
-              <button
-                onClick={() => { switchMode("register"); scrollToLogin(); }}
-                className="inline-flex items-center gap-2 border border-white/20 hover:border-white/40 hover:bg-white/5 text-white/80 hover:text-white font-semibold px-7 py-3.5 rounded-xl transition-colors text-sm"
-              >
-                Create Your Account
               </button>
             </div>
           </div>
@@ -618,10 +590,10 @@ export default function LoginPage() {
       <section className="bg-[#0078D4] py-20 px-6">
         <div className="max-w-[700px] mx-auto text-center">
           <h2 className="text-3xl md:text-4xl font-extrabold text-white mb-4 leading-tight">
-            Your portal is ready.<br />Sign in or create an account.
+            Your portal is ready.<br />Sign in to get started.
           </h2>
           <p className="text-white/70 text-lg mb-10 leading-relaxed">
-            Existing clients can sign in immediately. New clients are provisioned automatically after their first engagement with Shane McCaw Consulting.
+            Client accounts are created automatically after your first engagement with Shane McCaw Consulting. Use the link in your welcome email to access your portal.
           </p>
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
             <button
@@ -630,12 +602,6 @@ export default function LoginPage() {
             >
               Sign In to Your Portal
               <ArrowRight className="w-4 h-4" />
-            </button>
-            <button
-              onClick={() => { switchMode("register"); scrollToLogin(); }}
-              className="inline-flex items-center gap-2 border border-white/30 hover:border-white/60 hover:bg-white/10 text-white font-semibold px-8 py-3.5 rounded-xl transition-colors text-sm"
-            >
-              Create Your Account
             </button>
           </div>
         </div>
@@ -653,15 +619,11 @@ export default function LoginPage() {
             <h2 className="text-2xl font-extrabold text-[#0A2540] mb-1">
               {mode === "forgot"
                 ? "Reset your password"
-                : mode === "register"
-                ? "Create your account"
                 : "Sign in to your secure Customer Command Center portal"}
             </h2>
             <p className="text-muted-foreground text-sm">
               {mode === "forgot"
                 ? "Enter your email and we'll send you a reset link."
-                : mode === "register"
-                ? "Set up your client portal in seconds."
                 : "Sign in with your email and password."}
             </p>
           </div>
@@ -737,23 +699,6 @@ export default function LoginPage() {
               {/* Email / Password form */}
               <div className="bg-white border border-border rounded-2xl shadow-sm p-6">
                 <form onSubmit={handleSubmit} className="space-y-5">
-                  {!isLogin && (
-                    <div>
-                      <label className="block text-sm font-semibold text-[#0A2540] mb-1.5">
-                        Full Name <span className="text-muted-foreground font-normal">(optional)</span>
-                      </label>
-                      <input
-                        type="text"
-                        value={name}
-                        onChange={e => setName(e.target.value)}
-                        placeholder="Jane Smith"
-                        autoComplete="name"
-                        className="w-full border border-border rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4] transition-shadow"
-                        data-testid="input-name"
-                      />
-                    </div>
-                  )}
-
                   <div>
                     <label className="block text-sm font-semibold text-[#0A2540] mb-1.5">Email</label>
                     <input
@@ -788,30 +733,11 @@ export default function LoginPage() {
                       onChange={e => setPassword(e.target.value)}
                       required
                       placeholder="••••••••"
-                      autoComplete={isLogin ? "current-password" : "new-password"}
+                      autoComplete="current-password"
                       className="w-full border border-border rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4] transition-shadow"
                       data-testid="input-password"
                     />
-                    {!isLogin && (
-                      <p className="text-xs text-muted-foreground mt-1">Minimum 8 characters</p>
-                    )}
                   </div>
-
-                  {!isLogin && (
-                    <div>
-                      <label className="block text-sm font-semibold text-[#0A2540] mb-1.5">Confirm Password</label>
-                      <input
-                        type="password"
-                        value={confirmPassword}
-                        onChange={e => setConfirmPassword(e.target.value)}
-                        required
-                        placeholder="••••••••"
-                        autoComplete="new-password"
-                        className="w-full border border-border rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4] transition-shadow"
-                        data-testid="input-confirm-password"
-                      />
-                    </div>
-                  )}
 
                   {error && (
                     <div className="bg-red-50 border border-red-200 text-red-700 rounded-lg px-4 py-3 text-sm" data-testid="login-error">
@@ -828,52 +754,16 @@ export default function LoginPage() {
                     {loading ? (
                       <>
                         <Loader2 className="w-4 h-4 animate-spin" />
-                        {isLogin ? "Signing in…" : "Creating account…"}
+                        Signing in…
                       </>
                     ) : (
-                      isLogin ? "Sign In to Your Portal" : "Create Account"
+                      "Sign In to Your Portal"
                     )}
                   </button>
                 </form>
               </div>
 
-              {/* Mode toggle */}
-              <p className="text-center text-sm text-muted-foreground mt-5">
-                {isLogin ? (
-                  <>
-                    Don't have an account?{" "}
-                    <button
-                      type="button"
-                      onClick={() => switchMode("register")}
-                      className="text-[#0078D4] hover:underline font-semibold"
-                      data-testid="link-create-account"
-                    >
-                      Create one
-                    </button>
-                  </>
-                ) : (
-                  <>
-                    Already have an account?{" "}
-                    <button
-                      type="button"
-                      onClick={() => switchMode("login")}
-                      className="text-[#0078D4] hover:underline font-semibold"
-                      data-testid="link-sign-in"
-                    >
-                      Sign in
-                    </button>
-                  </>
-                )}
-              </p>
-
-              {/* New client guidance — register mode only */}
-              {!isLogin && (
-                <p className="text-center text-xs text-muted-foreground mt-3">
-                  New client? Your account is created automatically after your first engagement.
-                </p>
-              )}
-
-              {/* Troubleshooting — login mode only */}
+              {/* Troubleshooting */}
               {isLogin && (
                 <div className="mt-4 bg-white border border-border rounded-xl px-4 py-3">
                   <p className="text-xs font-semibold text-[#0A2540] mb-2">Having trouble signing in?</p>

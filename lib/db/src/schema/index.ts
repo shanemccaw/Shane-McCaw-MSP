@@ -17,7 +17,7 @@ export interface WizardStep {
 export const usersTable = pgTable("users", {
   id: serial("id").primaryKey(),
   email: text("email").notNull().unique(),
-  passwordHash: text("password_hash").notNull(),
+  passwordHash: text("password_hash"),
   role: text("role", { enum: ["admin", "client"] }).notNull().default("client"),
   name: text("name"),
   company: text("company"),
@@ -299,7 +299,8 @@ export type ProjectUpdate = typeof projectUpdatesTable.$inferSelect;
 // Signed contracts
 export const contractsTable = pgTable("contracts", {
   id: serial("id").primaryKey(),
-  userId: integer("user_id").notNull().references(() => usersTable.id),
+  userId: integer("user_id").references(() => usersTable.id),
+  guestEmail: text("guest_email"),
   serviceId: integer("service_id").notNull().references(() => servicesTable.id),
   signedAt: timestamp("signed_at").notNull().defaultNow(),
   signatureData: text("signature_data"),
@@ -346,6 +347,18 @@ export const impersonationTokensTable = pgTable("impersonation_tokens", {
 
 export type InsertImpersonationToken = typeof impersonationTokensTable.$inferInsert;
 export type ImpersonationToken = typeof impersonationTokensTable.$inferSelect;
+
+export const accountSetupTokensTable = pgTable("account_setup_tokens", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").notNull().references(() => usersTable.id, { onDelete: "cascade" }),
+  token: text("token").notNull().unique(),
+  expiresAt: timestamp("expires_at").notNull(),
+  usedAt: timestamp("used_at"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export type InsertAccountSetupToken = typeof accountSetupTokensTable.$inferInsert;
+export type AccountSetupToken = typeof accountSetupTokensTable.$inferSelect;
 
 // Engagement Project Types (shown on Pricing page Track 02, used for SOW generation)
 export const engagementProjectsTable = pgTable("engagement_projects", {

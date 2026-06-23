@@ -23,6 +23,7 @@ interface AuthState {
 interface AuthContextValue extends AuthState {
   login: (email: string, password: string) => Promise<AuthUser>;
   register: (email: string, password: string, name?: string) => Promise<AuthUser>;
+  setupPassword: (token: string, password: string) => Promise<AuthUser>;
   logout: () => Promise<void>;
   getAuthHeader: () => Record<string, string>;
   fetchWithAuth: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
@@ -88,7 +89,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             url.searchParams.delete("impersonation_token");
             window.history.replaceState({}, "", url.toString());
           } else {
-            // Invalid/expired token — fall back to normal session
             setState(s => ({ ...s, isLoading: false }));
           }
         })
@@ -124,6 +124,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return data.user;
   };
 
+  // register is kept for API compatibility but the server returns 403
   const register = async (email: string, password: string, name?: string): Promise<AuthUser> => {
     const res = await fetch("/api/auth/register", {
       method: "POST",
@@ -134,6 +135,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (!res.ok) {
       const err = await res.json() as { error: string };
       throw new Error(err.error ?? "Registration failed");
+    }
+    const data = await res.json() as { accessToken: string; user: AuthUser };
+    setState({ user: data.user, accessToken: data.accessToken, isLoading: false });
+    accessTokenRef.current = data.accessToken;
+    return data.user;
+  };
+
+  const setupPassword = async (token: string, password: string): Promise<AuthUser> => {
+    const res = await fetch("/api/auth/setup-password", {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ token, password }),
+    });
+    if (!res.ok) {
+      const err = await res.json() as { error: string };
+      throw new Error(err.error ?? "Password setup failed");
     }
     const data = await res.json() as { accessToken: string; user: AuthUser };
     setState({ user: data.user, accessToken: data.accessToken, isLoading: false });
@@ -174,7 +192,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [refresh]);
 
   return (
-    <AuthContext.Provider value={{ ...state, login, register, logout, getAuthHeader, fetchWithAuth }}>
+    <AuthContext.Provider value={{ ...state, login, register, setupPassword, logout, getAuthHeader, fetchWithAuth }}>
       {children}
     </AuthContext.Provider>
   );

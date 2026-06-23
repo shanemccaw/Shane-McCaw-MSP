@@ -2,18 +2,10 @@ import { Router, type IRouter, type Request, type Response } from "express";
 import rateLimit from "express-rate-limit";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
-import { db, usersTable, passwordResetTokensTable, impersonationTokensTable } from "@workspace/db";
+import { db, usersTable, passwordResetTokensTable, impersonationTokensTable, accountSetupTokensTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import type { CookieOptions } from "express";
 import { sendEmailFromTemplate, passwordResetEmail, PORTAL_URL } from "../lib/mailer";
-
-const registerLimiter = rateLimit({
-  windowMs: 60 * 60 * 1000,
-  limit: 5,
-  standardHeaders: "draft-8",
-  legacyHeaders: false,
-  message: { error: "Too many registration attempts from this IP. Please try again in an hour." },
-});
 
 const loginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -21,6 +13,14 @@ const loginLimiter = rateLimit({
   standardHeaders: "draft-8",
   legacyHeaders: false,
   message: { error: "Too many login attempts from this IP. Please try again in 15 minutes." },
+});
+
+const setupPasswordLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 5,
+  standardHeaders: "draft-8",
+  legacyHeaders: false,
+  message: { error: "Too many password setup attempts from this IP. Please try again in 15 minutes." },
 });
 
 const router: IRouter = Router();
@@ -45,6 +45,21 @@ function cookieOpts(): CookieOptions {
   };
 }
 
+function buildUserPayload(user: typeof usersTable.$inferSelect) {
+  return {
+    id: user.id,
+    email: user.email,
+    name: user.name ?? undefined,
+    company: user.company ?? undefined,
+    phone: user.phone ?? undefined,
+    address: user.address ?? undefined,
+    addressCity: user.addressCity ?? undefined,
+    addressState: user.addressState ?? undefined,
+    addressZip: user.addressZip ?? undefined,
+    role: user.role,
+  };
+}
+
 router.post("/auth/login", loginLimiter, async (req: Request, res: Response) => {
   const { email, password } = req.body as { email?: string; password?: string };
 
@@ -66,14 +81,19 @@ router.post("/auth/login", loginLimiter, async (req: Request, res: Response) => 
     return;
   }
 
+  // Guard: account created without a password (e.g. via purchase flow) cannot use this endpoint
+  if (!user.passwordHash) {
+    res.status(401).json({ error: "No password set for this account. Check your email for a setup link." });
+    return;
+  }
+
   const valid = await bcrypt.compare(password, user.passwordHash);
   if (!valid) {
     res.status(401).json({ error: "Invalid email or password" });
     return;
   }
 
-  const payload = { id: user.id, email: user.email, name: user.name ?? undefined, company: user.company ?? undefined, phone: user.phone ?? undefined, address: user.address ?? undefined, addressCity: user.addressCity ?? undefined, addressState: user.addressState ?? undefined, addressZip: user.addressZip ?? undefined, role: user.role };
-
+  const payload = buildUserPayload(user);
   const accessToken = jwt.sign(payload, secret, { expiresIn: ACCESS_TOKEN_TTL });
   const refreshToken = jwt.sign({ id: user.id }, secret, { expiresIn: `${REFRESH_TOKEN_TTL_DAYS}d` });
 
@@ -108,7 +128,7 @@ router.post("/auth/refresh", async (req: Request, res: Response) => {
     return;
   }
 
-  const payload = { id: user.id, email: user.email, name: user.name ?? undefined, company: user.company ?? undefined, phone: user.phone ?? undefined, address: user.address ?? undefined, addressCity: user.addressCity ?? undefined, addressState: user.addressState ?? undefined, addressZip: user.addressZip ?? undefined, role: user.role };
+  const payload = buildUserPayload(user);
   const accessToken = jwt.sign(payload, secret, { expiresIn: ACCESS_TOKEN_TTL });
   const newRefreshToken = jwt.sign({ id: user.id }, secret, { expiresIn: `${REFRESH_TOKEN_TTL_DAYS}d` });
 
@@ -116,11 +136,25 @@ router.post("/auth/refresh", async (req: Request, res: Response) => {
   res.json({ accessToken, user: payload });
 });
 
-router.post("/auth/register", registerLimiter, async (req: Request, res: Response) => {
-  const { email, password, name } = req.body as { email?: string; password?: string; name?: string };
+// ─── Registration disabled — accounts are created by purchases only ───────────
+router.post("/auth/register", (_req: Request, res: Response) => {
+  res.status(403).json({
+    error: "Account creation is not available through this endpoint. Access is granted automatically after purchasing a service.",
+  });
+});
 
-  if (!email || !password) {
-    res.status(400).json({ error: "email and password are required" });
+router.post("/auth/logout", (_req: Request, res: Response) => {
+  res.clearCookie("refreshToken", { path: "/api/auth" });
+  res.json({ success: true });
+});
+
+// ─── Set password from account setup token ────────────────────────────────────
+// Called after a first-time purchase when the account has no password yet.
+router.post("/auth/setup-password", setupPasswordLimiter, async (req: Request, res: Response) => {
+  const { token, password } = req.body as { token?: string; password?: string };
+
+  if (!token || !password) {
+    res.status(400).json({ error: "token and password are required" });
     return;
   }
 
@@ -135,43 +169,40 @@ router.post("/auth/register", registerLimiter, async (req: Request, res: Respons
     return;
   }
 
-  const normalizedEmail = email.toLowerCase().trim();
-  const [existing] = await db.select().from(usersTable).where(eq(usersTable.email, normalizedEmail)).limit(1);
-  if (existing) {
-    res.status(409).json({ error: "An account with that email already exists" });
+  const [record] = await db.select()
+    .from(accountSetupTokensTable)
+    .where(eq(accountSetupTokensTable.token, token))
+    .limit(1);
+
+  const now = new Date();
+
+  if (!record || record.usedAt || record.expiresAt < now) {
+    res.status(400).json({ error: "This setup link is invalid or has expired. Please contact support." });
     return;
   }
 
   const passwordHash = await bcrypt.hash(password, 12);
-  const [user] = await db
-    .insert(usersTable)
-    .values({ email: normalizedEmail, passwordHash, role: "client", name: name?.trim() || null })
-    .returning();
 
-  const payload = { id: user.id, email: user.email, name: user.name ?? undefined, company: user.company ?? undefined, phone: user.phone ?? undefined, address: user.address ?? undefined, addressCity: user.addressCity ?? undefined, addressState: user.addressState ?? undefined, addressZip: user.addressZip ?? undefined, role: user.role };
+  await db.update(usersTable)
+    .set({ passwordHash })
+    .where(eq(usersTable.id, record.userId));
+
+  await db.update(accountSetupTokensTable)
+    .set({ usedAt: now })
+    .where(eq(accountSetupTokensTable.id, record.id));
+
+  const [user] = await db.select().from(usersTable).where(eq(usersTable.id, record.userId)).limit(1);
+  if (!user) {
+    res.status(500).json({ error: "User not found after setup" });
+    return;
+  }
+
+  const payload = buildUserPayload(user);
   const accessToken = jwt.sign(payload, secret, { expiresIn: ACCESS_TOKEN_TTL });
   const refreshToken = jwt.sign({ id: user.id }, secret, { expiresIn: `${REFRESH_TOKEN_TTL_DAYS}d` });
 
   res.cookie("refreshToken", refreshToken, cookieOpts());
-  res.status(201).json({ accessToken, user: payload });
-
-  void sendEmailFromTemplate(
-    "welcome-email",
-    user.email,
-    { clientName: user.name ?? user.email, portalLink: PORTAL_URL },
-    "Welcome to Shane McCaw Consulting — your portal is ready",
-    `
-    <p>Hi ${user.name ?? ""},</p>
-    <p>Welcome! Your Shane McCaw Consulting client portal has been set up and is ready for you.</p>
-    <p style="margin:24px 0 0;"><a href="${PORTAL_URL}" style="display:inline-block;background:#0078D4;color:#ffffff;text-decoration:none;font-weight:600;font-size:14px;padding:12px 24px;border-radius:6px;">Go to your portal →</a></p>
-    <p style="margin-top:24px;">— Shane McCaw</p>
-    `,
-  );
-});
-
-router.post("/auth/logout", (_req: Request, res: Response) => {
-  res.clearCookie("refreshToken", { path: "/api/auth" });
-  res.json({ success: true });
+  res.json({ accessToken, user: payload });
 });
 
 // ─── Forgot password ──────────────────────────────────────────────────────────
@@ -190,6 +221,27 @@ router.post("/auth/forgot-password", async (req: Request, res: Response) => {
     .where(eq(usersTable.email, normalizedEmail))
     .limit(1);
   if (!user) return;
+
+  // If the user has no password yet, send them a setup link instead
+  if (!user.passwordHash) {
+    const { randomBytes } = await import("crypto");
+    const token = randomBytes(32).toString("hex");
+    const expiresAt = new Date(Date.now() + 72 * 60 * 60 * 1000); // 72 hours
+
+    await db.insert(accountSetupTokensTable).values({ userId: user.id, token, expiresAt });
+
+    const baseUrl = process.env.PORTAL_BASE_URL ?? `${process.env.REPLIT_DEV_DOMAIN ? `https://${process.env.REPLIT_DEV_DOMAIN}` : ""}/crm`;
+    const setupUrl = `${baseUrl}/portal/onboarding/success?setup_token=${token}`;
+
+    void sendEmailFromTemplate(
+      "account-setup",
+      user.email,
+      { setupLink: setupUrl, clientName: user.name ?? user.email },
+      "Set up your Shane McCaw Consulting portal password",
+      `<p>Hi ${user.name ?? ""},</p><p>Click the link below to set your portal password:</p><p><a href="${setupUrl}">Set my password →</a></p><p>This link expires in 72 hours.</p><p>— Shane McCaw</p>`,
+    ).catch(() => null);
+    return;
+  }
 
   const { randomBytes } = await import("crypto");
   const token = randomBytes(32).toString("hex");
@@ -250,9 +302,6 @@ router.post("/auth/reset-password", async (req: Request, res: Response) => {
 });
 
 // ─── Impersonation token exchange ─────────────────────────────────────────────
-// Called by the CRM portal to bootstrap a one-time impersonation session.
-// The URL token is a random hex string stored in the DB — consumed on first use.
-// Returns a fresh short-lived JWT so the original URL token is never reused.
 router.post("/auth/impersonate-exchange", async (req: Request, res: Response) => {
   const { token } = req.body as { token?: string };
   if (!token) {

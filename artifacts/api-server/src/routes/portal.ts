@@ -1,7 +1,8 @@
 import { Router, type IRouter, type Request, type Response } from "express";
-import { db, projectsTable, clientServicesTable, servicesTable, workflowStepsTable, kanbanTasksTable, documentsTable, reportsTable, invoicesTable, messagesTable, notificationsTable, projectUpdatesTable, usersTable, contractsTable, passwordResetTokensTable, workflowTemplateStepsTable, workflowTemplateStepTasksTable, contractTemplatesTable, impersonationTokensTable, statusReportsTable, deviceTokensTable, projectClosuresTable, auditLogsTable, instructionSetsTable, checklistsTable, artifactSetsTable, deliverableSetsTable, emailsTable, emailDomainRulesTable, clientM365ProfilesTable, couponsTable, clientAppRegistrationsTable } from "@workspace/db";
-import { eq, and, desc, asc, count, sql, inArray, gte, isNotNull } from "drizzle-orm";
+import { db, projectsTable, clientServicesTable, servicesTable, workflowStepsTable, kanbanTasksTable, documentsTable, reportsTable, invoicesTable, messagesTable, notificationsTable, projectUpdatesTable, usersTable, contractsTable, passwordResetTokensTable, workflowTemplateStepsTable, workflowTemplateStepTasksTable, contractTemplatesTable, impersonationTokensTable, statusReportsTable, deviceTokensTable, projectClosuresTable, auditLogsTable, instructionSetsTable, checklistsTable, artifactSetsTable, deliverableSetsTable, emailsTable, emailDomainRulesTable, clientM365ProfilesTable, couponsTable, clientAppRegistrationsTable, accountSetupTokensTable } from "@workspace/db";
+import { eq, and, desc, asc, count, sql, inArray, gte, isNotNull, isNull } from "drizzle-orm";
 import { requireAuth, requireAdmin } from "../middlewares/requireAuth";
+import jwt from "jsonwebtoken";
 import { sendEmail, sendEmailFromTemplate, getEmailTemplateOrFallback, purchaseConfirmationEmail, onboardingConfirmationEmail, adminPurchaseAlertEmail, closureRequestEmail, statusReportReplyEmail, clientThreadReplyEmail, adminThreadReplyEmail, retainerResumedEmail, appRegExpiryAlertEmail, brandedEmail, PORTAL_URL } from "../lib/mailer";
 import { sendAdminSms } from "../lib/sms";
 import { sendPushNotifications } from "../lib/push";
@@ -19,6 +20,20 @@ import { PDFDocument, rgb, StandardFonts } from "pdf-lib";
 import { Readable } from "stream";
 
 const router: IRouter = Router();
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+/** Upsert a client account keyed by email. Returns the user id. */
+async function ensureClientAccount(email: string, name?: string): Promise<{ id: number }> {
+  const normalizedEmail = email.toLowerCase().trim();
+  const [existing] = await db.select({ id: usersTable.id }).from(usersTable)
+    .where(eq(usersTable.email, normalizedEmail)).limit(1);
+  if (existing) return { id: existing.id };
+  const [newUser] = await db.insert(usersTable)
+    .values({ email: normalizedEmail, role: "client", name: name?.trim() || undefined })
+    .returning({ id: usersTable.id });
+  return { id: newUser.id };
+}
 
 /**
  * Returns the number of messages that Shane has not yet read.
@@ -2511,9 +2526,10 @@ async function provisionOnboardingProject(
   req: Request,
   session: import("stripe").Stripe.Checkout.Session,
   stripeSubscriptionId?: string | null,
+  userIdOverride?: number,
 ): Promise<void> {
   const { userId, serviceId, serviceIds: serviceIdsStr, contractId, contractIds: contractIdsStr, servicePrices: servicePricesStr } = session.metadata ?? {};
-  const uid = parseInt(userId ?? "", 10);
+  const uid = userIdOverride ?? parseInt(userId ?? "", 10);
 
   // Support both legacy (serviceId) and new (serviceIds) metadata formats
   const sids = serviceIdsStr
@@ -3246,11 +3262,33 @@ async function processStripeEvent(req: Request, event: import("stripe").Stripe.E
       const subId = typeof session.subscription === "string"
         ? session.subscription
         : (session.subscription as { id?: string } | null)?.id ?? null;
-      await provisionOnboardingProject(req, session, subId);
+
+      // Resolve the buyer: user sessions carry metadata.userId; guests are identified
+      // by metadata.guestEmail (or the Stripe customer_details email).
+      let webhookUserIdOverride: number | null = null;
+      const webhookMetaUserId = session.metadata?.userId;
+      if (webhookMetaUserId) {
+        webhookUserIdOverride = parseInt(webhookMetaUserId, 10) || null;
+      } else {
+        const guestEmailMeta =
+          session.metadata?.guestEmail ??
+          (session.customer_details as { email?: string } | null)?.email ??
+          null;
+        if (guestEmailMeta) {
+          const acct = await ensureClientAccount(guestEmailMeta);
+          webhookUserIdOverride = acct.id;
+          // Link any pre-payment guest contracts to the new account
+          await db.update(contractsTable)
+            .set({ userId: webhookUserIdOverride })
+            .where(and(eq(contractsTable.guestEmail, guestEmailMeta), isNull(contractsTable.userId)));
+        }
+      }
+
+      await provisionOnboardingProject(req, session, subId, webhookUserIdOverride ?? undefined);
 
       // SMS alert to Shane — look up buyer + services after provisioning
       try {
-        const uid = parseInt(session.metadata?.userId ?? "", 10);
+        const uid = webhookUserIdOverride ?? parseInt(session.metadata?.userId ?? "", 10);
         const [buyer] = isNaN(uid) ? [] : await db.select().from(usersTable).where(eq(usersTable.id, uid));
         const sidsStr = session.metadata?.serviceIds ?? session.metadata?.serviceId ?? "";
         const sids = sidsStr.split(",").map((s: string) => parseInt(s.trim(), 10)).filter((n: number) => !isNaN(n));
@@ -5491,8 +5529,32 @@ router.get("/portal/onboarding/services", async (_req: Request, res: Response) =
 });
 
 // ─── ONBOARDING: Sign a contract (supports multi-service) ────────────────────
-router.post("/portal/onboarding/contract", requireAuth, async (req: Request, res: Response) => {
-  const userId = req.user!.id;
+router.post("/portal/onboarding/contract", async (req: Request, res: Response) => {
+  // Optional auth: use bearer JWT if present; otherwise treat as guest and require guestEmail in body
+  let resolvedUserId: number | null = null;
+
+  const authHeader = req.headers.authorization;
+  if (authHeader?.startsWith("Bearer ")) {
+    const jwtSecret = process.env.JWT_SECRET;
+    if (jwtSecret) {
+      try {
+        const payload = jwt.verify(authHeader.slice(7), jwtSecret) as { id: number };
+        resolvedUserId = payload.id;
+      } catch { /* invalid token — fall through to guest */ }
+    }
+  }
+
+  let resolvedGuestEmail: string | null = null;
+  if (resolvedUserId === null) {
+    const { guestEmail } = req.body as { guestEmail?: string };
+    if (!guestEmail?.trim()) {
+      res.status(401).json({ error: "Please provide your email address to continue." });
+      return;
+    }
+    resolvedGuestEmail = guestEmail.trim().toLowerCase();
+  }
+
+  const userId = resolvedUserId; // null for guests; contracts.userId is nullable
   const { serviceId, serviceIds: rawServiceIds, signatureData, signerName, wizardSelections, couponCode: bodyCouponCode } = req.body as {
     serviceId?: number; serviceIds?: number[]; signatureData?: string; signerName?: string;
     wizardSelections?: Record<string, { stepId: string; stepTitle?: string; optionId: string; optionLabel?: string; priceAdjustment?: number }[]>;
@@ -5654,7 +5716,8 @@ router.post("/portal/onboarding/contract", requireAuth, async (req: Request, res
     }
 
     const [contract] = await db.insert(contractsTable).values({
-      userId,
+      userId: resolvedUserId,
+      guestEmail: resolvedGuestEmail,
       serviceId: svc.id,
       signatureData,
       signerName: signerName.trim(),
@@ -5691,8 +5754,10 @@ router.post("/portal/onboarding/contract", requireAuth, async (req: Request, res
       let sharepointFileUrl: string | null = null;
       let sharepointFileId: string | null = null;
 
-      const [clientUser] = await db.select({ sharepointSiteId: usersTable.sharepointSiteId })
-        .from(usersTable).where(eq(usersTable.id, userId));
+      const [clientUser] = resolvedUserId !== null
+        ? await db.select({ sharepointSiteId: usersTable.sharepointSiteId })
+            .from(usersTable).where(eq(usersTable.id, resolvedUserId))
+        : [null];
 
       if (!clientUser?.sharepointSiteId) {
         req.log.warn({ contractId: contract.id }, "contract signing: client has no SharePoint site — PDF saved locally only");
@@ -5721,14 +5786,14 @@ router.post("/portal/onboarding/contract", requireAuth, async (req: Request, res
 
   // Audit the signing
   void createAuditLog({
-    actorUserId: userId,
-    actorName: req.user!.name ?? req.user!.email,
+    actorUserId: resolvedUserId ?? undefined,
+    actorName: req.user?.name ?? req.user?.email ?? resolvedGuestEmail ?? "Guest",
     actorRole: "client",
     actionType: "contract_signed",
     entityType: "contract",
     entityId: createdContracts.map(c => c.id).join(","),
     entityLabel: services.map(s => s.name).join(", "),
-    clientId: userId,
+    clientId: resolvedUserId ?? undefined,
     metadata: { signerName, serviceCount: createdContracts.length },
   });
 
@@ -5754,18 +5819,22 @@ router.get("/portal/onboarding/contract/:id", requireAuth, async (req: Request, 
 });
 
 // ─── ONBOARDING: Check Stripe session (success page polling) ─────────────────
-router.get("/portal/onboarding/session/:sessionId", requireAuth, async (req: Request, res: Response) => {
+// Public endpoint — the Stripe session_id is a cryptographically random secret
+// that serves as the authentication token. For logged-in users, ownership is also
+// verified against req.user when present.
+router.get("/portal/onboarding/session/:sessionId", async (req: Request, res: Response) => {
   let stripeKey: string;
   try { stripeKey = getStripeKey(); } catch (e) { res.status(503).json({ error: (e as Error).message }); return; }
   const { default: Stripe } = await import("stripe");
   const stripe = new Stripe(stripeKey);
   try {
     const session = await stripe.checkout.sessions.retrieve(String(req.params.sessionId));
-    // ── Security: verify this session belongs to the requesting user (IDOR prevention) ──
-    const sessionOwner = session.metadata?.userId;
-    if (!sessionOwner || sessionOwner !== String(req.user!.id)) {
-      res.status(403).json({ error: "Session not found or access denied" });
-      return;
+    // For logged-in users with userId-type sessions, optionally verify ownership
+    if (session.metadata?.userId && req.user) {
+      if (session.metadata.userId !== String(req.user.id)) {
+        res.status(403).json({ error: "Session not found or access denied" });
+        return;
+      }
     }
     // For subscription sessions, retrieve next billing date from the subscription
     let nextBillingDate: number | null = null;
@@ -5784,9 +5853,13 @@ router.get("/portal/onboarding/session/:sessionId", requireAuth, async (req: Req
 });
 
 // ─── ONBOARDING: Provision project after successful payment ──────────────────
-// Called by the success page as a fallback when webhooks are not yet configured.
+// Public endpoint — payment_status === "paid" is the security gate.
+// For user sessions: metadata.userId identifies the buyer.
+// For guest sessions: metadata.guestEmail / customer_details.email are used to
+//   create/find the client account. The session_id is a Stripe-generated
+//   cryptographically random string that is impractical to guess.
 // Safe to call multiple times — provisionOnboardingProject is idempotent.
-router.post("/portal/onboarding/provision/:sessionId", requireAuth, async (req: Request, res: Response) => {
+router.post("/portal/onboarding/provision/:sessionId", async (req: Request, res: Response) => {
   let stripeKey: string;
   try { stripeKey = getStripeKey(); } catch (e) { res.status(503).json({ error: (e as Error).message }); return; }
 
@@ -5795,15 +5868,11 @@ router.post("/portal/onboarding/provision/:sessionId", requireAuth, async (req: 
 
   let session: import("stripe").Stripe.Checkout.Session;
   try {
-    session = await stripe.checkout.sessions.retrieve(String(req.params.sessionId));
+    session = await stripe.checkout.sessions.retrieve(String(req.params.sessionId), {
+      expand: ["customer_details"],
+    });
   } catch {
     res.status(404).json({ error: "Session not found" });
-    return;
-  }
-
-  // Security: only the session owner may trigger provisioning
-  if (!session.metadata?.userId || session.metadata.userId !== String(req.user!.id)) {
-    res.status(403).json({ error: "Access denied" });
     return;
   }
 
@@ -5817,20 +5886,73 @@ router.post("/portal/onboarding/provision/:sessionId", requireAuth, async (req: 
     return;
   }
 
+  // Resolve the user account for this session.
+  // User sessions carry metadata.userId; guest sessions use the Stripe customer email.
+  let resolvedUserId: number | null = null;
+  if (session.metadata?.userId) {
+    resolvedUserId = parseInt(session.metadata.userId, 10) || null;
+  }
+  if (resolvedUserId === null) {
+    const customerEmail =
+      (session.customer_details as { email?: string } | null)?.email ??
+      session.metadata?.guestEmail ??
+      null;
+    if (!customerEmail) {
+      res.status(400).json({ error: "Cannot determine customer email for account provisioning" });
+      return;
+    }
+    const acct = await ensureClientAccount(customerEmail);
+    resolvedUserId = acct.id;
+    // Link any pre-payment guest contracts to the newly created account
+    await db.update(contractsTable)
+      .set({ userId: resolvedUserId })
+      .where(and(eq(contractsTable.guestEmail, customerEmail), isNull(contractsTable.userId)));
+  }
+
   try {
     const subId = typeof session.subscription === "string"
       ? session.subscription
       : (session.subscription as { id?: string } | null)?.id ?? null;
-    await provisionOnboardingProject(req, session, subId);
-    req.log.info({ sessionId: session.id }, "onboarding provision: triggered from success page");
-    res.json({ ok: true });
+    await provisionOnboardingProject(req, session, subId, resolvedUserId);
+    req.log.info({ sessionId: session.id, userId: resolvedUserId }, "onboarding provision: triggered from success page");
+
+    // If the user has no password yet, generate a setup token and deliver it via email.
+    // We do NOT return the token in the JSON response (which is a public endpoint keyed
+    // only by session_id) — the email ensures only the account owner can use it.
+    const [provUser] = await db
+      .select({ passwordHash: usersTable.passwordHash, email: usersTable.email, name: usersTable.name })
+      .from(usersTable)
+      .where(eq(usersTable.id, resolvedUserId))
+      .limit(1);
+    const hasPassword = !!(provUser?.passwordHash);
+    let sentSetupEmail = false;
+    if (!hasPassword && provUser?.email) {
+      const { randomBytes } = await import("crypto");
+      const token = randomBytes(32).toString("hex");
+      const expiresAt = new Date(Date.now() + 72 * 60 * 60 * 1000);
+      await db.insert(accountSetupTokensTable).values({ userId: resolvedUserId, token, expiresAt });
+
+      // Send setup link via email — token never leaves the server in the API response
+      const baseUrl = process.env.PORTAL_BASE_URL
+        ?? `${process.env.REPLIT_DEV_DOMAIN ? `https://${process.env.REPLIT_DEV_DOMAIN}` : ""}/crm`;
+      const setupUrl = `${baseUrl}/portal/onboarding/success?setup_token=${token}`;
+      void sendEmailFromTemplate(
+        "account-setup",
+        provUser.email,
+        { setupLink: setupUrl, clientName: provUser.name ?? provUser.email },
+        "Set up your Shane McCaw Consulting portal password",
+        `<p>Hi ${provUser.name ?? ""},</p><p>Your project workspace is ready. Click the link below to set your portal password:</p><p><a href="${setupUrl}">Set my password →</a></p><p>This link expires in 72 hours.</p><p>— Shane McCaw</p>`,
+      ).catch(() => null);
+      sentSetupEmail = true;
+    }
+
+    res.json({ ok: true, hasPassword, sentSetupEmail });
   } catch (err) {
     req.log.error({ err }, "onboarding provision: failed");
     res.status(500).json({ error: "Provisioning failed" });
   }
 });
 
-// ─── ONBOARDING: Create Stripe checkout session (multi-service, mixed-cart) ──
 // ─── Shared coupon helper ─────────────────────────────────────────────────────
 async function lookupAndValidateCoupon(
   code: string,
@@ -5867,8 +5989,9 @@ router.get("/portal/coupons/available/:code", async (req: Request, res: Response
   res.json({ available: true });
 });
 
-// ─── CLIENT: Coupon Validate ──────────────────────────────────────────────────
-router.post("/portal/coupons/validate", requireAuth, async (req: Request, res: Response) => {
+// ─── CLIENT: Coupon Validate ─────────────────────────────────────────────────
+// No auth required — coupon codes are not sensitive; guests need this while reviewing their cart
+router.post("/portal/coupons/validate", async (req: Request, res: Response) => {
   const { code, cartTotal } = req.body as { code?: string; cartTotal?: number };
   if (!code?.trim()) { res.status(400).json({ error: "code is required" }); return; }
   if (cartTotal == null || isNaN(Number(cartTotal)) || Number(cartTotal) < 0) {
@@ -5896,18 +6019,43 @@ router.post("/portal/coupons/validate", requireAuth, async (req: Request, res: R
 
 // ─────────────────────────────────────────────────────────────────────────────
 
-router.post("/portal/checkout/create-session", requireAuth, async (req: Request, res: Response) => {
-  const userId = req.user!.id;
+router.post("/portal/checkout/create-session", async (req: Request, res: Response) => {
+  // Optional auth — logged-in users pass JWT; guests pass guestEmail in body
+  let resolvedUserId: number | null = null;
+  let resolvedGuestEmail: string | null = null;
+
+  const authHeader = req.headers.authorization;
+  if (authHeader?.startsWith("Bearer ")) {
+    const jwtSecret = process.env.JWT_SECRET;
+    if (jwtSecret) {
+      try {
+        const payload = jwt.verify(authHeader.slice(7), jwtSecret) as { id: number };
+        resolvedUserId = payload.id;
+      } catch { /* fall through to guest */ }
+    }
+  }
+  if (!resolvedUserId && req.user) resolvedUserId = req.user.id;
+
   const {
     serviceId, serviceIds: rawServiceIds,
     contractId, contractIds: rawContractIds,
     returnUrl, startDate, couponCode,
+    guestEmail: bodyGuestEmail,
   } = req.body as {
     serviceId?: number; serviceIds?: number[];
     contractId?: number; contractIds?: number[];
     returnUrl?: string; startDate?: string;
     couponCode?: string;
+    guestEmail?: string;
   };
+
+  if (!resolvedUserId) {
+    if (!bodyGuestEmail?.trim()) {
+      res.status(401).json({ error: "Authentication required or provide guestEmail" });
+      return;
+    }
+    resolvedGuestEmail = bodyGuestEmail.trim().toLowerCase();
+  }
 
   // Support legacy single-service and new multi-service formats
   const resolvedServiceIds: number[] = rawServiceIds?.length ? rawServiceIds : serviceId ? [serviceId] : [];
@@ -5922,12 +6070,14 @@ router.post("/portal/checkout/create-session", requireAuth, async (req: Request,
     return;
   }
 
-  // ── Security: verify all contracts belong to this user and match services ──
+  // ── Security: verify all contracts belong to this user/guest and match services ──
   // Also capture finalPrice from each contract (server-computed wizard price)
   const contractFinalPrices = new Map<number, number | null>();
   for (let i = 0; i < resolvedContractIds.length; i++) {
-    const [contract] = await db.select().from(contractsTable)
-      .where(and(eq(contractsTable.id, resolvedContractIds[i]), eq(contractsTable.userId, userId)));
+    const contractCondition = resolvedUserId !== null
+      ? and(eq(contractsTable.id, resolvedContractIds[i]), eq(contractsTable.userId, resolvedUserId))
+      : and(eq(contractsTable.id, resolvedContractIds[i]), eq(contractsTable.guestEmail, resolvedGuestEmail!));
+    const [contract] = await db.select().from(contractsTable).where(contractCondition);
     if (!contract) {
       res.status(403).json({ error: "Contract not found or does not belong to this account" });
       return;
@@ -5962,18 +6112,20 @@ router.post("/portal/checkout/create-session", requireAuth, async (req: Request,
   const { default: Stripe } = await import("stripe");
   const stripe = new Stripe(stripeKey);
 
-  const [sessionUserProfile] = await db.select({
-    email: usersTable.email,
-    name: usersTable.name,
-    address: usersTable.address,
-    addressCity: usersTable.addressCity,
-    addressState: usersTable.addressState,
-    addressZip: usersTable.addressZip,
-  }).from(usersTable).where(eq(usersTable.id, userId));
-
-  const sessionCustomerId = sessionUserProfile
-    ? await getOrCreateStripeCustomer(stripe, sessionUserProfile)
-    : undefined;
+  let sessionCustomerId: string | undefined;
+  if (resolvedUserId !== null) {
+    const [sessionUserProfile] = await db.select({
+      email: usersTable.email,
+      name: usersTable.name,
+      address: usersTable.address,
+      addressCity: usersTable.addressCity,
+      addressState: usersTable.addressState,
+      addressZip: usersTable.addressZip,
+    }).from(usersTable).where(eq(usersTable.id, resolvedUserId));
+    if (sessionUserProfile) {
+      sessionCustomerId = await getOrCreateStripeCustomer(stripe, sessionUserProfile);
+    }
+  }
 
   const baseUrl = returnUrl ?? `${req.protocol}://${req.hostname}`;
 
@@ -6057,6 +6209,7 @@ router.post("/portal/checkout/create-session", requireAuth, async (req: Request,
       const session = await stripe.checkout.sessions.create({
         payment_method_types: ["card"],
         customer: sessionCustomerId,
+        ...(resolvedGuestEmail && !sessionCustomerId ? { customer_email: resolvedGuestEmail } : {}),
         billing_address_collection: "required",
         line_items: oneTimeServices.map(s => ({
           price_data: {
@@ -6072,7 +6225,9 @@ router.post("/portal/checkout/create-session", requireAuth, async (req: Request,
         cancel_url: `${baseUrl}/portal/onboarding/contract?serviceIds=${oneTimeServices.map(s => s.id).join(",")}&cancelled=1`,
         metadata: {
           type: "onboarding_purchase",
-          userId: String(userId),
+          ...(resolvedUserId !== null
+            ? { userId: String(resolvedUserId) }
+            : { guestEmail: resolvedGuestEmail! }),
           serviceIds: oneTimeServices.map(s => s.id).join(","),
           contractIds: otContractIds.join(","),
           serviceName: oneTimeServices.map(s => s.name).join(", "),
@@ -6090,6 +6245,7 @@ router.post("/portal/checkout/create-session", requireAuth, async (req: Request,
       const session = await stripe.checkout.sessions.create({
         payment_method_types: ["card"],
         customer: sessionCustomerId,
+        ...(resolvedGuestEmail && !sessionCustomerId ? { customer_email: resolvedGuestEmail } : {}),
         billing_address_collection: "required",
         line_items: recurringServices.map(s => ({
           price_data: {
@@ -6105,7 +6261,9 @@ router.post("/portal/checkout/create-session", requireAuth, async (req: Request,
         cancel_url: `${baseUrl}/portal/onboarding/contract?serviceIds=${recurringServices.map(s => s.id).join(",")}&cancelled=1`,
         metadata: {
           type: "onboarding_purchase",
-          userId: String(userId),
+          ...(resolvedUserId !== null
+            ? { userId: String(resolvedUserId) }
+            : { guestEmail: resolvedGuestEmail! }),
           serviceIds: recurringServices.map(s => s.id).join(","),
           contractIds: recContractIds.join(","),
           serviceName: recurringServices.map(s => s.name).join(", "),

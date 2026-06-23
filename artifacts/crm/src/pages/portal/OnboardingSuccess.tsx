@@ -1,7 +1,7 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useLocation, useSearch } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
-import { CheckCircle2, ArrowRight, Loader2, Calendar, MessageSquare, FolderKanban, RefreshCw, CreditCard } from "lucide-react";
+import { CheckCircle2, ArrowRight, Loader2, Calendar, MessageSquare, FolderKanban, RefreshCw, CreditCard, Eye, EyeOff, Mail } from "lucide-react";
 
 interface PurchasedItem {
   name: string;
@@ -9,25 +9,66 @@ interface PurchasedItem {
 }
 
 export default function OnboardingSuccess() {
-  const { user, fetchWithAuth } = useAuth();
+  const { user, fetchWithAuth, setupPassword, login } = useAuth();
   const [, setLocation] = useLocation();
   const search = useSearch();
   const params = new URLSearchParams(search);
   const sessionId = params.get("session_id") ?? "";
+  // setup_token is present when the user arrives via an emailed setup link
+  const urlSetupToken = params.get("setup_token") ?? "";
 
-  const [status, setStatus] = useState<"loading" | "paid" | "pending" | "needs_subscription" | "error">("loading");
+  const [status, setStatus] = useState<"loading" | "paid" | "pending" | "needs_subscription" | "error" | "setup_link">("loading");
   const [purchasedItems, setPurchasedItems] = useState<PurchasedItem[]>([]);
   const [projectId, setProjectId] = useState<number | null>(null);
   const [pendingSubUrl, setPendingSubUrl] = useState<string | null>(null);
   const [nextBillingDate, setNextBillingDate] = useState<number | null>(null);
+  const [clientEmail, setClientEmail] = useState<string>("");
+
+  // Password setup state (for standalone setup-link mode)
+  const [setupToken, setSetupToken] = useState<string | null>(urlSetupToken || null);
+  const [setupPassword1, setSetupPassword1] = useState("");
+  const [setupPassword2, setSetupPassword2] = useState("");
+  const [setupLoading, setSetupLoading] = useState(false);
+  const [setupError, setSetupError] = useState("");
+  const [setupDone, setSetupDone] = useState(false);
+  const [showPw, setShowPw] = useState(false);
+
+  // Whether this is a new account whose setup link was sent by email (not inline)
+  const [setupEmailSent, setSetupEmailSent] = useState(false);
+
+  // Session and provision endpoints are public (session_id is the secret).
+  // Authenticated users use fetchWithAuth for the dashboard poll after login.
+  const doFetch = useCallback((url: string, init?: RequestInit): Promise<Response> => {
+    if (user) {
+      return fetchWithAuth(url, init);
+    }
+    return fetch(url, { ...init, credentials: "include" });
+  }, [user, fetchWithAuth]);
 
   useEffect(() => {
-    if (!user) { setLocation("/"); return; }
+    // ── Standalone setup-link mode (arrived via emailed setup link) ──────────
+    // The URL contains setup_token but no session_id. Skip the Stripe session
+    // check entirely and go directly to the password setup form.
+    if (urlSetupToken && !sessionId) {
+      setStatus("setup_link");
+      return;
+    }
+
     if (!sessionId) { setStatus("error"); return; }
+
+    // Pre-populate email from user or guest info
+    if (user?.email) {
+      setClientEmail(user.email);
+    } else {
+      try {
+        const g = JSON.parse(sessionStorage.getItem("onboardingGuest") ?? "{}") as { email?: string };
+        if (g.email) setClientEmail(g.email);
+      } catch { /* ignore */ }
+    }
 
     const check = async () => {
       try {
-        const res = await fetchWithAuth(`/api/portal/onboarding/session/${sessionId}`);
+        const res = await doFetch(`/api/portal/onboarding/session/${sessionId}`);
         if (!res.ok) { setStatus("error"); return; }
         const data = await res.json() as {
           status: string;
@@ -38,8 +79,6 @@ export default function OnboardingSuccess() {
 
         if (data.nextBillingDate) setNextBillingDate(data.nextBillingDate);
 
-        // Prefer the full cart summary persisted before the first Stripe redirect — it
-        // covers ALL items even in mixed carts where two sessions complete sequentially.
         let resolvedItems: PurchasedItem[] = [];
         const storedCart = sessionStorage.getItem("onboardingCartSummary");
         if (storedCart) {
@@ -49,13 +88,10 @@ export default function OnboardingSuccess() {
               name: i.name,
               isRecurring: i.billingType === "recurring_monthly",
             }));
-          } catch {
-            // fall through to session-metadata fallback
-          }
+          } catch { /* fall through */ }
         }
 
         if (resolvedItems.length === 0) {
-          // Fallback: derive from current session metadata (single-type or pure carts)
           const serviceNamesRaw = data.metadata?.serviceName ?? "";
           const serviceNames = serviceNamesRaw.split(",").map(s => s.trim()).filter(Boolean);
           const isSubscriptionSession = data.mode === "subscription";
@@ -68,39 +104,40 @@ export default function OnboardingSuccess() {
         setPurchasedItems(resolvedItems.length > 0 ? resolvedItems : [{ name: "your service", isRecurring: false }]);
 
         if (data.status === "paid" || data.status === "complete") {
-          // Check for a pending subscription checkout (mixed cart second session)
           const storedSubUrl = sessionStorage.getItem("pendingCheckoutUrl");
           if (storedSubUrl) {
-            // Clear it immediately so we only redirect once
             sessionStorage.removeItem("pendingCheckoutUrl");
             setPendingSubUrl(storedSubUrl);
             setStatus("needs_subscription");
             return;
           }
 
-          // Trigger server-side provisioning directly from the success page.
-          // This is the primary path when webhooks are not yet registered —
-          // provisionOnboardingProject is idempotent so it's safe if the
-          // webhook also fires later.
+          // Provision project — for new accounts the server emails the setup link
           try {
-            await fetchWithAuth(`/api/portal/onboarding/provision/${sessionId}`, { method: "POST" });
-          } catch {
-            // Non-fatal: project may already exist (webhook fired) or will be
-            // created manually by admin. Continue to show the success screen.
-          }
+            const provRes = await doFetch(`/api/portal/onboarding/provision/${sessionId}`, { method: "POST" });
+            if (provRes.ok) {
+              const provData = await provRes.json() as { ok?: boolean; hasPassword?: boolean; sentSetupEmail?: boolean };
+              if (provData.sentSetupEmail) {
+                // New account: setup token was sent to the customer's email address
+                setSetupEmailSent(true);
+              }
+            }
+          } catch { /* non-fatal */ }
 
-          // Clear persisted cart — final success is now rendering
           sessionStorage.removeItem("onboardingCartSummary");
           setStatus("paid");
-          // Find newly-created project — poll briefly to let the DB write settle
-          for (let i = 0; i < 8; i++) {
-            await new Promise(r => setTimeout(r, 1500));
-            const projRes = await fetchWithAuth("/api/portal/dashboard");
-            if (projRes.ok) {
-              const dash = await projRes.json() as { projects: Array<{ id: number; title: string }> };
-              if (dash.projects?.length > 0) {
-                setProjectId(dash.projects[0].id);
-                break;
+
+          // Only poll for project if user is already authenticated
+          if (user) {
+            for (let i = 0; i < 8; i++) {
+              await new Promise(r => setTimeout(r, 1500));
+              const projRes = await doFetch("/api/portal/dashboard");
+              if (projRes.ok) {
+                const dash = await projRes.json() as { projects: Array<{ id: number; title: string }> };
+                if (dash.projects?.length > 0) {
+                  setProjectId(dash.projects[0].id);
+                  break;
+                }
               }
             }
           }
@@ -113,7 +150,151 @@ export default function OnboardingSuccess() {
     };
 
     check().catch(() => setStatus("error"));
-  }, [sessionId, user, fetchWithAuth, setLocation]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessionId, urlSetupToken]);
+
+  const handleSetupPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSetupError("");
+    if (setupPassword1.length < 8) { setSetupError("Password must be at least 8 characters."); return; }
+    if (setupPassword1 !== setupPassword2) { setSetupError("Passwords do not match."); return; }
+    if (!setupToken) return;
+    setSetupLoading(true);
+    try {
+      await setupPassword(setupToken, setupPassword1);
+      // Auto-login — email comes from guest info or already set clientEmail
+      const emailToLogin = clientEmail || (() => {
+        try { return (JSON.parse(sessionStorage.getItem("onboardingGuest") ?? "{}") as { email?: string }).email ?? ""; } catch { return ""; }
+      })();
+      if (emailToLogin) {
+        try { await login(emailToLogin, setupPassword1); } catch { /* login will redirect via auth context */ }
+      }
+      // Clean up guest session storage
+      sessionStorage.removeItem("onboardingGuest");
+      sessionStorage.removeItem("onboardingGuestToken");
+      setSetupDone(true);
+      // Poll for project now that we have a real session
+      for (let i = 0; i < 8; i++) {
+        await new Promise(r => setTimeout(r, 1500));
+        try {
+          const projRes = await fetchWithAuth("/api/portal/dashboard");
+          if (projRes.ok) {
+            const dash = await projRes.json() as { projects: Array<{ id: number; title: string }> };
+            if (dash.projects?.length > 0) {
+              setProjectId(dash.projects[0].id);
+              break;
+            }
+          }
+        } catch { break; }
+      }
+    } catch (err) {
+      setSetupError(err instanceof Error ? err.message : "Failed to set password. Please try again.");
+    } finally {
+      setSetupLoading(false);
+    }
+  };
+
+  // ── Standalone setup-link mode (arrived via emailed link) ─────────────────
+  if (status === "setup_link") {
+    return (
+      <div className="min-h-screen bg-[#F7F9FC] flex flex-col">
+        <div className="bg-[#0A2540]">
+          <div className="max-w-3xl mx-auto px-6 py-4">
+            <span className="text-white font-bold text-sm">Shane McCaw Consulting</span>
+          </div>
+        </div>
+        <div className="flex-1 flex items-center justify-center px-6 py-16">
+          <div className="max-w-lg w-full">
+            <div className="bg-white border border-[#0078D4]/30 rounded-2xl p-8">
+              {!setupDone ? (
+                <>
+                  <div className="flex items-center gap-2 mb-1">
+                    <div className="w-8 h-8 rounded-lg bg-[#0078D4]/10 flex items-center justify-center">
+                      <CheckCircle2 className="w-4 h-4 text-[#0078D4]" />
+                    </div>
+                    <p className="text-base font-bold text-[#0A2540]">Set your portal password</p>
+                  </div>
+                  <p className="text-sm text-muted-foreground mb-6">
+                    Your client account is ready. Choose a password to access your project dashboard.
+                  </p>
+                  <form onSubmit={handleSetupPassword} className="space-y-3">
+                    <div>
+                      <label className="text-xs font-semibold text-[#0A2540] mb-1.5 block">New password</label>
+                      <div className="relative">
+                        <input
+                          type={showPw ? "text" : "password"}
+                          required
+                          value={setupPassword1}
+                          onChange={e => setSetupPassword1(e.target.value)}
+                          placeholder="At least 8 characters"
+                          className="w-full border border-border rounded-xl px-3 py-2.5 pr-10 text-sm text-[#0A2540] placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-[#0078D4]/30 focus:border-[#0078D4]"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowPw(p => !p)}
+                          className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-[#0A2540]"
+                        >
+                          {showPw ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                        </button>
+                      </div>
+                    </div>
+                    <div>
+                      <label className="text-xs font-semibold text-[#0A2540] mb-1.5 block">Confirm password</label>
+                      <input
+                        type={showPw ? "text" : "password"}
+                        required
+                        value={setupPassword2}
+                        onChange={e => setSetupPassword2(e.target.value)}
+                        placeholder="Repeat password"
+                        className="w-full border border-border rounded-xl px-3 py-2.5 text-sm text-[#0A2540] placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-[#0078D4]/30 focus:border-[#0078D4]"
+                      />
+                    </div>
+                    {setupError && (
+                      <p className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-xl px-3 py-2">
+                        {setupError}
+                      </p>
+                    )}
+                    <button
+                      type="submit"
+                      disabled={setupLoading}
+                      className="w-full flex items-center justify-center gap-2 bg-[#0078D4] text-white font-semibold px-5 py-3 rounded-xl hover:bg-[#005A9E] transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-sm"
+                    >
+                      {setupLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <>
+                        Activate my portal account
+                        <ArrowRight className="w-4 h-4" />
+                      </>}
+                    </button>
+                  </form>
+                </>
+              ) : (
+                <div className="text-center">
+                  <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <CheckCircle2 className="w-8 h-8 text-green-600" />
+                  </div>
+                  <h2 className="text-lg font-bold text-[#0A2540] mb-2">Password set — you're in!</h2>
+                  <p className="text-sm text-muted-foreground mb-6">You're now signed in to your portal.</p>
+                  {projectId && (
+                    <button
+                      onClick={() => setLocation(`/portal/projects/${projectId}`)}
+                      className="flex items-center justify-center gap-2 bg-[#0078D4] text-white font-semibold px-5 py-3 rounded-xl hover:bg-[#005A9E] transition-colors text-sm w-full mb-2"
+                    >
+                      View your project <ArrowRight className="w-4 h-4" />
+                    </button>
+                  )}
+                  <button
+                    onClick={() => setLocation("/portal")}
+                    className="flex items-center justify-center gap-2 border border-border bg-white text-[#0A2540] font-semibold px-5 py-3 rounded-xl hover:bg-[#F7F9FC] transition-colors text-sm w-full"
+                  >
+                    Go to dashboard
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   if (status === "loading") {
     return (
@@ -145,7 +326,6 @@ export default function OnboardingSuccess() {
     );
   }
 
-  // Mixed-cart: first payment done, subscription checkout still pending
   if (status === "needs_subscription") {
     return (
       <div className="min-h-screen bg-[#F7F9FC] flex flex-col">
@@ -196,7 +376,6 @@ export default function OnboardingSuccess() {
     );
   }
 
-  const displayNames = purchasedItems.map(i => i.name).join(", ");
   const hasRecurring = purchasedItems.some(i => i.isRecurring);
 
   return (
@@ -230,9 +409,11 @@ export default function OnboardingSuccess() {
               : "Payment confirmed. Your project will be set up shortly and you'll receive an email with next steps."}
           </p>
 
-          <p className="text-sm text-muted-foreground mb-6">
-            A confirmation email has been sent to <strong>{user?.email}</strong>.
-          </p>
+          {clientEmail && (
+            <p className="text-sm text-muted-foreground mb-6">
+              A confirmation email has been sent to <strong>{clientEmail}</strong>.
+            </p>
+          )}
 
           {/* Purchased items summary */}
           {purchasedItems.length > 0 && (
@@ -270,6 +451,91 @@ export default function OnboardingSuccess() {
                   </p>
                 </div>
               )}
+            </div>
+          )}
+
+          {/* New account: setup link sent by email */}
+          {setupEmailSent && (
+            <div className="bg-white border border-[#0078D4]/30 rounded-2xl p-5 text-left mb-6 flex items-start gap-3">
+              <div className="w-8 h-8 rounded-xl bg-[#0078D4]/10 flex items-center justify-center flex-shrink-0 mt-0.5">
+                <Mail className="w-4 h-4 text-[#0078D4]" />
+              </div>
+              <div>
+                <p className="text-sm font-bold text-[#0A2540] mb-0.5">Check your email to activate your account</p>
+                <p className="text-xs text-muted-foreground">
+                  We sent a password-setup link to{clientEmail ? <> <strong>{clientEmail}</strong></> : " your email address"}. Click the link in that email to set your password and access your project dashboard.
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* Inline password setup for standalone token mode (should not appear here — handled above) */}
+          {setupToken && !setupDone && !setupEmailSent && (
+            <div className="bg-white border border-[#0078D4]/30 rounded-2xl p-6 text-left mb-6">
+              <div className="flex items-center gap-2 mb-1">
+                <div className="w-6 h-6 rounded-lg bg-[#0078D4]/10 flex items-center justify-center">
+                  <CheckCircle2 className="w-3.5 h-3.5 text-[#0078D4]" />
+                </div>
+                <p className="text-sm font-bold text-[#0A2540]">Set your portal password</p>
+              </div>
+              <p className="text-xs text-muted-foreground mb-4">
+                Your client account has been created. Set a password to access your project dashboard.
+              </p>
+              <form onSubmit={handleSetupPassword} className="space-y-3">
+                <div>
+                  <label className="text-xs font-semibold text-[#0A2540] mb-1.5 block">New password</label>
+                  <div className="relative">
+                    <input
+                      type={showPw ? "text" : "password"}
+                      required
+                      value={setupPassword1}
+                      onChange={e => setSetupPassword1(e.target.value)}
+                      placeholder="At least 8 characters"
+                      className="w-full border border-border rounded-xl px-3 py-2.5 pr-10 text-sm text-[#0A2540] placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-[#0078D4]/30 focus:border-[#0078D4]"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPw(p => !p)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-[#0A2540]"
+                    >
+                      {showPw ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-[#0A2540] mb-1.5 block">Confirm password</label>
+                  <input
+                    type={showPw ? "text" : "password"}
+                    required
+                    value={setupPassword2}
+                    onChange={e => setSetupPassword2(e.target.value)}
+                    placeholder="Repeat password"
+                    className="w-full border border-border rounded-xl px-3 py-2.5 text-sm text-[#0A2540] placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-[#0078D4]/30 focus:border-[#0078D4]"
+                  />
+                </div>
+                {setupError && (
+                  <p className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-xl px-3 py-2">
+                    {setupError}
+                  </p>
+                )}
+                <button
+                  type="submit"
+                  disabled={setupLoading}
+                  className="w-full flex items-center justify-center gap-2 bg-[#0078D4] text-white font-semibold px-5 py-3 rounded-xl hover:bg-[#005A9E] transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-sm"
+                >
+                  {setupLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <>
+                    Activate my portal account
+                    <ArrowRight className="w-4 h-4" />
+                  </>}
+                </button>
+              </form>
+            </div>
+          )}
+
+          {setupToken && setupDone && (
+            <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-4 text-left mb-6 flex items-center gap-3">
+              <CheckCircle2 className="w-5 h-5 text-emerald-600 flex-shrink-0" />
+              <p className="text-sm text-emerald-800 font-medium">Password set — you're now signed in to your portal.</p>
             </div>
           )}
 
@@ -317,12 +583,22 @@ export default function OnboardingSuccess() {
                 <ArrowRight className="w-4 h-4" />
               </button>
             )}
-            <button
-              onClick={() => setLocation("/portal")}
-              className="flex items-center justify-center gap-2 border border-border bg-white text-[#0A2540] font-semibold px-5 py-3 rounded-xl hover:bg-[#F7F9FC] transition-colors text-sm"
-            >
-              Go to dashboard
-            </button>
+            {(user || setupDone) && (
+              <button
+                onClick={() => setLocation("/portal")}
+                className="flex items-center justify-center gap-2 border border-border bg-white text-[#0A2540] font-semibold px-5 py-3 rounded-xl hover:bg-[#F7F9FC] transition-colors text-sm"
+              >
+                Go to dashboard
+              </button>
+            )}
+            {!user && !setupDone && !setupEmailSent && (
+              <button
+                onClick={() => setLocation("/login")}
+                className="flex items-center justify-center gap-2 border border-border bg-white text-[#0A2540] font-semibold px-5 py-3 rounded-xl hover:bg-[#F7F9FC] transition-colors text-sm"
+              >
+                Sign in to portal
+              </button>
+            )}
           </div>
         </div>
       </div>
