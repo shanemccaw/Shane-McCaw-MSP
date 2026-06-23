@@ -61,6 +61,7 @@ export default function PortalAppRegistration() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [submitted, setSubmitted] = useState(false);
+  const [updateMode, setUpdateMode] = useState(false);
 
   useEffect(() => {
     fetchWithAuth("/api/portal/app-registration")
@@ -75,6 +76,22 @@ export default function PortalAppRegistration() {
       .catch(() => null)
       .finally(() => setLoading(false));
   }, [fetchWithAuth]);
+
+  function enterUpdateMode() {
+    setClientSecret("");
+    setError(null);
+    setUpdateMode(true);
+  }
+
+  function cancelUpdate() {
+    setUpdateMode(false);
+    setError(null);
+    setClientSecret("");
+    if (record) {
+      setTenantId(record.tenantId ?? "");
+      setAzureClientId(record.azureClientId ?? "");
+    }
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -103,6 +120,7 @@ export default function PortalAppRegistration() {
       setRecord(updated);
       setClientSecret("");
       setSubmitted(true);
+      setUpdateMode(false);
     } catch {
       setError("Network error. Please check your connection and try again.");
     } finally {
@@ -112,6 +130,7 @@ export default function PortalAppRegistration() {
 
   const isVerified = record?.status === "verified";
   const isSubmitted = submitted || record?.status === "submitted" || record?.status === "verified";
+  const wasAlreadyConnected = !!(record && (record.status === "submitted" || record.status === "verified"));
 
   return (
     <PortalLayout>
@@ -133,7 +152,7 @@ export default function PortalAppRegistration() {
 
           {!loading && (
             <div className="mt-3">
-              <StatusBadge status={record?.status ?? "pending"} />
+              <StatusBadge status={updateMode ? (record?.status ?? "pending") : (record?.status ?? "pending")} />
             </div>
           )}
         </div>
@@ -238,19 +257,150 @@ export default function PortalAppRegistration() {
           </ol>
         </div>
 
-        {/* ── Credential form ─────────────────────────────────────────────────── */}
+        {/* ── Credential form / status ─────────────────────────────────────────── */}
         <div className="bg-white border border-border rounded-xl overflow-hidden">
-          <div className="px-5 py-3.5 border-b border-border bg-[#F7F9FC]">
+          <div className="px-5 py-3.5 border-b border-border bg-[#F7F9FC] flex items-center justify-between gap-3">
             <p className="text-[10px] font-bold uppercase tracking-wider text-gray-500">
-              {isVerified ? "Connected Credentials" : "Submit Credentials"}
+              {updateMode
+                ? "Update Credentials"
+                : isVerified
+                  ? "Connected Credentials"
+                  : "Submit Credentials"}
             </p>
+            {!loading && !updateMode && isSubmitted && (
+              <button
+                onClick={enterUpdateMode}
+                className="inline-flex items-center gap-1.5 text-xs font-semibold text-[#0078D4] hover:text-[#0078D4]/80 transition-colors"
+              >
+                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                </svg>
+                Update Credentials
+              </button>
+            )}
           </div>
 
           {loading ? (
             <div className="p-8 flex justify-center">
               <div className="w-6 h-6 border-3 border-[#0078D4] border-t-transparent rounded-full animate-spin" />
             </div>
+          ) : updateMode ? (
+            /* ── Update mode form ─────────────────────────────────────────────── */
+            <form onSubmit={handleSubmit} className="p-5 space-y-4">
+              {/* Warning banner */}
+              <div className="flex items-start gap-3 bg-amber-50 border border-amber-200 rounded-lg px-4 py-3.5">
+                <svg className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+                </svg>
+                <div>
+                  <p className="text-sm font-semibold text-amber-800">Resubmitting will pause automations until re-verified</p>
+                  <p className="text-xs text-amber-700 mt-1 leading-relaxed">
+                    Updating your credentials resets the connection status to <strong>Submitted · Pending Verification</strong>. Shane will need to test and re-verify the new credentials before your automations can run again. This typically takes one business day.
+                  </p>
+                </div>
+              </div>
+
+              {error && (
+                <div className="flex items-start gap-2.5 bg-red-50 border border-red-200 rounded-lg px-4 py-3 text-sm text-red-700">
+                  <svg className="w-4 h-4 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  {error}
+                </div>
+              )}
+
+              <div>
+                <label className="block text-xs font-bold text-[#0A2540] mb-1.5">
+                  Tenant ID <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={tenantId}
+                  onChange={e => setTenantId(e.target.value)}
+                  placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+                  className="w-full border border-border rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-[#0078D4] bg-white"
+                  autoComplete="off"
+                />
+                <p className="text-[11px] text-gray-400 mt-1">Found on your App Registration's Overview page under Directory (tenant) ID</p>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-[#0A2540] mb-1.5">
+                  Client ID (Application ID) <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={azureClientId}
+                  onChange={e => setAzureClientId(e.target.value)}
+                  placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+                  className="w-full border border-border rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-[#0078D4] bg-white"
+                  autoComplete="off"
+                />
+                <p className="text-[11px] text-gray-400 mt-1">Found on your App Registration's Overview page under Application (client) ID</p>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-[#0A2540] mb-1.5">
+                  New Client Secret <span className="text-red-500">*</span>
+                </label>
+                <div className="relative">
+                  <input
+                    type={showSecret ? "text" : "password"}
+                    value={clientSecret}
+                    onChange={e => setClientSecret(e.target.value)}
+                    placeholder="Paste the new secret value here"
+                    className="w-full border border-border rounded-lg px-3 py-2 pr-10 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-[#0078D4] bg-white"
+                    autoComplete="new-password"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowSecret(v => !v)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
+                    tabIndex={-1}
+                  >
+                    {showSecret ? (
+                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" /></svg>
+                    ) : (
+                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
+                    )}
+                  </button>
+                </div>
+                <p className="text-[11px] text-gray-400 mt-1">The previous secret will be overwritten in Azure Key Vault immediately.</p>
+              </div>
+
+              <div className="flex gap-3 pt-1">
+                <button
+                  type="button"
+                  onClick={cancelUpdate}
+                  disabled={saving}
+                  className="flex-1 border border-border text-[#0A2540] text-sm font-semibold py-2.5 rounded-lg transition-colors hover:bg-gray-50 disabled:opacity-60"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={saving}
+                  className="flex-1 bg-amber-600 hover:bg-amber-700 disabled:opacity-60 text-white text-sm font-semibold py-2.5 rounded-lg transition-colors flex items-center justify-center gap-2"
+                >
+                  {saving ? (
+                    <>
+                      <span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+                      Updating…
+                    </>
+                  ) : (
+                    <>
+                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                      </svg>
+                      Update &amp; Resubmit
+                    </>
+                  )}
+                </button>
+              </div>
+              <p className="text-[11px] text-center text-gray-400">Your new Client Secret will be encrypted in transit and stored only in Azure Key Vault.</p>
+            </form>
           ) : isVerified ? (
+            /* ── Verified state ───────────────────────────────────────────────── */
             <div className="p-5 space-y-4">
               <div className="flex items-center gap-2.5 text-green-700 bg-green-50 border border-green-200 rounded-lg px-4 py-3">
                 <svg className="w-4.5 h-4.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
@@ -274,11 +424,14 @@ export default function PortalAppRegistration() {
                   </div>
                 )}
               </div>
-              <p className="text-xs text-gray-500 mt-2">
-                To update your credentials, contact Shane directly or resubmit below. Resubmitting will require re-verification.
-              </p>
+              <div className="border-t border-border pt-4 flex items-center justify-between gap-3">
+                <p className="text-xs text-gray-500">
+                  If your App Registration secret has rotated or been recreated, use the Update Credentials button above to resubmit.
+                </p>
+              </div>
             </div>
           ) : isSubmitted ? (
+            /* ── Submitted / pending state ────────────────────────────────────── */
             <div className="p-5 space-y-4">
               <div className="flex items-start gap-3 bg-amber-50 border border-amber-200 rounded-lg px-4 py-3">
                 <svg className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -299,16 +452,17 @@ export default function PortalAppRegistration() {
                     <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-1">Client ID</p>
                     <p className="font-mono text-[#0A2540] text-xs break-all">{record.azureClientId}</p>
                   </div>
+                  {record.submittedAt && (
+                    <div>
+                      <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-1">Submitted on</p>
+                      <p className="text-[#0A2540] text-sm">{new Date(record.submittedAt).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}</p>
+                    </div>
+                  )}
                 </div>
               )}
-              <button
-                onClick={() => setSubmitted(false)}
-                className="text-xs font-semibold text-[#0078D4] hover:underline"
-              >
-                Update credentials
-              </button>
             </div>
           ) : (
+            /* ── Initial submission form ──────────────────────────────────────── */
             <form onSubmit={handleSubmit} className="p-5 space-y-4">
               {error && (
                 <div className="flex items-start gap-2.5 bg-red-50 border border-red-200 rounded-lg px-4 py-3 text-sm text-red-700">
