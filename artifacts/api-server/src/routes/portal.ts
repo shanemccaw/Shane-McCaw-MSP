@@ -1,5 +1,5 @@
 import { Router, type IRouter, type Request, type Response } from "express";
-import { db, projectsTable, clientServicesTable, servicesTable, workflowStepsTable, kanbanTasksTable, documentsTable, reportsTable, invoicesTable, messagesTable, notificationsTable, projectUpdatesTable, usersTable, contractsTable, passwordResetTokensTable, workflowTemplateStepsTable, workflowTemplateStepTasksTable, contractTemplatesTable, impersonationTokensTable, statusReportsTable, deviceTokensTable, projectClosuresTable, auditLogsTable, instructionSetsTable, checklistsTable, artifactSetsTable, deliverableSetsTable, emailsTable, emailDomainRulesTable, clientM365ProfilesTable, couponsTable } from "@workspace/db";
+import { db, projectsTable, clientServicesTable, servicesTable, workflowStepsTable, kanbanTasksTable, documentsTable, reportsTable, invoicesTable, messagesTable, notificationsTable, projectUpdatesTable, usersTable, contractsTable, passwordResetTokensTable, workflowTemplateStepsTable, workflowTemplateStepTasksTable, contractTemplatesTable, impersonationTokensTable, statusReportsTable, deviceTokensTable, projectClosuresTable, auditLogsTable, instructionSetsTable, checklistsTable, artifactSetsTable, deliverableSetsTable, emailsTable, emailDomainRulesTable, clientM365ProfilesTable, couponsTable, clientAppRegistrationsTable } from "@workspace/db";
 import { eq, and, desc, asc, count, sql, inArray, gte, isNotNull } from "drizzle-orm";
 import { requireAuth, requireAdmin } from "../middlewares/requireAuth";
 import { sendEmail, sendEmailFromTemplate, getEmailTemplateOrFallback, purchaseConfirmationEmail, onboardingConfirmationEmail, adminPurchaseAlertEmail, closureRequestEmail, statusReportReplyEmail, clientThreadReplyEmail, adminThreadReplyEmail, retainerResumedEmail, PORTAL_URL } from "../lib/mailer";
@@ -8,6 +8,7 @@ import { sendPushNotifications } from "../lib/push";
 import { createAuditLog } from "../lib/audit";
 import { getStripeKey } from "../lib/stripe";
 import { listDriveItems, graphCredentialsPresent, createProjectFolder, uploadFileToClientContracts, getDriveItemDownloadUrl } from "../lib/graph";
+import { setSecretValue } from "../lib/azure-keyvault";
 import { uploadInvoiceToSharePoint } from "../lib/invoice-sharepoint";
 import { generateM365ProfilePdf } from "../lib/m365-profile-pdf";
 import multer from "multer";
@@ -230,6 +231,129 @@ router.put("/portal/m365-profile", requireAuth, async (req: Request, res: Respon
     .values({ clientId: userId, profile })
     .onConflictDoUpdate({ target: clientM365ProfilesTable.clientId, set: { profile, updatedAt: new Date() } });
   res.json({ ok: true });
+});
+
+// ─── CLIENT: App Registration (Azure automation credentials) ─────────────────
+router.get("/portal/app-registration", requireAuth, async (req: Request, res: Response) => {
+  const userId = req.user!.id;
+  const [row] = await db.select().from(clientAppRegistrationsTable)
+    .where(eq(clientAppRegistrationsTable.clientUserId, userId));
+  if (!row) { res.json(null); return; }
+  res.json({
+    status: row.status,
+    tenantId: row.tenantId,
+    azureClientId: row.azureClientId,
+    submittedAt: row.submittedAt,
+    verifiedAt: row.verifiedAt,
+  });
+});
+
+router.put("/portal/app-registration", requireAuth, async (req: Request, res: Response) => {
+  const userId = req.user!.id;
+  const { tenantId, azureClientId, clientSecret } = req.body as {
+    tenantId?: string;
+    azureClientId?: string;
+    clientSecret?: string;
+  };
+
+  if (!tenantId?.trim() || !azureClientId?.trim() || !clientSecret?.trim()) {
+    res.status(400).json({ error: "tenantId, azureClientId, and clientSecret are required" });
+    return;
+  }
+
+  const kvSecretName = `client-${userId}-app-secret`;
+
+  try {
+    await setSecretValue(kvSecretName, clientSecret.trim());
+  } catch (err) {
+    req.log.error({ err }, "portal/app-registration: failed to store secret in Key Vault");
+    res.status(503).json({ error: "Could not store credentials in Azure Key Vault. Please verify Key Vault is configured and try again." });
+    return;
+  }
+
+  const now = new Date();
+  await db.insert(clientAppRegistrationsTable)
+    .values({
+      clientUserId: userId,
+      tenantId: tenantId.trim(),
+      azureClientId: azureClientId.trim(),
+      keyVaultSecretName: kvSecretName,
+      status: "submitted",
+      submittedAt: now,
+      updatedAt: now,
+    })
+    .onConflictDoUpdate({
+      target: clientAppRegistrationsTable.clientUserId,
+      set: {
+        tenantId: tenantId.trim(),
+        azureClientId: azureClientId.trim(),
+        keyVaultSecretName: kvSecretName,
+        status: "submitted",
+        submittedAt: now,
+        verifiedAt: null,
+        updatedAt: now,
+      },
+    });
+
+  res.json({
+    status: "submitted",
+    tenantId: tenantId.trim(),
+    azureClientId: azureClientId.trim(),
+    submittedAt: now,
+    verifiedAt: null,
+  });
+});
+
+// ─── ADMIN: Mark client App Registration as verified ─────────────────────────
+router.patch("/admin/clients/:id/app-registration", requireAdmin, async (req: Request, res: Response) => {
+  const clientId = parseInt(String(req.params.id ?? ""), 10);
+  if (isNaN(clientId)) { res.status(400).json({ error: "Invalid client ID" }); return; }
+
+  const { status } = req.body as { status?: string };
+  if (status !== "verified" && status !== "submitted" && status !== "pending") {
+    res.status(400).json({ error: "status must be pending, submitted, or verified" });
+    return;
+  }
+
+  const now = new Date();
+  const [existing] = await db.select().from(clientAppRegistrationsTable)
+    .where(eq(clientAppRegistrationsTable.clientUserId, clientId));
+
+  if (!existing) { res.status(404).json({ error: "No App Registration found for this client" }); return; }
+
+  const updates: Partial<typeof clientAppRegistrationsTable.$inferInsert> = {
+    status: status as "pending" | "submitted" | "verified",
+    updatedAt: now,
+  };
+  if (status === "verified") updates.verifiedAt = now;
+  if (status !== "verified") updates.verifiedAt = null;
+
+  await db.update(clientAppRegistrationsTable)
+    .set(updates)
+    .where(eq(clientAppRegistrationsTable.clientUserId, clientId));
+
+  res.json({ ok: true, status });
+});
+
+// ─── ADMIN: Get client App Registration status ────────────────────────────────
+router.get("/admin/clients/:id/app-registration", requireAdmin, async (req: Request, res: Response) => {
+  const clientId = parseInt(String(req.params.id ?? ""), 10);
+  if (isNaN(clientId)) { res.status(400).json({ error: "Invalid client ID" }); return; }
+
+  const [row] = await db.select().from(clientAppRegistrationsTable)
+    .where(eq(clientAppRegistrationsTable.clientUserId, clientId));
+
+  if (!row) { res.json(null); return; }
+  res.json({
+    status: row.status,
+    tenantId: row.tenantId,
+    azureClientId: row.azureClientId,
+    keyVaultSecretName: row.keyVaultSecretName,
+    submittedAt: row.submittedAt,
+    verifiedAt: row.verifiedAt,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+  });
 });
 
 // ─── CLIENT: Dashboard summary ───────────────────────────────────────────────

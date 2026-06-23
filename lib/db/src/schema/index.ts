@@ -804,6 +804,23 @@ export const runbookJobHistoryTable = pgTable("runbook_job_history", {
 export type InsertRunbookJobHistory = typeof runbookJobHistoryTable.$inferInsert;
 export type RunbookJobHistory = typeof runbookJobHistoryTable.$inferSelect;
 
+// Client App Registrations — Azure App Registration credentials submitted by clients for Script Runner
+export const clientAppRegistrationsTable = pgTable("client_app_registrations", {
+  id: serial("id").primaryKey(),
+  clientUserId: integer("client_user_id").notNull().unique().references(() => usersTable.id, { onDelete: "cascade" }),
+  tenantId: text("tenant_id").notNull(),
+  azureClientId: text("azure_client_id").notNull(),
+  keyVaultSecretName: text("key_vault_secret_name").notNull(),
+  status: text("status", { enum: ["pending", "submitted", "verified"] }).notNull().default("pending"),
+  submittedAt: timestamp("submitted_at"),
+  verifiedAt: timestamp("verified_at"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export type InsertClientAppRegistration = typeof clientAppRegistrationsTable.$inferInsert;
+export type ClientAppRegistration = typeof clientAppRegistrationsTable.$inferSelect;
+
 // Service page trigger key mappings — which engagement project trigger keys each service page shows
 export const servicePageTriggerKeysTable = pgTable("service_page_trigger_keys", {
   id: serial("id").primaryKey(),

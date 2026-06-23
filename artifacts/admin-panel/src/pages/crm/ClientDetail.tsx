@@ -27,6 +27,17 @@ interface AzureCredential {
   expiresOn: string | null;
 }
 
+interface AppRegRecord {
+  status: "pending" | "submitted" | "verified";
+  tenantId: string;
+  azureClientId: string;
+  keyVaultSecretName: string;
+  submittedAt: string | null;
+  verifiedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
 const EXPIRY_WARN_DAYS = 60;
 
 function daysUntil(iso: string): number {
@@ -115,6 +126,10 @@ export default function ClientDetailPage() {
   const [savingCred, setSavingCred] = useState(false);
   const [deletingCred, setDeletingCred] = useState(false);
 
+  const [appReg, setAppReg] = useState<AppRegRecord | null | undefined>(undefined);
+  const [appRegLoading, setAppRegLoading] = useState(true);
+  const [verifyingAppReg, setVerifyingAppReg] = useState(false);
+
   const [viewAsLoading, setViewAsLoading] = useState(false);
 
   const CRM_PORTAL_BASE = `${window.location.protocol}//${window.location.host}/crm`;
@@ -152,12 +167,45 @@ export default function ClientDetailPage() {
     }
   }, [fetchWithAuth, clientId]);
 
+  const loadAppReg = useCallback(async () => {
+    setAppRegLoading(true);
+    try {
+      const res = await fetchWithAuth(`/api/admin/clients/${clientId}/app-registration`);
+      if (!res.ok) { setAppReg(null); return; }
+      const data = (await res.json()) as AppRegRecord | null;
+      setAppReg(data);
+    } finally {
+      setAppRegLoading(false);
+    }
+  }, [fetchWithAuth, clientId]);
+
   useEffect(() => {
     if (!isNaN(clientId)) {
       void loadClient();
       void loadAzureCred();
+      void loadAppReg();
     }
-  }, [loadClient, loadAzureCred, clientId]);
+  }, [loadClient, loadAzureCred, loadAppReg, clientId]);
+
+  async function handleSetAppRegStatus(status: "verified" | "submitted" | "pending") {
+    setVerifyingAppReg(true);
+    try {
+      const res = await fetchWithAuth(`/api/admin/clients/${clientId}/app-registration`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status }),
+      });
+      if (!res.ok) {
+        const err = (await res.json()) as { error: string };
+        toast({ title: "Failed", description: err.error, variant: "destructive" });
+        return;
+      }
+      await loadAppReg();
+      toast({ title: status === "verified" ? "App Registration verified" : "Status updated" });
+    } finally {
+      setVerifyingAppReg(false);
+    }
+  }
 
   function startEditInfo() {
     if (!client) return;
@@ -694,6 +742,112 @@ export default function ClientDetailPage() {
           </div>
         )}
       </div>
+
+      {/* ── Automation Credentials (client-submitted App Registration) ─── */}
+      <div className="bg-white border border-border rounded-xl overflow-hidden">
+        <div className="flex items-center justify-between px-5 py-3.5 border-b border-border bg-[#F7F9FC]">
+          <div>
+            <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+              Automation Credentials · Client App Registration
+            </p>
+            <p className="text-[11px] text-muted-foreground mt-0.5">
+              Submitted by the client via the portal — used to run PowerShell runbooks in their tenant
+            </p>
+          </div>
+        </div>
+
+        {appRegLoading ? (
+          <div className="p-5 flex items-center gap-2 text-sm text-gray-400">
+            <div className="w-4 h-4 border-2 border-[#0078D4] border-t-transparent rounded-full animate-spin" />
+            Loading…
+          </div>
+        ) : appReg ? (
+          <div className="p-5 space-y-4">
+            <div className="flex items-center gap-3 flex-wrap">
+              {appReg.status === "verified" ? (
+                <span className="inline-flex items-center gap-1.5 text-xs font-bold px-2.5 py-1 rounded-full bg-green-100 text-green-700 border border-green-200">
+                  <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
+                  Verified
+                </span>
+              ) : appReg.status === "submitted" ? (
+                <span className="inline-flex items-center gap-1.5 text-xs font-bold px-2.5 py-1 rounded-full bg-amber-100 text-amber-700 border border-amber-200">
+                  <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+                  Submitted · Pending Verification
+                </span>
+              ) : (
+                <span className="inline-flex items-center gap-1.5 text-xs font-bold px-2.5 py-1 rounded-full bg-red-100 text-red-700 border border-red-200">
+                  <span className="w-1.5 h-1.5 rounded-full bg-red-500" />
+                  Pending
+                </span>
+              )}
+            </div>
+
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+              <div>
+                <p className={labelCls}>Tenant ID</p>
+                <p className="text-xs text-[#0A2540] font-mono break-all">{appReg.tenantId}</p>
+              </div>
+              <div>
+                <p className={labelCls}>Client ID (App Reg)</p>
+                <p className="text-xs text-[#0A2540] font-mono break-all">{appReg.azureClientId}</p>
+              </div>
+              <div>
+                <p className={labelCls}>Key Vault Secret</p>
+                <p className="text-xs text-[#0A2540] font-mono">{appReg.keyVaultSecretName}</p>
+              </div>
+              {appReg.submittedAt && (
+                <div>
+                  <p className={labelCls}>Submitted</p>
+                  <p className="text-sm text-[#0A2540]">
+                    {new Date(appReg.submittedAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                  </p>
+                </div>
+              )}
+              {appReg.verifiedAt && (
+                <div>
+                  <p className={labelCls}>Verified</p>
+                  <p className="text-sm text-[#0A2540]">
+                    {new Date(appReg.verifiedAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                  </p>
+                </div>
+              )}
+            </div>
+
+            <div className="flex gap-2 pt-1 flex-wrap">
+              {appReg.status !== "verified" && (
+                <button
+                  onClick={() => void handleSetAppRegStatus("verified")}
+                  disabled={verifyingAppReg}
+                  className="flex items-center gap-1.5 text-xs font-semibold bg-green-600 text-white px-4 py-1.5 rounded-lg hover:bg-green-700 disabled:opacity-50 transition-colors"
+                >
+                  {verifyingAppReg ? (
+                    <span className="w-3 h-3 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+                  ) : (
+                    <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
+                  )}
+                  Mark as Verified
+                </button>
+              )}
+              {appReg.status === "verified" && (
+                <button
+                  onClick={() => void handleSetAppRegStatus("submitted")}
+                  disabled={verifyingAppReg}
+                  className="text-xs font-semibold text-amber-700 border border-amber-300 bg-amber-50 px-4 py-1.5 rounded-lg hover:bg-amber-100 disabled:opacity-50 transition-colors"
+                >
+                  Revert to Submitted
+                </button>
+              )}
+            </div>
+          </div>
+        ) : (
+          <div className="p-5">
+            <p className="text-sm text-muted-foreground">
+              The client has not yet submitted their Azure App Registration credentials. Once they complete setup in their portal, the details will appear here.
+            </p>
+          </div>
+        )}
+      </div>
+
     </div>
   );
 }

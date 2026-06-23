@@ -58,7 +58,7 @@ function NavLink({ item, isActive }: { item: NavItem; isActive: boolean }) {
   );
 }
 
-const CLIENT_NAV_ITEMS = (unreadMessages: number, hasArchivedProjects = false): NavItem[] => [
+const CLIENT_NAV_ITEMS = (unreadMessages: number, hasArchivedProjects = false, appRegPending = false): NavItem[] => [
   {
     label: "Dashboard",
     path: "/portal",
@@ -107,17 +107,23 @@ const CLIENT_NAV_ITEMS = (unreadMessages: number, hasArchivedProjects = false): 
     icon: <svg className="w-4.5 h-4.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" /></svg>,
   },
   {
+    label: "Automation Setup",
+    path: "/portal/automation-setup",
+    badge: appRegPending ? 1 : 0,
+    icon: <svg className="w-4.5 h-4.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" /></svg>,
+  },
+  {
     label: "Profile",
     path: "/portal/profile",
     icon: <svg className="w-4.5 h-4.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>,
   },
 ];
 
-export function ClientSidebar({ unreadNotifications = 0, unreadMessages = 0, hasArchivedProjects = false }: { unreadNotifications?: number; unreadMessages?: number; hasArchivedProjects?: boolean }) {
+export function ClientSidebar({ unreadNotifications = 0, unreadMessages = 0, hasArchivedProjects = false, appRegPending = false }: { unreadNotifications?: number; unreadMessages?: number; hasArchivedProjects?: boolean; appRegPending?: boolean }) {
   const [location] = useLocation();
   const { user, logout } = useAuth();
   const { startTour } = useTour();
-  const navItems = CLIENT_NAV_ITEMS(unreadMessages, hasArchivedProjects);
+  const navItems = CLIENT_NAV_ITEMS(unreadMessages, hasArchivedProjects, appRegPending);
 
   return (
     <aside className="hidden md:flex w-60 flex-shrink-0 bg-[#0A2540] flex-col h-screen sticky top-0">
@@ -342,6 +348,7 @@ function ImpersonationBanner({ email }: { email: string }) {
 export default function PortalLayout({ children, unreadNotifications = 0, unreadMessages = 0 }: PortalLayoutProps) {
   const { user, fetchWithAuth } = useAuth();
   const [hasArchivedProjects, setHasArchivedProjects] = useState(false);
+  const [appRegPending, setAppRegPending] = useState(false);
   const isImpersonating = Boolean(user?.impersonatedBy);
 
   useEffect(() => {
@@ -351,13 +358,20 @@ export default function PortalLayout({ children, unreadNotifications = 0, unread
         setHasArchivedProjects(Array.isArray(projects) && projects.some(p => p.status === "completed"));
       })
       .catch(() => null);
+
+    fetchWithAuth("/api/portal/app-registration")
+      .then(r => r.ok ? r.json() : null)
+      .then((d: { status?: string } | null) => {
+        setAppRegPending(!d || (d.status !== "submitted" && d.status !== "verified"));
+      })
+      .catch(() => null);
   }, [fetchWithAuth]);
 
   return (
     <div className="flex min-h-screen bg-[#F7F9FC]">
       {isImpersonating && <ImpersonationBanner email={user!.email} />}
       <div className={`flex w-full min-h-screen ${isImpersonating ? "pt-[42px]" : ""}`}>
-        <ClientSidebar unreadNotifications={unreadNotifications} unreadMessages={unreadMessages} hasArchivedProjects={hasArchivedProjects} />
+        <ClientSidebar unreadNotifications={unreadNotifications} unreadMessages={unreadMessages} hasArchivedProjects={hasArchivedProjects} appRegPending={appRegPending} />
         <main className="flex-1 overflow-auto min-w-0 pb-16 md:pb-0">
           {children}
         </main>
