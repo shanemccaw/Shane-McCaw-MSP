@@ -4,8 +4,22 @@ import { eq } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/requireAuth";
 import { sendEmailOrThrow, brandedEmail } from "../lib/mailer";
 import { logger } from "../lib/logger";
+import { anthropic } from "@workspace/integrations-anthropic-ai";
 
 const router: IRouter = Router();
+
+const ADMIN_SLUGS = new Set([
+  "contact-inquiry-notification",
+  "client-thread-reply",
+  "service-overview-lead-notification",
+  "quiz-lead-notification",
+  "admin-purchase-alert",
+  "admin-message-notification",
+]);
+
+function recipientType(slug: string): "client" | "admin" {
+  return ADMIN_SLUGS.has(slug) ? "admin" : "client";
+}
 
 function escapeHtml(str: string): string {
   return str
@@ -137,7 +151,7 @@ router.get("/admin/email-templates", requireAdmin, async (_req: Request, res: Re
     .from(emailTemplatesTable)
     .orderBy(emailTemplatesTable.name);
 
-  res.json(rows);
+  res.json(rows.map((r) => ({ ...r, recipientType: recipientType(r.slug) })));
 });
 
 // ─── GET /admin/email-templates/:slug — get full template ────────────────────
@@ -153,7 +167,7 @@ router.get("/admin/email-templates/:slug", requireAdmin, async (req: Request, re
 
   if (!row) { res.status(404).json({ error: "Template not found" }); return; }
 
-  res.json(row);
+  res.json({ ...row, recipientType: recipientType(slug) });
 });
 
 // ─── PUT /admin/email-templates/:slug — update subject and/or body_html ──────
@@ -221,6 +235,73 @@ router.post("/admin/email-templates/:slug/test", requireAdmin, async (req: Reque
   } catch (err) {
     logger.error({ err, slug }, "Failed to send test email");
     res.status(503).json({ error: err instanceof Error ? err.message : "Failed to send test email" });
+  }
+});
+
+// ─── POST /admin/email-templates/:slug/ai-generate — generate body with AI ───
+router.post("/admin/email-templates/:slug/ai-generate", requireAdmin, async (req: Request, res: Response) => {
+  const slug = String(req.params.slug ?? "");
+  if (!slug) { res.status(400).json({ error: "slug is required" }); return; }
+
+  const [row] = await db
+    .select()
+    .from(emailTemplatesTable)
+    .where(eq(emailTemplatesTable.slug, slug))
+    .limit(1);
+
+  if (!row) { res.status(404).json({ error: "Template not found" }); return; }
+
+  const { instructions } = req.body as { instructions?: string };
+  const rType = recipientType(slug);
+
+  const variablesList = (row.variables as Array<{ name: string; description: string }>)
+    .map((v) => `- {{${v.name}}} — ${v.description}`)
+    .join("\n");
+
+  const recipientDesc = rType === "admin"
+    ? "Shane McCaw (internal admin notification — direct, informational, no marketing fluff)"
+    : "client or lead (external recipient — professional, warm, one clear CTA)";
+
+  const prompt = `You are writing the body HTML for a professional email from Shane McCaw Consulting.
+
+Template: ${row.name}
+Purpose: ${row.subject}
+Recipient: ${recipientDesc}
+
+Available template variables — use EXACTLY as shown, including the double curly braces:
+${variablesList || "(none)"}
+
+Brand rules:
+- Electric Blue for CTA buttons and links: #0078D4
+- Deep Navy for any inline dark backgrounds: #0A2540
+- Shane McCaw: 30-year Microsoft ecosystem veteran, Lead Microsoft 365 Architect at NASA — one of the most credible M365 voices in the world
+- Voice: authoritative but approachable; precise but not stiff; confident, never salesy
+- One clear CTA per email maximum (a single prominent button when appropriate)
+- Clean, scannable layout with a summary table where helpful
+
+Output rules:
+- Return ONLY the inner HTML body — no DOCTYPE, no <html>, no <head>, no <body> tags
+- The branded header/footer wrapper is added automatically — do not include it
+- Use inline styles only (no CSS classes)
+- All links must use style="color:#0078D4;"
+- CTA buttons: style="display:inline-block;background:#0078D4;color:#ffffff;text-decoration:none;font-weight:600;font-size:14px;padding:12px 24px;border-radius:6px;"
+${instructions ? `\nAdditional instructions from Shane:\n${instructions}` : ""}
+
+Write the email body HTML now. Output ONLY the HTML — no explanation, no markdown.`;
+
+  try {
+    const message = await anthropic.messages.create({
+      model: "claude-haiku-4-5",
+      max_tokens: 2048,
+      messages: [{ role: "user", content: prompt }],
+    });
+
+    const text = message.content[0]?.type === "text" ? message.content[0].text : "";
+    logger.info({ slug }, "AI email body generated");
+    res.json({ bodyHtml: text.trim() });
+  } catch (err) {
+    logger.error({ err, slug }, "AI generate failed");
+    res.status(503).json({ error: err instanceof Error ? err.message : "AI generation failed" });
   }
 });
 
