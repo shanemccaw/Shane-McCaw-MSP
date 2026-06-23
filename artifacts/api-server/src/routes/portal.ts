@@ -1,6 +1,6 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { db, projectsTable, clientServicesTable, servicesTable, workflowStepsTable, kanbanTasksTable, documentsTable, reportsTable, invoicesTable, messagesTable, notificationsTable, projectUpdatesTable, usersTable, contractsTable, passwordResetTokensTable, workflowTemplateStepsTable, workflowTemplateStepTasksTable, contractTemplatesTable, impersonationTokensTable, statusReportsTable, deviceTokensTable, projectClosuresTable, auditLogsTable, instructionSetsTable, checklistsTable, artifactSetsTable, deliverableSetsTable, emailsTable, emailDomainRulesTable, clientM365ProfilesTable, couponsTable, clientAppRegistrationsTable, accountSetupTokensTable } from "@workspace/db";
-import { eq, and, desc, asc, count, sql, inArray, gte, isNotNull, isNull } from "drizzle-orm";
+import { eq, and, desc, asc, count, sql, inArray, gte, isNotNull, isNull, or, lt } from "drizzle-orm";
 import { requireAuth, requireAdmin } from "../middlewares/requireAuth";
 import jwt from "jsonwebtoken";
 import { sendEmail, sendEmailFromTemplate, getEmailTemplateOrFallback, purchaseConfirmationEmail, onboardingConfirmationEmail, adminPurchaseAlertEmail, closureRequestEmail, statusReportReplyEmail, clientThreadReplyEmail, adminThreadReplyEmail, retainerResumedEmail, appRegExpiryAlertEmail, brandedEmail, PORTAL_URL } from "../lib/mailer";
@@ -26,13 +26,18 @@ const router: IRouter = Router();
 /** Upsert a client account keyed by email. Returns the user id. */
 async function ensureClientAccount(email: string, name?: string): Promise<{ id: number }> {
   const normalizedEmail = email.toLowerCase().trim();
-  const [existing] = await db.select({ id: usersTable.id }).from(usersTable)
-    .where(eq(usersTable.email, normalizedEmail)).limit(1);
-  if (existing) return { id: existing.id };
-  const [newUser] = await db.insert(usersTable)
+  // Atomic upsert — if the email already exists the ON CONFLICT clause returns
+  // the existing row without modifying anything, making this race-safe under
+  // concurrent Stripe webhook + success-page double-firing.
+  const [upserted] = await db
+    .insert(usersTable)
     .values({ email: normalizedEmail, role: "client", name: name?.trim() || undefined })
+    .onConflictDoUpdate({
+      target: usersTable.email,
+      set: { email: sql`EXCLUDED.email` }, // no-op — forces RETURNING to yield the existing row
+    })
     .returning({ id: usersTable.id });
-  return { id: newUser.id };
+  return { id: upserted.id };
 }
 
 /**
@@ -3357,6 +3362,18 @@ async function processStripeEvent(req: Request, event: import("stripe").Stripe.E
               )
               .limit(1);
             if (!existingToken) {
+              // Purge any stale (expired or already-used) tokens for this user before
+              // creating a fresh one — prevents unbounded accumulation from repeated purchases.
+              await db.delete(accountSetupTokensTable)
+                .where(
+                  and(
+                    eq(accountSetupTokensTable.userId, buyer.id),
+                    or(
+                      lt(accountSetupTokensTable.expiresAt, now),
+                      isNotNull(accountSetupTokensTable.usedAt),
+                    ),
+                  ),
+                );
               const { randomBytes: rb } = await import("crypto");
               const setupToken = rb(32).toString("hex");
               const setupExpiresAt = new Date(Date.now() + 72 * 60 * 60 * 1000);
@@ -6039,6 +6056,18 @@ router.post("/portal/onboarding/provision/:sessionId", async (req: Request, res:
         activeToken = setupTokenValue;
         sentSetupEmail = false; // email already sent by webhook
       } else {
+        // Purge stale (expired or already-used) tokens before creating a fresh one.
+        const nowCleanup = new Date();
+        await db.delete(accountSetupTokensTable)
+          .where(
+            and(
+              eq(accountSetupTokensTable.userId, resolvedUserId),
+              or(
+                lt(accountSetupTokensTable.expiresAt, nowCleanup),
+                isNotNull(accountSetupTokensTable.usedAt),
+              ),
+            ),
+          );
         const { randomBytes } = await import("crypto");
         activeToken = randomBytes(32).toString("hex");
         const expiresAt = new Date(Date.now() + 72 * 60 * 60 * 1000);
