@@ -1,3 +1,4 @@
+import QRCode from "qrcode";
 import { PDFDocument, PDFString, rgb, StandardFonts, type PDFFont, type PDFPage } from "pdf-lib";
 import {
   db,
@@ -94,13 +95,11 @@ function groupDeliverables(items: string[]): Array<{ category: string; items: st
     .filter(g => g.items.length > 0);
 }
 
-/** Fetch a QR-code PNG from qrserver.com. Returns null on any network/parse error. */
-async function fetchQrPng(url: string): Promise<Uint8Array | null> {
+/** Generate a QR-code PNG locally via the qrcode package. Returns null on error. */
+async function generateQrPng(url: string): Promise<Uint8Array | null> {
   try {
-    const api = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(url)}&format=png&margin=1`;
-    const res = await fetch(api, { signal: AbortSignal.timeout(5000) });
-    if (!res.ok) return null;
-    return new Uint8Array(await res.arrayBuffer());
+    const buf = await QRCode.toBuffer(url, { type: "png", margin: 1, width: 150 });
+    return new Uint8Array(buf);
   } catch {
     return null;
   }
@@ -180,7 +179,7 @@ export async function generateServiceOverviewPdf(serviceName: string): Promise<B
   // Pre-fetch QR code PNG for the title page (graceful no-op on network error)
   let qrEmbed: Awaited<ReturnType<typeof pdfDoc.embedPng>> | null = null;
   if (service.pageHref) {
-    const qrPng = await fetchQrPng(`https://shanemccaw.com${service.pageHref}`);
+    const qrPng = await generateQrPng(`https://shanemccaw.com${service.pageHref}`);
     if (qrPng) {
       try { qrEmbed = await pdfDoc.embedPng(qrPng); } catch { /* skip on corrupt data */ }
     }
