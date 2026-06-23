@@ -1,9 +1,9 @@
-import { useState, useEffect } from "react";
 import { CheckCircle, Clock, ArrowRight, ChevronRight, Zap, XCircle, Shield } from "lucide-react";
 import { Link } from "wouter";
 import { Layout } from "@/components/Layout";
 import { SEOMeta } from "@/components/SEOMeta";
 import { CTAButton } from "@/components/CTAButton";
+import { useServices, formatPrice } from "@/hooks/useServices";
 
 const FEATURES = [
   "25 hours of senior architecture consulting per month",
@@ -87,39 +87,21 @@ const WHY_SHANE = [
   "No salespeople — when you contact Shane, you speak to Shane",
 ];
 
-const TIERS = [
-  { name: "Architect Essentials", price: "$1,500", hours: "10 hrs/mo", href: "/retainers/architect-essentials", current: false },
-  { name: "Architect Growth", price: "$6,000", hours: "25 hrs/mo", href: "/retainers/architect-growth", current: true },
-  { name: "Architect Enterprise", price: "$5,500", hours: "50 hrs/mo", href: "/retainers/architect-enterprise", current: false },
-];
-
 export default function ArchitectGrowth() {
-  const [livePrice, setLivePrice] = useState<string | null>(null);
+  const { services, loading: tiersLoading } = useServices("retainer");
 
-  useEffect(() => {
-    fetch("/api/services")
-      .then((res) => res.json())
-      .then((data: { slug?: string; price?: string | number }[]) => {
-        const svc = Array.isArray(data)
-          ? data.find((s) => s.slug === "architect-growth")
-          : null;
-        if (svc && svc.price != null) {
-          const num = typeof svc.price === "number" ? svc.price : parseFloat(svc.price);
-          if (!isNaN(num)) {
-            setLivePrice(
-              "$" +
-                num.toLocaleString("en-US", {
-                  minimumFractionDigits: 0,
-                  maximumFractionDigits: 0,
-                })
-            );
-          }
-        }
-      })
-      .catch(() => {});
-  }, []);
+  const growthSvc = services.find((s) => s.slug === "architect-growth");
+  const displayPrice = formatPrice(growthSvc?.price ?? null) ?? "$6,000";
 
-  const displayPrice = livePrice ?? "$6,000";
+  const tiers = [...services]
+    .sort((a, b) => a.sortOrder - b.sortOrder)
+    .map((s) => ({
+      name: s.name,
+      price: formatPrice(s.price) ?? "—",
+      hours: s.hoursPerMonth ? `${s.hoursPerMonth.replace(/[^0-9]/g, "")} hrs/mo` : "—",
+      href: s.pageHref ?? "#",
+      current: s.pageHref === "/retainers/architect-growth",
+    }));
 
   const jsonLd = {
     "@context": "https://schema.org",
@@ -207,31 +189,39 @@ export default function ArchitectGrowth() {
             Compare all retainer tiers
           </p>
           <div className="grid grid-cols-3 gap-3">
-            {TIERS.map((tier) => (
-              <Link
-                key={tier.href}
-                href={tier.href}
-                className={`rounded-xl border p-4 text-center transition-all ${
-                  tier.current
-                    ? "bg-[#0078D4] border-[#0078D4] text-white shadow-md"
-                    : "bg-[#F7F9FC] border-border text-[#0A2540] hover:border-[#0078D4]/50 hover:shadow-sm"
-                }`}
-              >
-                <p
-                  className={`text-xs font-bold uppercase tracking-wide mb-1 ${
-                    tier.current ? "text-white/70" : "text-muted-foreground"
-                  }`}
-                >
-                  {tier.hours}
-                </p>
-                <p className={`font-extrabold text-lg mb-0.5 ${tier.current ? "text-white" : "text-[#0A2540]"}`}>
-                  {tier.name}
-                </p>
-                <p className={`text-sm font-semibold ${tier.current ? "text-white/80" : "text-[#0078D4]"}`}>
-                  {tier.price}/mo
-                </p>
-              </Link>
-            ))}
+            {tiersLoading
+              ? [0, 1, 2].map((i) => (
+                  <div key={i} className="rounded-xl border p-4 text-center bg-[#F7F9FC] animate-pulse">
+                    <div className="h-3 bg-gray-200 rounded mb-2 mx-auto w-16" />
+                    <div className="h-5 bg-gray-300 rounded mb-1 mx-auto w-28" />
+                    <div className="h-4 bg-gray-200 rounded mx-auto w-20" />
+                  </div>
+                ))
+              : tiers.map((tier) => (
+                  <Link
+                    key={tier.href}
+                    href={tier.href}
+                    className={`rounded-xl border p-4 text-center transition-all ${
+                      tier.current
+                        ? "bg-[#0078D4] border-[#0078D4] text-white shadow-md"
+                        : "bg-[#F7F9FC] border-border text-[#0A2540] hover:border-[#0078D4]/50 hover:shadow-sm"
+                    }`}
+                  >
+                    <p
+                      className={`text-xs font-bold uppercase tracking-wide mb-1 ${
+                        tier.current ? "text-white/70" : "text-muted-foreground"
+                      }`}
+                    >
+                      {tier.hours}
+                    </p>
+                    <p className={`font-extrabold text-lg mb-0.5 ${tier.current ? "text-white" : "text-[#0A2540]"}`}>
+                      {tier.name}
+                    </p>
+                    <p className={`text-sm font-semibold ${tier.current ? "text-white/80" : "text-[#0078D4]"}`}>
+                      {tier.price}/mo
+                    </p>
+                  </Link>
+                ))}
           </div>
         </div>
       </section>
