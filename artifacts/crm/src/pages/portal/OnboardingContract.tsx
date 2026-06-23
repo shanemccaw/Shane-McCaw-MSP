@@ -207,8 +207,10 @@ function buildContractHtml(
     <h3 style="${HEADING_STYLE}">11. Entire Agreement</h3>
     <p style="${PARA_STYLE}">This document constitutes the entire agreement between the parties with respect to this engagement and supersedes all prior discussions and representations. Amendments must be made in writing.</p>
 
+    ${coupon?.code === "TESTIMONIAL" ? `
     <h3 style="${HEADING_STYLE}">12. Testimonial</h3>
     <p style="${PARA_STYLE}">Upon satisfactory completion of the services described herein, Client agrees to provide Consultant with a brief written testimonial or case study (2–5 sentences) describing the results achieved. Client grants Consultant the non-exclusive right to publish this testimonial on Consultant's website and marketing materials, attributed to Client's name and company unless Client requests anonymity in writing. Consultant agrees not to alter the substance of the testimonial without Client's prior approval.</p>
+    ` : ""}
   `;
 }
 
