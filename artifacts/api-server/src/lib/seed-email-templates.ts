@@ -8,6 +8,7 @@ interface TemplateDefinition {
   subject: string;
   bodyHtml: string;
   variables: Array<{ name: string; description: string }>;
+  recipientType: "client" | "admin";
 }
 
 const BLUE = "#0078D4";
@@ -15,6 +16,7 @@ const BLUE = "#0078D4";
 const TEMPLATES: TemplateDefinition[] = [
   {
     slug: "purchase-confirmation",
+    recipientType: "client",
     name: "Purchase Confirmation",
     subject: "Payment confirmed — {{serviceName}}",
     variables: [
@@ -38,6 +40,7 @@ const TEMPLATES: TemplateDefinition[] = [
   },
   {
     slug: "onboarding-confirmation",
+    recipientType: "client",
     name: "Onboarding Confirmation",
     subject: "Your project workspace is ready — {{serviceName}}",
     variables: [
@@ -64,6 +67,7 @@ const TEMPLATES: TemplateDefinition[] = [
   },
   {
     slug: "password-reset",
+    recipientType: "client",
     name: "Password Reset",
     subject: "Reset your Shane McCaw Consulting portal password",
     variables: [
@@ -80,6 +84,7 @@ const TEMPLATES: TemplateDefinition[] = [
   },
   {
     slug: "contact-inquiry-notification",
+    recipientType: "admin",
     name: "Contact Inquiry Notification (Admin)",
     subject: "New contact inquiry from {{name}} — {{company}}",
     variables: [
@@ -110,6 +115,7 @@ const TEMPLATES: TemplateDefinition[] = [
   },
   {
     slug: "closure-request",
+    recipientType: "client",
     name: "Project Closure Request",
     subject: "Please sign off on your {{projectTitle}} project",
     variables: [
@@ -134,6 +140,7 @@ const TEMPLATES: TemplateDefinition[] = [
   },
   {
     slug: "status-report-reply",
+    recipientType: "client",
     name: "Status Report Reply (to Client)",
     subject: "Shane replied to your question on {{reportTitle}}",
     variables: [
@@ -153,6 +160,7 @@ const TEMPLATES: TemplateDefinition[] = [
   },
   {
     slug: "client-thread-reply",
+    recipientType: "admin",
     name: "Client Thread Reply (to Admin)",
     subject: "{{clientName}} replied on {{reportTitle}}",
     variables: [
@@ -172,6 +180,7 @@ const TEMPLATES: TemplateDefinition[] = [
   },
   {
     slug: "admin-thread-reply",
+    recipientType: "client",
     name: "Admin Thread Reply (to Client)",
     subject: "Shane replied on {{reportTitle}}",
     variables: [
@@ -191,6 +200,7 @@ const TEMPLATES: TemplateDefinition[] = [
   },
   {
     slug: "retainer-resumed",
+    recipientType: "client",
     name: "Retainer Resumed",
     subject: "Your {{serviceName}} retainer has been resumed",
     variables: [
@@ -213,6 +223,7 @@ const TEMPLATES: TemplateDefinition[] = [
   },
   {
     slug: "service-overview-lead-notification",
+    recipientType: "admin",
     name: "Service Overview Lead Notification (Admin)",
     subject: "New service overview request from {{name}} — {{company}}",
     variables: [
@@ -236,6 +247,7 @@ const TEMPLATES: TemplateDefinition[] = [
   },
   {
     slug: "quiz-lead-notification",
+    recipientType: "admin",
     name: "Quiz Lead Notification (Admin)",
     subject: "New quiz lead — {{name}} scored {{totalScore}}/50",
     variables: [
@@ -277,6 +289,7 @@ const TEMPLATES: TemplateDefinition[] = [
   },
   {
     slug: "admin-purchase-alert",
+    recipientType: "admin",
     name: "Purchase Alert (Admin)",
     subject: "New purchase: {{serviceName}} — {{clientName}}",
     variables: [
@@ -303,6 +316,7 @@ const TEMPLATES: TemplateDefinition[] = [
   },
   {
     slug: "service-overview-email",
+    recipientType: "client",
     name: "Service Overview Email (to Lead)",
     subject: "Your {{serviceName}} overview — Shane McCaw Consulting",
     variables: [
@@ -320,6 +334,7 @@ const TEMPLATES: TemplateDefinition[] = [
   },
   {
     slug: "client-message-notification",
+    recipientType: "client",
     name: "Client Message Notification (to Client)",
     subject: "New message from Shane McCaw Consulting",
     variables: [
@@ -336,6 +351,7 @@ const TEMPLATES: TemplateDefinition[] = [
   },
   {
     slug: "admin-message-notification",
+    recipientType: "admin",
     name: "Admin Message Notification (to Shane)",
     subject: "New client message from {{clientName}}",
     variables: [
@@ -351,6 +367,7 @@ const TEMPLATES: TemplateDefinition[] = [
   },
   {
     slug: "quiz-report-email",
+    recipientType: "client",
     name: "Quiz Report Email (to Lead)",
     subject: "Your {{reportName}} Report",
     variables: [
@@ -388,6 +405,7 @@ const TEMPLATES: TemplateDefinition[] = [
   },
   {
     slug: "welcome-email",
+    recipientType: "client",
     name: "Welcome Email (New Client)",
     subject: "Welcome to Shane McCaw Consulting — your portal is ready",
     variables: [
@@ -422,7 +440,7 @@ export async function seedEmailTemplates(): Promise<void> {
     if (existing) {
       await db
         .update(emailTemplatesTable)
-        .set({ subject: tpl.subject, bodyHtml: tpl.bodyHtml, variables: tpl.variables })
+        .set({ subject: tpl.subject, bodyHtml: tpl.bodyHtml, variables: tpl.variables, recipientType: tpl.recipientType })
         .where(eq(emailTemplatesTable.slug, tpl.slug));
       logger.debug({ slug: tpl.slug }, "Email template upserted (updated)");
       continue;
@@ -434,6 +452,7 @@ export async function seedEmailTemplates(): Promise<void> {
       subject: tpl.subject,
       bodyHtml: tpl.bodyHtml,
       variables: tpl.variables,
+      recipientType: tpl.recipientType,
     });
     logger.info({ slug: tpl.slug }, "Email template seeded");
   }

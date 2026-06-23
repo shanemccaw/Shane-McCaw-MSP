@@ -97,4 +97,26 @@ app.listen(port, (err) => {
   }).catch((err: unknown) => {
     logger.warn({ err }, "Migration/seed: coupons.requires_testimonial or TESTIMONIAL coupon failed (non-fatal)");
   });
+
+  pool.query(`
+    ALTER TABLE email_templates
+    ADD COLUMN IF NOT EXISTS recipient_type TEXT NOT NULL DEFAULT 'client'
+  `).then(() => {
+    return pool.query(`
+      UPDATE email_templates
+      SET recipient_type = 'admin'
+      WHERE slug IN (
+        'contact-inquiry-notification',
+        'client-thread-reply',
+        'service-overview-lead-notification',
+        'quiz-lead-notification',
+        'admin-purchase-alert',
+        'admin-message-notification'
+      ) AND recipient_type = 'client'
+    `);
+  }).then(() => {
+    logger.info("Migration: email_templates.recipient_type column ensured and backfilled");
+  }).catch((err: unknown) => {
+    logger.warn({ err }, "Migration: email_templates.recipient_type failed (non-fatal)");
+  });
 });

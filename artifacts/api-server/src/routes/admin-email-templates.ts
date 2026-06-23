@@ -8,19 +8,6 @@ import { anthropic } from "@workspace/integrations-anthropic-ai";
 
 const router: IRouter = Router();
 
-const ADMIN_SLUGS = new Set([
-  "contact-inquiry-notification",
-  "client-thread-reply",
-  "service-overview-lead-notification",
-  "quiz-lead-notification",
-  "admin-purchase-alert",
-  "admin-message-notification",
-]);
-
-function recipientType(slug: string): "client" | "admin" {
-  return ADMIN_SLUGS.has(slug) ? "admin" : "client";
-}
-
 function escapeHtml(str: string): string {
   return str
     .replace(/&/g, "&amp;")
@@ -156,12 +143,13 @@ router.get("/admin/email-templates", requireAdmin, async (_req: Request, res: Re
       slug: emailTemplatesTable.slug,
       name: emailTemplatesTable.name,
       subject: emailTemplatesTable.subject,
+      recipientType: emailTemplatesTable.recipientType,
       updatedAt: emailTemplatesTable.updatedAt,
     })
     .from(emailTemplatesTable)
     .orderBy(emailTemplatesTable.name);
 
-  res.json(rows.map((r) => ({ ...r, recipientType: recipientType(r.slug) })));
+  res.json(rows);
 });
 
 // ─── GET /admin/email-templates/:slug — get full template ────────────────────
@@ -177,7 +165,7 @@ router.get("/admin/email-templates/:slug", requireAdmin, async (req: Request, re
 
   if (!row) { res.status(404).json({ error: "Template not found" }); return; }
 
-  res.json({ ...row, recipientType: recipientType(slug) });
+  res.json(row);
 });
 
 // ─── PUT /admin/email-templates/:slug — update subject and/or body_html ──────
