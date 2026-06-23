@@ -343,6 +343,15 @@ function readCollapsedGroups(): Set<string> {
   } catch { return new Set(); }
 }
 
+// ─── Group badge helper ───────────────────────────────────────────────────────
+
+function getGroupBadgeCount(group: NavGroup, unreadEmailCount: number): number {
+  return group.items.reduce((sum, item) => {
+    if (item.label === "Email Activity") return sum + unreadEmailCount;
+    return sum;
+  }, 0);
+}
+
 // ─── Breadcrumb helper ────────────────────────────────────────────────────────
 
 function computeBreadcrumb(location: string): { group: string; label: string } | null {
@@ -565,22 +574,32 @@ function SidebarContent({
       <nav className={`flex-1 overflow-y-auto p-2.5 space-y-3.5 ${collapsed ? "overflow-x-hidden" : ""}`}>
         {NAV_GROUPS.map(group => {
           const isGroupCollapsed = !collapsed && collapsedGroups.has(group.label);
+          const groupBadgeCount = getGroupBadgeCount(group, unreadEmailCount);
 
           return (
             <div key={group.label}>
               {/* Group header */}
               {collapsed ? (
                 group.label !== NAV_GROUPS[0].label && (
-                  <div className="border-t border-[#30363D] my-2" />
+                  <div className="relative border-t border-[#30363D] my-2">
+                    {groupBadgeCount > 0 && (
+                      <span className="absolute -top-1 left-1/2 -translate-x-1/2 w-2 h-2 rounded-full bg-[#F85149]" />
+                    )}
+                  </div>
                 )
               ) : (
                 <button
                   onClick={() => onToggleGroup(group.label)}
                   className="w-full flex items-center justify-between px-2.5 mb-1 group"
                 >
-                  <p className="text-[10px] font-bold uppercase tracking-widest text-[#484F58] group-hover:text-[#7D8590] transition-colors">
-                    {group.label}
-                  </p>
+                  <span className="flex items-center gap-1.5">
+                    <p className="text-[10px] font-bold uppercase tracking-widest text-[#484F58] group-hover:text-[#7D8590] transition-colors">
+                      {group.label}
+                    </p>
+                    {groupBadgeCount > 0 && isGroupCollapsed && (
+                      <span className="w-2 h-2 rounded-full bg-[#F85149] flex-shrink-0" />
+                    )}
+                  </span>
                   <svg
                     className={`w-3 h-3 text-[#484F58] group-hover:text-[#7D8590] transition-transform duration-200 ${isGroupCollapsed ? "-rotate-90" : "rotate-0"}`}
                     fill="none" stroke="currentColor" viewBox="0 0 24 24"
