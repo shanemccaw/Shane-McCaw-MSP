@@ -7,6 +7,11 @@ export interface AuthUser {
   role: "admin" | "client";
 }
 
+export interface MfaChallenge {
+  mfaToken: string;
+  methods: string[];
+}
+
 interface AuthState {
   user: AuthUser | null;
   accessToken: string | null;
@@ -14,12 +19,17 @@ interface AuthState {
 }
 
 interface AuthContextValue extends AuthState {
-  login: (email: string, password: string) => Promise<AuthUser>;
+  login: (email: string, password: string) => Promise<AuthUser | MfaChallenge>;
+  completeMfaLogin: (accessToken: string, user: AuthUser) => void;
   logout: () => Promise<void>;
   fetchWithAuth: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
+
+export function isMfaChallenge(result: AuthUser | MfaChallenge): result is MfaChallenge {
+  return "mfaToken" in result;
+}
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<AuthState>({
@@ -77,7 +87,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     });
   }, [refresh]);
 
-  const login = async (email: string, password: string): Promise<AuthUser> => {
+  const login = async (email: string, password: string): Promise<AuthUser | MfaChallenge> => {
     const res = await fetch("/api/auth/login", {
       method: "POST",
       credentials: "include",
@@ -88,13 +98,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const err = await res.json() as { error: string };
       throw new Error(err.error ?? "Login failed");
     }
-    const data = await res.json() as { accessToken: string; user: AuthUser };
+    const data = await res.json() as { accessToken?: string; user?: AuthUser; mfaRequired?: boolean; mfaToken?: string; methods?: string[] };
+
+    if (data.mfaRequired && data.mfaToken && data.methods) {
+      return { mfaToken: data.mfaToken, methods: data.methods } as MfaChallenge;
+    }
+
+    if (!data.user || !data.accessToken) {
+      throw new Error("Unexpected login response");
+    }
     if (data.user.role !== "admin") {
       throw new Error("Access denied: admin credentials required");
     }
     setState({ user: data.user, accessToken: data.accessToken, isLoading: false });
     accessTokenRef.current = data.accessToken;
     return data.user;
+  };
+
+  const completeMfaLogin = (accessToken: string, user: AuthUser) => {
+    setState({ user, accessToken, isLoading: false });
+    accessTokenRef.current = accessToken;
   };
 
   const logout = async () => {
@@ -131,7 +154,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [refresh]);
 
   return (
-    <AuthContext.Provider value={{ ...state, login, logout, fetchWithAuth }}>
+    <AuthContext.Provider value={{ ...state, login, completeMfaLogin, logout, fetchWithAuth }}>
       {children}
     </AuthContext.Provider>
   );

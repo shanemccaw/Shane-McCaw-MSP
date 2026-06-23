@@ -1,6 +1,7 @@
 import { useState } from "react";
-import { useAuth } from "@/contexts/AuthContext";
+import { useAuth, isMfaChallenge, type MfaChallenge } from "@/contexts/AuthContext";
 import { useLocation } from "wouter";
+import { startAuthentication } from "@simplewebauthn/browser";
 import { Loader2, Eye, EyeOff } from "lucide-react";
 
 // ─── Auth helpers ──────────────────────────────────────────────────────────────
@@ -273,27 +274,194 @@ function LinkedInIcon() {
   );
 }
 
+// ─── MFA challenge screen ─────────────────────────────────────────────────────
+function MfaChallengeScreen({
+  challenge,
+  onSuccess,
+  onBack,
+}: {
+  challenge: MfaChallenge;
+  onSuccess: (token: string, user: import("@/contexts/AuthContext").AuthUser) => void;
+  onBack: () => void;
+}) {
+  const [activeMethod, setActiveMethod] = useState<string>(
+    challenge.methods.includes("passkey") ? "passkey" : challenge.methods[0] ?? "totp"
+  );
+  const [code, setCode] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [smsSent, setSmsSent] = useState(false);
+
+  const sendSms = async () => {
+    setLoading(true);
+    setError("");
+    try {
+      const res = await fetch("/api/auth/mfa/sms/send", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mfaToken: challenge.mfaToken }),
+      });
+      if (res.ok) setSmsSent(true);
+      else { const d = await res.json() as { error?: string }; setError(d.error ?? "Failed to send SMS"); }
+    } catch { setError("Failed to send SMS"); }
+    finally { setLoading(false); }
+  };
+
+  const verifyCode = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError("");
+    setLoading(true);
+    try {
+      const res = await fetch("/api/auth/mfa/verify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mfaToken: challenge.mfaToken, method: activeMethod, code }),
+      });
+      const data = await res.json() as { accessToken?: string; user?: import("@/contexts/AuthContext").AuthUser; error?: string };
+      if (!res.ok || !data.accessToken || !data.user) throw new Error(data.error ?? "Verification failed");
+      onSuccess(data.accessToken, data.user);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Verification failed");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const verifyPasskey = async () => {
+    setError("");
+    setLoading(true);
+    try {
+      const optRes = await fetch("/api/auth/mfa/passkey/authentication-options", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mfaToken: challenge.mfaToken }),
+      });
+      if (!optRes.ok) throw new Error("Failed to get authentication options");
+      const options = await optRes.json();
+      const authResp = await startAuthentication({ optionsJSON: options });
+      const verRes = await fetch("/api/auth/mfa/passkey/verify-authentication", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mfaToken: challenge.mfaToken, ...authResp }),
+      });
+      const data = await verRes.json() as { accessToken?: string; user?: import("@/contexts/AuthContext").AuthUser; error?: string };
+      if (!verRes.ok || !data.accessToken || !data.user) throw new Error(data.error ?? "Authentication failed");
+      onSuccess(data.accessToken, data.user);
+    } catch (err) {
+      if (err instanceof Error && err.name === "NotAllowedError") {
+        setError("Passkey authentication was cancelled.");
+      } else {
+        setError(err instanceof Error ? err.message : "Authentication failed");
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const methodLabel: Record<string, string> = { totp: "Authenticator App", sms: "SMS Code", passkey: "Passkey" };
+
+  return (
+    <div className="space-y-5">
+      <div className="text-center">
+        <div className="w-12 h-12 bg-[#0078D4]/10 border border-[#0078D4]/20 rounded-2xl flex items-center justify-center mx-auto mb-3">
+          <svg className="w-6 h-6 text-[#0078D4]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+          </svg>
+        </div>
+        <h2 className="text-xl font-bold text-[#0A2540]">Two-Factor Verification</h2>
+        <p className="text-sm text-muted-foreground mt-1">An extra step is required to sign in</p>
+      </div>
+
+      {challenge.methods.length > 1 && (
+        <div className="flex gap-2 flex-wrap">
+          {challenge.methods.map(m => (
+            <button key={m} onClick={() => { setActiveMethod(m); setCode(""); setError(""); setSmsSent(false); }}
+              className={`flex-1 text-xs font-semibold px-3 py-2 rounded-lg border transition-colors ${
+                activeMethod === m ? "bg-[#0078D4] text-white border-[#0078D4]" : "border-border text-muted-foreground hover:border-[#0078D4]/40"
+              }`}>
+              {methodLabel[m] ?? m}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {error && <div className="bg-red-50 border border-red-200 text-red-700 text-sm px-3 py-2.5 rounded-xl">{error}</div>}
+
+      {activeMethod === "passkey" ? (
+        <div className="space-y-3">
+          <p className="text-sm text-muted-foreground text-center">Use your registered passkey (biometric or hardware key) to complete sign-in.</p>
+          <button onClick={() => void verifyPasskey()} disabled={loading}
+            className="w-full bg-[#0078D4] text-white rounded-xl px-4 py-3 text-sm font-semibold hover:bg-[#006CBE] transition-colors disabled:opacity-60 flex items-center justify-center gap-2">
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
+            </svg>
+            {loading ? "Waiting…" : "Authenticate with Passkey"}
+          </button>
+        </div>
+      ) : activeMethod === "sms" && !smsSent ? (
+        <div className="space-y-3">
+          <p className="text-sm text-muted-foreground text-center">Send a 6-digit code to your registered phone number to verify your identity.</p>
+          <button onClick={() => void sendSms()} disabled={loading}
+            className="w-full bg-[#0078D4] text-white rounded-xl px-4 py-3 text-sm font-semibold hover:bg-[#006CBE] transition-colors disabled:opacity-60 flex items-center justify-center gap-2">
+            {loading ? "Sending…" : "Send SMS Code"}
+          </button>
+        </div>
+      ) : (
+        <form onSubmit={(e) => void verifyCode(e)} className="space-y-3">
+          <div>
+            <label className="block text-xs font-semibold text-[#0A2540] mb-1.5">
+              {activeMethod === "totp" ? "6-digit authenticator code" : "SMS verification code"}
+            </label>
+            <input type="text" inputMode="numeric" maxLength={6} value={code}
+              onChange={e => setCode(e.target.value.replace(/\D/g, ""))} placeholder="000000" autoFocus
+              className="w-full border border-border rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4]/30 focus:border-[#0078D4] font-mono text-center tracking-widest" />
+            {activeMethod === "sms" && (
+              <div className="flex items-center justify-between mt-1">
+                <p className="text-xs text-muted-foreground">Check your phone for the code</p>
+                <button type="button" onClick={() => void sendSms()} disabled={loading}
+                  className="text-xs text-[#0078D4] hover:underline disabled:opacity-50">Resend</button>
+              </div>
+            )}
+          </div>
+          <button type="submit" disabled={loading || code.length < 6}
+            className="w-full bg-[#0078D4] text-white rounded-xl px-4 py-2.5 text-sm font-semibold hover:bg-[#006CBE] transition-colors disabled:opacity-60 disabled:cursor-not-allowed">
+            {loading ? "Verifying…" : "Verify Code"}
+          </button>
+        </form>
+      )}
+
+      <button onClick={onBack} className="w-full text-xs text-muted-foreground hover:text-[#0A2540] transition-colors text-center">
+        ← Back to sign in
+      </button>
+    </div>
+  );
+}
+
 // ─── Login page ────────────────────────────────────────────────────────────────
 export default function LoginPage() {
-  const { login } = useAuth();
+  const { login, completeMfaLogin } = useAuth();
   const [, setLocation] = useLocation();
 
-  const [mode, setMode]               = useState<"login" | "forgot">("login");
-  const [email, setEmail]             = useState("");
-  const [password, setPassword]       = useState("");
+  const [mode, setMode]                 = useState<"login" | "forgot">("login");
+  const [email, setEmail]               = useState("");
+  const [password, setPassword]         = useState("");
   const [showPassword, setShowPassword] = useState(false);
-  const [error, setError]             = useState("");
-  const [loading, setLoading]         = useState(false);
-  const [forgotSent, setForgotSent]   = useState(false);
-  const [mfaRequired, setMfaRequired] = useState(false);
-  const [mfaCode, setMfaCode]         = useState("");
-  const [socialNote, setSocialNote]   = useState("");
+  const [error, setError]               = useState("");
+  const [loading, setLoading]           = useState(false);
+  const [forgotSent, setForgotSent]     = useState(false);
+  const [mfaChallenge, setMfaChallenge] = useState<MfaChallenge | null>(null);
+  const [socialNote, setSocialNote]     = useState("");
+
+  const handleMfaSuccess = (accessToken: string, user: import("@/contexts/AuthContext").AuthUser) => {
+    completeMfaLogin(accessToken, user);
+    redirectAfterAuth(user.role, setLocation);
+  };
 
   const switchMode = (next: "login" | "forgot") => {
     setMode(next);
     setError("");
     setPassword("");
-    setMfaRequired(false);
+    setMfaChallenge(null);
     if (next !== "forgot") setForgotSent(false);
   };
 
@@ -325,17 +493,14 @@ export default function LoginPage() {
 
     setLoading(true);
     try {
-      const user = await login(email, password);
-      redirectAfterAuth(user.role, setLocation);
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : "Login failed";
-      // MFA hook — ready for Task #914: if server signals MFA required, reveal the code step
-      if (/mfa|two.factor|otp/i.test(msg)) {
-        setMfaRequired(true);
-        setError("");
+      const result = await login(email, password);
+      if (isMfaChallenge(result)) {
+        setMfaChallenge(result);
       } else {
-        setError(msg);
+        redirectAfterAuth(result.role, setLocation);
       }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Login failed");
     } finally {
       setLoading(false);
     }
@@ -395,60 +560,13 @@ export default function LoginPage() {
           <div className="bg-white rounded-2xl shadow-2xl shadow-[#0A2540]/10 border border-[#E4EAF2]">
             <div className="p-6">
 
-              {/* ── MFA challenge step (hidden until backend signals mfa_required) ── */}
-              {mfaRequired ? (
-                <form
-                  onSubmit={handleSubmit}
-                  aria-label="Two-factor verification form"
-                  className="space-y-5"
-                >
-                  <div className="text-center">
-                    <div className="w-10 h-10 rounded-full bg-[#0078D4]/10 border border-[#0078D4]/20 flex items-center justify-center mx-auto mb-3">
-                      <svg className="w-5 h-5 text-[#0078D4]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-                      </svg>
-                    </div>
-                    <p className="font-bold text-[#0A2540] text-sm">Two-Factor Verification</p>
-                    <p className="text-xs text-muted-foreground mt-1">Enter the 6-digit code from your authenticator app</p>
-                  </div>
-
-                  <input
-                    type="text"
-                    inputMode="numeric"
-                    pattern="[0-9]*"
-                    maxLength={6}
-                    value={mfaCode}
-                    onChange={e => setMfaCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
-                    placeholder="000 000"
-                    className="w-full text-center text-2xl font-bold tracking-[0.6em] border border-[#E0E6EF] rounded-xl py-3 px-4 focus:outline-none focus:ring-2 focus:ring-[#0078D4] focus:border-transparent transition-all placeholder:text-[#D0D8E4] placeholder:tracking-[0.3em]"
-                    autoFocus
-                    autoComplete="one-time-code"
-                    data-testid="input-mfa-code"
-                  />
-
-                  {error && (
-                    <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2 text-center">
-                      {error}
-                    </p>
-                  )}
-
-                  <button
-                    type="submit"
-                    disabled={loading || mfaCode.length !== 6}
-                    className="w-full bg-[#0078D4] hover:bg-[#005A9E] disabled:opacity-50 text-white font-semibold py-2.5 rounded-xl transition-colors flex items-center justify-center gap-2 focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[#0078D4] focus-visible:outline-none"
-                  >
-                    {loading && <Loader2 className="w-4 h-4 animate-spin" />}
-                    Verify &amp; Sign In
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => { setMfaRequired(false); setMfaCode(""); setError(""); }}
-                    className="w-full text-sm text-muted-foreground hover:text-[#0078D4] transition-colors"
-                  >
-                    ← Back to sign in
-                  </button>
-                </form>
+              {mfaChallenge ? (
+                /* ── MFA challenge step ── */
+                <MfaChallengeScreen
+                  challenge={mfaChallenge}
+                  onSuccess={handleMfaSuccess}
+                  onBack={() => { setMfaChallenge(null); setPassword(""); }}
+                />
 
               ) : mode === "forgot" ? (
                 /* ── Forgot password flow ── */

@@ -41,6 +41,7 @@ import EmailTemplatesPage from "@/pages/EmailTemplates";
 import CouponsPage from "@/pages/Coupons";
 import ServicePageTriggersPage from "@/pages/ServicePageTriggers";
 import ScriptRunnerPage from "@/pages/ScriptRunner";
+import AdminSecurity from "@/pages/AdminSecurity";
 import type { ReactNode } from "react";
 
 const queryClient = new QueryClient({
@@ -224,6 +225,11 @@ function Router() {
       </Route>
       <Route path="/script-runner">
         <RequireAdmin><DashboardShell><ScriptRunnerPage /></DashboardShell></RequireAdmin>
+      </Route>
+
+      {/* Security */}
+      <Route path="/security">
+        <RequireAdmin><AdminSecurity /></RequireAdmin>
       </Route>
 
       <Route>

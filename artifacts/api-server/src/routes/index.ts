@@ -35,6 +35,7 @@ import publicServicePageTriggersRouter from "./public-service-page-triggers";
 import adminAzureCredentialsRouter from "./admin-azure-credentials";
 import adminScriptRunnerRouter from "./admin-script-runner";
 import bookingRouter from "./booking";
+import mfaRouter from "./mfa";
 
 const router: IRouter = Router();
 
@@ -74,5 +75,6 @@ router.use(adminServicePageTriggersRouter);
 router.use(adminAzureCredentialsRouter);
 router.use(adminScriptRunnerRouter);
 router.use(bookingRouter);
+router.use(mfaRouter);
 
 export default router;

@@ -379,6 +379,20 @@
       "when": 1782255600000,
       "tag": "0053_add_service_page_trigger_keys",
       "breakpoints": true
+    },
+    {
+      "idx": 52,
+      "version": "7",
+      "when": 1750980000000,
+      "tag": "0052_add_mfa_tables",
+      "breakpoints": true
+    },
+    {
+      "idx": 53,
+      "version": "7",
+      "when": 1750990000000,
+      "tag": "0053_mfa_challenges_add_phone",
+      "breakpoints": true
     }
   ]
 }

@@ -2,10 +2,11 @@ import { Router, type IRouter, type Request, type Response } from "express";
 import rateLimit from "express-rate-limit";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
-import { db, usersTable, passwordResetTokensTable, impersonationTokensTable, accountSetupTokensTable } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { db, usersTable, passwordResetTokensTable, impersonationTokensTable, accountSetupTokensTable, mfaEnrollmentsTable, webauthnCredentialsTable } from "@workspace/db";
+import { eq, and } from "drizzle-orm";
 import type { CookieOptions } from "express";
 import { sendEmailFromTemplate, passwordResetEmail, PORTAL_URL } from "../lib/mailer";
+import { signMfaToken } from "./mfa";
 
 const loginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -90,6 +91,28 @@ router.post("/auth/login", loginLimiter, async (req: Request, res: Response) => 
   const valid = await bcrypt.compare(password, user.passwordHash);
   if (!valid) {
     res.status(401).json({ error: "Invalid email or password" });
+    return;
+  }
+
+  // Check for active MFA enrollments
+  const enrollments = await db
+    .select()
+    .from(mfaEnrollmentsTable)
+    .where(and(eq(mfaEnrollmentsTable.userId, user.id), eq(mfaEnrollmentsTable.enabled, true)));
+
+  const passkeys = await db
+    .select()
+    .from(webauthnCredentialsTable)
+    .where(eq(webauthnCredentialsTable.userId, user.id));
+
+  const methods: string[] = [
+    ...enrollments.filter(e => e.method !== "passkey").map(e => e.method),
+    ...(passkeys.length > 0 ? ["passkey"] : []),
+  ];
+
+  if (methods.length > 0) {
+    const mfaToken = signMfaToken(user.id, methods);
+    res.json({ mfaRequired: true, mfaToken, methods });
     return;
   }
 

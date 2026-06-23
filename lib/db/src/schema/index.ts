@@ -1,4 +1,4 @@
-import { pgTable, serial, text, timestamp, integer, boolean, numeric, jsonb } from "drizzle-orm/pg-core";
+import { pgTable, serial, text, timestamp, integer, boolean, numeric, jsonb, bigint } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 
 export interface WizardOption {
@@ -845,3 +845,60 @@ export const servicePageTriggerKeysTable = pgTable("service_page_trigger_keys", 
 
 export type ServicePageTriggerKey = typeof servicePageTriggerKeysTable.$inferSelect;
 export type InsertServicePageTriggerKey = typeof servicePageTriggerKeysTable.$inferInsert;
+
+// ── MFA (Multi-Factor Authentication) ─────────────────────────────────────────
+
+export const mfaEnrollmentsTable = pgTable("mfa_enrollments", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").notNull().references(() => usersTable.id, { onDelete: "cascade" }),
+  method: text("method", { enum: ["totp", "sms", "passkey"] }).notNull(),
+  enabled: boolean("enabled").notNull().default(true),
+  encryptedSecret: text("encrypted_secret"),
+  phone: text("phone"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export type InsertMfaEnrollment = typeof mfaEnrollmentsTable.$inferInsert;
+export type MfaEnrollment = typeof mfaEnrollmentsTable.$inferSelect;
+
+export const mfaChallengesTable = pgTable("mfa_challenges", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").notNull().references(() => usersTable.id, { onDelete: "cascade" }),
+  method: text("method", { enum: ["totp", "sms", "passkey"] }).notNull(),
+  codeHash: text("code_hash"),
+  phone: text("phone"),
+  expiresAt: timestamp("expires_at").notNull(),
+  usedAt: timestamp("used_at"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export type InsertMfaChallenge = typeof mfaChallengesTable.$inferInsert;
+export type MfaChallenge = typeof mfaChallengesTable.$inferSelect;
+
+export const webauthnCredentialsTable = pgTable("webauthn_credentials", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").notNull().references(() => usersTable.id, { onDelete: "cascade" }),
+  credentialId: text("credential_id").notNull().unique(),
+  publicKey: text("public_key").notNull(),
+  counter: bigint("counter", { mode: "number" }).notNull().default(0),
+  deviceType: text("device_type"),
+  backedUp: boolean("backed_up").notNull().default(false),
+  transports: jsonb("transports").$type<string[]>(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export type InsertWebauthnCredential = typeof webauthnCredentialsTable.$inferInsert;
+export type WebauthnCredential = typeof webauthnCredentialsTable.$inferSelect;
+
+export const webauthnChallengesTable = pgTable("webauthn_challenges", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").references(() => usersTable.id, { onDelete: "cascade" }),
+  challenge: text("challenge").notNull(),
+  purpose: text("purpose", { enum: ["registration", "authentication"] }).notNull(),
+  expiresAt: timestamp("expires_at").notNull(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export type InsertWebauthnChallenge = typeof webauthnChallengesTable.$inferInsert;
+export type WebauthnChallenge = typeof webauthnChallengesTable.$inferSelect;

@@ -14,6 +14,11 @@ export interface AuthUser {
   impersonatedBy?: number;
 }
 
+export interface MfaChallenge {
+  mfaToken: string;
+  methods: string[];
+}
+
 interface AuthState {
   user: AuthUser | null;
   accessToken: string | null;
@@ -21,12 +26,13 @@ interface AuthState {
 }
 
 interface AuthContextValue extends AuthState {
-  login: (email: string, password: string) => Promise<AuthUser>;
+  login: (email: string, password: string) => Promise<AuthUser | MfaChallenge>;
   register: (email: string, password: string, name?: string) => Promise<AuthUser>;
   setupPassword: (token: string, password: string) => Promise<AuthUser>;
   logout: () => Promise<void>;
   getAuthHeader: () => Record<string, string>;
   fetchWithAuth: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
+  completeMfaLogin: (accessToken: string, user: AuthUser) => void;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -107,7 +113,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     });
   }, [refresh]);
 
-  const login = async (email: string, password: string): Promise<AuthUser> => {
+  const login = async (email: string, password: string): Promise<AuthUser | MfaChallenge> => {
     const res = await fetch("/api/auth/login", {
       method: "POST",
       credentials: "include",
@@ -118,10 +124,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const err = await res.json() as { error: string };
       throw new Error(err.error ?? "Login failed");
     }
-    const data = await res.json() as { accessToken: string; user: AuthUser };
-    setState({ user: data.user, accessToken: data.accessToken, isLoading: false });
-    accessTokenRef.current = data.accessToken;
-    return data.user;
+    const data = await res.json() as { accessToken?: string; user?: AuthUser; mfaRequired?: boolean; mfaToken?: string; methods?: string[] };
+
+    if (data.mfaRequired && data.mfaToken && data.methods) {
+      return { mfaToken: data.mfaToken, methods: data.methods } as MfaChallenge;
+    }
+
+    if (data.accessToken && data.user) {
+      setState({ user: data.user, accessToken: data.accessToken, isLoading: false });
+      accessTokenRef.current = data.accessToken;
+      return data.user;
+    }
+
+    throw new Error("Unexpected login response");
+  };
+
+  const completeMfaLogin = (accessToken: string, user: AuthUser) => {
+    setState({ user, accessToken, isLoading: false });
+    accessTokenRef.current = accessToken;
   };
 
   // register is kept for API compatibility but the server returns 403
@@ -192,7 +212,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [refresh]);
 
   return (
-    <AuthContext.Provider value={{ ...state, login, register, setupPassword, logout, getAuthHeader, fetchWithAuth }}>
+    <AuthContext.Provider value={{ ...state, login, register, setupPassword, logout, getAuthHeader, fetchWithAuth, completeMfaLogin }}>
       {children}
     </AuthContext.Provider>
   );
@@ -202,4 +222,8 @@ export function useAuth() {
   const ctx = useContext(AuthContext);
   if (!ctx) throw new Error("useAuth must be used within AuthProvider");
   return ctx;
+}
+
+export function isMfaChallenge(result: AuthUser | MfaChallenge): result is MfaChallenge {
+  return "mfaToken" in result;
 }
