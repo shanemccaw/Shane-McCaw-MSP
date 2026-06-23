@@ -445,6 +445,28 @@ const TEMPLATES: TemplateDefinition[] = [
     <p>— Shane McCaw</p>
   `,
   },
+  {
+    slug: "mfa-reset",
+    name: "MFA Reset Notification",
+    recipientType: "client" as const,
+    subject: "Your two-factor authentication has been reset",
+    variables: [
+      { name: "clientName", description: "Client's full name or email" },
+      { name: "methodsList", description: "Comma-separated list of cleared MFA methods" },
+      { name: "loginLink", description: "Full URL to the client portal login page" },
+      { name: "securityLink", description: "Full URL to the portal security settings page" },
+    ],
+    bodyHtml: `
+    <p>Hi {{clientName}},</p>
+    <p>Your two-factor authentication (2FA) has been reset by your administrator. The following method(s) were removed:</p>
+    <p style="margin:16px 0;padding:12px 16px;background:#F7F9FC;border-left:3px solid #0078D4;border-radius:4px;font-weight:600;">{{methodsList}}</p>
+    <p>You can sign in to your portal and set up a new authentication method at any time.</p>
+    <p style="margin:24px 0 8px;"><a href="{{loginLink}}" style="display:inline-block;background:${BLUE};color:#ffffff;text-decoration:none;font-weight:600;font-size:14px;padding:12px 24px;border-radius:6px;">Sign in to your portal →</a></p>
+    <p style="margin-top:16px;"><a href="{{securityLink}}" style="color:#0078D4;font-size:13px;">Manage security settings</a></p>
+    <p style="margin-top:24px;color:#666;font-size:12px;">If you did not expect this change or believe it was made in error, please contact us immediately by replying to this email.</p>
+    <p>— Shane McCaw</p>
+  `,
+  },
 ];
 
 export async function seedEmailTemplates(): Promise<void> {

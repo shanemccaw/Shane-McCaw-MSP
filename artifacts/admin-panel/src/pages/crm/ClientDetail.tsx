@@ -133,6 +133,11 @@ export default function ClientDetailPage() {
 
   const [viewAsLoading, setViewAsLoading] = useState(false);
 
+  const [mfaMethods, setMfaMethods] = useState<string[]>([]);
+  const [mfaLoading, setMfaLoading] = useState(true);
+  const [resettingMfa, setResettingMfa] = useState(false);
+  const [showMfaConfirm, setShowMfaConfirm] = useState(false);
+
   const CRM_PORTAL_BASE = `${window.location.protocol}//${window.location.host}/crm`;
 
   const loadClient = useCallback(async () => {
@@ -180,13 +185,26 @@ export default function ClientDetailPage() {
     }
   }, [fetchWithAuth, clientId]);
 
+  const loadMfaMethods = useCallback(async () => {
+    setMfaLoading(true);
+    try {
+      const res = await fetchWithAuth(`/api/admin/clients/${clientId}/mfa-status`);
+      if (!res.ok) { setMfaMethods([]); return; }
+      const data = (await res.json()) as { methods: string[] };
+      setMfaMethods(data.methods);
+    } finally {
+      setMfaLoading(false);
+    }
+  }, [fetchWithAuth, clientId]);
+
   useEffect(() => {
     if (!isNaN(clientId)) {
       void loadClient();
       void loadAzureCred();
       void loadAppReg();
+      void loadMfaMethods();
     }
-  }, [loadClient, loadAzureCred, loadAppReg, clientId]);
+  }, [loadClient, loadAzureCred, loadAppReg, loadMfaMethods, clientId]);
 
   async function handleSetAppRegStatus(status: "verified" | "submitted" | "pending") {
     setVerifyingAppReg(true);
@@ -315,6 +333,29 @@ export default function ClientDetailPage() {
       }
     } finally {
       setDeletingCred(false);
+    }
+  }
+
+  const MFA_LABELS: Record<string, string> = {
+    totp: "Authenticator App (TOTP)",
+    sms: "SMS",
+    passkey: "Passkey / Biometric",
+  };
+
+  async function handleMfaReset() {
+    setResettingMfa(true);
+    try {
+      const res = await fetchWithAuth(`/api/admin/clients/${clientId}/mfa-reset`, { method: "POST" });
+      if (!res.ok) {
+        const err = (await res.json()) as { error: string };
+        toast({ title: "Reset failed", description: err.error, variant: "destructive" });
+        return;
+      }
+      setShowMfaConfirm(false);
+      setMfaMethods([]);
+      toast({ title: "MFA reset — email sent to client" });
+    } finally {
+      setResettingMfa(false);
     }
   }
 
@@ -510,6 +551,98 @@ export default function ClientDetailPage() {
                 </a>
               </div>
             )}
+          </div>
+        )}
+      </div>
+
+      {/* ── Two-Factor Authentication ───────────────────────────────── */}
+      <div className="bg-white border border-border rounded-xl overflow-hidden">
+        <div className="flex items-center justify-between px-5 py-3.5 border-b border-border bg-[#F7F9FC]">
+          <div>
+            <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+              Two-Factor Authentication
+            </p>
+            <p className="text-[11px] text-muted-foreground mt-0.5">
+              MFA methods currently enrolled for this client
+            </p>
+          </div>
+          {!mfaLoading && mfaMethods.length > 0 && !showMfaConfirm && (
+            <button
+              onClick={() => setShowMfaConfirm(true)}
+              className="flex items-center gap-1.5 text-xs font-semibold text-red-600 border border-red-200 bg-red-50 px-3 py-1.5 rounded-lg hover:bg-red-100 transition-colors flex-shrink-0"
+            >
+              <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              Reset MFA
+            </button>
+          )}
+        </div>
+
+        {mfaLoading ? (
+          <div className="p-5 flex items-center gap-2 text-sm text-gray-400">
+            <div className="w-4 h-4 border-2 border-[#0078D4] border-t-transparent rounded-full animate-spin" />
+            Loading…
+          </div>
+        ) : showMfaConfirm ? (
+          <div className="p-5 space-y-4">
+            <div className="flex items-start gap-3 rounded-lg border border-red-200 bg-red-50 px-4 py-3">
+              <svg className="w-4 h-4 text-red-500 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              <div>
+                <p className="text-xs font-bold text-red-700">Confirm MFA Reset</p>
+                <p className="text-[11px] text-red-600 mt-0.5">
+                  This will permanently remove the following method{mfaMethods.length !== 1 ? "s" : ""} and send a notification email to the client:
+                </p>
+                <ul className="mt-2 space-y-1">
+                  {mfaMethods.map(m => (
+                    <li key={m} className="flex items-center gap-1.5 text-[11px] font-semibold text-red-700">
+                      <span className="w-1 h-1 rounded-full bg-red-500 flex-shrink-0" />
+                      {MFA_LABELS[m] ?? m}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={() => void handleMfaReset()}
+                disabled={resettingMfa}
+                className="flex items-center gap-1.5 text-xs font-semibold bg-red-600 text-white px-4 py-1.5 rounded-lg hover:bg-red-700 disabled:opacity-50 transition-colors"
+              >
+                {resettingMfa ? (
+                  <span className="w-3 h-3 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+                ) : null}
+                {resettingMfa ? "Resetting…" : "Yes, reset MFA"}
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowMfaConfirm(false)}
+                disabled={resettingMfa}
+                className="border border-border text-xs font-medium px-4 py-1.5 rounded-lg hover:bg-[#F7F9FC] disabled:opacity-50 transition-colors"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        ) : mfaMethods.length > 0 ? (
+          <div className="p-5 flex flex-wrap gap-2">
+            {mfaMethods.map(m => (
+              <span
+                key={m}
+                className="inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full bg-green-100 text-green-700 border border-green-200"
+              >
+                <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+                </svg>
+                {MFA_LABELS[m] ?? m}
+              </span>
+            ))}
+          </div>
+        ) : (
+          <div className="p-5">
+            <p className="text-sm text-muted-foreground">No MFA methods enrolled — this client signs in with password only.</p>
           </div>
         )}
       </div>

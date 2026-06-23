@@ -1,5 +1,5 @@
 import { Router, type IRouter, type Request, type Response } from "express";
-import { db, projectsTable, clientServicesTable, servicesTable, workflowStepsTable, kanbanTasksTable, documentsTable, reportsTable, invoicesTable, messagesTable, notificationsTable, projectUpdatesTable, usersTable, contractsTable, passwordResetTokensTable, workflowTemplateStepsTable, workflowTemplateStepTasksTable, contractTemplatesTable, impersonationTokensTable, statusReportsTable, deviceTokensTable, projectClosuresTable, auditLogsTable, instructionSetsTable, checklistsTable, artifactSetsTable, deliverableSetsTable, emailsTable, emailDomainRulesTable, clientM365ProfilesTable, couponsTable, clientAppRegistrationsTable, accountSetupTokensTable } from "@workspace/db";
+import { db, projectsTable, clientServicesTable, servicesTable, workflowStepsTable, kanbanTasksTable, documentsTable, reportsTable, invoicesTable, messagesTable, notificationsTable, projectUpdatesTable, usersTable, contractsTable, passwordResetTokensTable, workflowTemplateStepsTable, workflowTemplateStepTasksTable, contractTemplatesTable, impersonationTokensTable, statusReportsTable, deviceTokensTable, projectClosuresTable, auditLogsTable, instructionSetsTable, checklistsTable, artifactSetsTable, deliverableSetsTable, emailsTable, emailDomainRulesTable, clientM365ProfilesTable, couponsTable, clientAppRegistrationsTable, accountSetupTokensTable, mfaEnrollmentsTable, mfaChallengesTable, webauthnCredentialsTable, webauthnChallengesTable } from "@workspace/db";
 import { eq, and, desc, asc, count, sql, inArray, gte, isNotNull, isNull, or, lt } from "drizzle-orm";
 import { requireAuth, requireAdmin } from "../middlewares/requireAuth";
 import jwt from "jsonwebtoken";
@@ -6919,6 +6919,100 @@ router.post("/portal/projects/:id/closure/sign", requireAuth, async (req: Reques
     .returning();
 
   res.json(updated);
+});
+
+// ─── ADMIN: MFA Status & Reset ───────────────────────────────────────────────
+
+const MFA_METHOD_LABELS: Record<string, string> = {
+  totp: "Authenticator App (TOTP)",
+  sms: "SMS",
+};
+
+router.get("/admin/clients/:id/mfa-status", requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const id = parseInt(String(req.params.id ?? ""), 10);
+    if (isNaN(id)) { res.status(400).json({ error: "Invalid client ID" }); return; }
+
+    const [client] = await db
+      .select({ id: usersTable.id })
+      .from(usersTable)
+      .where(and(eq(usersTable.id, id), eq(usersTable.role, "client")))
+      .limit(1);
+    if (!client) { res.status(404).json({ error: "Client not found" }); return; }
+
+    const enrollments = await db
+      .select({ method: mfaEnrollmentsTable.method })
+      .from(mfaEnrollmentsTable)
+      .where(and(eq(mfaEnrollmentsTable.userId, id), eq(mfaEnrollmentsTable.enabled, true)));
+
+    const passkeyCount = await db
+      .select({ id: webauthnCredentialsTable.id })
+      .from(webauthnCredentialsTable)
+      .where(eq(webauthnCredentialsTable.userId, id));
+
+    const methods = enrollments.map(e => e.method);
+    if (passkeyCount.length > 0) methods.push("passkey");
+
+    res.json({ methods });
+  } catch (err) {
+    req.log.error(err, "Failed to fetch client MFA status");
+    res.status(500).json({ error: "Failed to fetch MFA status" });
+  }
+});
+
+router.post("/admin/clients/:id/mfa-reset", requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const id = parseInt(String(req.params.id ?? ""), 10);
+    if (isNaN(id)) { res.status(400).json({ error: "Invalid client ID" }); return; }
+
+    const [client] = await db
+      .select({ id: usersTable.id, email: usersTable.email, name: usersTable.name })
+      .from(usersTable)
+      .where(and(eq(usersTable.id, id), eq(usersTable.role, "client")))
+      .limit(1);
+    if (!client) { res.status(404).json({ error: "Client not found" }); return; }
+
+    const enrollments = await db
+      .select({ method: mfaEnrollmentsTable.method })
+      .from(mfaEnrollmentsTable)
+      .where(eq(mfaEnrollmentsTable.userId, id));
+
+    const passkeyRows = await db
+      .select({ id: webauthnCredentialsTable.id })
+      .from(webauthnCredentialsTable)
+      .where(eq(webauthnCredentialsTable.userId, id));
+
+    const clearedMethods: string[] = enrollments.map(e => e.method);
+    if (passkeyRows.length > 0) clearedMethods.push("passkey");
+
+    await db.delete(mfaEnrollmentsTable).where(eq(mfaEnrollmentsTable.userId, id));
+    await db.delete(mfaChallengesTable).where(eq(mfaChallengesTable.userId, id));
+    await db.delete(webauthnCredentialsTable).where(eq(webauthnCredentialsTable.userId, id));
+    await db.delete(webauthnChallengesTable).where(eq(webauthnChallengesTable.userId, id));
+
+    const methodsList = clearedMethods
+      .map(m => MFA_METHOD_LABELS[m] ?? m)
+      .join(", ") || "None";
+
+    await sendEmailFromTemplate(
+      "mfa-reset",
+      client.email,
+      {
+        clientName: client.name ?? client.email,
+        methodsList,
+        loginLink: PORTAL_URL,
+        securityLink: `${PORTAL_URL}/security`,
+      },
+      "Your two-factor authentication has been reset",
+      `<p>Hi ${client.name ?? client.email},</p><p>Your MFA has been reset. Please sign in and set up a new authentication method.</p><p><a href="${PORTAL_URL}">Sign in to your portal</a></p>`,
+    );
+
+    req.log.info({ clientId: id, clearedMethods }, "Admin reset client MFA");
+    res.json({ ok: true, clearedMethods });
+  } catch (err) {
+    req.log.error(err, "Failed to reset client MFA");
+    res.status(500).json({ error: "Failed to reset MFA" });
+  }
 });
 
 // ─── ADMIN: Admin messages (all clients) ────────────────────────────────────
