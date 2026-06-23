@@ -6,6 +6,7 @@ import { sendEmail, sendEmailFromTemplate, getEmailTemplateOrFallback, purchaseC
 import { sendAdminSms } from "../lib/sms";
 import { sendPushNotifications } from "../lib/push";
 import { createAuditLog } from "../lib/audit";
+import { getStripeKey } from "../lib/stripe";
 import { listDriveItems, graphCredentialsPresent, createProjectFolder, uploadFileToClientContracts, getDriveItemDownloadUrl } from "../lib/graph";
 import { uploadInvoiceToSharePoint } from "../lib/invoice-sharepoint";
 import { generateM365ProfilePdf } from "../lib/m365-profile-pdf";
@@ -1093,11 +1094,8 @@ router.post("/portal/services/checkout", requireAuth, async (req: Request, res: 
     return;
   }
 
-  const stripeKey = process.env.STRIPE_SECRET_KEY;
-  if (!stripeKey) {
-    res.status(503).json({ error: "Online purchasing is not yet configured. Please contact us at info@shanemccaw.com to purchase this service." });
-    return;
-  }
+  let stripeKey: string;
+  try { stripeKey = getStripeKey(); } catch (e) { res.status(503).json({ error: (e as Error).message }); return; }
 
   const { default: Stripe } = await import("stripe");
   const stripe = new Stripe(stripeKey);
@@ -1362,11 +1360,8 @@ router.post("/portal/invoices/:id/pay", requireAuth, async (req: Request, res: R
   if (!invoice) { res.status(404).json({ error: "Invoice not found" }); return; }
   if (invoice.status === "paid") { res.status(400).json({ error: "Invoice already paid" }); return; }
 
-  const stripeKey = process.env.STRIPE_SECRET_KEY;
-  if (!stripeKey) {
-    res.status(503).json({ error: "Stripe not configured. Set STRIPE_SECRET_KEY." });
-    return;
-  }
+  let stripeKey: string;
+  try { stripeKey = getStripeKey(); } catch (e) { res.status(503).json({ error: (e as Error).message }); return; }
 
   const { default: Stripe } = await import("stripe");
   const stripe = new Stripe(stripeKey);
@@ -1518,11 +1513,8 @@ router.get("/portal/contracts/:id/download", requireAuth, async (req: Request, r
 router.get("/portal/billing/stripe-receipts", requireAuth, async (req: Request, res: Response) => {
   const userId = req.user!.id;
 
-  const stripeKey = process.env.STRIPE_SECRET_KEY;
-  if (!stripeKey) {
-    res.json([]);
-    return;
-  }
+  let stripeKey: string;
+  try { stripeKey = getStripeKey(); } catch { res.json([]); return; }
 
   // Find any client service with a Stripe subscription ID for this user
   const rows = await db.select({ stripeSubscriptionId: clientServicesTable.stripeSubscriptionId })
@@ -1596,7 +1588,8 @@ router.get("/portal/billing/subscriptions", requireAuth, async (req: Request, re
     )
     .orderBy(desc(clientServicesTable.purchasedAt));
 
-  const stripeKey = process.env.STRIPE_SECRET_KEY;
+  let stripeKey: string | null = null;
+  try { stripeKey = getStripeKey(); } catch { /* Stripe not configured for this environment */ }
 
   const results = await Promise.all(rows.map(async ({ cs, svc }) => {
     let stripeData: {
@@ -1658,8 +1651,8 @@ router.post("/portal/billing/subscriptions/:id/cancel", requireAuth, async (req:
     return;
   }
 
-  const stripeKey = process.env.STRIPE_SECRET_KEY;
-  if (!stripeKey) { res.status(503).json({ error: "Stripe not configured." }); return; }
+  let stripeKey: string;
+  try { stripeKey = getStripeKey(); } catch (e) { res.status(503).json({ error: (e as Error).message }); return; }
 
   const { default: Stripe } = await import("stripe");
   const stripe = new Stripe(stripeKey);
@@ -1713,8 +1706,8 @@ router.post("/portal/billing/subscriptions/:id/resume", requireAuth, async (req:
     return;
   }
 
-  const stripeKey = process.env.STRIPE_SECRET_KEY;
-  if (!stripeKey) { res.status(503).json({ error: "Stripe not configured." }); return; }
+  let stripeKey: string;
+  try { stripeKey = getStripeKey(); } catch (e) { res.status(503).json({ error: (e as Error).message }); return; }
 
   const { default: Stripe } = await import("stripe");
   const stripe = new Stripe(stripeKey);
@@ -1768,8 +1761,8 @@ router.post("/portal/billing/subscriptions/:id/resume", requireAuth, async (req:
 router.post("/portal/billing/customer-portal", requireAuth, async (req: Request, res: Response) => {
   const userId = req.user!.id;
 
-  const stripeKey = process.env.STRIPE_SECRET_KEY;
-  if (!stripeKey) { res.status(503).json({ error: "Stripe not configured." }); return; }
+  let stripeKey: string;
+  try { stripeKey = getStripeKey(); } catch (e) { res.status(503).json({ error: (e as Error).message }); return; }
 
   // Find any active Stripe subscription for this client to resolve the customer
   const [cs] = await db.select().from(clientServicesTable)
@@ -1830,11 +1823,8 @@ router.post("/portal/billing/subscriptions/:id/resubscribe", requireAuth, async 
     return;
   }
 
-  const stripeKey = process.env.STRIPE_SECRET_KEY;
-  if (!stripeKey) {
-    res.status(503).json({ error: "Online purchasing is not yet configured. Please contact us at info@shanemccaw.com." });
-    return;
-  }
+  let stripeKey: string;
+  try { stripeKey = getStripeKey(); } catch (e) { res.status(503).json({ error: (e as Error).message }); return; }
 
   const { default: Stripe } = await import("stripe");
   const stripe = new Stripe(stripeKey);
@@ -2762,7 +2752,12 @@ async function seedDefaultWorkflowSteps(
 //    pnpm --filter @workspace/scripts run sync-webhooks -- --fix # check + auto-create
 //
 //  The script reads REPLIT_DOMAINS (set automatically by Replit in production)
-//  and STRIPE_SECRET_KEY, then compares against registered Stripe endpoints.
+//  and the appropriate Stripe key (STRIPE_SECRET_KEY in dev, STRIPE_SECRET_KEY_PROD
+//  in production), then compares against registered Stripe endpoints.
+//
+//  Stripe keys by environment:
+//   STRIPE_SECRET_KEY      — dev (sk_test_…), used when REPLIT_DOMAINS is absent
+//   STRIPE_SECRET_KEY_PROD — prod (sk_live_…), used when REPLIT_DOMAINS is present
 //
 //  If you change the webhook path or add a new domain, re-run the script.
 //
@@ -2772,8 +2767,8 @@ async function seedDefaultWorkflowSteps(
 //   STRIPE_WEBHOOK_SECRET_PROD — prod endpoint (shanemccaw.com)
 // The handler tries each configured secret and accepts the event if any one verifies.
 router.post("/portal/stripe/webhook", async (req: Request, res: Response) => {
-  const stripeKey = process.env.STRIPE_SECRET_KEY;
-  if (!stripeKey) { res.status(503).send("Stripe not configured. Set STRIPE_SECRET_KEY."); return; }
+  let stripeKey: string;
+  try { stripeKey = getStripeKey(); } catch (e) { res.status(503).send((e as Error).message); return; }
 
   const secrets = [
     process.env.STRIPE_WEBHOOK_SECRET,
@@ -5492,8 +5487,8 @@ router.get("/portal/onboarding/contract/:id", requireAuth, async (req: Request, 
 
 // ─── ONBOARDING: Check Stripe session (success page polling) ─────────────────
 router.get("/portal/onboarding/session/:sessionId", requireAuth, async (req: Request, res: Response) => {
-  const stripeKey = process.env.STRIPE_SECRET_KEY;
-  if (!stripeKey) { res.status(503).json({ error: "Stripe not configured" }); return; }
+  let stripeKey: string;
+  try { stripeKey = getStripeKey(); } catch (e) { res.status(503).json({ error: (e as Error).message }); return; }
   const { default: Stripe } = await import("stripe");
   const stripe = new Stripe(stripeKey);
   try {
@@ -5524,8 +5519,8 @@ router.get("/portal/onboarding/session/:sessionId", requireAuth, async (req: Req
 // Called by the success page as a fallback when webhooks are not yet configured.
 // Safe to call multiple times — provisionOnboardingProject is idempotent.
 router.post("/portal/onboarding/provision/:sessionId", requireAuth, async (req: Request, res: Response) => {
-  const stripeKey = process.env.STRIPE_SECRET_KEY;
-  if (!stripeKey) { res.status(503).json({ error: "Stripe not configured" }); return; }
+  let stripeKey: string;
+  try { stripeKey = getStripeKey(); } catch (e) { res.status(503).json({ error: (e as Error).message }); return; }
 
   const { default: Stripe } = await import("stripe");
   const stripe = new Stripe(stripeKey);
@@ -5693,11 +5688,8 @@ router.post("/portal/checkout/create-session", requireAuth, async (req: Request,
     return;
   }
 
-  const stripeKey = process.env.STRIPE_SECRET_KEY;
-  if (!stripeKey) {
-    res.status(503).json({ error: "Online purchasing is not yet configured. Please contact us at info@shanemccaw.com to purchase this service." });
-    return;
-  }
+  let stripeKey: string;
+  try { stripeKey = getStripeKey(); } catch (e) { res.status(503).json({ error: (e as Error).message }); return; }
 
   const { default: Stripe } = await import("stripe");
   const stripe = new Stripe(stripeKey);

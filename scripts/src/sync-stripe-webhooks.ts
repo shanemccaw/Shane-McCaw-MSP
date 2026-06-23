@@ -9,10 +9,13 @@
  *   pnpm --filter @workspace/scripts run sync-webhooks -- --fix # check + auto-create missing endpoints
  *
  * Required env vars (set in Replit Secrets):
- *   STRIPE_SECRET_KEY   — Stripe secret key (sk_live_... or sk_test_...)
- *   REPLIT_DOMAINS      — comma-separated list of domains for the deployed app
- *                         (Replit sets this automatically; it contains the
- *                          production custom domain when one is configured)
+ *   STRIPE_SECRET_KEY      — dev Stripe secret key (sk_test_…), used when
+ *                            REPLIT_DOMAINS is absent (local / dev environment)
+ *   STRIPE_SECRET_KEY_PROD — production Stripe secret key (sk_live_…), used
+ *                            when REPLIT_DOMAINS is present (deployed app)
+ *   REPLIT_DOMAINS         — comma-separated list of domains for the deployed app
+ *                            (Replit sets this automatically; it contains the
+ *                             production custom domain when one is configured)
  *
  * Optional env vars:
  *   STRIPE_WEBHOOK_SECRET      — signing secret for the dev (*.replit.dev) endpoint
@@ -42,12 +45,41 @@ function getExpectedUrls(): string[] {
     .map((domain) => `https://${domain}${WEBHOOK_PATH}`);
 }
 
-async function main() {
-  const stripeKey = process.env.STRIPE_SECRET_KEY;
-  if (!stripeKey) {
-    console.error(
-      "ERROR: STRIPE_SECRET_KEY is not set. Add it in Replit Secrets.",
+/**
+ * Returns the Stripe secret key appropriate for the current environment.
+ * Mirrors the getStripeKey() helper in artifacts/api-server/src/lib/stripe.ts.
+ *
+ *   Dev  (REPLIT_DOMAINS absent)  → STRIPE_SECRET_KEY       (sk_test_…)
+ *   Prod (REPLIT_DOMAINS present) → STRIPE_SECRET_KEY_PROD  (sk_live_…)
+ */
+function getStripeKey(): string {
+  const isProd = !!(process.env.REPLIT_DOMAINS);
+
+  if (isProd) {
+    const key = process.env.STRIPE_SECRET_KEY_PROD;
+    if (!key) {
+      throw new Error(
+        "STRIPE_SECRET_KEY_PROD is not set. Add it in Replit Secrets (sk_live_…).",
+      );
+    }
+    return key;
+  }
+
+  const key = process.env.STRIPE_SECRET_KEY;
+  if (!key) {
+    throw new Error(
+      "STRIPE_SECRET_KEY is not set. Add it in Replit Secrets (sk_test_…).",
     );
+  }
+  return key;
+}
+
+async function main() {
+  let stripeKey: string;
+  try {
+    stripeKey = getStripeKey();
+  } catch (err) {
+    console.error("ERROR:", (err as Error).message);
     process.exit(2);
   }
 
