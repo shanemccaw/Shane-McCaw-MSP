@@ -3330,13 +3330,27 @@ async function processStripeEvent(req: Request, event: import("stripe").Stripe.E
           })
           .catch(() => null);
 
-        // Welcome / setup email to the client
-        if (buyer?.email) {
-          const clientBaseUrl = process.env.PORTAL_BASE_URL
-            ?? `${process.env.REPLIT_DEV_DOMAIN ? `https://${process.env.REPLIT_DEV_DOMAIN}` : ""}/crm`;
-          const clientHasPassword = !!(buyer.passwordHash);
-          if (!clientHasPassword) {
-            // New client — generate a setup token so they can set their first password
+        // Setup email for new clients who have no password yet.
+        // Idempotency: if a valid (non-expired, non-used) setup token already exists for this user
+        // (e.g., the success-page provision endpoint already ran), skip creating another token
+        // and skip the email to avoid duplicate sends.
+        // Returning clients already receive the purchase-confirmation email above — no extra email needed.
+        if (buyer?.email && !buyer.passwordHash) {
+          const now = new Date();
+          const [existingToken] = await db
+            .select({ id: accountSetupTokensTable.userId })
+            .from(accountSetupTokensTable)
+            .where(
+              and(
+                eq(accountSetupTokensTable.userId, buyer.id),
+                gte(accountSetupTokensTable.expiresAt, now),
+                isNull(accountSetupTokensTable.usedAt),
+              ),
+            )
+            .limit(1);
+          if (!existingToken) {
+            const clientBaseUrl = process.env.PORTAL_BASE_URL
+              ?? `${process.env.REPLIT_DEV_DOMAIN ? `https://${process.env.REPLIT_DEV_DOMAIN}` : ""}/crm`;
             const { randomBytes: rb } = await import("crypto");
             const setupToken = rb(32).toString("hex");
             const setupExpiresAt = new Date(Date.now() + 72 * 60 * 60 * 1000);
@@ -3348,20 +3362,6 @@ async function processStripeEvent(req: Request, event: import("stripe").Stripe.E
               { setupLink: setupUrl, clientName: buyer.name ?? buyer.email },
               "Set up your Shane McCaw Consulting portal",
               `<p>Hi ${buyer.name ?? ""},</p><p>Your project workspace is ready. Click the link below to set your portal password:</p><p><a href="${setupUrl}" style="color:#0078D4;">Set my password →</a></p><p>This link expires in 72 hours.</p><p>— Shane McCaw</p>`,
-            ).catch(() => null);
-          } else {
-            // Returning client — send a "project is ready" email with portal login link
-            void sendEmailFromTemplate(
-              "onboarding-confirmation",
-              buyer.email,
-              {
-                clientName: buyer.name ?? buyer.email,
-                serviceName: serviceLabel,
-                amountDollars: session.amount_total ? String(Math.round(session.amount_total / 100)) : "0",
-                projectUrl: clientBaseUrl,
-              },
-              "Your project workspace is ready — Shane McCaw Consulting",
-              `<p>Hi ${buyer.name ?? ""},</p><p>Your <strong>${serviceLabel}</strong> project workspace is ready. Log in to your portal to track progress.</p><p><a href="${clientBaseUrl}" style="color:#0078D4;">View your portal →</a></p><p>— Shane McCaw</p>`,
             ).catch(() => null);
           }
         }
@@ -5965,21 +5965,48 @@ router.post("/portal/onboarding/provision/:sessionId", async (req: Request, res:
     const baseUrl = process.env.PORTAL_BASE_URL
       ?? `${process.env.REPLIT_DEV_DOMAIN ? `https://${process.env.REPLIT_DEV_DOMAIN}` : ""}/crm`;
     if (!hasPassword && provUser?.email) {
-      const { randomBytes } = await import("crypto");
-      const token = randomBytes(32).toString("hex");
-      const expiresAt = new Date(Date.now() + 72 * 60 * 60 * 1000);
-      await db.insert(accountSetupTokensTable).values({ userId: resolvedUserId, token, expiresAt });
+      // Idempotency: if a valid (non-expired, non-used) setup token already exists for this user
+      // (e.g., the Stripe webhook already ran first), reuse it so the client gets exactly one email.
+      const now = new Date();
+      const [existingToken] = await db
+        .select({ token: accountSetupTokensTable.token })
+        .from(accountSetupTokensTable)
+        .where(
+          and(
+            eq(accountSetupTokensTable.userId, resolvedUserId),
+            gte(accountSetupTokensTable.expiresAt, now),
+            isNull(accountSetupTokensTable.usedAt),
+          ),
+        )
+        .limit(1);
 
-      // Send setup link via email — token never leaves the server in the API response
-      const setupUrl = `${baseUrl}/portal/onboarding/success?setup_token=${token}`;
-      void sendEmailFromTemplate(
-        "account-setup",
-        provUser.email,
-        { setupLink: setupUrl, clientName: provUser.name ?? provUser.email },
-        "Set up your Shane McCaw Consulting portal",
-        `<p>Hi ${provUser.name ?? ""},</p><p>Your project workspace is ready. Click the link below to set your portal password:</p><p><a href="${setupUrl}" style="color:#0078D4;">Set my password →</a></p><p>This link expires in 72 hours.</p><p>— Shane McCaw</p>`,
-      ).catch(() => null);
-      sentSetupEmail = true;
+      const setupTokenValue = existingToken?.token ?? (() => {
+        // No valid token exists — will be created below
+        return null;
+      })();
+
+      let activeToken: string;
+      if (setupTokenValue) {
+        // Webhook already created a token — don't send another email
+        activeToken = setupTokenValue;
+        sentSetupEmail = false; // email already sent by webhook
+      } else {
+        const { randomBytes } = await import("crypto");
+        activeToken = randomBytes(32).toString("hex");
+        const expiresAt = new Date(Date.now() + 72 * 60 * 60 * 1000);
+        await db.insert(accountSetupTokensTable).values({ userId: resolvedUserId, token: activeToken, expiresAt });
+
+        // Send setup link via email — token never leaves the server in the API response
+        const setupUrl = `${baseUrl}/portal/onboarding/success?setup_token=${activeToken}`;
+        void sendEmailFromTemplate(
+          "account-setup",
+          provUser.email,
+          { setupLink: setupUrl, clientName: provUser.name ?? provUser.email },
+          "Set up your Shane McCaw Consulting portal",
+          `<p>Hi ${provUser.name ?? ""},</p><p>Your project workspace is ready. Click the link below to set your portal password:</p><p><a href="${setupUrl}" style="color:#0078D4;">Set my password →</a></p><p>This link expires in 72 hours.</p><p>— Shane McCaw</p>`,
+        ).catch(() => null);
+        sentSetupEmail = true;
+      }
     } else if (hasPassword && provUser?.email) {
       // Returning client — send a "project is ready" email with portal login link
       const sidsStr = session.metadata?.serviceIds ?? session.metadata?.serviceId ?? "";
