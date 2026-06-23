@@ -1,3 +1,4 @@
+import { useState } from "react";
 import {
   CheckCircle, ArrowRight, Clock, Users, Building2, Shield,
   Zap, Star, Award, Rocket, DollarSign, AlertTriangle, Target,
@@ -7,6 +8,7 @@ import { Link } from "wouter";
 import { SEOMeta } from "@/components/SEOMeta";
 import { Layout } from "@/components/Layout";
 import { CTAButton } from "@/components/CTAButton";
+import { ServiceOverviewModal } from "@/components/ServiceOverviewModal";
 import { useServices, formatPriceDisplay } from "@/hooks/useServices";
 import NotFound from "@/pages/not-found";
 
@@ -118,6 +120,7 @@ interface MicroOfferDetailProps {
 export default function MicroOfferDetail({ params }: MicroOfferDetailProps) {
   const slug = params?.slug ?? "";
   const { services, loading } = useServices("micro_offer");
+  const [modalOpen, setModalOpen] = useState(false);
 
   if (loading) return <OfferSkeleton />;
 
@@ -248,6 +251,14 @@ export default function MicroOfferDetail({ params }: MicroOfferDetailProps) {
             >
               Book a Free Discovery Call <ArrowRight className="w-4 h-4" />
             </a>
+            {service.hasPdf && (
+              <button
+                onClick={() => setModalOpen(true)}
+                className="inline-flex items-center gap-2 text-white/50 hover:text-white/80 transition-colors text-sm"
+              >
+                Download Service Overview <ArrowRight className="w-4 h-4" />
+              </button>
+            )}
           </div>
         </div>
       </section>
@@ -678,6 +689,12 @@ export default function MicroOfferDetail({ params }: MicroOfferDetailProps) {
           </p>
         </div>
       </section>
+
+      <ServiceOverviewModal
+        serviceName={service.name}
+        isOpen={modalOpen}
+        onClose={() => setModalOpen(false)}
+      />
     </Layout>
   );
 }
