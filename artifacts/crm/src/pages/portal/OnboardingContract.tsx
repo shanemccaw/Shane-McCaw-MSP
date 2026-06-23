@@ -249,6 +249,8 @@ export default function OnboardingContract() {
   const [stripeError, setStripeError] = useState("");
   const [hasScrolled, setHasScrolled] = useState(false);
 
+  const [offerAvailable, setOfferAvailable] = useState<boolean | null>(null);
+
   const [couponOpen, setCouponOpen] = useState(false);
   const [couponInput, setCouponInput] = useState("");
   const [couponLoading, setCouponLoading] = useState(false);
@@ -285,6 +287,11 @@ export default function OnboardingContract() {
         setLoading(false);
       })
       .catch(() => setLoading(false));
+
+    fetch("/api/portal/coupons/available/TESTIMONIAL")
+      .then(r => r.json() as Promise<{ available: boolean }>)
+      .then(d => setOfferAvailable(d.available))
+      .catch(() => setOfferAvailable(false));
 
     const profileReq = fetchWithAuth("/api/portal/profile")
       .then(r => r.ok ? r.json() as Promise<{
@@ -635,8 +642,8 @@ export default function OnboardingContract() {
                 )}
               </div>
 
-              {/* Early Client Offer banner — visible only while a coupon is applied */}
-              {appliedCoupon && (
+              {/* Early Client Offer banner — visible while the TESTIMONIAL coupon is valid in the DB */}
+              {offerAvailable && (
                 <div className="mt-3 rounded-lg border border-[#0078D4]/40 bg-[#0078D4]/5 px-4 py-3">
                   <p className="text-sm font-semibold text-[#0A2540] mb-1">Early Client Offer</p>
                   <p className="text-sm text-muted-foreground mb-2.5">

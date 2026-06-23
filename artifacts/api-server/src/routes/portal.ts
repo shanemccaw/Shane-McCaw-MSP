@@ -5591,6 +5591,19 @@ async function lookupAndValidateCoupon(
   return { ok: true, coupon, discountAmount };
 }
 
+// ─── PUBLIC: Coupon Availability Check (no auth, no cart total) ──────────────
+// Returns { available: true } if the coupon exists, is active, not expired,
+// and has not reached its usage limit. Used to conditionally show promo banners.
+router.get("/portal/coupons/available/:code", async (req: Request, res: Response) => {
+  const code = String(req.params.code ?? "").trim().toUpperCase();
+  if (!code) { res.status(400).json({ error: "code is required" }); return; }
+  const [coupon] = await db.select().from(couponsTable).where(eq(couponsTable.code, code));
+  if (!coupon || !coupon.active) { res.json({ available: false }); return; }
+  if (coupon.expiresAt && coupon.expiresAt < new Date()) { res.json({ available: false }); return; }
+  if (coupon.maxUses != null && coupon.usesCount >= coupon.maxUses) { res.json({ available: false }); return; }
+  res.json({ available: true });
+});
+
 // ─── CLIENT: Coupon Validate ──────────────────────────────────────────────────
 router.post("/portal/coupons/validate", requireAuth, async (req: Request, res: Response) => {
   const { code, cartTotal } = req.body as { code?: string; cartTotal?: number };
