@@ -31,7 +31,9 @@ interface CredForm {
   tenantId: string;
   appClientId: string;
   credentialType: "secret" | "certificate";
+  clientSecretValue: string;
   keyVaultSecretName: string;
+  showAdvanced: boolean;
 }
 
 const EMPTY_CRED: CredForm = {
@@ -39,7 +41,9 @@ const EMPTY_CRED: CredForm = {
   tenantId: "",
   appClientId: "",
   credentialType: "secret",
+  clientSecretValue: "",
   keyVaultSecretName: "",
+  showAdvanced: false,
 };
 
 const inputCls =
@@ -173,7 +177,9 @@ export default function ClientDetailPage() {
       tenantId: azureCred.tenantId,
       appClientId: azureCred.clientId,
       credentialType: azureCred.credentialType,
+      clientSecretValue: "",
       keyVaultSecretName: azureCred.keyVaultSecretName,
+      showAdvanced: azureCred.credentialType === "certificate",
     });
     setEditingCred(true);
   }
@@ -182,16 +188,21 @@ export default function ClientDetailPage() {
     e.preventDefault();
     setSavingCred(true);
     try {
+      const payload: Record<string, unknown> = {
+        displayName: credForm.displayName,
+        tenantId: credForm.tenantId,
+        clientId: credForm.appClientId,
+        credentialType: credForm.credentialType,
+      };
+      if (credForm.clientSecretValue.trim() !== "") {
+        payload.clientSecretValue = credForm.clientSecretValue.trim();
+      } else {
+        payload.keyVaultSecretName = credForm.keyVaultSecretName;
+      }
       const res = await fetchWithAuth(`/api/admin/clients/${clientId}/azure-credential`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          displayName: credForm.displayName,
-          tenantId: credForm.tenantId,
-          clientId: credForm.appClientId,
-          credentialType: credForm.credentialType,
-          keyVaultSecretName: credForm.keyVaultSecretName,
-        }),
+        body: JSON.stringify(payload),
       });
       if (!res.ok) {
         const err = (await res.json()) as { error: string };
@@ -515,18 +526,53 @@ export default function ClientDetailPage() {
                   onChange={e => setCredForm(f => ({ ...f, appClientId: e.target.value }))}
                 />
               </div>
+              {credForm.credentialType === "secret" && (
+                <div className="sm:col-span-2">
+                  <label className={labelCls}>Client Secret Value</label>
+                  <input
+                    type="password"
+                    autoComplete="new-password"
+                    className={inputCls}
+                    placeholder={azureCred ? "Leave blank to keep existing secret" : "Paste the App Registration client secret"}
+                    value={credForm.clientSecretValue}
+                    onChange={e => setCredForm(f => ({ ...f, clientSecretValue: e.target.value }))}
+                  />
+                  <p className="text-[10px] text-muted-foreground mt-1">
+                    Stored directly in Key Vault — write-only, never shown again
+                  </p>
+                </div>
+              )}
+
+              {/* Advanced: manual Key Vault secret name (certificates or pre-existing secrets) */}
               <div className="sm:col-span-2">
-                <label className={labelCls}>Key Vault Secret Name *</label>
-                <input
-                  required
-                  className={inputCls}
-                  placeholder="contoso-client-secret"
-                  value={credForm.keyVaultSecretName}
-                  onChange={e => setCredForm(f => ({ ...f, keyVaultSecretName: e.target.value }))}
-                />
-                <p className="text-[10px] text-muted-foreground mt-1">
-                  The name of the secret in Azure Key Vault that holds this client's credential value
-                </p>
+                <button
+                  type="button"
+                  onClick={() => setCredForm(f => ({ ...f, showAdvanced: !f.showAdvanced }))}
+                  className="flex items-center gap-1 text-[11px] text-muted-foreground hover:text-[#0078D4] transition-colors"
+                >
+                  <svg
+                    className={`w-3 h-3 transition-transform ${credForm.showAdvanced ? "rotate-90" : ""}`}
+                    fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}
+                  >
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+                  </svg>
+                  Advanced — enter an existing Key Vault secret name directly
+                </button>
+
+                {credForm.showAdvanced && (
+                  <div className="mt-2">
+                    <input
+                      required={credForm.clientSecretValue.trim() === "" || credForm.credentialType === "certificate"}
+                      className={inputCls}
+                      placeholder="contoso-client-secret"
+                      value={credForm.keyVaultSecretName}
+                      onChange={e => setCredForm(f => ({ ...f, keyVaultSecretName: e.target.value }))}
+                    />
+                    <p className="text-[10px] text-muted-foreground mt-1">
+                      Name of an existing secret in Azure Key Vault — use for certificate credentials or pre-provisioned secrets
+                    </p>
+                  </div>
+                )}
               </div>
             </div>
             <div className="flex gap-2">

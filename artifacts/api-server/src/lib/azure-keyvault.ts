@@ -70,6 +70,27 @@ export async function getCertificatePem(certName: string): Promise<string> {
 }
 
 /**
+ * Write (create or overwrite) a secret in Key Vault.
+ * Use a deterministic name so re-saves overwrite rather than accumulate orphans.
+ * Tags help Azure administrators identify who manages the secret.
+ * Never log or return the value.
+ */
+export async function setSecretValue(
+  secretName: string,
+  value: string,
+  tags?: Record<string, string>,
+): Promise<void> {
+  const credential = getCredentialClient();
+  const client = new SecretClient(getKeyVaultUrl(), credential);
+  await client.setSecret(secretName, value, {
+    tags: {
+      managedBy: "shane-admin",
+      ...tags,
+    },
+  });
+}
+
+/**
  * Generic helper: retrieve the credential value based on type.
  * For "secret" → returns the raw secret string.
  * For "certificate" → returns the PEM-encoded certificate/key bundle.

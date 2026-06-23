@@ -10,6 +10,7 @@ import { Router, type IRouter, type Request, type Response } from "express";
 import { db, azureTenantCredentialsTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/requireAuth";
+import { setSecretValue } from "../lib/azure-keyvault";
 
 const router: IRouter = Router();
 
@@ -65,7 +66,7 @@ router.put("/admin/azure-credentials/:id", requireAdmin, async (req: Request, re
     const id = Number(req.params.id);
     if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
 
-    const { displayName, tenantId, clientId, credentialType, keyVaultSecretName, clientUserId } =
+    const { displayName, tenantId, clientId, credentialType, keyVaultSecretName, clientUserId, clientSecretValue } =
       req.body as {
         displayName?: string;
         tenantId?: string;
@@ -73,6 +74,7 @@ router.put("/admin/azure-credentials/:id", requireAdmin, async (req: Request, re
         credentialType?: "secret" | "certificate";
         keyVaultSecretName?: string;
         clientUserId?: number | null;
+        clientSecretValue?: string;
       };
 
     const updates: Record<string, unknown> = { updatedAt: new Date() };
@@ -80,8 +82,33 @@ router.put("/admin/azure-credentials/:id", requireAdmin, async (req: Request, re
     if (tenantId !== undefined) updates.tenantId = tenantId;
     if (clientId !== undefined) updates.clientId = clientId;
     if (credentialType !== undefined) updates.credentialType = credentialType;
-    if (keyVaultSecretName !== undefined) updates.keyVaultSecretName = keyVaultSecretName;
     if (clientUserId !== undefined) updates.clientUserId = clientUserId;
+
+    // If a raw secret value is provided, write it to Key Vault first
+    if (clientSecretValue && clientSecretValue.trim() !== "") {
+      // Look up the linked clientUserId to build a deterministic secret name
+      const [existing] = await db
+        .select({ clientUserId: azureTenantCredentialsTable.clientUserId })
+        .from(azureTenantCredentialsTable)
+        .where(eq(azureTenantCredentialsTable.id, id))
+        .limit(1);
+      if (!existing) { res.status(404).json({ error: "Credential not found" }); return; }
+
+      const linkedClientId = existing.clientUserId ?? id;
+      const derivedName = `client-${linkedClientId}-appreg`;
+      try {
+        await setSecretValue(derivedName, clientSecretValue.trim(), {
+          credentialId: String(id),
+        });
+      } catch (err) {
+        req.log.error({ err, derivedName }, "admin-azure-credentials: failed to write secret to Key Vault");
+        res.status(502).json({ error: "Failed to write secret to Key Vault — credential not updated" });
+        return;
+      }
+      updates.keyVaultSecretName = derivedName;
+    } else if (keyVaultSecretName !== undefined) {
+      updates.keyVaultSecretName = keyVaultSecretName;
+    }
 
     const [row] = await db
       .update(azureTenantCredentialsTable)
@@ -135,17 +162,41 @@ router.post("/admin/clients/:id/azure-credential", requireAdmin, async (req: Req
     const clientId = Number(req.params.id);
     if (isNaN(clientId)) { res.status(400).json({ error: "Invalid client id" }); return; }
 
-    const { displayName, tenantId, clientId: appClientId, credentialType, keyVaultSecretName } =
+    const { displayName, tenantId, clientId: appClientId, credentialType, keyVaultSecretName, clientSecretValue } =
       req.body as {
         displayName?: string;
         tenantId?: string;
         clientId?: string;
         credentialType?: "secret" | "certificate";
         keyVaultSecretName?: string;
+        clientSecretValue?: string;
       };
 
-    if (!displayName || !tenantId || !appClientId || !keyVaultSecretName) {
-      res.status(400).json({ error: "displayName, tenantId, clientId, and keyVaultSecretName are required" });
+    if (!displayName || !tenantId || !appClientId) {
+      res.status(400).json({ error: "displayName, tenantId, and clientId are required" });
+      return;
+    }
+
+    // Determine the Key Vault secret name to use
+    let resolvedSecretName = keyVaultSecretName;
+    if (clientSecretValue && clientSecretValue.trim() !== "") {
+      // Auto-derive a stable, deterministic name — updates overwrite in-place
+      const derivedName = `client-${clientId}-appreg`;
+      try {
+        await setSecretValue(derivedName, clientSecretValue.trim(), {
+          clientId: String(clientId),
+          appClientId: appClientId,
+        });
+      } catch (err) {
+        req.log.error({ err, derivedName }, "admin-azure-credentials: failed to write secret to Key Vault");
+        res.status(502).json({ error: "Failed to write secret to Key Vault — credential not saved" });
+        return;
+      }
+      resolvedSecretName = derivedName;
+    }
+
+    if (!resolvedSecretName) {
+      res.status(400).json({ error: "Provide either a Client Secret Value or a Key Vault Secret Name" });
       return;
     }
 
@@ -163,7 +214,7 @@ router.post("/admin/clients/:id/azure-credential", requireAdmin, async (req: Req
           tenantId,
           clientId: appClientId,
           credentialType: credentialType ?? "secret",
-          keyVaultSecretName,
+          keyVaultSecretName: resolvedSecretName,
           updatedAt: new Date(),
         })
         .where(eq(azureTenantCredentialsTable.id, existing.id))
@@ -177,7 +228,7 @@ router.post("/admin/clients/:id/azure-credential", requireAdmin, async (req: Req
           tenantId,
           clientId: appClientId,
           credentialType: credentialType ?? "secret",
-          keyVaultSecretName,
+          keyVaultSecretName: resolvedSecretName,
           clientUserId: clientId,
         })
         .returning();
