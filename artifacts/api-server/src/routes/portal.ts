@@ -3330,38 +3330,54 @@ async function processStripeEvent(req: Request, event: import("stripe").Stripe.E
           })
           .catch(() => null);
 
-        // Setup email for new clients who have no password yet.
-        // Idempotency: if a valid (non-expired, non-used) setup token already exists for this user
-        // (e.g., the success-page provision endpoint already ran), skip creating another token
-        // and skip the email to avoid duplicate sends.
-        // Returning clients already receive the purchase-confirmation email above — no extra email needed.
-        if (buyer?.email && !buyer.passwordHash) {
-          const now = new Date();
-          const [existingToken] = await db
-            .select({ id: accountSetupTokensTable.userId })
-            .from(accountSetupTokensTable)
-            .where(
-              and(
-                eq(accountSetupTokensTable.userId, buyer.id),
-                gte(accountSetupTokensTable.expiresAt, now),
-                isNull(accountSetupTokensTable.usedAt),
-              ),
-            )
-            .limit(1);
-          if (!existingToken) {
-            const clientBaseUrl = process.env.PORTAL_BASE_URL
-              ?? `${process.env.REPLIT_DEV_DOMAIN ? `https://${process.env.REPLIT_DEV_DOMAIN}` : ""}/crm`;
-            const { randomBytes: rb } = await import("crypto");
-            const setupToken = rb(32).toString("hex");
-            const setupExpiresAt = new Date(Date.now() + 72 * 60 * 60 * 1000);
-            await db.insert(accountSetupTokensTable).values({ userId: buyer.id, token: setupToken, expiresAt: setupExpiresAt });
-            const setupUrl = `${clientBaseUrl}/portal/onboarding/success?setup_token=${setupToken}`;
+        // Client welcome emails — sent once per session using idempotency checks.
+        if (buyer?.email) {
+          const clientBaseUrl = process.env.PORTAL_BASE_URL
+            ?? `${process.env.REPLIT_DEV_DOMAIN ? `https://${process.env.REPLIT_DEV_DOMAIN}` : ""}/crm`;
+
+          if (!buyer.passwordHash) {
+            // New client — generate a setup token (idempotent: skip if one already exists).
+            const now = new Date();
+            const [existingToken] = await db
+              .select({ id: accountSetupTokensTable.userId })
+              .from(accountSetupTokensTable)
+              .where(
+                and(
+                  eq(accountSetupTokensTable.userId, buyer.id),
+                  gte(accountSetupTokensTable.expiresAt, now),
+                  isNull(accountSetupTokensTable.usedAt),
+                ),
+              )
+              .limit(1);
+            if (!existingToken) {
+              const { randomBytes: rb } = await import("crypto");
+              const setupToken = rb(32).toString("hex");
+              const setupExpiresAt = new Date(Date.now() + 72 * 60 * 60 * 1000);
+              await db.insert(accountSetupTokensTable).values({ userId: buyer.id, token: setupToken, expiresAt: setupExpiresAt });
+              const setupUrl = `${clientBaseUrl}/portal/onboarding/success?setup_token=${setupToken}`;
+              void sendEmailFromTemplate(
+                "account-setup",
+                buyer.email,
+                { setupLink: setupUrl, clientName: buyer.name ?? buyer.email },
+                "Set up your Shane McCaw Consulting portal",
+                `<p>Hi ${buyer.name ?? ""},</p><p>Your project workspace is ready. Click the link below to set your portal password:</p><p><a href="${setupUrl}" style="color:#0078D4;">Set my password →</a></p><p>This link expires in 72 hours.</p><p>— Shane McCaw</p>`,
+              ).catch(() => null);
+            }
+          } else {
+            // Returning client — send "project is ready" email.
+            // The success-page provision endpoint guards against sending this a second time
+            // (it checks whether the invoice existed before its own provisioning call).
             void sendEmailFromTemplate(
-              "account-setup",
+              "onboarding-confirmation",
               buyer.email,
-              { setupLink: setupUrl, clientName: buyer.name ?? buyer.email },
-              "Set up your Shane McCaw Consulting portal",
-              `<p>Hi ${buyer.name ?? ""},</p><p>Your project workspace is ready. Click the link below to set your portal password:</p><p><a href="${setupUrl}" style="color:#0078D4;">Set my password →</a></p><p>This link expires in 72 hours.</p><p>— Shane McCaw</p>`,
+              {
+                clientName: buyer.name ?? buyer.email,
+                serviceName: serviceLabel,
+                amountDollars: session.amount_total ? String(Math.round(session.amount_total / 100)) : "0",
+                projectUrl: clientBaseUrl,
+              },
+              "Your project workspace is ready — Shane McCaw Consulting",
+              `<p>Hi ${buyer.name ?? ""},</p><p>Your <strong>${serviceLabel}</strong> project workspace is ready. Log in to your portal to track progress.</p><p><a href="${clientBaseUrl}" style="color:#0078D4;">View your portal →</a></p><p>— Shane McCaw</p>`,
             ).catch(() => null);
           }
         }
@@ -5949,6 +5965,17 @@ router.post("/portal/onboarding/provision/:sessionId", async (req: Request, res:
     const subId = typeof session.subscription === "string"
       ? session.subscription
       : (session.subscription as { id?: string } | null)?.id ?? null;
+
+    // Check before provisioning so we know if the webhook already ran.
+    // If an invoice already exists for this session the webhook beat us here
+    // and has already sent any client emails — we skip to avoid duplicates.
+    const [preExistingInvoice] = await db
+      .select({ id: invoicesTable.id })
+      .from(invoicesTable)
+      .where(eq(invoicesTable.stripeSessionId, session.id))
+      .limit(1);
+    const webhookAlreadyRan = !!preExistingInvoice;
+
     await provisionOnboardingProject(req, session, subId, resolvedUserId);
     req.log.info({ sessionId: session.id, userId: resolvedUserId }, "onboarding provision: triggered from success page");
 
@@ -6007,8 +6034,9 @@ router.post("/portal/onboarding/provision/:sessionId", async (req: Request, res:
         ).catch(() => null);
         sentSetupEmail = true;
       }
-    } else if (hasPassword && provUser?.email) {
-      // Returning client — send a "project is ready" email with portal login link
+    } else if (hasPassword && provUser?.email && !webhookAlreadyRan) {
+      // Returning client — send a "project is ready" email with portal login link.
+      // Skip if webhook already ran (it will have sent the email in its own path).
       const sidsStr = session.metadata?.serviceIds ?? session.metadata?.serviceId ?? "";
       const sids = sidsStr.split(",").map((s: string) => parseInt(s.trim(), 10)).filter((n: number) => !isNaN(n));
       let serviceName = "your service";
