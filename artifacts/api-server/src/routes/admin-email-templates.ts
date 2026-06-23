@@ -250,7 +250,7 @@ router.post("/admin/email-templates/:slug/ai-generate", requireAdmin, async (req
   if (!row) { res.status(404).json({ error: "Template not found" }); return; }
 
   const { instructions } = req.body as { instructions?: string };
-  const rType = recipientType(slug);
+  const rType = row.recipientType as "client" | "admin";
 
   const variablesList = (row.variables as Array<{ name: string; description: string }>)
     .map((v) => `- {{${v.name}}} — ${v.description}`)

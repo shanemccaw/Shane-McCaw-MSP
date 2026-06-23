@@ -351,6 +351,13 @@
       "when": 1750950000000,
       "tag": "0049_add_client_app_registrations",
       "breakpoints": true
+    },
+    {
+      "idx": 50,
+      "version": "7",
+      "when": 1782250800000,
+      "tag": "0050_add_email_template_recipient_type",
+      "breakpoints": true
     }
   ]
 }
