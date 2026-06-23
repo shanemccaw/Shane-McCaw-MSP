@@ -345,13 +345,24 @@ export async function generateServiceOverviewPdf(serviceName: string): Promise<B
 
   // Call to Action
   sectionHeading("Call to Action");
-  ensureSpace(44);
+
+  // Block 1 — Book a discovery call
+  ensureSpace(50);
   y -= 10;
   page.drawRectangle({ x: margin, y: y - 32, width: bodyW, height: 40, color: rgb(0.96, 0.98, 1) });
   page.drawRectangle({ x: margin, y: y + 8 - 32, width: 3, height: 32, color: blue });
   dt(page, "Ready to get started?", margin + 12, y - 4, bold, 10, navy);
   dt(page, "Book a free 30-minute discovery call at shanemccaw.com/book", margin + 12, y - 18, regular, 8, grey);
-  y -= 44;
+  y -= 50;
+
+  // Block 2 — Purchase this service
+  ensureSpace(50);
+  y -= 4;
+  page.drawRectangle({ x: margin, y: y - 32, width: bodyW, height: 40, color: rgb(0.94, 0.97, 1) });
+  page.drawRectangle({ x: margin, y: y + 8 - 32, width: 3, height: 32, color: navy });
+  dt(page, "Purchase This Service", margin + 12, y - 4, bold, 10, navy);
+  dt(page, `https://shanemccaw.com/crm/portal/onboarding/select?serviceIds=${service.id}`, margin + 12, y - 18, regular, 8, blue);
+  y -= 46;
 
   const bytes = await pdfDoc.save();
   return Buffer.from(bytes);
