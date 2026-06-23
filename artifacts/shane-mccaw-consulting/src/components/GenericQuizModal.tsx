@@ -431,12 +431,6 @@ export function GenericQuizModal({ config, onClose }: { config: QuizConfig; onCl
                       )}
                     </button>
                   </div>
-                  <LiveScorecard
-                    categories={config.categories}
-                    liveScores={liveScores}
-                    answeredCounts={answeredCounts}
-                    questionsPerCat={questionsPerCat}
-                  />
                 </>
               )}
             </div>
