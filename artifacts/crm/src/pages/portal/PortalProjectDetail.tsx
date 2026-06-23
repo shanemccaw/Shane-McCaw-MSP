@@ -716,8 +716,9 @@ export default function PortalProjectDetail() {
     if (!params.id) return;
     setLoading(true);
     fetchWithAuth(`/api/portal/projects/${params.id}`)
-      .then(r => r.json())
+      .then(r => (r.ok ? r.json() : null))
       .then(d => {
+        if (!d || !d.project) return;
         const detail = d as ProjectDetailData;
         setData(detail);
         const firstInProgress = detail.steps.find(s => s.status === "in_progress");
