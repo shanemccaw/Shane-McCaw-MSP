@@ -635,6 +635,20 @@ export default function OnboardingContract() {
                 )}
               </div>
 
+              {/* Early Client Offer banner — visible only while a coupon is applied */}
+              {appliedCoupon && (
+                <div className="mt-3 rounded-lg border border-[#0078D4]/40 bg-[#0078D4]/5 px-4 py-3">
+                  <p className="text-sm font-semibold text-[#0A2540] mb-1">Early Client Offer</p>
+                  <p className="text-sm text-muted-foreground mb-2.5">
+                    Early clients receive 10% off any entry-point engagement — saving $300 or more — in exchange for a short written testimonial or case study after project completion.
+                  </p>
+                  <span className="inline-flex items-center gap-1.5 rounded-full bg-[#0078D4] px-3 py-1 text-xs font-bold text-white tracking-wide">
+                    <Tag className="w-3.5 h-3.5" />
+                    TESTIMONIAL — 10% off, save $300+
+                  </span>
+                </div>
+              )}
+
               {/* Promo code toggle — hidden when all services are free */}
               {!appliedCoupon && (oneTimeTotal + monthlyTotal) > 0 && (
                 <div className="mt-3">
