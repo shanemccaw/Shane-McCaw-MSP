@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef } from "react";
-import { useLocation, useSearch } from "wouter";
+import { useLocation, useSearch, Link } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
 import { CheckCircle, Clock, ArrowRight, Loader2, ShieldCheck, Calendar, Phone, ShoppingCart, RefreshCw, X } from "lucide-react";
 import OrderWizard, { type WizardStep, type WizardSelection } from "./OrderWizard";
