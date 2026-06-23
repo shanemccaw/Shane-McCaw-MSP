@@ -57,6 +57,7 @@ function buildContractHtml(
   getPrice: (s: Service) => string,
   getSelections: (s: Service) => WizardSelection[],
   clientInfo?: { company?: string; address?: string; phone?: string; email?: string },
+  coupon?: { code: string; discountAmount: number; discountedTotal: number } | null,
 ): string {
   const hasRecurring = services.some(s => s.billingType === "recurring_monthly");
   const hasOneTime = services.some(s => s.billingType === "one_time");
@@ -149,7 +150,29 @@ function buildContractHtml(
           <th style="padding:8px 12px;text-align:right;font-weight:700;font-size:0.75em;text-transform:uppercase;letter-spacing:0.05em;color:#6B7280;border-bottom:1px solid #e2e8f0;">Type</th>
         </tr>
       </thead>
-      <tbody>${serviceRows}</tbody>
+      <tbody>
+        ${serviceRows}
+        ${coupon ? `
+        <tr>
+          <td style="${TD_BASE}color:#6B7280;font-style:italic;">Subtotal</td>
+          <td style="${TD_BASE}text-align:right;color:#6B7280;">—</td>
+          <td style="${TD_BASE}"></td>
+        </tr>
+        <tr style="background:#f0fdf4;">
+          <td style="${TD_BASE}font-weight:600;color:#15803d;">
+            Promotional discount
+            <span style="margin-left:6px;font-size:0.8em;font-family:monospace;background:#dcfce7;color:#15803d;border:1px solid #86efac;border-radius:4px;padding:1px 5px;">${coupon.code}</span>
+          </td>
+          <td style="${TD_BASE}text-align:right;font-weight:700;color:#15803d;">−$${coupon.discountAmount.toLocaleString("en-US", { minimumFractionDigits: 2 })}</td>
+          <td style="${TD_BASE}"></td>
+        </tr>
+        <tr style="background:#F7F9FC;">
+          <td style="${TD_BASE}font-weight:700;color:#0A2540;">Total due at checkout</td>
+          <td style="${TD_BASE}text-align:right;font-weight:800;color:#0078D4;font-size:1.05em;">$${coupon.discountedTotal.toLocaleString("en-US", { minimumFractionDigits: 2 })}</td>
+          <td style="${TD_BASE}"></td>
+        </tr>
+        ` : ""}
+      </tbody>
     </table>
 
     <h3 style="${HEADING_STYLE}">2. Fees &amp; Payment</h3>
@@ -183,6 +206,9 @@ function buildContractHtml(
 
     <h3 style="${HEADING_STYLE}">11. Entire Agreement</h3>
     <p style="${PARA_STYLE}">This document constitutes the entire agreement between the parties with respect to this engagement and supersedes all prior discussions and representations. Amendments must be made in writing.</p>
+
+    <h3 style="${HEADING_STYLE}">12. Testimonial</h3>
+    <p style="${PARA_STYLE}">Upon satisfactory completion of the services described herein, Client agrees to provide Consultant with a brief written testimonial or case study (2–5 sentences) describing the results achieved. Client grants Consultant the non-exclusive right to publish this testimonial on Consultant's website and marketing materials, attributed to Client's name and company unless Client requests anonymity in writing. Consultant agrees not to alter the substance of the testimonial without Client's prior approval.</p>
   `;
 }
 
@@ -679,6 +705,7 @@ export default function OnboardingContract() {
                   phone,
                   email: user?.email,
                 },
+                appliedCoupon,
               ) }}
             />
           </div>
