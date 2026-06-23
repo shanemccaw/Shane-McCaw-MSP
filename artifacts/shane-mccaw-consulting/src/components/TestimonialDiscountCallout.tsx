@@ -18,7 +18,7 @@ export function TestimonialDiscountCallout({ variant = "card" }: Props) {
             <span className="font-mono font-bold bg-white border border-amber-300 px-2 py-0.5 rounded text-amber-800 tracking-wider">
               TESTIMONIAL
             </span>{" "}
-            for <strong>10% off</strong> your first engagement — in exchange for a short written testimonial or case study within 90 days.
+            for <strong>10% off</strong> your first engagement — in exchange for a short written testimonial or case study within 5 days.
           </span>
         </div>
       </div>
@@ -41,7 +41,7 @@ export function TestimonialDiscountCallout({ variant = "card" }: Props) {
               </span>
             </h3>
             <p className="text-sm text-muted-foreground leading-relaxed">
-              Apply code <span className="font-mono font-semibold">TESTIMONIAL</span> at checkout to receive 10% off your first engagement. In exchange, Shane asks for a brief written testimonial or short case study within 90 days of your engagement completing — helping other organizations make a more informed decision.
+              Apply code <span className="font-mono font-semibold">TESTIMONIAL</span> at checkout to receive 10% off your first engagement. In exchange, Shane asks for a brief written testimonial or short case study within 5 days of your engagement completing — helping other organizations make a more informed decision.
             </p>
           </div>
         </div>
