@@ -565,6 +565,39 @@ export function adminPurchaseAlertEmail(opts: {
   `;
 }
 
+// ─── App Registration expiry alert (admin only) ───────────────────────────────
+
+export function appRegExpiryAlertEmail(opts: {
+  clientName: string;
+  clientEmail: string;
+  tenantId: string;
+  azureClientId: string;
+  expiresOn: Date;
+  daysLeft: number;
+  adminPanelUrl: string;
+}): string {
+  const dateStr = opts.expiresOn.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
+  const urgency = opts.daysLeft <= 0
+    ? `<strong style="color:#dc2626;">EXPIRED</strong>`
+    : opts.daysLeft <= 14
+      ? `<strong style="color:#dc2626;">expires in ${opts.daysLeft} day${opts.daysLeft !== 1 ? "s" : ""}</strong>`
+      : `<strong style="color:#d97706;">expires in ${opts.daysLeft} day${opts.daysLeft !== 1 ? "s" : ""}</strong>`;
+  return `
+    <p>Hi Shane,</p>
+    <p>The Azure App Registration client secret for client <strong>${opts.clientName || opts.clientEmail}</strong> ${urgency} on <strong>${dateStr}</strong>.</p>
+    <p>Once it expires the Script Runner will fail silently for this client. Rotate the secret in Azure AD and update the credential in the Admin Panel before the deadline.</p>
+    <table cellpadding="0" cellspacing="0" style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:16px 20px;margin:16px 0;width:100%;">
+      <tr><td style="padding:4px 0;color:#64748b;font-size:13px;width:160px;">Client</td><td style="padding:4px 0;font-weight:600;">${opts.clientName || opts.clientEmail}</td></tr>
+      <tr><td style="padding:4px 0;color:#64748b;font-size:13px;">Client email</td><td style="padding:4px 0;">${opts.clientEmail}</td></tr>
+      <tr><td style="padding:4px 0;color:#64748b;font-size:13px;">Tenant ID</td><td style="padding:4px 0;font-family:monospace;font-size:12px;">${opts.tenantId}</td></tr>
+      <tr><td style="padding:4px 0;color:#64748b;font-size:13px;">Client ID (App Reg)</td><td style="padding:4px 0;font-family:monospace;font-size:12px;">${opts.azureClientId}</td></tr>
+      <tr><td style="padding:4px 0;color:#64748b;font-size:13px;">Secret expiry</td><td style="padding:4px 0;font-weight:600;">${dateStr}</td></tr>
+    </table>
+    ${emailButton("Open client in Admin Panel", opts.adminPanelUrl)}
+    <p style="margin-top:24px;">— Shane McCaw Consulting (automated alert)</p>
+  `;
+}
+
 // ─── Database-backed template helpers ─────────────────────────────────────────
 
 function substituteVars(template: string, vars: Record<string, string>): string {

@@ -2,13 +2,13 @@ import { Router, type IRouter, type Request, type Response } from "express";
 import { db, projectsTable, clientServicesTable, servicesTable, workflowStepsTable, kanbanTasksTable, documentsTable, reportsTable, invoicesTable, messagesTable, notificationsTable, projectUpdatesTable, usersTable, contractsTable, passwordResetTokensTable, workflowTemplateStepsTable, workflowTemplateStepTasksTable, contractTemplatesTable, impersonationTokensTable, statusReportsTable, deviceTokensTable, projectClosuresTable, auditLogsTable, instructionSetsTable, checklistsTable, artifactSetsTable, deliverableSetsTable, emailsTable, emailDomainRulesTable, clientM365ProfilesTable, couponsTable, clientAppRegistrationsTable } from "@workspace/db";
 import { eq, and, desc, asc, count, sql, inArray, gte, isNotNull } from "drizzle-orm";
 import { requireAuth, requireAdmin } from "../middlewares/requireAuth";
-import { sendEmail, sendEmailFromTemplate, getEmailTemplateOrFallback, purchaseConfirmationEmail, onboardingConfirmationEmail, adminPurchaseAlertEmail, closureRequestEmail, statusReportReplyEmail, clientThreadReplyEmail, adminThreadReplyEmail, retainerResumedEmail, PORTAL_URL } from "../lib/mailer";
+import { sendEmail, sendEmailFromTemplate, getEmailTemplateOrFallback, purchaseConfirmationEmail, onboardingConfirmationEmail, adminPurchaseAlertEmail, closureRequestEmail, statusReportReplyEmail, clientThreadReplyEmail, adminThreadReplyEmail, retainerResumedEmail, appRegExpiryAlertEmail, brandedEmail, PORTAL_URL } from "../lib/mailer";
 import { sendAdminSms } from "../lib/sms";
 import { sendPushNotifications } from "../lib/push";
 import { createAuditLog } from "../lib/audit";
 import { getStripeKey } from "../lib/stripe";
 import { listDriveItems, graphCredentialsPresent, createProjectFolder, uploadFileToClientContracts, getDriveItemDownloadUrl } from "../lib/graph";
-import { setSecretValue, getSecretValue } from "../lib/azure-keyvault";
+import { setSecretValue, getSecretValue, getSecretMetadata } from "../lib/azure-keyvault";
 import { ClientSecretCredential } from "@azure/identity";
 import { uploadInvoiceToSharePoint } from "../lib/invoice-sharepoint";
 import { generateM365ProfilePdf } from "../lib/m365-profile-pdf";
@@ -373,6 +373,8 @@ router.patch("/admin/clients/:id/app-registration", requireAdmin, async (req: Re
     .set(updates)
     .where(eq(clientAppRegistrationsTable.clientUserId, clientId));
 
+  // After a successful verification, read the Key Vault secret expiry
+  // and send Shane an email alert if it expires within 30 days.
   if (status === "verified") {
     void createAuditLog({
       actorUserId: req.user!.id,
@@ -390,6 +392,41 @@ router.patch("/admin/clients/:id/app-registration", requireAdmin, async (req: Re
         verifiedAt: now.toISOString(),
       },
     });
+
+    try {
+      const meta = await getSecretMetadata(existing.keyVaultSecretName);
+      if (meta.expiresOn) {
+        const daysLeft = Math.ceil((meta.expiresOn.getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+        const EMAIL_ALERT_THRESHOLD_DAYS = 30;
+        if (daysLeft <= EMAIL_ALERT_THRESHOLD_DAYS) {
+          const adminEmail = process.env.ADMIN_EMAIL ?? process.env.CRM_ADMIN_EMAIL;
+          if (adminEmail) {
+            const adminPanelOrigin = process.env.REPLIT_DOMAINS
+              ? `https://${process.env.REPLIT_DOMAINS.split(",")[0]}`
+              : "http://localhost:80";
+            const adminPanelUrl = `${adminPanelOrigin}/admin-panel/crm/clients/${clientId}`;
+            void sendEmail(
+              adminEmail,
+              daysLeft <= 0
+                ? `⚠️ App Registration secret EXPIRED — ${clientLabel}`
+                : `⚠️ App Registration secret expiring in ${daysLeft} day${daysLeft !== 1 ? "s" : ""} — ${clientLabel}`,
+              brandedEmail(appRegExpiryAlertEmail({
+                clientName: clientUser?.name ?? "",
+                clientEmail: clientUser?.email ?? "",
+                tenantId: existing.tenantId,
+                azureClientId: existing.azureClientId,
+                expiresOn: meta.expiresOn,
+                daysLeft,
+                adminPanelUrl,
+              })),
+            );
+            req.log.info({ clientId, daysLeft }, "app-registration: sent expiry alert email to admin");
+          }
+        }
+      }
+    } catch (err) {
+      req.log.warn({ err, clientId }, "app-registration: could not read secret metadata for expiry check");
+    }
   }
 
   res.json({ ok: true, status });
@@ -404,6 +441,17 @@ router.get("/admin/clients/:id/app-registration", requireAdmin, async (req: Requ
     .where(eq(clientAppRegistrationsTable.clientUserId, clientId));
 
   if (!row) { res.json(null); return; }
+
+  // Best-effort: read secret expiry from Key Vault metadata.
+  // Fails gracefully (expiresOn: null) if Azure is not configured or the secret is gone.
+  let expiresOn: string | null = null;
+  try {
+    const meta = await getSecretMetadata(row.keyVaultSecretName);
+    expiresOn = meta.expiresOn ? meta.expiresOn.toISOString() : null;
+  } catch (err) {
+    req.log.warn({ err, clientId }, "app-registration GET: could not read secret metadata");
+  }
+
   res.json({
     status: row.status,
     tenantId: row.tenantId,
@@ -413,6 +461,7 @@ router.get("/admin/clients/:id/app-registration", requireAdmin, async (req: Requ
     verifiedAt: row.verifiedAt,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
+    expiresOn,
   });
 });
 

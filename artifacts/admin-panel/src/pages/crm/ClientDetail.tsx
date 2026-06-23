@@ -36,6 +36,7 @@ interface AppRegRecord {
   verifiedAt: string | null;
   createdAt: string;
   updatedAt: string;
+  expiresOn: string | null;
 }
 
 const EXPIRY_WARN_DAYS = 60;
@@ -780,7 +781,27 @@ export default function ClientDetailPage() {
                   Pending
                 </span>
               )}
+              <ExpiryBadge expiresOn={appReg.expiresOn} />
             </div>
+
+            {appReg.expiresOn && daysUntil(appReg.expiresOn) <= EXPIRY_WARN_DAYS && (
+              <div className={`flex items-start gap-3 rounded-lg border px-4 py-3 ${daysUntil(appReg.expiresOn) <= 14 ? "bg-red-50 border-red-200" : "bg-amber-50 border-amber-200"}`}>
+                <svg className={`w-4 h-4 flex-shrink-0 mt-0.5 ${daysUntil(appReg.expiresOn) <= 14 ? "text-red-500" : "text-amber-500"}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <div>
+                  <p className={`text-xs font-bold ${daysUntil(appReg.expiresOn) <= 14 ? "text-red-700" : "text-amber-800"}`}>
+                    {daysUntil(appReg.expiresOn) <= 0
+                      ? "Client App Registration secret has expired — runbooks will fail for this client"
+                      : `Client App Registration secret expires in ${daysUntil(appReg.expiresOn)} day${daysUntil(appReg.expiresOn) !== 1 ? "s" : ""} — rotate it before it expires`}
+                  </p>
+                  <p className={`text-[11px] mt-0.5 ${daysUntil(appReg.expiresOn) <= 14 ? "text-red-600" : "text-amber-700"}`}>
+                    Expiry: {new Date(appReg.expiresOn).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}
+                    {" — "}Have the client create a new App Registration secret, then resubmit via their portal.
+                  </p>
+                </div>
+              </div>
+            )}
 
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
               <div>
