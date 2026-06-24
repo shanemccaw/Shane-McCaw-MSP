@@ -35,7 +35,9 @@ const DEFAULT_CATEGORY_PAIN_MAP: [string, string][] = [
 // Returns the current mapping config, or the hardcoded defaults if none is saved yet.
 router.get("/admin/quiz-pain-map", requireAdmin, async (req, res) => {
   try {
-    const rows = await db.select().from(quizPainMappingsTable).limit(1);
+    const rows = await db.select().from(quizPainMappingsTable)
+      .where(sql`id = 1`)
+      .limit(1);
     if (rows.length === 0) {
       return res.json({
         quizTypePainMap: DEFAULT_QUIZ_TYPE_PAIN_MAP,

@@ -712,8 +712,12 @@ export default function LeadDetailPage({ params }: { params: { id: string } }) {
     ]).finally(() => setLoading(false));
   }, [leadId, loadLead, fetchWithAuth]);
 
-  // Auto-fill qualification signals from quiz data on first load
+  // Auto-fill qualification signals from quiz data on first load.
+  // Gated on !loading so livePainMaps is guaranteed to be populated (or failed)
+  // before auto-fill runs — prevents a race where defaults are used instead of
+  // the admin-configured maps.
   useEffect(() => {
+    if (loading) return;
     if (autoFillAppliedRef.current) return;
     if (!lead || quizMatches.length === 0) return;
 
@@ -750,7 +754,7 @@ export default function LeadDetailPage({ params }: { params: { id: string } }) {
         setAutoFillBannerVisible(true);
       }
     }
-  }, [lead, quizMatches]);
+  }, [lead, quizMatches, loading, livePainMaps]);
 
   const reimportFromQuiz = () => {
     if (!lead || quizMatches.length === 0) return;
