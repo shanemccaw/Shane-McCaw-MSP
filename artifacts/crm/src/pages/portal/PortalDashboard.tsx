@@ -24,10 +24,10 @@ const SCORECARD_DEFS: { key: M365ScoreCategory; label: string }[] = [
   { key: "productivity", label: "Adoption Score" },
 ];
 
-function ringColor(s: number) { return s >= 80 ? "#22c55e" : s >= 55 ? "#f59e0b" : "#ef4444"; }
-function ringTopBar(s: number) { return s >= 80 ? "bg-green-500" : s >= 55 ? "bg-amber-400" : "bg-red-500"; }
-function statusLabel(s: number) { return s >= 80 ? "Healthy" : s >= 55 ? "Attention" : "Critical"; }
-function statusBadge(s: number) { return s >= 80 ? "bg-green-500/20 text-green-300 border-green-500/30" : s >= 55 ? "bg-amber-400/20 text-amber-300 border-amber-400/30" : "bg-red-500/20 text-red-300 border-red-500/30"; }
+function ringColor(s: number) { return s >= 70 ? "#22c55e" : s >= 40 ? "#f59e0b" : "#ef4444"; }
+function ringTopBar(s: number) { return s >= 70 ? "bg-green-500" : s >= 40 ? "bg-amber-400" : "bg-red-500"; }
+function statusLabel(s: number) { return s >= 70 ? "Healthy" : s >= 40 ? "Attention" : "Critical"; }
+function statusBadge(s: number) { return s >= 70 ? "bg-green-500/20 text-green-300 border-green-500/30" : s >= 40 ? "bg-amber-400/20 text-amber-300 border-amber-400/30" : "bg-red-500/20 text-red-300 border-red-500/30"; }
 
 function ScoreRing({ score, size = 80 }: { score: number; size?: number }) {
   const r = (size / 2) - 7;
