@@ -255,6 +255,7 @@ export default function OnboardingContract() {
   const [city, setCity] = useState(user?.addressCity ?? "");
   const [addrState, setAddrState] = useState(user?.addressState ?? "");
   const [zip, setZip] = useState(user?.addressZip ?? "");
+  const [startDate, setStartDate] = useState<string>(new Date().toISOString().slice(0, 10));
   const [agreed, setAgreed] = useState(false);
   const [signed, setSigned] = useState(false);
   const [stripeError, setStripeError] = useState("");
@@ -456,6 +457,7 @@ export default function OnboardingContract() {
         body: JSON.stringify({
           serviceIds: services.map(s => s.id),
           contractIds,
+          startDate,
           returnUrl: window.location.origin + import.meta.env.BASE_URL.replace(/\/$/, ""),
           ...(appliedCoupon ? { couponCode: appliedCoupon.code } : {}),
           ...(!user ? { guestEmail: guestInfo.email } : {}),
@@ -721,6 +723,23 @@ export default function OnboardingContract() {
               )}
             </div>
           )}
+        </div>
+
+        <div className="bg-white border border-border rounded-xl px-5 py-4 mb-6 flex items-center gap-4">
+          <div className="flex-1">
+            <label htmlFor="startDate" className="block text-sm font-semibold text-[#0A2540] mb-0.5">
+              Preferred start date
+            </label>
+            <p className="text-xs text-muted-foreground">Shane will confirm availability after purchase.</p>
+          </div>
+          <input
+            id="startDate"
+            type="date"
+            value={startDate}
+            min={new Date().toISOString().slice(0, 10)}
+            onChange={e => setStartDate(e.target.value)}
+            className="border border-border rounded-lg px-3 py-2 text-sm text-[#0A2540] focus:outline-none focus:ring-2 focus:ring-[#0078D4]/40 focus:border-[#0078D4]"
+          />
         </div>
 
         <div className="grid md:grid-cols-2 gap-6 md:items-start">
