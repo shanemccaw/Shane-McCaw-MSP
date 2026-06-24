@@ -503,126 +503,6 @@ interface DerivedSignals {
   provenance: Record<string, string>;
 }
 
-const DEFAULT_QUIZ_TYPE_PAIN_MAP: Record<string, string[]> = {
-  sharepoint: ["SharePoint", "Governance"],
-  migration: ["Migration"],
-  "security-compliance": ["Security", "Compliance", "Governance"],
-  copilot: ["Copilot", "AI Readiness"],
-  teams: ["Teams"],
-  "power-platform": ["Power Platform", "Governance"],
-  governance: ["Governance", "Compliance"],
-  "m365-health": ["Security", "Compliance", "Governance"],
-};
-
-const DEFAULT_CATEGORY_PAIN_MAP: [string, string][] = [
-  ["sharepoint", "SharePoint"],
-  ["teams", "Teams"],
-  ["powerplatform", "Power Platform"],
-  ["power", "Power Platform"],
-  ["security", "Security"],
-  ["compliance", "Compliance"],
-  ["governance", "Governance"],
-  ["copilot", "Copilot"],
-  ["migration", "Migration"],
-  ["adoption", "Adoption"],
-  ["training", "Training"],
-];
-
-interface QuizPainConfig {
-  quizTypePainMap: Record<string, string[]>;
-  categoryPainMap: [string, string][];
-}
-
-function deriveSignalsFromQuiz(
-  quiz: QuizMatch,
-  leadSource: LeadSource,
-  config: QuizPainConfig = { quizTypePainMap: DEFAULT_QUIZ_TYPE_PAIN_MAP, categoryPainMap: DEFAULT_CATEGORY_PAIN_MAP },
-): DerivedSignals {
-  const painPoints = new Set<string>();
-  const maturityIndicators = new Set<string>();
-  const engagementSignals = new Set<string>();
-  const urgencySignals = new Set<string>();
-  const provenance: Record<string, string> = {};
-
-  // Quiz type → Pain Points
-  const typePains = config.quizTypePainMap[quiz.quizType] ?? [];
-  typePains.forEach(p => {
-    painPoints.add(p);
-    provenance[p] = `Quiz type: ${quiz.quizType}`;
-  });
-
-  // Category scores ≤ 5 → Pain Points (low score = gap = pain)
-  for (const [key, score] of Object.entries(quiz.categoryScores)) {
-    if (score <= 5) {
-      const normalized = key.toLowerCase().replace(/[\s_-]/g, "");
-      for (const [mapKey, pain] of config.categoryPainMap) {
-        if (normalized.includes(mapKey)) {
-          // Low-score reason is more specific than quiz-type reason — prefer it
-          painPoints.add(pain);
-          provenance[pain] = `Low ${key} score (${score}/10)`;
-          break;
-        }
-      }
-    }
-  }
-
-  // Transcript analysis — user turns only
-  const userTurns = quiz.conversation
-    .filter(t => t.role === "user")
-    .map(t => t.content)
-    .join(" ");
-
-  // Maturity Indicators from transcript keywords
-  const maturityRules: [RegExp, string, string][] = [
-    [/sharepoint/i, "Active SharePoint usage", "Keyword in transcript: SharePoint"],
-    [/\bteams\b/i, "Teams adoption", "Keyword in transcript: Teams"],
-    [/power\s*platform|powerapps/i, "Power Platform usage", "Keyword in transcript: Power Platform"],
-    [/it\s*team|it\s*department|dedicated\s*it/i, "Dedicated IT team", "Keyword in transcript: IT team"],
-    [/\bE3\b|\bE5\b|business\s*premium/i, "Has existing M365", "Keyword in transcript: M365 license tier"],
-    [/governance\s*policy/i, "Data governance policy", "Keyword in transcript: governance policy"],
-    [/\bdocumented\b/i, "Documented processes", "Keyword in transcript: documented"],
-    [/previous\s*consultant|worked\s*with/i, "Previous consultant", "Keyword in transcript: previous consultant"],
-  ];
-  for (const [pattern, indicator, reason] of maturityRules) {
-    if (pattern.test(userTurns)) {
-      maturityIndicators.add(indicator);
-      provenance[indicator] = reason;
-    }
-  }
-
-  // Urgency Signals from transcript keywords
-  const urgencyRules: [RegExp, string, string][] = [
-    [/\baudit\b/i, "Audit deadline", "Keyword in transcript: audit"],
-    [/\bdeadline\b/i, "Compliance deadline", "Keyword in transcript: deadline"],
-    [/\bboard\b/i, "Board mandate", "Keyword in transcript: board"],
-    [/budget\s*approved/i, "Budget approved", "Keyword in transcript: budget approved"],
-    [/this\s*quarter|Q[1-4]\b/i, "This quarter", "Keyword in transcript: quarter reference"],
-    [/\bASAP\b|\burgent\b/i, "Urgent", "Keyword in transcript: ASAP / urgent"],
-  ];
-  for (const [pattern, signal, reason] of urgencyRules) {
-    if (pattern.test(userTurns)) {
-      urgencySignals.add(signal);
-      provenance[signal] = reason;
-    }
-  }
-
-  // Engagement Signals: always add "Completed quiz"; add "Downloaded resource" for lead_magnet
-  engagementSignals.add("Completed quiz");
-  provenance["Completed quiz"] = `Completed the ${quiz.quizType} quiz`;
-  if (leadSource === "lead_magnet") {
-    engagementSignals.add("Downloaded resource");
-    provenance["Downloaded resource"] = "Lead source: lead magnet download";
-  }
-
-  return {
-    painPoints: [...painPoints],
-    maturityIndicators: [...maturityIndicators],
-    engagementSignals: [...engagementSignals],
-    urgencySignals: [...urgencySignals],
-    provenance,
-  };
-}
-
 export default function LeadDetailPage({ params }: { params: { id: string } }) {
   const { fetchWithAuth } = useAuth();
   const [, navigate] = useLocation();
@@ -633,10 +513,6 @@ export default function LeadDetailPage({ params }: { params: { id: string } }) {
   const [emails, setEmails] = useState<LinkedEmail[]>([]);
   const [qualHistory, setQualHistory] = useState<LeadQualification[]>([]);
   const [loading, setLoading] = useState(true);
-  const [quizPainConfig, setQuizPainConfig] = useState<QuizPainConfig>({
-    quizTypePainMap: DEFAULT_QUIZ_TYPE_PAIN_MAP,
-    categoryPainMap: DEFAULT_CATEGORY_PAIN_MAP,
-  });
   const [notFound, setNotFound] = useState(false);
   const [status, setStatus] = useState<LeadStatus>("new");
   const [saving, setSaving] = useState(false);
@@ -709,16 +585,12 @@ export default function LeadDetailPage({ params }: { params: { id: string } }) {
         .then(r => r.ok ? r.json() as Promise<LeadQualification[]> : [])
         .then(data => setQualHistory(data))
         .catch(() => setQualHistory([])),
-      fetchWithAuth("/api/admin/quiz-pain-config")
-        .then(r => r.ok ? r.json() as Promise<QuizPainConfig> : null)
-        .then(data => { if (data) setQuizPainConfig(data); })
-        .catch(() => {}),
     ]).finally(() => setLoading(false));
   }, [leadId, loadLead, fetchWithAuth]);
 
-  // Auto-fill qualification signals from quiz data on first load
-  // Gate on !loading so the quiz pain config fetch has already resolved
-  // (all fetches run in Promise.all; loading is false only after all settle)
+  // Auto-fill qualification signals from quiz data on first load.
+  // Calls the server-side derive-signals endpoint so the same config
+  // (stored in the DB) is used everywhere.
   useEffect(() => {
     if (loading) return;
     if (autoFillAppliedRef.current) return;
@@ -733,39 +605,48 @@ export default function LeadDetailPage({ params }: { params: { id: string } }) {
       lead.urgencySignals.length > 0;
 
     if (!hasExistingSignals) {
-      const bestMatch = [...quizMatches].sort((a, b) => b.totalScore - a.totalScore)[0];
-      const derived = deriveSignalsFromQuiz(bestMatch, lead.source, quizPainConfig);
-      const hasAnyDerived =
-        derived.painPoints.length > 0 ||
-        derived.maturityIndicators.length > 0 ||
-        derived.engagementSignals.length > 0 ||
-        derived.urgencySignals.length > 0;
-      if (hasAnyDerived) {
-        setQualProfile(p => ({
-          ...p,
-          painPoints: derived.painPoints,
-          maturityIndicators: derived.maturityIndicators,
-          engagementSignals: derived.engagementSignals,
-          urgencySignals: derived.urgencySignals,
-        }));
-        setAutoFillProvenance(derived.provenance);
-        setAutoFillBannerVisible(true);
-      }
+      void fetchWithAuth(`/api/leads/${leadId}/derive-signals`)
+        .then(r => r.ok ? r.json() as Promise<DerivedSignals> : null)
+        .then(derived => {
+          if (!derived) return;
+          const hasAnyDerived =
+            derived.painPoints.length > 0 ||
+            derived.maturityIndicators.length > 0 ||
+            derived.engagementSignals.length > 0 ||
+            derived.urgencySignals.length > 0;
+          if (hasAnyDerived) {
+            setQualProfile(p => ({
+              ...p,
+              painPoints: derived.painPoints,
+              maturityIndicators: derived.maturityIndicators,
+              engagementSignals: derived.engagementSignals,
+              urgencySignals: derived.urgencySignals,
+            }));
+            setAutoFillProvenance(derived.provenance);
+            setAutoFillBannerVisible(true);
+          }
+        })
+        .catch(() => {});
     }
-  }, [loading, lead, quizMatches, quizPainConfig]);
+  }, [loading, lead, quizMatches, leadId, fetchWithAuth]);
 
-  const reimportFromQuiz = () => {
+  const reimportFromQuiz = async () => {
     if (!lead || quizMatches.length === 0) return;
-    const bestMatch = [...quizMatches].sort((a, b) => b.totalScore - a.totalScore)[0];
-    const derived = deriveSignalsFromQuiz(bestMatch, lead.source, quizPainConfig);
-    setQualProfile(p => ({
-      ...p,
-      painPoints: [...new Set([...p.painPoints, ...derived.painPoints])],
-      maturityIndicators: [...new Set([...p.maturityIndicators, ...derived.maturityIndicators])],
-      engagementSignals: [...new Set([...p.engagementSignals, ...derived.engagementSignals])],
-      urgencySignals: [...new Set([...p.urgencySignals, ...derived.urgencySignals])],
-    }));
-    setAutoFillProvenance(prev => ({ ...prev, ...derived.provenance }));
+    try {
+      const r = await fetchWithAuth(`/api/leads/${leadId}/derive-signals`);
+      if (!r.ok) return;
+      const derived = await r.json() as DerivedSignals;
+      setQualProfile(p => ({
+        ...p,
+        painPoints: [...new Set([...p.painPoints, ...derived.painPoints])],
+        maturityIndicators: [...new Set([...p.maturityIndicators, ...derived.maturityIndicators])],
+        engagementSignals: [...new Set([...p.engagementSignals, ...derived.engagementSignals])],
+        urgencySignals: [...new Set([...p.urgencySignals, ...derived.urgencySignals])],
+      }));
+      setAutoFillProvenance(prev => ({ ...prev, ...derived.provenance }));
+    } catch {
+      // silently skip if the API call fails
+    }
     setReimportFlash(true);
     setTimeout(() => setReimportFlash(false), 2500);
   };

@@ -5,6 +5,7 @@ import {
 } from "@workspace/db";
 import { eq, desc, count, gte, and, ilike, or, type SQL, lt } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/requireAuth";
+import { deriveSignalsFromQuiz, loadQuizPainConfig } from "../lib/derive-quiz-signals";
 import {
   sendEmailOrThrow,
   sendEmail,
@@ -273,6 +274,68 @@ router.get("/leads/:id/quiz-matches", requireAdmin, async (req: Request, res: Re
     .orderBy(desc(quizLeadsTable.createdAt));
 
   res.json(matches);
+});
+
+// GET /api/leads/:id/derive-signals[?quizId=<id>]
+// Derives pain signals for a lead from its quiz matches using the server-side
+// config (reads the DB; falls back to hardcoded defaults).
+// Optionally restrict to a specific quiz via ?quizId=<n>.
+router.get("/leads/:id/derive-signals", requireAdmin, async (req: Request, res: Response) => {
+  const id = parseInt(String(req.params.id ?? ""), 10);
+  if (isNaN(id)) {
+    res.status(400).json({ error: "Invalid lead ID" });
+    return;
+  }
+
+  const [lead] = await db
+    .select({ email: leadsTable.email, source: leadsTable.source })
+    .from(leadsTable)
+    .where(eq(leadsTable.id, id))
+    .limit(1);
+
+  if (!lead) {
+    res.status(404).json({ error: "Lead not found" });
+    return;
+  }
+
+  const quizIdFilter = req.query.quizId !== undefined
+    ? parseInt(String(req.query.quizId), 10)
+    : null;
+
+  let matches = await db
+    .select()
+    .from(quizLeadsTable)
+    .where(eq(quizLeadsTable.email, lead.email))
+    .orderBy(desc(quizLeadsTable.totalScore));
+
+  if (quizIdFilter !== null && !isNaN(quizIdFilter)) {
+    matches = matches.filter(m => m.id === quizIdFilter);
+  }
+
+  if (matches.length === 0) {
+    res.json({ painPoints: [], maturityIndicators: [], engagementSignals: [], urgencySignals: [], provenance: {} });
+    return;
+  }
+
+  const bestMatch = matches[0];
+  const config = await loadQuizPainConfig();
+  const source = (lead.source === "lead_magnet" ? "lead_magnet" : "contact_form") as "lead_magnet" | "contact_form";
+
+  try {
+    const signals = deriveSignalsFromQuiz(
+      {
+        quizType: bestMatch.quizType,
+        categoryScores: (bestMatch.categoryScores ?? {}) as Record<string, number>,
+        conversation: (bestMatch.conversation ?? []) as { role: "user" | "assistant"; content: string }[],
+      },
+      source,
+      config,
+    );
+    res.json(signals);
+  } catch (err) {
+    req.log.error({ err }, "derive-signals failed");
+    res.status(500).json({ error: "Failed to derive signals" });
+  }
 });
 
 router.get("/leads/:id/emails", requireAdmin, async (req: Request, res: Response) => {
