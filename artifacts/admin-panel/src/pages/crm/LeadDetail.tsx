@@ -424,12 +424,13 @@ const URGENCY_OPTIONS = [
 ];
 
 function TagInput({
-  label, options, selected, onChange,
+  label, options, selected, onChange, provenance,
 }: {
   label: string;
   options: string[];
   selected: string[];
   onChange: (next: string[]) => void;
+  provenance?: Record<string, string>;
 }) {
   const toggle = (opt: string) => {
     onChange(selected.includes(opt) ? selected.filter(s => s !== opt) : [...selected, opt]);
@@ -438,20 +439,39 @@ function TagInput({
     <div>
       <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">{label}</p>
       <div className="flex flex-wrap gap-1.5">
-        {options.map(opt => (
-          <button
-            key={opt}
-            type="button"
-            onClick={() => toggle(opt)}
-            className={`text-xs px-2.5 py-1 rounded-full border transition-colors font-medium ${
-              selected.includes(opt)
-                ? "bg-[#0078D4]/20 border-[#0078D4]/60 text-[#0078D4]"
-                : "bg-[#1C2128] border-border text-muted-foreground hover:border-[#0078D4]/40 hover:text-[#E6EDF3]"
-            }`}
-          >
-            {opt}
-          </button>
-        ))}
+        {options.map(opt => {
+          const reason = provenance?.[opt];
+          const isSelected = selected.includes(opt);
+          return (
+            <div key={opt} className="relative group/tag">
+              <button
+                type="button"
+                onClick={() => toggle(opt)}
+                className={`text-xs px-2.5 py-1 rounded-full border transition-colors font-medium flex items-center gap-1 ${
+                  isSelected
+                    ? "bg-[#0078D4]/20 border-[#0078D4]/60 text-[#0078D4]"
+                    : "bg-[#1C2128] border-border text-muted-foreground hover:border-[#0078D4]/40 hover:text-[#E6EDF3]"
+                }`}
+              >
+                {opt}
+                {reason && isSelected && (
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-3 h-3 opacity-60 flex-shrink-0">
+                    <circle cx="12" cy="12" r="10" />
+                    <path strokeLinecap="round" d="M12 16v-4M12 8h.01" />
+                  </svg>
+                )}
+              </button>
+              {reason && isSelected && (
+                <div className="pointer-events-none absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 z-50 opacity-0 group-hover/tag:opacity-100 transition-opacity duration-150">
+                  <div className="bg-[#0D1117] border border-[#30363D] text-[#E6EDF3] text-[10px] leading-relaxed px-2.5 py-1.5 rounded-lg shadow-xl whitespace-nowrap max-w-[220px] text-center">
+                    {reason}
+                  </div>
+                  <div className="absolute top-full left-1/2 -translate-x-1/2 w-0 h-0 border-l-4 border-r-4 border-t-4 border-l-transparent border-r-transparent border-t-[#30363D]" />
+                </div>
+              )}
+            </div>
+          );
+        })}
       </div>
     </div>
   );
@@ -462,6 +482,7 @@ interface DerivedSignals {
   maturityIndicators: string[];
   engagementSignals: string[];
   urgencySignals: string[];
+  provenance: Record<string, string>;
 }
 
 const QUIZ_TYPE_PAIN_MAP: Record<string, string[]> = {
@@ -494,10 +515,14 @@ function deriveSignalsFromQuiz(quiz: QuizMatch, leadSource: LeadSource): Derived
   const maturityIndicators = new Set<string>();
   const engagementSignals = new Set<string>();
   const urgencySignals = new Set<string>();
+  const provenance: Record<string, string> = {};
 
   // Quiz type → Pain Points
   const typePains = QUIZ_TYPE_PAIN_MAP[quiz.quizType] ?? [];
-  typePains.forEach(p => painPoints.add(p));
+  typePains.forEach(p => {
+    painPoints.add(p);
+    provenance[p] = `Quiz type: ${quiz.quizType}`;
+  });
 
   // Category scores ≤ 5 → Pain Points (low score = gap = pain)
   for (const [key, score] of Object.entries(quiz.categoryScores)) {
@@ -505,7 +530,9 @@ function deriveSignalsFromQuiz(quiz: QuizMatch, leadSource: LeadSource): Derived
       const normalized = key.toLowerCase().replace(/[\s_-]/g, "");
       for (const [mapKey, pain] of CATEGORY_PAIN_MAP) {
         if (normalized.includes(mapKey)) {
+          // Low-score reason is more specific than quiz-type reason — prefer it
           painPoints.add(pain);
+          provenance[pain] = `Low ${key} score (${score}/10)`;
           break;
         }
       }
@@ -519,42 +546,53 @@ function deriveSignalsFromQuiz(quiz: QuizMatch, leadSource: LeadSource): Derived
     .join(" ");
 
   // Maturity Indicators from transcript keywords
-  const maturityRules: [RegExp, string][] = [
-    [/sharepoint/i, "Active SharePoint usage"],
-    [/\bteams\b/i, "Teams adoption"],
-    [/power\s*platform|powerapps/i, "Power Platform usage"],
-    [/it\s*team|it\s*department|dedicated\s*it/i, "Dedicated IT team"],
-    [/\bE3\b|\bE5\b|business\s*premium/i, "Has existing M365"],
-    [/governance\s*policy/i, "Data governance policy"],
-    [/\bdocumented\b/i, "Documented processes"],
-    [/previous\s*consultant|worked\s*with/i, "Previous consultant"],
+  const maturityRules: [RegExp, string, string][] = [
+    [/sharepoint/i, "Active SharePoint usage", "Keyword in transcript: SharePoint"],
+    [/\bteams\b/i, "Teams adoption", "Keyword in transcript: Teams"],
+    [/power\s*platform|powerapps/i, "Power Platform usage", "Keyword in transcript: Power Platform"],
+    [/it\s*team|it\s*department|dedicated\s*it/i, "Dedicated IT team", "Keyword in transcript: IT team"],
+    [/\bE3\b|\bE5\b|business\s*premium/i, "Has existing M365", "Keyword in transcript: M365 license tier"],
+    [/governance\s*policy/i, "Data governance policy", "Keyword in transcript: governance policy"],
+    [/\bdocumented\b/i, "Documented processes", "Keyword in transcript: documented"],
+    [/previous\s*consultant|worked\s*with/i, "Previous consultant", "Keyword in transcript: previous consultant"],
   ];
-  for (const [pattern, indicator] of maturityRules) {
-    if (pattern.test(userTurns)) maturityIndicators.add(indicator);
+  for (const [pattern, indicator, reason] of maturityRules) {
+    if (pattern.test(userTurns)) {
+      maturityIndicators.add(indicator);
+      provenance[indicator] = reason;
+    }
   }
 
   // Urgency Signals from transcript keywords
-  const urgencyRules: [RegExp, string][] = [
-    [/\baudit\b/i, "Audit deadline"],
-    [/\bdeadline\b/i, "Compliance deadline"],
-    [/\bboard\b/i, "Board mandate"],
-    [/budget\s*approved/i, "Budget approved"],
-    [/this\s*quarter|Q[1-4]\b/i, "This quarter"],
-    [/\bASAP\b|\burgent\b/i, "Urgent"],
+  const urgencyRules: [RegExp, string, string][] = [
+    [/\baudit\b/i, "Audit deadline", "Keyword in transcript: audit"],
+    [/\bdeadline\b/i, "Compliance deadline", "Keyword in transcript: deadline"],
+    [/\bboard\b/i, "Board mandate", "Keyword in transcript: board"],
+    [/budget\s*approved/i, "Budget approved", "Keyword in transcript: budget approved"],
+    [/this\s*quarter|Q[1-4]\b/i, "This quarter", "Keyword in transcript: quarter reference"],
+    [/\bASAP\b|\burgent\b/i, "Urgent", "Keyword in transcript: ASAP / urgent"],
   ];
-  for (const [pattern, signal] of urgencyRules) {
-    if (pattern.test(userTurns)) urgencySignals.add(signal);
+  for (const [pattern, signal, reason] of urgencyRules) {
+    if (pattern.test(userTurns)) {
+      urgencySignals.add(signal);
+      provenance[signal] = reason;
+    }
   }
 
   // Engagement Signals: always add "Completed quiz"; add "Downloaded resource" for lead_magnet
   engagementSignals.add("Completed quiz");
-  if (leadSource === "lead_magnet") engagementSignals.add("Downloaded resource");
+  provenance["Completed quiz"] = `Completed the ${quiz.quizType} quiz`;
+  if (leadSource === "lead_magnet") {
+    engagementSignals.add("Downloaded resource");
+    provenance["Downloaded resource"] = "Lead source: lead magnet download";
+  }
 
   return {
     painPoints: [...painPoints],
     maturityIndicators: [...maturityIndicators],
     engagementSignals: [...engagementSignals],
     urgencySignals: [...urgencySignals],
+    provenance,
   };
 }
 
@@ -578,6 +616,7 @@ export default function LeadDetailPage({ params }: { params: { id: string } }) {
   const [qualSaved, setQualSaved] = useState(false);
   const [autoFillBannerVisible, setAutoFillBannerVisible] = useState(false);
   const [reimportFlash, setReimportFlash] = useState(false);
+  const [autoFillProvenance, setAutoFillProvenance] = useState<Record<string, string>>({});
   const autoFillAppliedRef = useRef(false);
   const [qualProfile, setQualProfile] = useState({
     industry: "",
@@ -671,6 +710,7 @@ export default function LeadDetailPage({ params }: { params: { id: string } }) {
           engagementSignals: derived.engagementSignals,
           urgencySignals: derived.urgencySignals,
         }));
+        setAutoFillProvenance(derived.provenance);
         setAutoFillBannerVisible(true);
       }
     }
@@ -687,6 +727,7 @@ export default function LeadDetailPage({ params }: { params: { id: string } }) {
       engagementSignals: [...new Set([...p.engagementSignals, ...derived.engagementSignals])],
       urgencySignals: [...new Set([...p.urgencySignals, ...derived.urgencySignals])],
     }));
+    setAutoFillProvenance(prev => ({ ...prev, ...derived.provenance }));
     setReimportFlash(true);
     setTimeout(() => setReimportFlash(false), 2500);
   };
@@ -740,6 +781,7 @@ export default function LeadDetailPage({ params }: { params: { id: string } }) {
         setLead(updated);
         setQualSaved(true);
         setAutoFillBannerVisible(false);
+        setAutoFillProvenance({});
         setTimeout(() => setQualSaved(false), 2500);
         if (updated.qualificationPending) {
           // Small delay to let the DB settle, then navigate to leads page
@@ -1043,24 +1085,28 @@ export default function LeadDetailPage({ params }: { params: { id: string } }) {
               options={PAIN_POINT_OPTIONS}
               selected={qualProfile.painPoints}
               onChange={v => setQualProfile(p => ({ ...p, painPoints: v }))}
+              provenance={autoFillProvenance}
             />
             <TagInput
               label="Maturity Indicators"
               options={MATURITY_OPTIONS}
               selected={qualProfile.maturityIndicators}
               onChange={v => setQualProfile(p => ({ ...p, maturityIndicators: v }))}
+              provenance={autoFillProvenance}
             />
             <TagInput
               label="Engagement Signals"
               options={ENGAGEMENT_OPTIONS}
               selected={qualProfile.engagementSignals}
               onChange={v => setQualProfile(p => ({ ...p, engagementSignals: v }))}
+              provenance={autoFillProvenance}
             />
             <TagInput
               label="Urgency Signals"
               options={URGENCY_OPTIONS}
               selected={qualProfile.urgencySignals}
               onChange={v => setQualProfile(p => ({ ...p, urgencySignals: v }))}
+              provenance={autoFillProvenance}
             />
           </div>
 
