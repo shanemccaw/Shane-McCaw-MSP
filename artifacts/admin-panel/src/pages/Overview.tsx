@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { Link } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
 import {
@@ -59,6 +59,36 @@ interface AiInsight {
   title: string;
   narrative: string;
   metric: string;
+}
+
+interface DbStatusDev {
+  appliedCount: number;
+  lastAppliedTag: string | null;
+  lastAppliedAt: string | null;
+  pendingCount: number;
+  pendingTags: string[];
+}
+
+interface DbStatusProdAvailable {
+  available: true;
+  appliedCount: number;
+  lastAppliedTag: string | null;
+  lastAppliedAt: string | null;
+  pendingCount: number;
+  pendingTags: string[];
+}
+
+interface DbStatusProdUnavailable {
+  available: false;
+  reason: string;
+}
+
+type DbStatusProd = DbStatusProdAvailable | DbStatusProdUnavailable;
+
+interface DbStatus {
+  journalCount: number;
+  dev: DbStatusDev;
+  prod: DbStatusProd;
 }
 
 interface ExpiringCredItem {
@@ -220,6 +250,14 @@ export default function OverviewPage() {
   const [aiLoading, setAiLoading] = useState(true);
   const [aiError, setAiError] = useState<string | null>(null);
   const [expiringCreds, setExpiringCreds] = useState<ExpiringCredSummary | null>(null);
+  const [dbStatus, setDbStatus] = useState<DbStatus | null>(null);
+  const [dbStatusLoading, setDbStatusLoading] = useState(true);
+  const [dbStatusError, setDbStatusError] = useState<string | null>(null);
+  const [migrating, setMigrating] = useState(false);
+  const [migrateOutput, setMigrateOutput] = useState<string[] | null>(null);
+  const [migrateError, setMigrateError] = useState<string | null>(null);
+  const [showPending, setShowPending] = useState(false);
+  const migrateAbortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
     void fetchWithAuth("/api/admin/overview")
@@ -239,6 +277,47 @@ export default function OverviewPage() {
       })
       .catch(() => {});
   }, [fetchWithAuth]);
+
+  const fetchDbStatus = useCallback(async () => {
+    setDbStatusLoading(true);
+    setDbStatusError(null);
+    try {
+      const res = await fetchWithAuth("/api/admin/db-status");
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      setDbStatus(await res.json() as DbStatus);
+    } catch (e) {
+      setDbStatusError(e instanceof Error ? e.message : "Failed to load DB status");
+    } finally {
+      setDbStatusLoading(false);
+    }
+  }, [fetchWithAuth]);
+
+  useEffect(() => { void fetchDbStatus(); }, [fetchDbStatus]);
+
+  const runMigration = useCallback(async () => {
+    setMigrating(true);
+    setMigrateOutput(null);
+    setMigrateError(null);
+    const ac = new AbortController();
+    migrateAbortRef.current = ac;
+    try {
+      const res = await fetchWithAuth("/api/admin/db-migrate", { method: "POST", signal: ac.signal });
+      const body = await res.json() as { ok: boolean; output?: string[]; error?: string; code?: number };
+      if (body.ok) {
+        setMigrateOutput(body.output ?? []);
+        void fetchDbStatus();
+      } else {
+        setMigrateError(body.error ?? `Exit code ${body.code ?? "?"}`);
+        setMigrateOutput(body.output ?? []);
+      }
+    } catch (e) {
+      if ((e as { name?: string }).name !== "AbortError") {
+        setMigrateError(e instanceof Error ? e.message : "Migration failed");
+      }
+    } finally {
+      setMigrating(false);
+    }
+  }, [fetchWithAuth, fetchDbStatus]);
 
   const fetchAiInsights = useCallback(async () => {
     setAiLoading(true);
@@ -688,6 +767,178 @@ export default function OverviewPage() {
           )}
         </section>
       )}
+
+      {/* ── Database Status ── */}
+      <section>
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center gap-2">
+            <h2 className="text-sm font-bold text-[#7D8590] uppercase tracking-widest">Database Status</h2>
+            {dbStatus && dbStatus.prod.available && dbStatus.prod.pendingCount > 0 && (
+              <span className="text-xs font-bold bg-amber-500/15 text-amber-400 border border-amber-500/20 px-2 py-0.5 rounded-full">
+                {dbStatus.prod.pendingCount} pending
+              </span>
+            )}
+            {dbStatus && dbStatus.prod.available && dbStatus.prod.pendingCount === 0 && (
+              <span className="text-xs font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/20 px-2 py-0.5 rounded-full">
+                In sync
+              </span>
+            )}
+          </div>
+          <button
+            onClick={() => void fetchDbStatus()}
+            disabled={dbStatusLoading}
+            className="flex items-center gap-1.5 text-xs font-semibold text-[#58A6FF] hover:text-[#0078D4] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          >
+            <svg className={`w-3.5 h-3.5 ${dbStatusLoading ? "animate-spin" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+            </svg>
+            Refresh
+          </button>
+        </div>
+
+        {dbStatusLoading ? (
+          <SkeletonCard h="h-32" />
+        ) : dbStatusError ? (
+          <SectionError message={`Could not load database status: ${dbStatusError}`} />
+        ) : dbStatus && (
+          <div className="bg-[#161B22] border border-[#30363D] rounded-xl p-5 space-y-4">
+            {/* Two-column: Dev + Prod */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* Dev DB */}
+              <div className="bg-[#1C2128] rounded-xl p-4 space-y-2">
+                <div className="flex items-center gap-2 mb-1">
+                  <svg className="w-3.5 h-3.5 text-[#58A6FF]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582 4 8 4s8 1.79 8 4" />
+                  </svg>
+                  <span className="text-xs font-bold text-[#E6EDF3]">Dev Database</span>
+                </div>
+                <div className="flex items-baseline gap-1.5">
+                  <span className="text-2xl font-bold text-[#E6EDF3]">{dbStatus.dev.appliedCount}</span>
+                  <span className="text-xs text-[#7D8590]">/ {dbStatus.journalCount} migrations applied</span>
+                </div>
+                {dbStatus.dev.pendingCount > 0 && (
+                  <p className="text-xs text-amber-400">{dbStatus.dev.pendingCount} pending in dev</p>
+                )}
+                {dbStatus.dev.lastAppliedTag && (
+                  <p className="text-[10px] text-[#484F58] truncate" title={dbStatus.dev.lastAppliedTag}>
+                    Last: <span className="text-[#7D8590] font-mono">{dbStatus.dev.lastAppliedTag}</span>
+                    {dbStatus.dev.lastAppliedAt && (
+                      <span className="text-[#484F58]"> · {timeAgo(dbStatus.dev.lastAppliedAt)}</span>
+                    )}
+                  </p>
+                )}
+                {!dbStatus.dev.lastAppliedTag && (
+                  <p className="text-[10px] text-[#484F58]">No migrations tracked yet</p>
+                )}
+              </div>
+
+              {/* Prod DB */}
+              <div className={`bg-[#1C2128] rounded-xl p-4 space-y-2 ${dbStatus.prod.available && dbStatus.prod.pendingCount > 0 ? "ring-1 ring-amber-500/30" : ""}`}>
+                <div className="flex items-center gap-2 mb-1">
+                  <svg className="w-3.5 h-3.5 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582 4 8 4s8 1.79 8 4" />
+                  </svg>
+                  <span className="text-xs font-bold text-[#E6EDF3]">Production Database</span>
+                </div>
+                {dbStatus.prod.available ? (
+                  <>
+                    <div className="flex items-baseline gap-1.5">
+                      <span className="text-2xl font-bold text-[#E6EDF3]">{dbStatus.prod.appliedCount}</span>
+                      <span className="text-xs text-[#7D8590]">/ {dbStatus.journalCount} migrations applied</span>
+                    </div>
+                    {dbStatus.prod.pendingCount > 0 ? (
+                      <p className="text-xs font-semibold text-amber-400">{dbStatus.prod.pendingCount} migration{dbStatus.prod.pendingCount !== 1 ? "s" : ""} pending</p>
+                    ) : (
+                      <p className="text-xs text-emerald-400 font-semibold">Up to date ✓</p>
+                    )}
+                    {dbStatus.prod.lastAppliedTag && (
+                      <p className="text-[10px] text-[#484F58] truncate" title={dbStatus.prod.lastAppliedTag}>
+                        Last: <span className="text-[#7D8590] font-mono">{dbStatus.prod.lastAppliedTag}</span>
+                        {dbStatus.prod.lastAppliedAt && (
+                          <span className="text-[#484F58]"> · {timeAgo(dbStatus.prod.lastAppliedAt)}</span>
+                        )}
+                      </p>
+                    )}
+                  </>
+                ) : (
+                  <div className="flex flex-col gap-1">
+                    <p className="text-xs text-[#7D8590]">Not connected</p>
+                    <p className="text-[10px] text-[#484F58]">{dbStatus.prod.reason}</p>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Pending tags toggle */}
+            {dbStatus.prod.available && dbStatus.prod.pendingCount > 0 && (
+              <div>
+                <button
+                  onClick={() => setShowPending(p => !p)}
+                  className="text-xs text-amber-400 hover:text-amber-300 font-semibold flex items-center gap-1 transition-colors"
+                >
+                  <svg className={`w-3 h-3 transition-transform ${showPending ? "rotate-90" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+                  </svg>
+                  {showPending ? "Hide" : "Show"} pending migrations
+                </button>
+                {showPending && (
+                  <div className="mt-2 space-y-1 max-h-40 overflow-y-auto pr-1">
+                    {dbStatus.prod.pendingTags.map(tag => (
+                      <div key={tag} className="text-[11px] font-mono bg-amber-500/10 text-amber-300 border border-amber-500/20 px-2 py-1 rounded">
+                        {tag}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Run migrations */}
+            {dbStatus.prod.available && (
+              <div className="flex items-center gap-3 pt-1 border-t border-[#30363D]">
+                <button
+                  onClick={() => void runMigration()}
+                  disabled={migrating}
+                  className="flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold bg-[#0078D4] hover:bg-[#0078D4]/80 text-white disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                >
+                  {migrating ? (
+                    <>
+                      <svg className="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                      </svg>
+                      Running migrations…
+                    </>
+                  ) : (
+                    <>
+                      <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+                      </svg>
+                      Run Migrations on Prod
+                    </>
+                  )}
+                </button>
+                <p className="text-[10px] text-[#484F58]">Runs migrate-prod against PROD_DATABASE_URL</p>
+              </div>
+            )}
+
+            {/* Migration output */}
+            {migrateError && (
+              <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-3 text-xs text-red-400 font-semibold">
+                Migration failed: {migrateError}
+              </div>
+            )}
+            {migrateOutput && migrateOutput.length > 0 && (
+              <div className="bg-[#0D1117] border border-[#30363D] rounded-lg p-3 max-h-48 overflow-y-auto">
+                {migrateOutput.map((line, i) => (
+                  <div key={i} className={`text-[10px] font-mono leading-relaxed ${line.includes("ERROR") || line.includes("failed") ? "text-red-400" : line.includes("done") || line.includes("success") ? "text-emerald-400" : "text-[#7D8590]"}`}>
+                    {line}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+      </section>
 
       {/* ── AI Insights ── */}
       <section>

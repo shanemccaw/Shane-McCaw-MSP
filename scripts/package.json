@@ -16,6 +16,7 @@
     "remove-default-services": "tsx ./src/remove-default-services.ts",
     "assign-task-types": "tsx ./src/assign-task-types.ts",
     "seed-icon-names": "tsx ./src/seed-icon-names.ts",
+    "migration-status": "tsx ./src/migration-status.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test:stripe": "pnpm --filter @workspace/api-server run test"
   },
