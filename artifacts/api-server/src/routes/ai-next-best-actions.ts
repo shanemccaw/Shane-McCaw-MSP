@@ -23,7 +23,7 @@ interface NbaRow {
 // ── POST /api/ai/next-best-actions/generate ───────────────────────────────────
 // Gathers cross-system context (health, forecast, pipeline, projects) and asks
 // Claude for the top 5 highest-impact actions Shane should take right now.
-router.post("/api/ai/next-best-actions/generate", requireAdmin, async (_req: Request, res: Response) => {
+router.post("/ai/next-best-actions/generate", requireAdmin, async (_req: Request, res: Response) => {
   try {
     const now = new Date();
     const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
@@ -183,7 +183,7 @@ JSON:`,
 // ── POST /api/ai/next-best-actions ────────────────────────────────────────────
 // Entity-specific action generation: body must include { entityType, entityId }.
 // Gathers focused context for that entity and calls Claude for 3–5 targeted actions.
-router.post("/api/ai/next-best-actions", requireAdmin, async (req: Request, res: Response) => {
+router.post("/ai/next-best-actions", requireAdmin, async (req: Request, res: Response) => {
   try {
     const { entityType, entityId } = req.body as { entityType?: string; entityId?: number };
     if (!entityType || !entityId) {
@@ -320,7 +320,7 @@ JSON:`,
 // ── GET /api/ai/next-best-actions ─────────────────────────────────────────────
 // Returns unresolved actions sorted by confidence desc.
 // Optional: ?entityType=client&entityId=5 to filter for entity-specific views
-router.get("/api/ai/next-best-actions", requireAdmin, async (req: Request, res: Response) => {
+router.get("/ai/next-best-actions", requireAdmin, async (req: Request, res: Response) => {
   try {
     const { entityType, entityId } = req.query as Record<string, string | undefined>;
 
@@ -346,7 +346,7 @@ router.get("/api/ai/next-best-actions", requireAdmin, async (req: Request, res: 
 
 // ── POST /api/ai/next-best-actions/:id/resolve ────────────────────────────────
 // Marks an action as done (sets resolvedAt to now).
-router.post("/api/ai/next-best-actions/:id/resolve", requireAdmin, async (req: Request, res: Response) => {
+router.post("/ai/next-best-actions/:id/resolve", requireAdmin, async (req: Request, res: Response) => {
   try {
     const id = parseInt(String(req.params.id));
     if (isNaN(id)) {

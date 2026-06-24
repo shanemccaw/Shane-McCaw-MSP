@@ -8,7 +8,7 @@ const router = Router();
 
 // ── GET /api/analytics/revenue/forecast ──────────────────────────────────────
 // Returns the most-recently-generated forecast rows + narrative.
-router.get("/api/analytics/revenue/forecast", requireAdmin, async (_req: Request, res: Response) => {
+router.get("/analytics/revenue/forecast", requireAdmin, async (_req: Request, res: Response) => {
   try {
     const rows = await db.select().from(revenueForecastsTable)
       .orderBy(desc(revenueForecastsTable.generatedAt), revenueForecastsTable.period)
@@ -43,7 +43,7 @@ router.get("/api/analytics/revenue/forecast", requireAdmin, async (_req: Request
 // ── POST /api/analytics/revenue/forecast/generate ────────────────────────────
 // Reads historical revenue data, computes a 12-month linear+seasonal forecast,
 // calls Claude for a narrative, persists, and returns the result.
-router.post("/api/analytics/revenue/forecast/generate", requireAdmin, async (_req: Request, res: Response) => {
+router.post("/analytics/revenue/forecast/generate", requireAdmin, async (_req: Request, res: Response) => {
   try {
     const now = new Date();
     const twoYearsAgo = new Date(now);

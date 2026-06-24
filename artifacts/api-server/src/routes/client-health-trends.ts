@@ -41,7 +41,7 @@ const PROFILE_TO_CATEGORY: Record<string, HealthCategory> = {
 // ── GET /api/clients/:id/health/trends ────────────────────────────────────────
 // Returns last 90 days of health history for a client, grouped by category,
 // plus a Claude-generated insight string.
-router.get("/api/clients/:id/health/trends", requireAdmin, async (req: Request, res: Response) => {
+router.get("/clients/:id/health/trends", requireAdmin, async (req: Request, res: Response) => {
   try {
     const clientId = parseInt(String(req.params.id));
     if (isNaN(clientId)) {
@@ -113,7 +113,7 @@ Insight:`,
 
 // ── POST /api/clients/:id/health/record ───────────────────────────────────────
 // Records a manual health snapshot for a single client (reads from their M365 profile).
-router.post("/api/clients/:id/health/record", requireAdmin, async (req: Request, res: Response) => {
+router.post("/clients/:id/health/record", requireAdmin, async (req: Request, res: Response) => {
   try {
     const clientId = parseInt(String(req.params.id));
     if (isNaN(clientId)) {
@@ -191,7 +191,7 @@ router.post("/api/clients/:id/health/record", requireAdmin, async (req: Request,
 //         headers: { Authorization: `Bearer ${process.env.ADMIN_PASSWORD}` }
 //       });
 //     });
-router.post("/api/admin/health/snapshot-all", requireAdmin, async (_req: Request, res: Response) => {
+router.post("/admin/health/snapshot-all", requireAdmin, async (_req: Request, res: Response) => {
   try {
     const [clients, profiles] = await Promise.all([
       db.select({ id: usersTable.id, name: usersTable.name, email: usersTable.email })
@@ -244,7 +244,7 @@ router.post("/api/admin/health/snapshot-all", requireAdmin, async (_req: Request
 
 // ── GET /api/admin/health/alerts ──────────────────────────────────────────────
 // Returns clients whose score dropped or improved by ≥10 points in the last 30 days.
-router.get("/api/admin/health/alerts", requireAdmin, async (_req: Request, res: Response) => {
+router.get("/admin/health/alerts", requireAdmin, async (_req: Request, res: Response) => {
   try {
     const thirtyDaysAgo = new Date();
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);

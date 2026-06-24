@@ -1,4 +1,4 @@
-import * as SecureStore from "expo-secure-store";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 
 const BASE_URL = `https://${process.env.EXPO_PUBLIC_DOMAIN}`;
@@ -28,16 +28,16 @@ const KEY_EMAIL = "auth_email";
 const KEY_PASSWORD = "auth_password";
 const KEY_TOKEN = "auth_token";
 
-async function secureGet(key: string): Promise<string | null> {
-  return SecureStore.getItemAsync(key);
+async function storeGet(key: string): Promise<string | null> {
+  return AsyncStorage.getItem(key);
 }
 
-async function secureSet(key: string, value: string): Promise<void> {
-  return SecureStore.setItemAsync(key, value);
+async function storeSet(key: string, value: string): Promise<void> {
+  return AsyncStorage.setItem(key, value);
 }
 
-async function secureDel(key: string): Promise<void> {
-  return SecureStore.deleteItemAsync(key);
+async function storeDel(key: string): Promise<void> {
+  return AsyncStorage.removeItem(key);
 }
 
 async function doLogin(email: string, password: string): Promise<{ accessToken: string; user: AuthUser }> {
@@ -50,7 +50,11 @@ async function doLogin(email: string, password: string): Promise<{ accessToken: 
     const err = (await res.json().catch(() => ({ error: "Login failed" }))) as { error?: string };
     throw new Error(err.error ?? "Login failed");
   }
-  return res.json() as Promise<{ accessToken: string; user: AuthUser }>;
+  const data = await res.json() as { accessToken?: string; user?: AuthUser; mfaRequired?: boolean };
+  if (data.mfaRequired || !data.accessToken || !data.user) {
+    throw new Error("Login requires additional verification. Please use the web portal.");
+  }
+  return data as { accessToken: string; user: AuthUser };
 }
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
@@ -62,14 +66,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     (async () => {
       try {
-        const email = await secureGet(KEY_EMAIL);
-        const password = await secureGet(KEY_PASSWORD);
+        const email = await storeGet(KEY_EMAIL);
+        const password = await storeGet(KEY_PASSWORD);
         if (email && password) {
           credRef.current = { email, password };
           const data = await doLogin(email, password);
           if (data.user.role !== "admin") throw new Error("Not an admin");
           tokenRef.current = data.accessToken;
-          await secureSet(KEY_TOKEN, data.accessToken);
+          await storeSet(KEY_TOKEN, data.accessToken);
           setState({ user: data.user, accessToken: data.accessToken, isLoading: false });
         } else {
           setState({ user: null, accessToken: null, isLoading: false });
@@ -85,9 +89,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (data.user.role !== "admin") throw new Error("Admin credentials required");
     credRef.current = { email, password };
     tokenRef.current = data.accessToken;
-    await secureSet(KEY_EMAIL, email);
-    await secureSet(KEY_PASSWORD, password);
-    await secureSet(KEY_TOKEN, data.accessToken);
+    await storeSet(KEY_EMAIL, email);
+    await storeSet(KEY_PASSWORD, password);
+    await storeSet(KEY_TOKEN, data.accessToken);
     setState({ user: data.user, accessToken: data.accessToken, isLoading: false });
   }, []);
 
@@ -95,9 +99,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     credRef.current = null;
     tokenRef.current = null;
     await Promise.allSettled([
-      secureDel(KEY_EMAIL),
-      secureDel(KEY_PASSWORD),
-      secureDel(KEY_TOKEN),
+      storeDel(KEY_EMAIL),
+      storeDel(KEY_PASSWORD),
+      storeDel(KEY_TOKEN),
     ]);
     setState({ user: null, accessToken: null, isLoading: false });
   }, []);
@@ -117,7 +121,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       try {
         const data = await doLogin(credRef.current.email, credRef.current.password);
         tokenRef.current = data.accessToken;
-        await secureSet(KEY_TOKEN, data.accessToken);
+        await storeSet(KEY_TOKEN, data.accessToken);
         setState((s) => ({ ...s, accessToken: data.accessToken, user: data.user }));
         const retryHeaders = new Headers(init?.headers);
         retryHeaders.set("Authorization", `Bearer ${data.accessToken}`);
