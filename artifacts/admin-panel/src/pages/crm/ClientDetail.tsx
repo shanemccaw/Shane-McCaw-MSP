@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback, useMemo } from "react";
 import { useParams, useLocation } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -1551,9 +1551,10 @@ export default function ClientDetailPage() {
           <div className="border-t border-border">
             {quizzes.length > 0 ? (
               <div className="p-5 space-y-5">
-                {/* Latest quiz record only */}
+                {/* Latest quiz record only — explicit sort so render order is independent of API contract */}
                 {(() => {
-                  const q = quizzes[0];
+                  const sortedQuizzes = [...quizzes].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+                  const q = sortedQuizzes[0];
                   const qcs = (q.categoryScores ?? {}) as Record<string, number>;
                   const qEntries = Object.entries(qcs).filter(([, v]) => typeof v === "number") as [string, number][];
                   const sortedQ = [...qEntries].sort(([, a], [, b]) => a - b);
@@ -1663,30 +1664,41 @@ export default function ClientDetailPage() {
                   );
                 })()}
 
-                {/* Score History chart — only shown when ≥2 assessments exist */}
-                {quizzes.length >= 2 && (
-                  <div className="bg-[#1C2128] border border-border rounded-xl p-5">
-                    <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-4">Score History</p>
-                    <ResponsiveContainer width="100%" height={160}>
-                      <LineChart
-                        data={[...quizzes].reverse().map(q => ({
-                          date: new Date(q.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric" }),
-                          score: q.totalScore,
-                        }))}
-                        margin={{ top: 4, right: 8, left: -20, bottom: 0 }}
-                      >
-                        <CartesianGrid strokeDasharray="3 3" stroke="#30363D" />
-                        <XAxis dataKey="date" tick={{ fill: "#7D8590", fontSize: 10 }} axisLine={false} tickLine={false} />
-                        <YAxis domain={[0, 100]} tick={{ fill: "#7D8590", fontSize: 10 }} axisLine={false} tickLine={false} />
-                        <Tooltip
-                          contentStyle={{ backgroundColor: "#1C2128", border: "1px solid #30363D", borderRadius: "8px", fontSize: 12, color: "#E6EDF3" }}
-                          cursor={{ stroke: "#30363D" }}
-                        />
-                        <Line type="monotone" dataKey="score" name="Score" stroke="#0078D4" strokeWidth={2} dot={{ fill: "#0078D4", r: 4, strokeWidth: 0 }} activeDot={{ r: 6, fill: "#0078D4" }} />
-                      </LineChart>
-                    </ResponsiveContainer>
-                  </div>
-                )}
+                {/* Score History chart — one line per category, ≥2 assessments */}
+                {quizzes.length >= 2 && (() => {
+                  const CHART_COLORS = ["#0078D4", "#00B4D8", "#10b981", "#f59e0b", "#ef4444", "#8b5cf6"];
+                  const chronoQuizzes = [...quizzes].sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+                  const allCatKeys = Array.from(new Set(chronoQuizzes.flatMap(q => Object.keys((q.categoryScores ?? {}) as Record<string, number>))));
+                  const chartData = chronoQuizzes.map(q => {
+                    const cs = (q.categoryScores ?? {}) as Record<string, number>;
+                    const entry: Record<string, string | number> = {
+                      date: new Date(q.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric" }),
+                    };
+                    allCatKeys.forEach(k => { entry[k] = typeof cs[k] === "number" ? cs[k] : 0; });
+                    return entry;
+                  });
+                  return (
+                    <div className="bg-[#1C2128] border border-border rounded-xl p-5">
+                      <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-4">Score History</p>
+                      <ResponsiveContainer width="100%" height={200}>
+                        <LineChart data={chartData} margin={{ top: 4, right: 16, left: -20, bottom: 0 }}>
+                          <CartesianGrid strokeDasharray="3 3" stroke="#30363D" />
+                          <XAxis dataKey="date" tick={{ fill: "#7D8590", fontSize: 10 }} axisLine={false} tickLine={false} />
+                          <YAxis domain={[0, 100]} tick={{ fill: "#7D8590", fontSize: 10 }} axisLine={false} tickLine={false} />
+                          <Tooltip
+                            contentStyle={{ backgroundColor: "#1C2128", border: "1px solid #30363D", borderRadius: "8px", fontSize: 12, color: "#E6EDF3" }}
+                            cursor={{ stroke: "#30363D" }}
+                            formatter={(value, name) => [value, catLabels[name as string] ?? name]}
+                          />
+                          <Legend wrapperStyle={{ fontSize: 10, paddingTop: 8 }} formatter={(value) => catLabels[value] ?? value} />
+                          {allCatKeys.map((key, idx) => (
+                            <Line key={key} type="monotone" dataKey={key} name={key} stroke={CHART_COLORS[idx % CHART_COLORS.length]} strokeWidth={2} dot={{ r: 3, strokeWidth: 0 }} activeDot={{ r: 5 }} />
+                          ))}
+                        </LineChart>
+                      </ResponsiveContainer>
+                    </div>
+                  );
+                })()}
               </div>
             ) : (
               <div className="p-8 text-center">
@@ -1865,14 +1877,10 @@ export default function ClientDetailPage() {
                 )}
               </div>
 
-              {/* ── Admin credential (Script Runner) ── */}
-              <div className="px-5 pt-4 pb-1">
-                <p className="text-[10px] font-bold uppercase tracking-wider text-[#7D8590] mb-3">Admin Credential — Script Runner</p>
-              </div>
-              {credLoading ? (
-                <div className="px-5 pb-4 flex items-center gap-2 text-sm text-[#7D8590]"><div className="w-4 h-4 border-2 border-[#0078D4] border-t-transparent rounded-full animate-spin" />Loading…</div>
+              {credLoading || appRegLoading ? (
+                <div className="px-5 py-4 flex items-center gap-2 text-sm text-[#7D8590]"><div className="w-4 h-4 border-2 border-[#0078D4] border-t-transparent rounded-full animate-spin" />Loading…</div>
               ) : editingCred ? (
-                <form onSubmit={handleSaveCred} className="px-5 pb-5 space-y-4">
+                <form onSubmit={handleSaveCred} className="px-5 pb-5 pt-4 space-y-4">
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div><label className={labelCls}>Display Name *</label><input required className={inputCls} value={credForm.displayName} onChange={e => setCredForm(f => ({ ...f, displayName: e.target.value }))} /></div>
                     <div><label className={labelCls}>Credential Type</label><select className={inputCls} value={credForm.credentialType} onChange={e => setCredForm(f => ({ ...f, credentialType: e.target.value as "secret" | "certificate" }))}><option value="secret">Client Secret</option><option value="certificate">Certificate</option></select></div>
@@ -1897,7 +1905,7 @@ export default function ClientDetailPage() {
                   </div>
                 </form>
               ) : azureCred ? (
-                <div className="px-5 pb-4">
+                <div className="px-5 py-4">
                   {azureCred.expiresOn && daysUntil(azureCred.expiresOn) <= EXPIRY_WARN_DAYS && (
                     <div className={`flex items-start gap-3 rounded-lg border px-4 py-3 mb-4 ${daysUntil(azureCred.expiresOn) <= 14 ? "bg-red-500/10 border-red-500/20" : "bg-amber-500/10 border-amber-500/20"}`}>
                       <svg className={`w-4 h-4 flex-shrink-0 mt-0.5 ${daysUntil(azureCred.expiresOn) <= 14 ? "text-red-500" : "text-amber-500"}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
@@ -1912,19 +1920,32 @@ export default function ClientDetailPage() {
                     <div><p className={labelCls}>Client ID</p><p className="text-xs text-[#E6EDF3] font-mono break-all">{azureCred.clientId}</p></div>
                     <div><p className={labelCls}>Key Vault Secret</p><p className="text-xs text-[#E6EDF3] font-mono">{azureCred.keyVaultSecretName}</p></div>
                   </div>
+                  {/* appReg verification status — inline when a portal submission also exists */}
+                  {appReg && (
+                    <div className="mt-4 pt-4 border-t border-border flex items-center gap-3 flex-wrap">
+                      {appReg.status === "verified" ? (
+                        <span className="inline-flex items-center gap-1.5 text-xs font-bold px-2.5 py-1 rounded-full bg-green-500/15 text-green-400 border border-green-500/20"><svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>Portal App Reg · Verified</span>
+                      ) : appReg.status === "submitted" ? (
+                        <span className="inline-flex items-center gap-1.5 text-xs font-bold px-2.5 py-1 rounded-full bg-amber-500/15 text-amber-400 border border-amber-500/20"><span className="w-1.5 h-1.5 rounded-full bg-amber-500" />Portal App Reg · Pending Verification</span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1.5 text-xs font-bold px-2.5 py-1 rounded-full bg-red-500/15 text-red-400 border border-red-500/20"><span className="w-1.5 h-1.5 rounded-full bg-red-500" />Portal App Reg · Pending</span>
+                      )}
+                      <ExpiryBadge expiresOn={appReg.expiresOn} />
+                      {appReg.status !== "verified" && (
+                        <button onClick={() => void handleSetAppRegStatus("verified")} disabled={verifyingAppReg} className="flex items-center gap-1.5 text-xs font-semibold bg-green-600 text-white px-3 py-1 rounded-lg hover:bg-green-700 disabled:opacity-50 transition-colors">
+                          <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
+                          Mark Verified
+                        </button>
+                      )}
+                      {appReg.status === "verified" && (
+                        <button onClick={() => void handleSetAppRegStatus("submitted")} disabled={verifyingAppReg} className="text-xs font-semibold text-amber-400 border border-amber-500/30 bg-amber-500/10 px-3 py-1 rounded-lg hover:bg-amber-500/20 disabled:opacity-50 transition-colors">Revert</button>
+                      )}
+                    </div>
+                  )}
                 </div>
-              ) : (
-                <div className="px-5 pb-4"><p className="text-sm text-muted-foreground">No admin credential linked. Add one to enable Script Runner for this client.</p></div>
-              )}
-
-              {/* ── Client App Registration ── */}
-              <div className="border-t border-border px-5 pt-4 pb-1">
-                <p className="text-[10px] font-bold uppercase tracking-wider text-[#7D8590] mb-3">Client App Registration — Submitted via Portal</p>
-              </div>
-              {appRegLoading ? (
-                <div className="px-5 pb-5 flex items-center gap-2 text-sm text-[#7D8590]"><div className="w-4 h-4 border-2 border-[#0078D4] border-t-transparent rounded-full animate-spin" />Loading…</div>
               ) : appReg ? (
-                <div className="px-5 pb-5 space-y-4">
+                /* No admin credential yet, but client has submitted an app registration */
+                <div className="px-5 py-4 space-y-4">
                   <div className="flex items-center gap-3 flex-wrap">
                     {appReg.status === "verified" ? (
                       <span className="inline-flex items-center gap-1.5 text-xs font-bold px-2.5 py-1 rounded-full bg-green-500/15 text-green-400 border border-green-500/20"><svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>Verified</span>
@@ -1953,7 +1974,7 @@ export default function ClientDetailPage() {
                   </div>
                 </div>
               ) : (
-                <div className="px-5 pb-5"><p className="text-sm text-muted-foreground">No App Registration submitted yet. The client submits their credentials via the portal during onboarding.</p></div>
+                <div className="px-5 py-4"><p className="text-sm text-muted-foreground">No credential linked. Add an admin credential or the client can submit their App Registration via the portal.</p></div>
               )}
             </div>
           </div>
