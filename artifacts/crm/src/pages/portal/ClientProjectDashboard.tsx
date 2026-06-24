@@ -191,6 +191,75 @@ function ClientStatusChip({ status }: { status: "pending" | "accepted" | "has_qu
   );
 }
 
+// ── M365 Health Scorecard ─────────────────────────────────────────────────────
+
+type M365ScoreCategory = "security" | "compliance" | "copilot" | "governance" | "productivity";
+
+interface ScorecardHistory {
+  hasData: boolean;
+  firstDate?: string;
+  latestDate?: string;
+  first?: Partial<Record<M365ScoreCategory, number>>;
+  latest?: Partial<Record<M365ScoreCategory, number>>;
+}
+
+const SCORECARD_DEFS: { key: M365ScoreCategory; label: string }[] = [
+  { key: "security",     label: "Security Posture" },
+  { key: "compliance",   label: "Compliance Coverage" },
+  { key: "copilot",      label: "Copilot Readiness" },
+  { key: "governance",   label: "Governance Maturity" },
+  { key: "productivity", label: "Adoption Score" },
+];
+
+function scRingColor(s: number) { return s >= 80 ? "#22c55e" : s >= 55 ? "#f59e0b" : "#ef4444"; }
+function scTopBar(s: number)    { return s >= 80 ? "bg-green-500" : s >= 55 ? "bg-amber-400" : "bg-red-500"; }
+function scStatusLabel(s: number) { return s >= 80 ? "Healthy" : s >= 55 ? "Attention" : "Critical"; }
+function scStatusBadge(s: number) {
+  return s >= 80
+    ? "bg-green-500/20 text-green-300 border-green-500/30"
+    : s >= 55
+    ? "bg-amber-400/20 text-amber-300 border-amber-400/30"
+    : "bg-red-500/20 text-red-300 border-red-500/30";
+}
+
+function ScoreRingCard({ score, size = 72 }: { score: number; size?: number }) {
+  const r = (size / 2) - 7;
+  const circ = 2 * Math.PI * r;
+  const cx = size / 2;
+  return (
+    <div className="relative flex-shrink-0" style={{ width: size, height: size }}>
+      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="-rotate-90">
+        <circle cx={cx} cy={cx} r={r} fill="none" stroke="rgba(255,255,255,0.1)" strokeWidth="6" />
+        <circle cx={cx} cy={cx} r={r} fill="none" stroke={scRingColor(score)} strokeWidth="6" strokeLinecap="round"
+          strokeDasharray={`${(score / 100) * circ} ${circ}`} />
+      </svg>
+      <div className="absolute inset-0 flex items-center justify-center">
+        <span className="text-sm font-black text-white">{score}%</span>
+      </div>
+    </div>
+  );
+}
+
+function OverallHealthRing({ score }: { score: number }) {
+  const size = 96;
+  const r = (size / 2) - 8;
+  const circ = 2 * Math.PI * r;
+  const cx = size / 2;
+  return (
+    <div className="relative flex-shrink-0" style={{ width: size, height: size }}>
+      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="-rotate-90">
+        <circle cx={cx} cy={cx} r={r} fill="none" stroke="rgba(255,255,255,0.12)" strokeWidth="7" />
+        <circle cx={cx} cy={cx} r={r} fill="none" stroke={scRingColor(score)} strokeWidth="7" strokeLinecap="round"
+          strokeDasharray={`${(score / 100) * circ} ${circ}`} />
+      </svg>
+      <div className="absolute inset-0 flex flex-col items-center justify-center">
+        <span className="text-xl font-black text-white leading-none">{score}%</span>
+        <span className="text-[9px] font-bold text-white/50 uppercase tracking-widest mt-0.5">Overall</span>
+      </div>
+    </div>
+  );
+}
+
 // ── Main Component ────────────────────────────────────────────────────────────
 
 export default function ClientProjectDashboard() {
@@ -245,6 +314,9 @@ export default function ClientProjectDashboard() {
   const [m365Completion, setM365Completion] = useState<number | null>(null);
   const [m365NudgeDismissed, setM365NudgeDismissed] = useState(false);
 
+  // M365 health scorecard history
+  const [scorecardHistory, setScorecardHistory] = useState<ScorecardHistory | null>(null);
+
   // ── Load project list ────────────────────────────────────────────────────
 
   useEffect(() => {
@@ -273,6 +345,11 @@ export default function ClientProjectDashboard() {
       .then((d: { status?: string } | null) => {
         setAppRegStatus(d?.status ?? "pending");
       })
+      .catch(() => null);
+
+    fetchWithAuth("/api/portal/m365-scorecard-history")
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (d) setScorecardHistory(d as ScorecardHistory); })
       .catch(() => null);
 
     fetchWithAuth("/api/portal/m365-profile")
@@ -674,6 +751,119 @@ export default function ClientProjectDashboard() {
             </div>
           </div>
         )}
+
+        {/* ── M365 Environment Health Scorecards ───────────────────────────── */}
+        <div className="mb-6">
+          {!scorecardHistory?.hasData ? (
+            <div className="rounded-2xl overflow-hidden">
+              <div className="bg-[#0A2540] px-6 py-5 flex items-center justify-between gap-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
+                  <div>
+                    <p className="text-[10px] font-bold tracking-[0.2em] uppercase text-white/40">Mission Status</p>
+                    <h2 className="text-base font-black text-white tracking-tight">M365 Environment Health</h2>
+                  </div>
+                </div>
+                <Link href="/portal/m365-profile">
+                  <span className="text-xs font-bold text-[#0078D4] hover:text-white transition-colors cursor-pointer whitespace-nowrap">Set up profile →</span>
+                </Link>
+              </div>
+              <div className="bg-[#0d2d4a] border border-[#0A2540] rounded-b-2xl px-6 py-6 flex items-center gap-5">
+                <div className="w-12 h-12 rounded-xl bg-[#0078D4]/20 border border-[#0078D4]/30 flex items-center justify-center flex-shrink-0">
+                  <svg className="w-6 h-6 text-[#0078D4]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                  </svg>
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-bold text-white">Awaiting baseline scan</p>
+                  <p className="text-xs text-white/40 mt-0.5">Complete your M365 profile and save it — we'll generate your first environment health scores immediately.</p>
+                </div>
+                <Link href="/portal/m365-profile">
+                  <span className="inline-flex items-center gap-1.5 bg-[#0078D4] hover:bg-[#005fa3] text-white text-xs font-bold px-4 py-2.5 rounded-lg transition-colors cursor-pointer whitespace-nowrap">
+                    Run baseline scan
+                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M13 7l5 5m0 0l-5 5m5-5H6" />
+                    </svg>
+                  </span>
+                </Link>
+              </div>
+            </div>
+          ) : (() => {
+            const scores = SCORECARD_DEFS.map(d => scorecardHistory.latest?.[d.key] ?? 0);
+            const overall = Math.round(scores.reduce((a, b) => a + b, 0) / scores.length);
+            const isFirstSameAsLatest = scorecardHistory.firstDate === scorecardHistory.latestDate;
+            return (
+              <div className="rounded-2xl overflow-hidden shadow-lg">
+                <div className="bg-[#0A2540] px-6 py-5">
+                  <div className="flex items-center justify-between gap-4 flex-wrap">
+                    <div className="flex items-center gap-4">
+                      <OverallHealthRing score={overall} />
+                      <div>
+                        <p className="text-[10px] font-bold tracking-[0.2em] uppercase text-white/40">Mission Status</p>
+                        <h2 className="text-xl font-black text-white tracking-tight leading-tight">M365 Environment Health</h2>
+                        <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+                          <span className={`inline-flex items-center gap-1.5 text-[10px] font-bold px-2.5 py-1 rounded-md border ${scStatusBadge(overall)}`}>
+                            <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: scRingColor(overall) }} />
+                            {scStatusLabel(overall)}
+                          </span>
+                          {scorecardHistory.firstDate && (
+                            <span className="text-[10px] text-white/30 font-medium">
+                              Tracking since {new Date(scorecardHistory.firstDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                    <Link href="/portal/m365-profile">
+                      <span className="text-xs font-bold text-[#0078D4] hover:text-white transition-colors cursor-pointer whitespace-nowrap">Update profile →</span>
+                    </Link>
+                  </div>
+                </div>
+                <div className="bg-[#0d2d4a] border-x border-b border-[#0A2540]/80 rounded-b-2xl p-4">
+                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+                    {SCORECARD_DEFS.map(({ key, label }) => {
+                      const current = scorecardHistory.latest?.[key] ?? 0;
+                      const baseline = scorecardHistory.first?.[key] ?? null;
+                      const delta = baseline !== null ? current - baseline : null;
+                      const showHistory = baseline !== null && !isFirstSameAsLatest;
+                      return (
+                        <Link key={key} href="/portal/m365-profile">
+                          <div className="bg-[#0A2540] hover:bg-[#0e2f50] border border-white/5 hover:border-[#0078D4]/40 rounded-xl overflow-hidden cursor-pointer transition-all group hover:shadow-xl hover:shadow-black/30">
+                            <div className={`h-1 w-full ${scTopBar(current)}`} />
+                            <div className="p-4 flex flex-col items-center gap-3">
+                              <ScoreRingCard score={current} size={72} />
+                              <p className="text-[11px] font-bold text-white/80 text-center leading-snug uppercase tracking-wide">{label}</p>
+                              {showHistory && baseline !== null ? (
+                                <div className="w-full bg-white/5 rounded-lg px-3 py-2 flex flex-col items-center gap-1">
+                                  <div className="flex items-center gap-1.5 text-[11px] text-white/50">
+                                    <span>{baseline}%</span>
+                                    <svg className="w-3 h-3 flex-shrink-0 text-white/30" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                                      <path strokeLinecap="round" strokeLinejoin="round" d="M13 7l5 5m0 0l-5 5m5-5H6" />
+                                    </svg>
+                                    <span className="font-black text-white">{current}%</span>
+                                  </div>
+                                  {delta !== null && delta !== 0 && (
+                                    <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${delta > 0 ? "bg-green-500/20 text-green-400" : "bg-red-500/20 text-red-400"}`}>
+                                      {delta > 0 ? "+" : ""}{delta} pts
+                                    </span>
+                                  )}
+                                </div>
+                              ) : (
+                                <div className="w-full bg-white/5 rounded-lg px-3 py-2 text-center">
+                                  <span className="text-[10px] text-white/30 font-medium">Baseline set</span>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </Link>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
+        </div>
 
         {/* ── Mobile project selector ──────────────────────────────────────── */}
         <div className="md:hidden mb-4">
