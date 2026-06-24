@@ -737,7 +737,7 @@ export default function DashboardShell({ children }: { children: ReactNode }) {
 
   return (
     <TooltipProvider delayDuration={300}>
-      <div className="flex h-screen overflow-hidden bg-[#0D1117]">
+      <div className="flex h-full overflow-hidden bg-[#0D1117]">
 
         {/* Desktop sidebar */}
         <aside
