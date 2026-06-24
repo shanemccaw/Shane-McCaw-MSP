@@ -31,6 +31,8 @@ interface ContractDetail {
   wizardSelections: Array<{ stepId: string; stepTitle?: string; optionId: string; optionLabel?: string; priceAdjustment?: number }> | null;
   agreementBody: string | null;
   createdAt: string;
+  couponCode: string | null;
+  discountAmount: string | null;
 }
 
 const DEFAULT_AGREEMENT_BODY = `1. SCOPE OF SERVICES
@@ -84,51 +86,77 @@ function formatKey(k: string): string {
     .trim();
 }
 
+function renderInlineBold(text: string): React.ReactNode {
+  const parts = text.split(/(\*\*[^*]+\*\*)/g);
+  return parts.map((part, i) =>
+    part.startsWith("**") && part.endsWith("**")
+      ? <strong key={i} className="font-bold text-[#0A2540]">{part.slice(2, -2)}</strong>
+      : part
+  );
+}
+
 function AgreementBodyRenderer({ text }: { text: string }) {
   const numberedHeading = /^\d+\.\s+/;
-  const blocks: { type: "heading" | "para"; text: string }[] = [];
+  type Block = { type: "heading" | "para" | "hr" | "bold-heading"; text: string };
+  const blocks: Block[] = [];
   let currentPara: string[] = [];
+
+  const flushPara = () => {
+    if (currentPara.length > 0) {
+      const joined = currentPara.join(" ").trim();
+      if (joined) blocks.push({ type: "para", text: joined });
+      currentPara = [];
+    }
+  };
 
   for (const rawLine of text.split("\n")) {
     const line = rawLine.trimEnd();
-    if (numberedHeading.test(line.trimStart())) {
-      if (currentPara.length > 0) {
-        const joined = currentPara.join(" ").trim();
-        if (joined) blocks.push({ type: "para", text: joined });
-        currentPara = [];
-      }
-      blocks.push({ type: "heading", text: line.trim() });
-    } else if (line.trim() === "") {
-      if (currentPara.length > 0) {
-        const joined = currentPara.join(" ").trim();
-        if (joined) blocks.push({ type: "para", text: joined });
-        currentPara = [];
-      }
+    const trimmed = line.trim();
+
+    if (trimmed === "---") {
+      flushPara();
+      blocks.push({ type: "hr", text: "" });
+    } else if (/^\*\*[^*]+\*\*$/.test(trimmed)) {
+      // Line is entirely **bold** — treat as a section heading
+      flushPara();
+      blocks.push({ type: "bold-heading", text: trimmed.slice(2, -2) });
+    } else if (numberedHeading.test(trimmed)) {
+      flushPara();
+      blocks.push({ type: "heading", text: trimmed });
+    } else if (trimmed === "") {
+      flushPara();
     } else {
-      currentPara.push(line.trim());
+      currentPara.push(trimmed);
     }
   }
-  if (currentPara.length > 0) {
-    const joined = currentPara.join(" ").trim();
-    if (joined) blocks.push({ type: "para", text: joined });
-  }
+  flushPara();
 
   return (
     <div>
-      {blocks.map((block, i) =>
-        block.type === "heading" ? (
-          <h3
-            key={i}
-            className="text-[0.7rem] font-bold uppercase tracking-widest text-[#0A2540] mt-6 mb-1.5 first:mt-0"
-          >
-            {block.text}
-          </h3>
-        ) : (
+      {blocks.map((block, i) => {
+        if (block.type === "hr") {
+          return <hr key={i} className="border-slate-200 my-6" />;
+        }
+        if (block.type === "bold-heading") {
+          return (
+            <h3 key={i} className="text-[0.7rem] font-bold uppercase tracking-widest text-[#0A2540] mt-4 mb-1.5">
+              {block.text}
+            </h3>
+          );
+        }
+        if (block.type === "heading") {
+          return (
+            <h3 key={i} className="text-[0.7rem] font-bold uppercase tracking-widest text-[#0A2540] mt-6 mb-1.5 first:mt-0">
+              {block.text}
+            </h3>
+          );
+        }
+        return (
           <p key={i} className="text-[0.8rem] text-[#374151] leading-relaxed mb-2">
-            {block.text}
+            {renderInlineBold(block.text)}
           </p>
-        )
-      )}
+        );
+      })}
     </div>
   );
 }
@@ -317,15 +345,40 @@ export default function PortalContractDetail() {
                             </td>
                           </tr>
                         ))}
-                        {data!.finalPrice && (
-                          <tr className="border-t-2 border-slate-300">
-                            <td className="pt-2.5 font-bold text-[#0A2540]">Total</td>
-                            <td />
-                            <td className="pt-2.5 text-right font-bold text-[#0A2540] pl-4">
-                              {formatCurrency(data!.finalPrice)}
-                            </td>
-                          </tr>
-                        )}
+                        {data!.finalPrice && (() => {
+                          const discount = data!.discountAmount ? parseFloat(data!.discountAmount) : 0;
+                          const original = parseFloat(data!.finalPrice!);
+                          const discounted = Math.max(0, original - discount);
+                          return (
+                            <>
+                              {discount > 0 && (
+                                <tr className="border-t border-slate-200">
+                                  <td className="pt-2 pb-1 text-green-700 flex items-center gap-1.5">
+                                    <span>Promotional discount</span>
+                                    {data!.couponCode && (
+                                      <span className="font-mono text-[0.7rem] bg-green-100 border border-green-200 text-green-700 px-1.5 py-0.5 rounded ml-1">
+                                        {data!.couponCode}
+                                      </span>
+                                    )}
+                                  </td>
+                                  <td />
+                                  <td className="pt-2 pb-1 text-right font-semibold text-green-700 pl-4">
+                                    −{formatCurrency(discount)}
+                                  </td>
+                                </tr>
+                              )}
+                              <tr className="border-t-2 border-slate-300">
+                                <td className="pt-2.5 font-bold text-[#0A2540]">
+                                  {discount > 0 ? "Total Due" : "Total"}
+                                </td>
+                                <td />
+                                <td className="pt-2.5 text-right font-bold text-[#0A2540] pl-4">
+                                  {formatCurrency(discount > 0 ? discounted : original)}
+                                </td>
+                              </tr>
+                            </>
+                          );
+                        })()}
                       </tbody>
                     </table>
                     </div>

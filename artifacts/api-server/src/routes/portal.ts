@@ -1990,6 +1990,20 @@ router.get("/portal/contracts/:id", requireAuth, async (req: Request, res: Respo
 
   if (!row) { res.status(404).json({ error: "Contract not found" }); return; }
 
+  // Look up coupon/discount info from the linked invoice (joined via projectId)
+  let couponCode: string | null = null;
+  let discountAmount: string | null = null;
+  if (row.projectId) {
+    const [inv] = await db
+      .select({ couponCode: invoicesTable.couponCode, discountAmount: invoicesTable.discountAmount })
+      .from(invoicesTable)
+      .where(and(eq(invoicesTable.clientUserId, userId), eq(invoicesTable.projectId, row.projectId)))
+      .orderBy(desc(invoicesTable.createdAt))
+      .limit(1);
+    couponCode = inv?.couponCode ?? null;
+    discountAmount = inv?.discountAmount ? String(inv.discountAmount) : null;
+  }
+
   // Use the snapshotted agreement body stored at signing time.
   // For older contracts where it was not snapshotted, fall back to the live template.
   // If neither exists, use the standard Shane McCaw Consulting service agreement text.
@@ -2031,7 +2045,7 @@ This agreement is governed by the laws of the State of Virginia, without regard 
 This agreement, together with any applicable service order, constitutes the entire agreement between the parties regarding its subject matter and supersedes all prior discussions and representations.`;
   }
 
-  res.json({ ...row, agreementBody });
+  res.json({ ...row, agreementBody, couponCode, discountAmount });
 });
 
 router.get("/portal/contracts/:id/download", requireAuth, async (req: Request, res: Response) => {

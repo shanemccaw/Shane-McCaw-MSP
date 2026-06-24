@@ -188,8 +188,10 @@ export default function PortalInvoiceDetail() {
   }
 
   const totalAmount = inv ? parseFloat(inv.amount) : 0;
+  const discountAmount = inv?.discountAmount ? parseFloat(inv.discountAmount) : 0;
   const totalAdj = lineItems.reduce((sum, li) => sum + li.adjustment, 0);
-  const baseAmount = totalAmount - totalAdj;
+  // inv.amount is the final post-discount amount; add the discount back to get the original base price
+  const baseAmount = totalAmount + discountAmount - totalAdj;
   const serviceName = contract?.serviceName ?? inv?.description ?? "Consulting Services";
 
   // Build client address string parts
