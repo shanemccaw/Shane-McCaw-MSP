@@ -40,6 +40,7 @@ import opportunitiesRouter from "./opportunities";
 import adminDbStatusRouter from "./admin-db-status";
 import adminClientsRouter from "./admin-clients";
 import inboxRouter from "./inbox";
+import adminQuizPainMapRouter from "./admin-quiz-pain-map";
 
 const router: IRouter = Router();
 
@@ -84,5 +85,6 @@ router.use(mfaRouter);
 router.use(opportunitiesRouter);
 router.use(adminDbStatusRouter);
 router.use(inboxRouter);
+router.use(adminQuizPainMapRouter);
 
 export default router;

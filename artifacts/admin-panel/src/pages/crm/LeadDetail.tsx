@@ -528,7 +528,12 @@ const CATEGORY_PAIN_MAP: [string, string][] = [
   ["training", "Training"],
 ];
 
-function deriveSignalsFromQuiz(quiz: QuizMatch, leadSource: LeadSource): DerivedSignals {
+function deriveSignalsFromQuiz(
+  quiz: QuizMatch,
+  leadSource: LeadSource,
+  quizTypePainMap: Record<string, string[]> = QUIZ_TYPE_PAIN_MAP,
+  categoryPainMap: [string, string][] = CATEGORY_PAIN_MAP,
+): DerivedSignals {
   const painPoints = new Set<string>();
   const maturityIndicators = new Set<string>();
   const engagementSignals = new Set<string>();
@@ -536,7 +541,7 @@ function deriveSignalsFromQuiz(quiz: QuizMatch, leadSource: LeadSource): Derived
   const provenance: Record<string, string> = {};
 
   // Quiz type → Pain Points
-  const typePains = QUIZ_TYPE_PAIN_MAP[quiz.quizType] ?? [];
+  const typePains = quizTypePainMap[quiz.quizType] ?? [];
   typePains.forEach(p => {
     painPoints.add(p);
     provenance[p] = `Quiz type: ${quiz.quizType}`;
@@ -546,7 +551,7 @@ function deriveSignalsFromQuiz(quiz: QuizMatch, leadSource: LeadSource): Derived
   for (const [key, score] of Object.entries(quiz.categoryScores)) {
     if (score <= 5) {
       const normalized = key.toLowerCase().replace(/[\s_-]/g, "");
-      for (const [mapKey, pain] of CATEGORY_PAIN_MAP) {
+      for (const [mapKey, pain] of categoryPainMap) {
         if (normalized.includes(mapKey)) {
           // Low-score reason is more specific than quiz-type reason — prefer it
           painPoints.add(pain);
@@ -621,6 +626,10 @@ export default function LeadDetailPage({ params }: { params: { id: string } }) {
 
   const [lead, setLead] = useState<Lead | null>(null);
   const [quizMatches, setQuizMatches] = useState<QuizMatch[]>([]);
+  const [livePainMaps, setLivePainMaps] = useState<{
+    quizTypePainMap: Record<string, string[]>;
+    categoryPainMap: [string, string][];
+  } | null>(null);
   const [emails, setEmails] = useState<LinkedEmail[]>([]);
   const [qualHistory, setQualHistory] = useState<LeadQualification[]>([]);
   const [loading, setLoading] = useState(true);
@@ -696,6 +705,10 @@ export default function LeadDetailPage({ params }: { params: { id: string } }) {
         .then(r => r.ok ? r.json() as Promise<LeadQualification[]> : [])
         .then(data => setQualHistory(data))
         .catch(() => setQualHistory([])),
+      fetchWithAuth("/api/admin/quiz-pain-map")
+        .then(r => r.ok ? r.json() as Promise<{ quizTypePainMap: Record<string, string[]>; categoryPainMap: [string, string][] }> : null)
+        .then(data => { if (data) setLivePainMaps(data); })
+        .catch(() => { /* fall back to hardcoded defaults */ }),
     ]).finally(() => setLoading(false));
   }, [leadId, loadLead, fetchWithAuth]);
 
@@ -714,7 +727,12 @@ export default function LeadDetailPage({ params }: { params: { id: string } }) {
 
     if (!hasExistingSignals) {
       const bestMatch = [...quizMatches].sort((a, b) => b.totalScore - a.totalScore)[0];
-      const derived = deriveSignalsFromQuiz(bestMatch, lead.source);
+      const derived = deriveSignalsFromQuiz(
+        bestMatch,
+        lead.source,
+        livePainMaps?.quizTypePainMap,
+        livePainMaps?.categoryPainMap,
+      );
       const hasAnyDerived =
         derived.painPoints.length > 0 ||
         derived.maturityIndicators.length > 0 ||
@@ -737,7 +755,12 @@ export default function LeadDetailPage({ params }: { params: { id: string } }) {
   const reimportFromQuiz = () => {
     if (!lead || quizMatches.length === 0) return;
     const bestMatch = [...quizMatches].sort((a, b) => b.totalScore - a.totalScore)[0];
-    const derived = deriveSignalsFromQuiz(bestMatch, lead.source);
+    const derived = deriveSignalsFromQuiz(
+      bestMatch,
+      lead.source,
+      livePainMaps?.quizTypePainMap,
+      livePainMaps?.categoryPainMap,
+    );
     setQualProfile(p => ({
       ...p,
       painPoints: [...new Set([...p.painPoints, ...derived.painPoints])],

@@ -27,6 +27,7 @@ import StatusReportsPage from "@/pages/crm/StatusReports";
 import TestimonialsPage from "@/pages/crm/Testimonials";
 import M365IntelligencePage from "@/pages/crm/M365Intelligence";
 import QuizLeadsPage from "@/pages/crm/QuizLeads";
+import QuizPainMapPage from "@/pages/crm/QuizPainMap";
 import OpportunitiesPage from "@/pages/crm/Opportunities";
 import OpportunityDetailPage from "@/pages/crm/OpportunityDetail";
 import OverviewPage from "@/pages/Overview";
@@ -178,6 +179,9 @@ function Router() {
       </Route>
       <Route path="/crm/quiz-leads">
         <RequireAdmin><DashboardShell><QuizLeadsPage /></DashboardShell></RequireAdmin>
+      </Route>
+      <Route path="/crm/quiz-pain-map">
+        <RequireAdmin><DashboardShell><QuizPainMapPage /></DashboardShell></RequireAdmin>
       </Route>
       <Route path="/crm/opportunities/:id">
         {(params) => <RequireAdmin><DashboardShell><OpportunityDetailPage params={params} /></DashboardShell></RequireAdmin>}
