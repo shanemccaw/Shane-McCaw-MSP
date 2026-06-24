@@ -207,8 +207,8 @@ const SCORECARD_DEFS: { key: M365ScoreCategory; label: string; tab: string }[] =
   { key: "security",     label: "Security Posture",     tab: "security"   },
   { key: "compliance",   label: "Compliance Coverage",  tab: "security"   },
   { key: "copilot",      label: "Copilot Readiness",    tab: "copilot"    },
-  { key: "governance",   label: "Governance Maturity",  tab: "scorecards" },
-  { key: "productivity", label: "Adoption Score",       tab: "scorecards" },
+  { key: "governance",   label: "Governance Maturity",  tab: "security"   },
+  { key: "productivity", label: "Adoption Score",       tab: "licensing"  },
 ];
 
 function scRingColor(s: number) { return s >= 80 ? "#22c55e" : s >= 55 ? "#f59e0b" : "#ef4444"; }
