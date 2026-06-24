@@ -895,7 +895,7 @@ function StepComplete({ onGoToDashboard }: { onGoToDashboard: () => void }) {
 
 // ── Main wizard ───────────────────────────────────────────────────────────────
 
-export default function OnboardingWizard() {
+export default function OnboardingWizard({ mode = "onboarding" }: { mode?: "onboarding" | "update" }) {
   const { fetchWithAuth } = useAuth();
   const [, navigate] = useLocation();
   const [currentStep, setCurrentStep] = useState<StepId | "done">("m365");
@@ -927,7 +927,11 @@ export default function OnboardingWizard() {
       const err = await res.json() as { error?: string };
       throw new Error(err.error ?? "Could not save profile.");
     }
-    setCurrentStep("app-reg");
+    if (mode === "update") {
+      navigate("/portal/m365-profile");
+    } else {
+      setCurrentStep("app-reg");
+    }
   }
 
   async function handleAppRegSaveAndContinue(tenantId: string, clientId: string, secret: string) {
@@ -944,15 +948,20 @@ export default function OnboardingWizard() {
   }
 
   async function handleSkip() {
-    await completeWizard();
+    if (mode === "update") {
+      navigate("/portal/m365-profile");
+    } else {
+      await completeWizard();
+    }
   }
 
   function handleGoToDashboard() {
     navigate("/portal");
   }
 
-  const stepIndex = currentStep === "done" ? STEPS.length : STEPS.findIndex(s => s.id === currentStep);
-  const progress = currentStep === "done" ? 100 : Math.round((stepIndex / STEPS.length) * 100);
+  const visibleSteps = mode === "update" ? STEPS.filter(s => s.id === "m365") : STEPS;
+  const stepIndex = currentStep === "done" ? visibleSteps.length : visibleSteps.findIndex(s => s.id === currentStep);
+  const progress = currentStep === "done" ? 100 : Math.round((Math.max(stepIndex, 0) / visibleSteps.length) * 100);
 
   return (
     <div className="fixed inset-0 flex bg-[#F7F9FC]" style={{ zIndex: 9999 }}>
@@ -975,25 +984,37 @@ export default function OnboardingWizard() {
 
         {/* Welcome */}
         <div className="px-7 pt-6 pb-5">
-          <p className="text-xs font-semibold text-[#00B4D8] uppercase tracking-wider mb-1.5">Welcome aboard</p>
-          <h2 className="text-lg font-bold text-white leading-tight">Let's set up your workspace</h2>
-          <p className="text-xs text-white/40 mt-2 leading-relaxed">
-            This takes about 5 minutes. You can skip any step and come back later.
-          </p>
+          {mode === "update" ? (
+            <>
+              <p className="text-xs font-semibold text-[#00B4D8] uppercase tracking-wider mb-1.5">Update profile</p>
+              <h2 className="text-lg font-bold text-white leading-tight">Re-run M365 wizard</h2>
+              <p className="text-xs text-white/40 mt-2 leading-relaxed">
+                Walk through all 6 steps to update your answers. Changes save when you click "Save &amp; Continue" on the last step.
+              </p>
+            </>
+          ) : (
+            <>
+              <p className="text-xs font-semibold text-[#00B4D8] uppercase tracking-wider mb-1.5">Welcome aboard</p>
+              <h2 className="text-lg font-bold text-white leading-tight">Let's set up your workspace</h2>
+              <p className="text-xs text-white/40 mt-2 leading-relaxed">
+                This takes about 5 minutes. You can skip any step and come back later.
+              </p>
+            </>
+          )}
         </div>
 
         {/* Steps */}
         <div className="px-4 flex-1">
-          {STEPS.map((step, idx) => {
+          {visibleSteps.map((step, idx) => {
             const isActive = currentStep === step.id;
-            const stepPos = currentStep === "done" ? STEPS.length : STEPS.findIndex(s => s.id === currentStep);
+            const stepPos = currentStep === "done" ? visibleSteps.length : visibleSteps.findIndex(s => s.id === currentStep);
             const isDone = stepPos > idx;
             const isUpcoming = !isActive && !isDone;
 
             return (
               <div key={step.id} className="relative">
                 {/* Connector line */}
-                {idx < STEPS.length - 1 && (
+                {idx < visibleSteps.length - 1 && (
                   <div className={`absolute left-[23px] top-[44px] w-0.5 h-8 ${isDone ? "bg-[#0078D4]" : "bg-white/10"}`} />
                 )}
 

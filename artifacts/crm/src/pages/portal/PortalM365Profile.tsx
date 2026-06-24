@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import { useLocation } from "wouter";
 import { useForm, Controller, type Control } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -201,6 +202,7 @@ type AlertState = { type: "success" | "error"; message: string } | null;
 
 export default function PortalM365Profile() {
   const { fetchWithAuth } = useAuth();
+  const [, navigate] = useLocation();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [alert, setAlert] = useState<AlertState>(null);
@@ -307,19 +309,31 @@ export default function PortalM365Profile() {
                 Help Shane understand your Microsoft 365 environment so he can tailor your engagement.
               </p>
             </div>
-            <div className="flex-shrink-0 text-right">
-              <div className="text-xs font-semibold text-muted-foreground mb-1">Completion</div>
-              <div className="flex items-center gap-2">
-                <div className="w-28 h-2 bg-gray-200 rounded-full overflow-hidden">
-                  <div
-                    className="h-2 rounded-full transition-all"
-                    style={{ width: `${completion}%`, background: "linear-gradient(90deg, #0078D4 0%, #00B4D8 100%)" }}
-                  />
+            <div className="flex-shrink-0 flex flex-col items-end gap-2">
+              <div className="text-right">
+                <div className="text-xs font-semibold text-muted-foreground mb-1">Completion</div>
+                <div className="flex items-center gap-2">
+                  <div className="w-28 h-2 bg-gray-200 rounded-full overflow-hidden">
+                    <div
+                      className="h-2 rounded-full transition-all"
+                      style={{ width: `${completion}%`, background: "linear-gradient(90deg, #0078D4 0%, #00B4D8 100%)" }}
+                    />
+                  </div>
+                  <span className={`text-sm font-bold ${completion === 100 ? "text-green-600" : "text-[#0078D4]"}`}>
+                    {completion}%
+                  </span>
                 </div>
-                <span className={`text-sm font-bold ${completion === 100 ? "text-green-600" : "text-[#0078D4]"}`}>
-                  {completion}%
-                </span>
               </div>
+              <button
+                type="button"
+                onClick={() => navigate("/portal/m365-wizard")}
+                className="flex items-center gap-2 text-sm font-semibold text-[#0078D4] border border-[#0078D4]/30 bg-[#0078D4]/5 hover:bg-[#0078D4]/10 px-3.5 py-2 rounded-xl transition-colors"
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+                Re-run setup wizard
+              </button>
             </div>
           </div>
         </div>
