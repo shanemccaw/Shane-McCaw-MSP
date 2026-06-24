@@ -214,13 +214,13 @@ function buildContractHtml(
   `;
 }
 
-function readGuestInfo(): { name: string; email: string } {
+function readGuestInfo(): { name: string; email: string; company: string } {
   try {
     const raw = sessionStorage.getItem("onboardingGuest");
-    if (!raw) return { name: "", email: "" };
-    const parsed = JSON.parse(raw) as { name?: string; email?: string };
-    return { name: parsed.name ?? "", email: parsed.email ?? "" };
-  } catch { return { name: "", email: "" }; }
+    if (!raw) return { name: "", email: "", company: "" };
+    const parsed = JSON.parse(raw) as { name?: string; email?: string; company?: string };
+    return { name: parsed.name ?? "", email: parsed.email ?? "", company: parsed.company ?? "" };
+  } catch { return { name: "", email: "", company: "" }; }
 }
 
 export default function OnboardingContract() {
@@ -249,7 +249,7 @@ export default function OnboardingContract() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
   const [signerName, setSignerName] = useState(user?.name ?? guestInfo.name ?? user?.email?.split("@")[0] ?? "");
-  const [company, setCompany] = useState(user?.company ?? "");
+  const [company, setCompany] = useState(user?.company ?? guestInfo.company ?? "");
   const [phone, setPhone] = useState(user?.phone ?? "");
   const [street, setStreet] = useState(user?.address ?? "");
   const [city, setCity] = useState(user?.addressCity ?? "");
@@ -435,8 +435,17 @@ export default function OnboardingContract() {
           signerName,
           wizardSelections: Object.keys(wizardSelectionsInput).length > 0 ? wizardSelectionsInput : undefined,
           couponCode: appliedCoupon?.code ?? undefined,
-          // Pass guest email when not logged in (account created post-payment, not here)
-          ...(!user ? { guestEmail: guestInfo.email, guestName: guestInfo.name || signerName } : {}),
+          // Pass guest info when not logged in — address is saved to their profile at signing time
+          ...(!user ? {
+            guestEmail: guestInfo.email,
+            guestName: guestInfo.name || signerName,
+            guestCompany: company || undefined,
+            guestPhone: phone || undefined,
+            guestAddress: street || undefined,
+            guestCity: city || undefined,
+            guestState: addrState || undefined,
+            guestZip: zip || undefined,
+          } : {}),
         }),
       });
       if (!contractRes.ok) {

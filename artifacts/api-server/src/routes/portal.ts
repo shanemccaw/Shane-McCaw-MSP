@@ -5909,10 +5909,15 @@ router.post("/portal/onboarding/contract", async (req: Request, res: Response) =
   }
 
   const userId = resolvedUserId; // null for guests; contracts.userId is nullable
-  const { serviceId, serviceIds: rawServiceIds, signatureData, signerName, wizardSelections, couponCode: bodyCouponCode } = req.body as {
+  const {
+    serviceId, serviceIds: rawServiceIds, signatureData, signerName, wizardSelections, couponCode: bodyCouponCode,
+    guestName, guestCompany, guestPhone, guestAddress, guestCity, guestState, guestZip,
+  } = req.body as {
     serviceId?: number; serviceIds?: number[]; signatureData?: string; signerName?: string;
     wizardSelections?: Record<string, { stepId: string; stepTitle?: string; optionId: string; optionLabel?: string; priceAdjustment?: number }[]>;
     couponCode?: string;
+    guestName?: string; guestCompany?: string; guestPhone?: string;
+    guestAddress?: string; guestCity?: string; guestState?: string; guestZip?: string;
   };
 
   // Support both single serviceId (legacy) and serviceIds array (multi-service)
@@ -6150,6 +6155,31 @@ router.post("/portal/onboarding/contract", async (req: Request, res: Response) =
     clientId: resolvedUserId ?? undefined,
     metadata: { signerName, serviceCount: createdContracts.length },
   });
+
+  // ── Save guest profile fields (company, address, phone) at signing time ──────
+  // The full account (with password) is created after Stripe payment, but we
+  // pre-create the row here so the address is available from first login.
+  if (resolvedUserId === null && resolvedGuestEmail) {
+    try {
+      const { id: guestUserId } = await ensureClientAccount(resolvedGuestEmail, guestName ?? signerName);
+      // Only write fields that are not already populated to avoid clobbering existing data
+      const [existing] = await db
+        .select({ company: usersTable.company, phone: usersTable.phone, address: usersTable.address })
+        .from(usersTable).where(eq(usersTable.id, guestUserId));
+      const profilePatch: Record<string, string | null> = {};
+      if (!existing?.company && guestCompany?.trim()) profilePatch.company = guestCompany.trim();
+      if (!existing?.phone && guestPhone?.trim()) profilePatch.phone = guestPhone.trim();
+      if (!existing?.address && guestAddress?.trim()) profilePatch.address = guestAddress.trim();
+      if (guestCity?.trim()) profilePatch.addressCity = guestCity.trim();
+      if (guestState?.trim()) profilePatch.addressState = guestState.trim();
+      if (guestZip?.trim()) profilePatch.addressZip = guestZip.trim();
+      if (Object.keys(profilePatch).length > 0) {
+        await db.update(usersTable).set(profilePatch).where(eq(usersTable.id, guestUserId));
+      }
+    } catch (err) {
+      req.log.warn({ err }, "contract signing: failed to pre-save guest profile fields (non-fatal)");
+    }
+  }
 
   // Return both legacy single-contract and new multi-contract formats
   if (createdContracts.length === 1) {

@@ -72,6 +72,7 @@ export default function OnboardingSelect() {
   const [showGuestModal, setShowGuestModal] = useState(false);
   const [guestName, setGuestName] = useState("");
   const [guestEmail, setGuestEmail] = useState("");
+  const [guestCompany, setGuestCompany] = useState("");
   const [guestError, setGuestError] = useState("");
   const modalRef = useRef<HTMLDivElement>(null);
 
@@ -173,7 +174,7 @@ export default function OnboardingSelect() {
     setGuestError("");
     if (!guestEmail.trim()) { setGuestError("Please enter your email address."); return; }
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(guestEmail.trim())) { setGuestError("Please enter a valid email address."); return; }
-    sessionStorage.setItem("onboardingGuest", JSON.stringify({ name: guestName.trim(), email: guestEmail.trim().toLowerCase() }));
+    sessionStorage.setItem("onboardingGuest", JSON.stringify({ name: guestName.trim(), email: guestEmail.trim().toLowerCase(), company: guestCompany.trim() }));
     setShowGuestModal(false);
     proceedWithCheckout();
   };
@@ -285,6 +286,17 @@ export default function OnboardingSelect() {
                   value={guestName}
                   onChange={e => setGuestName(e.target.value)}
                   placeholder="Jane Smith"
+                  className="w-full border border-border rounded-xl px-3 py-2.5 text-sm text-[#0A2540] placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-[#0078D4]/30 focus:border-[#0078D4]"
+                />
+              </div>
+
+              <div>
+                <label className="text-xs font-semibold text-[#0A2540] mb-1.5 block">Company <span className="text-muted-foreground font-normal">(optional)</span></label>
+                <input
+                  type="text"
+                  value={guestCompany}
+                  onChange={e => setGuestCompany(e.target.value)}
+                  placeholder="Acme Corp"
                   className="w-full border border-border rounded-xl px-3 py-2.5 text-sm text-[#0A2540] placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-[#0078D4]/30 focus:border-[#0078D4]"
                 />
               </div>
