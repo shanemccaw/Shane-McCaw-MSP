@@ -503,7 +503,7 @@ interface DerivedSignals {
   provenance: Record<string, string>;
 }
 
-const QUIZ_TYPE_PAIN_MAP: Record<string, string[]> = {
+const DEFAULT_QUIZ_TYPE_PAIN_MAP: Record<string, string[]> = {
   sharepoint: ["SharePoint", "Governance"],
   migration: ["Migration"],
   "security-compliance": ["Security", "Compliance", "Governance"],
@@ -514,7 +514,7 @@ const QUIZ_TYPE_PAIN_MAP: Record<string, string[]> = {
   "m365-health": ["Security", "Compliance", "Governance"],
 };
 
-const CATEGORY_PAIN_MAP: [string, string][] = [
+const DEFAULT_CATEGORY_PAIN_MAP: [string, string][] = [
   ["sharepoint", "SharePoint"],
   ["teams", "Teams"],
   ["powerplatform", "Power Platform"],
@@ -528,11 +528,15 @@ const CATEGORY_PAIN_MAP: [string, string][] = [
   ["training", "Training"],
 ];
 
+interface QuizPainConfig {
+  quizTypePainMap: Record<string, string[]>;
+  categoryPainMap: [string, string][];
+}
+
 function deriveSignalsFromQuiz(
   quiz: QuizMatch,
   leadSource: LeadSource,
-  quizTypePainMap: Record<string, string[]> = QUIZ_TYPE_PAIN_MAP,
-  categoryPainMap: [string, string][] = CATEGORY_PAIN_MAP,
+  config: QuizPainConfig = { quizTypePainMap: DEFAULT_QUIZ_TYPE_PAIN_MAP, categoryPainMap: DEFAULT_CATEGORY_PAIN_MAP },
 ): DerivedSignals {
   const painPoints = new Set<string>();
   const maturityIndicators = new Set<string>();
@@ -541,7 +545,7 @@ function deriveSignalsFromQuiz(
   const provenance: Record<string, string> = {};
 
   // Quiz type → Pain Points
-  const typePains = quizTypePainMap[quiz.quizType] ?? [];
+  const typePains = config.quizTypePainMap[quiz.quizType] ?? [];
   typePains.forEach(p => {
     painPoints.add(p);
     provenance[p] = `Quiz type: ${quiz.quizType}`;
@@ -551,7 +555,7 @@ function deriveSignalsFromQuiz(
   for (const [key, score] of Object.entries(quiz.categoryScores)) {
     if (score <= 5) {
       const normalized = key.toLowerCase().replace(/[\s_-]/g, "");
-      for (const [mapKey, pain] of categoryPainMap) {
+      for (const [mapKey, pain] of config.categoryPainMap) {
         if (normalized.includes(mapKey)) {
           // Low-score reason is more specific than quiz-type reason — prefer it
           painPoints.add(pain);
@@ -626,13 +630,13 @@ export default function LeadDetailPage({ params }: { params: { id: string } }) {
 
   const [lead, setLead] = useState<Lead | null>(null);
   const [quizMatches, setQuizMatches] = useState<QuizMatch[]>([]);
-  const [livePainMaps, setLivePainMaps] = useState<{
-    quizTypePainMap: Record<string, string[]>;
-    categoryPainMap: [string, string][];
-  } | null>(null);
   const [emails, setEmails] = useState<LinkedEmail[]>([]);
   const [qualHistory, setQualHistory] = useState<LeadQualification[]>([]);
   const [loading, setLoading] = useState(true);
+  const [quizPainConfig, setQuizPainConfig] = useState<QuizPainConfig>({
+    quizTypePainMap: DEFAULT_QUIZ_TYPE_PAIN_MAP,
+    categoryPainMap: DEFAULT_CATEGORY_PAIN_MAP,
+  });
   const [notFound, setNotFound] = useState(false);
   const [status, setStatus] = useState<LeadStatus>("new");
   const [saving, setSaving] = useState(false);
@@ -705,17 +709,16 @@ export default function LeadDetailPage({ params }: { params: { id: string } }) {
         .then(r => r.ok ? r.json() as Promise<LeadQualification[]> : [])
         .then(data => setQualHistory(data))
         .catch(() => setQualHistory([])),
-      fetchWithAuth("/api/admin/quiz-pain-map")
-        .then(r => r.ok ? r.json() as Promise<{ quizTypePainMap: Record<string, string[]>; categoryPainMap: [string, string][] }> : null)
-        .then(data => { if (data) setLivePainMaps(data); })
-        .catch(() => { /* fall back to hardcoded defaults */ }),
+      fetchWithAuth("/api/admin/quiz-pain-config")
+        .then(r => r.ok ? r.json() as Promise<QuizPainConfig> : null)
+        .then(data => { if (data) setQuizPainConfig(data); })
+        .catch(() => {}),
     ]).finally(() => setLoading(false));
   }, [leadId, loadLead, fetchWithAuth]);
 
-  // Auto-fill qualification signals from quiz data on first load.
-  // Gated on !loading so livePainMaps is guaranteed to be populated (or failed)
-  // before auto-fill runs — prevents a race where defaults are used instead of
-  // the admin-configured maps.
+  // Auto-fill qualification signals from quiz data on first load
+  // Gate on !loading so the quiz pain config fetch has already resolved
+  // (all fetches run in Promise.all; loading is false only after all settle)
   useEffect(() => {
     if (loading) return;
     if (autoFillAppliedRef.current) return;
@@ -731,12 +734,7 @@ export default function LeadDetailPage({ params }: { params: { id: string } }) {
 
     if (!hasExistingSignals) {
       const bestMatch = [...quizMatches].sort((a, b) => b.totalScore - a.totalScore)[0];
-      const derived = deriveSignalsFromQuiz(
-        bestMatch,
-        lead.source,
-        livePainMaps?.quizTypePainMap,
-        livePainMaps?.categoryPainMap,
-      );
+      const derived = deriveSignalsFromQuiz(bestMatch, lead.source, quizPainConfig);
       const hasAnyDerived =
         derived.painPoints.length > 0 ||
         derived.maturityIndicators.length > 0 ||
@@ -754,17 +752,12 @@ export default function LeadDetailPage({ params }: { params: { id: string } }) {
         setAutoFillBannerVisible(true);
       }
     }
-  }, [lead, quizMatches, loading, livePainMaps]);
+  }, [loading, lead, quizMatches, quizPainConfig]);
 
   const reimportFromQuiz = () => {
     if (!lead || quizMatches.length === 0) return;
     const bestMatch = [...quizMatches].sort((a, b) => b.totalScore - a.totalScore)[0];
-    const derived = deriveSignalsFromQuiz(
-      bestMatch,
-      lead.source,
-      livePainMaps?.quizTypePainMap,
-      livePainMaps?.categoryPainMap,
-    );
+    const derived = deriveSignalsFromQuiz(bestMatch, lead.source, quizPainConfig);
     setQualProfile(p => ({
       ...p,
       painPoints: [...new Set([...p.painPoints, ...derived.painPoints])],

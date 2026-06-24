@@ -992,13 +992,12 @@ export const inboxMessageLinksTable = pgTable("inbox_message_links", {
 export type InsertInboxMessageLink = typeof inboxMessageLinksTable.$inferInsert;
 export type InboxMessageLink = typeof inboxMessageLinksTable.$inferSelect;
 
-// Quiz Pain Mappings — single-row config table for quiz-type → pain signal and
-// category keyword → pain signal mappings. Falls back to hardcoded defaults when empty.
-export const quizPainMappingsTable = pgTable("quiz_pain_mappings", {
+// Quiz Pain Signal Config — single-row admin-editable config for quiz→pain mappings
+export const quizPainSignalConfigTable = pgTable("quiz_pain_signal_config", {
   id: serial("id").primaryKey(),
-  quizTypePainMap: jsonb("quiz_type_pain_map").notNull().$type<Record<string, string[]>>().default({}),
-  categoryPainMap: jsonb("category_pain_map").notNull().$type<[string, string][]>().default([]),
+  quizTypePainMap: jsonb("quiz_type_pain_map").$type<Record<string, string[]>>().notNull().default({}),
+  categoryPainMap: jsonb("category_pain_map").$type<[string, string][]>().notNull().default([]),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
 
-export type QuizPainMappings = typeof quizPainMappingsTable.$inferSelect;
+export type QuizPainSignalConfig = typeof quizPainSignalConfigTable.$inferSelect;
