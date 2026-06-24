@@ -214,8 +214,8 @@ export default function HomeScreen() {
               </View>
             ) : (
               <View style={styles.section}>
-                {actions?.map((action) => (
-                  <Card key={action.id} style={styles.actionCard}>
+                {actions?.map((action, i) => (
+                  <Card key={action.id ?? `action-${i}`} style={styles.actionCard}>
                     <View style={styles.actionRow}>
                       <View style={[styles.actionDot, { backgroundColor: action.priority === "high" ? colors.destructive : colors.primary }]} />
                       <View style={styles.actionContent}>
@@ -274,8 +274,8 @@ export default function HomeScreen() {
               </View>
             ) : (
               <View style={[styles.section, { marginBottom: 20 }]}>
-                {activity?.map((item) => (
-                  <View key={String(item.id)} style={[styles.activityRow, { borderBottomColor: colors.border }]}>
+                {activity?.map((item, i) => (
+                  <View key={item.id != null ? String(item.id) : `activity-${i}`} style={[styles.activityRow, { borderBottomColor: colors.border }]}>
                     <View style={[styles.activityIcon, { backgroundColor: colors.secondary }]}>
                       <Feather name={activityIcon(item.type)} size={14} color={colors.primary} />
                     </View>
