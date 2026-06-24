@@ -84,6 +84,8 @@ export default function OnboardingSelect() {
 
   const toggleService = (id: number) => {
     const svc = services.find(s => s.id === id);
+    const wasSelected = selectedIds.has(id);
+
     setSelectedIds(prev => {
       const next = new Set(prev);
       if (next.has(id)) {
@@ -100,6 +102,13 @@ export default function OnboardingSelect() {
       }
       return next;
     });
+
+    // Open the wizard immediately when a wizard-service is newly selected
+    if (!wasSelected && svc?.orderWorkflow?.length && svc.basePrice) {
+      sessionStorage.removeItem("wizardSelections");
+      setWizardQueue([svc]);
+      setWizardIndex(0);
+    }
   };
 
   const navigateToContract = () => {
@@ -112,9 +121,14 @@ export default function OnboardingSelect() {
 
   const proceedWithCheckout = () => {
     const selected = services.filter(s => selectedIds.has(s.id));
-    const needsWizard = selected.filter(s => s.orderWorkflow?.length && s.basePrice);
+    // Skip wizard services that were already configured via the card-click flow
+    const existingSelections = JSON.parse(
+      sessionStorage.getItem("wizardSelections") ?? "{}"
+    ) as Record<string, WizardSelection[]>;
+    const needsWizard = selected.filter(
+      s => s.orderWorkflow?.length && s.basePrice && !existingSelections[String(s.id)]
+    );
     if (needsWizard.length > 0) {
-      sessionStorage.removeItem("wizardSelections");
       setWizardQueue(needsWizard);
       setWizardIndex(0);
     } else {
@@ -158,6 +172,15 @@ export default function OnboardingSelect() {
   };
 
   const handleWizardCancel = () => {
+    // Deselect the service whose wizard was cancelled
+    const cancelledService = wizardQueue[wizardIndex];
+    if (cancelledService) {
+      setSelectedIds(prev => {
+        const next = new Set(prev);
+        next.delete(cancelledService.id);
+        return next;
+      });
+    }
     setWizardQueue([]);
     setWizardIndex(0);
   };
