@@ -144,7 +144,7 @@ function computeSecurityScore(m365: M365Data): number {
     m365.hasRetentionPolicies,
   ];
   const answered = checks.filter(c => c !== undefined);
-  if (answered.length === 0) return 50;
+  if (answered.length === 0) return 0;
   const yes = checks.filter(c => c === true).length;
   return Math.round((yes / checks.length) * 100);
 }
@@ -152,21 +152,21 @@ function computeSecurityScore(m365: M365Data): number {
 function computeComplianceScore(m365: M365Data): number {
   const checks = [m365.hasDLP, m365.usesComplianceCenter, m365.sensitivityLabelsConfigured, m365.hasRetentionPolicies, m365.hasInsiderRisk];
   const answered = checks.filter(c => c !== undefined);
-  if (answered.length === 0) return 45;
+  if (answered.length === 0) return 0;
   return Math.round((checks.filter(c => c === true).length / checks.length) * 100);
 }
 
 function computeGovScore(m365: M365Data): number {
   const checks = [m365.hasRetentionPolicies, m365.sensitivityLabelsConfigured, m365.usesComplianceCenter, m365.conditionalAccessEnabled];
   const answered = checks.filter(c => c !== undefined);
-  if (answered.length === 0) return 40;
+  if (answered.length === 0) return 0;
   return Math.round((checks.filter(c => c === true).length / checks.length) * 100);
 }
 
 function computeCopilotScore(m365: M365Data): number {
   const checks = [m365.hasCopilotLicenses, m365.mfaEnforced, m365.sensitivityLabelsConfigured, m365.hasDLP, m365.hasRetentionPolicies];
   const answered = checks.filter(c => c !== undefined);
-  if (answered.length === 0) return 30;
+  if (answered.length === 0) return 0;
   return Math.round((checks.filter(c => c === true).length / checks.length) * 100);
 }
 
