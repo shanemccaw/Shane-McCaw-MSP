@@ -7,58 +7,61 @@ import { useAuth } from "@/contexts/AuthContext";
 import PortalLayout from "@/components/PortalLayout";
 
 // ── Zod schema ────────────────────────────────────────────────────────────────
-// Boolean fields use z.boolean().optional() so that undefined = "not yet answered"
-// and false = "explicitly answered No". This lets the completion badge treat both
-// true and false as filled, while truly unanswered fields remain incomplete.
 
 const m365Schema = z.object({
+  // Step 1 — Organisation Overview
   orgName:              z.string().default(""),
   industry:             z.string().default(""),
   employeeCount:        z.string().default(""),
   licensedUserCount:    z.string().default(""),
+  tenantDomain:         z.string().default(""),
   itContactName:        z.string().default(""),
   itContactEmail:       z.string().default(""),
-  tenantDomain:         z.string().default(""),
   isMicrosoftPartner:   z.boolean().optional(),
 
+  // Step 2 — Licensing & Usage
   licenseSKUs:          z.array(z.string()).default([]),
-  allUsersLicensed:     z.boolean().optional(),
   activeUserPercent:    z.string().default(""),
+  allUsersLicensed:     z.boolean().optional(),
   usesExchange:         z.boolean().optional(),
   usesTeams:            z.boolean().optional(),
   usesSharePoint:       z.boolean().optional(),
   usesOneDrive:         z.boolean().optional(),
   usesYammer:           z.boolean().optional(),
 
-  sharepointSiteCount:  z.string().default(""),
-  teamCount:            z.string().default(""),
-  securityGroupCount:   z.string().default(""),
+  // Step 3 — Environment Structure
+  sharepointSiteCount:    z.string().default(""),
+  teamCount:              z.string().default(""),
+  securityGroupCount:     z.string().default(""),
+  authMethod:             z.string().default(""),
   externalSharingEnabled: z.boolean().optional(),
-  guestUsersPresent:    z.boolean().optional(),
-  authMethod:           z.string().default(""),
-  isHybrid:             z.boolean().optional(),
-  hasOnPremExchange:    z.boolean().optional(),
-  usesAADConnect:       z.boolean().optional(),
+  guestUsersPresent:      z.boolean().optional(),
+  isHybrid:               z.boolean().optional(),
+  hasOnPremExchange:      z.boolean().optional(),
+  usesAADConnect:         z.boolean().optional(),
 
-  mfaEnforced:                z.boolean().optional(),
-  conditionalAccessEnabled:   z.boolean().optional(),
-  intuneEnabled:              z.boolean().optional(),
-  hasAADP1orP2:               z.boolean().optional(),
-  hasDefender:                z.boolean().optional(),
-  hasDLP:                     z.boolean().optional(),
-  usesComplianceCenter:       z.boolean().optional(),
-  sensitivityLabelsConfigured: z.boolean().optional(),
-  hasRetentionPolicies:       z.boolean().optional(),
-  hasInsiderRisk:             z.boolean().optional(),
+  // Step 4 — Security & Compliance
+  mfaEnforced:                  z.boolean().optional(),
+  conditionalAccessEnabled:     z.boolean().optional(),
+  hasAADP1orP2:                 z.boolean().optional(),
+  intuneEnabled:                z.boolean().optional(),
+  hasDefender:                  z.boolean().optional(),
+  hasDLP:                       z.boolean().optional(),
+  usesComplianceCenter:         z.boolean().optional(),
+  sensitivityLabelsConfigured:  z.boolean().optional(),
+  hasRetentionPolicies:         z.boolean().optional(),
+  hasInsiderRisk:               z.boolean().optional(),
 
-  hasCopilotLicenses:         z.boolean().optional(),
-  copilotLicenseCount:        z.string().default(""),
-  copilotUseCase:             z.string().default(""),
-  currentAITools:             z.string().default(""),
-  dataGovernanceConcerns:     z.string().default(""),
-  copilotReadinessScore:      z.string().default(""),
-  copilotBlockedBy:           z.string().default(""),
+  // Step 5 — Copilot Readiness
+  hasCopilotLicenses:       z.boolean().optional(),
+  copilotLicenseCount:      z.string().default(""),
+  copilotUseCase:           z.string().default(""),
+  currentAITools:           z.string().default(""),
+  dataGovernanceConcerns:   z.string().default(""),
+  copilotReadinessScore:    z.string().default(""),
+  copilotBlockedBy:         z.string().default(""),
 
+  // Engagement Goals
   engagementStartDate:  z.string().default(""),
   estimatedDuration:    z.string().default(""),
   engagementType:       z.string().default(""),
@@ -73,9 +76,6 @@ const m365Schema = z.object({
 type FormValues = z.infer<typeof m365Schema>;
 
 // ── Completion calculation ────────────────────────────────────────────────────
-// Boolean: answered (true OR false) = 1 point; undefined = 0.
-// String: non-empty = 1 point.
-// Array: length > 0 = 1 point.
 
 const STRING_FIELDS: (keyof FormValues)[] = [
   "orgName", "industry", "employeeCount", "licensedUserCount",
@@ -95,7 +95,7 @@ const BOOL_FIELDS: (keyof FormValues)[] = [
   "intuneEnabled", "hasCopilotLicenses",
 ];
 
-const TOTAL_FIELDS = STRING_FIELDS.length + BOOL_FIELDS.length + 1; // +1 for licenseSKUs
+const TOTAL_FIELDS = STRING_FIELDS.length + BOOL_FIELDS.length + 1;
 
 function computeCompletion(values: FormValues): number {
   let filled = 0;
@@ -110,69 +110,69 @@ function computeCompletion(values: FormValues): number {
   return Math.round((filled / TOTAL_FIELDS) * 100);
 }
 
-// ── Tabs ─────────────────────────────────────────────────────────────────────
+// ── Tabs — each maps to a direct URL ?tab=<id> ────────────────────────────────
 
 const TABS = [
-  { id: "org",        label: "Organization" },
-  { id: "licensing",  label: "Licensing & Apps" },
+  { id: "org",        label: "Organisation Overview" },
+  { id: "licensing",  label: "Licensing & Usage" },
+  { id: "structure",  label: "Environment Structure" },
   { id: "security",   label: "Security & Compliance" },
   { id: "copilot",    label: "Copilot Readiness" },
   { id: "scorecards", label: "Scorecards" },
 ] as const;
 type TabId = typeof TABS[number]["id"];
 
+const VALID_TABS: TabId[] = ["org", "licensing", "structure", "security", "copilot", "scorecards"];
+
 // ── Small UI helpers ──────────────────────────────────────────────────────────
+
+const inputClass =
+  "w-full px-3.5 py-2.5 rounded-xl border border-gray-200 bg-white text-[#0A2540] text-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#0078D4]/30 focus:border-[#0078D4] transition-colors";
 
 function Field({ label, children, hint }: { label: string; children: React.ReactNode; hint?: string }) {
   return (
     <div>
       <label className="block text-xs font-semibold text-[#0A2540] mb-1.5">{label}</label>
       {children}
-      {hint && <p className="mt-1 text-xs text-muted-foreground">{hint}</p>}
+      {hint && <p className="mt-1 text-xs text-gray-500">{hint}</p>}
     </div>
   );
 }
 
-const inputClass =
-  "w-full px-3.5 py-2.5 rounded-xl border border-border bg-white text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4]/30 focus:border-[#0078D4] transition-colors";
+function CardSection({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+      <div className="px-5 py-3.5 border-b border-gray-100 bg-[#F7F9FC]">
+        <p className="text-xs font-bold uppercase tracking-wider text-gray-400">{title}</p>
+      </div>
+      <div className="px-5 py-5 space-y-4">{children}</div>
+    </div>
+  );
+}
 
 function Toggle({ value, onChange, label }: {
   value: boolean | undefined;
   onChange: (v: boolean) => void;
   label: string;
 }) {
-  const isAnswered = value !== undefined;
   const checked = value === true;
-
   return (
     <label className="flex items-center gap-3 cursor-pointer group">
       <div
         onClick={() => onChange(!checked)}
-        className={`relative w-9 h-5 rounded-full transition-colors flex-shrink-0 ${
-          !isAnswered ? "bg-gray-200 border-2 border-dashed border-gray-300" :
-          checked ? "bg-[#0078D4]" : "bg-gray-200"
+        className={`relative w-9 h-5 rounded-full transition-all flex-shrink-0 cursor-pointer ${
+          value === undefined ? "bg-gray-200 border-2 border-dashed border-gray-300" : checked ? "bg-[#0078D4]" : "bg-gray-200"
         }`}
       >
         <span className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${checked ? "translate-x-4" : ""}`} />
       </div>
       <span className="text-sm text-[#0A2540] group-hover:text-[#0078D4] transition-colors flex-1">{label}</span>
-      {!isAnswered && (
+      {value === undefined && (
         <span className="text-[10px] font-semibold text-amber-600 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded">
-          Not answered
+          not answered
         </span>
       )}
     </label>
-  );
-}
-
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <div className="bg-white rounded-2xl border border-border shadow-sm overflow-hidden">
-      <div className="px-5 py-4 border-b border-border">
-        <h3 className="text-sm font-semibold text-[#0A2540]">{title}</h3>
-      </div>
-      <div className="px-5 py-5 space-y-4">{children}</div>
-    </div>
   );
 }
 
@@ -196,6 +196,30 @@ function BoolController({ name, control, label }: {
   );
 }
 
+function MultiSelect({ value, onChange, options }: { value: string[]; onChange: (v: string[]) => void; options: string[] }) {
+  return (
+    <div className="flex flex-wrap gap-2 pt-1">
+      {options.map(opt => {
+        const sel = value.includes(opt);
+        return (
+          <button
+            key={opt}
+            type="button"
+            onClick={() => onChange(sel ? value.filter(v => v !== opt) : [...value, opt])}
+            className={`text-xs font-semibold px-2.5 py-1.5 rounded-full border transition-colors ${
+              sel
+                ? "bg-[#0078D4] text-white border-[#0078D4]"
+                : "bg-white text-[#0A2540] border-gray-200 hover:border-[#0078D4]"
+            }`}
+          >
+            {opt}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 type AlertState = { type: "success" | "error"; message: string } | null;
 
 // ── Page component ────────────────────────────────────────────────────────────
@@ -208,19 +232,22 @@ export default function PortalM365Profile() {
   const [alert, setAlert] = useState<AlertState>(null);
   const [activeTab, setActiveTab] = useState<TabId>(() => {
     const param = new URLSearchParams(window.location.search).get("tab");
-    const valid: TabId[] = ["org", "licensing", "security", "copilot", "scorecards"];
-    return (valid.includes(param as TabId) ? param : "org") as TabId;
+    return (VALID_TABS.includes(param as TabId) ? param : "org") as TabId;
   });
 
   const form = useForm<FormValues>({
     resolver: zodResolver(m365Schema),
     defaultValues: m365Schema.parse({}),
   });
-  const { control, register, handleSubmit, watch, setValue, reset } = form;
+  const { control, register, handleSubmit, watch, reset } = form;
 
-  // Watch all values for live completion badge
   const values = watch();
   const completion = computeCompletion(values);
+
+  function switchTab(id: TabId) {
+    setActiveTab(id);
+    navigate(`/portal/m365-profile?tab=${id}`);
+  }
 
   // ── Load existing profile ────────────────────────────────────────────────
 
@@ -230,28 +257,14 @@ export default function PortalM365Profile() {
       fetchWithAuth("/api/portal/profile").then(r => r.json() as Promise<{ company?: string | null }>),
     ])
       .then(([m365Data, profileData]) => {
-        // Build defaults, only overriding keys that actually exist in the response
-        // so boolean fields remain `undefined` if not yet answered
         const merged: Partial<FormValues> = { ...m365Schema.parse({}) };
         for (const key of Object.keys(m365Data)) {
           const k = key as keyof FormValues;
           const v = m365Data[key];
-          if (v !== null && v !== undefined) {
-            if (Array.isArray(v)) {
-              (merged as Record<string, unknown>)[k] = v;
-            } else {
-              (merged as Record<string, unknown>)[k] = v;
-            }
-          }
-          // Booleans explicitly set to false must still be preserved
-          if (typeof v === "boolean") {
-            (merged as Record<string, unknown>)[k] = v;
-          }
+          if (v !== null && v !== undefined) (merged as Record<string, unknown>)[k] = v;
+          if (typeof v === "boolean") (merged as Record<string, unknown>)[k] = v;
         }
-        // Pre-fill Organisation Name from checkout company if not already saved
-        if (!merged.orgName && profileData.company) {
-          merged.orgName = profileData.company;
-        }
+        if (!merged.orgName && profileData.company) merged.orgName = profileData.company;
         reset(merged as FormValues);
       })
       .catch(() => setAlert({ type: "error", message: "Could not load your profile. Please refresh." }))
@@ -263,7 +276,6 @@ export default function PortalM365Profile() {
   const onSubmit = useCallback(async (data: FormValues) => {
     setSaving(true);
     setAlert(null);
-    // Strip undefined boolean values so the server stores only explicit answers
     const payload: Record<string, unknown> = {};
     for (const [k, v] of Object.entries(data)) {
       if (v !== undefined) payload[k] = v;
@@ -300,6 +312,26 @@ export default function PortalM365Profile() {
     </div>
   );
 
+  // ── Dropdown options ──────────────────────────────────────────────────────
+
+  const industries = ["Technology", "Healthcare", "Finance & Banking", "Legal", "Education", "Manufacturing", "Retail", "Government", "Nonprofit", "Real Estate", "Professional Services", "Other"];
+  const skus = ["M365 Business Basic", "M365 Business Standard", "M365 Business Premium", "Office 365 E1", "M365 E3", "M365 E5", "M365 F1", "M365 F3", "Copilot for M365"];
+  const authOptions = [
+    { value: "password",           label: "Password only" },
+    { value: "mfa",                label: "MFA (per-user)" },
+    { value: "sso_saml",           label: "SSO / SAML" },
+    { value: "entra_id",           label: "Entra ID (Azure AD)" },
+    { value: "conditional_access", label: "Conditional Access policies" },
+  ];
+  const blockerOpts = ["None", "Budget", "Licensing", "Security concerns", "Training gaps", "Governance / data readiness", "Leadership buy-in"];
+  const scoreOpts = [
+    { value: "1", label: "1 – Not ready" },
+    { value: "2", label: "2 – Early stages" },
+    { value: "3", label: "3 – Partially ready" },
+    { value: "4", label: "4 – Mostly ready" },
+    { value: "5", label: "5 – Fully ready" },
+  ];
+
   return (
     <PortalLayout>
       <div className="max-w-3xl mx-auto px-4 sm:px-6 py-8">
@@ -309,13 +341,13 @@ export default function PortalM365Profile() {
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
               <h1 className="text-2xl font-bold text-[#0A2540]">M365 Environment Profile</h1>
-              <p className="text-sm text-muted-foreground mt-1">
+              <p className="text-sm text-gray-500 mt-1">
                 Help Shane understand your Microsoft 365 environment so he can tailor your engagement.
               </p>
             </div>
             <div className="flex-shrink-0 flex flex-col items-end gap-2">
               <div className="text-right">
-                <div className="text-xs font-semibold text-muted-foreground mb-1">Completion</div>
+                <div className="text-xs font-semibold text-gray-400 mb-1">Completion</div>
                 <div className="flex items-center gap-2">
                   <div className="w-28 h-2 bg-gray-200 rounded-full overflow-hidden">
                     <div
@@ -365,49 +397,57 @@ export default function PortalM365Profile() {
         ) : (
           <form onSubmit={(e) => { void handleSubmit(onSubmit)(e); }}>
 
-            {/* Tab strip */}
-            <div className="flex gap-1 mb-6 bg-white border border-border rounded-2xl p-1.5 overflow-x-auto">
-              {TABS.map(tab => (
+            {/* Tab strip — each tab updates the URL for direct linking */}
+            <div className="flex gap-1 mb-6 bg-white border border-gray-200 rounded-2xl p-1.5 overflow-x-auto">
+              {TABS.map((tab, i) => (
                 <button
                   key={tab.id}
                   type="button"
-                  onClick={() => setActiveTab(tab.id)}
-                  className={`flex-1 text-xs font-semibold px-3 py-2 rounded-xl whitespace-nowrap transition-all ${
+                  onClick={() => switchTab(tab.id)}
+                  className={`flex-shrink-0 flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-xl whitespace-nowrap transition-all ${
                     activeTab === tab.id
                       ? "bg-[#0078D4] text-white shadow"
-                      : "text-muted-foreground hover:text-[#0A2540]"
+                      : "text-gray-400 hover:text-[#0A2540]"
                   }`}
                 >
+                  {tab.id !== "scorecards" && (
+                    <span className={`w-4 h-4 rounded-full text-[9px] font-black flex items-center justify-center flex-shrink-0 ${
+                      activeTab === tab.id ? "bg-white/20 text-white" : "bg-gray-100 text-gray-400"
+                    }`}>{i + 1}</span>
+                  )}
                   {tab.label}
                 </button>
               ))}
             </div>
 
-            {/* ── Organization ────────────────────────────────────────────── */}
+            {/* ── Step 1: Organisation Overview ─────────────────────────── */}
             {activeTab === "org" && (
               <div className="space-y-4">
-                <Section title="Organization Overview">
+                <CardSection title="Organisation">
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <Field label="Organization Name">
+                    <Field label="Organisation Name">
                       <input {...register("orgName")} placeholder="Acme Corp" className={inputClass} />
                     </Field>
                     <Field label="Industry">
-                      <input {...register("industry")} placeholder="e.g. Healthcare, Finance" className={inputClass} />
+                      <select {...register("industry")} className={inputClass}>
+                        <option value="">Select…</option>
+                        {industries.map(i => <option key={i} value={i}>{i}</option>)}
+                      </select>
                     </Field>
                     <Field label="Total Employees">
-                      <input {...register("employeeCount")} placeholder="e.g. 250" className={inputClass} />
+                      <input {...register("employeeCount")} type="number" min="0" placeholder="e.g. 250" className={inputClass} />
                     </Field>
                     <Field label="Licensed M365 Users">
-                      <input {...register("licensedUserCount")} placeholder="e.g. 200" className={inputClass} />
+                      <input {...register("licensedUserCount")} type="number" min="0" placeholder="e.g. 200" className={inputClass} />
                     </Field>
-                    <Field label="Tenant Domain" hint="Your primary *.onmicrosoft.com or custom domain">
+                    <Field label="Tenant Domain" hint="Primary *.onmicrosoft.com or custom domain">
                       <input {...register("tenantDomain")} placeholder="contoso.onmicrosoft.com" className={inputClass} />
                     </Field>
                   </div>
                   <BoolController name="isMicrosoftPartner" control={control} label="We are a Microsoft partner" />
-                </Section>
+                </CardSection>
 
-                <Section title="IT Contact">
+                <CardSection title="IT Contact">
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <Field label="IT Contact Name">
                       <input {...register("itContactName")} placeholder="Jane Smith" className={inputClass} />
@@ -416,9 +456,9 @@ export default function PortalM365Profile() {
                       <input {...register("itContactEmail")} type="email" placeholder="it@acme.com" className={inputClass} />
                     </Field>
                   </div>
-                </Section>
+                </CardSection>
 
-                <Section title="Engagement Details">
+                <CardSection title="Engagement Details">
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <Field label="Decision Maker Name">
                       <input {...register("decisionMakerName")} placeholder="John Doe" className={inputClass} />
@@ -443,172 +483,165 @@ export default function PortalM365Profile() {
                     </Field>
                   </div>
                   <Field label="Business Goals">
-                    <textarea
-                      {...register("businessGoals")}
-                      placeholder="Describe what you'd like to achieve with this engagement…"
-                      rows={3}
-                      className={`${inputClass} resize-none`}
-                    />
+                    <textarea {...register("businessGoals")} placeholder="Describe what you'd like to achieve with this engagement…" rows={3} className={`${inputClass} resize-none`} />
                   </Field>
                   <Field label="Known Blockers">
-                    <textarea
-                      {...register("knownBlockers")}
-                      placeholder="Any known blockers, constraints, or concerns…"
-                      rows={2}
-                      className={`${inputClass} resize-none`}
-                    />
+                    <textarea {...register("knownBlockers")} placeholder="Any known blockers, constraints, or concerns…" rows={2} className={`${inputClass} resize-none`} />
                   </Field>
-                </Section>
+                </CardSection>
 
                 {saveButton}
               </div>
             )}
 
-            {/* ── Licensing & Apps ─────────────────────────────────────────── */}
+            {/* ── Step 2: Licensing & Usage ──────────────────────────────── */}
             {activeTab === "licensing" && (
               <div className="space-y-4">
-                <Section title="License SKUs">
-                  <Field label="License SKUs (comma-separated)" hint="e.g. Microsoft 365 E3, Microsoft 365 E5, Teams Essentials">
+                <CardSection title="License SKUs">
+                  <Field label="Select all that apply">
                     <Controller
                       name="licenseSKUs"
                       control={control}
                       render={({ field }) => (
-                        <input
-                          type="text"
-                          value={(field.value ?? []).join(", ")}
-                          onChange={e => field.onChange(e.target.value.split(",").map(s => s.trim()).filter(Boolean))}
-                          placeholder="Microsoft 365 E3, Copilot for M365"
-                          className={inputClass}
-                        />
+                        <MultiSelect value={field.value ?? []} onChange={field.onChange} options={skus} />
                       )}
                     />
                   </Field>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <Field label="Active User Percentage">
-                      <input {...register("activeUserPercent")} placeholder="e.g. 75%" className={inputClass} />
-                    </Field>
-                  </div>
+                  <Field label="Active User Percentage" hint="What percentage of licensed users are active month-to-month?">
+                    <input {...register("activeUserPercent")} type="number" min="0" max="100" placeholder="e.g. 85" className={inputClass} />
+                  </Field>
                   <BoolController name="allUsersLicensed" control={control} label="All users are fully licensed" />
-                </Section>
+                </CardSection>
 
-                <Section title="Apps in Use">
+                <CardSection title="Workloads in Use">
                   <div className="space-y-3">
-                    <BoolController name="usesExchange"   control={control} label="Exchange Online / email" />
+                    <BoolController name="usesExchange"   control={control} label="Exchange Online / Email" />
                     <BoolController name="usesTeams"      control={control} label="Microsoft Teams" />
                     <BoolController name="usesSharePoint" control={control} label="SharePoint Online" />
                     <BoolController name="usesOneDrive"   control={control} label="OneDrive for Business" />
                     <BoolController name="usesYammer"     control={control} label="Viva Engage / Yammer" />
                   </div>
-                </Section>
+                </CardSection>
 
-                <Section title="Environment Structure">
+                {saveButton}
+              </div>
+            )}
+
+            {/* ── Step 3: Environment Structure ─────────────────────────── */}
+            {activeTab === "structure" && (
+              <div className="space-y-4">
+                <CardSection title="Scale">
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                     <Field label="SharePoint Sites">
-                      <input {...register("sharepointSiteCount")} placeholder="e.g. 40" className={inputClass} />
+                      <input {...register("sharepointSiteCount")} type="number" min="0" placeholder="e.g. 15" className={inputClass} />
                     </Field>
                     <Field label="Teams Count">
-                      <input {...register("teamCount")} placeholder="e.g. 120" className={inputClass} />
+                      <input {...register("teamCount")} type="number" min="0" placeholder="e.g. 40" className={inputClass} />
                     </Field>
                     <Field label="Security Groups">
-                      <input {...register("securityGroupCount")} placeholder="e.g. 30" className={inputClass} />
+                      <input {...register("securityGroupCount")} type="number" min="0" placeholder="e.g. 25" className={inputClass} />
                     </Field>
                   </div>
-                  <Field label="Authentication Method" hint="e.g. Cloud-only, Hybrid AD, ADFS, PTA">
-                    <input {...register("authMethod")} placeholder="Cloud-only" className={inputClass} />
+                  <Field label="Primary Authentication Method">
+                    <select {...register("authMethod")} className={inputClass}>
+                      <option value="">Select…</option>
+                      {authOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                    </select>
                   </Field>
+                </CardSection>
+
+                <CardSection title="Configuration Flags">
                   <div className="space-y-3">
-                    <BoolController name="externalSharingEnabled" control={control} label="External sharing is enabled" />
-                    <BoolController name="guestUsersPresent"      control={control} label="Guest / external users are present" />
-                    <BoolController name="isHybrid"               control={control} label="Hybrid identity (on-prem AD)" />
-                    <BoolController name="hasOnPremExchange"      control={control} label="On-premises Exchange server" />
-                    <BoolController name="usesAADConnect"         control={control} label="Microsoft Entra Connect / AAD Connect in use" />
+                    <BoolController name="externalSharingEnabled" control={control} label="External sharing enabled" />
+                    <BoolController name="guestUsersPresent"      control={control} label="Guest users present in tenant" />
+                    <BoolController name="isHybrid"               control={control} label="Hybrid environment (on-prem + cloud)" />
+                    <BoolController name="hasOnPremExchange"      control={control} label="On-premises Exchange server present" />
+                    <BoolController name="usesAADConnect"         control={control} label="Entra Connect / AAD Connect in use" />
                   </div>
-                </Section>
+                </CardSection>
 
                 {saveButton}
               </div>
             )}
 
-            {/* ── Security & Compliance ────────────────────────────────────── */}
+            {/* ── Step 4: Security & Compliance ─────────────────────────── */}
             {activeTab === "security" && (
               <div className="space-y-4">
-                <Section title="Identity & Access">
+                <CardSection title="Identity & Access">
                   <div className="space-y-3">
-                    <BoolController name="mfaEnforced"              control={control} label="MFA is enforced for all users" />
-                    <BoolController name="conditionalAccessEnabled"  control={control} label="Conditional Access policies are in place" />
-                    <BoolController name="intuneEnabled"             control={control} label="Intune / device management enabled" />
-                    <BoolController name="hasAADP1orP2"             control={control} label="Azure AD Premium P1 or P2 licensed" />
+                    <BoolController name="mfaEnforced"              control={control} label="MFA enforced for all users" />
+                    <BoolController name="conditionalAccessEnabled" control={control} label="Conditional Access policies configured" />
+                    <BoolController name="hasAADP1orP2"             control={control} label="Entra ID P1 or P2 licensed" />
+                    <BoolController name="intuneEnabled"            control={control} label="Intune / MDM device management active" />
                   </div>
-                </Section>
+                </CardSection>
 
-                <Section title="Threat Protection & Compliance">
+                <CardSection title="Data Protection">
                   <div className="space-y-3">
-                    <BoolController name="hasDefender"                  control={control} label="Microsoft Defender for Office 365 enabled" />
-                    <BoolController name="hasDLP"                       control={control} label="Data Loss Prevention (DLP) policies configured" />
-                    <BoolController name="usesComplianceCenter"         control={control} label="Microsoft Purview / Compliance Center in use" />
-                    <BoolController name="sensitivityLabelsConfigured"  control={control} label="Sensitivity labels configured" />
-                    <BoolController name="hasRetentionPolicies"         control={control} label="Retention policies in place" />
-                    <BoolController name="hasInsiderRisk"               control={control} label="Insider Risk Management enabled" />
+                    <BoolController name="hasDefender"                 control={control} label="Microsoft Defender for M365 active" />
+                    <BoolController name="hasDLP"                      control={control} label="Data Loss Prevention (DLP) policies in place" />
+                    <BoolController name="sensitivityLabelsConfigured" control={control} label="Sensitivity labels configured" />
+                    <BoolController name="hasRetentionPolicies"        control={control} label="Retention policies in place" />
                   </div>
-                </Section>
+                </CardSection>
+
+                <CardSection title="Compliance">
+                  <div className="space-y-3">
+                    <BoolController name="usesComplianceCenter" control={control} label="Microsoft Purview / Compliance Center in use" />
+                    <BoolController name="hasInsiderRisk"       control={control} label="Insider Risk Management enabled" />
+                  </div>
+                </CardSection>
 
                 {saveButton}
               </div>
             )}
 
-            {/* ── Copilot Readiness ────────────────────────────────────────── */}
+            {/* ── Step 5: Copilot Readiness ──────────────────────────────── */}
             {activeTab === "copilot" && (
               <div className="space-y-4">
-                <Section title="Copilot for Microsoft 365">
-                  <BoolController name="hasCopilotLicenses" control={control} label="We have Copilot for M365 licenses" />
+                <CardSection title="License Status">
+                  <BoolController name="hasCopilotLicenses" control={control} label="We have Copilot for Microsoft 365 licenses" />
                   {values.hasCopilotLicenses === true && (
                     <Field label="Copilot License Count">
-                      <input {...register("copilotLicenseCount")} placeholder="e.g. 50" className={inputClass} />
+                      <input {...register("copilotLicenseCount")} type="number" min="0" placeholder="e.g. 50" className={inputClass} />
                     </Field>
                   )}
-                  <Field label="Primary Copilot Use Cases" hint="Which scenarios are you targeting?">
-                    <textarea
-                      {...register("copilotUseCase")}
-                      placeholder="e.g. Meeting summaries, document drafting, data analysis in Excel…"
-                      rows={3}
-                      className={`${inputClass} resize-none`}
-                    />
-                  </Field>
-                </Section>
+                </CardSection>
 
-                <Section title="AI & Data Readiness">
-                  <Field label="Current AI Tools in Use" hint="Any AI tools your org already uses">
-                    <input {...register("currentAITools")} placeholder="e.g. ChatGPT, GitHub Copilot, custom AI tools" className={inputClass} />
+                <CardSection title="AI Readiness">
+                  <Field label="Primary Copilot Use Cases">
+                    <textarea {...register("copilotUseCase")} placeholder="Meeting summaries, document drafting, email triage…" rows={2} className={`${inputClass} resize-none`} />
+                  </Field>
+                  <Field label="Current AI Tools in Use">
+                    <textarea {...register("currentAITools")} placeholder="ChatGPT, GitHub Copilot, custom solutions…" rows={2} className={`${inputClass} resize-none`} />
                   </Field>
                   <Field label="Data Governance Concerns">
-                    <textarea
-                      {...register("dataGovernanceConcerns")}
-                      placeholder="Oversharing risks, sensitive data exposure, regulatory requirements…"
-                      rows={3}
-                      className={`${inputClass} resize-none`}
-                    />
+                    <textarea {...register("dataGovernanceConcerns")} placeholder="Data sensitivity, oversharing risks, classification gaps…" rows={2} className={`${inputClass} resize-none`} />
                   </Field>
-                  <Field label="Known Blockers to Copilot Adoption">
-                    <textarea
-                      {...register("copilotBlockedBy")}
-                      placeholder="e.g. Overshared sites, missing labels, compliance gaps…"
-                      rows={2}
-                      className={`${inputClass} resize-none`}
-                    />
-                  </Field>
-                  {values.copilotReadinessScore && (
-                    <div className="bg-[#0078D4]/5 border border-[#0078D4]/20 rounded-xl px-4 py-3">
-                      <p className="text-xs text-muted-foreground mb-0.5">Copilot Readiness Score (set by Shane)</p>
-                      <p className="text-sm font-bold text-[#0078D4]">{values.copilotReadinessScore}</p>
-                    </div>
-                  )}
-                </Section>
+                </CardSection>
+
+                <CardSection title="Readiness Assessment">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <Field label="Copilot Readiness Score">
+                      <select {...register("copilotReadinessScore")} className={inputClass}>
+                        <option value="">Select…</option>
+                        {scoreOpts.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                      </select>
+                    </Field>
+                    <Field label="Primary Blocker">
+                      <select {...register("copilotBlockedBy")} className={inputClass}>
+                        <option value="">Select…</option>
+                        {blockerOpts.map(b => <option key={b} value={b}>{b}</option>)}
+                      </select>
+                    </Field>
+                  </div>
+                </CardSection>
 
                 {saveButton}
               </div>
             )}
 
-            {/* ── Scorecards (read-only, derived from profile data) ─────────── */}
+            {/* ── Scorecards (derived) ───────────────────────────────────── */}
             {activeTab === "scorecards" && (
               <div className="space-y-4">
                 {(() => {
@@ -619,10 +652,10 @@ export default function PortalM365Profile() {
                     return Math.round((fields.filter(f => f === true).length / fields.length) * 100);
                   }
 
-                  const secScore = boolScore([v.mfaEnforced, v.conditionalAccessEnabled, v.intuneEnabled, v.hasAADP1orP2, v.hasDefender, v.hasDLP, v.usesComplianceCenter, v.sensitivityLabelsConfigured, v.hasRetentionPolicies]);
+                  const secScore  = boolScore([v.mfaEnforced, v.conditionalAccessEnabled, v.intuneEnabled, v.hasAADP1orP2, v.hasDefender, v.hasDLP, v.usesComplianceCenter, v.sensitivityLabelsConfigured, v.hasRetentionPolicies]);
                   const compScore = boolScore([v.hasDLP, v.usesComplianceCenter, v.sensitivityLabelsConfigured, v.hasRetentionPolicies, v.hasInsiderRisk]);
-                  const copScore = boolScore([v.hasCopilotLicenses, v.mfaEnforced, v.sensitivityLabelsConfigured, v.hasDLP, v.hasRetentionPolicies]);
-                  const govScore = boolScore([v.hasRetentionPolicies, v.sensitivityLabelsConfigured, v.usesComplianceCenter, v.conditionalAccessEnabled]);
+                  const copScore  = boolScore([v.hasCopilotLicenses, v.mfaEnforced, v.sensitivityLabelsConfigured, v.hasDLP, v.hasRetentionPolicies]);
+                  const govScore  = boolScore([v.hasRetentionPolicies, v.sensitivityLabelsConfigured, v.usesComplianceCenter, v.conditionalAccessEnabled]);
                   const pct = parseInt(v.activeUserPercent ?? "0", 10);
                   const adoptionScore = Math.min((isNaN(pct) ? 60 : pct) + (v.allUsersLicensed ? 10 : 0), 100);
 
@@ -630,13 +663,14 @@ export default function PortalM365Profile() {
                     {
                       label: "Security Posture",
                       score: secScore,
+                      tab: "security" as TabId,
                       trend: secScore >= 70 ? "↑" : secScore >= 40 ? "→" : "↓",
                       trendColor: secScore >= 70 ? "text-green-600" : secScore >= 40 ? "text-amber-600" : "text-red-600",
-                      risks: secScore < 100 ? [
+                      risks: [
                         !v.mfaEnforced ? "MFA not enforced" : null,
                         !v.conditionalAccessEnabled ? "No Conditional Access policies" : null,
                         !v.hasDefender ? "Defender for Office 365 not enabled" : null,
-                      ].filter(Boolean) as string[] : [],
+                      ].filter(Boolean) as string[],
                       opportunities: [
                         !v.intuneEnabled ? "Enable Intune for device management" : null,
                         !v.hasAADP1orP2 ? "Upgrade to Azure AD Premium P1/P2" : null,
@@ -647,6 +681,7 @@ export default function PortalM365Profile() {
                     {
                       label: "Compliance Coverage",
                       score: compScore,
+                      tab: "security" as TabId,
                       trend: compScore >= 70 ? "↑" : compScore >= 40 ? "→" : "↓",
                       trendColor: compScore >= 70 ? "text-green-600" : compScore >= 40 ? "text-amber-600" : "text-red-600",
                       risks: [
@@ -663,6 +698,7 @@ export default function PortalM365Profile() {
                     {
                       label: "Copilot Readiness",
                       score: copScore,
+                      tab: "copilot" as TabId,
                       trend: copScore >= 70 ? "↑" : copScore >= 40 ? "→" : "↓",
                       trendColor: copScore >= 70 ? "text-green-600" : copScore >= 40 ? "text-amber-600" : "text-red-600",
                       risks: [
@@ -679,6 +715,7 @@ export default function PortalM365Profile() {
                     {
                       label: "Governance Maturity",
                       score: govScore,
+                      tab: "security" as TabId,
                       trend: govScore >= 70 ? "↑" : govScore >= 40 ? "→" : "↓",
                       trendColor: govScore >= 70 ? "text-green-600" : govScore >= 40 ? "text-amber-600" : "text-red-600",
                       risks: [
@@ -694,6 +731,7 @@ export default function PortalM365Profile() {
                     {
                       label: "Adoption Score",
                       score: adoptionScore,
+                      tab: "licensing" as TabId,
                       trend: adoptionScore >= 80 ? "↑" : adoptionScore >= 60 ? "→" : "↓",
                       trendColor: adoptionScore >= 80 ? "text-green-600" : adoptionScore >= 60 ? "text-amber-600" : "text-red-600",
                       risks: [
@@ -709,7 +747,7 @@ export default function PortalM365Profile() {
                   ];
 
                   function ringColor(s: number) { return s >= 80 ? "#22c55e" : s >= 55 ? "#f59e0b" : "#ef4444"; }
-                  function ringBg(s: number) { return s >= 80 ? "bg-green-50 border-green-200" : s >= 55 ? "bg-amber-50 border-amber-200" : "bg-red-50 border-red-200"; }
+                  function ringBg(s: number)    { return s >= 80 ? "bg-green-50 border-green-200" : s >= 55 ? "bg-amber-50 border-amber-200" : "bg-red-50 border-red-200"; }
 
                   return cards.map(card => {
                     const r = 32;
@@ -718,7 +756,6 @@ export default function PortalM365Profile() {
                     return (
                       <div key={card.label} className={`border rounded-2xl p-5 ${ringBg(card.score)}`}>
                         <div className="flex items-start gap-4">
-                          {/* Score ring */}
                           <div className="flex-shrink-0 w-20 h-20 relative flex items-center justify-center">
                             <svg width="80" height="80" viewBox="0 0 80 80" className="-rotate-90">
                               <circle cx="40" cy="40" r={r} fill="none" stroke="#e5e7eb" strokeWidth="8" />
@@ -727,14 +764,20 @@ export default function PortalM365Profile() {
                             </svg>
                             <div className="absolute inset-0 flex flex-col items-center justify-center">
                               <span className="text-lg font-extrabold text-[#0A2540]">{card.score}</span>
-                              <span className="text-[9px] text-muted-foreground font-semibold">/ 100</span>
+                              <span className="text-[9px] text-gray-400 font-semibold">/ 100</span>
                             </div>
                           </div>
-                          {/* Content */}
                           <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2 mb-2">
+                            <div className="flex items-center gap-2 mb-2 flex-wrap">
                               <h3 className="text-sm font-bold text-[#0A2540]">{card.label}</h3>
                               <span className={`text-base font-bold ${card.trendColor}`}>{card.trend}</span>
+                              <button
+                                type="button"
+                                onClick={() => switchTab(card.tab)}
+                                className="ml-auto text-[10px] font-semibold text-[#0078D4] hover:text-[#005fa3] transition-colors flex items-center gap-0.5"
+                              >
+                                Update data →
+                              </button>
                             </div>
                             {card.risks.length > 0 && (
                               <div className="mb-2">
@@ -760,16 +803,17 @@ export default function PortalM365Profile() {
                                 </ul>
                               </div>
                             )}
-                            <p className="text-xs text-muted-foreground italic leading-relaxed">{card.recommendation}</p>
+                            <p className="text-xs text-gray-500 italic leading-relaxed">{card.recommendation}</p>
                           </div>
                         </div>
                       </div>
                     );
                   });
                 })()}
-                <p className="text-xs text-muted-foreground text-center pt-2">Scores are derived from your M365 Profile responses. Complete more sections for accurate scoring.</p>
+                <p className="text-xs text-gray-400 text-center pt-2">Scores are derived from your M365 Profile responses. Complete more sections for accurate scoring.</p>
               </div>
             )}
+
           </form>
         )}
       </div>
