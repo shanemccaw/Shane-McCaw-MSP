@@ -43,6 +43,7 @@ interface EnrichedClient {
   lastActivityAt: string | null;
   aiRiskLevel: "high" | "medium" | "low" | null;
   aiOpportunityLevel: "high" | "medium" | "low" | null;
+  onboardingWizardCompletedAt: string | null;
 }
 
 interface EmailRow {
@@ -477,6 +478,7 @@ export default function ClientsPage() {
   const [filterAiRisk, setFilterAiRisk] = useState<"all" | "high" | "medium" | "low">("all");
   const [filterAiOpp, setFilterAiOpp] = useState<"all" | "high" | "medium" | "low">("all");
   const [filterIndustry, setFilterIndustry] = useState<"all" | string>("all");
+  const [filterOnboarding, setFilterOnboarding] = useState<"all" | "complete" | "pending">("all");
   const [hoverRowId, setHoverRowId] = useState<number | null>(null);
   const [menuOpenId, setMenuOpenId] = useState<number | null>(null);
 
@@ -609,6 +611,8 @@ export default function ClientsPage() {
     if (filterAiRisk !== "all") result = result.filter(c => c.aiRiskLevel === filterAiRisk);
     if (filterAiOpp !== "all") result = result.filter(c => c.aiOpportunityLevel === filterAiOpp);
     if (filterIndustry !== "all") result = result.filter(c => c.industry === filterIndustry);
+    if (filterOnboarding === "complete") result = result.filter(c => c.onboardingWizardCompletedAt !== null);
+    if (filterOnboarding === "pending") result = result.filter(c => c.onboardingWizardCompletedAt === null);
 
     return [...result].sort((a, b) => {
       let aVal: string | number, bVal: string | number;
@@ -672,7 +676,7 @@ export default function ClientsPage() {
 
   const activeFilterCount = (filterStatus !== "all" ? 1 : 0) + (filterTier !== "all" ? 1 : 0) +
     (filterLicenseTier !== "all" ? 1 : 0) + (filterAiRisk !== "all" ? 1 : 0) + (filterAiOpp !== "all" ? 1 : 0) +
-    (filterIndustry !== "all" ? 1 : 0);
+    (filterIndustry !== "all" ? 1 : 0) + (filterOnboarding !== "all" ? 1 : 0);
 
   const distinctLicenseTiers = useMemo(() =>
     [...new Set(clients.map(c => c.licenseTier).filter((t): t is string => !!t))].sort(),
@@ -791,7 +795,7 @@ export default function ClientsPage() {
               <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Filters</p>
               {activeFilterCount > 0 && (
                 <button
-                  onClick={() => { setFilterStatus("all"); setFilterTier("all"); setFilterLicenseTier("all"); setFilterAiRisk("all"); setFilterAiOpp("all"); setFilterIndustry("all"); }}
+                  onClick={() => { setFilterStatus("all"); setFilterTier("all"); setFilterLicenseTier("all"); setFilterAiRisk("all"); setFilterAiOpp("all"); setFilterIndustry("all"); setFilterOnboarding("all"); }}
                   className="text-[10px] font-semibold text-[#0078D4] hover:underline"
                 >
                   Clear {activeFilterCount}
@@ -893,6 +897,22 @@ export default function ClientsPage() {
                 </div>
               )}
 
+              {/* Onboarding filter */}
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1.5">Setup Wizard</p>
+                <div className="space-y-0.5">
+                  {(["all", "complete", "pending"] as const).map(opt => {
+                    const labels = { all: "All clients", complete: "Setup complete", pending: "Pending setup" };
+                    return (
+                      <button key={opt} onClick={() => setFilterOnboarding(opt)}
+                        className={`w-full text-left text-xs px-2 py-1 rounded transition-colors ${filterOnboarding === opt ? "bg-[#0078D4]/15 text-[#0078D4] font-semibold" : "text-muted-foreground hover:text-[#E6EDF3] hover:bg-[#1C2128]"}`}>
+                        {labels[opt]}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
               {/* Quick stats */}
               <div className="border-t border-border pt-3 space-y-1.5">
                 <div className="flex justify-between text-[10px]">
@@ -902,6 +922,14 @@ export default function ClientsPage() {
                 <div className="flex justify-between text-[10px]">
                   <span className="text-muted-foreground">Showing</span>
                   <span className="text-[#E6EDF3] font-semibold">{sortedFilteredClients.length}</span>
+                </div>
+                <div className="flex justify-between text-[10px]">
+                  <span className="text-muted-foreground">Setup done</span>
+                  <span className="text-emerald-400 font-semibold">{clients.filter(c => c.onboardingWizardCompletedAt !== null).length}</span>
+                </div>
+                <div className="flex justify-between text-[10px]">
+                  <span className="text-muted-foreground">Pending setup</span>
+                  <span className="text-amber-400 font-semibold">{clients.filter(c => c.onboardingWizardCompletedAt === null).length}</span>
                 </div>
                 <div className="flex justify-between text-[10px]">
                   <span className="text-muted-foreground">With M365</span>
@@ -973,6 +1001,9 @@ export default function ClientsPage() {
                     <button onClick={() => toggleSort("lastActivity")} className="flex items-center gap-0 mx-auto text-xs font-semibold uppercase tracking-wider text-muted-foreground hover:text-[#E6EDF3] transition-colors">
                       Activity<SortIcon col="lastActivity" />
                     </button>
+                  </th>
+                  <th className="text-center px-3 py-3 hidden lg:table-cell">
+                    <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Setup</span>
                   </th>
                   <th className="px-4 py-3" />
                 </tr>
@@ -1093,6 +1124,24 @@ export default function ClientsPage() {
                           {c.lastActivityAt ? (
                             <span className="text-xs text-muted-foreground whitespace-nowrap">{timeAgo(c.lastActivityAt)}</span>
                           ) : <span className="text-xs text-[#484F58]">—</span>}
+                        </td>
+
+                        {/* Setup / Onboarding status */}
+                        <td className="px-3 py-3.5 text-center hidden lg:table-cell">
+                          {c.onboardingWizardCompletedAt !== null ? (
+                            <span
+                              className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full border bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
+                              title={`Completed ${new Date(c.onboardingWizardCompletedAt).toLocaleString()}`}
+                            >
+                              <svg className="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
+                              Done
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full border bg-amber-500/10 text-amber-400 border-amber-500/20">
+                              <svg className="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                              Pending
+                            </span>
+                          )}
                         </td>
 
                         {/* Actions — always-visible core + hover dropdown menu */}
