@@ -1200,7 +1200,7 @@ export default function ClientDetailPage() {
           <div className="border-t border-border">
             {/* Category tabs */}
             <div className="flex gap-1 px-4 pt-3 pb-2 flex-wrap">
-              {(["all", "contracts", "reports", "proposals", "sows", "assessments", "other"] as const).map(cat => {
+              {(["all", "contracts", "reports", "proposals", "deliverables", "assessments", "misc"] as const).map(cat => {
                 const count = cat === "all" ? clientDocuments.length : clientDocuments.filter(d => d.category === cat).length;
                 return (
                   <button
@@ -1261,7 +1261,21 @@ export default function ClientDetailPage() {
                           </div>
                         </div>
                       </div>
-                      <div className="flex items-center gap-2 flex-shrink-0">
+                      <div className="flex items-center gap-1.5 flex-shrink-0 flex-wrap justify-end">
+                        <button
+                          onClick={() => toast({ title: "Summarize", description: "AI document summary coming soon." })}
+                          className="text-[9px] font-semibold text-[#0078D4] bg-[#0078D4]/10 border border-[#0078D4]/20 hover:bg-[#0078D4]/20 px-1.5 py-0.5 rounded transition-colors"
+                          title="Summarize document"
+                        >
+                          Summarize
+                        </button>
+                        <button
+                          onClick={() => toast({ title: "Extract Risks", description: "AI risk extraction coming soon." })}
+                          className="text-[9px] font-semibold text-[#0078D4] bg-[#0078D4]/10 border border-[#0078D4]/20 hover:bg-[#0078D4]/20 px-1.5 py-0.5 rounded transition-colors"
+                          title="Extract risks from document"
+                        >
+                          Risks
+                        </button>
                         {doc.fileUrl && (
                           <a href={doc.fileUrl} target="_blank" rel="noopener noreferrer" className="text-[10px] text-[#0078D4] hover:underline">View</a>
                         )}
@@ -1319,7 +1333,7 @@ export default function ClientDetailPage() {
                       onChange={e => setDocForm(f => ({ ...f, category: e.target.value }))}
                       className="px-3 py-2 text-sm border border-border rounded-lg bg-[#0D1117] text-[#E6EDF3] focus:outline-none focus:ring-2 focus:ring-[#0078D4]"
                     >
-                      {["contracts", "reports", "proposals", "sows", "assessments", "other"].map(c => (
+                      {["contracts", "reports", "proposals", "deliverables", "assessments", "misc"].map(c => (
                         <option key={c} value={c}>{c.charAt(0).toUpperCase() + c.slice(1)}</option>
                       ))}
                     </select>

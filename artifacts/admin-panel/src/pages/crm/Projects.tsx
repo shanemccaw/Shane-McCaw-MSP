@@ -170,7 +170,16 @@ function ServiceCard({
             </div>
             <p className="font-semibold text-[#E6EDF3] text-sm leading-tight truncate">{project.title}</p>
           </div>
-          <StatusBadge status={project.status} />
+          <div className="flex flex-col items-end gap-1 flex-shrink-0">
+            <StatusBadge status={project.status} />
+            {project.status === "active" && (() => {
+              const now = new Date();
+              const end = project.endDate ? new Date(project.endDate) : null;
+              if (end && end < now) return <span className="text-[9px] font-bold text-red-400 bg-red-500/10 border border-red-500/20 px-1.5 py-0.5 rounded">Overdue</span>;
+              if (end && (end.getTime() - now.getTime()) < 30 * 24 * 60 * 60 * 1000 && project.progress < 50) return <span className="text-[9px] font-bold text-amber-400 bg-amber-500/10 border border-amber-500/20 px-1.5 py-0.5 rounded">At Risk</span>;
+              return <span className="text-[9px] font-bold text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-1.5 py-0.5 rounded">On Track</span>;
+            })()}
+          </div>
         </div>
 
         <SegmentedBar steps={steps} />
@@ -266,7 +275,16 @@ function RetainerCard({
               <p className="text-xs text-[#94a3b8] mt-0.5">{project.phase ?? "Monthly Retainer"}</p>
             </div>
           </div>
-          <StatusBadge status={project.status} />
+          <div className="flex flex-col items-end gap-1 flex-shrink-0">
+            <StatusBadge status={project.status} />
+            {project.status === "active" && (() => {
+              const now = new Date();
+              const end = project.endDate ? new Date(project.endDate) : null;
+              if (end && end < now) return <span className="text-[9px] font-bold text-red-400 bg-red-500/10 border border-red-500/20 px-1.5 py-0.5 rounded">Overdue</span>;
+              if (end && (end.getTime() - now.getTime()) < 30 * 24 * 60 * 60 * 1000 && project.progress < 50) return <span className="text-[9px] font-bold text-amber-400 bg-amber-500/10 border border-amber-500/20 px-1.5 py-0.5 rounded">At Risk</span>;
+              return <span className="text-[9px] font-bold text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-1.5 py-0.5 rounded">On Track</span>;
+            })()}
+          </div>
         </div>
 
         <div className="space-y-1.5">
