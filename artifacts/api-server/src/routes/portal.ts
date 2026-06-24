@@ -5814,7 +5814,10 @@ router.post("/admin/project-updates", requireAdmin, async (req: Request, res: Re
 // ─── ONBOARDING: List public micro-offers ────────────────────────────────────
 router.get("/portal/onboarding/services", async (_req: Request, res: Response) => {
   const services = await db.select().from(servicesTable)
-    .where(eq(servicesTable.isPublic, true))
+    .where(and(
+      eq(servicesTable.isPublic, true),
+      inArray(servicesTable.serviceType, ["micro_offer", "retainer"]),
+    ))
     .orderBy(asc(servicesTable.name));
   res.json(services);
 });
