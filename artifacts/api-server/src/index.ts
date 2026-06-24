@@ -2,7 +2,7 @@ import app from "./app";
 import { logger } from "./lib/logger";
 import { validateStripeKeyOnStartup, checkWebhookHealthOnStartup } from "./lib/stripe";
 import { seedAdminUser } from "./routes/auth";
-import { seedPortalDemo, seedServiceTemplates } from "./lib/seed-portal";
+import { seedPortalDemo, seedServiceTemplates, seedMarketingServices } from "./lib/seed-portal";
 import { seedEmailTemplates } from "./lib/seed-email-templates";
 import { initGraphSubscription } from "./lib/graph-subscription";
 import { seedServicePageTriggerKeys } from "./lib/seed-service-page-triggers";
@@ -54,6 +54,12 @@ app.listen(port, (err) => {
     logger.info("Service page trigger keys seeded (no-op if exists)");
   }).catch((seedErr) => {
     logger.warn({ err: seedErr }, "Could not seed service page trigger keys");
+  });
+
+  seedMarketingServices().then(() => {
+    logger.info("Marketing services pageHref/pageSlug seeded (no-op if exists)");
+  }).catch((seedErr) => {
+    logger.warn({ err: seedErr }, "Could not seed marketing services");
   });
 
   if (process.env.NODE_ENV !== "production") {
