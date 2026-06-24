@@ -108,7 +108,6 @@ const M365_SUB_STEPS = [
   { label: "Environment Structure" },
   { label: "Security & Compliance" },
   { label: "Copilot Readiness" },
-  { label: "Engagement Goals" },
 ] as const;
 
 // ── App Registration permissions ──────────────────────────────────────────────
@@ -440,60 +439,6 @@ function SubStep5({ control, register, watch }: { control: Control<M365FormValue
   );
 }
 
-function SubStep6({ register }: { register: ReturnType<typeof useForm<M365FormValues>>["register"] }) {
-  const engagementTypes = ["Assessment", "Implementation", "Ongoing Support", "Training & Enablement", "Governance", "Advisory / Strategy"];
-  const budgetRanges = ["< $5K", "$5K – $15K", "$15K – $30K", "$30K – $75K", "$75K – $150K", "> $150K"];
-  return (
-    <div className="space-y-4">
-      <CardSection title="Engagement Details">
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <FieldLight label="Engagement Type">
-            <select {...register("engagementType")} className={inputClassLight}>
-              <option value="">Select…</option>
-              {engagementTypes.map(t => <option key={t} value={t}>{t}</option>)}
-            </select>
-          </FieldLight>
-          <FieldLight label="Budget Range">
-            <select {...register("budgetRange")} className={inputClassLight}>
-              <option value="">Select…</option>
-              {budgetRanges.map(b => <option key={b} value={b}>{b}</option>)}
-            </select>
-          </FieldLight>
-          <FieldLight label="Target Start Date">
-            <input {...register("engagementStartDate")} type="date" className={inputClassLight} />
-          </FieldLight>
-          <FieldLight label="Estimated Duration">
-            <input {...register("estimatedDuration")} placeholder="e.g. 3 months, 6 weeks" className={inputClassLight} />
-          </FieldLight>
-        </div>
-      </CardSection>
-
-      <CardSection title="Decision Maker">
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <FieldLight label="Decision Maker Name">
-            <input {...register("decisionMakerName")} placeholder="John CEO" className={inputClassLight} />
-          </FieldLight>
-          <FieldLight label="Decision Maker Email">
-            <input {...register("decisionMakerEmail")} type="email" placeholder="ceo@acme.com" className={inputClassLight} />
-          </FieldLight>
-        </div>
-      </CardSection>
-
-      <CardSection title="Goals & Context">
-        <FieldLight label="Business Goals">
-          <textarea {...register("businessGoals")} placeholder="Describe what you'd like to achieve with this engagement…" rows={3} className={`${inputClassLight} resize-none`} />
-        </FieldLight>
-        <FieldLight label="Known Blockers or Constraints">
-          <textarea {...register("knownBlockers")} placeholder="Any known blockers, constraints, or concerns…" rows={2} className={`${inputClassLight} resize-none`} />
-        </FieldLight>
-        <FieldLight label="How did you hear about us?">
-          <input {...register("referralSource")} placeholder="e.g. LinkedIn, referral, Google search" className={inputClassLight} />
-        </FieldLight>
-      </CardSection>
-    </div>
-  );
-}
-
 // ── Step 1: M365 Profile (multi sub-step) ─────────────────────────────────────
 
 function StepM365Profile({ onSaveAndContinue, onSkip }: { onSaveAndContinue: (data: M365FormValues) => Promise<void>; onSkip: () => void }) {
@@ -603,7 +548,6 @@ function StepM365Profile({ onSaveAndContinue, onSkip }: { onSaveAndContinue: (da
         {subStep === 3 && <SubStep3 control={control} register={register} />}
         {subStep === 4 && <SubStep4 control={control} />}
         {subStep === 5 && <SubStep5 control={control} register={register} watch={watch} />}
-        {subStep === 6 && <SubStep6 register={register} />}
       </div>
 
       {/* Bottom navigation */}
