@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
+import { useLocation } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
 import { useAssignEmail } from "@/hooks/useAssignEmail";
 
@@ -318,6 +319,7 @@ interface EmailDetailPanelProps {
 function EmailDetailPanel({ emailId, reloadKey, clients, leads, onEmailReassigned }: EmailDetailPanelProps) {
   const { fetchWithAuth } = useAuth();
   const { assignEmail, assigningId } = useAssignEmail();
+  const [, navigate] = useLocation();
 
   const [detail, setDetail] = useState<EmailDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
@@ -589,6 +591,13 @@ function EmailDetailPanel({ emailId, reloadKey, clients, leads, onEmailReassigne
               {detail.clientCompany && <p className="text-xs text-[#7D8590]">{detail.clientCompany}</p>}
               {detail.clientEmail && <p className="text-xs text-[#7D8590]">{detail.clientEmail}</p>}
             </div>
+            <button
+              onClick={() => navigate(`/crm/clients/${detail.clientId}`)}
+              className="flex-shrink-0 text-[10px] font-semibold text-[#0078D4] hover:underline"
+              title="Open client command center"
+            >
+              Open →
+            </button>
           </div>
 
           {/* Mode toggle: Project vs Lead */}

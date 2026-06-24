@@ -13,7 +13,7 @@ import {
 } from "@/components/ui/dialog";
 import { M365ProfileWizard } from "@/components/M365ProfileWizard";
 
-interface Client {
+interface EnrichedClient {
   id: number;
   email: string;
   name: string | null;
@@ -22,12 +22,16 @@ interface Client {
   sharepointSiteUrl: string | null;
   sharepointSiteId: string | null;
   createdAt: string;
+  projectCount: number;
+  activeProjectCount: number;
+  openTaskCount: number;
+  quizScore: number | null;
+  quizTier: string | null;
 }
 
 interface EmailRow {
   email: {
     id: number;
-    messageId: string;
     subject: string | null;
     senderAddress: string;
     senderDomain: string;
@@ -78,28 +82,125 @@ function timeAgo(ts: string) {
   return new Date(ts).toLocaleDateString("en-US", { month: "short", day: "numeric" });
 }
 
-// ─── ClientEmailPanel ─────────────────────────────────────────────────────────
-interface ClientEmailPanelProps {
-  client: Client;
-  onClose: () => void;
+function ScoreBadge({ score }: { score: number | null }) {
+  if (score === null) return <span className="text-xs text-[#484F58]">—</span>;
+  const pct = Math.min(100, Math.round((score / 100) * 100));
+  const color =
+    pct >= 70 ? "text-emerald-400" : pct >= 40 ? "text-amber-400" : "text-red-400";
+  return (
+    <span className={`text-xs font-bold tabular-nums ${color}`}>{score}</span>
+  );
 }
 
-function ClientEmailPanel({ client, onClose }: ClientEmailPanelProps) {
+function TierBadge({ tier }: { tier: string | null }) {
+  if (!tier) return null;
+  const cls =
+    tier === "Expert"
+      ? "bg-emerald-500/15 text-emerald-400 border-emerald-500/20"
+      : tier === "Intermediate"
+        ? "bg-blue-500/15 text-blue-400 border-blue-500/20"
+        : "bg-amber-500/15 text-amber-400 border-amber-500/20";
+  return (
+    <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${cls}`}>
+      {tier}
+    </span>
+  );
+}
+
+// ─── DeleteConfirmDialog ───────────────────────────────────────────────────────
+function DeleteConfirmDialog({
+  client,
+  onClose,
+  onConfirm,
+  deleting,
+}: {
+  client: EnrichedClient;
+  onClose: () => void;
+  onConfirm: () => void;
+  deleting: boolean;
+}) {
+  const { fetchWithAuth } = useAuth();
+  const [preview, setPreview] = useState<DeletePreview | null>(null);
+  const [loadingPreview, setLoadingPreview] = useState(true);
+
+  useEffect(() => {
+    fetchWithAuth(`/api/admin/clients/${client.id}/delete-preview`)
+      .then(r => r.json())
+      .then((d: DeletePreview) => setPreview(d))
+      .catch(() => setPreview(null))
+      .finally(() => setLoadingPreview(false));
+  }, [client.id, fetchWithAuth]);
+
+  return (
+    <Dialog open onOpenChange={open => { if (!open && !deleting) onClose(); }}>
+      <DialogContent className="bg-[#161B22] border-border text-[#E6EDF3] max-w-md">
+        <DialogHeader>
+          <DialogTitle className="text-[#E6EDF3]">Delete {client.name ?? client.email}?</DialogTitle>
+          <DialogDescription className="text-muted-foreground">
+            This will permanently remove the client and all associated data.
+          </DialogDescription>
+        </DialogHeader>
+        {loadingPreview ? (
+          <div className="flex items-center gap-2 py-2 text-sm text-[#7D8590]">
+            <div className="w-4 h-4 border-2 border-[#0078D4] border-t-transparent rounded-full animate-spin" />
+            Checking data…
+          </div>
+        ) : preview ? (
+          <div className="rounded-lg bg-red-500/10 border border-red-500/20 px-4 py-3 text-sm text-red-400 space-y-1">
+            {preview.hasActiveStripeSubscription && (
+              <p className="font-bold">⚠ Client has an active Stripe subscription — cancel it first.</p>
+            )}
+            {preview.unpaidInvoices > 0 && (
+              <p>{preview.unpaidInvoices} unpaid invoice{preview.unpaidInvoices !== 1 ? "s" : ""}</p>
+            )}
+            <p>
+              {[
+                preview.projects > 0 && `${preview.projects} project${preview.projects !== 1 ? "s" : ""}`,
+                preview.contracts > 0 && `${preview.contracts} contract${preview.contracts !== 1 ? "s" : ""}`,
+                preview.invoices > 0 && `${preview.invoices} invoice${preview.invoices !== 1 ? "s" : ""}`,
+                preview.messages > 0 && `${preview.messages} message${preview.messages !== 1 ? "s" : ""}`,
+              ]
+                .filter(Boolean)
+                .join(", ") || "No associated data"}
+              {" will be deleted."}
+            </p>
+          </div>
+        ) : null}
+        <DialogFooter>
+          <button
+            onClick={onClose}
+            disabled={deleting}
+            className="border border-border text-sm font-medium px-4 py-2 rounded-lg hover:bg-[#1C2128] disabled:opacity-50 transition-colors"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={onConfirm}
+            disabled={deleting || preview?.hasActiveStripeSubscription === true}
+            className="bg-red-600 text-white text-sm font-semibold px-4 py-2 rounded-lg hover:bg-red-700 disabled:opacity-50 transition-colors"
+          >
+            {deleting ? "Deleting…" : "Delete Client"}
+          </button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ─── ClientEmailPanel (inline row expansion) ───────────────────────────────────
+function ClientEmailPanel({ client, onClose }: { client: EnrichedClient; onClose: () => void }) {
   const { fetchWithAuth } = useAuth();
   const { assignEmail, assigningId } = useAssignEmail();
   const [emails, setEmails] = useState<EmailRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-
   const clientDomain = client.email.split("@")[1] ?? "";
 
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetchWithAuth(
-        `/api/admin/emails?domain=${encodeURIComponent(clientDomain)}&limit=50`
-      );
+      const res = await fetchWithAuth(`/api/admin/emails?domain=${encodeURIComponent(clientDomain)}&limit=50`);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json() as { emails: EmailRow[] };
       setEmails(data.emails);
@@ -112,151 +213,77 @@ function ClientEmailPanel({ client, onClose }: ClientEmailPanelProps) {
 
   useEffect(() => { void load(); }, [load]);
 
-  async function handleLink(emailId: number) {
-    try {
-      await assignEmail(emailId, client.id);
-      await load();
-    } catch {
-      alert("Failed to link email");
-    }
-  }
-
-  async function handleUnlink(emailId: number) {
-    try {
-      await assignEmail(emailId, null);
-      await load();
-    } catch {
-      alert("Failed to unlink email");
-    }
-  }
-
   const linkedToThis = emails.filter(r => r.email.linkedUserId === client.id);
   const unlinked = emails.filter(r => r.email.linkedUserId === null);
-  const linkedToOther = emails.filter(r => r.email.linkedUserId !== null && r.email.linkedUserId !== client.id);
-
-  const hasAny = emails.length > 0;
 
   return (
     <tr>
-      <td colSpan={5} className="px-0 py-0 bg-[#0078D4]/10/40 border-b border-blue-100">
+      <td colSpan={7} className="px-0 py-0 border-b border-border bg-[#0078D4]/5">
         <div className="px-5 py-4">
           <div className="flex items-center justify-between mb-3">
-            <div>
-              <span className="text-xs font-bold text-[#0078D4] uppercase tracking-widest">
-                Email Activity
-              </span>
-              {clientDomain && (
-                <span className="ml-2 text-xs text-[#7D8590] font-mono">@{clientDomain}</span>
-              )}
-            </div>
-            <button
-              onClick={onClose}
-              className="text-[#7D8590] hover:text-[#7D8590] transition-colors"
-              aria-label="Close"
-            >
+            <span className="text-xs font-bold text-[#0078D4] uppercase tracking-widest">
+              Email Activity · @{clientDomain}
+            </span>
+            <button onClick={onClose} className="text-[#7D8590] hover:text-[#E6EDF3] transition-colors">
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
               </svg>
             </button>
           </div>
-
           {loading ? (
-            <div className="flex items-center gap-2 py-4 text-sm text-[#7D8590]">
+            <div className="flex items-center gap-2 py-3 text-sm text-[#7D8590]">
               <div className="w-4 h-4 border-2 border-[#0078D4] border-t-transparent rounded-full animate-spin" />
-              Loading emails…
+              Loading…
             </div>
           ) : error ? (
             <p className="text-sm text-red-400">{error}</p>
-          ) : !hasAny ? (
-            <p className="text-sm text-[#7D8590] py-2">
-              No emails found from <span className="font-mono">@{clientDomain}</span>.
-              {" "}Emails appear here as soon as they are ingested from the M365 mailbox.
-            </p>
+          ) : emails.length === 0 ? (
+            <p className="text-sm text-[#7D8590]">No emails from @{clientDomain} yet.</p>
           ) : (
-            <div className="space-y-4">
+            <div className="space-y-3">
               {unlinked.length > 0 && (
                 <div>
-                  <p className="text-[10px] font-bold text-amber-600 uppercase tracking-widest mb-2">
+                  <p className="text-[10px] font-bold text-amber-600 uppercase tracking-widest mb-1.5">
                     Unlinked · {unlinked.length}
                   </p>
                   <div className="space-y-1.5">
                     {unlinked.map(row => (
-                      <div
-                        key={row.email.id}
-                        className="flex items-center gap-3 bg-[#161B22] border border-amber-100 rounded-lg px-3 py-2.5"
-                      >
+                      <div key={row.email.id} className="flex items-center gap-3 bg-[#161B22] border border-amber-500/20 rounded-lg px-3 py-2">
                         <div className="flex-1 min-w-0">
-                          <p className="text-xs font-medium text-[#E6EDF3] truncate">
-                            {row.email.subject ?? "(no subject)"}
-                          </p>
-                          <p className="text-[10px] text-[#7D8590] truncate">
-                            {row.email.senderAddress} · {timeAgo(row.email.receivedAt)}
-                          </p>
+                          <p className="text-xs font-medium text-[#E6EDF3] truncate">{row.email.subject ?? "(no subject)"}</p>
+                          <p className="text-[10px] text-[#7D8590]">{row.email.senderAddress} · {timeAgo(row.email.receivedAt)}</p>
                         </div>
                         <button
                           disabled={assigningId === row.email.id}
-                          onClick={() => void handleLink(row.email.id)}
-                          className="shrink-0 px-2.5 py-1 text-[11px] font-semibold bg-[#0078D4] text-white rounded-md hover:bg-[#005fa3] disabled:opacity-50 transition-colors whitespace-nowrap"
+                          onClick={() => assignEmail(row.email.id, client.id).then(() => void load()).catch(() => null)}
+                          className="shrink-0 px-2.5 py-1 text-[11px] font-semibold bg-[#0078D4] text-white rounded-md hover:bg-[#005fa3] disabled:opacity-50 transition-colors"
                         >
-                          {assigningId === row.email.id ? "Linking…" : `Link to ${client.name ?? client.email}`}
+                          Link
                         </button>
                       </div>
                     ))}
                   </div>
                 </div>
               )}
-
               {linkedToThis.length > 0 && (
                 <div>
-                  <p className="text-[10px] font-bold text-emerald-600 uppercase tracking-widest mb-2">
-                    Linked to this client · {linkedToThis.length}
+                  <p className="text-[10px] font-bold text-emerald-600 uppercase tracking-widest mb-1.5">
+                    Linked · {linkedToThis.length}
                   </p>
                   <div className="space-y-1.5">
                     {linkedToThis.map(row => (
-                      <div
-                        key={row.email.id}
-                        className="flex items-center gap-3 bg-[#161B22] border border-emerald-100 rounded-lg px-3 py-2.5"
-                      >
+                      <div key={row.email.id} className="flex items-center gap-3 bg-[#161B22] border border-emerald-500/20 rounded-lg px-3 py-2">
                         <div className="flex-1 min-w-0">
-                          <p className="text-xs font-medium text-[#E6EDF3] truncate">
-                            {row.email.subject ?? "(no subject)"}
-                          </p>
-                          <p className="text-[10px] text-[#7D8590] truncate">
-                            {row.email.senderAddress} · {timeAgo(row.email.receivedAt)}
-                          </p>
+                          <p className="text-xs font-medium text-[#E6EDF3] truncate">{row.email.subject ?? "(no subject)"}</p>
+                          <p className="text-[10px] text-[#7D8590]">{row.email.senderAddress} · {timeAgo(row.email.receivedAt)}</p>
                         </div>
                         <button
                           disabled={assigningId === row.email.id}
-                          onClick={() => void handleUnlink(row.email.id)}
-                          className="shrink-0 px-2.5 py-1 text-[11px] font-semibold border border-[#30363D] text-[#7D8590] rounded-md hover:bg-[#1C2128] hover:text-red-400 hover:border-red-500/20 disabled:opacity-50 transition-colors"
+                          onClick={() => assignEmail(row.email.id, null).then(() => void load()).catch(() => null)}
+                          className="shrink-0 px-2.5 py-1 text-[11px] text-[#7D8590] border border-[#30363D] rounded-md hover:border-red-500/40 hover:text-red-400 disabled:opacity-50 transition-colors"
                         >
-                          {assigningId === row.email.id ? "Unlinking…" : "Unlink"}
+                          Unlink
                         </button>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {linkedToOther.length > 0 && (
-                <div>
-                  <p className="text-[10px] font-bold text-[#7D8590] uppercase tracking-widest mb-2">
-                    Linked to another client · {linkedToOther.length}
-                  </p>
-                  <div className="space-y-1.5">
-                    {linkedToOther.map(row => (
-                      <div
-                        key={row.email.id}
-                        className="flex items-center gap-3 bg-[#161B22] border border-[#30363D] rounded-lg px-3 py-2.5 opacity-60"
-                      >
-                        <div className="flex-1 min-w-0">
-                          <p className="text-xs font-medium text-[#E6EDF3] truncate">
-                            {row.email.subject ?? "(no subject)"}
-                          </p>
-                          <p className="text-[10px] text-[#7D8590] truncate">
-                            {row.email.senderAddress} · linked to {row.clientName ?? row.clientEmail} · {timeAgo(row.email.receivedAt)}
-                          </p>
-                        </div>
                       </div>
                     ))}
                   </div>
@@ -271,10 +298,14 @@ function ClientEmailPanel({ client, onClose }: ClientEmailPanelProps) {
 }
 
 // ─── ClientSharePointPanel ────────────────────────────────────────────────────
-function ClientSharePointPanel({ client, onClose, onUpdate }: {
-  client: Client;
+function ClientSharePointPanel({
+  client,
+  onClose,
+  onUpdate,
+}: {
+  client: EnrichedClient;
   onClose: () => void;
-  onUpdate: (patch: Pick<Client, "sharepointSiteUrl" | "sharepointSiteId">) => void;
+  onUpdate: (patch: Pick<EnrichedClient, "sharepointSiteUrl" | "sharepointSiteId">) => void;
 }) {
   const { fetchWithAuth } = useAuth();
   const { toast } = useToast();
@@ -285,9 +316,7 @@ function ClientSharePointPanel({ client, onClose, onUpdate }: {
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
-    return () => {
-      if (pollRef.current !== null) clearInterval(pollRef.current);
-    };
+    return () => { if (pollRef.current !== null) clearInterval(pollRef.current); };
   }, []);
 
   async function handleSave() {
@@ -298,10 +327,10 @@ function ClientSharePointPanel({ client, onClose, onUpdate }: {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ sharepointSiteUrl: urlInput || null }),
       });
-      if (res.ok) {
-        const data = await res.json() as { sharepointSiteUrl: string | null; sharepointSiteId: string | null };
-        onUpdate({ sharepointSiteUrl: data.sharepointSiteUrl, sharepointSiteId: data.sharepointSiteId });
-      }
+      if (!res.ok) { toast({ title: "Save failed", variant: "destructive" }); return; }
+      const data = await res.json() as { sharepointSiteUrl: string | null; sharepointSiteId: string | null };
+      onUpdate({ sharepointSiteUrl: data.sharepointSiteUrl, sharepointSiteId: data.sharepointSiteId });
+      toast({ title: "SharePoint site saved" });
     } finally {
       setSaving(false);
     }
@@ -310,53 +339,21 @@ function ClientSharePointPanel({ client, onClose, onUpdate }: {
   async function handleProvision() {
     setProvisioning(true);
     try {
-      const res = await fetchWithAuth(`/api/admin/clients/${client.id}/sharepoint/provision`, {
-        method: "POST",
-      });
-
+      const res = await fetchWithAuth(`/api/admin/clients/${client.id}/sharepoint/provision`, { method: "POST" });
       if (!res.ok) {
-        const d = await res.json().catch(() => ({} as Record<string, unknown>)) as { error?: string };
-        toast({ title: d.error ?? "Provisioning failed", variant: "destructive" });
-        setProvisioning(false);
+        const err = await res.json() as { error: string };
+        toast({ title: "Provision failed", description: err.error, variant: "destructive" });
         return;
       }
-
-      const data = await res.json() as { provisioning?: boolean; alreadyProvisioned?: boolean; sharepointSiteUrl?: string };
-
-      if (data.alreadyProvisioned && data.sharepointSiteUrl) {
-        onUpdate({ sharepointSiteUrl: data.sharepointSiteUrl, sharepointSiteId: null });
-        toast({ title: "Already linked", description: data.sharepointSiteUrl });
-        setProvisioning(false);
-        return;
+      const data = await res.json() as { status: string; siteUrl?: string; sharepointSiteId?: string };
+      if (data.status === "provisioned" && data.siteUrl) {
+        setUrlInput(data.siteUrl);
+        onUpdate({ sharepointSiteUrl: data.siteUrl, sharepointSiteId: data.sharepointSiteId ?? null });
+        toast({ title: "SharePoint site provisioned" });
+      } else {
+        toast({ title: "Provisioning started", description: "The site is being created. Check back in a moment." });
       }
-
-      toast({ title: "SharePoint provisioning started", description: "This may take up to a minute." });
-
-      let polls = 0;
-      const MAX_POLLS = 20;
-      pollRef.current = setInterval(() => {
-        polls++;
-        void fetchWithAuth(`/api/admin/clients/${client.id}`).then(async r => {
-          if (!r.ok) return;
-          const c = await r.json() as { sharepointSiteUrl?: string | null; sharepointSiteId?: string | null };
-          if (c.sharepointSiteUrl) {
-            if (pollRef.current !== null) clearInterval(pollRef.current);
-            pollRef.current = null;
-            onUpdate({ sharepointSiteUrl: c.sharepointSiteUrl, sharepointSiteId: c.sharepointSiteId ?? null });
-            toast({ title: "SharePoint site ready", description: c.sharepointSiteUrl });
-            setProvisioning(false);
-            return;
-          }
-          if (polls >= MAX_POLLS) {
-            if (pollRef.current !== null) clearInterval(pollRef.current);
-            pollRef.current = null;
-            toast({ title: "Provisioning is taking longer than expected", description: "Refresh this page in a few minutes to see the link.", variant: "destructive" });
-            setProvisioning(false);
-          }
-        });
-      }, 3000);
-    } catch {
-      toast({ title: "Network error", variant: "destructive" });
+    } finally {
       setProvisioning(false);
     }
   }
@@ -364,237 +361,74 @@ function ClientSharePointPanel({ client, onClose, onUpdate }: {
   async function handleAddOwner() {
     setAddingOwner(true);
     try {
-      const res = await fetchWithAuth(`/api/admin/clients/${client.id}/sharepoint/add-owner`, {
-        method: "POST",
-      });
-      if (res.ok) {
-        toast({ title: "Owner added", description: "You have been added as a site owner." });
-      } else {
-        const d = await res.json().catch(() => ({} as Record<string, unknown>)) as { error?: string };
-        toast({ title: "Failed to add owner", description: d.error ?? "Unknown error", variant: "destructive" });
+      const res = await fetchWithAuth(`/api/admin/clients/${client.id}/sharepoint/add-owner`, { method: "POST" });
+      if (!res.ok) {
+        const err = await res.json() as { error: string };
+        toast({ title: "Failed", description: err.error, variant: "destructive" });
+        return;
       }
-    } catch {
-      toast({ title: "Network error", variant: "destructive" });
+      toast({ title: "Shane added as site owner" });
     } finally {
       setAddingOwner(false);
     }
   }
 
-  const siteUrl = client.sharepointSiteUrl;
-
   return (
     <tr>
-      <td colSpan={5} className="px-0 py-0 bg-[#0078D4]/10/40 border-b border-blue-100">
+      <td colSpan={7} className="px-0 py-0 border-b border-border bg-[#0078D4]/5">
         <div className="px-5 py-4">
           <div className="flex items-center justify-between mb-3">
             <span className="text-xs font-bold text-[#0078D4] uppercase tracking-widest">SharePoint Site</span>
-            <button onClick={onClose} className="text-[#7D8590] hover:text-[#7D8590] transition-colors" aria-label="Close">
+            <button onClick={onClose} className="text-[#7D8590] hover:text-[#E6EDF3] transition-colors">
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
               </svg>
             </button>
           </div>
-
-          {siteUrl ? (
-            <div className="flex items-center gap-3 bg-[#161B22] border border-[#0078D4]/20 rounded-lg px-3 py-2.5 mb-3">
-              <svg className="w-5 h-5 text-[#0078D4] flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
-              </svg>
-              <div className="flex-1 min-w-0">
-                <p className="text-xs font-semibold text-[#E6EDF3]">Site linked</p>
-                <a href={siteUrl} target="_blank" rel="noopener noreferrer"
-                  className="text-[11px] text-[#0078D4] hover:underline truncate block">{siteUrl}</a>
-              </div>
-              <button onClick={() => void handleAddOwner()} disabled={addingOwner}
-                className="flex-shrink-0 flex items-center gap-1.5 text-xs font-semibold border border-[#0078D4] text-[#0078D4] px-3 py-1.5 rounded-lg hover:bg-[#0078D4]/10 disabled:opacity-50 transition-colors">
-                {addingOwner ? <span className="w-3 h-3 border-2 border-[#0078D4]/40 border-t-[#0078D4] rounded-full animate-spin inline-block" /> : null}
-                {addingOwner ? "Adding…" : "Add me as owner"}
-              </button>
-              <a href={siteUrl} target="_blank" rel="noopener noreferrer"
-                className="flex-shrink-0 text-xs font-semibold bg-[#0078D4] text-white px-3 py-1.5 rounded-lg hover:bg-[#005fa3] transition-colors">
-                Open →
-              </a>
-            </div>
-          ) : (
-            <div className="flex items-center gap-3 bg-[#161B22] border border-[#30363D] rounded-lg px-3 py-2.5 mb-3">
-              <svg className="w-5 h-5 text-[#7D8590] flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
-              </svg>
-              <p className="flex-1 text-xs text-[#7D8590]">No SharePoint site linked yet.</p>
-              <button onClick={() => void handleProvision()} disabled={provisioning}
-                className="flex-shrink-0 flex items-center gap-1.5 text-xs font-semibold bg-[#0078D4] text-white px-3 py-1.5 rounded-lg hover:bg-[#005fa3] disabled:opacity-50 transition-colors">
-                {provisioning ? <span className="w-3 h-3 border-2 border-white/40 border-t-white rounded-full animate-spin inline-block" /> : null}
-                {provisioning ? "Provisioning…" : "Auto-Provision"}
-              </button>
-            </div>
-          )}
-
-          <div>
-            <p className="text-[10px] font-bold text-[#7D8590] uppercase tracking-widest mb-1.5">Manual URL</p>
-            <div className="flex gap-2">
-              <input type="url" value={urlInput} onChange={e => setUrlInput(e.target.value)}
-                placeholder="https://tenant.sharepoint.com/sites/…"
-                className="flex-1 border border-border rounded-lg px-3 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-[#0078D4] bg-[#161B22]" />
-              <button onClick={() => void handleSave()} disabled={saving}
-                className="flex-shrink-0 text-xs font-semibold border border-[#0078D4] text-[#0078D4] px-3 py-1.5 rounded-lg hover:bg-[#0078D4]/10 disabled:opacity-50 transition-colors">
-                {saving ? "Saving…" : "Save"}
-              </button>
-            </div>
+          <div className="flex items-center gap-2 max-w-lg">
+            <input
+              type="url"
+              placeholder="https://contoso.sharepoint.com/sites/…"
+              value={urlInput}
+              onChange={e => setUrlInput(e.target.value)}
+              className="flex-1 border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4] bg-[#161B22] text-[#E6EDF3]"
+            />
+            <button
+              onClick={() => void handleSave()}
+              disabled={saving}
+              className="px-3 py-2 bg-[#0078D4] text-white text-xs font-semibold rounded-lg hover:bg-[#005fa3] disabled:opacity-50 transition-colors"
+            >
+              {saving ? "Saving…" : "Save"}
+            </button>
+          </div>
+          <div className="flex gap-2 mt-2 flex-wrap">
+            <button
+              onClick={() => void handleProvision()}
+              disabled={provisioning}
+              className="text-xs font-semibold text-[#0078D4] hover:underline disabled:opacity-50 transition-colors"
+            >
+              {provisioning ? "Provisioning…" : "Auto-provision site"}
+            </button>
+            {client.sharepointSiteUrl && (
+              <>
+                <span className="text-[#484F58]">·</span>
+                <a href={client.sharepointSiteUrl} target="_blank" rel="noopener noreferrer" className="text-xs font-semibold text-emerald-400 hover:underline">
+                  Open site ↗
+                </a>
+                <span className="text-[#484F58]">·</span>
+                <button
+                  onClick={() => void handleAddOwner()}
+                  disabled={addingOwner}
+                  className="text-xs font-semibold text-[#7D8590] hover:text-[#0078D4] disabled:opacity-50 transition-colors"
+                >
+                  {addingOwner ? "Adding…" : "Add Shane as owner"}
+                </button>
+              </>
+            )}
           </div>
         </div>
       </td>
     </tr>
-  );
-}
-
-// ─── DeleteConfirmDialog ──────────────────────────────────────────────────────
-function DeleteConfirmDialog({
-  client,
-  onClose,
-  onConfirm,
-  deleting,
-}: {
-  client: Client;
-  onClose: () => void;
-  onConfirm: () => void;
-  deleting: boolean;
-}) {
-  const { fetchWithAuth } = useAuth();
-  const [preview, setPreview] = useState<DeletePreview | null>(null);
-  const [previewLoading, setPreviewLoading] = useState(true);
-  const [previewError, setPreviewError] = useState<string | null>(null);
-
-  const loadPreview = useCallback(() => {
-    setPreviewLoading(true);
-    setPreviewError(null);
-    fetchWithAuth(`/api/admin/clients/${client.id}/delete-preview`)
-      .then(async res => {
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        setPreview(await res.json() as DeletePreview);
-      })
-      .catch(e => setPreviewError(e instanceof Error ? e.message : "Failed to load"))
-      .finally(() => setPreviewLoading(false));
-  }, [client.id, fetchWithAuth]);
-
-  useEffect(() => { loadPreview(); }, [loadPreview]);
-
-  const clientLabel = client.name ?? client.email;
-
-  const summaryItems: Array<{ label: string; count: number }> = preview
-    ? [
-        { label: "Projects", count: preview.projects },
-        { label: "Invoices", count: preview.invoices },
-        { label: "Contracts", count: preview.contracts },
-        { label: "Messages", count: preview.messages },
-        { label: "Services", count: preview.services },
-        { label: "Reports", count: preview.reports },
-        { label: "Status reports", count: preview.statusReports },
-      ].filter(item => item.count > 0)
-    : [];
-
-  const hasWarnings = preview && (preview.unpaidInvoices > 0 || preview.hasActiveStripeSubscription);
-
-  return (
-    <Dialog open onOpenChange={open => { if (!open && !deleting) onClose(); }}>
-      <DialogContent className="max-w-md">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2 text-red-400">
-            <svg className="w-5 h-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
-            </svg>
-            Permanently delete client?
-          </DialogTitle>
-          <DialogDescription asChild>
-            <div className="text-sm text-[#7D8590] mt-1">
-              You are about to permanently delete <strong className="text-[#E6EDF3]">{clientLabel}</strong> and all their associated data. This cannot be undone.
-            </div>
-          </DialogDescription>
-        </DialogHeader>
-
-        <div className="space-y-3">
-          {/* Dependency summary */}
-          {previewLoading ? (
-            <div className="flex items-center gap-2 py-3 text-sm text-[#7D8590]">
-              <div className="w-4 h-4 border-2 border-[#0078D4] border-t-transparent rounded-full animate-spin" />
-              Checking what will be deleted…
-            </div>
-          ) : previewError ? (
-            <div className="bg-red-500/10 border border-red-500/20 rounded-lg px-4 py-3">
-              <p className="text-sm font-semibold text-red-400 mb-1">Could not load dependency summary</p>
-              <p className="text-xs text-red-400 mb-2">{previewError}</p>
-              <p className="text-xs text-red-400 mb-3">Deletion is blocked until the summary loads successfully. This protects you from accidentally removing data you didn't know existed.</p>
-              <button
-                onClick={loadPreview}
-                className="text-xs font-semibold text-red-400 border border-red-300 bg-[#161B22] px-3 py-1.5 rounded-lg hover:bg-red-500/10 transition-colors"
-              >
-                Retry
-              </button>
-            </div>
-          ) : preview ? (
-            <>
-              {summaryItems.length === 0 ? (
-                <div className="bg-[#161B22] border border-border rounded-lg px-4 py-3">
-                  <p className="text-sm text-[#7D8590]">This client has no associated records. Only their account will be removed.</p>
-                </div>
-              ) : (
-                <div className="bg-[#161B22] border border-border rounded-lg px-4 py-3">
-                  <p className="text-xs font-semibold text-[#E6EDF3] uppercase tracking-wider mb-2">Will be permanently erased</p>
-                  <div className="grid grid-cols-2 gap-x-6 gap-y-1">
-                    {summaryItems.map(item => (
-                      <div key={item.label} className="flex items-center justify-between text-sm">
-                        <span className="text-[#7D8590]">{item.label}</span>
-                        <span className="font-semibold text-[#E6EDF3]">{item.count}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Warnings */}
-              {hasWarnings && (
-                <div className="bg-amber-500/100/10 border border-amber-500/20 rounded-lg px-4 py-3 space-y-1.5">
-                  <p className="text-xs font-bold text-amber-400 uppercase tracking-wider">⚠ Warnings</p>
-                  {preview.unpaidInvoices > 0 && (
-                    <p className="text-sm text-amber-400">
-                      This client has <strong>{preview.unpaidInvoices} unpaid invoice{preview.unpaidInvoices !== 1 ? "s" : ""}</strong>. Deleting will erase them without collecting payment.
-                    </p>
-                  )}
-                  {preview.hasActiveStripeSubscription && (
-                    <p className="text-sm text-amber-400">
-                      This client has an <strong>active Stripe subscription</strong>. Cancel it in the Stripe dashboard before deleting to avoid continued billing.
-                    </p>
-                  )}
-                </div>
-              )}
-            </>
-          ) : null}
-        </div>
-
-        <DialogFooter className="flex gap-2 pt-2">
-          <button
-            onClick={onClose}
-            disabled={deleting}
-            className="flex-1 border border-border text-sm font-medium px-4 py-2 rounded-lg hover:bg-[#1C2128] disabled:opacity-50 transition-colors"
-          >
-            Cancel
-          </button>
-          <button
-            onClick={onConfirm}
-            disabled={deleting || previewLoading || !!previewError}
-            className="flex-1 flex items-center justify-center gap-2 bg-red-600 hover:bg-red-700 text-white text-sm font-semibold px-4 py-2 rounded-lg disabled:opacity-50 transition-colors"
-          >
-            {deleting ? (
-              <>
-                <span className="w-3.5 h-3.5 border-2 border-white/40 border-t-white rounded-full animate-spin" />
-                Deleting…
-              </>
-            ) : (
-              "Permanently delete"
-            )}
-          </button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
   );
 }
 
@@ -603,36 +437,41 @@ export default function ClientsPage() {
   const [, navigate] = useLocation();
   const { fetchWithAuth } = useAuth();
   const { toast } = useToast();
-  const [clients, setClients] = useState<Client[]>([]);
+
+  const [clients, setClients] = useState<EnrichedClient[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [error, setError] = useState("");
-  const [deleteTarget, setDeleteTarget] = useState<Client | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<EnrichedClient | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [search, setSearch] = useState("");
-  const [expandedClientId, setExpandedClientId] = useState<number | null>(null);
-  const [expandedSpClientId, setExpandedSpClientId] = useState<number | null>(null);
+  const [expandedEmailId, setExpandedEmailId] = useState<number | null>(null);
+  const [expandedSpId, setExpandedSpId] = useState<number | null>(null);
   const [m365ClientId, setM365ClientId] = useState<number | null>(null);
   const [resendingInviteId, setResendingInviteId] = useState<number | null>(null);
+  const [viewAsLoading, setViewAsLoading] = useState<number | null>(null);
 
   const load = async () => {
-    const res = await fetchWithAuth("/api/admin/clients");
-    if (res.ok) {
-      const loaded = await res.json() as Client[];
-      setClients(loaded);
-      const params = new URLSearchParams(window.location.search);
-      const m365Param = params.get("m365");
-      if (m365Param) {
-        const targetId = parseInt(m365Param, 10);
-        if (!isNaN(targetId) && loaded.some(c => c.id === targetId)) {
-          setM365ClientId(targetId);
+    try {
+      const res = await fetchWithAuth("/api/admin/clients/enriched");
+      if (res.ok) {
+        const data = await res.json() as EnrichedClient[];
+        setClients(data);
+        const params = new URLSearchParams(window.location.search);
+        const m365Param = params.get("m365");
+        if (m365Param) {
+          const targetId = parseInt(m365Param, 10);
+          if (!isNaN(targetId) && data.some(c => c.id === targetId)) {
+            setM365ClientId(targetId);
+          }
         }
       }
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   useEffect(() => { void load(); }, []);
@@ -661,7 +500,7 @@ export default function ClientsPage() {
         setError(err.error);
       } else {
         if (!editingId) {
-          toast({ title: "Client created", description: `A portal invite has been sent to ${form.email}.` });
+          toast({ title: "Client created", description: `Portal invite sent to ${form.email}.` });
         }
         setShowForm(false);
         setEditingId(null);
@@ -673,12 +512,12 @@ export default function ClientsPage() {
     }
   };
 
-  const handleResendInvite = async (c: Client) => {
+  const handleResendInvite = async (c: EnrichedClient) => {
     setResendingInviteId(c.id);
     try {
       const res = await fetchWithAuth(`/api/admin/clients/${c.id}/resend-invite`, { method: "POST" });
       if (res.ok) {
-        toast({ title: "Invite resent", description: `A new setup link was emailed to ${c.email}.` });
+        toast({ title: "Invite resent", description: `New setup link sent to ${c.email}.` });
       } else {
         const err = await res.json() as { error?: string };
         toast({ title: "Failed to resend invite", description: err.error ?? "Unknown error", variant: "destructive" });
@@ -690,26 +529,19 @@ export default function ClientsPage() {
     }
   };
 
-  const [viewAsLoading, setViewAsLoading] = useState<number | null>(null);
-
-  const handleViewAs = async (c: Client) => {
+  const handleViewAs = async (c: EnrichedClient) => {
     setViewAsLoading(c.id);
     try {
       const res = await fetchWithAuth(`/api/admin/impersonate/${c.id}`, { method: "POST" });
-      if (!res.ok) {
-        const err = await res.json() as { error: string };
-        alert(err.error ?? "Could not start impersonation session");
-        return;
-      }
+      if (!res.ok) { alert("Could not start impersonation session"); return; }
       const data = await res.json() as { token: string };
-      const url = `${CRM_PORTAL_BASE}/portal?impersonation_token=${encodeURIComponent(data.token)}`;
-      window.open(url, "_blank", "noopener");
+      window.open(`${CRM_PORTAL_BASE}/portal?impersonation_token=${encodeURIComponent(data.token)}`, "_blank", "noopener");
     } finally {
       setViewAsLoading(null);
     }
   };
 
-  const handleEdit = (c: Client) => {
+  const handleEdit = (c: EnrichedClient) => {
     setEditingId(c.id);
     setForm({ email: c.email, name: c.name ?? "", company: c.company ?? "", phone: c.phone ?? "" });
     setShowForm(true);
@@ -721,7 +553,7 @@ export default function ClientsPage() {
     try {
       const res = await fetchWithAuth(`/api/admin/clients/${deleteTarget.id}`, { method: "DELETE" });
       if (res.ok) {
-        toast({ title: "Client deleted", description: `${deleteTarget.name ?? deleteTarget.email} and all their data have been removed.` });
+        toast({ title: "Client deleted" });
         setDeleteTarget(null);
         await load();
       } else {
@@ -742,22 +574,18 @@ export default function ClientsPage() {
     );
   });
 
-  function toggleEmails(clientId: number) {
-    setExpandedClientId(prev => prev === clientId ? null : clientId);
-    setExpandedSpClientId(null);
-  }
-
-  function toggleSp(clientId: number) {
-    setExpandedSpClientId(prev => prev === clientId ? null : clientId);
-    setExpandedClientId(null);
-  }
+  const inputCls =
+    "w-full border border-border rounded-lg px-3 py-2 text-sm text-[#E6EDF3] focus:outline-none focus:ring-2 focus:ring-[#0078D4] bg-[#1C2128]";
 
   return (
-    <div className="p-6 max-w-[1200px]">
-      <div className="flex items-center justify-between mb-4">
+    <div className="p-6 max-w-[1400px]">
+      {/* ── Header ─────────────────────────────────────────────────── */}
+      <div className="flex items-center justify-between mb-5">
         <div>
           <h1 className="text-xl font-bold text-[#E6EDF3]">Clients</h1>
-          <p className="text-sm text-muted-foreground mt-0.5">Manage portal access for consulting clients. Use "View as Client" to preview the portal as any client.</p>
+          <p className="text-sm text-muted-foreground mt-0.5">
+            {clients.length} client{clients.length !== 1 ? "s" : ""} — click a name to open the command center
+          </p>
         </div>
         <button
           onClick={() => { setShowForm(true); setEditingId(null); setForm(EMPTY_FORM); setError(""); }}
@@ -770,6 +598,7 @@ export default function ClientsPage() {
         </button>
       </div>
 
+      {/* ── Search ─────────────────────────────────────────────────── */}
       <div className="mb-4 relative max-w-sm">
         <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
           <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-4.35-4.35M17 11A6 6 0 115 11a6 6 0 0112 0z" />
@@ -779,10 +608,11 @@ export default function ClientsPage() {
           placeholder="Search by name, email or company…"
           value={search}
           onChange={e => setSearch(e.target.value)}
-          className="w-full pl-9 pr-3 py-2 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4] bg-[#161B22]"
+          className="w-full pl-9 pr-3 py-2 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4] bg-[#161B22] text-[#E6EDF3]"
         />
       </div>
 
+      {/* ── Add / Edit form ─────────────────────────────────────────── */}
       {showForm && (
         <div className="bg-[#1C2128] border border-border rounded-xl p-5 mb-6">
           <h3 className="text-sm font-bold text-[#E6EDF3] mb-1">{editingId ? "Edit Client" : "Add New Client"}</h3>
@@ -794,31 +624,28 @@ export default function ClientsPage() {
           <form onSubmit={handleSubmit} className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="block text-xs font-semibold text-[#E6EDF3] mb-1">Email *</label>
-              <input type="email" required value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))}
-                className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4] bg-[#1C2128] text-[#E6EDF3]" />
+              <input type="email" required value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} className={inputCls} />
             </div>
             <div>
               <label className="block text-xs font-semibold text-[#E6EDF3] mb-1">Name</label>
-              <input type="text" value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
-                className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4] bg-[#1C2128] text-[#E6EDF3]" />
+              <input type="text" value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} className={inputCls} />
             </div>
             <div>
               <label className="block text-xs font-semibold text-[#E6EDF3] mb-1">Company</label>
-              <input type="text" value={form.company} onChange={e => setForm(f => ({ ...f, company: e.target.value }))}
-                className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4] bg-[#1C2128] text-[#E6EDF3]" />
+              <input type="text" value={form.company} onChange={e => setForm(f => ({ ...f, company: e.target.value }))} className={inputCls} />
             </div>
             <div>
               <label className="block text-xs font-semibold text-[#E6EDF3] mb-1">Phone</label>
-              <input type="text" value={form.phone} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))}
-                className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4] bg-[#1C2128] text-[#E6EDF3]" />
+              <input type="text" value={form.phone} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))} className={inputCls} />
             </div>
-            {error && <div className="sm:col-span-2 text-sm text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2">{error}</div>}
+            {error && (
+              <div className="sm:col-span-2 text-sm text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2">{error}</div>
+            )}
             <div className="sm:col-span-2 flex gap-3">
               <button type="submit" disabled={saving} className="bg-[#0078D4] text-white text-sm font-semibold px-5 py-2 rounded-lg hover:bg-[#0078D4]/90 disabled:opacity-50 transition-colors">
                 {saving ? "Saving…" : editingId ? "Save Changes" : "Create & Send Invite"}
               </button>
-              <button type="button" onClick={() => { setShowForm(false); setEditingId(null); setError(""); }}
-                className="border border-border text-sm font-medium px-5 py-2 rounded-lg hover:bg-[#1C2128] transition-colors">
+              <button type="button" onClick={() => { setShowForm(false); setEditingId(null); setError(""); }} className="border border-border text-sm font-medium px-5 py-2 rounded-lg hover:bg-[#1C2128] transition-colors">
                 Cancel
               </button>
             </div>
@@ -826,8 +653,9 @@ export default function ClientsPage() {
         </div>
       )}
 
+      {/* ── Table ───────────────────────────────────────────────────── */}
       {loading ? (
-        <div className="flex items-center justify-center py-12">
+        <div className="flex items-center justify-center py-16">
           <div className="w-6 h-6 border-4 border-[#0078D4] border-t-transparent rounded-full animate-spin" />
         </div>
       ) : clients.length === 0 ? (
@@ -841,131 +669,191 @@ export default function ClientsPage() {
               <tr>
                 <th className="text-left px-5 py-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Name / Email</th>
                 <th className="text-left px-5 py-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground hidden sm:table-cell">Company</th>
-                <th className="text-left px-5 py-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground hidden md:table-cell">Phone</th>
-                <th className="text-left px-5 py-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground hidden lg:table-cell">Added</th>
+                <th className="text-center px-4 py-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground hidden md:table-cell">Projects</th>
+                <th className="text-center px-4 py-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground hidden md:table-cell">Open Tasks</th>
+                <th className="text-center px-4 py-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground hidden lg:table-cell">M365 Score</th>
+                <th className="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground hidden xl:table-cell">Joined</th>
                 <th className="px-5 py-3" />
               </tr>
             </thead>
             <tbody>
               {filteredClients.length === 0 ? (
-                <tr><td colSpan={5} className="px-5 py-8 text-center text-muted-foreground text-sm">No clients match your search.</td></tr>
-              ) : filteredClients.map(c => (
-                <>
-                  <tr key={c.id} className={`border-b border-border last:border-0 hover:bg-[#1C2128] transition-colors ${expandedClientId === c.id ? "bg-[#0078D4]/10/30" : ""}`}>
-                    <td className="px-5 py-3.5">
-                      <button
-                        onClick={() => navigate(`/crm/clients/${c.id}`)}
-                        className="text-left group"
-                      >
-                        <p className="font-semibold text-[#E6EDF3] group-hover:text-[#0078D4] transition-colors">{c.name ?? "—"}</p>
-                        <p className="text-xs text-muted-foreground">{c.email}</p>
-                      </button>
-                    </td>
-                    <td className="px-5 py-3.5 text-muted-foreground hidden sm:table-cell">{c.company ?? "—"}</td>
-                    <td className="px-5 py-3.5 text-muted-foreground hidden md:table-cell">{c.phone ?? "—"}</td>
-                    <td className="px-5 py-3.5 text-xs text-muted-foreground hidden lg:table-cell">{new Date(c.createdAt).toLocaleDateString()}</td>
-                    <td className="px-5 py-3.5">
-                      <div className="flex items-center gap-3 flex-wrap justify-end">
-                        <button
-                          onClick={() => toggleEmails(c.id)}
-                          className={`flex items-center gap-1 text-xs font-semibold transition-colors ${
-                            expandedClientId === c.id
-                              ? "text-[#0078D4]"
-                              : "text-[#7D8590] hover:text-[#0078D4]"
-                          }`}
-                          title="View emails from this client's domain"
-                        >
-                          <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M21.75 6.75v10.5a2.25 2.25 0 01-2.25 2.25h-15a2.25 2.25 0 01-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25m19.5 0v.243a2.25 2.25 0 01-1.07 1.916l-7.5 4.615a2.25 2.25 0 01-2.36 0L3.32 8.91a2.25 2.25 0 01-1.07-1.916V6.75" />
-                          </svg>
-                          Emails
-                        </button>
+                <tr>
+                  <td colSpan={7} className="px-5 py-8 text-center text-muted-foreground text-sm">
+                    No clients match your search.
+                  </td>
+                </tr>
+              ) : (
+                filteredClients.map(c => (
+                  <>
+                    <tr
+                      key={c.id}
+                      className={`border-b border-border last:border-0 hover:bg-[#1C2128] transition-colors ${expandedEmailId === c.id || expandedSpId === c.id ? "bg-[#1C2128]" : ""}`}
+                    >
+                      {/* Name / Email */}
+                      <td className="px-5 py-3.5">
                         <button
                           onClick={() => navigate(`/crm/clients/${c.id}`)}
-                          className="text-xs font-semibold text-[#0078D4] hover:underline"
+                          className="text-left group"
                         >
-                          Details
+                          <p className="font-semibold text-[#E6EDF3] group-hover:text-[#0078D4] transition-colors leading-tight">
+                            {c.name ?? <span className="text-[#484F58]">—</span>}
+                          </p>
+                          <p className="text-xs text-muted-foreground">{c.email}</p>
                         </button>
-                        <button onClick={() => handleEdit(c)} className="text-xs font-semibold text-[#7D8590] hover:text-[#0078D4]">Edit</button>
-                        <button
-                          onClick={() => void handleResendInvite(c)}
-                          disabled={resendingInviteId === c.id}
-                          className="flex items-center gap-1 text-xs font-semibold text-indigo-600 hover:text-indigo-800 disabled:opacity-50 transition-colors"
-                          title="Send a new portal invite link to this client"
-                        >
-                          {resendingInviteId === c.id ? (
-                            <span className="w-3 h-3 border-2 border-indigo-400 border-t-transparent rounded-full animate-spin inline-block" />
-                          ) : (
+                      </td>
+
+                      {/* Company */}
+                      <td className="px-5 py-3.5 text-sm text-muted-foreground hidden sm:table-cell">
+                        {c.company ?? "—"}
+                      </td>
+
+                      {/* Projects */}
+                      <td className="px-4 py-3.5 text-center hidden md:table-cell">
+                        {c.projectCount === 0 ? (
+                          <span className="text-xs text-[#484F58]">—</span>
+                        ) : (
+                          <div className="inline-flex items-center gap-1">
+                            {c.activeProjectCount > 0 && (
+                              <span className="text-xs font-bold text-[#0078D4]">{c.activeProjectCount}</span>
+                            )}
+                            {c.projectCount > c.activeProjectCount && (
+                              <span className="text-xs text-[#484F58]">
+                                {c.activeProjectCount > 0 ? `+${c.projectCount - c.activeProjectCount}` : c.projectCount}
+                              </span>
+                            )}
+                            {c.activeProjectCount > 0 && (
+                              <span className="w-1.5 h-1.5 rounded-full bg-[#0078D4] inline-block" />
+                            )}
+                          </div>
+                        )}
+                      </td>
+
+                      {/* Open Tasks */}
+                      <td className="px-4 py-3.5 text-center hidden md:table-cell">
+                        {c.openTaskCount === 0 ? (
+                          <span className="text-xs text-[#484F58]">—</span>
+                        ) : (
+                          <span className={`text-xs font-bold tabular-nums ${c.openTaskCount > 5 ? "text-amber-400" : "text-[#E6EDF3]"}`}>
+                            {c.openTaskCount}
+                          </span>
+                        )}
+                      </td>
+
+                      {/* M365 Score */}
+                      <td className="px-4 py-3.5 text-center hidden lg:table-cell">
+                        <div className="flex flex-col items-center gap-0.5">
+                          <ScoreBadge score={c.quizScore} />
+                          <TierBadge tier={c.quizTier} />
+                        </div>
+                      </td>
+
+                      {/* Joined */}
+                      <td className="px-4 py-3.5 text-xs text-muted-foreground hidden xl:table-cell whitespace-nowrap">
+                        {new Date(c.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                      </td>
+
+                      {/* Actions */}
+                      <td className="px-5 py-3.5">
+                        <div className="flex items-center gap-2.5 flex-wrap justify-end">
+                          <button
+                            onClick={() => navigate(`/crm/clients/${c.id}`)}
+                            className="flex items-center gap-1 text-xs font-semibold text-[#0078D4] hover:underline"
+                            title="Open command center"
+                          >
+                            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 6H5.25A2.25 2.25 0 003 8.25v10.5A2.25 2.25 0 005.25 21h10.5A2.25 2.25 0 0018 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25" />
+                            </svg>
+                            Open
+                          </button>
+
+                          <button
+                            onClick={() => handleEdit(c)}
+                            className="text-xs font-semibold text-[#7D8590] hover:text-[#E6EDF3]"
+                          >
+                            Edit
+                          </button>
+
+                          <button
+                            onClick={() => { setExpandedEmailId(prev => prev === c.id ? null : c.id); setExpandedSpId(null); }}
+                            className={`flex items-center gap-1 text-xs font-semibold transition-colors ${expandedEmailId === c.id ? "text-[#0078D4]" : "text-[#7D8590] hover:text-[#0078D4]"}`}
+                            title="View email activity"
+                          >
                             <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
                               <path strokeLinecap="round" strokeLinejoin="round" d="M21.75 6.75v10.5a2.25 2.25 0 01-2.25 2.25h-15a2.25 2.25 0 01-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25m19.5 0v.243a2.25 2.25 0 01-1.07 1.916l-7.5 4.615a2.25 2.25 0 01-2.36 0L3.32 8.91a2.25 2.25 0 01-1.07-1.916V6.75" />
                             </svg>
-                          )}
-                          {resendingInviteId === c.id ? "Sending…" : "Resend Invite"}
-                        </button>
-                        <button
-                          onClick={() => handleViewAs(c)}
-                          disabled={viewAsLoading === c.id}
-                          className="flex items-center gap-1 text-xs font-semibold text-amber-600 hover:text-amber-400 hover:underline disabled:opacity-50 transition-colors"
-                          title="Open the client portal as this client (read-only, 30 min session)"
-                        >
-                          {viewAsLoading === c.id ? (
-                            <span className="w-3 h-3 border-2 border-amber-500 border-t-transparent rounded-full animate-spin inline-block" />
-                          ) : (
+                            Emails
+                          </button>
+
+                          <button
+                            onClick={() => { setExpandedSpId(prev => prev === c.id ? null : c.id); setExpandedEmailId(null); }}
+                            className={`flex items-center gap-1 text-xs font-semibold transition-colors ${expandedSpId === c.id ? "text-[#0078D4]" : "text-[#7D8590] hover:text-[#0078D4]"}`}
+                            title="Manage SharePoint site"
+                          >
                             <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                              <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                              <path strokeLinecap="round" strokeLinejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
                             </svg>
-                          )}
-                          View as Client
-                        </button>
-                        <button
-                          onClick={() => toggleSp(c.id)}
-                          className={`flex items-center gap-1 text-xs font-semibold transition-colors ${
-                            expandedSpClientId === c.id
-                              ? "text-[#0078D4]"
-                              : "text-[#7D8590] hover:text-[#0078D4]"
-                          }`}
-                          title="Manage SharePoint site for this client"
-                        >
-                          <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
-                          </svg>
-                          SharePoint
-                          {c.sharepointSiteUrl && (
-                            <span className="w-1.5 h-1.5 rounded-full bg-green-500 inline-block" />
-                          )}
-                        </button>
-                        <button
-                          onClick={() => setM365ClientId(c.id)}
-                          className="flex items-center gap-1 text-xs font-semibold text-[#0078D4] hover:underline transition-colors"
-                          title="View or edit Microsoft 365 environment profile for this client"
-                        >
-                          <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                          </svg>
-                          M365 Profile
-                        </button>
-                        <button onClick={() => setDeleteTarget(c)} className="text-xs font-semibold text-red-500 hover:text-red-400">Delete</button>
-                      </div>
-                    </td>
-                  </tr>
-                  {expandedClientId === c.id && (
-                    <ClientEmailPanel
-                      key={`email-panel-${c.id}`}
-                      client={c}
-                      onClose={() => setExpandedClientId(null)}
-                    />
-                  )}
-                  {expandedSpClientId === c.id && (
-                    <ClientSharePointPanel
-                      key={`sp-panel-${c.id}`}
-                      client={c}
-                      onClose={() => setExpandedSpClientId(null)}
-                      onUpdate={patch => setClients(prev => prev.map(x => x.id === c.id ? { ...x, ...patch } : x))}
-                    />
-                  )}
-                </>
-              ))}
+                            SP
+                            {c.sharepointSiteUrl && (
+                              <span className="w-1.5 h-1.5 rounded-full bg-green-500 inline-block" />
+                            )}
+                          </button>
+
+                          <button
+                            onClick={() => setM365ClientId(c.id)}
+                            className="flex items-center gap-1 text-xs font-semibold text-[#7D8590] hover:text-[#0078D4] transition-colors"
+                            title="M365 environment profile"
+                          >
+                            M365
+                          </button>
+
+                          <button
+                            onClick={() => void handleResendInvite(c)}
+                            disabled={resendingInviteId === c.id}
+                            className="text-xs font-semibold text-indigo-400 hover:text-indigo-300 disabled:opacity-50 transition-colors"
+                            title="Resend portal invite"
+                          >
+                            {resendingInviteId === c.id ? "Sending…" : "Invite"}
+                          </button>
+
+                          <button
+                            onClick={() => void handleViewAs(c)}
+                            disabled={viewAsLoading === c.id}
+                            className="text-xs font-semibold text-amber-400 hover:text-amber-300 disabled:opacity-50 transition-colors"
+                            title="View portal as this client"
+                          >
+                            {viewAsLoading === c.id ? "…" : "View as"}
+                          </button>
+
+                          <button
+                            onClick={() => setDeleteTarget(c)}
+                            className="text-xs font-semibold text-red-500 hover:text-red-400"
+                          >
+                            Delete
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+
+                    {expandedEmailId === c.id && (
+                      <ClientEmailPanel
+                        key={`email-${c.id}`}
+                        client={c}
+                        onClose={() => setExpandedEmailId(null)}
+                      />
+                    )}
+
+                    {expandedSpId === c.id && (
+                      <ClientSharePointPanel
+                        key={`sp-${c.id}`}
+                        client={c}
+                        onClose={() => setExpandedSpId(null)}
+                        onUpdate={patch => setClients(prev => prev.map(x => x.id === c.id ? { ...x, ...patch } : x))}
+                      />
+                    )}
+                  </>
+                ))
+              )}
             </tbody>
           </table>
         </div>

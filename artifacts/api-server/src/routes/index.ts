@@ -38,6 +38,7 @@ import bookingRouter from "./booking";
 import mfaRouter from "./mfa";
 import opportunitiesRouter from "./opportunities";
 import adminDbStatusRouter from "./admin-db-status";
+import adminClientsRouter from "./admin-clients";
 
 const router: IRouter = Router();
 
@@ -60,6 +61,7 @@ router.use(downloadsRouter);
 router.use(publicServicesRouter);
 router.use(publicEngagementProjectsRouter);
 router.use(publicServicePageTriggersRouter);
+router.use(adminClientsRouter);
 router.use(portalRouter);
 router.use(auditLogsRouter);
 router.use(adminSharepointRouter);

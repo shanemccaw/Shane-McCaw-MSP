@@ -1701,7 +1701,17 @@ export default function ProjectDetailPage() {
                 <span className="text-xs text-muted-foreground bg-[#1C2128] border border-border rounded px-2 py-0.5">{project.phase}</span>
               )}
             </div>
-            <p className="text-sm text-muted-foreground mt-1">{clientLabel}</p>
+            <div className="flex items-center gap-2 mt-1">
+              <p className="text-sm text-muted-foreground">{clientLabel}</p>
+              {client && (
+                <button
+                  onClick={() => navigate(`/crm/clients/${client.id}`)}
+                  className="text-xs font-semibold text-[#0078D4] hover:underline"
+                >
+                  Open Client →
+                </button>
+              )}
+            </div>
             {project.description && (
               <p className="text-sm text-[#E6EDF3]/70 mt-1 max-w-2xl">{project.description}</p>
             )}
