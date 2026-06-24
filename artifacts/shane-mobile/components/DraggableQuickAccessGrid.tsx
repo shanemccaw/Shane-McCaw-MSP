@@ -235,7 +235,7 @@ export function DraggableQuickAccessGrid({ items, onReorder, onRemove, onFirstIn
 
               return (
                 <Animated.View
-                  key={item.route}
+                  key={item.route ?? `item-${itemIdx}`}
                   style={[
                     styles.itemBtn,
                     {

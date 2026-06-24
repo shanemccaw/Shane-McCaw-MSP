@@ -47,9 +47,11 @@ export function QuickAccessProvider({ children }: { children: React.ReactNode })
         ]);
         if (stored) {
           const parsed = JSON.parse(stored) as QuickAccessItem[];
-          // Accept any valid array, including empty (user may have removed all items)
           if (Array.isArray(parsed)) {
-            setItems(parsed);
+            const valid = parsed.filter(
+              (i) => i && typeof i.route === "string" && i.route && typeof i.label === "string" && i.label
+            );
+            setItems(valid.length > 0 ? valid : DEFAULT_ITEMS);
           }
         }
         setHintSeen(hint === "true");
