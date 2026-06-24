@@ -186,12 +186,9 @@ export default function Services() {
     if (visibleProjects.length > 0) {
       present.push("core");
     }
-    const known = TIER_ORDER.filter((t) => present.includes(t));
-    const unknown = present
-      .filter((t) => !TIER_ORDER.includes(t) && t !== "other")
-      .sort();
-    const other = present.includes("other") ? ["other"] : [];
-    return [...known, ...unknown, ...other];
+    // Only render tiers that are explicitly configured — unknown/null-tier
+    // services are intentionally excluded so seed data never creates extra tracks.
+    return TIER_ORDER.filter((t) => present.includes(t));
   }, [grouped, visibleProjects]);
 
   // First three tiers that have data, used for hero anchor chips
