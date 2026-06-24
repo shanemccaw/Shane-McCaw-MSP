@@ -401,13 +401,15 @@ router.get("/portal/m365-scorecard-history", requireAuth, async (req: Request, r
 
 router.get("/portal/health/summary", requireAuth, async (req: Request, res: Response) => {
   const userId = req.user!.id;
-  const M365_CATS: M365ScoreCategory[] = ["security", "compliance", "copilot", "governance", "productivity"];
-  const CATEGORY_LABELS: Record<string, string> = {
+  const ALL_CATEGORY_LABELS: Record<string, string> = {
     security: "Security Posture",
     compliance: "Compliance Coverage",
     copilot: "Copilot Readiness",
     governance: "Governance Maturity",
     productivity: "Adoption Score",
+    identity: "Identity Protection",
+    collaboration: "Collaboration Score",
+    data: "Data Governance",
   };
 
   const rows = await db
@@ -424,16 +426,18 @@ router.get("/portal/health/summary", requireAuth, async (req: Request, res: Resp
   const thirtyDaysAgo = new Date();
   thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
-  const categories = M365_CATS.map(cat => {
+  // Discover all categories actually present in the data (handles all 8 schema categories)
+  const allCats = [...new Set(rows.map(r => r.category))].sort();
+
+  const categories = allCats.map(cat => {
     const catRows = rows.filter(r => r.category === cat);
-    if (catRows.length === 0) return null;
     const first = catRows[0].score;
     const latest = catRows[catRows.length - 1].score;
     const recentRows = catRows.filter(r => r.recordedAt >= thirtyDaysAgo);
     const hasAlert = recentRows.length >= 2 &&
       Math.abs(recentRows[recentRows.length - 1].score - recentRows[0].score) >= 10;
-    return { key: cat, label: CATEGORY_LABELS[cat] ?? cat, firstScore: first, latestScore: latest, delta: latest - first, hasAlert };
-  }).filter((c): c is NonNullable<typeof c> => c !== null);
+    return { key: cat, label: ALL_CATEGORY_LABELS[cat] ?? cat, firstScore: first, latestScore: latest, delta: latest - first, hasAlert };
+  });
 
   const overallFirst = categories.length > 0
     ? Math.round(categories.reduce((s, c) => s + c.firstScore, 0) / categories.length)
@@ -442,9 +446,9 @@ router.get("/portal/health/summary", requireAuth, async (req: Request, res: Resp
     ? Math.round(categories.reduce((s, c) => s + c.latestScore, 0) / categories.length)
     : 0;
 
+  // Time-series: group all rows by day and average across all present categories
   const dayMap = new Map<string, number[]>();
   for (const row of rows) {
-    if (!M365_CATS.includes(row.category as M365ScoreCategory)) continue;
     const day = row.recordedAt.toISOString().slice(0, 10);
     if (!dayMap.has(day)) dayMap.set(day, []);
     dayMap.get(day)!.push(row.score);

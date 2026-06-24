@@ -31,11 +31,10 @@ function healthScoreColor(score: number) {
   return "#ef4444";
 }
 
-function OverallHealthWidget() {
+function useHealthWidgetData() {
   const { fetchWithAuth } = useAuth();
   const [health, setHealth] = useState<HealthWidgetData | null>(null);
   const fetchedRef = useRef(false);
-
   useEffect(() => {
     if (fetchedRef.current) return;
     fetchedRef.current = true;
@@ -49,29 +48,35 @@ function OverallHealthWidget() {
       })
       .catch(() => {});
   }, [fetchWithAuth]);
+  return health;
+}
 
+function OverallHealthWidget({ variant = "dark" }: { variant?: "dark" | "light" }) {
+  const health = useHealthWidgetData();
   if (!health) return null;
-
   const color = healthScoreColor(health.overallLatest);
   const delta = health.overallDelta;
-
+  const isDark = variant === "dark";
   return (
     <Link href="/portal/health">
-      <div className="mx-3 mb-1 bg-white/5 hover:bg-white/10 rounded-xl px-3 py-2.5 cursor-pointer transition-colors border border-white/5 hover:border-white/15">
+      <div className={`mx-3 mb-1 rounded-xl px-3 py-2.5 cursor-pointer transition-colors ${isDark
+        ? "bg-white/5 hover:bg-white/10 border border-white/5 hover:border-white/15"
+        : "bg-[#0078D4]/6 hover:bg-[#0078D4]/10 border border-[#0078D4]/15 hover:border-[#0078D4]/30"
+      }`}>
         <div className="flex items-center justify-between mb-1">
-          <span className="text-[10px] text-white/40 uppercase tracking-wider font-medium">Env. Health</span>
-          <svg className="w-3 h-3 text-white/30" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" /></svg>
+          <span className={`text-[10px] uppercase tracking-wider font-medium ${isDark ? "text-white/40" : "text-[#0A2540]/50"}`}>Env. Health</span>
+          <svg className={`w-3 h-3 ${isDark ? "text-white/30" : "text-[#0A2540]/30"}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" /></svg>
         </div>
         <div className="flex items-center justify-between">
           <span className="text-xl font-extrabold" style={{ color }}>{health.overallLatest}%</span>
           {delta !== 0 && (
-            <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${delta > 0 ? "bg-green-500/15 text-green-400" : "bg-red-500/15 text-red-400"}`}>
+            <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${delta > 0 ? "bg-green-500/15 text-green-600" : "bg-red-500/15 text-red-600"}`}>
               {delta > 0 ? "▲" : "▼"} {Math.abs(delta)}pts
             </span>
           )}
         </div>
         {health.overallFirst !== health.overallLatest && (
-          <p className="text-[10px] text-white/30 mt-0.5">from {health.overallFirst}%</p>
+          <p className={`text-[10px] mt-0.5 ${isDark ? "text-white/30" : "text-[#0A2540]/40"}`}>from {health.overallFirst}%</p>
         )}
       </div>
     </Link>
@@ -289,11 +294,6 @@ function MobileBottomNav({ unreadMessages = 0, hasArchivedProjects = false, appR
       path: "/portal/activity",
       icon: <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0018 18a8.967 8.967 0 00-6 2.292m0-14.25v14.25" /></svg>,
     },
-    {
-      label: "Health Score",
-      path: "/portal/health",
-      icon: <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" /></svg>,
-    },
     ...(hasArchivedProjects ? [{
       label: "Project Archive",
       path: "/portal/archive",
@@ -340,9 +340,13 @@ function MobileBottomNav({ unreadMessages = 0, hasArchivedProjects = false, appR
     <>
       <Sheet open={showMore} onOpenChange={setShowMore}>
         <SheetContent side="bottom" className="rounded-t-2xl max-h-[85vh] overflow-y-auto pb-safe">
-          <SheetHeader className="mb-4">
+          <SheetHeader className="mb-3">
             <SheetTitle className="text-[#0A2540]">More</SheetTitle>
           </SheetHeader>
+
+          <div className="mb-4 -mx-1">
+            <OverallHealthWidget variant="light" />
+          </div>
 
           <nav className="space-y-1 mb-6">
             {secondaryNavItems.map(item => {
