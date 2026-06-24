@@ -237,10 +237,10 @@ export default function ClientDetailPage() {
   const [showAiInsights, setShowAiInsights] = useState(true);
   const [showAssessments, setShowAssessments] = useState(true);
   const [showDocuments, setShowDocuments] = useState(false);
-  const [clientDocuments, setClientDocuments] = useState<Array<{id:number;name:string;category:string;description:string|null;file_url:string|null;created_at:string}>>([]);
+  const [clientDocuments, setClientDocuments] = useState<Array<{id:number;name:string;category:string;description:string|null;fileUrl:string|null;createdAt:string}>>([]);
   const [docsLoading, setDocsLoading] = useState(false);
   const [docsCategory, setDocsCategory] = useState<string>("all");
-  const [docForm, setDocForm] = useState({ name: "", category: "contracts", description: "", file_url: "" });
+  const [docForm, setDocForm] = useState({ name: "", category: "contracts", description: "", fileUrl: "" });
   const [docFormOpen, setDocFormOpen] = useState(false);
   const [savingDoc, setSavingDoc] = useState(false);
 
@@ -1236,13 +1236,13 @@ export default function ClientDetailPage() {
                           {doc.description && <p className="text-[10px] text-muted-foreground">{doc.description}</p>}
                           <div className="flex items-center gap-2 mt-0.5">
                             <span className="text-[9px] font-bold uppercase text-[#0078D4]">{doc.category}</span>
-                            <span className="text-[9px] text-muted-foreground">{new Date(doc.created_at).toLocaleDateString()}</span>
+                            <span className="text-[9px] text-muted-foreground">{new Date(doc.createdAt).toLocaleDateString()}</span>
                           </div>
                         </div>
                       </div>
                       <div className="flex items-center gap-2 flex-shrink-0">
-                        {doc.file_url && (
-                          <a href={doc.file_url} target="_blank" rel="noopener noreferrer" className="text-[10px] text-[#0078D4] hover:underline">View</a>
+                        {doc.fileUrl && (
+                          <a href={doc.fileUrl} target="_blank" rel="noopener noreferrer" className="text-[10px] text-[#0078D4] hover:underline">View</a>
                         )}
                         <button
                           onClick={async () => {
@@ -1275,7 +1275,7 @@ export default function ClientDetailPage() {
                         body: JSON.stringify(docForm),
                       });
                       if (res.ok) {
-                        setDocForm({ name: "", category: "contracts", description: "", file_url: "" });
+                        setDocForm({ name: "", category: "contracts", description: "", fileUrl: "" });
                         setDocFormOpen(false);
                         void loadDocuments();
                       }
@@ -1304,8 +1304,8 @@ export default function ClientDetailPage() {
                     </select>
                     <input
                       placeholder="URL (optional)"
-                      value={docForm.file_url}
-                      onChange={e => setDocForm(f => ({ ...f, file_url: e.target.value }))}
+                      value={docForm.fileUrl}
+                      onChange={e => setDocForm(f => ({ ...f, fileUrl: e.target.value }))}
                       className="px-3 py-2 text-sm border border-border rounded-lg bg-[#0D1117] text-[#E6EDF3] focus:outline-none focus:ring-2 focus:ring-[#0078D4]"
                     />
                   </div>

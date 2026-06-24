@@ -414,6 +414,13 @@
       "when": 1782900000000,
       "tag": "0056_quiz_pain_signal_config",
       "breakpoints": true
+    },
+    {
+      "idx": 57,
+      "version": "7",
+      "when": 1782276288314,
+      "tag": "0057_add_client_documents",
+      "breakpoints": true
     }
   ]
 }
