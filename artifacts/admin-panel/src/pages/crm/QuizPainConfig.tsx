@@ -34,12 +34,19 @@ interface Config {
   updatedAt?: string;
 }
 
+interface RecalcResult {
+  updated: number;
+  total: number;
+}
+
 export default function QuizPainConfigPage() {
   const { fetchWithAuth } = useAuth();
   const { toast } = useToast();
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [recalculating, setRecalculating] = useState(false);
+  const [recalcResult, setRecalcResult] = useState<RecalcResult | null>(null);
   const [isDefault, setIsDefault] = useState(true);
   const [updatedAt, setUpdatedAt] = useState<string | null>(null);
 
@@ -100,11 +107,37 @@ export default function QuizPainConfigPage() {
       setCategoryMap([...DEFAULT_CATEGORY_PAIN_MAP]);
       setIsDefault(true);
       setUpdatedAt(null);
+      setRecalcResult(null);
       toast({ title: "Reset", description: "Mappings reset to defaults." });
     } catch {
       toast({ title: "Error", description: "Failed to reset config", variant: "destructive" });
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function handleRecalculate() {
+    if (!confirm(
+      "Re-derive pain signals for all leads that have quiz submissions?\n\n" +
+      "This will overwrite the painPoints, maturityIndicators, engagementSignals, and urgencySignals " +
+      "on those leads using the current saved mappings. Proceed?"
+    )) return;
+
+    setRecalculating(true);
+    setRecalcResult(null);
+    try {
+      const res = await fetchWithAuth("/api/admin/quiz-pain-config/recalculate", { method: "POST" });
+      if (!res.ok) throw new Error("Recalculate failed");
+      const data: RecalcResult = await res.json();
+      setRecalcResult(data);
+      toast({
+        title: "Re-scoring complete",
+        description: `Updated ${data.updated} of ${data.total} lead${data.total !== 1 ? "s" : ""} with quiz matches.`,
+      });
+    } catch {
+      toast({ title: "Error", description: "Failed to recalculate lead signals", variant: "destructive" });
+    } finally {
+      setRecalculating(false);
     }
   }
 
@@ -177,7 +210,7 @@ export default function QuizPainConfigPage() {
             </span>
           ) : null}
         </div>
-        <div className="flex gap-2 shrink-0">
+        <div className="flex gap-2 shrink-0 flex-wrap">
           <button
             onClick={handleReset}
             disabled={saving || isDefault}
@@ -324,9 +357,46 @@ export default function QuizPainConfigPage() {
         </div>
       </section>
 
-      <p className="text-xs text-gray-500">
-        Changes take effect immediately for any lead detail page loaded after saving. Existing lead profiles are not retroactively updated — re-open a lead to recalculate signals.
-      </p>
+      {/* Bulk Recalculate */}
+      <section className="bg-[#161B22] border border-gray-700 rounded-lg p-5">
+        <div className="flex items-start justify-between gap-4 flex-wrap">
+          <div className="flex-1 min-w-0">
+            <h2 className="text-base font-semibold text-white">Re-score Existing Leads</h2>
+            <p className="text-sm text-gray-400 mt-1">
+              After saving new mappings, click this to apply them retroactively to every lead that has a quiz
+              submission. Pain points, maturity indicators, engagement signals, and urgency signals will be
+              overwritten with freshly derived values.
+            </p>
+            {recalcResult !== null && (
+              <p className="mt-2 text-sm text-green-400">
+                ✓ Updated {recalcResult.updated} of {recalcResult.total} lead{recalcResult.total !== 1 ? "s" : ""} with quiz matches.
+              </p>
+            )}
+          </div>
+          <button
+            onClick={handleRecalculate}
+            disabled={recalculating || saving}
+            className="shrink-0 flex items-center gap-2 px-4 py-2 text-sm rounded bg-[#1C2A1A] border border-green-700 text-green-400 hover:bg-green-900/30 font-medium disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          >
+            {recalculating ? (
+              <>
+                <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
+                </svg>
+                Recalculating…
+              </>
+            ) : (
+              <>
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+                Re-score All Leads
+              </>
+            )}
+          </button>
+        </div>
+      </section>
     </div>
   );
 }

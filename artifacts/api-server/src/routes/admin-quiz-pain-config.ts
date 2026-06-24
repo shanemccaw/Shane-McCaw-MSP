@@ -1,8 +1,9 @@
 import { Router } from "express";
-import { db, quizPainSignalConfigTable } from "@workspace/db";
+import { db, quizPainSignalConfigTable, leadsTable, quizLeadsTable } from "@workspace/db";
 import { requireAdmin } from "../middlewares/requireAuth";
 import { z } from "zod";
-import { sql } from "drizzle-orm";
+import { sql, eq, inArray, desc } from "drizzle-orm";
+import { loadQuizPainConfig, deriveSignalsFromQuiz } from "../lib/derive-quiz-signals";
 
 const router = Router();
 
@@ -93,6 +94,77 @@ router.delete("/admin/quiz-pain-config", requireAdmin, async (req, res) => {
   } catch (err) {
     req.log.error({ err }, "admin/quiz-pain-config DELETE failed");
     return res.status(500).json({ error: "Failed to reset quiz pain config" });
+  }
+});
+
+// POST /api/admin/quiz-pain-config/recalculate
+// Re-derives pain signals for every lead that has a matching quiz submission,
+// using the current saved config. Returns { updated, total }.
+router.post("/admin/quiz-pain-config/recalculate", requireAdmin, async (req, res) => {
+  try {
+    const config = await loadQuizPainConfig();
+
+    // Fetch all quiz leads ordered by total score desc so the first entry
+    // per email is the highest-scoring (best) match.
+    const allQuizLeads = await db
+      .select()
+      .from(quizLeadsTable)
+      .orderBy(desc(quizLeadsTable.totalScore));
+
+    // Keep only the best quiz match per email
+    const bestByEmail = new Map<string, typeof allQuizLeads[0]>();
+    for (const ql of allQuizLeads) {
+      if (!bestByEmail.has(ql.email)) {
+        bestByEmail.set(ql.email, ql);
+      }
+    }
+
+    const emails = [...bestByEmail.keys()];
+    if (emails.length === 0) {
+      return res.json({ updated: 0, total: 0 });
+    }
+
+    // Fetch all leads whose email matches a quiz submission
+    const matchedLeads = await db
+      .select({ id: leadsTable.id, email: leadsTable.email, source: leadsTable.source })
+      .from(leadsTable)
+      .where(inArray(leadsTable.email, emails));
+
+    let updated = 0;
+    for (const lead of matchedLeads) {
+      const quiz = bestByEmail.get(lead.email);
+      if (!quiz) continue;
+
+      const source = lead.source === "lead_magnet" ? "lead_magnet" : "contact_form";
+      const signals = deriveSignalsFromQuiz(
+        {
+          quizType: quiz.quizType,
+          categoryScores: (quiz.categoryScores ?? {}) as Record<string, number>,
+          conversation: (quiz.conversation ?? []) as { role: "user" | "assistant"; content: string }[],
+        },
+        source,
+        config,
+      );
+
+      await db
+        .update(leadsTable)
+        .set({
+          painPoints: signals.painPoints,
+          maturityIndicators: signals.maturityIndicators,
+          engagementSignals: signals.engagementSignals,
+          urgencySignals: signals.urgencySignals,
+          updatedAt: new Date(),
+        })
+        .where(eq(leadsTable.id, lead.id));
+
+      updated++;
+    }
+
+    req.log.info({ updated, total: matchedLeads.length }, "quiz-pain-config recalculate complete");
+    return res.json({ updated, total: matchedLeads.length });
+  } catch (err) {
+    req.log.error({ err }, "admin/quiz-pain-config/recalculate POST failed");
+    return res.status(500).json({ error: "Failed to recalculate lead signals" });
   }
 });
 
