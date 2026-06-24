@@ -21,7 +21,7 @@
 
 import pg from "pg";
 import { drizzle } from "drizzle-orm/node-postgres";
-import { servicesTable, clientServicesTable } from "@workspace/db/schema";
+import { servicesTable, clientServicesTable, workflowTemplatesTable } from "@workspace/db/schema";
 import { notInArray, inArray } from "drizzle-orm";
 
 const { Pool } = pg;
@@ -119,6 +119,19 @@ async function main(): Promise<void> {
       }
 
       if (deletableIds.length > 0) {
+        // Null out workflow_templates.service_id references before deleting
+        const nulledTemplates = await prodDb
+          .update(workflowTemplatesTable)
+          .set({ serviceId: null })
+          .where(inArray(workflowTemplatesTable.serviceId, deletableIds))
+          .returning({ id: workflowTemplatesTable.id, name: workflowTemplatesTable.name });
+        if (nulledTemplates.length > 0) {
+          console.log(`\nCleared service_id on ${nulledTemplates.length} workflow template(s) referencing stale services:`);
+          for (const row of nulledTemplates) {
+            console.log(`  cleared: template #${row.id} — ${row.name}`);
+          }
+        }
+
         const deleted = await prodDb
           .delete(servicesTable)
           .where(inArray(servicesTable.id, deletableIds))
