@@ -127,10 +127,10 @@ router.get("/auth/mfa/enrollments", requireAuth, async (req: Request, res: Respo
   });
 });
 
-// Guard: admins must use passkey only — block TOTP and SMS for admin accounts
+// Guard: block SMS MFA for admin accounts (admins may use passkey or TOTP)
 function rejectIfAdmin(req: Request, res: Response): boolean {
   if (req.user?.role === "admin") {
-    res.status(403).json({ error: "Admins must use passkey authentication only" });
+    res.status(403).json({ error: "Admins must use passkey or authenticator app authentication" });
     return true;
   }
   return false;
@@ -140,7 +140,6 @@ function rejectIfAdmin(req: Request, res: Response): boolean {
 
 router.post("/auth/mfa/totp/setup", requireAuth, async (req: Request, res: Response) => {
   const user = req.user!;
-  if (rejectIfAdmin(req, res)) return;
   const secret = generateSecret();
   const otpauth = generateURI({ issuer: "Shane McCaw Consulting", label: user.email, secret });
 
@@ -152,7 +151,6 @@ router.post("/auth/mfa/totp/setup", requireAuth, async (req: Request, res: Respo
 
 router.post("/auth/mfa/totp/verify-setup", requireAuth, mfaLimiter, async (req: Request, res: Response) => {
   const user = req.user!;
-  if (rejectIfAdmin(req, res)) return;
   const { secret, code } = req.body as { secret?: string; code?: string };
 
   if (!secret || !code) {

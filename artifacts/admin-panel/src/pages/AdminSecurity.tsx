@@ -24,8 +24,14 @@ function AlertBox({ alert }: { alert: Alert }) {
   );
 }
 
-interface PasskeyStatus {
-  count: number;
+interface SecurityStatus {
+  passkeyCount: number;
+  totpEnrolled: boolean;
+}
+
+interface TotpSetupData {
+  secret: string;
+  qrDataUrl: string;
 }
 
 export default function AdminSecurity() {
@@ -34,14 +40,20 @@ export default function AdminSecurity() {
   const [enrolling, setEnrolling] = useState(false);
   const [removing, setRemoving] = useState(false);
   const [alert, setAlert] = useState<Alert>(null);
-  const [status, setStatus] = useState<PasskeyStatus>({ count: 0 });
+  const [status, setStatus] = useState<SecurityStatus>({ passkeyCount: 0, totpEnrolled: false });
+
+  // TOTP setup state
+  const [totpSetup, setTotpSetup] = useState<TotpSetupData | null>(null);
+  const [totpCode, setTotpCode] = useState("");
+  const [totpLoading, setTotpLoading] = useState(false);
+  const [totpRemoving, setTotpRemoving] = useState(false);
 
   const fetchStatus = useCallback(async () => {
     try {
       const res = await fetchWithAuth("/api/auth/mfa/enrollments");
       if (res.ok) {
-        const data = await res.json() as { passkeyCount: number };
-        setStatus({ count: data.passkeyCount });
+        const data = await res.json() as { passkeyCount: number; totp?: boolean };
+        setStatus({ passkeyCount: data.passkeyCount, totpEnrolled: data.totp ?? false });
       }
     } catch {
       // ignore
@@ -54,7 +66,7 @@ export default function AdminSecurity() {
     void fetchStatus();
   }, [fetchStatus]);
 
-  const handleEnroll = async () => {
+  const handleEnrollPasskey = async () => {
     setEnrolling(true);
     setAlert(null);
     try {
@@ -85,8 +97,8 @@ export default function AdminSecurity() {
     }
   };
 
-  const handleRemove = async () => {
-    if (!confirm(`Remove all ${status.count} admin passkey(s)?`)) return;
+  const handleRemovePasskey = async () => {
+    if (!confirm(`Remove all ${status.passkeyCount} admin passkey(s)?`)) return;
     setRemoving(true);
     setAlert(null);
     try {
@@ -100,13 +112,70 @@ export default function AdminSecurity() {
     }
   };
 
+  const handleTotpSetup = async () => {
+    setTotpLoading(true);
+    setAlert(null);
+    try {
+      const res = await fetchWithAuth("/api/auth/mfa/totp/setup", { method: "POST" });
+      if (!res.ok) throw new Error("Failed to start authenticator setup");
+      const data = await res.json() as { secret: string; qrDataUrl: string };
+      setTotpSetup({ secret: data.secret, qrDataUrl: data.qrDataUrl });
+      setTotpCode("");
+    } catch (err) {
+      setAlert({ type: "error", message: err instanceof Error ? err.message : "Setup failed" });
+    } finally {
+      setTotpLoading(false);
+    }
+  };
+
+  const handleTotpVerify = async () => {
+    if (!totpSetup || totpCode.length < 6) return;
+    setTotpLoading(true);
+    setAlert(null);
+    try {
+      const res = await fetchWithAuth("/api/auth/mfa/totp/verify-setup", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ secret: totpSetup.secret, code: totpCode }),
+      });
+      const data = await res.json() as { ok?: boolean; error?: string };
+      if (!res.ok || !data.ok) throw new Error(data.error ?? "Verification failed");
+      setAlert({ type: "success", message: "Authenticator app enrolled! Use it as a second factor on next login." });
+      setTotpSetup(null);
+      setTotpCode("");
+      await fetchStatus();
+    } catch (err) {
+      setAlert({ type: "error", message: err instanceof Error ? err.message : "Verification failed" });
+    } finally {
+      setTotpLoading(false);
+    }
+  };
+
+  const handleTotpRemove = async () => {
+    if (!confirm("Remove authenticator app enrollment?")) return;
+    setTotpRemoving(true);
+    setAlert(null);
+    try {
+      const res = await fetchWithAuth("/api/auth/mfa/totp", { method: "DELETE" });
+      if (!res.ok) throw new Error("Failed to remove authenticator app");
+      setAlert({ type: "success", message: "Authenticator app removed." });
+      setTotpSetup(null);
+      setTotpCode("");
+      await fetchStatus();
+    } catch (err) {
+      setAlert({ type: "error", message: err instanceof Error ? err.message : "Removal failed" });
+    } finally {
+      setTotpRemoving(false);
+    }
+  };
+
   return (
     <DashboardShell>
       <div className="max-w-lg mx-auto py-6 space-y-6">
         <div>
           <h1 className="text-xl font-bold text-[#E6EDF3]">Admin Security</h1>
           <p className="text-sm text-muted-foreground mt-1">
-            Register a passkey (biometric or hardware key) for a second factor on admin login.
+            Manage second factors for your admin login — passkeys, biometrics, or an authenticator app.
           </p>
         </div>
 
@@ -118,61 +187,156 @@ export default function AdminSecurity() {
             Loading…
           </div>
         ) : (
-          <div className="bg-[#161B22] rounded-2xl border border-border shadow-sm overflow-hidden">
-            <div className="px-5 py-4 border-b border-border flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="w-9 h-9 rounded-xl bg-[#0078D4]/10 flex items-center justify-center">
-                  <svg className="w-4.5 h-4.5 text-[#0078D4]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
-                  </svg>
+          <div className="space-y-4">
+            {/* Passkey card */}
+            <div className="bg-[#161B22] rounded-2xl border border-border shadow-sm overflow-hidden">
+              <div className="px-5 py-4 border-b border-border flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-xl bg-[#0078D4]/10 flex items-center justify-center">
+                    <svg className="w-4.5 h-4.5 text-[#0078D4]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
+                    </svg>
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-semibold text-[#E6EDF3]">Passkey (Biometric / Hardware Key)</h3>
+                    <p className="text-xs text-muted-foreground">Fingerprint, Face ID, or security key</p>
+                  </div>
                 </div>
-                <div>
-                  <h3 className="text-sm font-semibold text-[#E6EDF3]">Passkey (Biometric / Hardware Key)</h3>
-                  <p className="text-xs text-muted-foreground">Fingerprint, Face ID, or security key</p>
-                </div>
+                {status.passkeyCount > 0 && (
+                  <span className="inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full bg-green-500/15 text-green-400 border border-green-500/20">
+                    <span className="w-1.5 h-1.5 rounded-full bg-green-500 inline-block" />
+                    {status.passkeyCount} key{status.passkeyCount !== 1 ? "s" : ""}
+                  </span>
+                )}
               </div>
-              {status.count > 0 && (
-                <span className="inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full bg-green-500/15 text-green-400 border border-green-500/20">
-                  <span className="w-1.5 h-1.5 rounded-full bg-green-500 inline-block" />
-                  {status.count} key{status.count !== 1 ? "s" : ""}
-                </span>
-              )}
-            </div>
-            <div className="px-5 py-4">
-              {status.count === 0 ? (
-                <div className="flex items-center gap-3">
-                  <p className="text-sm text-muted-foreground flex-1">No passkeys registered. Enroll one to add a second factor to your admin login.</p>
-                  <button
-                    onClick={() => void handleEnroll()}
-                    disabled={enrolling}
-                    className="text-xs font-semibold text-[#0078D4] border border-[#0078D4] px-3 py-1.5 rounded-lg hover:bg-[#0078D4]/5 transition-colors disabled:opacity-50"
-                  >
-                    {enrolling ? "Setting up…" : "Enroll Passkey"}
-                  </button>
-                </div>
-              ) : (
-                <div className="flex items-center gap-3">
-                  <p className="text-sm text-muted-foreground flex-1">
-                    You have {status.count} passkey{status.count !== 1 ? "s" : ""} registered. You are prompted after password entry on each login.
-                  </p>
-                  <div className="flex gap-2">
+              <div className="px-5 py-4">
+                {status.passkeyCount === 0 ? (
+                  <div className="flex items-center gap-3">
+                    <p className="text-sm text-muted-foreground flex-1">No passkeys registered. Enroll one to add a second factor to your admin login.</p>
                     <button
-                      onClick={() => void handleEnroll()}
+                      onClick={() => void handleEnrollPasskey()}
                       disabled={enrolling}
                       className="text-xs font-semibold text-[#0078D4] border border-[#0078D4] px-3 py-1.5 rounded-lg hover:bg-[#0078D4]/5 transition-colors disabled:opacity-50"
                     >
-                      {enrolling ? "Setting up…" : "Add another"}
-                    </button>
-                    <button
-                      onClick={() => void handleRemove()}
-                      disabled={removing}
-                      className="text-xs font-semibold text-red-400 border border-red-500/20 px-3 py-1.5 rounded-lg hover:bg-red-500/10 transition-colors disabled:opacity-50"
-                    >
-                      {removing ? "Removing…" : "Remove all"}
+                      {enrolling ? "Setting up…" : "Enroll Passkey"}
                     </button>
                   </div>
+                ) : (
+                  <div className="flex items-center gap-3">
+                    <p className="text-sm text-muted-foreground flex-1">
+                      You have {status.passkeyCount} passkey{status.passkeyCount !== 1 ? "s" : ""} registered. You are prompted after password entry on each login.
+                    </p>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => void handleEnrollPasskey()}
+                        disabled={enrolling}
+                        className="text-xs font-semibold text-[#0078D4] border border-[#0078D4] px-3 py-1.5 rounded-lg hover:bg-[#0078D4]/5 transition-colors disabled:opacity-50"
+                      >
+                        {enrolling ? "Setting up…" : "Add another"}
+                      </button>
+                      <button
+                        onClick={() => void handleRemovePasskey()}
+                        disabled={removing}
+                        className="text-xs font-semibold text-red-400 border border-red-500/20 px-3 py-1.5 rounded-lg hover:bg-red-500/10 transition-colors disabled:opacity-50"
+                      >
+                        {removing ? "Removing…" : "Remove all"}
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Authenticator App (TOTP) card */}
+            <div className="bg-[#161B22] rounded-2xl border border-border shadow-sm overflow-hidden">
+              <div className="px-5 py-4 border-b border-border flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-xl bg-[#0078D4]/10 flex items-center justify-center">
+                    <svg className="w-4.5 h-4.5 text-[#0078D4]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z" />
+                    </svg>
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-semibold text-[#E6EDF3]">Authenticator App</h3>
+                    <p className="text-xs text-muted-foreground">Google Authenticator, Authy, or any TOTP app</p>
+                  </div>
                 </div>
-              )}
+                {status.totpEnrolled && (
+                  <span className="inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full bg-green-500/15 text-green-400 border border-green-500/20">
+                    <span className="w-1.5 h-1.5 rounded-full bg-green-500 inline-block" />
+                    Active
+                  </span>
+                )}
+              </div>
+
+              <div className="px-5 py-4">
+                {status.totpEnrolled ? (
+                  <div className="flex items-center gap-3">
+                    <p className="text-sm text-muted-foreground flex-1">
+                      An authenticator app is enrolled. You will be prompted for a 6-digit code on login.
+                    </p>
+                    <button
+                      onClick={() => void handleTotpRemove()}
+                      disabled={totpRemoving}
+                      className="text-xs font-semibold text-red-400 border border-red-500/20 px-3 py-1.5 rounded-lg hover:bg-red-500/10 transition-colors disabled:opacity-50"
+                    >
+                      {totpRemoving ? "Removing…" : "Remove"}
+                    </button>
+                  </div>
+                ) : totpSetup ? (
+                  <div className="space-y-4">
+                    <p className="text-sm text-muted-foreground">
+                      Scan this QR code with your authenticator app, then enter the 6-digit code to confirm.
+                    </p>
+                    <div className="flex justify-center">
+                      <img src={totpSetup.qrDataUrl} alt="TOTP QR code" className="w-44 h-44 rounded-lg border border-border" />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-[#8B949E] mb-1.5 uppercase tracking-wide">
+                        6-digit verification code
+                      </label>
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        maxLength={6}
+                        value={totpCode}
+                        onChange={e => setTotpCode(e.target.value.replace(/\D/g, ""))}
+                        placeholder="000000"
+                        autoFocus
+                        className="w-full border border-border rounded-lg px-3 py-2.5 text-sm bg-[#0D1117] text-[#E6EDF3] focus:outline-none focus:ring-2 focus:ring-[#0078D4] transition font-mono text-center tracking-widest"
+                      />
+                    </div>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => void handleTotpVerify()}
+                        disabled={totpLoading || totpCode.length < 6}
+                        className="flex-1 bg-[#0078D4] text-white text-xs font-semibold px-3 py-2 rounded-lg hover:bg-[#006CBE] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        {totpLoading ? "Verifying…" : "Confirm enrollment"}
+                      </button>
+                      <button
+                        onClick={() => { setTotpSetup(null); setTotpCode(""); }}
+                        className="text-xs font-semibold text-[#8B949E] border border-border px-3 py-2 rounded-lg hover:bg-[#0D1117] transition-colors"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-3">
+                    <p className="text-sm text-muted-foreground flex-1">
+                      No authenticator app enrolled. Set one up to use a TOTP code as a second factor.
+                    </p>
+                    <button
+                      onClick={() => void handleTotpSetup()}
+                      disabled={totpLoading}
+                      className="text-xs font-semibold text-[#0078D4] border border-[#0078D4] px-3 py-1.5 rounded-lg hover:bg-[#0078D4]/5 transition-colors disabled:opacity-50"
+                    >
+                      {totpLoading ? "Loading…" : "Set up authenticator"}
+                    </button>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         )}
@@ -186,11 +350,11 @@ export default function AdminSecurity() {
             </li>
             <li className="flex items-start gap-2">
               <span className="text-[#0078D4] font-bold mt-0.5">2.</span>
-              If a passkey is registered, you will be prompted to authenticate with your device (fingerprint, Face ID, or security key).
+              If a passkey or authenticator app is enrolled, you will be prompted for a second factor.
             </li>
             <li className="flex items-start gap-2">
               <span className="text-[#0078D4] font-bold mt-0.5">3.</span>
-              On success, you are logged in. No passkey = no second step (existing login unchanged).
+              On success, you are logged in. No second factor enrolled = no extra step.
             </li>
           </ul>
         </div>
