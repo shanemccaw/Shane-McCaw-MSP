@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef } from "react";
 import { useLocation, useSearch, Link } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
-import { CheckCircle, Clock, ArrowRight, Loader2, ShieldCheck, Calendar, Phone, ShoppingCart, RefreshCw, X, Settings2 } from "lucide-react";
+import { CheckCircle, Clock, ArrowRight, Loader2, ShieldCheck, Phone, ShoppingCart, RefreshCw, X, Settings2 } from "lucide-react";
 import OrderWizard, { type WizardStep, type WizardSelection } from "./OrderWizard";
 
 interface Service {
@@ -48,10 +48,6 @@ function fmtNum(p: string | null) {
   return parseFloat(p);
 }
 
-function todayIso() {
-  return new Date().toISOString().slice(0, 10);
-}
-
 export default function OnboardingSelect() {
   const { user } = useAuth();
   const [, setLocation] = useLocation();
@@ -62,7 +58,6 @@ export default function OnboardingSelect() {
   const [services, setServices] = useState<Service[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
-  const [startDate, setStartDate] = useState<string>(todayIso());
 
   // Wizard state
   const [wizardQueue, setWizardQueue] = useState<Service[]>([]);
@@ -142,7 +137,6 @@ export default function OnboardingSelect() {
   const navigateToContract = () => {
     const qs = new URLSearchParams({
       serviceIds: Array.from(selectedIds).join(","),
-      startDate,
     });
     setLocation(`/portal/onboarding/contract?${qs.toString()}`);
   };
@@ -191,20 +185,24 @@ export default function OnboardingSelect() {
     allSelections[String(currentService.id)] = selections;
     sessionStorage.setItem("wizardSelections", JSON.stringify(allSelections));
 
-    // Update component state so the cart can show the confirmed price immediately
-    setConfiguredSelections(prev => ({
-      ...prev,
+    // Build the updated configured map synchronously so we can check completeness
+    const newConfigured = {
+      ...configuredSelections,
       [currentService.id]: { price: finalPrice, selections },
-    }));
+    };
+    setConfiguredSelections(newConfigured);
 
     if (wizardIndex + 1 < wizardQueue.length) {
       setWizardIndex(i => i + 1);
     } else {
       setWizardQueue([]);
       setWizardIndex(0);
-      // "checkout" mode = wizard was triggered by Continue → go to contract now
-      // "card" mode = wizard was triggered by card click → close dialog, return to cart
-      if (wizardMode === "checkout") {
+      // Always go to contract once every selected wizard service is configured —
+      // regardless of whether the wizard was opened by card-click or by Continue.
+      const allConfigured = services
+        .filter(s => selectedIds.has(s.id) && s.orderWorkflow?.length && s.basePrice)
+        .every(s => !!newConfigured[s.id]);
+      if (allConfigured) {
         navigateToContract();
       }
     }
@@ -464,22 +462,6 @@ export default function OnboardingSelect() {
                 </div>
               )}
 
-              <div className="bg-white border border-border rounded-2xl p-5">
-                <div className="flex items-center gap-2 mb-3">
-                  <Calendar className="w-4 h-4 text-[#0078D4]" />
-                  <h3 className="font-semibold text-[#0A2540] text-sm">Preferred start date</h3>
-                </div>
-                <p className="text-xs text-muted-foreground mb-3">
-                  When would you like the engagement to begin? Shane will confirm availability after purchase.
-                </p>
-                <input
-                  type="date"
-                  value={startDate}
-                  min={todayIso()}
-                  onChange={e => setStartDate(e.target.value)}
-                  className="border border-border rounded-lg px-3 py-2 text-sm text-[#0A2540] focus:outline-none focus:ring-2 focus:ring-[#0078D4]/40 focus:border-[#0078D4]"
-                />
-              </div>
             </div>
 
             <div className="lg:col-span-1">

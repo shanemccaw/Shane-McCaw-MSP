@@ -234,7 +234,6 @@ export default function OnboardingContract() {
     .split(",")
     .map(s => parseInt(s.trim(), 10))
     .filter(n => !isNaN(n) && n > 0);
-  const startDate = params.get("startDate") ?? new Date().toISOString().slice(0, 10);
 
   // Load wizard selections from sessionStorage (set by OnboardingSelect after wizard review step)
   // These are WizardSelection[] (with priceAdjustment info) keyed by serviceId string
@@ -457,7 +456,6 @@ export default function OnboardingContract() {
         body: JSON.stringify({
           serviceIds: services.map(s => s.id),
           contractIds,
-          startDate,
           returnUrl: window.location.origin + import.meta.env.BASE_URL.replace(/\/$/, ""),
           ...(appliedCoupon ? { couponCode: appliedCoupon.code } : {}),
           ...(!user ? { guestEmail: guestInfo.email } : {}),
