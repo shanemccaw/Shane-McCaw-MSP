@@ -25,6 +25,10 @@ interface M365Data {
   orgName?: string;
 }
 
+interface Closure {
+  signedAt?: string | null;
+}
+
 interface JourneyStage {
   id: string;
   label: string;
@@ -34,6 +38,7 @@ interface JourneyStage {
   linkLabel: string;
   status: "complete" | "active" | "upcoming";
   completedNote?: string;
+  alwaysShowLink?: boolean;
 }
 
 // ── Icons (inline SVG) ───────────────────────────────────────────────────────
@@ -101,6 +106,7 @@ export default function PortalJourneyMap() {
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [appReg, setAppReg] = useState<AppReg | null>(null);
   const [m365, setM365] = useState<M365Data>({});
+  const [closures, setClosures] = useState<Closure[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -110,11 +116,21 @@ export default function PortalJourneyMap() {
       fetchWithAuth("/api/portal/app-registration").then(r => r.ok ? r.json() : null),
       fetchWithAuth("/api/portal/m365-profile").then(r => r.ok ? r.json() : {}),
     ])
-      .then(([ps, invs, ar, m365data]) => {
+      .then(async ([ps, invs, ar, m365data]) => {
         setProjects(ps as Project[]);
         setInvoices(invs as Invoice[]);
         setAppReg(ar as AppReg | null);
         setM365(m365data as M365Data);
+        // Fetch closures for all completed projects
+        const completedIds = (ps as Project[]).filter(p => p.status === "completed").map(p => p.id);
+        if (completedIds.length > 0) {
+          const results = await Promise.all(
+            completedIds.map(id =>
+              fetchWithAuth(`/api/portal/projects/${id}/closure`).then(r => r.ok ? r.json() as Promise<Closure> : null)
+            )
+          );
+          setClosures(results.filter((c): c is Closure => c !== null));
+        }
       })
       .catch(() => null)
       .finally(() => setLoading(false));
@@ -122,7 +138,8 @@ export default function PortalJourneyMap() {
 
   const hasAnyProject = projects.length > 0;
   const hasActiveProject = projects.some(p => p.status === "active" || p.status === "in_progress");
-  const hasCompletedProject = projects.some(p => p.status === "completed");
+  const hasClosedProject = projects.some(p => p.status === "completed");
+  const hasSignedClosure = closures.some(c => !!c.signedAt);
   const hasPaidInvoice = invoices.some(i => i.status === "paid");
   const hasAnyInvoice = invoices.length > 0;
   const automationSetupDone = appReg?.status === "submitted" || appReg?.status === "verified";
@@ -159,6 +176,7 @@ export default function PortalJourneyMap() {
       linkLabel: "Set Up Automation",
       status: automationSetupDone ? "complete" : "upcoming",
       completedNote: "Azure credentials verified",
+      alwaysShowLink: true,
     },
     {
       id: "projects",
@@ -167,7 +185,7 @@ export default function PortalJourneyMap() {
       icon: <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" /></svg>,
       link: "/portal/projects",
       linkLabel: "View Projects",
-      status: hasActiveProject ? "active" : hasCompletedProject ? "complete" : hasAnyProject ? "active" : "upcoming",
+      status: hasActiveProject ? "active" : hasClosedProject ? "complete" : hasAnyProject ? "active" : "upcoming",
       completedNote: "Projects in flight",
     },
     {
@@ -177,8 +195,8 @@ export default function PortalJourneyMap() {
       icon: <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4M7.835 4.697a3.42 3.42 0 001.946-.806 3.42 3.42 0 014.438 0 3.42 3.42 0 001.946.806 3.42 3.42 0 013.138 3.138 3.42 3.42 0 00.806 1.946 3.42 3.42 0 010 4.438 3.42 3.42 0 00-.806 1.946 3.42 3.42 0 01-3.138 3.138 3.42 3.42 0 00-1.946.806 3.42 3.42 0 01-4.438 0 3.42 3.42 0 00-1.946-.806 3.42 3.42 0 01-3.138-3.138 3.42 3.42 0 00-.806-1.946 3.42 3.42 0 010-4.438 3.42 3.42 0 00.806-1.946 3.42 3.42 0 013.138-3.138z" /></svg>,
       link: "/portal/projects",
       linkLabel: "View Projects",
-      status: hasCompletedProject ? "complete" : hasActiveProject ? "active" : "upcoming",
-      completedNote: "Project delivered & signed off",
+      status: hasSignedClosure ? "complete" : hasClosedProject ? "active" : "upcoming",
+      completedNote: "Customer sign-off received",
     },
     {
       id: "followup",
@@ -281,12 +299,12 @@ export default function PortalJourneyMap() {
                       <p className={`text-xs leading-relaxed mb-3 ${stage.status === "upcoming" ? "text-gray-400" : "text-muted-foreground"}`}>
                         {stage.description}
                       </p>
-                      {stage.status !== "upcoming" && (
+                      {(stage.status !== "upcoming" || stage.alwaysShowLink) && (
                         <Link href={stage.link}>
                           <span className={`inline-flex items-center gap-1.5 text-xs font-semibold transition-colors cursor-pointer ${
-                            stage.status === "active"
-                              ? "text-[#0078D4] hover:text-[#0078D4]/80"
-                              : "text-green-600 hover:text-green-700"
+                            stage.status === "complete"
+                              ? "text-green-600 hover:text-green-700"
+                              : "text-[#0078D4] hover:text-[#0078D4]/80"
                           }`}>
                             {stage.linkLabel}
                             <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
