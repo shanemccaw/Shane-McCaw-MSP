@@ -51,33 +51,110 @@ function useHealthWidgetData() {
   return health;
 }
 
+function healthStatusLabel(s: number) { return s >= 70 ? "Healthy" : s >= 40 ? "Attention" : "Critical"; }
+function healthBarColor(s: number) { return s >= 70 ? "bg-green-500" : s >= 40 ? "bg-amber-400" : "bg-red-500"; }
+function healthGlowColor(s: number) { return s >= 70 ? "shadow-green-500/20" : s >= 40 ? "shadow-amber-400/20" : "shadow-red-500/20"; }
+
+function MiniScoreRing({ score }: { score: number }) {
+  const size = 44;
+  const r = 17;
+  const circ = 2 * Math.PI * r;
+  const cx = size / 2;
+  return (
+    <div className="relative flex-shrink-0" style={{ width: size, height: size }}>
+      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="-rotate-90">
+        <circle cx={cx} cy={cx} r={r} fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth="5" />
+        <circle cx={cx} cy={cx} r={r} fill="none" stroke={healthScoreColor(score)} strokeWidth="5"
+          strokeLinecap="round" strokeDasharray={`${(score / 100) * circ} ${circ}`} />
+      </svg>
+      <div className="absolute inset-0 flex items-center justify-center">
+        <span className="text-[10px] font-black text-white">{score}%</span>
+      </div>
+    </div>
+  );
+}
+
 function OverallHealthWidget({ variant = "dark" }: { variant?: "dark" | "light" }) {
   const health = useHealthWidgetData();
   if (!health) return null;
-  const color = healthScoreColor(health.overallLatest);
+  const score = health.overallLatest;
   const delta = health.overallDelta;
-  const isDark = variant === "dark";
+  const hasHistory = health.overallFirst !== health.overallLatest;
+
+  if (variant === "light") {
+    return (
+      <Link href="/portal/health">
+        <div className="mx-3 mb-1 rounded-xl overflow-hidden border border-[#0078D4]/20 cursor-pointer hover:border-[#0078D4]/40 transition-all group">
+          <div className={`h-0.5 w-full ${healthBarColor(score)}`} />
+          <div className="bg-[#0078D4]/6 hover:bg-[#0078D4]/10 transition-colors px-3 py-2.5">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-[9px] font-black tracking-[0.2em] uppercase text-[#0A2540]/50">Env. Health</span>
+              <span className="text-[9px] font-bold text-[#0A2540]/40">{healthStatusLabel(score)}</span>
+            </div>
+            <div className="flex items-center gap-2.5">
+              <MiniScoreRing score={score} />
+              <div className="flex-1 min-w-0">
+                <div className="text-lg font-black text-[#0A2540] leading-none">{score}%</div>
+                {hasHistory && (
+                  <div className="flex items-center gap-1 mt-1">
+                    <span className="text-[9px] text-[#0A2540]/40">{health.overallFirst}%</span>
+                    <svg className="w-2.5 h-2.5 text-[#0A2540]/30 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M13 7l5 5m0 0l-5 5m5-5H6" /></svg>
+                    <span className="text-[9px] font-black text-[#0A2540]">{score}%</span>
+                    {delta !== 0 && (
+                      <span className={`text-[8px] font-black px-1 rounded ${delta > 0 ? "text-green-600" : "text-red-600"}`}>{delta > 0 ? "+" : ""}{delta}</span>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      </Link>
+    );
+  }
+
   return (
     <Link href="/portal/health">
-      <div className={`mx-3 mb-1 rounded-xl px-3 py-2.5 cursor-pointer transition-colors ${isDark
-        ? "bg-white/5 hover:bg-white/10 border border-white/5 hover:border-white/15"
-        : "bg-[#0078D4]/6 hover:bg-[#0078D4]/10 border border-[#0078D4]/15 hover:border-[#0078D4]/30"
-      }`}>
-        <div className="flex items-center justify-between mb-1">
-          <span className={`text-[10px] uppercase tracking-wider font-medium ${isDark ? "text-white/40" : "text-[#0A2540]/50"}`}>Env. Health</span>
-          <svg className={`w-3 h-3 ${isDark ? "text-white/30" : "text-[#0A2540]/30"}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" /></svg>
+      <div className={`mx-3 mb-1 rounded-xl overflow-hidden cursor-pointer transition-all group shadow-lg ${healthGlowColor(score)} hover:shadow-xl`}>
+        {/* Status bar */}
+        <div className={`h-0.5 w-full ${healthBarColor(score)}`} />
+        <div className="bg-white/5 hover:bg-white/8 border border-white/8 hover:border-white/15 transition-all rounded-b-xl px-3 py-3">
+          {/* Header row */}
+          <div className="flex items-center justify-between mb-2.5">
+            <div className="flex items-center gap-1.5">
+              <div className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${healthBarColor(score)}`} />
+              <span className="text-[9px] font-black tracking-[0.2em] uppercase text-white/40">Env. Health</span>
+            </div>
+            <span className={`text-[9px] font-bold tracking-wide uppercase px-1.5 py-0.5 rounded ${
+              score >= 70 ? "text-green-400 bg-green-500/15" :
+              score >= 40 ? "text-amber-300 bg-amber-400/15" :
+              "text-red-400 bg-red-500/15"
+            }`}>{healthStatusLabel(score)}</span>
+          </div>
+
+          {/* Score + ring */}
+          <div className="flex items-center gap-3">
+            <MiniScoreRing score={score} />
+            <div className="flex-1 min-w-0">
+              <div className="text-2xl font-black text-white leading-none" style={{ color: healthScoreColor(score) }}>{score}%</div>
+              {hasHistory ? (
+                <div className="flex items-center gap-1 mt-1.5">
+                  <span className="text-[9px] text-white/30">{health.overallFirst}%</span>
+                  <svg className="w-2.5 h-2.5 text-white/20 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M13 7l5 5m0 0l-5 5m5-5H6" /></svg>
+                  <span className="text-[9px] font-black text-white">{score}%</span>
+                  {delta !== 0 && (
+                    <span className={`text-[8px] font-black px-1 py-0.5 rounded ${delta > 0 ? "bg-green-500/20 text-green-400" : "bg-red-500/20 text-red-400"}`}>
+                      {delta > 0 ? "+" : ""}{delta}pts
+                    </span>
+                  )}
+                </div>
+              ) : (
+                <p className="text-[9px] text-white/25 mt-1">Baseline established</p>
+              )}
+            </div>
+            <svg className="w-3 h-3 text-white/20 group-hover:text-white/40 transition-colors flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" /></svg>
+          </div>
         </div>
-        <div className="flex items-center justify-between">
-          <span className="text-xl font-extrabold" style={{ color }}>{health.overallLatest}%</span>
-          {delta !== 0 && (
-            <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${delta > 0 ? "bg-green-500/15 text-green-600" : "bg-red-500/15 text-red-600"}`}>
-              {delta > 0 ? "▲" : "▼"} {Math.abs(delta)}pts
-            </span>
-          )}
-        </div>
-        {health.overallFirst !== health.overallLatest && (
-          <p className={`text-[10px] mt-0.5 ${isDark ? "text-white/30" : "text-[#0A2540]/40"}`}>from {health.overallFirst}%</p>
-        )}
       </div>
     </Link>
   );
