@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef } from "react";
 import { useLocation, useSearch, Link } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
-import { CheckCircle, Clock, ArrowRight, Loader2, ShieldCheck, Calendar, Phone, ShoppingCart, RefreshCw, X } from "lucide-react";
+import { CheckCircle, Clock, ArrowRight, Loader2, ShieldCheck, Calendar, Phone, ShoppingCart, RefreshCw, X, Settings2 } from "lucide-react";
 import OrderWizard, { type WizardStep, type WizardSelection } from "./OrderWizard";
 
 interface Service {
@@ -57,6 +57,11 @@ export default function OnboardingSelect() {
   // Wizard state
   const [wizardQueue, setWizardQueue] = useState<Service[]>([]);
   const [wizardIndex, setWizardIndex] = useState(0);
+  // "card" = wizard opened by clicking a service card (close on complete, return to cart)
+  // "checkout" = wizard opened by Continue button (navigate to contract on complete)
+  const [wizardMode, setWizardMode] = useState<"card" | "checkout">("card");
+  // Track confirmed wizard selections in component state so cart can show configured prices
+  const [configuredSelections, setConfiguredSelections] = useState<Record<number, { price: number; selections: WizardSelection[] }>>({});
 
   // Guest info modal (shown when user is not logged in)
   const [showGuestModal, setShowGuestModal] = useState(false);
@@ -105,7 +110,7 @@ export default function OnboardingSelect() {
 
     // Open the wizard immediately when a wizard-service is newly selected
     if (!wasSelected && svc?.orderWorkflow?.length && svc.basePrice) {
-      sessionStorage.removeItem("wizardSelections");
+      setWizardMode("card");
       setWizardQueue([svc]);
       setWizardIndex(0);
     }
@@ -121,7 +126,7 @@ export default function OnboardingSelect() {
 
   const proceedWithCheckout = () => {
     const selected = services.filter(s => selectedIds.has(s.id));
-    // Skip wizard services that were already configured via the card-click flow
+    // Skip wizard services already configured via card-click (selections stored in sessionStorage)
     const existingSelections = JSON.parse(
       sessionStorage.getItem("wizardSelections") ?? "{}"
     ) as Record<string, WizardSelection[]>;
@@ -129,6 +134,7 @@ export default function OnboardingSelect() {
       s => s.orderWorkflow?.length && s.basePrice && !existingSelections[String(s.id)]
     );
     if (needsWizard.length > 0) {
+      setWizardMode("checkout");
       setWizardQueue(needsWizard);
       setWizardIndex(0);
     } else {
@@ -156,25 +162,36 @@ export default function OnboardingSelect() {
     proceedWithCheckout();
   };
 
-  const handleWizardComplete = (_finalPrice: number, selections: WizardSelection[]) => {
+  const handleWizardComplete = (finalPrice: number, selections: WizardSelection[]) => {
     const currentService = wizardQueue[wizardIndex];
-    // Store display selections (with labels + price adjustments) in sessionStorage for the contract page
+    // Persist to sessionStorage for the contract page
     const allSelections = JSON.parse(sessionStorage.getItem("wizardSelections") ?? "{}") as Record<string, WizardSelection[]>;
     allSelections[String(currentService.id)] = selections;
     sessionStorage.setItem("wizardSelections", JSON.stringify(allSelections));
+
+    // Update component state so the cart can show the confirmed price immediately
+    setConfiguredSelections(prev => ({
+      ...prev,
+      [currentService.id]: { price: finalPrice, selections },
+    }));
 
     if (wizardIndex + 1 < wizardQueue.length) {
       setWizardIndex(i => i + 1);
     } else {
       setWizardQueue([]);
-      navigateToContract();
+      setWizardIndex(0);
+      // "checkout" mode = wizard was triggered by Continue → go to contract now
+      // "card" mode = wizard was triggered by card click → close dialog, return to cart
+      if (wizardMode === "checkout") {
+        navigateToContract();
+      }
     }
   };
 
   const handleWizardCancel = () => {
-    // Deselect the service whose wizard was cancelled
+    // Deselect the service whose wizard was cancelled (only for card-click triggered wizards)
     const cancelledService = wizardQueue[wizardIndex];
-    if (cancelledService) {
+    if (cancelledService && wizardMode === "card") {
       setSelectedIds(prev => {
         const next = new Set(prev);
         next.delete(cancelledService.id);
@@ -182,6 +199,13 @@ export default function OnboardingSelect() {
       });
     }
     setWizardQueue([]);
+    setWizardIndex(0);
+  };
+
+  // Open wizard for a service that's already selected (re-configure)
+  const reconfigureService = (svc: Service) => {
+    setWizardMode("card");
+    setWizardQueue([svc]);
     setWizardIndex(0);
   };
 
@@ -458,6 +482,7 @@ export default function OnboardingSelect() {
                       <div className="space-y-2">
                         {selectedServices.map(s => {
                           const hasWizard = !!(s.orderWorkflow?.length && s.basePrice);
+                          const configured = configuredSelections[s.id];
                           return (
                             <div key={s.id} className="flex items-start justify-between gap-2 text-sm">
                               <div className="flex-1 min-w-0">
@@ -466,12 +491,35 @@ export default function OnboardingSelect() {
                                   {s.billingType === "recurring_monthly" ? "monthly subscription" : "one-time"}
                                 </p>
                               </div>
-                              <span className="font-semibold text-xs whitespace-nowrap flex-shrink-0">
-                                {hasWizard
-                                  ? <span className="text-amber-600 font-medium">custom</span>
-                                  : <span className="text-[#0A2540]">{fmtService(s)}</span>
-                                }
-                              </span>
+                              <div className="flex items-center gap-1 flex-shrink-0">
+                                {hasWizard ? (
+                                  configured ? (
+                                    <>
+                                      <span className="text-[#0A2540] font-bold text-xs">
+                                        ${configured.price.toLocaleString("en-US")}
+                                        {s.billingType === "recurring_monthly" ? "/mo" : ""}
+                                      </span>
+                                      <button
+                                        onClick={() => reconfigureService(s)}
+                                        className="text-muted-foreground hover:text-[#0078D4] transition-colors ml-0.5"
+                                        title="Reconfigure"
+                                      >
+                                        <Settings2 className="w-3 h-3" />
+                                      </button>
+                                    </>
+                                  ) : (
+                                    <button
+                                      onClick={() => reconfigureService(s)}
+                                      className="text-amber-600 text-[10px] font-medium bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded hover:bg-amber-100 transition-colors flex items-center gap-1"
+                                    >
+                                      <Settings2 className="w-2.5 h-2.5" />
+                                      Configure
+                                    </button>
+                                  )
+                                ) : (
+                                  <span className="text-[#0A2540] font-semibold text-xs">{fmtService(s)}</span>
+                                )}
+                              </div>
                             </div>
                           );
                         })}
@@ -499,9 +547,15 @@ export default function OnboardingSelect() {
                         )}
                         {hasWizardServices && (
                           <div className="border-t border-border pt-2 mt-2">
-                            <p className="text-[10px] text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1.5 leading-relaxed">
-                              You'll answer a few questions to get your custom price on the next step.
-                            </p>
+                            {selectedServices.some(s => s.orderWorkflow?.length && s.basePrice && !configuredSelections[s.id]) ? (
+                              <p className="text-[10px] text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1.5 leading-relaxed">
+                                Click <strong>Configure</strong> above to set your custom price, then continue.
+                              </p>
+                            ) : (
+                              <p className="text-[10px] text-emerald-700 bg-emerald-50 border border-emerald-200 rounded px-2 py-1.5 leading-relaxed">
+                                ✓ All services configured — click Continue to sign your agreement.
+                              </p>
+                            )}
                           </div>
                         )}
                       </div>
