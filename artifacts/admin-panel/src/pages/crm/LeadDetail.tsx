@@ -147,6 +147,21 @@ function ScoreBar({ score, max = 10 }: { score: number; max?: number }) {
   );
 }
 
+function CategoryChip({ label, score, max = 10 }: { label: string; score: number; max?: number }) {
+  const pct = Math.round((score / max) * 100);
+  const cls = pct >= 70
+    ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/25"
+    : pct >= 40
+      ? "bg-amber-500/10 text-amber-400 border-amber-500/25"
+      : "bg-red-500/10 text-red-400 border-red-500/25";
+  return (
+    <div className={`flex items-center justify-between gap-1 rounded-lg border px-2 py-1.5 ${cls}`}>
+      <span className="text-[10px] font-medium truncate leading-tight">{label}</span>
+      <span className="text-[10px] font-bold flex-shrink-0 tabular-nums">{score}<span className="font-normal opacity-60">/{max}</span></span>
+    </div>
+  );
+}
+
 function SectionCard({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div className="bg-[#161B22] border border-border rounded-xl overflow-hidden">
@@ -202,14 +217,17 @@ function QuizCard({ quiz }: { quiz: QuizMatch }) {
       )}
 
       {categoryKeys.length > 0 && (
-        <div className="space-y-2.5">
-          <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Category Scores</p>
-          {categoryKeys.map((key) => (
-            <div key={key}>
-              <p className="text-xs text-[#E6EDF3] font-medium mb-1">{formatCategoryKey(key)}</p>
-              <ScoreBar score={quiz.categoryScores[key] ?? 0} />
-            </div>
-          ))}
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">Category Scores</p>
+          <div className="grid grid-cols-2 gap-1.5">
+            {categoryKeys.map((key) => (
+              <CategoryChip
+                key={key}
+                label={formatCategoryKey(key)}
+                score={quiz.categoryScores[key] ?? 0}
+              />
+            ))}
+          </div>
         </div>
       )}
 
@@ -992,6 +1010,36 @@ export default function LeadDetailPage({ params }: { params: { id: string } }) {
           <p className="text-xs text-muted-foreground">Saved changes trigger automatic scoring</p>
         </div>
         <div className="px-5 py-5 space-y-6">
+          {/* Quiz Score Summary — compact chip grid above form fields */}
+          {quizMatches.length > 0 && (() => {
+            const best = [...quizMatches].sort((a, b) => b.totalScore - a.totalScore)[0];
+            const entries = Object.entries(best.categoryScores);
+            if (entries.length === 0) return null;
+            const totalMax = entries.length * 10;
+            return (
+              <div className="p-3 bg-[#1C2128] rounded-xl border border-border">
+                <div className="flex items-center gap-2 flex-wrap mb-2.5">
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                    Quiz Scores
+                  </p>
+                  <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-[#0078D4]/10 text-[#0078D4]">
+                    {QUIZ_TYPE_LABELS[best.quizType] ?? best.quizType}
+                  </span>
+                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${TIER_COLORS[best.tier] ?? "bg-[#30363D]/50 text-[#7D8590]"}`}>
+                    {best.tier}
+                  </span>
+                  <span className="text-[10px] text-muted-foreground ml-auto">
+                    {best.totalScore}/{totalMax} total
+                  </span>
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-1.5">
+                  {entries.map(([key, score]) => (
+                    <CategoryChip key={key} label={formatCategoryKey(key)} score={score} />
+                  ))}
+                </div>
+              </div>
+            );
+          })()}
           {/* Firmographic */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             <div>
