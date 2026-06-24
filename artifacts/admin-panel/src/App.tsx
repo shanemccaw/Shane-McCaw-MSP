@@ -269,6 +269,12 @@ function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
+        {import.meta.env.DEV && (
+          <div className="fixed top-0 left-0 right-0 z-[10000] flex items-center justify-center gap-2 bg-amber-400 text-amber-950 text-xs font-semibold py-1 px-3 select-none">
+            <span className="inline-block w-1.5 h-1.5 rounded-full bg-amber-700 animate-pulse" />
+            DEVELOPMENT ENVIRONMENT — changes here do not affect production
+          </div>
+        )}
         <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
           <Router />
         </WouterRouter>
