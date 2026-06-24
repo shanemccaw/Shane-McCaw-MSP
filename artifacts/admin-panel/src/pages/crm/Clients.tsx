@@ -27,6 +27,22 @@ interface EnrichedClient {
   openTaskCount: number;
   quizScore: number | null;
   quizTier: string | null;
+  // Extended fields
+  industry: string | null;
+  licenseTier: string | null;
+  employeeCount: number | null;
+  tenantAge: number | null;
+  itTeamSize: number | null;
+  governanceScore: number | null;
+  securityScore: number | null;
+  complianceScore: number | null;
+  copilotReadinessScore: number | null;
+  powerPlatformScore: number | null;
+  externalSharingScore: number | null;
+  shadowItScore: number | null;
+  lastActivityAt: string | null;
+  aiRiskLevel: "high" | "medium" | "low" | null;
+  aiOpportunityLevel: "high" | "medium" | "low" | null;
 }
 
 interface EmailRow {
@@ -453,10 +469,13 @@ export default function ClientsPage() {
   const [m365ClientId, setM365ClientId] = useState<number | null>(null);
   const [resendingInviteId, setResendingInviteId] = useState<number | null>(null);
   const [viewAsLoading, setViewAsLoading] = useState<number | null>(null);
-  const [sortKey, setSortKey] = useState<"name" | "projects" | "tasks" | "score" | "joined">("joined");
+  const [sortKey, setSortKey] = useState<"name" | "projects" | "tasks" | "score" | "joined" | "lastActivity" | "governance" | "copilot" | "aiRisk">("joined");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
   const [filterStatus, setFilterStatus] = useState<"all" | "active" | "no-projects">("all");
   const [filterTier, setFilterTier] = useState<"all" | "Expert" | "Intermediate" | "Beginner">("all");
+  const [filterLicenseTier, setFilterLicenseTier] = useState<"all" | string>("all");
+  const [filterAiRisk, setFilterAiRisk] = useState<"all" | "high" | "medium" | "low">("all");
+  const [filterAiOpp, setFilterAiOpp] = useState<"all" | "high" | "medium" | "low">("all");
   const [hoverRowId, setHoverRowId] = useState<number | null>(null);
   const [menuOpenId, setMenuOpenId] = useState<number | null>(null);
 
@@ -582,6 +601,9 @@ export default function ClientsPage() {
     if (filterStatus === "active") result = result.filter(c => c.activeProjectCount > 0);
     if (filterStatus === "no-projects") result = result.filter(c => c.projectCount === 0);
     if (filterTier !== "all") result = result.filter(c => c.quizTier === filterTier);
+    if (filterLicenseTier !== "all") result = result.filter(c => c.licenseTier === filterLicenseTier);
+    if (filterAiRisk !== "all") result = result.filter(c => c.aiRiskLevel === filterAiRisk);
+    if (filterAiOpp !== "all") result = result.filter(c => c.aiOpportunityLevel === filterAiOpp);
 
     return [...result].sort((a, b) => {
       let aVal: string | number, bVal: string | number;
@@ -602,6 +624,24 @@ export default function ClientsPage() {
           aVal = a.quizScore ?? -1;
           bVal = b.quizScore ?? -1;
           break;
+        case "governance":
+          aVal = a.governanceScore ?? -1;
+          bVal = b.governanceScore ?? -1;
+          break;
+        case "copilot":
+          aVal = a.copilotReadinessScore ?? -1;
+          bVal = b.copilotReadinessScore ?? -1;
+          break;
+        case "lastActivity":
+          aVal = a.lastActivityAt ? new Date(a.lastActivityAt).getTime() : 0;
+          bVal = b.lastActivityAt ? new Date(b.lastActivityAt).getTime() : 0;
+          break;
+        case "aiRisk": {
+          const riskOrder: Record<string, number> = { high: 3, medium: 2, low: 1 };
+          aVal = riskOrder[a.aiRiskLevel ?? ""] ?? 0;
+          bVal = riskOrder[b.aiRiskLevel ?? ""] ?? 0;
+          break;
+        }
         case "joined":
         default:
           aVal = new Date(a.createdAt).getTime();
@@ -611,7 +651,7 @@ export default function ClientsPage() {
       const cmp = typeof aVal === "string" ? aVal.localeCompare(bVal as string) : (aVal as number) - (bVal as number);
       return sortDir === "asc" ? cmp : -cmp;
     });
-  }, [clients, search, filterStatus, filterTier, sortKey, sortDir]);
+  }, [clients, search, filterStatus, filterTier, filterLicenseTier, filterAiRisk, filterAiOpp, sortKey, sortDir]);
 
   function toggleSort(key: typeof sortKey) {
     if (sortKey === key) setSortDir(d => d === "asc" ? "desc" : "asc");
@@ -625,7 +665,13 @@ export default function ClientsPage() {
       : <svg className="w-3 h-3 text-[#0078D4] inline ml-1" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" /></svg>;
   }
 
-  const activeFilterCount = (filterStatus !== "all" ? 1 : 0) + (filterTier !== "all" ? 1 : 0);
+  const activeFilterCount = (filterStatus !== "all" ? 1 : 0) + (filterTier !== "all" ? 1 : 0) +
+    (filterLicenseTier !== "all" ? 1 : 0) + (filterAiRisk !== "all" ? 1 : 0) + (filterAiOpp !== "all" ? 1 : 0);
+
+  const distinctLicenseTiers = useMemo(() =>
+    [...new Set(clients.map(c => c.licenseTier).filter((t): t is string => !!t))].sort(),
+    [clients]
+  );
 
   const inputCls =
     "w-full border border-border rounded-lg px-3 py-2 text-sm text-[#E6EDF3] focus:outline-none focus:ring-2 focus:ring-[#0078D4] bg-[#1C2128]";
@@ -723,7 +769,7 @@ export default function ClientsPage() {
               <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Filters</p>
               {activeFilterCount > 0 && (
                 <button
-                  onClick={() => { setFilterStatus("all"); setFilterTier("all"); }}
+                  onClick={() => { setFilterStatus("all"); setFilterTier("all"); setFilterLicenseTier("all"); setFilterAiRisk("all"); setFilterAiOpp("all"); }}
                   className="text-[10px] font-semibold text-[#0078D4] hover:underline"
                 >
                   Clear {activeFilterCount}
@@ -735,15 +781,12 @@ export default function ClientsPage() {
               {/* Status filter */}
               <div>
                 <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1.5">Status</p>
-                <div className="space-y-1">
+                <div className="space-y-0.5">
                   {(["all", "active", "no-projects"] as const).map(opt => {
                     const labels = { all: "All clients", active: "Has projects", "no-projects": "No projects" };
                     return (
-                      <button
-                        key={opt}
-                        onClick={() => setFilterStatus(opt)}
-                        className={`w-full text-left text-xs px-2 py-1 rounded transition-colors ${filterStatus === opt ? "bg-[#0078D4]/15 text-[#0078D4] font-semibold" : "text-muted-foreground hover:text-[#E6EDF3] hover:bg-[#1C2128]"}`}
-                      >
+                      <button key={opt} onClick={() => setFilterStatus(opt)}
+                        className={`w-full text-left text-xs px-2 py-1 rounded transition-colors ${filterStatus === opt ? "bg-[#0078D4]/15 text-[#0078D4] font-semibold" : "text-muted-foreground hover:text-[#E6EDF3] hover:bg-[#1C2128]"}`}>
                         {labels[opt]}
                       </button>
                     );
@@ -754,14 +797,56 @@ export default function ClientsPage() {
               {/* M365 Tier filter */}
               <div>
                 <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1.5">M365 Tier</p>
-                <div className="space-y-1">
+                <div className="space-y-0.5">
                   {(["all", "Expert", "Intermediate", "Beginner"] as const).map(opt => (
-                    <button
-                      key={opt}
-                      onClick={() => setFilterTier(opt)}
-                      className={`w-full text-left text-xs px-2 py-1 rounded transition-colors ${filterTier === opt ? "bg-[#0078D4]/15 text-[#0078D4] font-semibold" : "text-muted-foreground hover:text-[#E6EDF3] hover:bg-[#1C2128]"}`}
-                    >
+                    <button key={opt} onClick={() => setFilterTier(opt)}
+                      className={`w-full text-left text-xs px-2 py-1 rounded transition-colors ${filterTier === opt ? "bg-[#0078D4]/15 text-[#0078D4] font-semibold" : "text-muted-foreground hover:text-[#E6EDF3] hover:bg-[#1C2128]"}`}>
                       {opt === "all" ? "All tiers" : opt}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* License Tier filter */}
+              {distinctLicenseTiers.length > 0 && (
+                <div>
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1.5">License Tier</p>
+                  <div className="space-y-0.5">
+                    <button onClick={() => setFilterLicenseTier("all")}
+                      className={`w-full text-left text-xs px-2 py-1 rounded transition-colors ${filterLicenseTier === "all" ? "bg-[#0078D4]/15 text-[#0078D4] font-semibold" : "text-muted-foreground hover:text-[#E6EDF3] hover:bg-[#1C2128]"}`}>
+                      All licenses
+                    </button>
+                    {distinctLicenseTiers.map(t => (
+                      <button key={t} onClick={() => setFilterLicenseTier(t)}
+                        className={`w-full text-left text-xs px-2 py-1 rounded transition-colors truncate ${filterLicenseTier === t ? "bg-[#0078D4]/15 text-[#0078D4] font-semibold" : "text-muted-foreground hover:text-[#E6EDF3] hover:bg-[#1C2128]"}`}>
+                        {t}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* AI Risk filter */}
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1.5">AI Risk</p>
+                <div className="space-y-0.5">
+                  {(["all", "high", "medium", "low"] as const).map(opt => (
+                    <button key={opt} onClick={() => setFilterAiRisk(opt)}
+                      className={`w-full text-left text-xs px-2 py-1 rounded transition-colors ${filterAiRisk === opt ? "bg-[#0078D4]/15 text-[#0078D4] font-semibold" : "text-muted-foreground hover:text-[#E6EDF3] hover:bg-[#1C2128]"}`}>
+                      {opt === "all" ? "All risk levels" : opt.charAt(0).toUpperCase() + opt.slice(1)}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* AI Opportunity filter */}
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1.5">AI Opportunity</p>
+                <div className="space-y-0.5">
+                  {(["all", "high", "medium", "low"] as const).map(opt => (
+                    <button key={opt} onClick={() => setFilterAiOpp(opt)}
+                      className={`w-full text-left text-xs px-2 py-1 rounded transition-colors ${filterAiOpp === opt ? "bg-[#0078D4]/15 text-[#0078D4] font-semibold" : "text-muted-foreground hover:text-[#E6EDF3] hover:bg-[#1C2128]"}`}>
+                      {opt === "all" ? "All levels" : opt.charAt(0).toUpperCase() + opt.slice(1)}
                     </button>
                   ))}
                 </div>
@@ -795,34 +880,44 @@ export default function ClientsPage() {
                       Name / Email<SortIcon col="name" />
                     </button>
                   </th>
-                  <th className="text-left px-5 py-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground hidden sm:table-cell">Company</th>
-                  <th className="text-center px-4 py-3 hidden md:table-cell">
+                  <th className="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground hidden sm:table-cell">Company</th>
+                  <th className="text-center px-3 py-3 hidden md:table-cell">
                     <button onClick={() => toggleSort("projects")} className="flex items-center gap-0 mx-auto text-xs font-semibold uppercase tracking-wider text-muted-foreground hover:text-[#E6EDF3] transition-colors">
                       Projects<SortIcon col="projects" />
                     </button>
                   </th>
-                  <th className="text-center px-4 py-3 hidden md:table-cell">
+                  <th className="text-center px-3 py-3 hidden md:table-cell">
                     <button onClick={() => toggleSort("tasks")} className="flex items-center gap-0 mx-auto text-xs font-semibold uppercase tracking-wider text-muted-foreground hover:text-[#E6EDF3] transition-colors">
-                      Open Tasks<SortIcon col="tasks" />
+                      Tasks<SortIcon col="tasks" />
                     </button>
                   </th>
-                  <th className="text-center px-4 py-3 hidden lg:table-cell">
-                    <button onClick={() => toggleSort("score")} className="flex items-center gap-0 mx-auto text-xs font-semibold uppercase tracking-wider text-muted-foreground hover:text-[#E6EDF3] transition-colors">
-                      M365 Score<SortIcon col="score" />
+                  <th className="text-center px-3 py-3 hidden lg:table-cell">
+                    <button onClick={() => toggleSort("copilot")} className="flex items-center gap-0 mx-auto text-xs font-semibold uppercase tracking-wider text-muted-foreground hover:text-[#E6EDF3] transition-colors">
+                      Copilot<SortIcon col="copilot" />
                     </button>
                   </th>
-                  <th className="text-left px-4 py-3 hidden xl:table-cell">
-                    <button onClick={() => toggleSort("joined")} className="flex items-center text-xs font-semibold uppercase tracking-wider text-muted-foreground hover:text-[#E6EDF3] transition-colors">
-                      Joined<SortIcon col="joined" />
+                  <th className="text-center px-3 py-3 hidden lg:table-cell">
+                    <button onClick={() => toggleSort("governance")} className="flex items-center gap-0 mx-auto text-xs font-semibold uppercase tracking-wider text-muted-foreground hover:text-[#E6EDF3] transition-colors">
+                      Gov.<SortIcon col="governance" />
                     </button>
                   </th>
-                  <th className="px-5 py-3" />
+                  <th className="text-center px-3 py-3 hidden xl:table-cell">
+                    <button onClick={() => toggleSort("aiRisk")} className="flex items-center gap-0 mx-auto text-xs font-semibold uppercase tracking-wider text-muted-foreground hover:text-[#E6EDF3] transition-colors">
+                      AI Risk<SortIcon col="aiRisk" />
+                    </button>
+                  </th>
+                  <th className="text-center px-3 py-3 hidden xl:table-cell">
+                    <button onClick={() => toggleSort("lastActivity")} className="flex items-center gap-0 mx-auto text-xs font-semibold uppercase tracking-wider text-muted-foreground hover:text-[#E6EDF3] transition-colors">
+                      Activity<SortIcon col="lastActivity" />
+                    </button>
+                  </th>
+                  <th className="px-4 py-3" />
                 </tr>
               </thead>
               <tbody>
                 {sortedFilteredClients.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="px-5 py-8 text-center text-muted-foreground text-sm">
+                    <td colSpan={9} className="px-5 py-8 text-center text-muted-foreground text-sm">
                       No clients match your filters.
                     </td>
                   </tr>
@@ -846,10 +941,10 @@ export default function ClientsPage() {
                         </td>
 
                         {/* Company */}
-                        <td className="px-5 py-3.5 text-sm text-muted-foreground hidden sm:table-cell">{c.company ?? "—"}</td>
+                        <td className="px-4 py-3.5 text-sm text-muted-foreground hidden sm:table-cell">{c.company ?? "—"}</td>
 
                         {/* Projects */}
-                        <td className="px-4 py-3.5 text-center hidden md:table-cell">
+                        <td className="px-3 py-3.5 text-center hidden md:table-cell">
                           {c.projectCount === 0 ? (
                             <span className="text-xs text-[#484F58]">—</span>
                           ) : (
@@ -864,7 +959,7 @@ export default function ClientsPage() {
                         </td>
 
                         {/* Open Tasks */}
-                        <td className="px-4 py-3.5 text-center hidden md:table-cell">
+                        <td className="px-3 py-3.5 text-center hidden md:table-cell">
                           {c.openTaskCount === 0 ? (
                             <span className="text-xs text-[#484F58]">—</span>
                           ) : (
@@ -872,17 +967,36 @@ export default function ClientsPage() {
                           )}
                         </td>
 
-                        {/* M365 Score */}
-                        <td className="px-4 py-3.5 text-center hidden lg:table-cell">
-                          <div className="flex flex-col items-center gap-0.5">
-                            <ScoreBadge score={c.quizScore} />
-                            <TierBadge tier={c.quizTier} />
-                          </div>
+                        {/* Copilot Readiness */}
+                        <td className="px-3 py-3.5 text-center hidden lg:table-cell">
+                          {c.copilotReadinessScore !== null ? (
+                            <span className={`text-xs font-bold tabular-nums ${c.copilotReadinessScore >= 70 ? "text-emerald-400" : c.copilotReadinessScore >= 40 ? "text-amber-400" : "text-red-400"}`}>{c.copilotReadinessScore}</span>
+                          ) : <span className="text-xs text-[#484F58]">—</span>}
                         </td>
 
-                        {/* Joined */}
-                        <td className="px-4 py-3.5 text-xs text-muted-foreground hidden xl:table-cell whitespace-nowrap">
-                          {new Date(c.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                        {/* Governance Score */}
+                        <td className="px-3 py-3.5 text-center hidden lg:table-cell">
+                          {c.governanceScore !== null ? (
+                            <span className={`text-xs font-bold tabular-nums ${c.governanceScore >= 70 ? "text-emerald-400" : c.governanceScore >= 40 ? "text-amber-400" : "text-red-400"}`}>{c.governanceScore}</span>
+                          ) : <span className="text-xs text-[#484F58]">—</span>}
+                        </td>
+
+                        {/* AI Risk */}
+                        <td className="px-3 py-3.5 text-center hidden xl:table-cell">
+                          {c.aiRiskLevel ? (
+                            <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full border ${
+                              c.aiRiskLevel === "high" ? "bg-red-500/10 text-red-400 border-red-500/20" :
+                              c.aiRiskLevel === "medium" ? "bg-amber-500/10 text-amber-400 border-amber-500/20" :
+                              "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
+                            }`}>{c.aiRiskLevel}</span>
+                          ) : <span className="text-xs text-[#484F58]">—</span>}
+                        </td>
+
+                        {/* Last Activity */}
+                        <td className="px-3 py-3.5 text-center hidden xl:table-cell">
+                          {c.lastActivityAt ? (
+                            <span className="text-xs text-muted-foreground whitespace-nowrap">{timeAgo(c.lastActivityAt)}</span>
+                          ) : <span className="text-xs text-[#484F58]">—</span>}
                         </td>
 
                         {/* Actions — always-visible core + hover dropdown menu */}

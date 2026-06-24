@@ -8,7 +8,7 @@ import {
   clientM365ProfilesTable,
   quizLeadsTable,
 } from "@workspace/db";
-import { eq, and, desc, count, inArray, sql } from "drizzle-orm";
+import { eq, and, desc, count, inArray, sql, isNotNull } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/requireAuth";
 import { logger } from "../lib/logger";
 
@@ -32,7 +32,7 @@ router.get("/admin/clients/enriched", requireAdmin, async (_req: Request, res: R
     const clientIds = clients.map(c => c.id).filter((id): id is number => id !== null);
     const clientEmails = clients.map(c => c.email);
 
-    const [projectRows, taskRows, quizRows] = await Promise.all([
+    const [projectRows, taskRows, quizRows, m365Rows, lastEmailRows, lastTaskRows] = await Promise.all([
       db
         .select({
           clientUserId: projectsTable.clientUserId,
@@ -63,11 +63,40 @@ router.get("/admin/clients/enriched", requireAdmin, async (_req: Request, res: R
           email: quizLeadsTable.email,
           totalScore: quizLeadsTable.totalScore,
           tier: quizLeadsTable.tier,
+          categoryScores: quizLeadsTable.categoryScores,
+          quizType: quizLeadsTable.quizType,
           createdAt: quizLeadsTable.createdAt,
         })
         .from(quizLeadsTable)
         .where(inArray(quizLeadsTable.email, clientEmails))
         .orderBy(desc(quizLeadsTable.createdAt)),
+
+      db
+        .select({
+          clientId: clientM365ProfilesTable.clientId,
+          profile: clientM365ProfilesTable.profile,
+        })
+        .from(clientM365ProfilesTable)
+        .where(inArray(clientM365ProfilesTable.clientId, clientIds)),
+
+      db
+        .select({
+          linkedUserId: emailsTable.linkedUserId,
+          lastAt: sql<string>`MAX(${emailsTable.receivedAt})`,
+        })
+        .from(emailsTable)
+        .where(and(isNotNull(emailsTable.linkedUserId), inArray(emailsTable.linkedUserId, clientIds)))
+        .groupBy(emailsTable.linkedUserId),
+
+      db
+        .select({
+          clientUserId: projectsTable.clientUserId,
+          lastAt: sql<string>`MAX(${kanbanTasksTable.updatedAt})`,
+        })
+        .from(kanbanTasksTable)
+        .innerJoin(projectsTable, eq(kanbanTasksTable.projectId, projectsTable.id))
+        .where(inArray(projectsTable.clientUserId, clientIds))
+        .groupBy(projectsTable.clientUserId),
     ]);
 
     const projectMap = new Map(projectRows.map(p => [p.clientUserId, p]));
@@ -76,11 +105,54 @@ router.get("/admin/clients/enriched", requireAdmin, async (_req: Request, res: R
     for (const q of quizRows) {
       if (!quizMap.has(q.email)) quizMap.set(q.email, q);
     }
+    const m365Map = new Map(m365Rows.map(r => [r.clientId, r.profile as Record<string, unknown>]));
+    const lastEmailMap = new Map(lastEmailRows.map(r => [r.linkedUserId, r.lastAt]));
+    const lastTaskMap = new Map(lastTaskRows.map(r => [r.clientUserId, r.lastAt]));
 
     const enriched = clients.map(c => {
       const proj = projectMap.get(c.id);
       const tasks = taskMap.get(c.id);
       const quiz = quizMap.get(c.email);
+      const mp = m365Map.get(c.id) ?? {};
+      const cs = (quiz?.categoryScores ?? {}) as Record<string, number>;
+
+      // Compute seven scores from quiz category scores + m365 profile
+      const governanceScore = typeof cs.changeManagement === "number" ? cs.changeManagement : null;
+      const securityScore = typeof cs.infrastructure === "number" ? cs.infrastructure : null;
+      const complianceScore = typeof cs.data === "number" ? cs.data : null;
+      const copilotReadinessScore = typeof cs.aiLiteracy === "number" ? cs.aiLiteracy : null;
+      const powerPlatformScore = typeof cs.businessProcess === "number" ? cs.businessProcess : null;
+      const externalSharingScore = mp.externalSharingEnabled === false ? 90 : mp.externalSharingEnabled === true ? 45 : null;
+      const shadowItScore = typeof mp.currentAITools === "string" && (mp.currentAITools as string).trim() ? 55 : typeof mp.currentAITools === "string" ? 80 : null;
+
+      // Extract M365 profile header fields
+      const industry = typeof mp.industry === "string" && mp.industry ? mp.industry : null;
+      const licenseTier = typeof mp.licenseTier === "string" && mp.licenseTier ? mp.licenseTier :
+        Array.isArray(mp.licenseSKUs) ? ((mp.licenseSKUs as string[])[0] ?? null) : null;
+      const employeeCount = typeof mp.employeeCount === "number" ? mp.employeeCount :
+        typeof mp.employeeCount === "string" ? parseInt(mp.employeeCount as string, 10) || null : null;
+      const tenantAge = typeof mp.tenantAge === "number" ? mp.tenantAge : null;
+      const itTeamSize = typeof mp.itTeamSize === "number" ? mp.itTeamSize : null;
+
+      // Last activity = max(latest email, latest task)
+      const lastEmailAt = lastEmailMap.get(c.id) ?? null;
+      const lastTaskAt = lastTaskMap.get(c.id) ?? null;
+      const lastActivityAt = lastEmailAt && lastTaskAt
+        ? (new Date(lastEmailAt) > new Date(lastTaskAt) ? lastEmailAt : lastTaskAt)
+        : lastEmailAt ?? lastTaskAt;
+
+      // AI risk level (based on governance/security/compliance scores)
+      const riskScores = [governanceScore, securityScore, complianceScore].filter((s): s is number => s !== null);
+      const aiRiskLevel: "high" | "medium" | "low" | null = riskScores.length === 0 ? null :
+        riskScores.some(s => s < 40) ? "high" :
+        riskScores.some(s => s < 70) ? "medium" : "low";
+
+      // AI opportunity level (based on copilot/power platform scores)
+      const oppScores = [copilotReadinessScore, powerPlatformScore].filter((s): s is number => s !== null);
+      const aiOpportunityLevel: "high" | "medium" | "low" | null = oppScores.length === 0 ? null :
+        oppScores.some(s => s >= 70) ? "high" :
+        oppScores.some(s => s >= 40) ? "medium" : "low";
+
       return {
         ...c,
         passwordHash: undefined,
@@ -89,6 +161,21 @@ router.get("/admin/clients/enriched", requireAdmin, async (_req: Request, res: R
         openTaskCount: Number(tasks?.openTasks ?? 0),
         quizScore: quiz?.totalScore ?? null,
         quizTier: quiz?.tier ?? null,
+        industry,
+        licenseTier,
+        employeeCount,
+        tenantAge,
+        itTeamSize,
+        governanceScore,
+        securityScore,
+        complianceScore,
+        copilotReadinessScore,
+        powerPlatformScore,
+        externalSharingScore,
+        shadowItScore,
+        lastActivityAt,
+        aiRiskLevel,
+        aiOpportunityLevel,
       };
     });
 
@@ -174,7 +261,7 @@ router.get("/admin/clients/:id/command-center", requireAdmin, async (req: Reques
         .from(quizLeadsTable)
         .where(eq(quizLeadsTable.email, client.email))
         .orderBy(desc(quizLeadsTable.createdAt))
-        .limit(1),
+        .limit(10),
 
       db
         .select()
@@ -217,6 +304,7 @@ router.get("/admin/clients/:id/command-center", requireAdmin, async (req: Reques
       recentTasks,
       recentEmails,
       quiz: quizRows[0] ?? null,
+      quizzes: quizRows,
       m365Profile: m365Rows[0]?.profile ?? null,
     });
   } catch (err) {

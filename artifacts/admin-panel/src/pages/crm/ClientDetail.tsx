@@ -52,9 +52,11 @@ interface RecentEmail {
 }
 
 interface QuizData {
+  id?: number;
   totalScore: number;
   tier: string;
   categoryScores: Record<string, number>;
+  quizType?: string;
   createdAt: string;
 }
 
@@ -64,6 +66,7 @@ interface CommandCenterData {
   recentTasks: RecentTask[];
   recentEmails: RecentEmail[];
   quiz: QuizData | null;
+  quizzes: QuizData[];
   m365Profile: Record<string, unknown> | null;
 }
 
@@ -432,7 +435,7 @@ export default function ClientDetailPage() {
     );
   }
 
-  const { client, projects, recentTasks, recentEmails, quiz, m365Profile } = ccData;
+  const { client, projects, recentTasks, recentEmails, quiz, quizzes = [], m365Profile } = ccData;
   const activeProjects = projects.filter(p => p.status === "active");
   const pastProjects = projects.filter(p => p.status === "completed");
   const openTaskCount = recentTasks.filter(t => t.column !== "completed").length;
@@ -485,9 +488,18 @@ export default function ClientDetailPage() {
   const todayStart = new Date(nowTs); todayStart.setHours(0, 0, 0, 0);
   const todayEnd = new Date(todayStart); todayEnd.setDate(todayEnd.getDate() + 1);
   const openTasks = recentTasks.filter(t => t.column !== "completed");
+  const completedTasks = recentTasks.filter(t => t.column === "completed");
   const kbOverdue = openTasks.filter(t => t.dueDate && new Date(t.dueDate) < todayStart);
   const kbDueToday = openTasks.filter(t => t.dueDate && new Date(t.dueDate) >= todayStart && new Date(t.dueDate) < todayEnd);
   const kbUpcoming = openTasks.filter(t => !t.dueDate || new Date(t.dueDate) >= todayEnd);
+
+  // ─── Overall health score + risk/opportunity ──────────────────────────────
+  const allScores = sevenGauges.map(g => g.score).filter((s): s is number => s !== null);
+  const healthScore = allScores.length > 0 ? Math.round(allScores.reduce((a, b) => a + b, 0) / allScores.length) : (quiz?.totalScore ?? null);
+  const riskScores = [typeof cs.changeManagement === "number" ? cs.changeManagement : null, typeof cs.infrastructure === "number" ? cs.infrastructure : null, typeof cs.data === "number" ? cs.data : null].filter((s): s is number => s !== null);
+  const overallRisk: "high" | "medium" | "low" | null = riskScores.length === 0 ? null : riskScores.some(s => s < 40) ? "high" : riskScores.some(s => s < 70) ? "medium" : "low";
+  const oppScores = [typeof cs.aiLiteracy === "number" ? cs.aiLiteracy : null, typeof cs.businessProcess === "number" ? cs.businessProcess : null].filter((s): s is number => s !== null);
+  const overallOpp: "high" | "medium" | "low" | null = oppScores.length === 0 ? null : oppScores.some(s => s >= 70) ? "high" : oppScores.some(s => s >= 40) ? "medium" : "low";
 
   // ─── Activity feed (chronological merge) ──────────────────────────────────
   interface FeedEntry { type: "email" | "task" | "project"; id: number; title: string; sub: string; ts: string; }
@@ -595,8 +607,24 @@ export default function ClientDetailPage() {
             <div className="flex items-center gap-2 flex-wrap">
               <StatChip label="Active" value={activeProjects.length} accent={activeProjects.length > 0 ? "text-[#0078D4]" : undefined} />
               <StatChip label="Open Tasks" value={openTaskCount} accent={openTaskCount > 5 ? "text-amber-400" : undefined} />
-              {quiz && (
-                <StatChip label="M365 Score" value={quiz.totalScore} accent={quiz.totalScore >= 70 ? "text-emerald-400" : quiz.totalScore >= 40 ? "text-amber-400" : "text-red-400"} />
+              {healthScore !== null && (
+                <StatChip label="Health" value={healthScore} accent={healthScore >= 70 ? "text-emerald-400" : healthScore >= 40 ? "text-amber-400" : "text-red-400"} />
+              )}
+              {overallRisk && (
+                <div className="flex flex-col items-center px-3 py-1.5 bg-[#1C2128] rounded-lg border border-border min-w-[60px]">
+                  <span className={`text-sm font-bold leading-none ${overallRisk === "high" ? "text-red-400" : overallRisk === "medium" ? "text-amber-400" : "text-emerald-400"}`}>
+                    {overallRisk.charAt(0).toUpperCase() + overallRisk.slice(1)}
+                  </span>
+                  <span className="text-[10px] text-muted-foreground mt-0.5">Risk</span>
+                </div>
+              )}
+              {overallOpp && (
+                <div className="flex flex-col items-center px-3 py-1.5 bg-[#1C2128] rounded-lg border border-border min-w-[60px]">
+                  <span className={`text-sm font-bold leading-none ${overallOpp === "high" ? "text-emerald-400" : overallOpp === "medium" ? "text-[#0078D4]" : "text-muted-foreground"}`}>
+                    {overallOpp.charAt(0).toUpperCase() + overallOpp.slice(1)}
+                  </span>
+                  <span className="text-[10px] text-muted-foreground mt-0.5">Opportunity</span>
+                </div>
               )}
               {kbOverdue.length > 0 && (
                 <StatChip label="Overdue" value={kbOverdue.length} accent="text-red-400" />
@@ -995,7 +1023,25 @@ export default function ClientDetailPage() {
                 )}
               </div>
 
-              {kbOverdue.length === 0 && kbDueToday.length === 0 && kbUpcoming.length === 0 && (
+              {/* Completed */}
+              {completedTasks.length > 0 && (
+                <div className="px-4 py-3">
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="w-2 h-2 rounded-full bg-emerald-500 flex-shrink-0" />
+                    <p className="text-[10px] font-bold text-emerald-400 uppercase tracking-wide">Completed · {completedTasks.length}</p>
+                  </div>
+                  <div className="space-y-1.5">
+                    {completedTasks.slice(0, 3).map(t => (
+                      <div key={t.id} className="flex items-start gap-2">
+                        <svg className="w-3 h-3 text-emerald-400 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
+                        <p className="text-[10px] font-medium text-muted-foreground truncate flex-1 line-through">{t.title}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {kbOverdue.length === 0 && kbDueToday.length === 0 && kbUpcoming.length === 0 && completedTasks.length === 0 && (
                 <div className="px-4 py-5 text-center">
                   <p className="text-sm text-muted-foreground">No open tasks.</p>
                 </div>
@@ -1090,109 +1136,120 @@ export default function ClientDetailPage() {
 
         {showAssessments && (
           <div className="border-t border-border">
-            {quiz ? (
-              <div className="p-5">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                  {/* Overall assessment card */}
-                  <div className="bg-[#1C2128] border border-border rounded-xl p-5">
-                    <div className="flex items-start justify-between mb-3">
-                      <div>
-                        <p className="text-sm font-bold text-[#E6EDF3]">Copilot Readiness Assessment</p>
-                        <p className="text-[10px] text-muted-foreground mt-0.5">Completed {new Date(quiz.createdAt).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}</p>
-                      </div>
-                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
-                        quiz.tier === "Expert" ? "bg-emerald-500/15 text-emerald-400 border-emerald-500/20" :
-                        quiz.tier === "Intermediate" ? "bg-blue-500/15 text-blue-400 border-blue-500/20" :
-                        "bg-amber-500/15 text-amber-400 border-amber-500/20"
-                      }`}>{quiz.tier}</span>
-                    </div>
-
-                    {/* Overall score */}
-                    <div className="flex items-center gap-3 mb-4">
-                      <div className="text-3xl font-black text-[#E6EDF3]">{quiz.totalScore}</div>
-                      <div>
-                        <p className="text-xs text-muted-foreground">Overall Score</p>
-                        <p className="text-xs text-muted-foreground">out of 100</p>
-                      </div>
-                    </div>
-
-                    {/* Sub-scores */}
-                    {csEntries.length > 0 && (
-                      <div className="space-y-2 mb-4">
-                        <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Category Scores</p>
-                        {csEntries.map(([key, val]) => {
-                          const pct = Math.min(100, Math.max(0, val));
-                          const bar = pct >= 70 ? "bg-emerald-500" : pct >= 40 ? "bg-amber-500" : "bg-red-500";
-                          return (
-                            <div key={key}>
-                              <div className="flex justify-between text-[10px] mb-0.5">
-                                <span className="text-muted-foreground">{catLabels[key] ?? key}</span>
-                                <span className="font-bold text-[#E6EDF3]">{pct}</span>
-                              </div>
-                              <div className="h-1 bg-[#30363D] rounded-full overflow-hidden">
-                                <div className={`h-full rounded-full ${bar}`} style={{ width: `${pct}%` }} />
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
-
-                    {/* Recommended actions */}
-                    <div className="mb-4">
-                      <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-2">Recommended Actions</p>
-                      <ul className="space-y-1">
-                        {quiz.totalScore < 40 && <li className="text-xs text-[#E6EDF3]">• Establish baseline M365 governance policies</li>}
-                        {quiz.totalScore < 60 && <li className="text-xs text-[#E6EDF3]">• Enroll users in Copilot readiness training</li>}
-                        {quiz.totalScore < 80 && <li className="text-xs text-[#E6EDF3]">• Conduct a data classification review</li>}
-                        <li className="text-xs text-[#E6EDF3]">• Schedule a quarterly maturity review</li>
-                      </ul>
-                    </div>
-
-                    <button
-                      onClick={() => toast({ title: "Trigger Workflow", description: "Connect to Azure Automation to trigger a runbook for this client." })}
-                      className="flex items-center gap-2 text-xs font-semibold bg-[#0078D4] text-white px-3 py-1.5 rounded-lg hover:bg-[#0078D4]/90 transition-colors"
-                    >
-                      <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
-                      Trigger Workflow
-                    </button>
-                  </div>
-
-                  {/* Summary card */}
-                  <div className="bg-[#1C2128] border border-border rounded-xl p-5 space-y-4">
-                    <p className="text-sm font-bold text-[#E6EDF3]">Assessment Summary</p>
-                    <div className="text-xs text-[#E6EDF3]/80 leading-relaxed space-y-2">
-                      <p>
-                        {quiz.tier === "Expert"
-                          ? "This client has excellent M365 maturity across key pillars. Focus on advanced Copilot scenarios and expanding AI governance practices."
-                          : quiz.tier === "Intermediate"
-                            ? "Moderate maturity with clear growth opportunities. Targeted training and governance improvements will unlock the next tier."
-                            : "Foundational work is needed across multiple areas. A structured roadmap should prioritise governance, security, and user adoption before AI features."}
-                      </p>
-                      <p>
-                        {mostCritical
-                          ? `The area most needing attention is ${catLabels[mostCritical[0]] ?? mostCritical[0]} with a score of ${mostCritical[1]}.`
-                          : "All assessed areas are performing at or above threshold."}
-                      </p>
-                    </div>
-
-                    <div className="space-y-2">
-                      <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Tenant M365 Profile</p>
-                      {[
-                        { label: "Industry", value: mpIndustry },
-                        { label: "Employees", value: mpEmployees },
-                        { label: "Tenant Domain", value: mpDomain },
-                        { label: "IT Contact", value: mpITContact },
-                        { label: "License SKUs", value: mpLicenses },
-                      ].filter(({ value }) => value).map(({ label, value }) => (
-                        <div key={label} className="flex justify-between text-[10px]">
-                          <span className="text-muted-foreground">{label}</span>
-                          <span className="text-[#E6EDF3] font-medium max-w-[140px] text-right truncate">{value}</span>
+            {quizzes.length > 0 ? (
+              <div className="p-5 space-y-5">
+                {/* One card per quiz record */}
+                {quizzes.map((q, idx) => {
+                  const qcs = (q.categoryScores ?? {}) as Record<string, number>;
+                  const qEntries = Object.entries(qcs).filter(([, v]) => typeof v === "number") as [string, number][];
+                  const sortedQ = [...qEntries].sort(([, a], [, b]) => a - b);
+                  const qCritical = sortedQ[0] ?? null;
+                  const quizLabel = q.quizType === "tenant_health" ? "Tenant Health Assessment" :
+                    q.quizType === "governance" ? "Governance Maturity Assessment" :
+                    "Copilot Readiness Assessment";
+                  return (
+                    <div key={q.id ?? idx} className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                      {/* Score card */}
+                      <div className="bg-[#1C2128] border border-border rounded-xl p-5">
+                        <div className="flex items-start justify-between mb-3">
+                          <div>
+                            <p className="text-sm font-bold text-[#E6EDF3]">{quizLabel}</p>
+                            <p className="text-[10px] text-muted-foreground mt-0.5">Completed {new Date(q.createdAt).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}</p>
+                          </div>
+                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                            q.tier === "Expert" ? "bg-emerald-500/15 text-emerald-400 border-emerald-500/20" :
+                            q.tier === "Intermediate" ? "bg-blue-500/15 text-blue-400 border-blue-500/20" :
+                            "bg-amber-500/15 text-amber-400 border-amber-500/20"
+                          }`}>{q.tier}</span>
                         </div>
-                      ))}
+
+                        <div className="flex items-center gap-3 mb-4">
+                          <div className="text-3xl font-black text-[#E6EDF3]">{q.totalScore}</div>
+                          <div>
+                            <p className="text-xs text-muted-foreground">Overall Score</p>
+                            <p className="text-xs text-muted-foreground">out of 100</p>
+                          </div>
+                        </div>
+
+                        {qEntries.length > 0 && (
+                          <div className="space-y-2 mb-4">
+                            <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Category Scores</p>
+                            {qEntries.map(([key, val]) => {
+                              const pct = Math.min(100, Math.max(0, val));
+                              const bar = pct >= 70 ? "bg-emerald-500" : pct >= 40 ? "bg-amber-500" : "bg-red-500";
+                              return (
+                                <div key={key}>
+                                  <div className="flex justify-between text-[10px] mb-0.5">
+                                    <span className="text-muted-foreground">{catLabels[key] ?? key}</span>
+                                    <span className="font-bold text-[#E6EDF3]">{pct}</span>
+                                  </div>
+                                  <div className="h-1 bg-[#30363D] rounded-full overflow-hidden">
+                                    <div className={`h-full rounded-full ${bar}`} style={{ width: `${pct}%` }} />
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+
+                        <div className="mb-4">
+                          <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-2">Recommended Actions</p>
+                          <ul className="space-y-1">
+                            {q.totalScore < 40 && <li className="text-xs text-[#E6EDF3]">• Establish baseline M365 governance policies</li>}
+                            {q.totalScore < 60 && <li className="text-xs text-[#E6EDF3]">• Enroll users in Copilot readiness training</li>}
+                            {q.totalScore < 80 && <li className="text-xs text-[#E6EDF3]">• Conduct a data classification review</li>}
+                            <li className="text-xs text-[#E6EDF3]">• Schedule a quarterly maturity review</li>
+                          </ul>
+                        </div>
+
+                        <button
+                          onClick={() => toast({ title: "Trigger Workflow", description: "Connect to Azure Automation to trigger a runbook for this client." })}
+                          className="flex items-center gap-2 text-xs font-semibold bg-[#0078D4] text-white px-3 py-1.5 rounded-lg hover:bg-[#0078D4]/90 transition-colors"
+                        >
+                          <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
+                          Trigger Workflow
+                        </button>
+                      </div>
+
+                      {/* Summary + profile card */}
+                      <div className="bg-[#1C2128] border border-border rounded-xl p-5 space-y-4">
+                        <p className="text-sm font-bold text-[#E6EDF3]">Assessment Summary</p>
+                        <div className="text-xs text-[#E6EDF3]/80 leading-relaxed space-y-2">
+                          <p>
+                            {q.tier === "Expert"
+                              ? "This client has excellent M365 maturity across key pillars. Focus on advanced Copilot scenarios and expanding AI governance practices."
+                              : q.tier === "Intermediate"
+                                ? "Moderate maturity with clear growth opportunities. Targeted training and governance improvements will unlock the next tier."
+                                : "Foundational work is needed across multiple areas. A structured roadmap should prioritise governance, security, and user adoption before AI features."}
+                          </p>
+                          <p>
+                            {qCritical
+                              ? `The area most needing attention is ${catLabels[qCritical[0]] ?? qCritical[0]} with a score of ${qCritical[1]}.`
+                              : "All assessed areas are performing at or above threshold."}
+                          </p>
+                        </div>
+
+                        {idx === 0 && (
+                          <div className="space-y-2">
+                            <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Tenant M365 Profile</p>
+                            {[
+                              { label: "Industry", value: mpIndustry },
+                              { label: "Employees", value: mpEmployees },
+                              { label: "Tenant Domain", value: mpDomain },
+                              { label: "IT Contact", value: mpITContact },
+                              { label: "License SKUs", value: mpLicenses },
+                            ].filter(({ value }) => value).map(({ label, value }) => (
+                              <div key={label} className="flex justify-between text-[10px]">
+                                <span className="text-muted-foreground">{label}</span>
+                                <span className="text-[#E6EDF3] font-medium max-w-[140px] text-right truncate">{value}</span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                </div>
+                  );
+                })}
               </div>
             ) : (
               <div className="p-8 text-center">
