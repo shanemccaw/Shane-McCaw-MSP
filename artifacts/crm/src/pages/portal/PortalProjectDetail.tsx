@@ -637,7 +637,11 @@ export default function PortalProjectDetail() {
   const { fetchWithAuth } = useAuth();
   const [data, setData] = useState<ProjectDetailData | null>(null);
   const [loading, setLoading] = useState(true);
-  const [secondaryTab, setSecondaryTab] = useState<SecondaryTab | null>(null);
+  const [secondaryTab, setSecondaryTab] = useState<SecondaryTab | null>(() => {
+    const hash = window.location.hash.replace("#", "");
+    const validTabs: SecondaryTab[] = ["kanban", "documents", "status-reports", "contracts", "timeline"];
+    return validTabs.includes(hash as SecondaryTab) ? (hash as SecondaryTab) : null;
+  });
   const [expandedStepId, setExpandedStepId] = useState<number | null>(null);
   const [showAllPhases, setShowAllPhases] = useState(false);
   const [exportingAudit, setExportingAudit] = useState(false);
@@ -739,6 +743,22 @@ export default function PortalProjectDetail() {
 
   useEffect(() => { loadClosure(); }, [loadClosure]);
   useEffect(() => { if (secondaryTab === "documents") void loadSpFiles(); }, [secondaryTab, loadSpFiles]);
+
+  const changeTab = useCallback((tab: SecondaryTab | null) => {
+    setSecondaryTab(tab);
+    const base = window.location.pathname + window.location.search;
+    history.replaceState(null, "", tab ? base + "#" + tab : base);
+  }, []);
+
+  useEffect(() => {
+    const onHashChange = () => {
+      const hash = window.location.hash.replace("#", "");
+      const validTabs: SecondaryTab[] = ["kanban", "documents", "status-reports", "contracts", "timeline"];
+      setSecondaryTab(validTabs.includes(hash as SecondaryTab) ? (hash as SecondaryTab) : null);
+    };
+    window.addEventListener("hashchange", onHashChange);
+    return () => window.removeEventListener("hashchange", onHashChange);
+  }, []);
 
   const handleSignClosure = async () => {
     if (!params.id || closureSigning) return;
@@ -997,7 +1017,7 @@ export default function PortalProjectDetail() {
         <div className="overflow-x-auto mb-6 border-b border-border -mx-4 px-4 sm:mx-0 sm:px-0">
           <div className="flex items-center gap-1 min-w-max">
             <button
-              onClick={() => setSecondaryTab(null)}
+              onClick={() => changeTab(null)}
               className={`flex-shrink-0 whitespace-nowrap px-4 py-2.5 text-sm font-semibold border-b-2 transition-colors -mb-px ${
                 secondaryTab === null
                   ? "border-[#0A2540] text-[#0A2540]"
@@ -1009,7 +1029,7 @@ export default function PortalProjectDetail() {
             {secondaryTabs.map(t => (
               <button
                 key={t.key}
-                onClick={() => setSecondaryTab(t.key)}
+                onClick={() => changeTab(t.key)}
                 className={`flex-shrink-0 whitespace-nowrap px-4 py-2.5 text-sm font-semibold border-b-2 transition-colors -mb-px ${
                   secondaryTab === t.key
                     ? "border-[#0078D4] text-[#0078D4]"
