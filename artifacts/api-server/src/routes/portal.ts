@@ -399,6 +399,76 @@ router.get("/portal/m365-scorecard-history", requireAuth, async (req: Request, r
   res.json({ hasData: true, firstDate: firstDate?.toISOString(), latestDate: latestDate?.toISOString(), first, latest });
 });
 
+router.get("/portal/health/summary", requireAuth, async (req: Request, res: Response) => {
+  const userId = req.user!.id;
+  const M365_CATS: M365ScoreCategory[] = ["security", "compliance", "copilot", "governance", "productivity"];
+  const CATEGORY_LABELS: Record<string, string> = {
+    security: "Security Posture",
+    compliance: "Compliance Coverage",
+    copilot: "Copilot Readiness",
+    governance: "Governance Maturity",
+    productivity: "Adoption Score",
+  };
+
+  const rows = await db
+    .select({ category: clientHealthHistoryTable.category, score: clientHealthHistoryTable.score, recordedAt: clientHealthHistoryTable.recordedAt })
+    .from(clientHealthHistoryTable)
+    .where(eq(clientHealthHistoryTable.clientId, userId))
+    .orderBy(asc(clientHealthHistoryTable.recordedAt));
+
+  if (rows.length === 0) {
+    res.json({ hasData: false });
+    return;
+  }
+
+  const thirtyDaysAgo = new Date();
+  thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+  const categories = M365_CATS.map(cat => {
+    const catRows = rows.filter(r => r.category === cat);
+    if (catRows.length === 0) return null;
+    const first = catRows[0].score;
+    const latest = catRows[catRows.length - 1].score;
+    const recentRows = catRows.filter(r => r.recordedAt >= thirtyDaysAgo);
+    const hasAlert = recentRows.length >= 2 &&
+      Math.abs(recentRows[recentRows.length - 1].score - recentRows[0].score) >= 10;
+    return { key: cat, label: CATEGORY_LABELS[cat] ?? cat, firstScore: first, latestScore: latest, delta: latest - first, hasAlert };
+  }).filter((c): c is NonNullable<typeof c> => c !== null);
+
+  const overallFirst = categories.length > 0
+    ? Math.round(categories.reduce((s, c) => s + c.firstScore, 0) / categories.length)
+    : 0;
+  const overallLatest = categories.length > 0
+    ? Math.round(categories.reduce((s, c) => s + c.latestScore, 0) / categories.length)
+    : 0;
+
+  const dayMap = new Map<string, number[]>();
+  for (const row of rows) {
+    if (!M365_CATS.includes(row.category as M365ScoreCategory)) continue;
+    const day = row.recordedAt.toISOString().slice(0, 10);
+    if (!dayMap.has(day)) dayMap.set(day, []);
+    dayMap.get(day)!.push(row.score);
+  }
+  const timeSeries = Array.from(dayMap.entries())
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([date, scores]) => ({
+      date,
+      score: Math.round(scores.reduce((a, b) => a + b, 0) / scores.length),
+    }));
+
+  const lastUpdated = rows[rows.length - 1].recordedAt.toISOString();
+
+  res.json({
+    hasData: true,
+    overallFirst,
+    overallLatest,
+    overallDelta: overallLatest - overallFirst,
+    lastUpdated,
+    timeSeries,
+    categories,
+  });
+});
+
 // ─── CLIENT: App Registration (Azure automation credentials) ─────────────────
 router.get("/portal/app-registration", requireAuth, async (req: Request, res: Response) => {
   const userId = req.user!.id;

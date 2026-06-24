@@ -24,6 +24,7 @@ import PortalAppRegistration from "@/pages/portal/PortalAppRegistration";
 import PortalSecurity from "@/pages/portal/PortalSecurity";
 import PortalInsights from "@/pages/portal/PortalInsights";
 import PortalJourneyMap from "@/pages/portal/PortalJourneyMap";
+import PortalHealthScore from "@/pages/portal/PortalHealthScore";
 import ResetPasswordPage from "@/pages/ResetPassword";
 import { useState, useEffect, useRef, type ReactNode } from "react";
 
@@ -174,6 +175,9 @@ function Router() {
       </Route>
       <Route path="/portal/journey">
         <RequireAuth role="client"><RequireOnboarding><PortalJourneyMap /></RequireOnboarding></RequireAuth>
+      </Route>
+      <Route path="/portal/health">
+        <RequireAuth role="client"><RequireOnboarding><PortalHealthScore /></RequireOnboarding></RequireAuth>
       </Route>
 
       {/* Public reset-password route — token validated server-side */}
