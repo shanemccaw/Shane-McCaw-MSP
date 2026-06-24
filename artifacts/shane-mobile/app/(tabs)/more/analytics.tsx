@@ -152,7 +152,7 @@ export default function AnalyticsScreen() {
   const sparkValues = (pageviewsSeries ?? []).map((p) => p.views);
   const maxPages = Math.max(...(topPages ?? []).map((p) => p.views), 1);
   const maxEvents = Math.max(...(topEvents ?? []).map((e) => e.count), 1);
-  const maxRefs = Math.max(...(referrers ?? []).map((r) => r.count), 1);
+  const maxRefs = Math.max(...(referrers ?? []).map((r) => r.count ?? 0), 1);
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
@@ -259,8 +259,8 @@ export default function AnalyticsScreen() {
                 <View key={i} style={[styles.tableRow, { backgroundColor: colors.card, borderColor: colors.border }]}>
                   <Text style={[styles.tableCell, { color: colors.text }]} numberOfLines={1}>{r.source || "Direct"}</Text>
                   <View style={styles.tableRight}>
-                    <MiniBar value={r.count} max={maxRefs} color={colors.success} />
-                    <Text style={[styles.tableNum, { color: colors.success }]}>{r.count.toLocaleString()}</Text>
+                    <MiniBar value={r.count ?? 0} max={maxRefs} color={colors.success} />
+                    <Text style={[styles.tableNum, { color: colors.success }]}>{(r.count ?? 0).toLocaleString()}</Text>
                   </View>
                 </View>
               ))}
