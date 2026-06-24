@@ -1,5 +1,5 @@
 import { Router, type IRouter, type Request, type Response } from "express";
-import { db, projectsTable, clientServicesTable, servicesTable, workflowStepsTable, kanbanTasksTable, documentsTable, reportsTable, invoicesTable, messagesTable, notificationsTable, projectUpdatesTable, usersTable, contractsTable, passwordResetTokensTable, workflowTemplateStepsTable, workflowTemplateStepTasksTable, contractTemplatesTable, impersonationTokensTable, statusReportsTable, deviceTokensTable, projectClosuresTable, auditLogsTable, instructionSetsTable, checklistsTable, artifactSetsTable, deliverableSetsTable, emailsTable, emailDomainRulesTable, clientM365ProfilesTable, couponsTable, clientAppRegistrationsTable, accountSetupTokensTable, mfaEnrollmentsTable, mfaChallengesTable, webauthnCredentialsTable, webauthnChallengesTable } from "@workspace/db";
+import { db, projectsTable, clientServicesTable, servicesTable, workflowStepsTable, kanbanTasksTable, documentsTable, reportsTable, invoicesTable, messagesTable, notificationsTable, projectUpdatesTable, usersTable, contractsTable, passwordResetTokensTable, workflowTemplateStepsTable, workflowTemplateStepTasksTable, contractTemplatesTable, impersonationTokensTable, statusReportsTable, deviceTokensTable, projectClosuresTable, auditLogsTable, instructionSetsTable, checklistsTable, artifactSetsTable, deliverableSetsTable, emailsTable, emailDomainRulesTable, clientM365ProfilesTable, couponsTable, clientAppRegistrationsTable, accountSetupTokensTable, mfaEnrollmentsTable, mfaChallengesTable, webauthnCredentialsTable, webauthnChallengesTable, clientHealthHistoryTable } from "@workspace/db";
 import { eq, and, desc, asc, count, sql, inArray, gte, isNotNull, isNull, or, lt } from "drizzle-orm";
 import { requireAuth, requireAdmin } from "../middlewares/requireAuth";
 import jwt from "jsonwebtoken";
@@ -299,13 +299,104 @@ router.get("/portal/m365-profile", requireAuth, async (req: Request, res: Respon
   res.json(row ? row.profile : {});
 });
 
+// ── M365 score computation (mirrors frontend boolScore logic) ─────────────────
+function m365BoolScore(fields: (boolean | undefined)[]): number {
+  if (fields.length === 0) return 0;
+  return Math.round((fields.filter(f => f === true).length / fields.length) * 100);
+}
+
+type M365ScoreCategory = "security" | "compliance" | "copilot" | "governance" | "productivity";
+
+function computeM365Scores(profile: Record<string, unknown>): Record<M365ScoreCategory, number> {
+  const v = profile as {
+    mfaEnforced?: boolean; conditionalAccessEnabled?: boolean; intuneEnabled?: boolean;
+    hasAADP1orP2?: boolean; hasDefender?: boolean; hasDLP?: boolean; usesComplianceCenter?: boolean;
+    sensitivityLabelsConfigured?: boolean; hasRetentionPolicies?: boolean; hasInsiderRisk?: boolean;
+    hasCopilotLicenses?: boolean; activeUserPercent?: string; allUsersLicensed?: boolean;
+  };
+  const pct = parseInt(v.activeUserPercent ?? "0", 10);
+  return {
+    security: m365BoolScore([v.mfaEnforced, v.conditionalAccessEnabled, v.intuneEnabled, v.hasAADP1orP2, v.hasDefender, v.hasDLP, v.usesComplianceCenter, v.sensitivityLabelsConfigured, v.hasRetentionPolicies]),
+    compliance: m365BoolScore([v.hasDLP, v.usesComplianceCenter, v.sensitivityLabelsConfigured, v.hasRetentionPolicies, v.hasInsiderRisk]),
+    copilot: m365BoolScore([v.hasCopilotLicenses, v.mfaEnforced, v.sensitivityLabelsConfigured, v.hasDLP, v.hasRetentionPolicies]),
+    governance: m365BoolScore([v.hasRetentionPolicies, v.sensitivityLabelsConfigured, v.usesComplianceCenter, v.conditionalAccessEnabled]),
+    productivity: Math.min((isNaN(pct) ? 60 : pct) + (v.allUsersLicensed ? 10 : 0), 100),
+  };
+}
+
 router.put("/portal/m365-profile", requireAuth, async (req: Request, res: Response) => {
   const userId = req.user!.id;
   const profile = req.body as Record<string, unknown>;
   await db.insert(clientM365ProfilesTable)
     .values({ clientId: userId, profile })
     .onConflictDoUpdate({ target: clientM365ProfilesTable.clientId, set: { profile, updatedAt: new Date() } });
+
+  // Compute scores and save snapshot if anything changed
+  try {
+    const scores = computeM365Scores(profile);
+    // Fetch most recent snapshot per category (last 10 rows covers all 5 categories twice over)
+    const recentRows = await db
+      .select({ category: clientHealthHistoryTable.category, score: clientHealthHistoryTable.score })
+      .from(clientHealthHistoryTable)
+      .where(eq(clientHealthHistoryTable.clientId, userId))
+      .orderBy(desc(clientHealthHistoryTable.recordedAt))
+      .limit(10);
+    // Build map: category → most recent score
+    const latestByCategory: Partial<Record<M365ScoreCategory, number>> = {};
+    for (const row of recentRows) {
+      const cat = row.category as M365ScoreCategory;
+      if (!(cat in latestByCategory)) latestByCategory[cat] = row.score;
+    }
+    const hasChanged = (Object.entries(scores) as [M365ScoreCategory, number][])
+      .some(([cat, score]) => latestByCategory[cat] !== score);
+    if (hasChanged) {
+      const now = new Date();
+      await db.insert(clientHealthHistoryTable).values(
+        (Object.entries(scores) as [M365ScoreCategory, number][]).map(([category, score]) => ({
+          clientId: userId,
+          category,
+          score,
+          recordedAt: now,
+        }))
+      );
+    }
+  } catch (err) {
+    req.log.warn({ err }, "m365-profile: failed to save health snapshot (non-fatal)");
+  }
+
   res.json({ ok: true });
+});
+
+// ── M365 scorecard history — first vs latest per category ─────────────────────
+router.get("/portal/m365-scorecard-history", requireAuth, async (req: Request, res: Response) => {
+  const userId = req.user!.id;
+  const rows = await db
+    .select({ category: clientHealthHistoryTable.category, score: clientHealthHistoryTable.score, recordedAt: clientHealthHistoryTable.recordedAt })
+    .from(clientHealthHistoryTable)
+    .where(eq(clientHealthHistoryTable.clientId, userId))
+    .orderBy(asc(clientHealthHistoryTable.recordedAt));
+
+  if (rows.length === 0) {
+    res.json({ hasData: false });
+    return;
+  }
+
+  const CATS: M365ScoreCategory[] = ["security", "compliance", "copilot", "governance", "productivity"];
+  const first: Partial<Record<M365ScoreCategory, number>> = {};
+  const latest: Partial<Record<M365ScoreCategory, number>> = {};
+  let firstDate: Date | null = null;
+  let latestDate: Date | null = null;
+
+  for (const cat of CATS) {
+    const catRows = rows.filter(r => r.category === cat);
+    if (catRows.length === 0) continue;
+    first[cat] = catRows[0].score;
+    latest[cat] = catRows[catRows.length - 1].score;
+    if (!firstDate || catRows[0].recordedAt < firstDate) firstDate = catRows[0].recordedAt;
+    if (!latestDate || catRows[catRows.length - 1].recordedAt > latestDate) latestDate = catRows[catRows.length - 1].recordedAt;
+  }
+
+  res.json({ hasData: true, firstDate: firstDate?.toISOString(), latestDate: latestDate?.toISOString(), first, latest });
 });
 
 // ─── CLIENT: App Registration (Azure automation credentials) ─────────────────

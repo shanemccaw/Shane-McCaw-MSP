@@ -6,6 +6,47 @@ import ActivityFeed from "@/components/ActivityFeed";
 import M365ProfileSummaryCard from "@/components/M365ProfileSummaryCard";
 import { type AuditLogEntry } from "@/lib/auditFormatter";
 
+type M365ScoreCategory = "security" | "compliance" | "copilot" | "governance" | "productivity";
+
+interface ScorecardHistory {
+  hasData: boolean;
+  firstDate?: string;
+  latestDate?: string;
+  first?: Partial<Record<M365ScoreCategory, number>>;
+  latest?: Partial<Record<M365ScoreCategory, number>>;
+}
+
+const SCORECARD_DEFS: { key: M365ScoreCategory; label: string }[] = [
+  { key: "security",     label: "Security Posture" },
+  { key: "compliance",   label: "Compliance Coverage" },
+  { key: "copilot",      label: "Copilot Readiness" },
+  { key: "governance",   label: "Governance Maturity" },
+  { key: "productivity", label: "Adoption Score" },
+];
+
+function ringColor(s: number) { return s >= 80 ? "#22c55e" : s >= 55 ? "#f59e0b" : "#ef4444"; }
+function ringBg(s: number) { return s >= 80 ? "border-green-200 bg-green-50/60" : s >= 55 ? "border-amber-200 bg-amber-50/60" : "border-red-200 bg-red-50/60"; }
+
+function ScoreRing({ score }: { score: number }) {
+  const r = 22;
+  const circ = 2 * Math.PI * r;
+  return (
+    <div className="relative w-14 h-14 flex-shrink-0">
+      <svg width="56" height="56" viewBox="0 0 56 56" className="-rotate-90">
+        <circle cx="28" cy="28" r={r} fill="none" stroke="#E8EDF2" strokeWidth="5" />
+        <circle
+          cx="28" cy="28" r={r} fill="none"
+          stroke={ringColor(score)} strokeWidth="5" strokeLinecap="round"
+          strokeDasharray={`${(score / 100) * circ} ${circ}`}
+        />
+      </svg>
+      <div className="absolute inset-0 flex items-center justify-center">
+        <span className="text-[11px] font-extrabold text-[#0A2540]">{score}%</span>
+      </div>
+    </div>
+  );
+}
+
 interface Project {
   id: number;
   title: string;
@@ -96,6 +137,7 @@ export default function PortalDashboard() {
   const [loading, setLoading] = useState(true);
   const [activityEntries, setActivityEntries] = useState<AuditLogEntry[]>([]);
   const [activityLoading, setActivityLoading] = useState(true);
+  const [scorecardHistory, setScorecardHistory] = useState<ScorecardHistory | null>(null);
 
   useEffect(() => {
     fetchWithAuth("/api/portal/dashboard")
@@ -103,6 +145,11 @@ export default function PortalDashboard() {
       .then(d => setData(d as DashboardData))
       .catch(() => null)
       .finally(() => setLoading(false));
+
+    fetchWithAuth("/api/portal/m365-scorecard-history")
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (d) setScorecardHistory(d as ScorecardHistory); })
+      .catch(() => null);
   }, [fetchWithAuth]);
 
   const fetchActivity = useCallback(() => {
@@ -170,6 +217,74 @@ export default function PortalDashboard() {
                     </Link>
                   </div>
                 )}
+
+                {/* M365 Environment Health Scorecards */}
+                <section>
+                  <div className="flex items-center justify-between mb-3">
+                    <div>
+                      <h2 className="text-base font-bold text-[#0A2540]">M365 Environment Health</h2>
+                      {scorecardHistory?.hasData && scorecardHistory.firstDate && (
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                          Tracking since {new Date(scorecardHistory.firstDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                        </p>
+                      )}
+                    </div>
+                    <Link href="/portal/m365-profile">
+                      <span className="text-sm text-[#0078D4] font-semibold hover:underline cursor-pointer">Update profile →</span>
+                    </Link>
+                  </div>
+
+                  {!scorecardHistory?.hasData ? (
+                    <div className="bg-white border border-border rounded-xl p-6 flex items-center gap-4">
+                      <div className="w-10 h-10 rounded-xl bg-[#0078D4]/10 flex items-center justify-center flex-shrink-0">
+                        <svg className="w-5 h-5 text-[#0078D4]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                        </svg>
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-semibold text-[#0A2540]">No scores yet</p>
+                        <p className="text-xs text-muted-foreground mt-0.5">Complete your M365 profile and save it to generate your first health scores.</p>
+                      </div>
+                      <Link href="/portal/m365-profile">
+                        <span className="text-xs font-semibold text-[#0078D4] hover:underline cursor-pointer whitespace-nowrap">Set up profile →</span>
+                      </Link>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+                      {SCORECARD_DEFS.map(({ key, label }) => {
+                        const current = scorecardHistory.latest?.[key] ?? 0;
+                        const baseline = scorecardHistory.first?.[key] ?? null;
+                        const delta = baseline !== null ? current - baseline : null;
+                        const isFirstSameAsLatest = scorecardHistory.firstDate === scorecardHistory.latestDate;
+                        const showHistory = baseline !== null && !isFirstSameAsLatest;
+                        return (
+                          <Link key={key} href="/portal/m365-profile">
+                            <div className={`border rounded-2xl p-4 flex flex-col items-center gap-2 cursor-pointer hover:shadow-md transition-all ${ringBg(current)}`}>
+                              <ScoreRing score={current} />
+                              <p className="text-xs font-semibold text-[#0A2540] text-center leading-snug">{label}</p>
+                              {showHistory && baseline !== null && (
+                                <div className="flex flex-col items-center gap-1 w-full">
+                                  <div className="flex items-center justify-center gap-1 text-[10px] text-muted-foreground">
+                                    <span title="Baseline">{baseline}%</span>
+                                    <svg className="w-2.5 h-2.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                                      <path strokeLinecap="round" strokeLinejoin="round" d="M13 7l5 5m0 0l-5 5m5-5H6" />
+                                    </svg>
+                                    <span className="font-bold text-[#0A2540]">{current}%</span>
+                                  </div>
+                                  {delta !== 0 && delta !== null && (
+                                    <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${delta > 0 ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}>
+                                      {delta > 0 ? "+" : ""}{delta}pts
+                                    </span>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          </Link>
+                        );
+                      })}
+                    </div>
+                  )}
+                </section>
 
                 {/* M365 Profile Summary */}
                 <M365ProfileSummaryCard />
