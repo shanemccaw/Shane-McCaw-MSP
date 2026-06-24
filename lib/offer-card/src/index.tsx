@@ -86,9 +86,14 @@ export function SharedOfferCard({
   cta,
 }: SharedOfferCardProps) {
   const Icon = resolveIcon(data.iconName);
-  const inclusions = data.inclusions ?? [];
-  const features = data.features ?? [];
-  const deliverables = data.deliverables ?? [];
+  function toArray(val: string[] | null | undefined | unknown): string[] {
+    if (Array.isArray(val)) return val;
+    if (typeof val === "string" && val) return [val];
+    return [];
+  }
+  const inclusions = toArray(data.inclusions);
+  const features = toArray(data.features);
+  const deliverables = toArray(data.deliverables);
   const billingLabel = data.billingType === "recurring_monthly" ? "Monthly retainer" : "One-time";
   const hl = data.highlighted;
 
