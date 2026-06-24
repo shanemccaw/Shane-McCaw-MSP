@@ -146,7 +146,7 @@ interface ProjectDetailData {
   appliedCoupon: AppliedCoupon | null;
 }
 
-type SecondaryTab = "kanban" | "documents" | "status-reports" | "contracts";
+type SecondaryTab = "kanban" | "documents" | "status-reports" | "contracts" | "timeline";
 
 const KANBAN_COLUMNS = [
   { key: "backlog" as const, label: "Backlog", color: "border-gray-200 bg-gray-50" },
@@ -918,6 +918,7 @@ export default function PortalProjectDetail() {
     { key: "documents", label: "Documents", count: documents.length },
     { key: "status-reports", label: "Status Reports", count: statusReports.length },
     { key: "contracts", label: "Contracts", count: contracts.length },
+    { key: "timeline", label: "Timeline" },
   ];
 
   return (
@@ -1980,6 +1981,140 @@ export default function PortalProjectDetail() {
       </div>
 
       {/* ── Contracts ── */}
+      {secondaryTab === "timeline" && (
+        <div className="bg-white border border-border rounded-2xl p-6 shadow-sm">
+          <div className="flex items-center justify-between mb-5">
+            <h3 className="text-sm font-bold text-[#0A2540]">Project Timeline</h3>
+            <div className="flex items-center gap-3 text-xs text-muted-foreground">
+              <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm bg-green-500 inline-block" />Completed</span>
+              <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm bg-[#0078D4] inline-block" />In Progress</span>
+              <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm bg-gray-200 inline-block" />Pending</span>
+              <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm bg-red-400 inline-block" />Overdue</span>
+            </div>
+          </div>
+
+          {steps.length === 0 ? (
+            <div className="py-12 text-center text-muted-foreground text-sm">
+              No workflow steps defined for this project yet.
+            </div>
+          ) : (() => {
+            const now = new Date();
+
+            const dates = steps
+              .flatMap(s => [s.dueDate, s.completedAt].filter(Boolean) as string[])
+              .map(d => new Date(d).getTime())
+              .filter(t => !isNaN(t));
+
+            const minTs = dates.length > 0 ? Math.min(...dates) : Date.now() - 7 * 86400_000;
+            const maxTs = dates.length > 0 ? Math.max(...dates, Date.now()) : Date.now() + 30 * 86400_000;
+            const rangeMs = Math.max(maxTs - minTs, 7 * 86400_000);
+
+            function pct(ts: number | null | undefined): number {
+              if (!ts) return 0;
+              return Math.max(0, Math.min(100, ((ts - minTs) / rangeMs) * 100));
+            }
+
+            const todayPct = pct(Date.now());
+
+            const formatDate = (d: string | null) =>
+              d ? new Date(d).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : null;
+
+            return (
+              <div className="space-y-1">
+                {/* Header axis */}
+                <div className="flex items-center pl-48 mb-3 pr-4">
+                  <div className="flex-1 relative h-4">
+                    {[0, 25, 50, 75, 100].map(p => (
+                      <span
+                        key={p}
+                        className="absolute text-[9px] text-muted-foreground transform -translate-x-1/2"
+                        style={{ left: `${p}%` }}
+                      >
+                        {p === 0
+                          ? new Date(minTs).toLocaleDateString("en-US", { month: "short", day: "numeric" })
+                          : p === 100
+                          ? new Date(maxTs).toLocaleDateString("en-US", { month: "short", day: "numeric" })
+                          : ""}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+
+                {steps.map((step, idx) => {
+                  const isOverdue = step.status !== "completed" && step.dueDate && new Date(step.dueDate) < now;
+                  const startPct = pct(minTs + (idx / Math.max(steps.length, 1)) * rangeMs * 0.8);
+                  const endPct = step.dueDate
+                    ? pct(new Date(step.dueDate).getTime())
+                    : step.completedAt
+                    ? pct(new Date(step.completedAt).getTime())
+                    : Math.min(startPct + 10, 100);
+                  const barWidth = Math.max(endPct - startPct, 3);
+
+                  const barColor =
+                    step.status === "completed" ? "bg-green-500"
+                    : isOverdue ? "bg-red-400"
+                    : step.status === "in_progress" ? "bg-[#0078D4]"
+                    : "bg-gray-200";
+
+                  const statusIcon =
+                    step.status === "completed" ? "✅"
+                    : step.status === "in_progress" ? "🔄"
+                    : "⬜";
+
+                  return (
+                    <div key={step.id} className="flex items-center gap-2 group hover:bg-gray-50/80 rounded-lg py-1.5 px-2 -mx-2 transition-colors">
+                      {/* Step label */}
+                      <div className="w-44 flex-shrink-0 flex items-center gap-2 min-w-0">
+                        <span className="text-xs flex-shrink-0">{statusIcon}</span>
+                        <p className="text-xs font-medium text-[#0A2540] truncate" title={step.title}>{step.title}</p>
+                      </div>
+
+                      {/* Gantt bar area */}
+                      <div className="flex-1 relative h-6 pr-4">
+                        {/* Background track */}
+                        <div className="absolute inset-y-1.5 left-0 right-4 bg-gray-100 rounded-full" />
+
+                        {/* Today marker */}
+                        <div
+                          className="absolute top-0 bottom-0 w-px bg-[#0078D4]/40 z-10"
+                          style={{ left: `${todayPct}%` }}
+                          title="Today"
+                        />
+
+                        {/* Bar */}
+                        <div
+                          className={`absolute inset-y-1.5 rounded-full transition-all ${barColor}`}
+                          style={{ left: `${startPct}%`, width: `${barWidth}%` }}
+                          title={`${step.dueDate ? `Due: ${formatDate(step.dueDate)}` : ""}${step.completedAt ? `  Completed: ${formatDate(step.completedAt)}` : ""}`}
+                        />
+
+                        {/* Date labels on hover */}
+                        <div className="absolute right-0 inset-y-0 flex items-center opacity-0 group-hover:opacity-100 transition-opacity">
+                          <span className="text-[9px] text-muted-foreground whitespace-nowrap">
+                            {step.completedAt
+                              ? `✓ ${formatDate(step.completedAt)}`
+                              : step.dueDate
+                              ? `Due ${formatDate(step.dueDate)}`
+                              : ""}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+
+                {/* Summary footer */}
+                <div className="flex items-center gap-4 pt-4 mt-4 border-t border-border text-xs text-muted-foreground">
+                  <span>{steps.filter(s => s.status === "completed").length} completed</span>
+                  <span>{steps.filter(s => s.status === "in_progress").length} in progress</span>
+                  <span>{steps.filter(s => s.status !== "completed" && s.dueDate && new Date(s.dueDate) < now).length} overdue</span>
+                </div>
+              </div>
+            );
+          })()}
+        </div>
+      )}
+
       {secondaryTab === "contracts" && (
         <div className="space-y-4">
           {contracts.length === 0 ? (

@@ -1,7 +1,8 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Link, useLocation } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
 import PortalTour, { useTour } from "@/components/PortalTour";
+import { useAssistantChat } from "@/hooks/useAssistantChat";
 
 interface NavItem {
   label: string;
@@ -121,6 +122,16 @@ const CLIENT_NAV_ITEMS = (unreadMessages: number, hasArchivedProjects = false, a
     label: "Security",
     path: "/portal/security",
     icon: <svg className="w-4.5 h-4.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" /></svg>,
+  },
+  {
+    label: "Insights",
+    path: "/portal/insights",
+    icon: <svg className="w-4.5 h-4.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg>,
+  },
+  {
+    label: "Journey Map",
+    path: "/portal/journey",
+    icon: <svg className="w-4.5 h-4.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" /></svg>,
   },
 ];
 
@@ -350,6 +361,155 @@ function ImpersonationBanner({ email }: { email: string }) {
   );
 }
 
+function renderMessageContent(content: string) {
+  return content.split(/(\*\*.*?\*\*)/g).map((part, i) =>
+    part.startsWith("**") && part.endsWith("**")
+      ? <strong key={i}>{part.slice(2, -2)}</strong>
+      : part
+  );
+}
+
+function AiAssistant() {
+  const [open, setOpen] = useState(false);
+  const [input, setInput] = useState("");
+  const { messages, loading, sendMessage, reset } = useAssistantChat();
+  const bottomRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (open && bottomRef.current) {
+      bottomRef.current.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [messages, open]);
+
+  useEffect(() => {
+    if (open) setTimeout(() => inputRef.current?.focus(), 100);
+  }, [open]);
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!input.trim()) return;
+    void sendMessage(input);
+    setInput("");
+  };
+
+  const QUICK = ["Project status?", "Unpaid invoices?", "What can you help with?"];
+
+  return (
+    <>
+      {/* Floating button */}
+      <button
+        onClick={() => setOpen(true)}
+        className="fixed bottom-20 md:bottom-6 right-4 md:right-6 z-40 flex items-center gap-2 bg-[#0078D4] text-white px-4 py-3 rounded-2xl shadow-xl hover:bg-[#0078D4]/90 transition-all hover:scale-105 active:scale-95"
+        title="Ask the Assistant"
+      >
+        <svg className="w-5 h-5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M8.625 9.75a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H8.25m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H12m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0h-.375m-13.5 3.01c0 1.6 1.123 2.994 2.707 3.227 1.087.16 2.185.283 3.293.369V21l4.184-4.183a1.14 1.14 0 01.778-.332 48.294 48.294 0 005.83-.498c1.585-.233 2.708-1.626 2.708-3.228V6.741c0-1.602-1.123-2.995-2.707-3.228A48.394 48.394 0 0012 3c-2.392 0-4.744.175-7.043.513C3.373 3.746 2.25 5.14 2.25 6.741v6.018z" />
+        </svg>
+        <span className="text-sm font-semibold hidden sm:block">Ask the Assistant</span>
+      </button>
+
+      {/* Modal overlay */}
+      {open && (
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center sm:justify-end p-0 sm:p-4" onClick={() => setOpen(false)}>
+          <div
+            className="w-full sm:w-[380px] h-[520px] max-h-[90vh] bg-white rounded-t-3xl sm:rounded-2xl shadow-2xl flex flex-col border border-border overflow-hidden"
+            onClick={e => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="bg-[#0A2540] px-4 py-3.5 flex items-center justify-between flex-shrink-0">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-full bg-[#0078D4] flex items-center justify-center">
+                  <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                  </svg>
+                </div>
+                <div>
+                  <p className="text-white text-sm font-bold leading-tight">Portal Assistant</p>
+                  <p className="text-white/50 text-[10px]">Rule-based · Shane McCaw Consulting</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <button onClick={reset} title="Start new chat" className="text-white/50 hover:text-white/80 transition-colors p-1">
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
+                </button>
+                <button onClick={() => setOpen(false)} className="text-white/50 hover:text-white/80 transition-colors p-1">
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+                </button>
+              </div>
+            </div>
+
+            {/* Messages */}
+            <div className="flex-1 overflow-y-auto p-4 space-y-3">
+              {messages.map(msg => (
+                <div key={msg.id} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
+                  <div className={`max-w-[85%] rounded-2xl px-3.5 py-2.5 text-sm leading-relaxed ${
+                    msg.role === "user"
+                      ? "bg-[#0078D4] text-white rounded-br-sm"
+                      : "bg-gray-100 text-[#0A2540] rounded-bl-sm"
+                  }`}>
+                    {msg.content.split("\n").map((line, i) => (
+                      <p key={i} className={i > 0 ? "mt-1" : ""}>{renderMessageContent(line)}</p>
+                    ))}
+                  </div>
+                </div>
+              ))}
+              {loading && (
+                <div className="flex justify-start">
+                  <div className="bg-gray-100 rounded-2xl rounded-bl-sm px-4 py-3">
+                    <div className="flex gap-1">
+                      <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce [animation-delay:0ms]" />
+                      <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce [animation-delay:150ms]" />
+                      <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce [animation-delay:300ms]" />
+                    </div>
+                  </div>
+                </div>
+              )}
+              <div ref={bottomRef} />
+            </div>
+
+            {/* Quick questions */}
+            {messages.length <= 1 && (
+              <div className="px-4 pb-2 flex gap-2 flex-wrap flex-shrink-0">
+                {QUICK.map(q => (
+                  <button
+                    key={q}
+                    onClick={() => { void sendMessage(q); }}
+                    className="text-xs font-medium px-3 py-1.5 rounded-full bg-[#0078D4]/8 text-[#0078D4] hover:bg-[#0078D4]/15 transition-colors border border-[#0078D4]/20"
+                  >
+                    {q}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {/* Input */}
+            <form onSubmit={handleSubmit} className="flex-shrink-0 border-t border-border px-3 py-3 flex items-center gap-2 bg-white">
+              <input
+                ref={inputRef}
+                value={input}
+                onChange={e => setInput(e.target.value)}
+                placeholder="Ask about projects, billing, M365…"
+                className="flex-1 text-sm px-3 py-2 rounded-xl border border-border focus:outline-none focus:ring-2 focus:ring-[#0078D4]/30 focus:border-[#0078D4]"
+                disabled={loading}
+              />
+              <button
+                type="submit"
+                disabled={!input.trim() || loading}
+                className="w-9 h-9 rounded-xl bg-[#0078D4] text-white flex items-center justify-center hover:bg-[#0078D4]/90 transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex-shrink-0"
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 12L3.269 3.126A59.768 59.768 0 0121.485 12 59.77 59.77 0 013.27 20.876L5.999 12zm0 0h7.5" />
+                </svg>
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
 export default function PortalLayout({ children, unreadNotifications = 0, unreadMessages = 0 }: PortalLayoutProps) {
   const { user, fetchWithAuth } = useAuth();
   const [hasArchivedProjects, setHasArchivedProjects] = useState(false);
@@ -383,6 +543,7 @@ export default function PortalLayout({ children, unreadNotifications = 0, unread
         <MobileBottomNav unreadMessages={unreadMessages} hasArchivedProjects={hasArchivedProjects} />
       </div>
       <PortalTour />
+      <AiAssistant />
     </div>
   );
 }

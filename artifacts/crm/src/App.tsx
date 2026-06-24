@@ -21,6 +21,8 @@ import PortalArchive from "@/pages/portal/PortalArchive";
 import PortalM365Profile from "@/pages/portal/PortalM365Profile";
 import PortalAppRegistration from "@/pages/portal/PortalAppRegistration";
 import PortalSecurity from "@/pages/portal/PortalSecurity";
+import PortalInsights from "@/pages/portal/PortalInsights";
+import PortalJourneyMap from "@/pages/portal/PortalJourneyMap";
 import ResetPasswordPage from "@/pages/ResetPassword";
 import type { ReactNode } from "react";
 
@@ -118,6 +120,12 @@ function Router() {
       </Route>
       <Route path="/portal/security">
         <RequireAuth role="client"><PortalSecurity /></RequireAuth>
+      </Route>
+      <Route path="/portal/insights">
+        <RequireAuth role="client"><PortalInsights /></RequireAuth>
+      </Route>
+      <Route path="/portal/journey">
+        <RequireAuth role="client"><PortalJourneyMap /></RequireAuth>
       </Route>
 
       {/* Public reset-password route — token validated server-side */}

@@ -44,6 +44,7 @@
     "@tailwindcss/typography": "^0.5.15",
     "@tailwindcss/vite": "catalog:",
     "@tanstack/react-query": "catalog:",
+    "@types/canvas-confetti": "^1.9.0",
     "@types/node": "catalog:",
     "@types/react": "catalog:",
     "@types/react-dom": "catalog:",
@@ -81,6 +82,7 @@
     "@dnd-kit/sortable": "^10.0.0",
     "@dnd-kit/utilities": "^3.2.2",
     "@simplewebauthn/browser": "^13.3.0",
+    "canvas-confetti": "^1.9.4",
     "react-signature-canvas": "1.1.0-alpha.2"
   }
 }

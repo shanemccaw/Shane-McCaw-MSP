@@ -5,6 +5,7 @@ import PortalLayout from "@/components/PortalLayout";
 import { KanbanCardModal } from "@/components/KanbanCardModal";
 import type { KanbanCardModalTask } from "@/components/KanbanCardModal";
 import { TypedCardContent } from "@/components/kanban/TypedCardContent";
+import { useConfetti } from "@/hooks/useConfetti";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -409,6 +410,8 @@ export default function ClientProjectDashboard() {
 
   // ── Acknowledge status report ────────────────────────────────────────────
 
+  const { fireSidecannons } = useConfetti();
+
   const acknowledgeReport = useCallback(async (report: StatusReport, status: "accepted" | "has_questions", question?: string) => {
     setAcknowledging(true);
     try {
@@ -418,6 +421,7 @@ export default function ClientProjectDashboard() {
         body: JSON.stringify({ status, question }),
       });
       if (r.ok) {
+        if (status === "accepted") fireSidecannons();
         setQuestionDialogFor(null);
         setQuestionText("");
         refreshDetail();
@@ -425,7 +429,7 @@ export default function ClientProjectDashboard() {
     } finally {
       setAcknowledging(false);
     }
-  }, [fetchWithAuth, refreshDetail]);
+  }, [fetchWithAuth, refreshDetail, fireSidecannons]);
 
   // ── Document upload ──────────────────────────────────────────────────────
 
@@ -593,8 +597,23 @@ export default function ClientProjectDashboard() {
 
         {/* ── Page heading ─────────────────────────────────────────────────── */}
         <div className="pt-6 pb-3">
-          <h1 className="text-2xl font-bold text-[#0A2540]">My Projects</h1>
-          <p className="text-sm text-muted-foreground mt-0.5">Your active engagements with Shane McCaw Consulting</p>
+          <h1 className="text-2xl font-bold text-[#0A2540]">
+            {(() => {
+              const h = new Date().getHours();
+              const greeting = h < 12 ? "Good morning" : h < 17 ? "Good afternoon" : "Good evening";
+              const firstName = user?.name?.split(" ")[0] ?? user?.email?.split("@")[0] ?? "";
+              return firstName ? `${greeting}, ${firstName}` : `${greeting}`;
+            })()}
+          </h1>
+          <p className="text-sm text-muted-foreground mt-0.5">
+            {(() => {
+              const activeProjects = projects.filter(p => p.status !== "completed");
+              const pendingReport = (statusReports ?? []).find(r => r.clientStatus === "pending");
+              if (pendingReport) return "You have a status report waiting for your review.";
+              if (activeProjects.length === 0) return "No active projects yet — your engagements will appear here.";
+              return `${activeProjects.length} active engagement${activeProjects.length !== 1 ? "s" : ""} with Shane McCaw Consulting`;
+            })()}
+          </p>
         </div>
 
         {/* ── App Registration nudge (shown above M365 nudge — more urgent) ── */}

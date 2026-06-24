@@ -112,10 +112,11 @@ function computeCompletion(values: FormValues): number {
 // ── Tabs ─────────────────────────────────────────────────────────────────────
 
 const TABS = [
-  { id: "org",      label: "Organization" },
-  { id: "licensing", label: "Licensing & Apps" },
-  { id: "security", label: "Security & Compliance" },
-  { id: "copilot",  label: "Copilot Readiness" },
+  { id: "org",        label: "Organization" },
+  { id: "licensing",  label: "Licensing & Apps" },
+  { id: "security",   label: "Security & Compliance" },
+  { id: "copilot",    label: "Copilot Readiness" },
+  { id: "scorecards", label: "Scorecards" },
 ] as const;
 type TabId = typeof TABS[number]["id"];
 
@@ -586,6 +587,169 @@ export default function PortalM365Profile() {
                 </Section>
 
                 {saveButton}
+              </div>
+            )}
+
+            {/* ── Scorecards (read-only, derived from profile data) ─────────── */}
+            {activeTab === "scorecards" && (
+              <div className="space-y-4">
+                {(() => {
+                  const v = values;
+                  function boolScore(fields: (boolean | undefined)[]): number {
+                    const answered = fields.filter(f => f !== undefined);
+                    if (answered.length === 0) return 0;
+                    return Math.round((fields.filter(f => f === true).length / fields.length) * 100);
+                  }
+
+                  const secScore = boolScore([v.mfaEnforced, v.conditionalAccessEnabled, v.intuneEnabled, v.hasAADP1orP2, v.hasDefender, v.hasDLP, v.usesComplianceCenter, v.sensitivityLabelsConfigured, v.hasRetentionPolicies]);
+                  const compScore = boolScore([v.hasDLP, v.usesComplianceCenter, v.sensitivityLabelsConfigured, v.hasRetentionPolicies, v.hasInsiderRisk]);
+                  const copScore = boolScore([v.hasCopilotLicenses, v.mfaEnforced, v.sensitivityLabelsConfigured, v.hasDLP, v.hasRetentionPolicies]);
+                  const govScore = boolScore([v.hasRetentionPolicies, v.sensitivityLabelsConfigured, v.usesComplianceCenter, v.conditionalAccessEnabled]);
+                  const pct = parseInt(v.activeUserPercent ?? "0", 10);
+                  const adoptionScore = Math.min((isNaN(pct) ? 60 : pct) + (v.allUsersLicensed ? 10 : 0), 100);
+
+                  const cards = [
+                    {
+                      label: "Security Posture",
+                      score: secScore,
+                      trend: secScore >= 70 ? "↑" : secScore >= 40 ? "→" : "↓",
+                      trendColor: secScore >= 70 ? "text-green-600" : secScore >= 40 ? "text-amber-600" : "text-red-600",
+                      risks: secScore < 100 ? [
+                        !v.mfaEnforced ? "MFA not enforced" : null,
+                        !v.conditionalAccessEnabled ? "No Conditional Access policies" : null,
+                        !v.hasDefender ? "Defender for Office 365 not enabled" : null,
+                      ].filter(Boolean) as string[] : [],
+                      opportunities: [
+                        !v.intuneEnabled ? "Enable Intune for device management" : null,
+                        !v.hasAADP1orP2 ? "Upgrade to Azure AD Premium P1/P2" : null,
+                        !v.hasDLP ? "Implement DLP policies" : null,
+                      ].filter(Boolean) as string[],
+                      recommendation: secScore < 50 ? "Critical security gaps detected. Prioritise MFA enforcement and Conditional Access before Copilot rollout." : secScore < 80 ? "Good foundation — focus on Defender, DLP, and sensitivity labels to reach best practice." : "Security posture is strong. Review quarterly and monitor for configuration drift.",
+                    },
+                    {
+                      label: "Compliance Coverage",
+                      score: compScore,
+                      trend: compScore >= 70 ? "↑" : compScore >= 40 ? "→" : "↓",
+                      trendColor: compScore >= 70 ? "text-green-600" : compScore >= 40 ? "text-amber-600" : "text-red-600",
+                      risks: [
+                        !v.hasDLP ? "No Data Loss Prevention policies" : null,
+                        !v.hasRetentionPolicies ? "No retention policies configured" : null,
+                        !v.sensitivityLabelsConfigured ? "Sensitivity labels not configured" : null,
+                      ].filter(Boolean) as string[],
+                      opportunities: [
+                        !v.hasInsiderRisk ? "Enable Insider Risk Management" : null,
+                        !v.usesComplianceCenter ? "Leverage Microsoft Purview" : null,
+                      ].filter(Boolean) as string[],
+                      recommendation: compScore < 50 ? "Significant compliance gaps. Implement DLP policies and sensitivity labels as a priority." : "Good compliance baseline — expand to retention policies and insider risk management.",
+                    },
+                    {
+                      label: "Copilot Readiness",
+                      score: copScore,
+                      trend: copScore >= 70 ? "↑" : copScore >= 40 ? "→" : "↓",
+                      trendColor: copScore >= 70 ? "text-green-600" : copScore >= 40 ? "text-amber-600" : "text-red-600",
+                      risks: [
+                        !v.hasCopilotLicenses ? "No Copilot M365 licenses" : null,
+                        !v.sensitivityLabelsConfigured ? "Sensitivity labels required before Copilot" : null,
+                        !v.hasDLP ? "DLP policies needed for data protection" : null,
+                      ].filter(Boolean) as string[],
+                      opportunities: [
+                        "Define Copilot use cases for your organisation",
+                        !v.hasCopilotLicenses ? "Evaluate Copilot for M365 licensing" : null,
+                      ].filter(Boolean) as string[],
+                      recommendation: copScore < 40 ? "Your environment needs security and compliance prerequisites before Copilot deployment. Work with Shane on a readiness plan." : "You're partway to Copilot readiness. Address labelling and DLP gaps to accelerate rollout.",
+                    },
+                    {
+                      label: "Governance Maturity",
+                      score: govScore,
+                      trend: govScore >= 70 ? "↑" : govScore >= 40 ? "→" : "↓",
+                      trendColor: govScore >= 70 ? "text-green-600" : govScore >= 40 ? "text-amber-600" : "text-red-600",
+                      risks: [
+                        !v.hasRetentionPolicies ? "No data retention framework" : null,
+                        !v.conditionalAccessEnabled ? "Identity governance gaps" : null,
+                      ].filter(Boolean) as string[],
+                      opportunities: [
+                        "Implement lifecycle management for Teams and Groups",
+                        "Establish guest access governance policies",
+                      ],
+                      recommendation: govScore < 50 ? "Governance maturity is low. Prioritise retention policies and Conditional Access to reduce organisational risk." : "Governance foundations are in place. Build on these with automated lifecycle policies.",
+                    },
+                    {
+                      label: "Adoption Score",
+                      score: adoptionScore,
+                      trend: adoptionScore >= 80 ? "↑" : adoptionScore >= 60 ? "→" : "↓",
+                      trendColor: adoptionScore >= 80 ? "text-green-600" : adoptionScore >= 60 ? "text-amber-600" : "text-red-600",
+                      risks: [
+                        adoptionScore < 70 ? "Below-average active user rate" : null,
+                        !v.allUsersLicensed ? "Not all users are licensed" : null,
+                      ].filter(Boolean) as string[],
+                      opportunities: [
+                        "Run adoption workshops for Teams and SharePoint",
+                        "Identify power users as internal champions",
+                      ],
+                      recommendation: adoptionScore < 60 ? "Low adoption indicates unused licences and missed value. An adoption programme with Shane can accelerate uptake." : "Adoption is reasonable. Focus on driving advanced feature use — Teams Channels, SharePoint sites, and OneDrive.",
+                    },
+                  ];
+
+                  function ringColor(s: number) { return s >= 80 ? "#22c55e" : s >= 55 ? "#f59e0b" : "#ef4444"; }
+                  function ringBg(s: number) { return s >= 80 ? "bg-green-50 border-green-200" : s >= 55 ? "bg-amber-50 border-amber-200" : "bg-red-50 border-red-200"; }
+
+                  return cards.map(card => {
+                    const r = 32;
+                    const circ = 2 * Math.PI * r;
+                    const dash = (card.score / 100) * circ;
+                    return (
+                      <div key={card.label} className={`border rounded-2xl p-5 ${ringBg(card.score)}`}>
+                        <div className="flex items-start gap-4">
+                          {/* Score ring */}
+                          <div className="flex-shrink-0 w-20 h-20 relative flex items-center justify-center">
+                            <svg width="80" height="80" viewBox="0 0 80 80" className="-rotate-90">
+                              <circle cx="40" cy="40" r={r} fill="none" stroke="#e5e7eb" strokeWidth="8" />
+                              <circle cx="40" cy="40" r={r} fill="none" stroke={ringColor(card.score)} strokeWidth="8"
+                                strokeDasharray={`${dash} ${circ - dash}`} strokeLinecap="round" />
+                            </svg>
+                            <div className="absolute inset-0 flex flex-col items-center justify-center">
+                              <span className="text-lg font-extrabold text-[#0A2540]">{card.score}</span>
+                              <span className="text-[9px] text-muted-foreground font-semibold">/ 100</span>
+                            </div>
+                          </div>
+                          {/* Content */}
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 mb-2">
+                              <h3 className="text-sm font-bold text-[#0A2540]">{card.label}</h3>
+                              <span className={`text-base font-bold ${card.trendColor}`}>{card.trend}</span>
+                            </div>
+                            {card.risks.length > 0 && (
+                              <div className="mb-2">
+                                <p className="text-[10px] font-bold text-red-600 uppercase tracking-wide mb-1">Top Risks</p>
+                                <ul className="space-y-0.5">
+                                  {card.risks.slice(0, 3).map(r => (
+                                    <li key={r} className="text-xs text-red-700 flex items-start gap-1">
+                                      <span className="mt-0.5 flex-shrink-0">•</span>{r}
+                                    </li>
+                                  ))}
+                                </ul>
+                              </div>
+                            )}
+                            {card.opportunities.length > 0 && (
+                              <div className="mb-2">
+                                <p className="text-[10px] font-bold text-[#0078D4] uppercase tracking-wide mb-1">Opportunities</p>
+                                <ul className="space-y-0.5">
+                                  {card.opportunities.slice(0, 2).map(o => (
+                                    <li key={o} className="text-xs text-[#0078D4] flex items-start gap-1">
+                                      <span className="mt-0.5 flex-shrink-0">→</span>{o}
+                                    </li>
+                                  ))}
+                                </ul>
+                              </div>
+                            )}
+                            <p className="text-xs text-muted-foreground italic leading-relaxed">{card.recommendation}</p>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  });
+                })()}
+                <p className="text-xs text-muted-foreground text-center pt-2">Scores are derived from your M365 Profile responses. Complete more sections for accurate scoring.</p>
               </div>
             )}
           </form>
