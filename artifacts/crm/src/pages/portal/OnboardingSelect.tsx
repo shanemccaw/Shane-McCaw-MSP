@@ -71,6 +71,10 @@ export default function OnboardingSelect() {
   const modalRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
+    // Clear stale wizard selections from previous tab sessions so the contract page
+    // always receives fresh data that matches what the user configured this session.
+    sessionStorage.removeItem("wizardSelections");
+
     fetch("/api/portal/onboarding/services")
       .then(r => r.json() as Promise<Service[]>)
       .then(data => {
@@ -90,6 +94,15 @@ export default function OnboardingSelect() {
   const toggleService = (id: number) => {
     const svc = services.find(s => s.id === id);
     const wasSelected = selectedIds.has(id);
+
+    // If deselecting a wizard service, clear its configured price so it re-runs the wizard next time
+    if (wasSelected && svc?.orderWorkflow?.length && svc.basePrice) {
+      setConfiguredSelections(prev => {
+        const next = { ...prev };
+        delete next[id];
+        return next;
+      });
+    }
 
     setSelectedIds(prev => {
       const next = new Set(prev);
@@ -126,12 +139,11 @@ export default function OnboardingSelect() {
 
   const proceedWithCheckout = () => {
     const selected = services.filter(s => selectedIds.has(s.id));
-    // Skip wizard services already configured via card-click (selections stored in sessionStorage)
-    const existingSelections = JSON.parse(
-      sessionStorage.getItem("wizardSelections") ?? "{}"
-    ) as Record<string, WizardSelection[]>;
+    // Only skip wizard for services already configured via card-click IN THIS SESSION.
+    // We intentionally use component state (not sessionStorage) so stale data from
+    // previous tab sessions can never silently skip the wizard.
     const needsWizard = selected.filter(
-      s => s.orderWorkflow?.length && s.basePrice && !existingSelections[String(s.id)]
+      s => s.orderWorkflow?.length && s.basePrice && !configuredSelections[s.id]
     );
     if (needsWizard.length > 0) {
       setWizardMode("checkout");
