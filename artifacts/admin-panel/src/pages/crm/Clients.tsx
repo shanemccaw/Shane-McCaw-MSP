@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback, useMemo } from "react";
+import { useEffect, useRef, useState, useCallback, useMemo, Fragment } from "react";
 import { useLocation } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
@@ -476,6 +476,7 @@ export default function ClientsPage() {
   const [filterLicenseTier, setFilterLicenseTier] = useState<"all" | string>("all");
   const [filterAiRisk, setFilterAiRisk] = useState<"all" | "high" | "medium" | "low">("all");
   const [filterAiOpp, setFilterAiOpp] = useState<"all" | "high" | "medium" | "low">("all");
+  const [filterIndustry, setFilterIndustry] = useState<"all" | string>("all");
   const [hoverRowId, setHoverRowId] = useState<number | null>(null);
   const [menuOpenId, setMenuOpenId] = useState<number | null>(null);
 
@@ -604,6 +605,7 @@ export default function ClientsPage() {
     if (filterLicenseTier !== "all") result = result.filter(c => c.licenseTier === filterLicenseTier);
     if (filterAiRisk !== "all") result = result.filter(c => c.aiRiskLevel === filterAiRisk);
     if (filterAiOpp !== "all") result = result.filter(c => c.aiOpportunityLevel === filterAiOpp);
+    if (filterIndustry !== "all") result = result.filter(c => c.industry === filterIndustry);
 
     return [...result].sort((a, b) => {
       let aVal: string | number, bVal: string | number;
@@ -651,7 +653,7 @@ export default function ClientsPage() {
       const cmp = typeof aVal === "string" ? aVal.localeCompare(bVal as string) : (aVal as number) - (bVal as number);
       return sortDir === "asc" ? cmp : -cmp;
     });
-  }, [clients, search, filterStatus, filterTier, filterLicenseTier, filterAiRisk, filterAiOpp, sortKey, sortDir]);
+  }, [clients, search, filterStatus, filterTier, filterLicenseTier, filterAiRisk, filterAiOpp, filterIndustry, sortKey, sortDir]);
 
   function toggleSort(key: typeof sortKey) {
     if (sortKey === key) setSortDir(d => d === "asc" ? "desc" : "asc");
@@ -666,10 +668,16 @@ export default function ClientsPage() {
   }
 
   const activeFilterCount = (filterStatus !== "all" ? 1 : 0) + (filterTier !== "all" ? 1 : 0) +
-    (filterLicenseTier !== "all" ? 1 : 0) + (filterAiRisk !== "all" ? 1 : 0) + (filterAiOpp !== "all" ? 1 : 0);
+    (filterLicenseTier !== "all" ? 1 : 0) + (filterAiRisk !== "all" ? 1 : 0) + (filterAiOpp !== "all" ? 1 : 0) +
+    (filterIndustry !== "all" ? 1 : 0);
 
   const distinctLicenseTiers = useMemo(() =>
     [...new Set(clients.map(c => c.licenseTier).filter((t): t is string => !!t))].sort(),
+    [clients]
+  );
+
+  const distinctIndustries = useMemo(() =>
+    [...new Set(clients.map(c => c.industry).filter((t): t is string => !!t))].sort(),
     [clients]
   );
 
@@ -769,7 +777,7 @@ export default function ClientsPage() {
               <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Filters</p>
               {activeFilterCount > 0 && (
                 <button
-                  onClick={() => { setFilterStatus("all"); setFilterTier("all"); setFilterLicenseTier("all"); setFilterAiRisk("all"); setFilterAiOpp("all"); }}
+                  onClick={() => { setFilterStatus("all"); setFilterTier("all"); setFilterLicenseTier("all"); setFilterAiRisk("all"); setFilterAiOpp("all"); setFilterIndustry("all"); }}
                   className="text-[10px] font-semibold text-[#0078D4] hover:underline"
                 >
                   Clear {activeFilterCount}
@@ -852,6 +860,25 @@ export default function ClientsPage() {
                 </div>
               </div>
 
+              {/* Industry filter */}
+              {distinctIndustries.length > 0 && (
+                <div>
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1.5">Industry</p>
+                  <div className="space-y-0.5">
+                    <button onClick={() => setFilterIndustry("all")}
+                      className={`w-full text-left text-xs px-2 py-1 rounded transition-colors ${filterIndustry === "all" ? "bg-[#0078D4]/15 text-[#0078D4] font-semibold" : "text-muted-foreground hover:text-[#E6EDF3] hover:bg-[#1C2128]"}`}>
+                      All industries
+                    </button>
+                    {distinctIndustries.map(ind => (
+                      <button key={ind} onClick={() => setFilterIndustry(ind)}
+                        className={`w-full text-left text-xs px-2 py-1 rounded transition-colors truncate ${filterIndustry === ind ? "bg-[#0078D4]/15 text-[#0078D4] font-semibold" : "text-muted-foreground hover:text-[#E6EDF3] hover:bg-[#1C2128]"}`}>
+                        {ind}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               {/* Quick stats */}
               <div className="border-t border-border pt-3 space-y-1.5">
                 <div className="flex justify-between text-[10px]">
@@ -902,11 +929,19 @@ export default function ClientsPage() {
                     </button>
                   </th>
                   <th className="text-center px-3 py-3 hidden xl:table-cell">
+                    <button onClick={() => toggleSort("score")} className="flex items-center gap-0 mx-auto text-xs font-semibold uppercase tracking-wider text-muted-foreground hover:text-[#E6EDF3] transition-colors">
+                      M365<SortIcon col="score" />
+                    </button>
+                  </th>
+                  <th className="text-center px-3 py-3 hidden xl:table-cell">
                     <button onClick={() => toggleSort("aiRisk")} className="flex items-center gap-0 mx-auto text-xs font-semibold uppercase tracking-wider text-muted-foreground hover:text-[#E6EDF3] transition-colors">
                       AI Risk<SortIcon col="aiRisk" />
                     </button>
                   </th>
                   <th className="text-center px-3 py-3 hidden xl:table-cell">
+                    <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">AI Opp</span>
+                  </th>
+                  <th className="text-center px-3 py-3 hidden 2xl:table-cell">
                     <button onClick={() => toggleSort("lastActivity")} className="flex items-center gap-0 mx-auto text-xs font-semibold uppercase tracking-wider text-muted-foreground hover:text-[#E6EDF3] transition-colors">
                       Activity<SortIcon col="lastActivity" />
                     </button>
@@ -917,15 +952,14 @@ export default function ClientsPage() {
               <tbody>
                 {sortedFilteredClients.length === 0 ? (
                   <tr>
-                    <td colSpan={9} className="px-5 py-8 text-center text-muted-foreground text-sm">
+                    <td colSpan={11} className="px-5 py-8 text-center text-muted-foreground text-sm">
                       No clients match your filters.
                     </td>
                   </tr>
                 ) : (
                   sortedFilteredClients.map(c => (
-                    <>
+                    <Fragment key={c.id}>
                       <tr
-                        key={c.id}
                         onMouseEnter={() => setHoverRowId(c.id)}
                         onMouseLeave={() => { setHoverRowId(null); if (menuOpenId === c.id) setMenuOpenId(null); }}
                         className={`border-b border-border last:border-0 transition-colors ${expandedEmailId === c.id || expandedSpId === c.id ? "bg-[#1C2128]" : hoverRowId === c.id ? "bg-[#1C2128]" : ""}`}
@@ -981,6 +1015,14 @@ export default function ClientsPage() {
                           ) : <span className="text-xs text-[#484F58]">—</span>}
                         </td>
 
+                        {/* M365 Maturity Score */}
+                        <td className="px-3 py-3.5 text-center hidden xl:table-cell">
+                          <div className="flex flex-col items-center gap-0.5">
+                            <ScoreBadge score={c.quizScore} />
+                            <TierBadge tier={c.quizTier} />
+                          </div>
+                        </td>
+
                         {/* AI Risk */}
                         <td className="px-3 py-3.5 text-center hidden xl:table-cell">
                           {c.aiRiskLevel ? (
@@ -992,8 +1034,19 @@ export default function ClientsPage() {
                           ) : <span className="text-xs text-[#484F58]">—</span>}
                         </td>
 
-                        {/* Last Activity */}
+                        {/* AI Opportunity */}
                         <td className="px-3 py-3.5 text-center hidden xl:table-cell">
+                          {c.aiOpportunityLevel ? (
+                            <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full border ${
+                              c.aiOpportunityLevel === "high" ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20" :
+                              c.aiOpportunityLevel === "medium" ? "bg-[#0078D4]/10 text-[#0078D4] border-[#0078D4]/20" :
+                              "bg-[#30363D] text-muted-foreground border-border"
+                            }`}>{c.aiOpportunityLevel}</span>
+                          ) : <span className="text-xs text-[#484F58]">—</span>}
+                        </td>
+
+                        {/* Last Activity */}
+                        <td className="px-3 py-3.5 text-center hidden 2xl:table-cell">
                           {c.lastActivityAt ? (
                             <span className="text-xs text-muted-foreground whitespace-nowrap">{timeAgo(c.lastActivityAt)}</span>
                           ) : <span className="text-xs text-[#484F58]">—</span>}
@@ -1087,7 +1140,7 @@ export default function ClientsPage() {
                           onUpdate={patch => setClients(prev => prev.map(x => x.id === c.id ? { ...x, ...patch } : x))}
                         />
                       )}
-                    </>
+                    </Fragment>
                   ))
                 )}
               </tbody>

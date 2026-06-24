@@ -443,10 +443,13 @@ export default function ClientDetailPage() {
   // ─── M365 profile header fields ───────────────────────────────────────────
   const mp = (m365Profile ?? {}) as Record<string, unknown>;
   const mpIndustry = typeof mp.industry === "string" && mp.industry ? mp.industry : null;
-  const mpEmployees = typeof mp.employeeCount === "string" && mp.employeeCount ? mp.employeeCount : null;
+  const mpEmployees = typeof mp.employeeCount === "number" ? String(mp.employeeCount) :
+    typeof mp.employeeCount === "string" && mp.employeeCount ? mp.employeeCount : null;
   const mpDomain = typeof mp.tenantDomain === "string" && mp.tenantDomain ? mp.tenantDomain : null;
   const mpITContact = typeof mp.itContactName === "string" && mp.itContactName ? mp.itContactName : null;
   const mpLicenses = Array.isArray(mp.licenseSKUs) ? (mp.licenseSKUs as string[]).join(", ") : null;
+  const mpTenantAge = typeof mp.tenantAge === "number" ? mp.tenantAge : null;
+  const mpItTeamSize = typeof mp.itTeamSize === "number" ? mp.itTeamSize : null;
 
   // ─── Seven M365 maturity gauges ───────────────────────────────────────────
   const cs = quiz?.categoryScores ?? {};
@@ -597,6 +600,18 @@ export default function ClientDetailPage() {
                   {mpLicenses && (
                     <span className="inline-flex items-center gap-1 text-[10px] font-medium bg-[#0078D4]/10 border border-[#0078D4]/20 rounded px-2 py-0.5 text-[#0078D4]">
                       {mpLicenses}
+                    </span>
+                  )}
+                  {mpTenantAge !== null && (
+                    <span className="inline-flex items-center gap-1 text-[10px] font-medium bg-[#1C2128] border border-border rounded px-2 py-0.5 text-[#E6EDF3]">
+                      <svg className="w-2.5 h-2.5 text-muted-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+                      {mpTenantAge}yr tenant
+                    </span>
+                  )}
+                  {mpItTeamSize !== null && (
+                    <span className="inline-flex items-center gap-1 text-[10px] font-medium bg-[#1C2128] border border-border rounded px-2 py-0.5 text-[#E6EDF3]">
+                      <svg className="w-2.5 h-2.5 text-muted-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" /></svg>
+                      IT: {mpItTeamSize} staff
                     </span>
                   )}
                 </div>
@@ -1203,7 +1218,7 @@ export default function ClientDetailPage() {
                         </div>
 
                         <button
-                          onClick={() => toast({ title: "Trigger Workflow", description: "Connect to Azure Automation to trigger a runbook for this client." })}
+                          onClick={() => navigate("/script-runner")}
                           className="flex items-center gap-2 text-xs font-semibold bg-[#0078D4] text-white px-3 py-1.5 rounded-lg hover:bg-[#0078D4]/90 transition-colors"
                         >
                           <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
