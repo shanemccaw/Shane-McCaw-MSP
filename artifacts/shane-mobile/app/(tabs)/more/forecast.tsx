@@ -95,9 +95,27 @@ export default function ForecastScreen() {
   const { data, isLoading, error, refetch } = useQuery<ForecastResponse>({
     queryKey: ["analytics-forecast"],
     queryFn: async () => {
-      const res = await fetchWithAuth("/api/analytics-forecast");
+      const res = await fetchWithAuth("/api/analytics/revenue/forecast");
       if (!res.ok) throw new Error("Failed to load forecast");
-      return res.json() as Promise<ForecastResponse>;
+      const json = await res.json() as {
+        rows?: { period: string; forecast: number; lowerBound: number; upperBound: number }[];
+        narrative?: string;
+      };
+      const rows = json.rows ?? [];
+      const forecastPoints: ForecastPoint[] = rows.map((r) => ({
+        month: `${r.period}-01`,
+        revenue: r.forecast,
+        lower: r.lowerBound,
+        upper: r.upperBound,
+      }));
+      const totalForecast = forecastPoints.reduce((s, p) => s + p.revenue, 0);
+      const growthRate =
+        forecastPoints.length >= 2
+          ? ((forecastPoints[forecastPoints.length - 1].revenue - forecastPoints[0].revenue) /
+              Math.max(forecastPoints[0].revenue, 1)) *
+            100
+          : 0;
+      return { forecast: forecastPoints, narrative: json.narrative, totalForecast, growthRate };
     },
     staleTime: 300000,
   });

@@ -39,7 +39,7 @@ function statusVariant(s: string) {
 
 function fmt(n: number | null | undefined): string {
   if (n === null || n === undefined) return "—";
-  return `$${(n / 100).toFixed(2)}`;
+  return `$${Number(n).toFixed(2)}`;
 }
 
 function timeAgo(str: string | undefined): string {

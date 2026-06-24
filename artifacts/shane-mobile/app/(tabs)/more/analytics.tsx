@@ -223,8 +223,8 @@ export default function AnalyticsScreen() {
                 <View key={i} style={[styles.tableRow, { backgroundColor: colors.card, borderColor: colors.border }]}>
                   <Text style={[styles.tableCell, { color: colors.text }]} numberOfLines={1}>{p.path}</Text>
                   <View style={styles.tableRight}>
-                    <MiniBar value={p.views} max={maxPages} color={colors.primary} />
-                    <Text style={[styles.tableNum, { color: colors.primary }]}>{p.views.toLocaleString()}</Text>
+                    <MiniBar value={p.views ?? 0} max={maxPages} color={colors.primary} />
+                    <Text style={[styles.tableNum, { color: colors.primary }]}>{(p.views ?? 0).toLocaleString()}</Text>
                   </View>
                 </View>
               ))}
@@ -241,8 +241,8 @@ export default function AnalyticsScreen() {
                 <View key={i} style={[styles.tableRow, { backgroundColor: colors.card, borderColor: colors.border }]}>
                   <Text style={[styles.tableCell, { color: colors.text }]} numberOfLines={1}>{e.name}</Text>
                   <View style={styles.tableRight}>
-                    <MiniBar value={e.count} max={maxEvents} color={colors.teal} />
-                    <Text style={[styles.tableNum, { color: colors.teal }]}>{e.count.toLocaleString()}</Text>
+                    <MiniBar value={e.count ?? 0} max={maxEvents} color={colors.teal} />
+                    <Text style={[styles.tableNum, { color: colors.teal }]}>{(e.count ?? 0).toLocaleString()}</Text>
                   </View>
                 </View>
               ))}
