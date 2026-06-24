@@ -131,6 +131,16 @@ export default function PortalJourneyMap() {
 
   const stages: JourneyStage[] = [
     {
+      id: "services",
+      label: "Active Services",
+      description: "Your subscribed Microsoft 365 services and retainer packages are live and in use.",
+      icon: <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" /></svg>,
+      link: "/portal/services",
+      linkLabel: "View Services",
+      status: hasPaidInvoice ? "complete" : hasAnyProject ? "active" : "upcoming",
+      completedNote: "Services active",
+    },
+    {
       id: "onboarding",
       label: "Onboarding",
       description: "Account setup, contract signing, M365 profile, and your first engagement kick-off with Shane.",
@@ -139,46 +149,6 @@ export default function PortalJourneyMap() {
       linkLabel: "View M365 Profile",
       status: m365Complete ? "complete" : "active",
       completedNote: "M365 profile submitted",
-    },
-    {
-      id: "services",
-      label: "Active Services",
-      description: "Your subscribed Microsoft 365 services and retainer packages are live and in use.",
-      icon: <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" /></svg>,
-      link: "/portal/services",
-      linkLabel: "View Services",
-      status: hasAnyProject ? "complete" : m365Complete ? "active" : "upcoming",
-      completedNote: "Services active",
-    },
-    {
-      id: "projects",
-      label: "Active Projects",
-      description: "Your consulting projects are underway — tracking milestones, workflow steps, and deliverables.",
-      icon: <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" /></svg>,
-      link: "/portal/projects",
-      linkLabel: "View Projects",
-      status: hasActiveProject ? "active" : hasCompletedProject ? "complete" : hasAnyProject ? "active" : "upcoming",
-      completedNote: hasCompletedProject ? "Projects delivered" : undefined,
-    },
-    {
-      id: "billing",
-      label: "Billing",
-      description: "Invoices issued and payments processed for services, projects, and retainer engagements.",
-      icon: <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" /></svg>,
-      link: "/portal/billing",
-      linkLabel: "View Billing",
-      status: hasPaidInvoice ? "complete" : hasAnyInvoice ? "active" : "upcoming",
-      completedNote: hasPaidInvoice ? "First invoice paid" : undefined,
-    },
-    {
-      id: "reports",
-      label: "Reports",
-      description: "Regular status reports reviewed and accepted, keeping you informed on project progress and decisions.",
-      icon: <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>,
-      link: "/portal",
-      linkLabel: "View Dashboard",
-      status: hasActiveProject ? "active" : hasCompletedProject ? "complete" : "upcoming",
-      completedNote: "Reports reviewed",
     },
     {
       id: "automation",
@@ -191,23 +161,33 @@ export default function PortalJourneyMap() {
       completedNote: "Azure credentials verified",
     },
     {
-      id: "retainer",
-      label: "Retainer",
-      description: "Ongoing advisory retainer active — giving you a dedicated monthly block of Shane's expertise and support hours.",
-      icon: <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>,
-      link: "/portal/billing",
-      linkLabel: "View Retainer",
-      status: hasRetainer ? "active" : "upcoming",
-      completedNote: "Retainer active",
+      id: "projects",
+      label: "Active Projects",
+      description: "Your consulting projects are underway — tracking milestones, workflow steps, and deliverables.",
+      icon: <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" /></svg>,
+      link: "/portal/projects",
+      linkLabel: "View Projects",
+      status: hasActiveProject ? "active" : hasCompletedProject ? "complete" : hasAnyProject ? "active" : "upcoming",
+      completedNote: "Projects in flight",
     },
     {
-      id: "renewal",
-      label: "Renewal",
-      description: "Engagement review, retainer renewal discussion, and planning for the next phase of your Microsoft 365 journey.",
-      icon: <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z" /></svg>,
+      id: "closeout",
+      label: "Project Close Out",
+      description: "Deliverables signed off, handover documentation complete, and outcomes reviewed with Shane.",
+      icon: <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4M7.835 4.697a3.42 3.42 0 001.946-.806 3.42 3.42 0 014.438 0 3.42 3.42 0 001.946.806 3.42 3.42 0 013.138 3.138 3.42 3.42 0 00.806 1.946 3.42 3.42 0 010 4.438 3.42 3.42 0 00-.806 1.946 3.42 3.42 0 01-3.138 3.138 3.42 3.42 0 00-1.946.806 3.42 3.42 0 01-4.438 0 3.42 3.42 0 00-1.946-.806 3.42 3.42 0 01-3.138-3.138 3.42 3.42 0 00-.806-1.946 3.42 3.42 0 010-4.438 3.42 3.42 0 00.806-1.946 3.42 3.42 0 013.138-3.138z" /></svg>,
+      link: "/portal/projects",
+      linkLabel: "View Projects",
+      status: hasCompletedProject ? "complete" : hasActiveProject ? "active" : "upcoming",
+      completedNote: "Project delivered & signed off",
+    },
+    {
+      id: "followup",
+      label: "Follow Up / Quick Win",
+      description: "Engagement review, new quick-win opportunities, and planning for the next phase of your Microsoft 365 journey.",
+      icon: <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>,
       link: "/portal/book-meeting",
-      linkLabel: "Book Renewal Call",
-      status: "upcoming",
+      linkLabel: "Book a Call",
+      status: hasRetainer ? "active" : "upcoming",
     },
   ];
 
@@ -241,8 +221,8 @@ export default function PortalJourneyMap() {
                 />
               </div>
               <div className="flex justify-between mt-1.5 text-[10px] text-white/50">
-                <span>Onboarding</span>
-                <span>Renewal</span>
+                <span>Active Services</span>
+                <span>Follow Up</span>
               </div>
             </div>
           </div>
