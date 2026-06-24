@@ -5,33 +5,76 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useAuth } from "@/contexts/AuthContext";
 
-// ── M365 profile schema (minimal wizard subset) ───────────────────────────────
+// ── M365 profile schema — full field set matching Admin wizard ─────────────────
 
 const wizardM365Schema = z.object({
-  orgName:            z.string().default(""),
-  industry:           z.string().default(""),
-  employeeCount:      z.string().default(""),
-  licensedUserCount:  z.string().default(""),
-  tenantDomain:       z.string().default(""),
-  itContactName:      z.string().default(""),
-  itContactEmail:     z.string().default(""),
-  usesExchange:       z.boolean().optional(),
-  usesTeams:          z.boolean().optional(),
-  usesSharePoint:     z.boolean().optional(),
-  usesOneDrive:       z.boolean().optional(),
-  mfaEnforced:        z.boolean().optional(),
-  conditionalAccessEnabled: z.boolean().optional(),
-  intuneEnabled:      z.boolean().optional(),
-  hasCopilotLicenses: z.boolean().optional(),
-  copilotLicenseCount: z.string().default(""),
-  copilotUseCase:     z.string().default(""),
-  businessGoals:      z.string().default(""),
-  knownBlockers:      z.string().default(""),
+  // Step 1 — Organisation Overview
+  orgName:              z.string().default(""),
+  industry:             z.string().default(""),
+  employeeCount:        z.string().default(""),
+  licensedUserCount:    z.string().default(""),
+  tenantDomain:         z.string().default(""),
+  itContactName:        z.string().default(""),
+  itContactEmail:       z.string().default(""),
+  isMicrosoftPartner:   z.boolean().optional(),
+
+  // Step 2 — Licensing & Usage
+  licenseSKUs:          z.array(z.string()).default([]),
+  activeUserPercent:    z.string().default(""),
+  allUsersLicensed:     z.boolean().optional(),
+  usesExchange:         z.boolean().optional(),
+  usesTeams:            z.boolean().optional(),
+  usesSharePoint:       z.boolean().optional(),
+  usesOneDrive:         z.boolean().optional(),
+  usesYammer:           z.boolean().optional(),
+
+  // Step 3 — Environment Structure
+  sharepointSiteCount:  z.string().default(""),
+  teamCount:            z.string().default(""),
+  securityGroupCount:   z.string().default(""),
+  authMethod:           z.string().default(""),
+  externalSharingEnabled: z.boolean().optional(),
+  guestUsersPresent:    z.boolean().optional(),
+  isHybrid:             z.boolean().optional(),
+  hasOnPremExchange:    z.boolean().optional(),
+  usesAADConnect:       z.boolean().optional(),
+
+  // Step 4 — Security & Compliance
+  mfaEnforced:                z.boolean().optional(),
+  conditionalAccessEnabled:   z.boolean().optional(),
+  hasAADP1orP2:               z.boolean().optional(),
+  intuneEnabled:              z.boolean().optional(),
+  hasDefender:                z.boolean().optional(),
+  hasDLP:                     z.boolean().optional(),
+  usesComplianceCenter:       z.boolean().optional(),
+  sensitivityLabelsConfigured: z.boolean().optional(),
+  hasRetentionPolicies:       z.boolean().optional(),
+  hasInsiderRisk:             z.boolean().optional(),
+
+  // Step 5 — Copilot Readiness
+  hasCopilotLicenses:         z.boolean().optional(),
+  copilotLicenseCount:        z.string().default(""),
+  copilotUseCase:             z.string().default(""),
+  currentAITools:             z.string().default(""),
+  dataGovernanceConcerns:     z.string().default(""),
+  copilotReadinessScore:      z.string().default(""),
+  copilotBlockedBy:           z.string().default(""),
+
+  // Step 6 — Engagement Goals
+  engagementStartDate:  z.string().default(""),
+  estimatedDuration:    z.string().default(""),
+  engagementType:       z.string().default(""),
+  budgetRange:          z.string().default(""),
+  decisionMakerName:    z.string().default(""),
+  decisionMakerEmail:   z.string().default(""),
+  businessGoals:        z.string().default(""),
+  knownBlockers:        z.string().default(""),
+  referralSource:       z.string().default(""),
 });
 
 type M365FormValues = z.infer<typeof wizardM365Schema>;
 
-// ── Steps ─────────────────────────────────────────────────────────────────────
+// ── Outer wizard steps ────────────────────────────────────────────────────────
 
 const STEPS = [
   {
@@ -57,6 +100,17 @@ const STEPS = [
 ] as const;
 type StepId = (typeof STEPS)[number]["id"];
 
+// ── M365 sub-step config ──────────────────────────────────────────────────────
+
+const M365_SUB_STEPS = [
+  { label: "Organisation Overview" },
+  { label: "Licensing & Usage" },
+  { label: "Environment Structure" },
+  { label: "Security & Compliance" },
+  { label: "Copilot Readiness" },
+  { label: "Engagement Goals" },
+] as const;
+
 // ── App Registration permissions ──────────────────────────────────────────────
 
 const REQUIRED_PERMISSIONS = [
@@ -73,21 +127,8 @@ const REQUIRED_PERMISSIONS = [
 
 // ── Small UI helpers ──────────────────────────────────────────────────────────
 
-const inputClass =
-  "w-full px-3.5 py-2.5 rounded-xl border border-[#1E3A5A] bg-[#0D2E4A] text-white text-sm placeholder-white/30 focus:outline-none focus:ring-2 focus:ring-[#0078D4]/50 focus:border-[#0078D4] transition-colors";
-
 const inputClassLight =
   "w-full px-3.5 py-2.5 rounded-xl border border-gray-200 bg-white text-[#0A2540] text-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#0078D4]/30 focus:border-[#0078D4] transition-colors";
-
-function FieldDark({ label, children, hint }: { label: string; children: React.ReactNode; hint?: string }) {
-  return (
-    <div>
-      <label className="block text-xs font-semibold text-white/70 mb-1.5">{label}</label>
-      {children}
-      {hint && <p className="mt-1 text-xs text-white/40">{hint}</p>}
-    </div>
-  );
-}
 
 function FieldLight({ label, children, hint }: { label: string; children: React.ReactNode; hint?: string }) {
   return (
@@ -99,35 +140,35 @@ function FieldLight({ label, children, hint }: { label: string; children: React.
   );
 }
 
-function ToggleDark({ value, onChange, label }: { value: boolean | undefined; onChange: (v: boolean) => void; label: string }) {
+function ToggleLight({ value, onChange, label }: { value: boolean | undefined; onChange: (v: boolean) => void; label: string }) {
   const checked = value === true;
   return (
     <label className="flex items-center gap-3 cursor-pointer group">
       <div
         onClick={() => onChange(!checked)}
-        className={`relative w-9 h-5 rounded-full transition-all flex-shrink-0 ${
-          value === undefined ? "bg-white/10 border-2 border-dashed border-white/20" : checked ? "bg-[#0078D4]" : "bg-white/20"
+        className={`relative w-9 h-5 rounded-full transition-all flex-shrink-0 cursor-pointer ${
+          value === undefined ? "bg-gray-200 border-2 border-dashed border-gray-300" : checked ? "bg-[#0078D4]" : "bg-gray-200"
         }`}
       >
         <span className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${checked ? "translate-x-4" : ""}`} />
       </div>
-      <span className="text-sm text-white/80 group-hover:text-white transition-colors flex-1">{label}</span>
+      <span className="text-sm text-[#0A2540] group-hover:text-[#0078D4] transition-colors flex-1">{label}</span>
       {value === undefined && (
-        <span className="text-[10px] font-semibold text-amber-400/80 bg-amber-400/10 border border-amber-400/20 px-1.5 py-0.5 rounded">
-          unanswered
+        <span className="text-[10px] font-semibold text-amber-600 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded">
+          not answered
         </span>
       )}
     </label>
   );
 }
 
-function BoolControllerDark({ name, control, label }: { name: keyof M365FormValues; control: Control<M365FormValues>; label: string }) {
+function BoolControllerLight({ name, control, label }: { name: keyof M365FormValues; control: Control<M365FormValues>; label: string }) {
   return (
     <Controller
       name={name}
       control={control}
       render={({ field }) => (
-        <ToggleDark
+        <ToggleLight
           value={field.value as boolean | undefined}
           onChange={(v) => field.onChange(v)}
           label={label}
@@ -137,13 +178,37 @@ function BoolControllerDark({ name, control, label }: { name: keyof M365FormValu
   );
 }
 
-function SectionDark({ title, children }: { title: string; children: React.ReactNode }) {
+function CardSection({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div className="rounded-xl border border-white/10 overflow-hidden">
-      <div className="px-4 py-3 bg-white/5 border-b border-white/10">
-        <h3 className="text-xs font-bold uppercase tracking-wider text-white/50">{title}</h3>
+    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+      <div className="px-5 py-3.5 border-b border-gray-100 bg-[#F7F9FC]">
+        <p className="text-xs font-bold uppercase tracking-wider text-gray-400">{title}</p>
       </div>
-      <div className="px-4 py-4 space-y-4">{children}</div>
+      <div className="px-5 py-5 space-y-4">{children}</div>
+    </div>
+  );
+}
+
+function MultiSelectLight({ value, onChange, options }: { value: string[]; onChange: (v: string[]) => void; options: string[] }) {
+  return (
+    <div className="flex flex-wrap gap-2 pt-1">
+      {options.map(opt => {
+        const sel = value.includes(opt);
+        return (
+          <button
+            key={opt}
+            type="button"
+            onClick={() => onChange(sel ? value.filter(v => v !== opt) : [...value, opt])}
+            className={`text-xs font-semibold px-2.5 py-1.5 rounded-full border transition-colors ${
+              sel
+                ? "bg-[#0078D4] text-white border-[#0078D4]"
+                : "bg-white text-[#0A2540] border-gray-200 hover:border-[#0078D4]"
+            }`}
+          >
+            {opt}
+          </button>
+        );
+      })}
     </div>
   );
 }
@@ -171,19 +236,279 @@ function CopyButton({ text }: { text: string }) {
   );
 }
 
-// ── Step 1: M365 Profile ──────────────────────────────────────────────────────
+// ── M365 sub-step components ──────────────────────────────────────────────────
+
+function SubStep1({ control, register }: { control: Control<M365FormValues>; register: ReturnType<typeof useForm<M365FormValues>>["register"] }) {
+  const industries = ["Technology", "Healthcare", "Finance & Banking", "Legal", "Education", "Manufacturing", "Retail", "Government", "Nonprofit", "Real Estate", "Professional Services", "Other"];
+  return (
+    <div className="space-y-4">
+      <CardSection title="Organisation">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <FieldLight label="Organisation Name">
+            <input {...register("orgName")} placeholder="Acme Corp" className={inputClassLight} />
+          </FieldLight>
+          <FieldLight label="Industry">
+            <select {...register("industry")} className={inputClassLight}>
+              <option value="">Select…</option>
+              {industries.map(i => <option key={i} value={i}>{i}</option>)}
+            </select>
+          </FieldLight>
+          <FieldLight label="Total Employees">
+            <input {...register("employeeCount")} type="number" min="0" placeholder="e.g. 250" className={inputClassLight} />
+          </FieldLight>
+          <FieldLight label="Licensed M365 Users">
+            <input {...register("licensedUserCount")} type="number" min="0" placeholder="e.g. 200" className={inputClassLight} />
+          </FieldLight>
+          <FieldLight label="Tenant Domain" hint="Primary *.onmicrosoft.com or custom domain">
+            <input {...register("tenantDomain")} placeholder="contoso.onmicrosoft.com" className={inputClassLight} />
+          </FieldLight>
+        </div>
+        <BoolControllerLight name="isMicrosoftPartner" control={control} label="We are a Microsoft partner" />
+      </CardSection>
+
+      <CardSection title="IT Contact">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <FieldLight label="IT Contact Name">
+            <input {...register("itContactName")} placeholder="Jane Smith" className={inputClassLight} />
+          </FieldLight>
+          <FieldLight label="IT Contact Email">
+            <input {...register("itContactEmail")} type="email" placeholder="it@acme.com" className={inputClassLight} />
+          </FieldLight>
+        </div>
+      </CardSection>
+    </div>
+  );
+}
+
+function SubStep2({ control, register }: { control: Control<M365FormValues>; register: ReturnType<typeof useForm<M365FormValues>>["register"] }) {
+  const skus = ["M365 Business Basic", "M365 Business Standard", "M365 Business Premium", "Office 365 E1", "M365 E3", "M365 E5", "M365 F1", "M365 F3", "Copilot for M365"];
+  return (
+    <div className="space-y-4">
+      <CardSection title="License SKUs">
+        <FieldLight label="Select all that apply">
+          <Controller
+            name="licenseSKUs"
+            control={control}
+            render={({ field }) => (
+              <MultiSelectLight value={field.value ?? []} onChange={field.onChange} options={skus} />
+            )}
+          />
+        </FieldLight>
+        <FieldLight label="Active User Percentage" hint="What percentage of licensed users are active month-to-month?">
+          <input {...register("activeUserPercent")} type="number" min="0" max="100" placeholder="e.g. 85" className={inputClassLight} />
+        </FieldLight>
+        <BoolControllerLight name="allUsersLicensed" control={control} label="All users are fully licensed" />
+      </CardSection>
+
+      <CardSection title="Workloads in Use">
+        <div className="space-y-3">
+          <BoolControllerLight name="usesExchange"   control={control} label="Exchange Online / Email" />
+          <BoolControllerLight name="usesTeams"      control={control} label="Microsoft Teams" />
+          <BoolControllerLight name="usesSharePoint" control={control} label="SharePoint Online" />
+          <BoolControllerLight name="usesOneDrive"   control={control} label="OneDrive for Business" />
+          <BoolControllerLight name="usesYammer"     control={control} label="Viva Engage / Yammer" />
+        </div>
+      </CardSection>
+    </div>
+  );
+}
+
+function SubStep3({ control, register }: { control: Control<M365FormValues>; register: ReturnType<typeof useForm<M365FormValues>>["register"] }) {
+  const authOptions = [
+    { value: "password", label: "Password only" },
+    { value: "mfa", label: "MFA (per-user)" },
+    { value: "sso_saml", label: "SSO / SAML" },
+    { value: "entra_id", label: "Entra ID (Azure AD)" },
+    { value: "conditional_access", label: "Conditional Access policies" },
+  ];
+  return (
+    <div className="space-y-4">
+      <CardSection title="Scale">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <FieldLight label="SharePoint Sites">
+            <input {...register("sharepointSiteCount")} type="number" min="0" placeholder="e.g. 15" className={inputClassLight} />
+          </FieldLight>
+          <FieldLight label="Teams Count">
+            <input {...register("teamCount")} type="number" min="0" placeholder="e.g. 40" className={inputClassLight} />
+          </FieldLight>
+          <FieldLight label="Security Groups">
+            <input {...register("securityGroupCount")} type="number" min="0" placeholder="e.g. 25" className={inputClassLight} />
+          </FieldLight>
+        </div>
+        <FieldLight label="Primary Authentication Method">
+          <select {...register("authMethod")} className={inputClassLight}>
+            <option value="">Select…</option>
+            {authOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+          </select>
+        </FieldLight>
+      </CardSection>
+
+      <CardSection title="Configuration Flags">
+        <div className="space-y-3">
+          <BoolControllerLight name="externalSharingEnabled" control={control} label="External sharing enabled" />
+          <BoolControllerLight name="guestUsersPresent"      control={control} label="Guest users present in tenant" />
+          <BoolControllerLight name="isHybrid"               control={control} label="Hybrid environment (on-prem + cloud)" />
+          <BoolControllerLight name="hasOnPremExchange"      control={control} label="On-premises Exchange server present" />
+          <BoolControllerLight name="usesAADConnect"         control={control} label="Entra Connect / AAD Connect in use" />
+        </div>
+      </CardSection>
+    </div>
+  );
+}
+
+function SubStep4({ control }: { control: Control<M365FormValues> }) {
+  return (
+    <div className="space-y-4">
+      <CardSection title="Identity & Access">
+        <div className="space-y-3">
+          <BoolControllerLight name="mfaEnforced"              control={control} label="MFA enforced for all users" />
+          <BoolControllerLight name="conditionalAccessEnabled" control={control} label="Conditional Access policies configured" />
+          <BoolControllerLight name="hasAADP1orP2"             control={control} label="Entra ID P1 or P2 licensed" />
+          <BoolControllerLight name="intuneEnabled"            control={control} label="Intune / MDM device management active" />
+        </div>
+      </CardSection>
+
+      <CardSection title="Data Protection">
+        <div className="space-y-3">
+          <BoolControllerLight name="hasDefender"                 control={control} label="Microsoft Defender for M365 active" />
+          <BoolControllerLight name="hasDLP"                      control={control} label="Data Loss Prevention (DLP) policies in place" />
+          <BoolControllerLight name="sensitivityLabelsConfigured" control={control} label="Sensitivity labels configured" />
+          <BoolControllerLight name="hasRetentionPolicies"        control={control} label="Retention policies in place" />
+        </div>
+      </CardSection>
+
+      <CardSection title="Compliance">
+        <div className="space-y-3">
+          <BoolControllerLight name="usesComplianceCenter" control={control} label="Microsoft Purview / Compliance Center in use" />
+          <BoolControllerLight name="hasInsiderRisk"       control={control} label="Insider Risk Management enabled" />
+        </div>
+      </CardSection>
+    </div>
+  );
+}
+
+function SubStep5({ control, register, watch }: { control: Control<M365FormValues>; register: ReturnType<typeof useForm<M365FormValues>>["register"]; watch: ReturnType<typeof useForm<M365FormValues>>["watch"] }) {
+  const hasCopilot = watch("hasCopilotLicenses");
+  const blockerOpts = ["None", "Budget", "Licensing", "Security concerns", "Training gaps", "Governance / data readiness", "Leadership buy-in"];
+  const scoreOpts = [
+    { value: "1", label: "1 – Not ready" },
+    { value: "2", label: "2 – Early stages" },
+    { value: "3", label: "3 – Partially ready" },
+    { value: "4", label: "4 – Mostly ready" },
+    { value: "5", label: "5 – Fully ready" },
+  ];
+  return (
+    <div className="space-y-4">
+      <CardSection title="License Status">
+        <BoolControllerLight name="hasCopilotLicenses" control={control} label="We have Copilot for Microsoft 365 licenses" />
+        {hasCopilot && (
+          <FieldLight label="Copilot License Count">
+            <input {...register("copilotLicenseCount")} type="number" min="0" placeholder="e.g. 50" className={inputClassLight} />
+          </FieldLight>
+        )}
+      </CardSection>
+
+      <CardSection title="AI Readiness">
+        <FieldLight label="Primary Copilot Use Cases">
+          <textarea {...register("copilotUseCase")} placeholder="Meeting summaries, document drafting, email triage…" rows={2} className={`${inputClassLight} resize-none`} />
+        </FieldLight>
+        <FieldLight label="Current AI Tools in Use">
+          <textarea {...register("currentAITools")} placeholder="ChatGPT, GitHub Copilot, custom solutions…" rows={2} className={`${inputClassLight} resize-none`} />
+        </FieldLight>
+        <FieldLight label="Data Governance Concerns">
+          <textarea {...register("dataGovernanceConcerns")} placeholder="Data sensitivity, oversharing risks, classification gaps…" rows={2} className={`${inputClassLight} resize-none`} />
+        </FieldLight>
+      </CardSection>
+
+      <CardSection title="Readiness Assessment">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <FieldLight label="Copilot Readiness Score">
+            <select {...register("copilotReadinessScore")} className={inputClassLight}>
+              <option value="">Select…</option>
+              {scoreOpts.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+            </select>
+          </FieldLight>
+          <FieldLight label="Primary Blocker">
+            <select {...register("copilotBlockedBy")} className={inputClassLight}>
+              <option value="">Select…</option>
+              {blockerOpts.map(b => <option key={b} value={b}>{b}</option>)}
+            </select>
+          </FieldLight>
+        </div>
+      </CardSection>
+    </div>
+  );
+}
+
+function SubStep6({ register }: { register: ReturnType<typeof useForm<M365FormValues>>["register"] }) {
+  const engagementTypes = ["Assessment", "Implementation", "Ongoing Support", "Training & Enablement", "Governance", "Advisory / Strategy"];
+  const budgetRanges = ["< $5K", "$5K – $15K", "$15K – $30K", "$30K – $75K", "$75K – $150K", "> $150K"];
+  return (
+    <div className="space-y-4">
+      <CardSection title="Engagement Details">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <FieldLight label="Engagement Type">
+            <select {...register("engagementType")} className={inputClassLight}>
+              <option value="">Select…</option>
+              {engagementTypes.map(t => <option key={t} value={t}>{t}</option>)}
+            </select>
+          </FieldLight>
+          <FieldLight label="Budget Range">
+            <select {...register("budgetRange")} className={inputClassLight}>
+              <option value="">Select…</option>
+              {budgetRanges.map(b => <option key={b} value={b}>{b}</option>)}
+            </select>
+          </FieldLight>
+          <FieldLight label="Target Start Date">
+            <input {...register("engagementStartDate")} type="date" className={inputClassLight} />
+          </FieldLight>
+          <FieldLight label="Estimated Duration">
+            <input {...register("estimatedDuration")} placeholder="e.g. 3 months, 6 weeks" className={inputClassLight} />
+          </FieldLight>
+        </div>
+      </CardSection>
+
+      <CardSection title="Decision Maker">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <FieldLight label="Decision Maker Name">
+            <input {...register("decisionMakerName")} placeholder="John CEO" className={inputClassLight} />
+          </FieldLight>
+          <FieldLight label="Decision Maker Email">
+            <input {...register("decisionMakerEmail")} type="email" placeholder="ceo@acme.com" className={inputClassLight} />
+          </FieldLight>
+        </div>
+      </CardSection>
+
+      <CardSection title="Goals & Context">
+        <FieldLight label="Business Goals">
+          <textarea {...register("businessGoals")} placeholder="Describe what you'd like to achieve with this engagement…" rows={3} className={`${inputClassLight} resize-none`} />
+        </FieldLight>
+        <FieldLight label="Known Blockers or Constraints">
+          <textarea {...register("knownBlockers")} placeholder="Any known blockers, constraints, or concerns…" rows={2} className={`${inputClassLight} resize-none`} />
+        </FieldLight>
+        <FieldLight label="How did you hear about us?">
+          <input {...register("referralSource")} placeholder="e.g. LinkedIn, referral, Google search" className={inputClassLight} />
+        </FieldLight>
+      </CardSection>
+    </div>
+  );
+}
+
+// ── Step 1: M365 Profile (multi sub-step) ─────────────────────────────────────
 
 function StepM365Profile({ onSaveAndContinue, onSkip }: { onSaveAndContinue: (data: M365FormValues) => Promise<void>; onSkip: () => void }) {
   const { fetchWithAuth } = useAuth();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [subStep, setSubStep] = useState(1);
+  const TOTAL_SUB_STEPS = M365_SUB_STEPS.length;
 
   const form = useForm<M365FormValues>({
     resolver: zodResolver(wizardM365Schema),
     defaultValues: wizardM365Schema.parse({}),
   });
-  const { control, register, reset } = form;
+  const { control, register, reset, watch, handleSubmit } = form;
 
   useEffect(() => {
     Promise.all([
@@ -206,7 +531,7 @@ function StepM365Profile({ onSaveAndContinue, onSkip }: { onSaveAndContinue: (da
       .finally(() => setLoading(false));
   }, [fetchWithAuth, reset]);
 
-  const handleSubmit = form.handleSubmit(async (data) => {
+  const doSave = handleSubmit(async (data) => {
     setSaving(true);
     setError(null);
     try {
@@ -225,15 +550,46 @@ function StepM365Profile({ onSaveAndContinue, onSkip }: { onSaveAndContinue: (da
     );
   }
 
+  const subStepLabel = M365_SUB_STEPS[subStep - 1].label;
+
   return (
-    <form onSubmit={(e) => { void handleSubmit(e); }} className="h-full flex flex-col">
-      <div className="flex-1 overflow-y-auto px-8 py-8 space-y-5">
-        <div className="mb-2">
-          <h2 className="text-2xl font-bold text-[#0A2540]">Your M365 Environment</h2>
-          <p className="text-sm text-gray-500 mt-1.5">
-            Help Shane understand your Microsoft 365 environment so he can tailor the engagement from day one. All fields are optional — share what you know now.
-          </p>
+    <div className="h-full flex flex-col">
+      {/* Sub-step header */}
+      <div className="flex-shrink-0 bg-white border-b border-gray-100 px-8 py-4">
+        <div className="flex items-center justify-between gap-4">
+          <div>
+            <div className="flex items-center gap-2 mb-1">
+              <span className="text-xs font-bold text-[#0078D4] uppercase tracking-wider">
+                Step {subStep} of {TOTAL_SUB_STEPS}
+              </span>
+              <span className="text-xs text-gray-400">·</span>
+              <span className="text-xs font-semibold text-gray-500">{subStepLabel}</span>
+            </div>
+            <h2 className="text-xl font-bold text-[#0A2540]">{subStepLabel}</h2>
+          </div>
+          {/* Sub-step dots */}
+          <div className="flex items-center gap-1.5 flex-shrink-0">
+            {M365_SUB_STEPS.map((_, i) => (
+              <div
+                key={i}
+                className={`rounded-full transition-all duration-300 ${
+                  i + 1 === subStep
+                    ? "w-6 h-2 bg-[#0078D4]"
+                    : i + 1 < subStep
+                      ? "w-2 h-2 bg-[#0078D4]/50"
+                      : "w-2 h-2 bg-gray-200"
+                }`}
+              />
+            ))}
+          </div>
         </div>
+      </div>
+
+      {/* Sub-step content */}
+      <div className="flex-1 overflow-y-auto px-8 py-6 space-y-4">
+        <p className="text-sm text-gray-500 -mt-1 mb-2">
+          Help Shane understand your Microsoft 365 environment so he can tailor the engagement from day one. All fields are optional — share what you know now.
+        </p>
 
         {error && (
           <div className="flex items-start gap-2.5 bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-sm text-red-700">
@@ -242,124 +598,59 @@ function StepM365Profile({ onSaveAndContinue, onSkip }: { onSaveAndContinue: (da
           </div>
         )}
 
-        {/* Organisation */}
-        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-          <div className="px-5 py-3.5 border-b border-gray-100 bg-[#F7F9FC]">
-            <p className="text-xs font-bold uppercase tracking-wider text-gray-400">Organisation</p>
-          </div>
-          <div className="px-5 py-5 grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <FieldLight label="Organisation Name">
-              <input {...register("orgName")} placeholder="Acme Corp" className={inputClassLight} />
-            </FieldLight>
-            <FieldLight label="Industry">
-              <input {...register("industry")} placeholder="e.g. Healthcare, Finance" className={inputClassLight} />
-            </FieldLight>
-            <FieldLight label="Total Employees">
-              <input {...register("employeeCount")} placeholder="e.g. 250" className={inputClassLight} />
-            </FieldLight>
-            <FieldLight label="Licensed M365 Users">
-              <input {...register("licensedUserCount")} placeholder="e.g. 200" className={inputClassLight} />
-            </FieldLight>
-            <FieldLight label="Tenant Domain" hint="Your primary *.onmicrosoft.com or custom domain">
-              <input {...register("tenantDomain")} placeholder="contoso.onmicrosoft.com" className={inputClassLight} />
-            </FieldLight>
-          </div>
-        </div>
-
-        {/* IT Contact */}
-        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-          <div className="px-5 py-3.5 border-b border-gray-100 bg-[#F7F9FC]">
-            <p className="text-xs font-bold uppercase tracking-wider text-gray-400">IT Contact</p>
-          </div>
-          <div className="px-5 py-5 grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <FieldLight label="IT Contact Name">
-              <input {...register("itContactName")} placeholder="Jane Smith" className={inputClassLight} />
-            </FieldLight>
-            <FieldLight label="IT Contact Email">
-              <input {...register("itContactEmail")} type="email" placeholder="it@acme.com" className={inputClassLight} />
-            </FieldLight>
-          </div>
-        </div>
-
-        {/* Workloads */}
-        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-          <div className="px-5 py-3.5 border-b border-gray-100 bg-[#F7F9FC]">
-            <p className="text-xs font-bold uppercase tracking-wider text-gray-400">Workloads in Use</p>
-          </div>
-          <div className="px-5 py-5 space-y-3">
-            <BoolControllerDark name="usesExchange"   control={control} label="Exchange Online / Email" />
-            <BoolControllerDark name="usesTeams"      control={control} label="Microsoft Teams" />
-            <BoolControllerDark name="usesSharePoint" control={control} label="SharePoint Online" />
-            <BoolControllerDark name="usesOneDrive"   control={control} label="OneDrive for Business" />
-          </div>
-        </div>
-
-        {/* Security */}
-        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-          <div className="px-5 py-3.5 border-b border-gray-100 bg-[#F7F9FC]">
-            <p className="text-xs font-bold uppercase tracking-wider text-gray-400">Security Posture</p>
-          </div>
-          <div className="px-5 py-5 space-y-3">
-            <BoolControllerDark name="mfaEnforced"              control={control} label="MFA enforced organisation-wide" />
-            <BoolControllerDark name="conditionalAccessEnabled" control={control} label="Conditional Access enabled" />
-            <BoolControllerDark name="intuneEnabled"            control={control} label="Intune device management enabled" />
-          </div>
-        </div>
-
-        {/* Copilot */}
-        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-          <div className="px-5 py-3.5 border-b border-gray-100 bg-[#F7F9FC]">
-            <p className="text-xs font-bold uppercase tracking-wider text-gray-400">Copilot Readiness</p>
-          </div>
-          <div className="px-5 py-5 space-y-4">
-            <BoolControllerDark name="hasCopilotLicenses" control={control} label="We have Copilot for Microsoft 365 licenses" />
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <FieldLight label="Copilot License Count">
-                <input {...register("copilotLicenseCount")} placeholder="e.g. 50" className={inputClassLight} />
-              </FieldLight>
-            </div>
-            <FieldLight label="Intended Copilot Use Cases">
-              <textarea {...register("copilotUseCase")} placeholder="e.g. meeting summaries, document drafting, email triage…" rows={2} className={`${inputClassLight} resize-none`} />
-            </FieldLight>
-          </div>
-        </div>
-
-        {/* Goals */}
-        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-          <div className="px-5 py-3.5 border-b border-gray-100 bg-[#F7F9FC]">
-            <p className="text-xs font-bold uppercase tracking-wider text-gray-400">Engagement Goals</p>
-          </div>
-          <div className="px-5 py-5 space-y-4">
-            <FieldLight label="Business Goals">
-              <textarea {...register("businessGoals")} placeholder="Describe what you'd like to achieve with this engagement…" rows={3} className={`${inputClassLight} resize-none`} />
-            </FieldLight>
-            <FieldLight label="Known Blockers or Constraints">
-              <textarea {...register("knownBlockers")} placeholder="Any known blockers, constraints, or concerns…" rows={2} className={`${inputClassLight} resize-none`} />
-            </FieldLight>
-          </div>
-        </div>
+        {subStep === 1 && <SubStep1 control={control} register={register} />}
+        {subStep === 2 && <SubStep2 control={control} register={register} />}
+        {subStep === 3 && <SubStep3 control={control} register={register} />}
+        {subStep === 4 && <SubStep4 control={control} />}
+        {subStep === 5 && <SubStep5 control={control} register={register} watch={watch} />}
+        {subStep === 6 && <SubStep6 register={register} />}
       </div>
 
-      {/* Bottom controls */}
+      {/* Bottom navigation */}
       <div className="flex-shrink-0 border-t border-gray-100 bg-white px-8 py-4 flex items-center justify-between gap-4">
-        <button
-          type="button"
-          onClick={onSkip}
-          className="text-sm text-gray-400 hover:text-gray-600 transition-colors"
-        >
-          Skip for now
-        </button>
-        <button
-          type="submit"
-          disabled={saving}
-          className="flex items-center gap-2 bg-[#0078D4] hover:bg-[#0078D4]/90 text-white text-sm font-semibold px-6 py-2.5 rounded-xl transition-colors disabled:opacity-60"
-        >
-          {saving && <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />}
-          Save &amp; Continue
-          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" /></svg>
-        </button>
+        <div className="flex items-center gap-4">
+          {subStep > 1 ? (
+            <button
+              type="button"
+              onClick={() => { setError(null); setSubStep(s => s - 1); }}
+              className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-[#0A2540] transition-colors"
+            >
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" /></svg>
+              Back
+            </button>
+          ) : null}
+          <button
+            type="button"
+            onClick={onSkip}
+            className="text-sm text-gray-400 hover:text-gray-600 transition-colors"
+          >
+            Skip for now
+          </button>
+        </div>
+
+        {subStep < TOTAL_SUB_STEPS ? (
+          <button
+            type="button"
+            onClick={() => { setError(null); setSubStep(s => s + 1); }}
+            className="flex items-center gap-2 bg-[#0078D4] hover:bg-[#0078D4]/90 text-white text-sm font-semibold px-6 py-2.5 rounded-xl transition-colors"
+          >
+            Next
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" /></svg>
+          </button>
+        ) : (
+          <button
+            type="button"
+            disabled={saving}
+            onClick={() => { void doSave(); }}
+            className="flex items-center gap-2 bg-[#0078D4] hover:bg-[#0078D4]/90 text-white text-sm font-semibold px-6 py-2.5 rounded-xl transition-colors disabled:opacity-60"
+          >
+            {saving && <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />}
+            Save &amp; Continue
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" /></svg>
+          </button>
+        )}
       </div>
-    </form>
+    </div>
   );
 }
 
@@ -469,22 +760,22 @@ function StepAppRegistration({ onSaveAndContinue, onBack, onSkip }: { onSaveAndC
               { n: 5, title: "Create a Client Secret", body: "Go to Certificates & Secrets → New client secret. Set expiry to 24 months. Click Add, then immediately copy the Value shown — it is only visible once." },
             ].map(step => (
               <li key={step.n} className="flex gap-4 px-5 py-4">
-                <div className="w-7 h-7 rounded-full bg-[#0078D4] text-white text-xs font-bold flex items-center justify-center flex-shrink-0 mt-0.5">
-                  {step.n}
+                <div className="w-6 h-6 rounded-full bg-[#0078D4]/10 flex items-center justify-center flex-shrink-0 mt-0.5">
+                  <span className="text-[10px] font-bold text-[#0078D4]">{step.n}</span>
                 </div>
                 <div>
-                  <p className="text-sm font-semibold text-[#0A2540] mb-0.5">{step.title}</p>
-                  <p className="text-sm text-gray-500 leading-relaxed">{step.body}</p>
+                  <p className="text-xs font-semibold text-[#0A2540] mb-0.5">{step.title}</p>
+                  <p className="text-xs text-gray-500 leading-relaxed">{step.body}</p>
                 </div>
               </li>
             ))}
           </ol>
         </div>
 
-        {/* Credential form */}
+        {/* Credential fields */}
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
           <div className="px-5 py-3.5 border-b border-gray-100 bg-[#F7F9FC]">
-            <p className="text-xs font-bold uppercase tracking-wider text-gray-400">Submit Credentials</p>
+            <p className="text-xs font-bold uppercase tracking-wider text-gray-400">Your App Registration Credentials</p>
           </div>
           <div className="px-5 py-5 space-y-4">
             {error && (
@@ -494,7 +785,7 @@ function StepAppRegistration({ onSaveAndContinue, onBack, onSkip }: { onSaveAndC
               </div>
             )}
 
-            <FieldLight label="Tenant ID" hint="Found on your App Registration's Overview page under Directory (tenant) ID">
+            <FieldLight label="Tenant ID (Directory ID)" hint="Found on the Entra ID overview page">
               <input
                 type="text"
                 value={tenantId}
