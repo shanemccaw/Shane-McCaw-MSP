@@ -203,12 +203,12 @@ interface ScorecardHistory {
   latest?: Partial<Record<M365ScoreCategory, number>>;
 }
 
-const SCORECARD_DEFS: { key: M365ScoreCategory; label: string }[] = [
-  { key: "security",     label: "Security Posture" },
-  { key: "compliance",   label: "Compliance Coverage" },
-  { key: "copilot",      label: "Copilot Readiness" },
-  { key: "governance",   label: "Governance Maturity" },
-  { key: "productivity", label: "Adoption Score" },
+const SCORECARD_DEFS: { key: M365ScoreCategory; label: string; tab: string }[] = [
+  { key: "security",     label: "Security Posture",     tab: "security"   },
+  { key: "compliance",   label: "Compliance Coverage",  tab: "security"   },
+  { key: "copilot",      label: "Copilot Readiness",    tab: "copilot"    },
+  { key: "governance",   label: "Governance Maturity",  tab: "scorecards" },
+  { key: "productivity", label: "Adoption Score",       tab: "scorecards" },
 ];
 
 function scRingColor(s: number) { return s >= 80 ? "#22c55e" : s >= 55 ? "#f59e0b" : "#ef4444"; }
@@ -821,13 +821,13 @@ export default function ClientProjectDashboard() {
                 </div>
                 <div className="bg-[#0d2d4a] border-x border-b border-[#0A2540]/80 rounded-b-2xl p-4">
                   <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
-                    {SCORECARD_DEFS.map(({ key, label }) => {
+                    {SCORECARD_DEFS.map(({ key, label, tab }) => {
                       const current = scorecardHistory.latest?.[key] ?? 0;
                       const baseline = scorecardHistory.first?.[key] ?? null;
                       const delta = baseline !== null ? current - baseline : null;
                       const showHistory = baseline !== null && !isFirstSameAsLatest;
                       return (
-                        <Link key={key} href="/portal/m365-profile">
+                        <Link key={key} href={`/portal/m365-profile?tab=${tab}`}>
                           <div className="bg-[#0A2540] hover:bg-[#0e2f50] border border-white/5 hover:border-[#0078D4]/40 rounded-xl overflow-hidden cursor-pointer transition-all group hover:shadow-xl hover:shadow-black/30">
                             <div className={`h-1 w-full ${scTopBar(current)}`} />
                             <div className="p-4 flex flex-col items-center gap-3">

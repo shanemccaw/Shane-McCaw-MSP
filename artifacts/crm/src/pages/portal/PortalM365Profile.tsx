@@ -206,7 +206,11 @@ export default function PortalM365Profile() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [alert, setAlert] = useState<AlertState>(null);
-  const [activeTab, setActiveTab] = useState<TabId>("org");
+  const [activeTab, setActiveTab] = useState<TabId>(() => {
+    const param = new URLSearchParams(window.location.search).get("tab");
+    const valid: TabId[] = ["org", "licensing", "security", "copilot", "scorecards"];
+    return (valid.includes(param as TabId) ? param : "org") as TabId;
+  });
 
   const form = useForm<FormValues>({
     resolver: zodResolver(m365Schema),
