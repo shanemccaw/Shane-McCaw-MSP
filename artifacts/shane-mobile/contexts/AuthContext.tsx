@@ -13,6 +13,7 @@ interface AuthState {
   user: AuthUser | null;
   accessToken: string | null;
   isLoading: boolean;
+  sessionExpired: boolean;
 }
 
 interface AuthContextValue extends AuthState {
@@ -58,9 +59,15 @@ async function doLogin(email: string, password: string): Promise<{ accessToken: 
 }
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [state, setState] = useState<AuthState>({ user: null, accessToken: null, isLoading: true });
+  const [state, setState] = useState<AuthState>({
+    user: null,
+    accessToken: null,
+    isLoading: true,
+    sessionExpired: false,
+  });
   const tokenRef = useRef<string | null>(null);
   const credRef = useRef<{ email: string; password: string } | null>(null);
+  const reloggingRef = useRef(false);
   tokenRef.current = state.accessToken;
 
   useEffect(() => {
@@ -74,12 +81,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           if (data.user.role !== "admin") throw new Error("Not an admin");
           tokenRef.current = data.accessToken;
           await storeSet(KEY_TOKEN, data.accessToken);
-          setState({ user: data.user, accessToken: data.accessToken, isLoading: false });
+          setState({ user: data.user, accessToken: data.accessToken, isLoading: false, sessionExpired: false });
         } else {
-          setState({ user: null, accessToken: null, isLoading: false });
+          setState({ user: null, accessToken: null, isLoading: false, sessionExpired: false });
         }
       } catch {
-        setState({ user: null, accessToken: null, isLoading: false });
+        setState({ user: null, accessToken: null, isLoading: false, sessionExpired: false });
       }
     })();
   }, []);
@@ -92,18 +99,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     await storeSet(KEY_EMAIL, email);
     await storeSet(KEY_PASSWORD, password);
     await storeSet(KEY_TOKEN, data.accessToken);
-    setState({ user: data.user, accessToken: data.accessToken, isLoading: false });
+    setState({ user: data.user, accessToken: data.accessToken, isLoading: false, sessionExpired: false });
   }, []);
 
   const logout = useCallback(async () => {
     credRef.current = null;
     tokenRef.current = null;
+    reloggingRef.current = false;
     await Promise.allSettled([
       storeDel(KEY_EMAIL),
       storeDel(KEY_PASSWORD),
       storeDel(KEY_TOKEN),
     ]);
-    setState({ user: null, accessToken: null, isLoading: false });
+    setState({ user: null, accessToken: null, isLoading: false, sessionExpired: false });
   }, []);
 
   const fetchWithAuth = useCallback(async (path: string, init?: RequestInit): Promise<Response> => {
@@ -117,12 +125,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     let res = await fetch(`${BASE_URL}${path}`, { ...init, headers });
 
-    if (res.status === 401 && credRef.current) {
+    if (res.status === 401 && credRef.current && !reloggingRef.current) {
+      reloggingRef.current = true;
       try {
         const data = await doLogin(credRef.current.email, credRef.current.password);
         tokenRef.current = data.accessToken;
         await storeSet(KEY_TOKEN, data.accessToken);
-        setState((s) => ({ ...s, accessToken: data.accessToken, user: data.user }));
+        setState((s) => ({ ...s, accessToken: data.accessToken, user: data.user, sessionExpired: false }));
         const retryHeaders = new Headers(init?.headers);
         retryHeaders.set("Authorization", `Bearer ${data.accessToken}`);
         if (typeof init?.body === "string" && !retryHeaders.has("Content-Type")) {
@@ -130,7 +139,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
         res = await fetch(`${BASE_URL}${path}`, { ...init, headers: retryHeaders });
       } catch {
-        setState({ user: null, accessToken: null, isLoading: false });
+        credRef.current = null;
+        setState({ user: null, accessToken: null, isLoading: false, sessionExpired: true });
+      } finally {
+        reloggingRef.current = false;
       }
     }
 

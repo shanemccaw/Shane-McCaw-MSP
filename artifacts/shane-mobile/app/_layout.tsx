@@ -280,18 +280,16 @@ function PushSetup() {
 }
 
 function RootLayoutNav() {
-  const { user, isLoading } = useAuth();
+  const { user, isLoading, sessionExpired } = useAuth();
   const router = useRouter();
-  const prevUserRef = useRef<typeof user>(null);
+  const routerRef = useRef(router);
+  routerRef.current = router;
 
   useEffect(() => {
-    if (isLoading) return;
-    const wasLoggedIn = prevUserRef.current !== null;
-    prevUserRef.current = user;
-    if (wasLoggedIn && !user) {
-      router.replace("/login?reason=session_expired");
+    if (!isLoading && !user && sessionExpired) {
+      routerRef.current.replace("/login?reason=session_expired");
     }
-  }, [user, isLoading, router]);
+  }, [user, isLoading, sessionExpired]);
 
   if (isLoading) return null;
 

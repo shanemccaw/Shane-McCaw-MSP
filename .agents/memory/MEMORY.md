@@ -4,3 +4,4 @@
 - [API server dev script PORT fallback](api-server-port-fix.md) — Replit workflow system doesn't always inject PORT; dev script must export PORT=${PORT:-8080} or server throws on startup before opening any port
 - [Guest onboarding flow](guest-onboarding.md) — Stripe purchase creates account; registration locked; guest gives name+email before contract signing
 - [expo-secure-store web limitation](expo-secure-store-web.md) — exports empty object on web; use AsyncStorage instead for cross-platform credential storage
+- [Mobile auth session-expiry](mobile-auth-session-expiry.md) — use sessionExpired flag in AuthState, not user-diff, to drive login redirect
