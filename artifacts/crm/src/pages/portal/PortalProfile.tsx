@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
 import PortalLayout from "@/components/PortalLayout";
 
@@ -268,10 +268,13 @@ const editButton = (
 
 export default function PortalProfile() {
   const { fetchWithAuth } = useAuth();
+  const [, navigate] = useLocation();
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [alert, setAlert] = useState<AlertState>(null);
+  const [wizardResetting, setWizardResetting] = useState(false);
+  const [wizardConfirm, setWizardConfirm] = useState(false);
 
   const [name, setName] = useState("");
   const [company, setCompany] = useState("");
@@ -307,6 +310,18 @@ export default function PortalProfile() {
       .catch(() => null)
       .finally(() => setM365Loading(false));
   }, [fetchWithAuth]);
+
+  const handleWizardReset = async () => {
+    setWizardResetting(true);
+    try {
+      await fetchWithAuth("/api/portal/onboarding/wizard-reset", { method: "POST" });
+      navigate("/portal/onboarding/wizard");
+    } catch {
+      setAlert({ type: "error", message: "Could not reset the wizard. Please try again." });
+      setWizardResetting(false);
+      setWizardConfirm(false);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -544,6 +559,63 @@ export default function PortalProfile() {
               </div>
             </>
           )}
+        </div>
+
+        {/* ── Setup Wizard section ───────────────────────────────────────── */}
+        <div className="mt-10">
+          <h2 className="text-xl font-bold text-[#0A2540] mb-1">Setup Wizard</h2>
+          <p className="text-sm text-muted-foreground mb-4">
+            Re-run the onboarding wizard to update your M365 environment details or app registration credentials.
+          </p>
+          <div className="bg-white rounded-2xl border border-border shadow-sm overflow-hidden">
+            <div className="px-5 py-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+              <div className="flex items-start gap-3">
+                <div className="w-9 h-9 flex-shrink-0 bg-amber-50 rounded-xl flex items-center justify-center">
+                  <svg className="w-4.5 h-4.5 text-amber-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                  </svg>
+                </div>
+                <div>
+                  <p className="text-sm font-semibold text-[#0A2540]">Re-run the setup wizard</p>
+                  <p className="text-xs text-muted-foreground mt-0.5 max-w-sm">
+                    Skipped a step or need to update your environment details? Walk through the wizard again at any time.
+                  </p>
+                </div>
+              </div>
+              {!wizardConfirm ? (
+                <button
+                  type="button"
+                  onClick={() => setWizardConfirm(true)}
+                  className="flex-shrink-0 inline-flex items-center gap-1.5 text-xs font-semibold text-amber-700 border border-amber-300 bg-amber-50 px-4 py-2 rounded-xl hover:bg-amber-100 transition-colors"
+                >
+                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                  </svg>
+                  Re-run Setup Wizard
+                </button>
+              ) : (
+                <div className="flex-shrink-0 flex items-center gap-2">
+                  <span className="text-xs text-muted-foreground">Are you sure?</span>
+                  <button
+                    type="button"
+                    onClick={() => void handleWizardReset()}
+                    disabled={wizardResetting}
+                    className="inline-flex items-center gap-1.5 text-xs font-semibold text-white bg-amber-500 px-3 py-1.5 rounded-lg hover:bg-amber-600 transition-colors disabled:opacity-50"
+                  >
+                    {wizardResetting && <span className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />}
+                    Yes, re-run
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setWizardConfirm(false)}
+                    className="text-xs font-semibold text-muted-foreground hover:text-[#0A2540] px-3 py-1.5 rounded-lg hover:bg-gray-100 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
         </div>
       </div>
     </PortalLayout>

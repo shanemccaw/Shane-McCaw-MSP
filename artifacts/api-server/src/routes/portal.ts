@@ -414,6 +414,17 @@ router.post("/portal/onboarding/complete", requireAuth, async (req: Request, res
   res.json({ completedAt: now.toISOString() });
 });
 
+// ─── Onboarding wizard reset ──────────────────────────────────────────────────
+router.post("/portal/onboarding/wizard-reset", requireAuth, async (req: Request, res: Response) => {
+  const userId = req.user!.id;
+
+  await db.update(usersTable)
+    .set({ onboardingWizardCompletedAt: null })
+    .where(eq(usersTable.id, userId));
+
+  res.json({ reset: true });
+});
+
 // ─── ADMIN: Mark client App Registration as verified ─────────────────────────
 router.patch("/admin/clients/:id/app-registration", requireAdmin, async (req: Request, res: Response) => {
   const clientId = parseInt(String(req.params.id ?? ""), 10);
