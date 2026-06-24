@@ -1,8 +1,13 @@
 uploads = []
-outputs = []
 
 [[generated]]
 id = "B0esvp9gO-FF3QHuwN9jk"
 uri = "file://artifacts/shane-mobile/assets/images/icon.png"
 type = "image"
 title = "generated_image"
+
+[[outputs]]
+id = "UVO1rNdyhD_tCE9Plxi3r"
+uri = "file://artifacts/admin-panel/ADMIN_PORTAL_DOCS.md"
+type = "text"
+title = "Admin Portal Feature Reference"
