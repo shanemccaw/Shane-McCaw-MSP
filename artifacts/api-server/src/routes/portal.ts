@@ -379,6 +379,41 @@ router.put("/portal/app-registration", requireAuth, async (req: Request, res: Re
   });
 });
 
+// ─── Onboarding wizard status ─────────────────────────────────────────────────
+router.get("/portal/onboarding/wizard-status", requireAuth, async (req: Request, res: Response) => {
+  const userId = req.user!.id;
+
+  const [user] = await db.select({ onboardingWizardCompletedAt: usersTable.onboardingWizardCompletedAt })
+    .from(usersTable)
+    .where(eq(usersTable.id, userId));
+
+  if (!user) { res.status(404).json({ error: "User not found" }); return; }
+
+  if (user.onboardingWizardCompletedAt !== null) {
+    res.json({ needsOnboarding: false });
+    return;
+  }
+
+  // Check for any existing M365 profile data — if present, treat as already onboarded
+  const [profile] = await db.select({ id: clientM365ProfilesTable.clientId })
+    .from(clientM365ProfilesTable)
+    .where(eq(clientM365ProfilesTable.clientId, userId));
+
+  res.json({ needsOnboarding: !profile });
+});
+
+// ─── Onboarding wizard complete ───────────────────────────────────────────────
+router.post("/portal/onboarding/complete", requireAuth, async (req: Request, res: Response) => {
+  const userId = req.user!.id;
+  const now = new Date();
+
+  await db.update(usersTable)
+    .set({ onboardingWizardCompletedAt: now })
+    .where(eq(usersTable.id, userId));
+
+  res.json({ completedAt: now.toISOString() });
+});
+
 // ─── ADMIN: Mark client App Registration as verified ─────────────────────────
 router.patch("/admin/clients/:id/app-registration", requireAdmin, async (req: Request, res: Response) => {
   const clientId = parseInt(String(req.params.id ?? ""), 10);

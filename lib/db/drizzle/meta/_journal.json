@@ -421,6 +421,13 @@
       "when": 1782276288314,
       "tag": "0057_add_client_documents",
       "breakpoints": true
+    },
+    {
+      "idx": 58,
+      "version": "7",
+      "when": 1750780800000,
+      "tag": "0058_add_onboarding_wizard_completed_at",
+      "breakpoints": true
     }
   ]
 }

@@ -1,4 +1,4 @@
-import { Switch, Route, Router as WouterRouter, Redirect } from "wouter";
+import { Switch, Route, Router as WouterRouter, Redirect, useLocation } from "wouter";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import { Toaster } from "@/components/ui/toaster";
@@ -16,6 +16,7 @@ import ClientProjectDashboard from "@/pages/portal/ClientProjectDashboard";
 import OnboardingSelect from "@/pages/portal/OnboardingSelect";
 import OnboardingContract from "@/pages/portal/OnboardingContract";
 import OnboardingSuccess from "@/pages/portal/OnboardingSuccess";
+import OnboardingWizard from "@/pages/portal/OnboardingWizard";
 import PortalProfile from "@/pages/portal/PortalProfile";
 import PortalArchive from "@/pages/portal/PortalArchive";
 import PortalM365Profile from "@/pages/portal/PortalM365Profile";
@@ -24,7 +25,7 @@ import PortalSecurity from "@/pages/portal/PortalSecurity";
 import PortalInsights from "@/pages/portal/PortalInsights";
 import PortalJourneyMap from "@/pages/portal/PortalJourneyMap";
 import ResetPasswordPage from "@/pages/ResetPassword";
-import type { ReactNode } from "react";
+import { useState, useEffect, useRef, type ReactNode } from "react";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -46,6 +47,43 @@ function RequireAuth({ children, role }: { children: ReactNode; role?: "admin" |
     if (user.role === "admin") { window.location.href = "/admin-panel/"; return null; }
     return <Redirect to="/portal" />;
   }
+  return <>{children}</>;
+}
+
+function RequireOnboarding({ children }: { children: ReactNode }) {
+  const { user, fetchWithAuth } = useAuth();
+  const [, navigate] = useLocation();
+  const [checked, setChecked] = useState(false);
+  const [needsOnboarding, setNeedsOnboarding] = useState(false);
+  const fetchedRef = useRef(false);
+
+  useEffect(() => {
+    if (!user || user.role !== "client" || fetchedRef.current) return;
+    fetchedRef.current = true;
+    fetchWithAuth("/api/portal/onboarding/wizard-status")
+      .then(r => r.ok ? r.json() as Promise<{ needsOnboarding: boolean }> : { needsOnboarding: false })
+      .then(data => {
+        setNeedsOnboarding(data.needsOnboarding);
+        setChecked(true);
+      })
+      .catch(() => setChecked(true));
+  }, [user, fetchWithAuth]);
+
+  if (!user || user.role !== "client") return <>{children}</>;
+
+  if (!checked) {
+    return (
+      <div className="min-h-screen bg-[#F7F9FC] flex items-center justify-center">
+        <div className="w-8 h-8 border-4 border-[#0078D4] border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
+
+  if (needsOnboarding) {
+    navigate("/portal/onboarding/wizard");
+    return null;
+  }
+
   return <>{children}</>;
 }
 
@@ -75,57 +113,62 @@ function Router() {
         {() => { window.location.replace("/admin-panel/"); return null; }}
       </Route>
 
-      {/* Client portal routes */}
+      {/* Wizard — inside RequireAuth but NOT RequireOnboarding to avoid redirect loop */}
+      <Route path="/portal/onboarding/wizard">
+        <RequireAuth role="client"><OnboardingWizard /></RequireAuth>
+      </Route>
+
+      {/* Client portal routes — gated behind RequireOnboarding */}
       <Route path="/portal">
-        <RequireAuth role="client"><ClientProjectDashboard /></RequireAuth>
+        <RequireAuth role="client"><RequireOnboarding><ClientProjectDashboard /></RequireOnboarding></RequireAuth>
       </Route>
       <Route path="/portal/projects">
-        <RequireAuth role="client"><PortalProjects /></RequireAuth>
+        <RequireAuth role="client"><RequireOnboarding><PortalProjects /></RequireOnboarding></RequireAuth>
       </Route>
       <Route path="/portal/projects/:id">
-        <RequireAuth role="client"><PortalProjectDetail /></RequireAuth>
+        <RequireAuth role="client"><RequireOnboarding><PortalProjectDetail /></RequireOnboarding></RequireAuth>
       </Route>
       <Route path="/portal/services">
-        <RequireAuth role="client"><PortalServices /></RequireAuth>
+        <RequireAuth role="client"><RequireOnboarding><PortalServices /></RequireOnboarding></RequireAuth>
       </Route>
       <Route path="/portal/billing">
-        <RequireAuth role="client"><PortalBilling /></RequireAuth>
+        <RequireAuth role="client"><RequireOnboarding><PortalBilling /></RequireOnboarding></RequireAuth>
       </Route>
       <Route path="/portal/billing/invoices/:id">
-        <RequireAuth role="client"><PortalInvoiceDetail /></RequireAuth>
+        <RequireAuth role="client"><RequireOnboarding><PortalInvoiceDetail /></RequireOnboarding></RequireAuth>
       </Route>
       <Route path="/portal/billing/contracts/:id">
-        <RequireAuth role="client"><PortalContractDetail /></RequireAuth>
+        <RequireAuth role="client"><RequireOnboarding><PortalContractDetail /></RequireOnboarding></RequireAuth>
       </Route>
       <Route path="/portal/messages">
-        <RequireAuth role="client"><PortalMessages /></RequireAuth>
+        <RequireAuth role="client"><RequireOnboarding><PortalMessages /></RequireOnboarding></RequireAuth>
       </Route>
       <Route path="/portal/activity">
-        <RequireAuth role="client"><PortalActivity /></RequireAuth>
+        <RequireAuth role="client"><RequireOnboarding><PortalActivity /></RequireOnboarding></RequireAuth>
       </Route>
       <Route path="/portal/book-meeting">
-        <RequireAuth role="client"><PortalBookMeeting /></RequireAuth>
+        <RequireAuth role="client"><RequireOnboarding><PortalBookMeeting /></RequireOnboarding></RequireAuth>
       </Route>
       <Route path="/portal/profile">
-        <RequireAuth role="client"><PortalProfile /></RequireAuth>
+        <RequireAuth role="client"><RequireOnboarding><PortalProfile /></RequireOnboarding></RequireAuth>
       </Route>
       <Route path="/portal/archive">
-        <RequireAuth role="client"><PortalArchive /></RequireAuth>
+        <RequireAuth role="client"><RequireOnboarding><PortalArchive /></RequireOnboarding></RequireAuth>
       </Route>
       <Route path="/portal/m365-profile">
-        <RequireAuth role="client"><PortalM365Profile /></RequireAuth>
+        <RequireAuth role="client"><RequireOnboarding><PortalM365Profile /></RequireOnboarding></RequireAuth>
       </Route>
       <Route path="/portal/automation-setup">
-        <RequireAuth role="client"><PortalAppRegistration /></RequireAuth>
+        <RequireAuth role="client"><RequireOnboarding><PortalAppRegistration /></RequireOnboarding></RequireAuth>
       </Route>
       <Route path="/portal/security">
-        <RequireAuth role="client"><PortalSecurity /></RequireAuth>
+        <RequireAuth role="client"><RequireOnboarding><PortalSecurity /></RequireOnboarding></RequireAuth>
       </Route>
       <Route path="/portal/insights">
-        <RequireAuth role="client"><PortalInsights /></RequireAuth>
+        <RequireAuth role="client"><RequireOnboarding><PortalInsights /></RequireOnboarding></RequireAuth>
       </Route>
       <Route path="/portal/journey">
-        <RequireAuth role="client"><PortalJourneyMap /></RequireAuth>
+        <RequireAuth role="client"><RequireOnboarding><PortalJourneyMap /></RequireOnboarding></RequireAuth>
       </Route>
 
       {/* Public reset-password route — token validated server-side */}
