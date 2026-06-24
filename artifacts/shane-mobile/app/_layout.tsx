@@ -21,15 +21,73 @@ import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 
 SplashScreen.preventAutoHideAsync();
 
-// Register the "MESSAGE" category so iOS shows a Reply text-input action on
-// client-message notifications. Must be called before any notification arrives.
-Notifications.setNotificationCategoryAsync("MESSAGE", [
-  {
-    identifier: "REPLY",
-    buttonTitle: "Reply",
-    textInput: { submitButtonTitle: "Send", placeholder: "Message…" },
-  },
-]).catch(() => null);
+// Register all 8 notification categories
+async function registerNotificationCategories() {
+  const categories: Array<{ id: string; actions: Notifications.NotificationAction[] }> = [
+    {
+      id: "MESSAGE",
+      actions: [
+        {
+          identifier: "REPLY",
+          buttonTitle: "Reply",
+          textInput: { submitButtonTitle: "Send", placeholder: "Message…" },
+        },
+        { identifier: "MARK_READ", buttonTitle: "Mark Read" },
+      ],
+    },
+    {
+      id: "NEW_LEAD",
+      actions: [
+        { identifier: "VIEW_LEAD", buttonTitle: "View Lead" },
+        { identifier: "CONVERT", buttonTitle: "Qualify" },
+      ],
+    },
+    {
+      id: "RUNBOOK_COMPLETED",
+      actions: [
+        { identifier: "VIEW_RESULTS", buttonTitle: "View Results" },
+        { identifier: "ANALYZE_AI", buttonTitle: "Analyze with AI" },
+      ],
+    },
+    {
+      id: "HEALTH_ALERT",
+      actions: [
+        { identifier: "VIEW_CLIENT", buttonTitle: "View Client" },
+        { identifier: "RUN_SCRIPT", buttonTitle: "Run Script" },
+      ],
+    },
+    {
+      id: "NEXT_BEST_ACTION",
+      actions: [
+        { identifier: "MARK_DONE", buttonTitle: "Mark Done" },
+        { identifier: "SNOOZE", buttonTitle: "Snooze" },
+      ],
+    },
+    {
+      id: "STRIPE_PURCHASE",
+      actions: [{ identifier: "VIEW_PURCHASE", buttonTitle: "View Purchase" }],
+    },
+    {
+      id: "CONTRACT_SIGNED",
+      actions: [{ identifier: "VIEW_CONTRACT", buttonTitle: "View Contract" }],
+    },
+    {
+      id: "QUIZ_LEAD",
+      actions: [
+        { identifier: "VIEW_QUIZ", buttonTitle: "View Lead" },
+        { identifier: "CREATE_LEAD", buttonTitle: "Create Lead" },
+      ],
+    },
+  ];
+
+  await Promise.allSettled(
+    categories.map((cat) =>
+      Notifications.setNotificationCategoryAsync(cat.id, cat.actions)
+    )
+  );
+}
+
+registerNotificationCategories().catch(() => null);
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
@@ -40,7 +98,14 @@ Notifications.setNotificationHandler({
   }),
 });
 
-const queryClient = new QueryClient();
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: 30000,
+      retry: 1,
+    },
+  },
+});
 
 function PushSetup() {
   const { user, fetchWithAuth } = useAuth();
@@ -57,59 +122,92 @@ function PushSetup() {
   useEffect(() => {
     if (!user) return;
 
-    // Check if a resource still exists before navigating to its detail screen.
-    // On 404 redirect to the relevant list and surface a brief toast.
-    async function handleNotificationData(data: Record<string, string | undefined>) {
-      if (data.screen === "order" && data.id) {
+    async function handleNotificationData(
+      data: Record<string, string | undefined>,
+      actionIdentifier?: string,
+      userText?: string
+    ) {
+      // Handle specific action identifiers
+      if (actionIdentifier === "REPLY" && userText && data.clientId) {
+        try {
+          await fetchWithAuth("/api/portal/messages", {
+            method: "POST",
+            body: JSON.stringify({ body: userText, clientId: parseInt(data.clientId, 10) }),
+          });
+        } catch {
+          // Silent
+        }
+        return;
+      }
+
+      if (actionIdentifier === "MARK_DONE" && data.actionId) {
+        await fetchWithAuth(`/api/ai/next-best-actions/${data.actionId}/resolve`, {
+          method: "POST",
+          body: JSON.stringify({ status: "resolved" }),
+        }).catch(() => null);
+        return;
+      }
+
+      // Screen-based deep linking
+      const screen = data.screen;
+
+      if (screen === "purchase" && data.id) {
         try {
           const res = await fetchWithAuth(`/api/admin/purchases/${data.id}`);
           if (res.status === 404) {
-            router.push("/(tabs)/orders");
-            showToast("This order is no longer available");
+            router.push("/(tabs)/more/purchases");
+            showToast("This purchase is no longer available");
             return;
           }
         } catch {
-          // Network error — fall through to normal navigation
+          /* Network error */
         }
-        router.push(`/orders/${data.id}`);
-      } else if (data.screen === "conversation" && data.clientId) {
+        router.push(`/(tabs)/more/purchases/${data.id}`);
+      } else if (screen === "purchases") {
+        router.push("/(tabs)/more/purchases");
+      } else if (screen === "conversation" && data.clientId) {
         try {
           const res = await fetchWithAuth(`/api/portal/messages?clientId=${data.clientId}`);
           if (res.status === 404) {
-            router.push("/(tabs)/messages");
+            router.push("/(tabs)/more/messages");
             showToast("This conversation is no longer available");
             return;
           }
         } catch {
-          // Network error — fall through to normal navigation
+          /* Network error */
         }
-        router.push(`/messages/${data.clientId}`);
-      } else if (data.screen === "orders") {
-        router.push("/(tabs)/orders");
-      } else if (data.screen === "EmailActivity") {
-        if (data.messageId) {
-          router.push(`/(tabs)/email?messageId=${encodeURIComponent(data.messageId)}`);
-        } else {
-          router.push("/(tabs)/email");
-        }
+        router.push(`/(tabs)/more/messages/${data.clientId}?name=${encodeURIComponent(data.name ?? "Client")}`);
+      } else if (screen === "messages") {
+        router.push("/(tabs)/more/messages");
+      } else if (screen === "lead" && data.id) {
+        router.push(`/(tabs)/pipeline/leads/${data.id}`);
+      } else if (screen === "pipeline") {
+        router.push("/(tabs)/pipeline");
+      } else if (screen === "client" && data.id) {
+        router.push(`/(tabs)/clients/${data.id}?name=${encodeURIComponent(data.name ?? "Client")}`);
+      } else if (screen === "project" && data.id) {
+        router.push(`/(tabs)/projects/${data.id}`);
+      } else if (screen === "runbook" && data.jobId) {
+        router.push(`/(tabs)/more/script-runner?jobId=${data.jobId}`);
+      } else if (screen === "contract" && data.id) {
+        router.push("/(tabs)/more/contracts");
+      } else if (screen === "quiz" && data.id) {
+        router.push(`/(tabs)/pipeline/quiz/${data.id}`);
+      } else if (screen === "inbox") {
+        router.push("/(tabs)/more/inbox");
+      } else if (screen === "analytics") {
+        router.push("/(tabs)/more/analytics");
+      }
+      // Legacy routes kept for backwards compatibility
+      else if (screen === "order" && data.id) {
+        router.push(`/(tabs)/more/purchases/${data.id}`);
+      } else if (screen === "orders") {
+        router.push("/(tabs)/more/purchases");
+      } else if (screen === "EmailActivity") {
+        router.push("/(tabs)/more/inbox");
       }
     }
 
-    async function handleReply(clientId: string, text: string) {
-      try {
-        await fetchWithAuth("/api/portal/messages", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ body: text, clientId: parseInt(clientId, 10) }),
-        });
-      } catch {
-        // Reply failure is silent — user can open the app to retry
-      }
-    }
-
-    // Cold-start: launched by tapping a push notification while app was terminated.
-    // We persist the last-handled notification identifier so that normal relaunches
-    // (force-quit then reopen) don't re-navigate to a stale notification.
     const LAST_HANDLED_KEY = "lastHandledNotificationId";
     Notifications.getLastNotificationResponseAsync()
       .then(async (response) => {
@@ -119,36 +217,28 @@ function PushSetup() {
         if (lastHandled === notifId) return;
         await AsyncStorage.setItem(LAST_HANDLED_KEY, notifId).catch(() => null);
         const data = response.notification.request.content.data as Record<string, string | undefined>;
-        if (response.actionIdentifier === "REPLY" && response.userText && data.clientId) {
-          await handleReply(data.clientId, response.userText);
-        } else {
-          await handleNotificationData(data);
-        }
+        await handleNotificationData(data, response.actionIdentifier, response.userText);
       })
       .catch(() => null);
 
-    // Foreground notification: increment the app icon badge count for order and
-    // message pushes only (unrelated system pushes should not inflate the badge).
     const receiveSub = Notifications.addNotificationReceivedListener(async (notification) => {
       const data = notification.request.content.data as Record<string, string | undefined>;
-      const isRelevant = data.screen === "order" || data.screen === "orders" || data.screen === "conversation" || data.screen === "EmailActivity";
+      const isRelevant = [
+        "purchase", "purchases", "conversation", "messages", "lead", "client", "project",
+        "runbook", "quiz", "order", "orders", "EmailActivity", "inbox",
+      ].includes(data.screen ?? "");
       if (!isRelevant) return;
       try {
         const current = await Notifications.getBadgeCountAsync();
         await Notifications.setBadgeCountAsync(current + 1);
       } catch {
-        // Badge update is best-effort
+        /* Badge is best-effort */
       }
     });
 
-    // Foreground / background tap routing and inline reply handling
     const tapSub = Notifications.addNotificationResponseReceivedListener(async (response) => {
       const data = response.notification.request.content.data as Record<string, string | undefined>;
-      if (response.actionIdentifier === "REPLY" && response.userText && data.clientId) {
-        await handleReply(data.clientId, response.userText);
-      } else {
-        await handleNotificationData(data);
-      }
+      await handleNotificationData(data, response.actionIdentifier, response.userText);
     });
 
     return () => {
@@ -180,7 +270,7 @@ function PushSetup() {
           body: JSON.stringify({ token: tokenData.data, platform: "ios" }),
         });
       } catch {
-        // Push setup is best-effort
+        /* Push setup is best-effort */
       }
     })();
   }, [user, fetchWithAuth]);
