@@ -64,7 +64,7 @@ export default function PortalReports() {
 
   return (
     <PortalLayout>
-      <div className="px-6 py-8 max-w-4xl mx-auto">
+      <div className="px-4 sm:px-6 py-6 sm:py-8 max-w-4xl mx-auto">
         <div className="mb-8">
           <h1 className="text-2xl font-extrabold text-[#0A2540]">Reporting Center</h1>
           <p className="text-muted-foreground text-sm mt-1">All reports from Shane — download or review at any time.</p>

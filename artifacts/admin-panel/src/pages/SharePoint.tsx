@@ -160,7 +160,7 @@ export default function SharePointPage() {
   const isConfigured = !!(config?.hubSiteId && config.graphConfigured);
 
   return (
-    <div className="p-6 max-w-5xl">
+    <div className="p-4 sm:p-6 max-w-5xl">
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-[#E6EDF3]">Hub Storage</h1>
         <p className="text-sm text-muted-foreground mt-1">Browse your SharePoint hub site and manage per-client site provisioning.</p>

@@ -271,7 +271,7 @@ export default function OnboardingSelect() {
         </div>
       </div>
 
-      <div className="max-w-5xl mx-auto px-6 py-10">
+      <div className="max-w-5xl mx-auto px-4 sm:px-6 py-6 sm:py-10">
         <div className="mb-8">
           <h1 className="text-2xl md:text-3xl font-extrabold text-[#0A2540] mb-2">
             Choose your services

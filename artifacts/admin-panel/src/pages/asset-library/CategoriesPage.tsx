@@ -76,7 +76,7 @@ export default function CategoriesPage() {
   };
 
   return (
-    <div className="p-6 max-w-3xl mx-auto">
+    <div className="p-4 sm:p-6 max-w-3xl mx-auto">
       <div className="mb-6">
         <h1 className="text-xl font-bold text-[#E6EDF3]">Asset Library Categories</h1>
         <p className="text-sm text-[#7D8590] mt-0.5">Shared categories for Instruction Sets, Checklists, Artifact Sets, and Deliverable Sets. Renaming a category updates all assets using it.</p>

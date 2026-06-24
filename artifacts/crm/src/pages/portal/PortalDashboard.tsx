@@ -128,7 +128,7 @@ export default function PortalDashboard() {
 
   return (
     <PortalLayout unreadNotifications={data?.unreadNotifications} unreadMessages={data?.unreadMessages}>
-      <div className="px-6 py-8 max-w-7xl mx-auto">
+      <div className="px-4 sm:px-6 py-6 sm:py-8 max-w-7xl mx-auto">
         {/* Header */}
         <div className="mb-8 flex items-start justify-between gap-4 flex-wrap">
           <div>

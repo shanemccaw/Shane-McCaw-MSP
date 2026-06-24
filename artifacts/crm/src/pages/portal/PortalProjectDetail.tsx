@@ -923,7 +923,7 @@ export default function PortalProjectDetail() {
 
   return (
     <PortalLayout>
-      <div className="px-6 py-8 max-w-7xl mx-auto">
+      <div className="px-4 sm:px-6 py-6 sm:py-8 max-w-7xl mx-auto">
         {/* Breadcrumb */}
         <nav className="flex items-center gap-2 text-sm text-muted-foreground mb-6">
           <Link href="/portal/projects"><span className="hover:text-[#0078D4] cursor-pointer">Projects</span></Link>

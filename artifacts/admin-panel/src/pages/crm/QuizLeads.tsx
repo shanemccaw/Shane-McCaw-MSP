@@ -356,7 +356,7 @@ export default function QuizLeadsPage() {
   const totalPages = Math.ceil(total / LIMIT);
 
   return (
-    <div className="p-6 max-w-[1200px]">
+    <div className="p-4 sm:p-6 max-w-[1200px]">
       <div className="mb-6">
         <h1 className="text-xl font-bold text-[#E6EDF3]">Quiz Leads</h1>
         <p className="text-sm text-muted-foreground mt-0.5">Prospects who completed any assessment quiz.</p>

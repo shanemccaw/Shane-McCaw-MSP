@@ -99,7 +99,7 @@ export default function ArticlesPage() {
   }
 
   return (
-    <div className="p-6 max-w-5xl mx-auto">
+    <div className="p-4 sm:p-6 max-w-5xl mx-auto">
       {/* Header */}
       {view !== "edit" && (
         <div className="flex items-center justify-between mb-6">

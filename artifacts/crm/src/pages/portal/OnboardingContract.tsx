@@ -576,7 +576,7 @@ export default function OnboardingContract() {
         </div>
       </div>
 
-      <div className="max-w-4xl mx-auto px-6 py-10">
+      <div className="max-w-4xl mx-auto px-4 sm:px-6 py-6 sm:py-10">
         <div className="bg-white border border-border rounded-xl px-5 py-4 mb-6">
           <p className="text-xs text-muted-foreground mb-3">You're purchasing</p>
           <div className="space-y-2">

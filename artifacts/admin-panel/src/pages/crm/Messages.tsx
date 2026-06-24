@@ -84,7 +84,7 @@ export default function MessagesPage() {
   };
 
   return (
-    <div className="p-6 max-w-[1400px]">
+    <div className="p-4 sm:p-6 max-w-[1400px]">
       <div className="mb-6">
         <h1 className="text-xl font-bold text-[#E6EDF3]">Messages</h1>
         <p className="text-sm text-muted-foreground mt-0.5">Communicate with clients directly.</p>

@@ -173,7 +173,7 @@ export default function PortalContractDetail() {
   if (notFound) {
     return (
       <PortalLayout>
-        <div className="px-6 py-8 max-w-3xl mx-auto text-center">
+        <div className="px-4 sm:px-6 py-6 sm:py-8 max-w-3xl mx-auto text-center">
           <p className="text-muted-foreground">Contract not found.</p>
           <Link href="/portal/billing">
             <span className="mt-4 inline-block text-[#0078D4] text-sm font-semibold hover:underline">← Back to Billing</span>
@@ -202,7 +202,7 @@ export default function PortalContractDetail() {
   return (
     <PortalLayout>
       <div className="min-h-screen bg-slate-100 pb-16">
-        <div className="max-w-3xl mx-auto px-6 pt-8">
+        <div className="max-w-3xl mx-auto px-4 sm:px-6 pt-6 sm:pt-8">
 
           {/* Back button */}
           <button
@@ -249,7 +249,7 @@ export default function PortalContractDetail() {
           </div>
 
           {/* ── PAPER DOCUMENT ── */}
-          <div className="bg-white shadow-lg rounded-sm px-14 py-12 mb-8">
+          <div className="bg-white shadow-lg rounded-sm px-6 sm:px-14 py-8 sm:py-12 mb-8">
 
             {loading ? (
               <div className="space-y-4">
@@ -340,7 +340,7 @@ export default function PortalContractDetail() {
                 <div className="border-t border-slate-200 mt-8 mb-8" />
 
                 {/* ── SIGNATURE BLOCK ── */}
-                <div className="grid grid-cols-2 gap-10">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 sm:gap-10">
                   {/* Consultant column */}
                   <div>
                     <p className="text-[0.65rem] font-bold uppercase tracking-widest text-muted-foreground mb-6">

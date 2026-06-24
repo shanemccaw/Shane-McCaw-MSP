@@ -1029,7 +1029,7 @@ export default function ServicesPage() {
                 </div>
 
                 {/* Pricing */}
-                <div className="grid grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                   <div>
                     <label className="block text-xs font-semibold text-[#7D8590] mb-1.5 uppercase tracking-wide">Fixed Price ($)</label>
                     <input type="number" value={form.price ?? ""} min="0" step="0.01"
@@ -1052,7 +1052,7 @@ export default function ServicesPage() {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
                     <label className="block text-xs font-semibold text-[#7D8590] mb-1.5 uppercase tracking-wide">Duration (days)</label>
                     <input type="number" value={form.durationDays ?? ""} min="1"
@@ -1165,7 +1165,7 @@ export default function ServicesPage() {
                       />
                       <p className="mt-1 text-xs text-[#7D8590]">Press Enter or Tab to add each item.</p>
                     </div>
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                       <div>
                         <label className="block text-xs font-semibold text-[#7D8590] mb-1.5 uppercase tracking-wide">Badge</label>
                         <input type="text" value={form.badge ?? ""}
@@ -1181,7 +1181,7 @@ export default function ServicesPage() {
                           className="w-full border border-[#30363D] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4] bg-[#1C2128] text-[#E6EDF3]" />
                       </div>
                     </div>
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                       <div>
                         <label className="block text-xs font-semibold text-[#7D8590] mb-1.5 uppercase tracking-wide">Icon</label>
                         <select

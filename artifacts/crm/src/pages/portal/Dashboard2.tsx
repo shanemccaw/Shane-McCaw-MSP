@@ -398,7 +398,7 @@ export default function Dashboard2() {
 
                   {/* Task summary stats */}
                   {activeTasks.length > 0 && (
-                    <div className="grid grid-cols-3 gap-4 mt-6">
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-6">
                       <div className="bg-white rounded-xl border border-[#c6c6cd] d2-card-elevation px-6 py-5 flex items-center gap-4">
                         <div className="w-10 h-10 rounded-full bg-[#dae2fd] flex items-center justify-center flex-shrink-0">
                           <span className="material-symbols-outlined text-[#0078D4]" style={{ fontSize: 20 }}>task_alt</span>
@@ -542,7 +542,7 @@ export default function Dashboard2() {
             <h3 className="text-2xl font-semibold text-[#191c1e]">Billing &amp; Invoices</h3>
 
             {/* Stats row */}
-            <div className="grid grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <div className="bg-white rounded-xl border border-[#c6c6cd] d2-card-elevation px-6 py-5 flex items-center gap-4">
                 <div className="w-10 h-10 rounded-full bg-[#dae2fd] flex items-center justify-center flex-shrink-0">
                   <span className="material-symbols-outlined text-[#0078D4]" style={{ fontSize: 20 }}>receipt_long</span>
@@ -573,8 +573,8 @@ export default function Dashboard2() {
             </div>
 
             {/* Invoice list */}
-            <div className="bg-white rounded-xl border border-[#c6c6cd] d2-card-elevation overflow-hidden">
-              <table className="w-full text-sm">
+            <div className="bg-white rounded-xl border border-[#c6c6cd] d2-card-elevation overflow-x-auto">
+              <table className="w-full text-sm min-w-[480px]">
                 <thead>
                   <tr className="border-b border-[#e8e9eb] bg-[#f7f9fc]">
                     <th className="text-left text-[11px] font-semibold text-[#76777d] uppercase tracking-wider px-5 py-3">Invoice</th>

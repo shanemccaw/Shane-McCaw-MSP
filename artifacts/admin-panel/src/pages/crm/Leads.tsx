@@ -124,7 +124,7 @@ export default function LeadsPage() {
   ];
 
   return (
-    <div className="p-6 max-w-[1200px]">
+    <div className="p-4 sm:p-6 max-w-[1200px]">
       <QualificationModal />
       <div className="mb-6">
         <h1 className="text-xl font-bold text-[#E6EDF3]">Leads</h1>

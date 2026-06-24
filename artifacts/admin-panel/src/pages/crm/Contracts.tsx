@@ -65,8 +65,8 @@ export default function ContractsPage() {
   const contractToDelete = contracts.find(c => c.id === pendingDeleteId);
 
   return (
-    <div className="p-6 max-w-[1200px]">
-      <div className="mb-6 flex items-center justify-between">
+    <div className="p-4 sm:p-6 max-w-[1200px]">
+      <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-xl font-bold text-[#E6EDF3]">Contracts</h1>
           <p className="text-sm text-muted-foreground mt-0.5">Contracts appear here after clients complete the onboarding agreement step.</p>

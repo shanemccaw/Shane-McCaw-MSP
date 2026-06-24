@@ -370,7 +370,7 @@ export default function PortalInsights() {
 
   return (
     <PortalLayout>
-      <div className="px-6 py-8 max-w-7xl mx-auto">
+      <div className="px-4 sm:px-6 py-6 sm:py-8 max-w-7xl mx-auto">
         {/* Header */}
         <div className="mb-6">
           <h1 className="text-2xl font-extrabold text-[#0A2540]">Insights Hub</h1>

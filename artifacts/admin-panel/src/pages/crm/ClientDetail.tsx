@@ -594,7 +594,7 @@ export default function ClientDetailPage() {
   ];
 
   return (
-    <div className="p-6 max-w-[1440px] space-y-5">
+    <div className="p-4 sm:p-6 max-w-[1440px] space-y-5">
 
       {/* ── Header ──────────────────────────────────────────────────────────── */}
       <div className="bg-[#161B22] border border-border rounded-xl overflow-hidden">

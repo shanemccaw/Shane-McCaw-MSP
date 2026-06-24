@@ -79,7 +79,7 @@ export default function DocumentsPage() {
   };
 
   return (
-    <div className="p-6 max-w-[1200px]">
+    <div className="p-4 sm:p-6 max-w-[1200px]">
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-xl font-bold text-[#E6EDF3]">Documents</h1>

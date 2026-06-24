@@ -688,9 +688,9 @@ export default function ClientsPage() {
     "w-full border border-border rounded-lg px-3 py-2 text-sm text-[#E6EDF3] focus:outline-none focus:ring-2 focus:ring-[#0078D4] bg-[#1C2128]";
 
   return (
-    <div className="p-6 max-w-[1400px]">
+    <div className="p-4 sm:p-6 max-w-[1400px]">
       {/* ── Header ─────────────────────────────────────────────────── */}
-      <div className="flex items-center justify-between mb-5">
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-5">
         <div>
           <h1 className="text-xl font-bold text-[#E6EDF3]">Clients</h1>
           <p className="text-sm text-muted-foreground mt-0.5">

@@ -121,7 +121,7 @@ export default function PurchaseDetailPage() {
 
   if (error || !detail) {
     return (
-      <div className="p-6 max-w-[900px]">
+      <div className="p-4 sm:p-6 max-w-[900px]">
         <button onClick={() => navigate("/crm/purchases")} className="text-sm text-[#0078D4] hover:underline mb-4 flex items-center gap-1">
           ← Purchases
         </button>
@@ -142,7 +142,7 @@ export default function PurchaseDetailPage() {
   });
 
   return (
-    <div className="p-6 max-w-[900px] space-y-6">
+    <div className="p-4 sm:p-6 max-w-[900px] space-y-6">
       <div>
         <button
           onClick={() => navigate("/crm/purchases")}

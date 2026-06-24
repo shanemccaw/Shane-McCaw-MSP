@@ -619,7 +619,7 @@ export default function PortalBilling() {
 
   return (
     <PortalLayout>
-      <div className="px-6 py-8 max-w-4xl mx-auto">
+      <div className="px-4 sm:px-6 py-6 sm:py-8 max-w-4xl mx-auto">
         <div className="mb-8">
           <h1 className="text-2xl font-extrabold text-[#0A2540]">Billing & Invoices</h1>
           <p className="text-muted-foreground text-sm mt-1">Manage your retainer subscriptions and view invoices.</p>

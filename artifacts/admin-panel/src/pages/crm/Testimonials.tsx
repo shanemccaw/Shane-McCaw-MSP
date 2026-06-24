@@ -42,7 +42,7 @@ export default function TestimonialsPage() {
   const signedOff = items.filter(i => !i.permissionGranted || !i.feedback?.trim());
 
   return (
-    <div className="p-6 max-w-4xl">
+    <div className="p-4 sm:p-6 max-w-4xl">
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-[#E6EDF3]">Testimonials</h1>
         <p className="text-sm text-muted-foreground mt-1">

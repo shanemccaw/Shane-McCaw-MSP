@@ -143,9 +143,9 @@ export default function OpportunityDetailPage({ params }: { params: { id: string
   const totalTasks = opportunity.tasks.length;
 
   return (
-    <div className="p-6 max-w-[1000px] space-y-6">
+    <div className="p-4 sm:p-6 max-w-[1000px] space-y-6">
       {/* Header */}
-      <div className="sticky top-0 z-10 -mx-6 -mt-6 px-6 pt-5 pb-4 bg-[#0D1117] border-b border-border">
+      <div className="sticky top-0 z-10 -mx-4 sm:-mx-6 -mt-4 sm:-mt-6 px-4 sm:px-6 pt-5 pb-4 bg-[#0D1117] border-b border-border">
         <div className="flex items-start gap-4 flex-wrap">
           <button
             onClick={() => navigate("/crm/opportunities")}

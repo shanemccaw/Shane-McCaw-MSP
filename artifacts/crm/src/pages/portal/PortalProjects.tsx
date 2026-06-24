@@ -333,11 +333,11 @@ export default function PortalProjects() {
 
   return (
     <PortalLayout>
-      <div className="px-6 py-10 max-w-5xl mx-auto">
+      <div className="px-4 sm:px-6 py-6 sm:py-10 max-w-5xl mx-auto">
 
         {/* Page header */}
         <div className="mb-12">
-          <div className="flex items-end justify-between mb-4">
+          <div className="flex flex-wrap items-end justify-between gap-3 mb-4">
             <div>
               <span className="inline-block bg-[#00B4D8]/15 text-[#0078D4] font-mono text-[10px] px-2 py-0.5 rounded uppercase tracking-widest mb-2">
                 Global Portfolio

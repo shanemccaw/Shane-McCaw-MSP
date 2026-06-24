@@ -631,8 +631,8 @@ export default function ProjectsPage() {
   });
 
   return (
-    <div className="p-6 max-w-[1200px]">
-      <div className="flex items-center justify-between mb-6">
+    <div className="p-4 sm:p-6 max-w-[1200px]">
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
         <div>
           <h1 className="text-xl font-bold text-[#E6EDF3]">Projects</h1>
           <p className="text-sm text-muted-foreground mt-0.5">

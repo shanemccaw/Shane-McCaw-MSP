@@ -146,7 +146,7 @@ function PageTagsChecklist({
       <p className="text-xs text-[#7D8590] mb-3">
         Choose which service pages show this project in their "Project Engagements" section.
       </p>
-      <div className="grid grid-cols-2 gap-2">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
         {SERVICE_PAGES.map(({ slug, label }) => (
           <label
             key={slug}
@@ -282,7 +282,7 @@ export default function EngagementProjectsPage() {
   }
 
   return (
-    <div className="p-6 max-w-5xl mx-auto">
+    <div className="p-4 sm:p-6 max-w-5xl mx-auto">
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-xl font-extrabold text-[#E6EDF3]">Engagement Projects</h1>

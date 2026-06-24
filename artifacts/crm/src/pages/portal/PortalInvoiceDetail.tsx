@@ -160,7 +160,7 @@ export default function PortalInvoiceDetail() {
   if (notFound) {
     return (
       <PortalLayout>
-        <div className="px-6 py-8 max-w-3xl mx-auto text-center">
+        <div className="px-4 sm:px-6 py-6 sm:py-8 max-w-3xl mx-auto text-center">
           <p className="text-muted-foreground">Invoice not found.</p>
           <Link href="/portal/billing">
             <span className="mt-4 inline-block text-[#0078D4] text-sm font-semibold hover:underline">← Back to Billing</span>
@@ -201,7 +201,7 @@ export default function PortalInvoiceDetail() {
 
   return (
     <PortalLayout>
-      <div className="px-6 py-8 max-w-3xl mx-auto">
+      <div className="px-4 sm:px-6 py-6 sm:py-8 max-w-3xl mx-auto">
         {/* Breadcrumb */}
         <nav className="flex items-center gap-2 text-sm text-muted-foreground mb-6">
           <Link href="/portal/billing">
@@ -289,7 +289,7 @@ export default function PortalInvoiceDetail() {
         {/* Bill From / Bill To */}
         <div className="bg-white border border-border rounded-2xl p-6 mb-5 shadow-sm">
           {loading ? (
-            <div className="grid grid-cols-2 gap-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
               <div className="space-y-2">
                 <SkeletonBlock className="h-3 w-20" />
                 <SkeletonBlock className="h-4 w-40" />

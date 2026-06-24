@@ -117,7 +117,7 @@ export default function PortalActivity() {
 
   return (
     <PortalLayout>
-      <div className="px-6 py-8 max-w-4xl mx-auto">
+      <div className="px-4 sm:px-6 py-6 sm:py-8 max-w-4xl mx-auto">
         <div className="mb-6">
           <h1 className="text-2xl font-extrabold text-[#0A2540]">Activity</h1>
           <p className="text-sm text-muted-foreground mt-1">A record of all actions taken on your account.</p>

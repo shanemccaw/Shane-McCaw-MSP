@@ -1097,7 +1097,7 @@ export default function OverviewPage() {
   ];
 
   return (
-    <div className="p-6 max-w-[1400px] space-y-6">
+    <div className="p-4 sm:p-6 max-w-[1400px] space-y-6">
       {/* Header */}
       <div>
         <h1 className="text-xl font-bold text-[#E6EDF3]">Executive Overview</h1>
