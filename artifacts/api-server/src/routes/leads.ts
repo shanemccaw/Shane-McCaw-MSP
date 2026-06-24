@@ -1,6 +1,9 @@
 import { Router, type IRouter, type Request, type Response } from "express";
-import { db, leadsTable, emailsTable, servicesTable, quizLeadsTable } from "@workspace/db";
-import { eq, desc, count, gte, and, ilike, or, type SQL } from "drizzle-orm";
+import {
+  db, leadsTable, emailsTable, servicesTable, quizLeadsTable,
+  leadQualificationsTable,
+} from "@workspace/db";
+import { eq, desc, count, gte, and, ilike, or, type SQL, lt } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/requireAuth";
 import {
   sendEmailOrThrow,
@@ -15,6 +18,7 @@ import {
 } from "../lib/mailer";
 import { createAuditLog } from "../lib/audit";
 import { generateServiceOverviewPdf } from "../lib/service-overview-pdf";
+import { scoreLead, determineNextStep } from "../lib/lead-scorer";
 import fs from "fs";
 import path from "path";
 
@@ -301,7 +305,24 @@ router.patch("/leads/:id", requireAdmin, async (req: Request, res: Response) => 
     return;
   }
 
-  const { status, message, company } = req.body as { status?: string; message?: string; company?: string };
+  const {
+    status, message, company,
+    industry, employeeCount, licenseTier, tenantAge, itTeamSize,
+    painPoints, maturityIndicators, engagementSignals, urgencySignals,
+  } = req.body as {
+    status?: string;
+    message?: string;
+    company?: string;
+    industry?: string;
+    employeeCount?: number;
+    licenseTier?: string;
+    tenantAge?: number;
+    itTeamSize?: number;
+    painPoints?: string[];
+    maturityIndicators?: string[];
+    engagementSignals?: string[];
+    urgencySignals?: string[];
+  };
 
   const validStatuses = ["new", "contacted", "qualified", "converted", "archived"];
   if (status && !validStatuses.includes(status)) {
@@ -309,16 +330,31 @@ router.patch("/leads/:id", requireAdmin, async (req: Request, res: Response) => 
     return;
   }
 
-  const updates: Partial<{ status: "new" | "contacted" | "qualified" | "converted" | "archived"; message: string | null; company: string | null; updatedAt: Date }> = {
-    updatedAt: new Date(),
-  };
-  if (status) updates.status = status as "new" | "contacted" | "qualified" | "converted" | "archived";
+  // Build update payload
+  const updates: Record<string, unknown> = { updatedAt: new Date() };
+  if (status) updates.status = status;
   if (message !== undefined) updates.message = message ?? null;
   if (company !== undefined) updates.company = company ?? null;
+  if (industry !== undefined) updates.industry = industry ?? null;
+  if (employeeCount !== undefined) updates.employeeCount = employeeCount ?? null;
+  if (licenseTier !== undefined) updates.licenseTier = licenseTier ?? null;
+  if (tenantAge !== undefined) updates.tenantAge = tenantAge ?? null;
+  if (itTeamSize !== undefined) updates.itTeamSize = itTeamSize ?? null;
+  if (painPoints !== undefined) updates.painPoints = painPoints;
+  if (maturityIndicators !== undefined) updates.maturityIndicators = maturityIndicators;
+  if (engagementSignals !== undefined) updates.engagementSignals = engagementSignals;
+  if (urgencySignals !== undefined) updates.urgencySignals = urgencySignals;
+
+  // Fetch current lead before update for scoring comparison
+  const [currentLead] = await db.select().from(leadsTable).where(eq(leadsTable.id, id)).limit(1);
+  if (!currentLead) {
+    res.status(404).json({ error: "Lead not found" });
+    return;
+  }
 
   const [updated] = await db
     .update(leadsTable)
-    .set(updates)
+    .set(updates as Partial<typeof leadsTable.$inferInsert>)
     .where(eq(leadsTable.id, id))
     .returning();
 
@@ -341,7 +377,115 @@ router.patch("/leads/:id", requireAdmin, async (req: Request, res: Response) => 
     });
   }
 
-  res.json(updated);
+  // ── Qualification scoring ──────────────────────────────────────────────────
+  // Only score if qualifying profile fields changed
+  const qualFieldsChanged = (
+    industry !== undefined ||
+    employeeCount !== undefined ||
+    licenseTier !== undefined ||
+    tenantAge !== undefined ||
+    itTeamSize !== undefined ||
+    painPoints !== undefined ||
+    maturityIndicators !== undefined ||
+    engagementSignals !== undefined ||
+    urgencySignals !== undefined
+  );
+
+  let qualificationPending = false;
+
+  if (qualFieldsChanged) {
+    const scoreResult = scoreLead({
+      industry: updated.industry,
+      employeeCount: updated.employeeCount,
+      licenseTier: updated.licenseTier,
+      tenantAge: updated.tenantAge,
+      itTeamSize: updated.itTeamSize,
+      painPoints: (updated.painPoints as string[]) ?? [],
+      maturityIndicators: (updated.maturityIndicators as string[]) ?? [],
+      engagementSignals: (updated.engagementSignals as string[]) ?? [],
+      urgencySignals: (updated.urgencySignals as string[]) ?? [],
+      companySize: updated.companySize,
+      serviceArea: updated.serviceArea,
+      source: updated.source,
+    });
+
+    const prevScore = currentLead.score ?? 0;
+    const newScore = scoreResult.total;
+
+    // Determine if a threshold was crossed (60 = AQL, 75 = SQL)
+    const crossedAQL = prevScore < 60 && newScore >= 60;
+    const crossedSQL = prevScore < 75 && newScore >= 75;
+    const stage: "AQL" | "SQL" | null = crossedSQL ? "SQL" : crossedAQL ? "AQL" : null;
+
+    if (stage) {
+      // 24-hour cooldown — check for existing pending or recent qualification
+      const cooldownStart = new Date(Date.now() - 24 * 60 * 60 * 1000);
+      const recentQuals = await db
+        .select({ id: leadQualificationsTable.id })
+        .from(leadQualificationsTable)
+        .where(
+          and(
+            eq(leadQualificationsTable.leadId, id),
+            gte(leadQualificationsTable.createdAt, cooldownStart),
+          ),
+        )
+        .limit(1);
+
+      if (recentQuals.length === 0) {
+        const nextStep = determineNextStep(newScore, (updated.painPoints as string[]) ?? []);
+
+        await db.insert(leadQualificationsTable).values({
+          leadId: id,
+          newScore,
+          previousScore: prevScore,
+          stage,
+          recommendedNextStep: nextStep.label,
+          workflowType: nextStep.workflowType,
+          evidence: scoreResult.evidence,
+          scoreFit: scoreResult.fit,
+          scorePain: scoreResult.pain,
+          scoreMaturity: scoreResult.maturity,
+          scoreIntent: scoreResult.intent,
+          scoreUrgency: scoreResult.urgency,
+          status: "pending",
+        });
+
+        // Update lead score + stage
+        await db
+          .update(leadsTable)
+          .set({
+            score: newScore,
+            previousScore: prevScore,
+            stage,
+            lastQualifiedAt: new Date(),
+            updatedAt: new Date(),
+          })
+          .where(eq(leadsTable.id, id));
+
+        qualificationPending = true;
+      } else {
+        // Cooldown active — still update score AND stage so the lead's band is accurate.
+        // No new qualification record is inserted; the existing pending one covers this window.
+        await db
+          .update(leadsTable)
+          .set({ score: newScore, previousScore: prevScore, stage, updatedAt: new Date() })
+          .where(eq(leadsTable.id, id));
+      }
+    } else {
+      // Update score without triggering qualification
+      await db
+        .update(leadsTable)
+        .set({ score: newScore, previousScore: prevScore, updatedAt: new Date() })
+        .where(eq(leadsTable.id, id));
+    }
+
+    // Re-fetch updated lead for response
+    const [finalLead] = await db.select().from(leadsTable).where(eq(leadsTable.id, id)).limit(1);
+    res.json({ ...(finalLead ?? updated), qualificationPending });
+    return;
+  }
+
+  res.json({ ...updated, qualificationPending });
 });
 
 export default router;

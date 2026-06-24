@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect } from "react";
 import { useLocation } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
+import QualificationModal from "@/components/QualificationModal";
 
 type LeadStatus = "new" | "contacted" | "qualified" | "converted" | "archived";
 type LeadSource = "contact_form" | "lead_magnet";
@@ -124,6 +125,7 @@ export default function LeadsPage() {
 
   return (
     <div className="p-6 max-w-[1200px]">
+      <QualificationModal />
       <div className="mb-6">
         <h1 className="text-xl font-bold text-[#E6EDF3]">Leads</h1>
         <p className="text-sm text-muted-foreground mt-0.5">Manage inbound leads from the contact form and lead magnet.</p>

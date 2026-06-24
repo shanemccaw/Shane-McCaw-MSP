@@ -48,6 +48,21 @@ export const leadsTable = pgTable("leads", {
   howFound: text("how_found"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  // Qualification Engine — scoring fields
+  score: integer("score").notNull().default(0),
+  previousScore: integer("previous_score").notNull().default(0),
+  stage: text("stage", { enum: ["Lead", "AQL", "SQL"] }).notNull().default("Lead"),
+  lastQualifiedAt: timestamp("last_qualified_at"),
+  // Qualification Engine — profile fields
+  industry: text("industry"),
+  employeeCount: integer("employee_count"),
+  licenseTier: text("license_tier"),
+  tenantAge: integer("tenant_age"),
+  itTeamSize: integer("it_team_size"),
+  painPoints: jsonb("pain_points").$type<string[]>().notNull().default([]),
+  maturityIndicators: jsonb("maturity_indicators").$type<string[]>().notNull().default([]),
+  engagementSignals: jsonb("engagement_signals").$type<string[]>().notNull().default([]),
+  urgencySignals: jsonb("urgency_signals").$type<string[]>().notNull().default([]),
 });
 
 export const insertLeadSchema = createInsertSchema(leadsTable).omit({ id: true, createdAt: true, updatedAt: true });
@@ -902,3 +917,62 @@ export const webauthnChallengesTable = pgTable("webauthn_challenges", {
 
 export type InsertWebauthnChallenge = typeof webauthnChallengesTable.$inferInsert;
 export type WebauthnChallenge = typeof webauthnChallengesTable.$inferSelect;
+
+// ── Lead Qualification Engine ───────────────────────────────────────────────
+
+export const opportunitiesTable = pgTable("opportunities", {
+  id: serial("id").primaryKey(),
+  leadId: integer("lead_id").notNull().references(() => leadsTable.id, { onDelete: "cascade" }),
+  scoreSnapshot: integer("score_snapshot").notNull().default(0),
+  scoreFit: integer("score_fit").notNull().default(0),
+  scorePain: integer("score_pain").notNull().default(0),
+  scoreMaturity: integer("score_maturity").notNull().default(0),
+  scoreIntent: integer("score_intent").notNull().default(0),
+  scoreUrgency: integer("score_urgency").notNull().default(0),
+  evidence: jsonb("evidence").$type<string[]>().notNull().default([]),
+  recommendedNextStep: text("recommended_next_step"),
+  workflowType: text("workflow_type"),
+  projectId: integer("project_id").references(() => projectsTable.id, { onDelete: "set null" }),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export type InsertOpportunity = typeof opportunitiesTable.$inferInsert;
+export type Opportunity = typeof opportunitiesTable.$inferSelect;
+
+export const opportunityTasksTable = pgTable("opportunity_tasks", {
+  id: serial("id").primaryKey(),
+  opportunityId: integer("opportunity_id").notNull().references(() => opportunitiesTable.id, { onDelete: "cascade" }),
+  title: text("title").notNull(),
+  description: text("description"),
+  dueDate: timestamp("due_date"),
+  assignedTo: text("assigned_to").notNull().default("Shane"),
+  status: text("status", { enum: ["todo", "in_progress", "done"] }).notNull().default("todo"),
+  kanbanTaskId: integer("kanban_task_id"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export type InsertOpportunityTask = typeof opportunityTasksTable.$inferInsert;
+export type OpportunityTask = typeof opportunityTasksTable.$inferSelect;
+
+export const leadQualificationsTable = pgTable("lead_qualifications", {
+  id: serial("id").primaryKey(),
+  leadId: integer("lead_id").notNull().references(() => leadsTable.id, { onDelete: "cascade" }),
+  newScore: integer("new_score").notNull(),
+  previousScore: integer("previous_score").notNull().default(0),
+  stage: text("stage", { enum: ["AQL", "SQL"] }).notNull(),
+  recommendedNextStep: text("recommended_next_step"),
+  workflowType: text("workflow_type"),
+  evidence: jsonb("evidence").$type<string[]>().notNull().default([]),
+  scoreFit: integer("score_fit").notNull().default(0),
+  scorePain: integer("score_pain").notNull().default(0),
+  scoreMaturity: integer("score_maturity").notNull().default(0),
+  scoreIntent: integer("score_intent").notNull().default(0),
+  scoreUrgency: integer("score_urgency").notNull().default(0),
+  status: text("status", { enum: ["pending", "approved", "rejected", "snoozed"] }).notNull().default("pending"),
+  snoozedUntil: timestamp("snoozed_until"),
+  opportunityId: integer("opportunity_id").references(() => opportunitiesTable.id, { onDelete: "set null" }),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export type InsertLeadQualification = typeof leadQualificationsTable.$inferInsert;
+export type LeadQualification = typeof leadQualificationsTable.$inferSelect;

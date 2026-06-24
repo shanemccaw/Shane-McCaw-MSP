@@ -19,6 +19,20 @@ interface Lead {
   howFound: string | null;
   createdAt: string;
   updatedAt: string;
+  // Qualification engine fields
+  score: number;
+  previousScore: number;
+  stage: string | null;
+  lastQualifiedAt: string | null;
+  industry: string | null;
+  employeeCount: number | null;
+  licenseTier: string | null;
+  tenantAge: number | null;
+  itTeamSize: number | null;
+  painPoints: string[];
+  maturityIndicators: string[];
+  engagementSignals: string[];
+  urgencySignals: string[];
 }
 
 interface QuizAnalysisText {
@@ -227,6 +241,60 @@ function EmptyState({ icon, title, subtitle }: { icon: React.ReactNode; title: s
   );
 }
 
+const PAIN_POINT_OPTIONS = [
+  "Governance", "Compliance", "Security", "Migration", "Copilot", "AI Readiness",
+  "SharePoint", "Power Platform", "Teams", "Training", "Adoption", "Licensing", "Cost Optimization",
+];
+
+const MATURITY_OPTIONS = [
+  "Has existing M365", "Dedicated IT team", "Previous consultant", "Documented processes",
+  "Data governance policy", "Active SharePoint usage", "Teams adoption", "Power Platform usage",
+];
+
+const ENGAGEMENT_OPTIONS = [
+  "Requested demo", "Downloaded resource", "Completed quiz", "Visited pricing page",
+  "Multiple visits", "Referral", "Contact form", "LinkedIn outreach", "Replied to email",
+];
+
+const URGENCY_OPTIONS = [
+  "Audit deadline", "Compliance deadline", "Board mandate", "Budget approved",
+  "Project kickoff scheduled", "Urgent", "ASAP", "This quarter",
+];
+
+function TagInput({
+  label, options, selected, onChange,
+}: {
+  label: string;
+  options: string[];
+  selected: string[];
+  onChange: (next: string[]) => void;
+}) {
+  const toggle = (opt: string) => {
+    onChange(selected.includes(opt) ? selected.filter(s => s !== opt) : [...selected, opt]);
+  };
+  return (
+    <div>
+      <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">{label}</p>
+      <div className="flex flex-wrap gap-1.5">
+        {options.map(opt => (
+          <button
+            key={opt}
+            type="button"
+            onClick={() => toggle(opt)}
+            className={`text-xs px-2.5 py-1 rounded-full border transition-colors font-medium ${
+              selected.includes(opt)
+                ? "bg-[#0078D4]/20 border-[#0078D4]/60 text-[#0078D4]"
+                : "bg-[#1C2128] border-border text-muted-foreground hover:border-[#0078D4]/40 hover:text-[#E6EDF3]"
+            }`}
+          >
+            {opt}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export default function LeadDetailPage({ params }: { params: { id: string } }) {
   const { fetchWithAuth } = useAuth();
   const [, navigate] = useLocation();
@@ -241,6 +309,21 @@ export default function LeadDetailPage({ params }: { params: { id: string } }) {
   const [saving, setSaving] = useState(false);
   const [copySuccess, setCopySuccess] = useState(false);
 
+  // Qualification profile state
+  const [qualSaving, setQualSaving] = useState(false);
+  const [qualSaved, setQualSaved] = useState(false);
+  const [qualProfile, setQualProfile] = useState({
+    industry: "",
+    employeeCount: "",
+    licenseTier: "",
+    tenantAge: "",
+    itTeamSize: "",
+    painPoints: [] as string[],
+    maturityIndicators: [] as string[],
+    engagementSignals: [] as string[],
+    urgencySignals: [] as string[],
+  });
+
   const loadLead = useCallback(async () => {
     try {
       const res = await fetchWithAuth(`/api/leads/${leadId}`);
@@ -252,6 +335,17 @@ export default function LeadDetailPage({ params }: { params: { id: string } }) {
       const data = await res.json() as Lead;
       setLead(data);
       setStatus(data.status);
+      setQualProfile({
+        industry: data.industry ?? "",
+        employeeCount: data.employeeCount != null ? String(data.employeeCount) : "",
+        licenseTier: data.licenseTier ?? "",
+        tenantAge: data.tenantAge != null ? String(data.tenantAge) : "",
+        itTeamSize: data.itTeamSize != null ? String(data.itTeamSize) : "",
+        painPoints: Array.isArray(data.painPoints) ? data.painPoints as string[] : [],
+        maturityIndicators: Array.isArray(data.maturityIndicators) ? data.maturityIndicators as string[] : [],
+        engagementSignals: Array.isArray(data.engagementSignals) ? data.engagementSignals as string[] : [],
+        urgencySignals: Array.isArray(data.urgencySignals) ? data.urgencySignals as string[] : [],
+      });
     } catch {
       setNotFound(true);
     }
@@ -299,6 +393,41 @@ export default function LeadDetailPage({ params }: { params: { id: string } }) {
   const markContacted = async () => {
     if (!lead || lead.status !== "new") return;
     await saveStatus("contacted");
+  };
+
+  const saveQualProfile = async () => {
+    if (!lead) return;
+    setQualSaving(true);
+    try {
+      const payload = {
+        industry: qualProfile.industry || null,
+        employeeCount: qualProfile.employeeCount ? parseInt(qualProfile.employeeCount, 10) : null,
+        licenseTier: qualProfile.licenseTier || null,
+        tenantAge: qualProfile.tenantAge ? parseInt(qualProfile.tenantAge, 10) : null,
+        itTeamSize: qualProfile.itTeamSize ? parseInt(qualProfile.itTeamSize, 10) : null,
+        painPoints: qualProfile.painPoints,
+        maturityIndicators: qualProfile.maturityIndicators,
+        engagementSignals: qualProfile.engagementSignals,
+        urgencySignals: qualProfile.urgencySignals,
+      };
+      const res = await fetchWithAuth(`/api/leads/${leadId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      if (res.ok) {
+        const updated = await res.json() as Lead & { qualificationPending?: boolean };
+        setLead(updated);
+        setQualSaved(true);
+        setTimeout(() => setQualSaved(false), 2500);
+        if (updated.qualificationPending) {
+          // Small delay to let the DB settle, then navigate to leads page
+          setTimeout(() => navigate("/crm/leads"), 800);
+        }
+      }
+    } finally {
+      setQualSaving(false);
+    }
   };
 
   const copyEmail = async () => {
@@ -453,6 +582,157 @@ export default function LeadDetailPage({ params }: { params: { id: string } }) {
           <p className="text-sm text-[#E6EDF3] leading-relaxed whitespace-pre-wrap">{lead.message}</p>
         </SectionCard>
       )}
+
+      {/* Qualification Profile */}
+      <div className="bg-[#161B22] border border-border rounded-xl overflow-hidden">
+        <div className="px-5 py-3.5 border-b border-border bg-[#1C2128] flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <h2 className="text-sm font-bold text-[#E6EDF3]">Qualification Profile</h2>
+            {lead.score > 0 && (
+              <div className="flex items-center gap-2">
+                <span className={`text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded border ${
+                  lead.stage === "SQL"
+                    ? "bg-purple-500/20 text-purple-300 border-purple-500/30"
+                    : lead.stage === "AQL"
+                      ? "bg-blue-500/20 text-blue-300 border-blue-500/30"
+                      : "bg-[#30363D] text-[#7D8590] border-border"
+                }`}>
+                  {lead.stage ?? "Lead"}
+                </span>
+                <span className="text-sm font-bold text-[#E6EDF3]">{lead.score}<span className="text-xs font-normal text-muted-foreground">/100</span></span>
+              </div>
+            )}
+          </div>
+          <p className="text-xs text-muted-foreground">Saved changes trigger automatic scoring</p>
+        </div>
+        <div className="px-5 py-5 space-y-6">
+          {/* Firmographic */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div>
+              <label className="block text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">Industry</label>
+              <input
+                type="text"
+                value={qualProfile.industry}
+                onChange={e => setQualProfile(p => ({ ...p, industry: e.target.value }))}
+                placeholder="e.g. Technology, Healthcare"
+                className="w-full bg-[#1C2128] border border-border rounded-lg px-3 py-2 text-sm text-[#E6EDF3] placeholder-muted-foreground/40 focus:outline-none focus:ring-1 focus:ring-[#0078D4]"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">Employee Count</label>
+              <input
+                type="number"
+                value={qualProfile.employeeCount}
+                onChange={e => setQualProfile(p => ({ ...p, employeeCount: e.target.value }))}
+                placeholder="e.g. 250"
+                min={1}
+                className="w-full bg-[#1C2128] border border-border rounded-lg px-3 py-2 text-sm text-[#E6EDF3] placeholder-muted-foreground/40 focus:outline-none focus:ring-1 focus:ring-[#0078D4]"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">License Tier</label>
+              <select
+                value={qualProfile.licenseTier}
+                onChange={e => setQualProfile(p => ({ ...p, licenseTier: e.target.value }))}
+                className="w-full bg-[#1C2128] border border-border rounded-lg px-3 py-2 text-sm text-[#E6EDF3] focus:outline-none focus:ring-1 focus:ring-[#0078D4]"
+              >
+                <option value="">Not Known</option>
+                <option value="E5">Microsoft 365 E5</option>
+                <option value="E3">Microsoft 365 E3</option>
+                <option value="Business Premium">Business Premium</option>
+                <option value="Business Standard">Business Standard</option>
+                <option value="Business Basic">Business Basic</option>
+                <option value="F3">F3 (Frontline)</option>
+                <option value="F1">F1 (Frontline)</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">Tenant Age (years)</label>
+              <input
+                type="number"
+                value={qualProfile.tenantAge}
+                onChange={e => setQualProfile(p => ({ ...p, tenantAge: e.target.value }))}
+                placeholder="e.g. 3"
+                min={0}
+                className="w-full bg-[#1C2128] border border-border rounded-lg px-3 py-2 text-sm text-[#E6EDF3] placeholder-muted-foreground/40 focus:outline-none focus:ring-1 focus:ring-[#0078D4]"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">IT Team Size</label>
+              <input
+                type="number"
+                value={qualProfile.itTeamSize}
+                onChange={e => setQualProfile(p => ({ ...p, itTeamSize: e.target.value }))}
+                placeholder="e.g. 5"
+                min={0}
+                className="w-full bg-[#1C2128] border border-border rounded-lg px-3 py-2 text-sm text-[#E6EDF3] placeholder-muted-foreground/40 focus:outline-none focus:ring-1 focus:ring-[#0078D4]"
+              />
+            </div>
+          </div>
+
+          {/* Tags */}
+          <div className="space-y-5">
+            <TagInput
+              label="Pain Points"
+              options={PAIN_POINT_OPTIONS}
+              selected={qualProfile.painPoints}
+              onChange={v => setQualProfile(p => ({ ...p, painPoints: v }))}
+            />
+            <TagInput
+              label="Maturity Indicators"
+              options={MATURITY_OPTIONS}
+              selected={qualProfile.maturityIndicators}
+              onChange={v => setQualProfile(p => ({ ...p, maturityIndicators: v }))}
+            />
+            <TagInput
+              label="Engagement Signals"
+              options={ENGAGEMENT_OPTIONS}
+              selected={qualProfile.engagementSignals}
+              onChange={v => setQualProfile(p => ({ ...p, engagementSignals: v }))}
+            />
+            <TagInput
+              label="Urgency Signals"
+              options={URGENCY_OPTIONS}
+              selected={qualProfile.urgencySignals}
+              onChange={v => setQualProfile(p => ({ ...p, urgencySignals: v }))}
+            />
+          </div>
+
+          <div className="flex items-center gap-3 pt-1">
+            <button
+              onClick={() => void saveQualProfile()}
+              disabled={qualSaving}
+              className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-[#0078D4] text-white text-xs font-bold hover:bg-[#0078D4]/90 transition-colors disabled:opacity-50"
+            >
+              {qualSaving ? (
+                <>
+                  <div className="w-3.5 h-3.5 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+                  Scoring…
+                </>
+              ) : qualSaved ? (
+                <>
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} className="w-3.5 h-3.5 text-green-400">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                  </svg>
+                  <span className="text-green-400">Saved!</span>
+                </>
+              ) : (
+                <>
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-3.5 h-3.5">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                  </svg>
+                  Save & Score Lead
+                </>
+              )}
+            </button>
+            <p className="text-xs text-muted-foreground">
+              {lead.score > 0
+                ? `Current score: ${lead.score}/100${lead.lastQualifiedAt ? ` · Last scored ${new Date(lead.lastQualifiedAt).toLocaleDateString()}` : ""}`
+                : "Score will be computed when you save."}
+            </p>
+          </div>
+        </div>
+      </div>
 
       {/* Quiz Submissions */}
       <div className="bg-[#161B22] border border-border rounded-xl overflow-hidden">

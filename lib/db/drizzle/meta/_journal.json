@@ -393,6 +393,13 @@
       "when": 1750990000000,
       "tag": "0053_mfa_challenges_add_phone",
       "breakpoints": true
+    },
+    {
+      "idx": 54,
+      "version": "7",
+      "when": 1782600000000,
+      "tag": "0054_lead_qualification_engine",
+      "breakpoints": true
     }
   ]
 }

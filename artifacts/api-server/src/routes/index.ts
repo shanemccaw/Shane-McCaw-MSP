@@ -36,6 +36,7 @@ import adminAzureCredentialsRouter from "./admin-azure-credentials";
 import adminScriptRunnerRouter from "./admin-script-runner";
 import bookingRouter from "./booking";
 import mfaRouter from "./mfa";
+import opportunitiesRouter from "./opportunities";
 
 const router: IRouter = Router();
 
@@ -76,5 +77,6 @@ router.use(adminAzureCredentialsRouter);
 router.use(adminScriptRunnerRouter);
 router.use(bookingRouter);
 router.use(mfaRouter);
+router.use(opportunitiesRouter);
 
 export default router;
