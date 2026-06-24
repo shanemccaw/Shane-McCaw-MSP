@@ -238,7 +238,8 @@ export default function LoginPage() {
 
   return (
     <div className="min-h-screen bg-[#0A2540] flex items-center justify-center p-4">
-      <div className="bg-[#161B22] rounded-2xl shadow-2xl p-8 w-full max-w-sm">
+      <div className="w-full max-w-sm space-y-4">
+      <div className="bg-[#161B22] rounded-2xl shadow-2xl p-8 w-full">
         {mfaChallenge ? (
           <MfaChallengeScreen
             challenge={mfaChallenge}
@@ -298,6 +299,19 @@ export default function LoginPage() {
             </form>
           </>
         )}
+      </div>
+
+        <a
+          href="https://shanemccaw.com"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="flex items-center justify-center gap-1.5 text-xs text-white/40 hover:text-white/70 transition-colors"
+        >
+          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+          </svg>
+          shanemccaw.com
+        </a>
       </div>
     </div>
   );
