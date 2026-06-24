@@ -1,15 +1,16 @@
 /**
  * admin-client-documents.ts
  *
- * Routes for the client Document Hub — per-client document records.
+ * Routes for the client Document Hub and client-scoped report lookups.
  *
- * GET    /api/admin/clients/:clientId/documents          — list all docs for a client
- * POST   /api/admin/clients/:clientId/documents          — create doc record
- * DELETE /api/admin/clients/:clientId/documents/:docId  — delete doc record
+ * GET    /api/admin/clients/:clientId/documents            — list all docs for a client
+ * POST   /api/admin/clients/:clientId/documents            — create doc record
+ * DELETE /api/admin/clients/:clientId/documents/:docId     — delete doc record
+ * GET    /api/admin/clients/:clientId/status-reports       — list sent status reports for a client
  */
 
 import { Router, type Request, type Response } from "express";
-import { db, clientDocumentsTable, usersTable } from "@workspace/db";
+import { db, clientDocumentsTable, usersTable, statusReportsTable } from "@workspace/db";
 import { eq, and, desc } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/requireAuth";
 import { logger } from "../lib/logger";
@@ -125,6 +126,41 @@ router.delete("/admin/clients/:clientId/documents/:docId", requireAdmin, async (
   } catch (err) {
     logger.error({ err, clientId, docId }, "admin-client-documents: failed to delete document");
     res.status(500).json({ error: "Failed to delete document" });
+  }
+});
+
+// ── List status reports for a client (sent only) ──────────────────────────────
+router.get("/admin/clients/:clientId/status-reports", requireAdmin, async (req: Request, res: Response) => {
+  const clientId = parseInt(req.params["clientId"] as string, 10);
+  if (isNaN(clientId)) {
+    res.status(400).json({ error: "Invalid clientId" });
+    return;
+  }
+
+  try {
+    const reports = await db
+      .select({
+        id: statusReportsTable.id,
+        title: statusReportsTable.title,
+        period: statusReportsTable.period,
+        reportStatus: statusReportsTable.reportStatus,
+        clientStatus: statusReportsTable.clientStatus,
+        executiveSummary: statusReportsTable.executiveSummary,
+        keyOutcomes: statusReportsTable.keyOutcomes,
+        sentAt: statusReportsTable.sentAt,
+        reportDate: statusReportsTable.reportDate,
+        createdAt: statusReportsTable.createdAt,
+        projectId: statusReportsTable.projectId,
+      })
+      .from(statusReportsTable)
+      .where(eq(statusReportsTable.clientUserId, clientId))
+      .orderBy(desc(statusReportsTable.createdAt))
+      .limit(20);
+
+    res.json(reports);
+  } catch (err) {
+    logger.error({ err, clientId }, "admin-client-documents: failed to list status reports");
+    res.status(500).json({ error: "Failed to fetch status reports" });
   }
 });
 

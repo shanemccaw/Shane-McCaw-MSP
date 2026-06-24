@@ -880,9 +880,22 @@ export default function ProjectsPage() {
                             <span className="text-xs text-muted-foreground">{p.projectType === "retainer" ? "Retainer" : "Project"}</span>
                           </td>
                           <td className="px-4 py-3.5 text-center hidden md:table-cell">
-                            <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${statusCls[p.status] ?? "bg-[#30363D] text-[#7D8590] border-[#30363D]"}`}>
-                              {statusLabel[p.status] ?? p.status}
-                            </span>
+                            <div className="flex flex-col items-center gap-1">
+                              <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${statusCls[p.status] ?? "bg-[#30363D] text-[#7D8590] border-[#30363D]"}`}>
+                                {statusLabel[p.status] ?? p.status}
+                              </span>
+                              {p.status === "active" && (() => {
+                                const now = new Date();
+                                const end = p.endDate ? new Date(p.endDate) : null;
+                                if (end && end < now) {
+                                  return <span className="text-[9px] font-bold text-red-400 bg-red-500/10 border border-red-500/20 px-1.5 py-0.5 rounded">Overdue</span>;
+                                }
+                                if (end && (end.getTime() - now.getTime()) < 30 * 24 * 60 * 60 * 1000 && p.progress < 50) {
+                                  return <span className="text-[9px] font-bold text-amber-400 bg-amber-500/10 border border-amber-500/20 px-1.5 py-0.5 rounded">At Risk</span>;
+                                }
+                                return <span className="text-[9px] font-bold text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-1.5 py-0.5 rounded">On Track</span>;
+                              })()}
+                            </div>
                           </td>
                           <td className="px-4 py-3.5 text-center hidden md:table-cell">
                             <div className="flex items-center gap-2 justify-center">
