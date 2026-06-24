@@ -5,6 +5,13 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useAuth } from "@/contexts/AuthContext";
 import PortalLayout from "@/components/PortalLayout";
+import {
+  type QuizResult,
+  deriveM365FromQuizzes,
+  mergeIntoProfile,
+  buildQuizHints,
+  QUIZ_TYPE_LABELS,
+} from "@/lib/m365-quiz-mapping";
 
 // ── Zod schema ────────────────────────────────────────────────────────────────
 
@@ -176,21 +183,32 @@ function Toggle({ value, onChange, label }: {
   );
 }
 
-function BoolController({ name, control, label }: {
+function BoolController({ name, control, label, hint }: {
   name: keyof FormValues;
   control: Control<FormValues>;
   label: string;
+  hint?: string;
 }) {
   return (
     <Controller
       name={name}
       control={control}
       render={({ field }) => (
-        <Toggle
-          value={field.value as boolean | undefined}
-          onChange={(v) => field.onChange(v)}
-          label={label}
-        />
+        <>
+          <Toggle
+            value={field.value as boolean | undefined}
+            onChange={(v) => field.onChange(v)}
+            label={label}
+          />
+          {hint && (
+            <p className="mt-1 ml-10 text-xs text-[#0078D4] flex items-start gap-1">
+              <svg className="w-3 h-3 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              {hint}
+            </p>
+          )}
+        </>
       )}
     />
   );
@@ -222,6 +240,79 @@ function MultiSelect({ value, onChange, options }: { value: string[]; onChange: 
 
 type AlertState = { type: "success" | "error"; message: string } | null;
 
+// ── Assessment callout ────────────────────────────────────────────────────────
+
+function AssessmentCallout({
+  quizzes,
+  onAutoFill,
+  autoFilling,
+  filledCount,
+}: {
+  quizzes: QuizResult[];
+  onAutoFill: () => void;
+  autoFilling: boolean;
+  filledCount: number;
+}) {
+  if (quizzes.length === 0) return null;
+  return (
+    <div className="mb-5 rounded-2xl border border-[#0078D4]/20 bg-[#0078D4]/5 px-5 py-4">
+      <div className="flex items-start gap-3">
+        <div className="w-8 h-8 rounded-xl bg-[#0078D4]/10 flex items-center justify-center flex-shrink-0 mt-0.5">
+          <svg className="w-4 h-4 text-[#0078D4]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+          </svg>
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-bold text-[#0A2540] mb-1">
+            You have {quizzes.length} completed assessment{quizzes.length !== 1 ? "s" : ""}
+          </p>
+          <p className="text-xs text-gray-500 mb-2">
+            Reference your quiz results while filling in this profile, or use auto-fill to pre-populate fields automatically.
+          </p>
+          <ul className="space-y-1 mb-3">
+            {quizzes.map(q => (
+              <li key={q.id} className="flex items-center gap-2 text-xs text-gray-600">
+                <span className="w-1.5 h-1.5 rounded-full bg-[#0078D4]/60 flex-shrink-0" />
+                <span className="font-semibold text-[#0A2540]">{QUIZ_TYPE_LABELS[q.quizType] ?? q.quizType}</span>
+                <span className="text-gray-400">·</span>
+                <span>{q.tier} · {new Date(q.createdAt).toLocaleDateString()}</span>
+                <a
+                  href="/portal/insights"
+                  className="ml-auto text-[#0078D4] hover:underline font-medium"
+                >
+                  View results →
+                </a>
+              </li>
+            ))}
+          </ul>
+          <div className="flex items-center gap-3 flex-wrap">
+            <button
+              type="button"
+              onClick={onAutoFill}
+              disabled={autoFilling}
+              className="flex items-center gap-1.5 text-xs font-semibold bg-[#0078D4] text-white px-3.5 py-2 rounded-xl hover:bg-[#0078D4]/90 disabled:opacity-50 transition-colors"
+            >
+              {autoFilling ? (
+                <span className="w-3 h-3 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+              ) : (
+                <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+              )}
+              {autoFilling ? "Applying…" : "Auto-fill from my assessments"}
+            </button>
+            {filledCount > 0 && (
+              <span className="text-xs text-[#0078D4] font-medium">
+                ✓ {filledCount} field{filledCount !== 1 ? "s" : ""} auto-filled
+              </span>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Page component ────────────────────────────────────────────────────────────
 
 export default function PortalM365Profile() {
@@ -234,12 +325,16 @@ export default function PortalM365Profile() {
     const param = new URLSearchParams(window.location.search).get("tab");
     return (VALID_TABS.includes(param as TabId) ? param : "org") as TabId;
   });
+  const [quizResults, setQuizResults] = useState<QuizResult[]>([]);
+  const [autoFilling, setAutoFilling] = useState(false);
+  const [autoFilledCount, setAutoFilledCount] = useState(0);
+  const [quizHints, setQuizHints] = useState<Record<string, string>>({});
 
   const form = useForm<FormValues>({
     resolver: zodResolver(m365Schema),
     defaultValues: m365Schema.parse({}),
   });
-  const { control, register, handleSubmit, watch, reset } = form;
+  const { control, register, handleSubmit, watch, reset, getValues, setValue } = form;
 
   const values = watch();
   const completion = computeCompletion(values);
@@ -249,14 +344,32 @@ export default function PortalM365Profile() {
     navigate(`/portal/m365-profile?tab=${id}`);
   }
 
+  const handleAutoFill = useCallback(() => {
+    if (quizResults.length === 0) return;
+    setAutoFilling(true);
+    setTimeout(() => {
+      const derived = deriveM365FromQuizzes(quizResults);
+      const current = getValues() as unknown as Record<string, unknown>;
+      const { updated, filledKeys } = mergeIntoProfile(current, derived);
+      for (const [k, v] of Object.entries(updated)) {
+        if (filledKeys.has(k)) {
+          setValue(k as keyof FormValues, v as FormValues[keyof FormValues]);
+        }
+      }
+      setAutoFilledCount(filledKeys.size);
+      setAutoFilling(false);
+    }, 100);
+  }, [quizResults, getValues, setValue]);
+
   // ── Load existing profile ────────────────────────────────────────────────
 
   useEffect(() => {
     Promise.all([
       fetchWithAuth("/api/portal/m365-profile").then(r => r.json() as Promise<Record<string, unknown>>),
       fetchWithAuth("/api/portal/profile").then(r => r.json() as Promise<{ company?: string | null }>),
+      fetchWithAuth("/api/portal/quiz-results").then(r => r.ok ? r.json() as Promise<QuizResult[]> : Promise.resolve([])),
     ])
-      .then(([m365Data, profileData]) => {
+      .then(([m365Data, profileData, quizData]) => {
         const merged: Partial<FormValues> = { ...m365Schema.parse({}) };
         for (const key of Object.keys(m365Data)) {
           const k = key as keyof FormValues;
@@ -266,6 +379,8 @@ export default function PortalM365Profile() {
         }
         if (!merged.orgName && profileData.company) merged.orgName = profileData.company;
         reset(merged as FormValues);
+        setQuizResults(quizData);
+        setQuizHints(buildQuizHints(quizData));
       })
       .catch(() => setAlert({ type: "error", message: "Could not load your profile. Please refresh." }))
       .finally(() => setLoading(false));
@@ -397,6 +512,14 @@ export default function PortalM365Profile() {
         ) : (
           <form onSubmit={(e) => { void handleSubmit(onSubmit)(e); }}>
 
+            {/* Assessment callout — only shown when quizzes are present */}
+            <AssessmentCallout
+              quizzes={quizResults}
+              onAutoFill={handleAutoFill}
+              autoFilling={autoFilling}
+              filledCount={autoFilledCount}
+            />
+
             {/* Tab strip — each tab updates the URL for direct linking */}
             <div className="flex gap-1 mb-6 bg-white border border-gray-200 rounded-2xl p-1.5 overflow-x-auto">
               {TABS.map((tab, i) => (
@@ -483,10 +606,10 @@ export default function PortalM365Profile() {
 
                 <CardSection title="Workloads in Use">
                   <div className="space-y-3">
-                    <BoolController name="usesExchange"   control={control} label="Exchange Online / Email" />
-                    <BoolController name="usesTeams"      control={control} label="Microsoft Teams" />
-                    <BoolController name="usesSharePoint" control={control} label="SharePoint Online" />
-                    <BoolController name="usesOneDrive"   control={control} label="OneDrive for Business" />
+                    <BoolController name="usesExchange"   control={control} label="Exchange Online / Email" hint={quizHints["usesExchange"]} />
+                    <BoolController name="usesTeams"      control={control} label="Microsoft Teams" hint={quizHints["usesTeams"]} />
+                    <BoolController name="usesSharePoint" control={control} label="SharePoint Online" hint={quizHints["usesSharePoint"]} />
+                    <BoolController name="usesOneDrive"   control={control} label="OneDrive for Business" hint={quizHints["usesOneDrive"]} />
                     <BoolController name="usesYammer"     control={control} label="Viva Engage / Yammer" />
                   </div>
                 </CardSection>
@@ -520,8 +643,8 @@ export default function PortalM365Profile() {
 
                 <CardSection title="Configuration Flags">
                   <div className="space-y-3">
-                    <BoolController name="externalSharingEnabled" control={control} label="External sharing enabled" />
-                    <BoolController name="guestUsersPresent"      control={control} label="Guest users present in tenant" />
+                    <BoolController name="externalSharingEnabled" control={control} label="External sharing enabled" hint={quizHints["externalSharingEnabled"]} />
+                    <BoolController name="guestUsersPresent"      control={control} label="Guest users present in tenant" hint={quizHints["guestUsersPresent"]} />
                     <BoolController name="isHybrid"               control={control} label="Hybrid environment (on-prem + cloud)" />
                     <BoolController name="hasOnPremExchange"      control={control} label="On-premises Exchange server present" />
                     <BoolController name="usesAADConnect"         control={control} label="Entra Connect / AAD Connect in use" />
@@ -537,8 +660,8 @@ export default function PortalM365Profile() {
               <div className="space-y-4">
                 <CardSection title="Identity & Access">
                   <div className="space-y-3">
-                    <BoolController name="mfaEnforced"              control={control} label="MFA enforced for all users" />
-                    <BoolController name="conditionalAccessEnabled" control={control} label="Conditional Access policies configured" />
+                    <BoolController name="mfaEnforced"              control={control} label="MFA enforced for all users" hint={quizHints["mfaEnforced"]} />
+                    <BoolController name="conditionalAccessEnabled" control={control} label="Conditional Access policies configured" hint={quizHints["conditionalAccessEnabled"]} />
                     <BoolController name="hasAADP1orP2"             control={control} label="Entra ID P1 or P2 licensed" />
                     <BoolController name="intuneEnabled"            control={control} label="Intune / MDM device management active" />
                   </div>
@@ -547,16 +670,16 @@ export default function PortalM365Profile() {
                 <CardSection title="Data Protection">
                   <div className="space-y-3">
                     <BoolController name="hasDefender"                 control={control} label="Microsoft Defender for M365 active" />
-                    <BoolController name="hasDLP"                      control={control} label="Data Loss Prevention (DLP) policies in place" />
-                    <BoolController name="sensitivityLabelsConfigured" control={control} label="Sensitivity labels configured" />
-                    <BoolController name="hasRetentionPolicies"        control={control} label="Retention policies in place" />
+                    <BoolController name="hasDLP"                      control={control} label="Data Loss Prevention (DLP) policies in place" hint={quizHints["hasDLP"]} />
+                    <BoolController name="sensitivityLabelsConfigured" control={control} label="Sensitivity labels configured" hint={quizHints["sensitivityLabelsConfigured"]} />
+                    <BoolController name="hasRetentionPolicies"        control={control} label="Retention policies in place" hint={quizHints["hasRetentionPolicies"]} />
                   </div>
                 </CardSection>
 
                 <CardSection title="Compliance">
                   <div className="space-y-3">
-                    <BoolController name="usesComplianceCenter" control={control} label="Microsoft Purview / Compliance Center in use" />
-                    <BoolController name="hasInsiderRisk"       control={control} label="Insider Risk Management enabled" />
+                    <BoolController name="usesComplianceCenter" control={control} label="Microsoft Purview / Compliance Center in use" hint={quizHints["usesComplianceCenter"]} />
+                    <BoolController name="hasInsiderRisk"       control={control} label="Insider Risk Management enabled" hint={quizHints["hasInsiderRisk"]} />
                   </div>
                 </CardSection>
 
@@ -568,7 +691,7 @@ export default function PortalM365Profile() {
             {activeTab === "copilot" && (
               <div className="space-y-4">
                 <CardSection title="License Status">
-                  <BoolController name="hasCopilotLicenses" control={control} label="We have Copilot for Microsoft 365 licenses" />
+                  <BoolController name="hasCopilotLicenses" control={control} label="We have Copilot for Microsoft 365 licenses" hint={quizHints["hasCopilotLicenses"]} />
                   {values.hasCopilotLicenses === true && (
                     <Field label="Copilot License Count">
                       <input {...register("copilotLicenseCount")} type="number" min="0" placeholder="e.g. 50" className={inputClass} />
@@ -577,20 +700,20 @@ export default function PortalM365Profile() {
                 </CardSection>
 
                 <CardSection title="AI Readiness">
-                  <Field label="Primary Copilot Use Cases">
+                  <Field label="Primary Copilot Use Cases" hint={quizHints["copilotUseCase"]}>
                     <textarea {...register("copilotUseCase")} placeholder="Meeting summaries, document drafting, email triage…" rows={2} className={`${inputClass} resize-none`} />
                   </Field>
                   <Field label="Current AI Tools in Use">
                     <textarea {...register("currentAITools")} placeholder="ChatGPT, GitHub Copilot, custom solutions…" rows={2} className={`${inputClass} resize-none`} />
                   </Field>
-                  <Field label="Data Governance Concerns">
+                  <Field label="Data Governance Concerns" hint={quizHints["dataGovernanceConcerns"]}>
                     <textarea {...register("dataGovernanceConcerns")} placeholder="Data sensitivity, oversharing risks, classification gaps…" rows={2} className={`${inputClass} resize-none`} />
                   </Field>
                 </CardSection>
 
                 <CardSection title="Readiness Assessment">
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <Field label="Copilot Readiness Score">
+                    <Field label="Copilot Readiness Score" hint={quizHints["copilotReadinessScore"]}>
                       <select {...register("copilotReadinessScore")} className={inputClass}>
                         <option value="">Select…</option>
                         {scoreOpts.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}

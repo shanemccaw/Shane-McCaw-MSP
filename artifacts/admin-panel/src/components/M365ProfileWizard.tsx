@@ -3,8 +3,16 @@ import { z } from "zod";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
+import {
+  type QuizResult,
+  deriveM365FromQuizzes,
+  mergeIntoProfile,
+  QUIZ_TYPE_LABELS,
+} from "@/lib/m365-quiz-mapping";
 
 // ─── Profile shape ────────────────────────────────────────────────────────────
+// Boolean fields that can be derived from quiz results use `boolean | undefined`.
+// `undefined` = not yet answered (pre-fillable); `true`/`false` = explicitly set.
 interface M365Profile {
   orgName: string;
   industry: string;
@@ -13,35 +21,35 @@ interface M365Profile {
   itContactName: string;
   itContactEmail: string;
   tenantDomain: string;
-  isMicrosoftPartner: boolean;
+  isMicrosoftPartner: boolean | undefined;
   licenseSKUs: string[];
-  allUsersLicensed: boolean;
+  allUsersLicensed: boolean | undefined;
   activeUserPercent: string;
-  usesExchange: boolean;
-  usesTeams: boolean;
-  usesSharePoint: boolean;
-  usesOneDrive: boolean;
-  usesYammer: boolean;
+  usesExchange: boolean | undefined;
+  usesTeams: boolean | undefined;
+  usesSharePoint: boolean | undefined;
+  usesOneDrive: boolean | undefined;
+  usesYammer: boolean | undefined;
   sharepointSiteCount: string;
   teamCount: string;
   securityGroupCount: string;
-  externalSharingEnabled: boolean;
-  guestUsersPresent: boolean;
+  externalSharingEnabled: boolean | undefined;
+  guestUsersPresent: boolean | undefined;
   authMethod: string;
-  isHybrid: boolean;
-  hasOnPremExchange: boolean;
-  usesAADConnect: boolean;
-  mfaEnforced: boolean;
-  conditionalAccessEnabled: boolean;
-  intuneEnabled: boolean;
-  hasAADP1orP2: boolean;
-  hasDefender: boolean;
-  hasDLP: boolean;
-  usesComplianceCenter: boolean;
-  sensitivityLabelsConfigured: boolean;
-  hasRetentionPolicies: boolean;
-  hasInsiderRisk: boolean;
-  hasCopilotLicenses: boolean;
+  isHybrid: boolean | undefined;
+  hasOnPremExchange: boolean | undefined;
+  usesAADConnect: boolean | undefined;
+  mfaEnforced: boolean | undefined;
+  conditionalAccessEnabled: boolean | undefined;
+  intuneEnabled: boolean | undefined;
+  hasAADP1orP2: boolean | undefined;
+  hasDefender: boolean | undefined;
+  hasDLP: boolean | undefined;
+  usesComplianceCenter: boolean | undefined;
+  sensitivityLabelsConfigured: boolean | undefined;
+  hasRetentionPolicies: boolean | undefined;
+  hasInsiderRisk: boolean | undefined;
+  hasCopilotLicenses: boolean | undefined;
   copilotLicenseCount: string;
   copilotUseCase: string;
   currentAITools: string;
@@ -61,17 +69,18 @@ interface M365Profile {
 
 const EMPTY_PROFILE: M365Profile = {
   orgName: "", industry: "", employeeCount: "", licensedUserCount: "",
-  itContactName: "", itContactEmail: "", tenantDomain: "", isMicrosoftPartner: false,
-  licenseSKUs: [], allUsersLicensed: false, activeUserPercent: "",
-  usesExchange: false, usesTeams: false, usesSharePoint: false, usesOneDrive: false, usesYammer: false,
+  itContactName: "", itContactEmail: "", tenantDomain: "", isMicrosoftPartner: undefined,
+  licenseSKUs: [], allUsersLicensed: undefined, activeUserPercent: "",
+  usesExchange: undefined, usesTeams: undefined, usesSharePoint: undefined,
+  usesOneDrive: undefined, usesYammer: undefined,
   sharepointSiteCount: "", teamCount: "", securityGroupCount: "",
-  externalSharingEnabled: false, guestUsersPresent: false, authMethod: "",
-  isHybrid: false, hasOnPremExchange: false, usesAADConnect: false,
-  mfaEnforced: false, conditionalAccessEnabled: false, intuneEnabled: false,
-  hasAADP1orP2: false, hasDefender: false, hasDLP: false,
-  usesComplianceCenter: false, sensitivityLabelsConfigured: false,
-  hasRetentionPolicies: false, hasInsiderRisk: false,
-  hasCopilotLicenses: false, copilotLicenseCount: "", copilotUseCase: "",
+  externalSharingEnabled: undefined, guestUsersPresent: undefined, authMethod: "",
+  isHybrid: undefined, hasOnPremExchange: undefined, usesAADConnect: undefined,
+  mfaEnforced: undefined, conditionalAccessEnabled: undefined, intuneEnabled: undefined,
+  hasAADP1orP2: undefined, hasDefender: undefined, hasDLP: undefined,
+  usesComplianceCenter: undefined, sensitivityLabelsConfigured: undefined,
+  hasRetentionPolicies: undefined, hasInsiderRisk: undefined,
+  hasCopilotLicenses: undefined, copilotLicenseCount: "", copilotUseCase: "",
   currentAITools: "", dataGovernanceConcerns: "", copilotReadinessScore: "",
   copilotBlockedBy: "",
   engagementStartDate: "", estimatedDuration: "", engagementType: "",
@@ -84,30 +93,13 @@ const optionalEmail = z.string().refine(v => v === "" || z.string().email().safe
 const optionalPositiveInt = z.string().refine(v => v === "" || (!isNaN(Number(v)) && Number(v) >= 0), "Must be a non-negative number");
 
 const STEP_SCHEMAS: z.ZodTypeAny[] = [
-  // Step 1 — Organization Overview
-  z.object({
-    orgName: z.string().min(1, "Organization name is required"),
-    itContactEmail: optionalEmail,
-  }),
-  // Step 2 — M365 Licensing & Usage
-  z.object({
-    activeUserPercent: z.string().refine(v => v === "" || (Number(v) >= 0 && Number(v) <= 100), "Must be between 0 and 100"),
-  }),
-  // Step 3 — Environment Structure (all optional)
-  z.object({
-    sharepointSiteCount: optionalPositiveInt,
-    teamCount: optionalPositiveInt,
-    securityGroupCount: optionalPositiveInt,
-  }),
-  // Step 4 — Security & Compliance (boolean toggles — always valid)
+  z.object({ orgName: z.string().min(1, "Organization name is required"), itContactEmail: optionalEmail }),
+  z.object({ activeUserPercent: z.string().refine(v => v === "" || (Number(v) >= 0 && Number(v) <= 100), "Must be between 0 and 100") }),
+  z.object({ sharepointSiteCount: optionalPositiveInt, teamCount: optionalPositiveInt, securityGroupCount: optionalPositiveInt }),
   z.object({}),
-  // Step 5 — Copilot Readiness
   z.object({
-    copilotLicenseCount: z.string().refine((v) => true, ""),
-    copilotReadinessScore: z.string().refine(
-      v => v === "" || ["1", "2", "3", "4", "5"].includes(v),
-      "Must be between 1 and 5"
-    ),
+    copilotLicenseCount: z.string().refine(() => true, ""),
+    copilotReadinessScore: z.string().refine(v => v === "" || ["1", "2", "3", "4", "5"].includes(v), "Must be between 1 and 5"),
   }).superRefine((data, ctx) => {
     if ((data as { hasCopilotLicenses?: boolean } & typeof data).hasCopilotLicenses) {
       const n = Number(data.copilotLicenseCount);
@@ -116,11 +108,7 @@ const STEP_SCHEMAS: z.ZodTypeAny[] = [
       }
     }
   }),
-  // Step 6 — Engagement Metadata
-  z.object({
-    decisionMakerEmail: optionalEmail,
-  }),
-  // Step 7 — Review & Save (no additional validation)
+  z.object({ decisionMakerEmail: optionalEmail }),
   z.object({}),
 ];
 
@@ -129,15 +117,24 @@ function useM365ProfileWizard() {
   const [step, setStep] = useState(0);
   const [profile, setProfile] = useState<M365Profile>(EMPTY_PROFILE);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [preFilled, setPreFilled] = useState<Set<string>>(new Set());
 
   const set = useCallback((k: keyof M365Profile, v: unknown) => {
     setProfile(prev => ({ ...prev, [k]: v }));
-    setErrors(prev => {
-      const next = { ...prev };
-      delete next[k];
-      return next;
+    setErrors(prev => { const next = { ...prev }; delete next[k]; return next; });
+  }, []);
+
+  const applyQuizPrefill = useCallback((quizzes: QuizResult[]) => {
+    if (quizzes.length === 0) return;
+    const derived = deriveM365FromQuizzes(quizzes);
+    setProfile(prev => {
+      const { updated, filledKeys } = mergeIntoProfile(prev as unknown as Record<string, unknown>, derived);
+      setPreFilled(filledKeys);
+      return updated as unknown as M365Profile;
     });
   }, []);
+
+  const clearPreFilled = useCallback(() => setPreFilled(new Set()), []);
 
   const goNext = useCallback((): boolean => {
     const schema = STEP_SCHEMAS[step];
@@ -146,9 +143,7 @@ function useM365ProfileWizard() {
       const fieldErrors: Record<string, string> = {};
       for (const issue of result.error.issues) {
         const key = issue.path[0];
-        if (key && !fieldErrors[String(key)]) {
-          fieldErrors[String(key)] = issue.message;
-        }
+        if (key && !fieldErrors[String(key)]) fieldErrors[String(key)] = issue.message;
       }
       setErrors(fieldErrors);
       return false;
@@ -158,17 +153,10 @@ function useM365ProfileWizard() {
     return true;
   }, [step, profile]);
 
-  const goBack = useCallback(() => {
-    setErrors({});
-    setStep(s => s - 1);
-  }, []);
+  const goBack = useCallback(() => { setErrors({}); setStep(s => s - 1); }, []);
+  const jumpToStep = useCallback((target: number) => { setErrors({}); setStep(target); }, []);
 
-  const jumpToStep = useCallback((target: number) => {
-    setErrors({});
-    setStep(target);
-  }, []);
-
-  return { step, profile, set, errors, goNext, goBack, jumpToStep };
+  return { step, profile, set, errors, goNext, goBack, jumpToStep, preFilled, applyQuizPrefill, clearPreFilled };
 }
 
 // ─── Step config ──────────────────────────────────────────────────────────────
@@ -182,35 +170,55 @@ const STEPS = [
   { title: "Review & Save", description: "Confirm all answers and save the client's M365 profile." },
 ];
 
+// ─── Assessment badge ─────────────────────────────────────────────────────────
+function AssessmentBadge() {
+  return (
+    <span className="inline-flex items-center gap-1 text-[10px] font-bold px-1.5 py-0.5 rounded bg-[#0078D4]/15 text-[#0078D4] border border-[#0078D4]/30 ml-1.5 align-middle leading-none">
+      <svg className="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+      </svg>
+      From assessment
+    </span>
+  );
+}
+
 // ─── Reusable primitives ──────────────────────────────────────────────────────
-function Toggle({ value, onChange }: { value: boolean; onChange: (v: boolean) => void }) {
+function Toggle({ value, onChange }: { value: boolean | undefined; onChange: (v: boolean) => void }) {
+  const isOn = value === true;
   return (
     <button
       type="button"
-      onClick={() => onChange(!value)}
-      className={`relative inline-flex h-5 w-9 flex-shrink-0 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-[#0078D4] focus:ring-offset-1 ${value ? "bg-[#0078D4]" : "bg-[#30363D]"}`}
+      onClick={() => onChange(!isOn)}
+      className={`relative inline-flex h-5 w-9 flex-shrink-0 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-[#0078D4] focus:ring-offset-1 ${isOn ? "bg-[#0078D4]" : "bg-[#30363D]"}`}
     >
-      <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-[#1C2128] shadow-sm transition-transform ${value ? "translate-x-[18px]" : "translate-x-[3px]"}`} />
+      <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-[#1C2128] shadow-sm transition-transform ${isOn ? "translate-x-[18px]" : "translate-x-[3px]"}`} />
     </button>
   );
 }
 
-function YesNoRow({ label, value, onChange }: { label: string; value: boolean; onChange: (v: boolean) => void }) {
+function YesNoRow({ label, value, onChange, prefilled }: { label: string; value: boolean | undefined; onChange: (v: boolean) => void; prefilled?: boolean }) {
+  const isOn = value === true;
   return (
     <div className="flex items-center justify-between py-2.5 border-b border-border/40 last:border-0">
-      <span className="text-sm text-[#E6EDF3] pr-4">{label}</span>
+      <span className="text-sm text-[#E6EDF3] pr-4 flex items-center flex-wrap gap-x-1">
+        {label}
+        {prefilled && <AssessmentBadge />}
+      </span>
       <div className="flex items-center gap-2 flex-shrink-0">
-        <span className={`text-xs font-semibold w-6 text-right ${value ? "text-[#0078D4]" : "text-gray-400"}`}>{value ? "Yes" : "No"}</span>
+        <span className={`text-xs font-semibold w-6 text-right ${isOn ? "text-[#0078D4]" : "text-gray-400"}`}>{isOn ? "Yes" : "No"}</span>
         <Toggle value={value} onChange={onChange} />
       </div>
     </div>
   );
 }
 
-function FieldRow({ label, children, error }: { label: string; children: React.ReactNode; error?: string }) {
+function FieldRow({ label, children, error, prefilled }: { label: string; children: React.ReactNode; error?: string; prefilled?: boolean }) {
   return (
     <div className="grid grid-cols-1 sm:grid-cols-[180px_1fr] gap-1.5 items-start">
-      <label className="text-xs font-semibold text-[#E6EDF3] pt-2.5 leading-tight">{label}</label>
+      <label className="text-xs font-semibold text-[#E6EDF3] pt-2.5 leading-tight flex items-center flex-wrap gap-x-1">
+        {label}
+        {prefilled && <AssessmentBadge />}
+      </label>
       <div>
         {children}
         {error && <p className="mt-1 text-xs text-red-600">{error}</p>}
@@ -263,17 +271,18 @@ function SectionTitle({ children }: { children: React.ReactNode }) {
   return <p className="text-[10px] font-bold uppercase tracking-widest text-[#E6EDF3]/50 mt-4 mb-1 first:mt-0">{children}</p>;
 }
 
-function ToggleRow({ label, value, onChange }: { label: string; value: boolean; onChange: (v: boolean) => void }) {
+function ToggleRow({ label: _label, value, onChange }: { label: string; value: boolean | undefined; onChange: (v: boolean) => void }) {
+  const isOn = value === true;
   return (
     <div className="flex items-center gap-3 pt-1.5">
       <Toggle value={value} onChange={onChange} />
-      <span className={`text-sm font-medium ${value ? "text-[#0078D4]" : "text-[#7D8590]"}`}>{value ? "Yes" : "No"}</span>
+      <span className={`text-sm font-medium ${isOn ? "text-[#0078D4]" : "text-[#7D8590]"}`}>{isOn ? "Yes" : "No"}</span>
     </div>
   );
 }
 
 // ─── Step components ──────────────────────────────────────────────────────────
-function Step1({ p, set, errors }: { p: M365Profile; set: (k: keyof M365Profile, v: unknown) => void; errors: Record<string, string> }) {
+function Step1({ p, set, errors, pf }: { p: M365Profile; set: (k: keyof M365Profile, v: unknown) => void; errors: Record<string, string>; pf: Set<string> }) {
   const industries = ["Technology", "Healthcare", "Finance & Banking", "Legal", "Education", "Manufacturing", "Retail", "Government", "Nonprofit", "Real Estate", "Professional Services", "Other"];
   return (
     <div className="space-y-3">
@@ -305,7 +314,7 @@ function Step1({ p, set, errors }: { p: M365Profile; set: (k: keyof M365Profile,
   );
 }
 
-function Step2({ p, set, errors }: { p: M365Profile; set: (k: keyof M365Profile, v: unknown) => void; errors: Record<string, string> }) {
+function Step2({ p, set, errors, pf }: { p: M365Profile; set: (k: keyof M365Profile, v: unknown) => void; errors: Record<string, string>; pf: Set<string> }) {
   const skus = ["M365 Business Basic", "M365 Business Standard", "M365 Business Premium", "Office 365 E1", "M365 E3", "M365 E5", "M365 F1", "M365 F3"];
   return (
     <div className="space-y-3">
@@ -317,18 +326,18 @@ function Step2({ p, set, errors }: { p: M365Profile; set: (k: keyof M365Profile,
       </FieldRow>
       <div className="bg-[#1C2128] border border-border rounded-xl px-4 pt-3 pb-1 mt-1">
         <SectionTitle>Workload Adoption</SectionTitle>
-        <YesNoRow label="All users licensed?" value={p.allUsersLicensed} onChange={v => set("allUsersLicensed", v)} />
-        <YesNoRow label="Exchange Online in use" value={p.usesExchange} onChange={v => set("usesExchange", v)} />
-        <YesNoRow label="Microsoft Teams in use" value={p.usesTeams} onChange={v => set("usesTeams", v)} />
-        <YesNoRow label="SharePoint Online in use" value={p.usesSharePoint} onChange={v => set("usesSharePoint", v)} />
-        <YesNoRow label="OneDrive for Business in use" value={p.usesOneDrive} onChange={v => set("usesOneDrive", v)} />
+        <YesNoRow label="All users licensed?" value={p.allUsersLicensed} onChange={v => set("allUsersLicensed", v)} prefilled={pf.has("allUsersLicensed")} />
+        <YesNoRow label="Exchange Online in use" value={p.usesExchange} onChange={v => set("usesExchange", v)} prefilled={pf.has("usesExchange")} />
+        <YesNoRow label="Microsoft Teams in use" value={p.usesTeams} onChange={v => set("usesTeams", v)} prefilled={pf.has("usesTeams")} />
+        <YesNoRow label="SharePoint Online in use" value={p.usesSharePoint} onChange={v => set("usesSharePoint", v)} prefilled={pf.has("usesSharePoint")} />
+        <YesNoRow label="OneDrive for Business in use" value={p.usesOneDrive} onChange={v => set("usesOneDrive", v)} prefilled={pf.has("usesOneDrive")} />
         <YesNoRow label="Viva Engage / Yammer in use" value={p.usesYammer} onChange={v => set("usesYammer", v)} />
       </div>
     </div>
   );
 }
 
-function Step3({ p, set, errors }: { p: M365Profile; set: (k: keyof M365Profile, v: unknown) => void; errors: Record<string, string> }) {
+function Step3({ p, set, errors, pf }: { p: M365Profile; set: (k: keyof M365Profile, v: unknown) => void; errors: Record<string, string>; pf: Set<string> }) {
   const authOptions = [
     { value: "password", label: "Password only" },
     { value: "mfa", label: "MFA (per-user)" },
@@ -352,8 +361,8 @@ function Step3({ p, set, errors }: { p: M365Profile; set: (k: keyof M365Profile,
       </FieldRow>
       <div className="bg-[#1C2128] border border-border rounded-xl px-4 pt-3 pb-1 mt-1">
         <SectionTitle>Configuration Flags</SectionTitle>
-        <YesNoRow label="External sharing enabled" value={p.externalSharingEnabled} onChange={v => set("externalSharingEnabled", v)} />
-        <YesNoRow label="Guest users present" value={p.guestUsersPresent} onChange={v => set("guestUsersPresent", v)} />
+        <YesNoRow label="External sharing enabled" value={p.externalSharingEnabled} onChange={v => set("externalSharingEnabled", v)} prefilled={pf.has("externalSharingEnabled")} />
+        <YesNoRow label="Guest users present" value={p.guestUsersPresent} onChange={v => set("guestUsersPresent", v)} prefilled={pf.has("guestUsersPresent")} />
         <YesNoRow label="Hybrid (on-prem + cloud)" value={p.isHybrid} onChange={v => set("isHybrid", v)} />
         <YesNoRow label="On-premises Exchange present" value={p.hasOnPremExchange} onChange={v => set("hasOnPremExchange", v)} />
         <YesNoRow label="Entra Connect / AAD Connect" value={p.usesAADConnect} onChange={v => set("usesAADConnect", v)} />
@@ -362,50 +371,50 @@ function Step3({ p, set, errors }: { p: M365Profile; set: (k: keyof M365Profile,
   );
 }
 
-function Step4({ p, set }: { p: M365Profile; set: (k: keyof M365Profile, v: unknown) => void }) {
+function Step4({ p, set, pf }: { p: M365Profile; set: (k: keyof M365Profile, v: unknown) => void; pf: Set<string> }) {
   return (
     <div className="bg-[#1C2128] border border-border rounded-xl px-4 pt-3 pb-1">
       <SectionTitle>Identity &amp; Access</SectionTitle>
-      <YesNoRow label="MFA enforced for all users" value={p.mfaEnforced} onChange={v => set("mfaEnforced", v)} />
-      <YesNoRow label="Conditional Access policies configured" value={p.conditionalAccessEnabled} onChange={v => set("conditionalAccessEnabled", v)} />
+      <YesNoRow label="MFA enforced for all users" value={p.mfaEnforced} onChange={v => set("mfaEnforced", v)} prefilled={pf.has("mfaEnforced")} />
+      <YesNoRow label="Conditional Access policies configured" value={p.conditionalAccessEnabled} onChange={v => set("conditionalAccessEnabled", v)} prefilled={pf.has("conditionalAccessEnabled")} />
       <YesNoRow label="Entra ID P1 or P2 licensed" value={p.hasAADP1orP2} onChange={v => set("hasAADP1orP2", v)} />
       <YesNoRow label="Intune / MDM enrollment active" value={p.intuneEnabled} onChange={v => set("intuneEnabled", v)} />
       <SectionTitle>Data Protection</SectionTitle>
       <YesNoRow label="Microsoft Defender for M365" value={p.hasDefender} onChange={v => set("hasDefender", v)} />
-      <YesNoRow label="Data Loss Prevention (DLP) policies" value={p.hasDLP} onChange={v => set("hasDLP", v)} />
-      <YesNoRow label="Sensitivity labels configured" value={p.sensitivityLabelsConfigured} onChange={v => set("sensitivityLabelsConfigured", v)} />
-      <YesNoRow label="Retention policies in place" value={p.hasRetentionPolicies} onChange={v => set("hasRetentionPolicies", v)} />
+      <YesNoRow label="Data Loss Prevention (DLP) policies" value={p.hasDLP} onChange={v => set("hasDLP", v)} prefilled={pf.has("hasDLP")} />
+      <YesNoRow label="Sensitivity labels configured" value={p.sensitivityLabelsConfigured} onChange={v => set("sensitivityLabelsConfigured", v)} prefilled={pf.has("sensitivityLabelsConfigured")} />
+      <YesNoRow label="Retention policies in place" value={p.hasRetentionPolicies} onChange={v => set("hasRetentionPolicies", v)} prefilled={pf.has("hasRetentionPolicies")} />
       <SectionTitle>Compliance</SectionTitle>
-      <YesNoRow label="Microsoft Purview / Compliance Center used" value={p.usesComplianceCenter} onChange={v => set("usesComplianceCenter", v)} />
-      <YesNoRow label="Insider Risk Management enabled" value={p.hasInsiderRisk} onChange={v => set("hasInsiderRisk", v)} />
+      <YesNoRow label="Microsoft Purview / Compliance Center used" value={p.usesComplianceCenter} onChange={v => set("usesComplianceCenter", v)} prefilled={pf.has("usesComplianceCenter")} />
+      <YesNoRow label="Insider Risk Management enabled" value={p.hasInsiderRisk} onChange={v => set("hasInsiderRisk", v)} prefilled={pf.has("hasInsiderRisk")} />
     </div>
   );
 }
 
-function Step5({ p, set, errors }: { p: M365Profile; set: (k: keyof M365Profile, v: unknown) => void; errors: Record<string, string> }) {
+function Step5({ p, set, errors, pf }: { p: M365Profile; set: (k: keyof M365Profile, v: unknown) => void; errors: Record<string, string>; pf: Set<string> }) {
   const blockerOpts = ["None", "Budget", "Licensing", "Security concerns", "Training gaps", "Governance / data readiness", "Leadership buy-in"].map(b => ({ value: b, label: b }));
   const scoreOpts = ["1 – Not ready", "2 – Early stages", "3 – Partially ready", "4 – Mostly ready", "5 – Fully ready"].map((s, i) => ({ value: String(i + 1), label: s }));
   return (
     <div className="space-y-3">
       <div className="bg-[#1C2128] border border-border rounded-xl px-4 pt-3 pb-1">
         <SectionTitle>License Status</SectionTitle>
-        <YesNoRow label="Has M365 Copilot licenses" value={p.hasCopilotLicenses} onChange={v => set("hasCopilotLicenses", v)} />
+        <YesNoRow label="Has M365 Copilot licenses" value={p.hasCopilotLicenses} onChange={v => set("hasCopilotLicenses", v)} prefilled={pf.has("hasCopilotLicenses")} />
       </div>
       {p.hasCopilotLicenses && (
         <FieldRow label="Copilot License Count" error={errors.copilotLicenseCount}>
           <NumberInput value={p.copilotLicenseCount} onChange={v => set("copilotLicenseCount", v)} placeholder="25" error={errors.copilotLicenseCount} />
         </FieldRow>
       )}
-      <FieldRow label="Primary Copilot Use Case">
+      <FieldRow label="Primary Copilot Use Case" prefilled={pf.has("copilotUseCase")}>
         <TextArea value={p.copilotUseCase} onChange={v => set("copilotUseCase", v)} placeholder="Meeting summaries, email drafting, document summarization…" />
       </FieldRow>
       <FieldRow label="Current AI Tools in Use">
         <TextArea value={p.currentAITools} onChange={v => set("currentAITools", v)} placeholder="ChatGPT, GitHub Copilot, etc." rows={2} />
       </FieldRow>
-      <FieldRow label="Data Governance Concerns">
+      <FieldRow label="Data Governance Concerns" prefilled={pf.has("dataGovernanceConcerns")}>
         <TextArea value={p.dataGovernanceConcerns} onChange={v => set("dataGovernanceConcerns", v)} placeholder="Data sensitivity, oversharing risks, classification gaps…" rows={2} />
       </FieldRow>
-      <FieldRow label="Readiness Score (1–5)" error={errors.copilotReadinessScore}>
+      <FieldRow label="Readiness Score (1–5)" error={errors.copilotReadinessScore} prefilled={pf.has("copilotReadinessScore")}>
         <SelectInput value={p.copilotReadinessScore} onChange={v => set("copilotReadinessScore", v)} options={scoreOpts} />
       </FieldRow>
       <FieldRow label="Primary Blocker">
@@ -445,34 +454,39 @@ function Step6({ p, set, errors }: { p: M365Profile; set: (k: keyof M365Profile,
         <TextArea value={p.knownBlockers} onChange={v => set("knownBlockers", v)} placeholder="Budget approval pending, legacy systems, change resistance…" rows={2} />
       </FieldRow>
       <FieldRow label="Referral Source">
-        <TextInput value={p.referralSource} onChange={v => set("referralSource", v)} placeholder="LinkedIn, partner referral, cold outreach…" />
+        <TextInput value={p.referralSource} onChange={v => set("referralSource", v)} placeholder="LinkedIn, referral, Google search…" />
       </FieldRow>
     </div>
   );
 }
 
-function Step7({ p, onJump, onDownloadPdf, downloading }: { p: M365Profile; onJump: (step: number) => void; onDownloadPdf: () => void; downloading: boolean }) {
-  const yn = (v: boolean) => v ? "Yes" : "No";
-  const sections: Array<{ title: string; step: number; rows: [string, string][] }> = [
+// ─── Review step (Step 7) ─────────────────────────────────────────────────────
+function Step7({ p, onJump, onDownloadPdf, downloading }: { p: M365Profile; onJump: (n: number) => void; onDownloadPdf: () => void; downloading: boolean }) {
+  const yn = (v: boolean | undefined) => (v === true ? "Yes" : v === false ? "No" : "—");
+  const sections: { title: string; step: number; rows: [string, string][] }[] = [
     {
       title: "Organization Overview", step: 0,
       rows: [
         ["Organization", p.orgName || "—"],
         ["Industry", p.industry || "—"],
         ["Employees", p.employeeCount || "—"],
-        ["M365 Licensed Users", p.licensedUserCount || "—"],
+        ["Licensed Users", p.licensedUserCount || "—"],
         ["IT Contact", p.itContactName ? `${p.itContactName}${p.itContactEmail ? ` (${p.itContactEmail})` : ""}` : "—"],
         ["Tenant Domain", p.tenantDomain || "—"],
-        ["Microsoft Partner", yn(p.isMicrosoftPartner)],
+        ["M365 Partner", yn(p.isMicrosoftPartner)],
       ],
     },
     {
       title: "M365 Licensing & Usage", step: 1,
       rows: [
-        ["License SKUs", p.licenseSKUs.length > 0 ? p.licenseSKUs.join(", ") : "—"],
+        ["License SKUs", p.licenseSKUs.length ? p.licenseSKUs.join(", ") : "—"],
         ["Active User %", p.activeUserPercent ? `${p.activeUserPercent}%` : "—"],
-        ["All Users Licensed", yn(p.allUsersLicensed)],
-        ["Active Workloads", [p.usesExchange && "Exchange", p.usesTeams && "Teams", p.usesSharePoint && "SharePoint", p.usesOneDrive && "OneDrive", p.usesYammer && "Yammer"].filter(Boolean).join(", ") || "None"],
+        ["All Licensed", yn(p.allUsersLicensed)],
+        ["Exchange", yn(p.usesExchange)],
+        ["Teams", yn(p.usesTeams)],
+        ["SharePoint", yn(p.usesSharePoint)],
+        ["OneDrive", yn(p.usesOneDrive)],
+        ["Viva Engage", yn(p.usesYammer)],
       ],
     },
     {
@@ -486,7 +500,7 @@ function Step7({ p, onJump, onDownloadPdf, downloading }: { p: M365Profile; onJu
         ["Guest Users", yn(p.guestUsersPresent)],
         ["Hybrid", yn(p.isHybrid)],
         ["On-Prem Exchange", yn(p.hasOnPremExchange)],
-        ["Entra Connect", yn(p.usesAADConnect)],
+        ["AAD Connect", yn(p.usesAADConnect)],
       ],
     },
     {
@@ -495,8 +509,8 @@ function Step7({ p, onJump, onDownloadPdf, downloading }: { p: M365Profile; onJu
         ["MFA Enforced", yn(p.mfaEnforced)],
         ["Conditional Access", yn(p.conditionalAccessEnabled)],
         ["Entra ID P1/P2", yn(p.hasAADP1orP2)],
-        ["Intune", yn(p.intuneEnabled)],
-        ["Defender for M365", yn(p.hasDefender)],
+        ["Intune Enrolled", yn(p.intuneEnabled)],
+        ["Defender", yn(p.hasDefender)],
         ["DLP Policies", yn(p.hasDLP)],
         ["Sensitivity Labels", yn(p.sensitivityLabelsConfigured)],
         ["Retention Policies", yn(p.hasRetentionPolicies)],
@@ -567,6 +581,76 @@ function Step7({ p, onJump, onDownloadPdf, downloading }: { p: M365Profile; onJu
   );
 }
 
+// ─── Assessment banner ────────────────────────────────────────────────────────
+function AssessmentBanner({
+  quizzes,
+  prefillCount,
+  onPrefill,
+  prefilling,
+}: {
+  quizzes: QuizResult[];
+  prefillCount: number;
+  onPrefill: () => void;
+  prefilling: boolean;
+}) {
+  const [collapsed, setCollapsed] = useState(false);
+  if (quizzes.length === 0) return null;
+  return (
+    <div className="mb-4 rounded-xl border border-[#0078D4]/30 bg-[#0078D4]/5 px-4 py-3">
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex items-start gap-2.5 flex-1 min-w-0">
+          <svg className="w-4 h-4 text-[#0078D4] flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+          </svg>
+          <div className="flex-1 min-w-0">
+            <p className="text-xs font-bold text-[#0078D4] mb-0.5">
+              {quizzes.length} completed assessment{quizzes.length !== 1 ? "s" : ""} available
+            </p>
+            {!collapsed && (
+              <ul className="space-y-0.5 mt-1">
+                {quizzes.map(q => (
+                  <li key={q.id} className="text-[11px] text-[#E6EDF3]/70 flex items-center gap-1.5">
+                    <span className="w-1.5 h-1.5 rounded-full bg-[#0078D4]/50 flex-shrink-0" />
+                    <span className="font-semibold text-[#E6EDF3]/90">{QUIZ_TYPE_LABELS[q.quizType] ?? q.quizType}</span>
+                    <span className="text-[#7D8590]">·</span>
+                    <span>{q.tier} tier · {new Date(q.createdAt).toLocaleDateString()}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+            {prefillCount > 0 && (
+              <p className="text-[11px] text-[#0078D4]/70 mt-1.5">
+                <svg className="w-3 h-3 inline mr-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
+                {prefillCount} field{prefillCount !== 1 ? "s" : ""} pre-filled — look for the <span className="font-bold">From assessment</span> badge
+              </p>
+            )}
+          </div>
+        </div>
+        <div className="flex items-center gap-2 flex-shrink-0">
+          <button
+            type="button"
+            onClick={onPrefill}
+            disabled={prefilling}
+            className="text-xs font-semibold bg-[#0078D4] text-white px-3 py-1.5 rounded-lg hover:bg-[#0078D4]/90 disabled:opacity-50 transition-colors whitespace-nowrap"
+          >
+            {prefilling ? "Applying…" : prefillCount > 0 ? "Re-apply" : "Pre-fill from assessments"}
+          </button>
+          <button
+            type="button"
+            onClick={() => setCollapsed(c => !c)}
+            className="text-[#7D8590] hover:text-[#E6EDF3] transition-colors"
+            aria-label={collapsed ? "Expand" : "Collapse"}
+          >
+            <svg className={`w-4 h-4 transition-transform ${collapsed ? "" : "rotate-180"}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M5 15l7-7 7 7" />
+            </svg>
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Main wizard component ────────────────────────────────────────────────────
 export function M365ProfileWizard({
   clientId,
@@ -579,26 +663,34 @@ export function M365ProfileWizard({
 }) {
   const { fetchWithAuth } = useAuth();
   const { toast } = useToast();
-  const { step, profile, set, errors, goNext, goBack, jumpToStep } = useM365ProfileWizard();
+  const { step, profile, set, errors, goNext, goBack, jumpToStep, preFilled, applyQuizPrefill, clearPreFilled } = useM365ProfileWizard();
   const [loading, setLoading] = useState(true);
   const [profileLoaded, setProfileLoaded] = useState(EMPTY_PROFILE);
   const [saving, setSaving] = useState(false);
   const [downloading, setDownloading] = useState(false);
+  const [quizResults, setQuizResults] = useState<QuizResult[]>([]);
+  const [prefilling, setPrefilling] = useState(false);
 
   useEffect(() => {
     setLoading(true);
-    fetchWithAuth(`/api/admin/clients/${clientId}/m365-profile`)
-      .then(async res => {
-        if (res.ok) {
-          const data = await res.json() as { profile: Partial<M365Profile> | null };
-          if (data.profile) {
-            const merged = { ...EMPTY_PROFILE, ...data.profile };
-            setProfileLoaded(merged);
+    Promise.all([
+      fetchWithAuth(`/api/admin/clients/${clientId}/m365-profile`)
+        .then(async res => {
+          if (res.ok) {
+            const data = await res.json() as { profile: Partial<M365Profile> | null };
+            if (data.profile) setProfileLoaded({ ...EMPTY_PROFILE, ...data.profile });
           }
-        }
-      })
-      .catch(() => {})
-      .finally(() => setLoading(false));
+        })
+        .catch(() => {}),
+      fetchWithAuth(`/api/admin/clients/${clientId}/quiz-results`)
+        .then(async res => {
+          if (res.ok) {
+            const data = await res.json() as QuizResult[];
+            setQuizResults(data);
+          }
+        })
+        .catch(() => {}),
+    ]).finally(() => setLoading(false));
   }, [clientId, fetchWithAuth]);
 
   useEffect(() => {
@@ -608,6 +700,15 @@ export function M365ProfileWizard({
       });
     }
   }, [loading, profileLoaded, set]);
+
+  const handlePrefill = useCallback(() => {
+    setPrefilling(true);
+    clearPreFilled();
+    setTimeout(() => {
+      applyQuizPrefill(quizResults);
+      setPrefilling(false);
+    }, 100);
+  }, [applyQuizPrefill, clearPreFilled, quizResults]);
 
   const handleDownloadPdf = async () => {
     setDownloading(true);
@@ -656,11 +757,11 @@ export function M365ProfileWizard({
 
   const renderStep = () => {
     switch (step) {
-      case 0: return <Step1 p={profile} set={set} errors={errors} />;
-      case 1: return <Step2 p={profile} set={set} errors={errors} />;
-      case 2: return <Step3 p={profile} set={set} errors={errors} />;
-      case 3: return <Step4 p={profile} set={set} />;
-      case 4: return <Step5 p={profile} set={set} errors={errors} />;
+      case 0: return <Step1 p={profile} set={set} errors={errors} pf={preFilled} />;
+      case 1: return <Step2 p={profile} set={set} errors={errors} pf={preFilled} />;
+      case 2: return <Step3 p={profile} set={set} errors={errors} pf={preFilled} />;
+      case 3: return <Step4 p={profile} set={set} pf={preFilled} />;
+      case 4: return <Step5 p={profile} set={set} errors={errors} pf={preFilled} />;
       case 5: return <Step6 p={profile} set={set} errors={errors} />;
       case 6: return <Step7 p={profile} onJump={jumpToStep} onDownloadPdf={() => void handleDownloadPdf()} downloading={downloading} />;
       default: return null;
@@ -691,7 +792,19 @@ export function M365ProfileWizard({
             <div className="flex items-center justify-center py-16">
               <div className="w-6 h-6 border-4 border-[#0078D4] border-t-transparent rounded-full animate-spin" />
             </div>
-          ) : renderStep()}
+          ) : (
+            <>
+              {step < STEPS.length - 1 && (
+                <AssessmentBanner
+                  quizzes={quizResults}
+                  prefillCount={preFilled.size}
+                  onPrefill={handlePrefill}
+                  prefilling={prefilling}
+                />
+              )}
+              {renderStep()}
+            </>
+          )}
         </div>
 
         <div className="px-6 py-4 border-t border-border flex-shrink-0 flex items-center justify-between gap-3">

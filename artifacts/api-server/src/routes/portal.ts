@@ -1,5 +1,5 @@
 import { Router, type IRouter, type Request, type Response } from "express";
-import { db, projectsTable, clientServicesTable, servicesTable, workflowStepsTable, kanbanTasksTable, documentsTable, reportsTable, invoicesTable, messagesTable, notificationsTable, projectUpdatesTable, usersTable, contractsTable, passwordResetTokensTable, workflowTemplateStepsTable, workflowTemplateStepTasksTable, contractTemplatesTable, impersonationTokensTable, statusReportsTable, deviceTokensTable, projectClosuresTable, auditLogsTable, instructionSetsTable, checklistsTable, artifactSetsTable, deliverableSetsTable, emailsTable, emailDomainRulesTable, clientM365ProfilesTable, couponsTable, clientAppRegistrationsTable, accountSetupTokensTable, mfaEnrollmentsTable, mfaChallengesTable, webauthnCredentialsTable, webauthnChallengesTable, clientHealthHistoryTable } from "@workspace/db";
+import { db, projectsTable, clientServicesTable, servicesTable, workflowStepsTable, kanbanTasksTable, documentsTable, reportsTable, invoicesTable, messagesTable, notificationsTable, projectUpdatesTable, usersTable, contractsTable, passwordResetTokensTable, workflowTemplateStepsTable, workflowTemplateStepTasksTable, contractTemplatesTable, impersonationTokensTable, statusReportsTable, deviceTokensTable, projectClosuresTable, auditLogsTable, instructionSetsTable, checklistsTable, artifactSetsTable, deliverableSetsTable, emailsTable, emailDomainRulesTable, clientM365ProfilesTable, couponsTable, clientAppRegistrationsTable, accountSetupTokensTable, mfaEnrollmentsTable, mfaChallengesTable, webauthnCredentialsTable, webauthnChallengesTable, clientHealthHistoryTable, quizLeadsTable } from "@workspace/db";
 import { eq, and, desc, asc, count, sql, inArray, gte, isNotNull, isNull, or, lt } from "drizzle-orm";
 import { requireAuth, requireAdmin } from "../middlewares/requireAuth";
 import jwt from "jsonwebtoken";
@@ -365,6 +365,28 @@ router.put("/portal/m365-profile", requireAuth, async (req: Request, res: Respon
   }
 
   res.json({ ok: true });
+});
+
+// ── Portal: quiz results for the current client ───────────────────────────────
+router.get("/portal/quiz-results", requireAuth, async (req: Request, res: Response) => {
+  const userId = req.user!.id;
+  const [user] = await db.select({ email: usersTable.email }).from(usersTable).where(eq(usersTable.id, userId)).limit(1);
+  if (!user) { res.json([]); return; }
+
+  const rows = await db
+    .select({
+      id: quizLeadsTable.id,
+      quizType: quizLeadsTable.quizType,
+      totalScore: quizLeadsTable.totalScore,
+      tier: quizLeadsTable.tier,
+      categoryScores: quizLeadsTable.categoryScores,
+      createdAt: quizLeadsTable.createdAt,
+    })
+    .from(quizLeadsTable)
+    .where(eq(quizLeadsTable.email, user.email))
+    .orderBy(desc(quizLeadsTable.createdAt));
+
+  res.json(rows);
 });
 
 // ── M365 scorecard history — first vs latest per category ─────────────────────

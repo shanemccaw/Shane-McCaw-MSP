@@ -313,4 +313,39 @@ router.get("/admin/clients/:id/command-center", requireAdmin, async (req: Reques
   }
 });
 
+// ─── GET /admin/clients/:id/quiz-results ─────────────────────────────────────
+// Returns all completed quiz submissions for a specific client (matched by email).
+router.get("/admin/clients/:id/quiz-results", requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const id = parseInt(String(req.params["id"] ?? ""), 10);
+    if (isNaN(id)) { res.status(400).json({ error: "Invalid ID" }); return; }
+
+    const [client] = await db
+      .select({ email: usersTable.email })
+      .from(usersTable)
+      .where(and(eq(usersTable.id, id), eq(usersTable.role, "client")))
+      .limit(1);
+
+    if (!client) { res.status(404).json({ error: "Client not found" }); return; }
+
+    const quizRows = await db
+      .select({
+        id: quizLeadsTable.id,
+        quizType: quizLeadsTable.quizType,
+        totalScore: quizLeadsTable.totalScore,
+        tier: quizLeadsTable.tier,
+        categoryScores: quizLeadsTable.categoryScores,
+        createdAt: quizLeadsTable.createdAt,
+      })
+      .from(quizLeadsTable)
+      .where(eq(quizLeadsTable.email, client.email))
+      .orderBy(desc(quizLeadsTable.createdAt));
+
+    res.json(quizRows);
+  } catch (err) {
+    logger.error({ err }, "Failed to fetch client quiz results");
+    res.status(500).json({ error: "Failed to fetch quiz results" });
+  }
+});
+
 export default router;
