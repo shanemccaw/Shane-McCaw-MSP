@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useLocation } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
 import {
@@ -457,6 +457,107 @@ function TagInput({
   );
 }
 
+interface DerivedSignals {
+  painPoints: string[];
+  maturityIndicators: string[];
+  engagementSignals: string[];
+  urgencySignals: string[];
+}
+
+const QUIZ_TYPE_PAIN_MAP: Record<string, string[]> = {
+  sharepoint: ["SharePoint", "Governance"],
+  migration: ["Migration"],
+  "security-compliance": ["Security", "Compliance", "Governance"],
+  copilot: ["Copilot", "AI Readiness"],
+  teams: ["Teams"],
+  "power-platform": ["Power Platform", "Governance"],
+  governance: ["Governance", "Compliance"],
+  "m365-health": ["Security", "Compliance", "Governance"],
+};
+
+const CATEGORY_PAIN_MAP: [string, string][] = [
+  ["sharepoint", "SharePoint"],
+  ["teams", "Teams"],
+  ["powerplatform", "Power Platform"],
+  ["power", "Power Platform"],
+  ["security", "Security"],
+  ["compliance", "Compliance"],
+  ["governance", "Governance"],
+  ["copilot", "Copilot"],
+  ["migration", "Migration"],
+  ["adoption", "Adoption"],
+  ["training", "Training"],
+];
+
+function deriveSignalsFromQuiz(quiz: QuizMatch, leadSource: LeadSource): DerivedSignals {
+  const painPoints = new Set<string>();
+  const maturityIndicators = new Set<string>();
+  const engagementSignals = new Set<string>();
+  const urgencySignals = new Set<string>();
+
+  // Quiz type → Pain Points
+  const typePains = QUIZ_TYPE_PAIN_MAP[quiz.quizType] ?? [];
+  typePains.forEach(p => painPoints.add(p));
+
+  // Category scores ≤ 5 → Pain Points (low score = gap = pain)
+  for (const [key, score] of Object.entries(quiz.categoryScores)) {
+    if (score <= 5) {
+      const normalized = key.toLowerCase().replace(/[\s_-]/g, "");
+      for (const [mapKey, pain] of CATEGORY_PAIN_MAP) {
+        if (normalized.includes(mapKey)) {
+          painPoints.add(pain);
+          break;
+        }
+      }
+    }
+  }
+
+  // Transcript analysis — user turns only
+  const userTurns = quiz.conversation
+    .filter(t => t.role === "user")
+    .map(t => t.content)
+    .join(" ");
+
+  // Maturity Indicators from transcript keywords
+  const maturityRules: [RegExp, string][] = [
+    [/sharepoint/i, "Active SharePoint usage"],
+    [/\bteams\b/i, "Teams adoption"],
+    [/power\s*platform|powerapps/i, "Power Platform usage"],
+    [/it\s*team|it\s*department|dedicated\s*it/i, "Dedicated IT team"],
+    [/\bE3\b|\bE5\b|business\s*premium/i, "Has existing M365"],
+    [/governance\s*policy/i, "Data governance policy"],
+    [/\bdocumented\b/i, "Documented processes"],
+    [/previous\s*consultant|worked\s*with/i, "Previous consultant"],
+  ];
+  for (const [pattern, indicator] of maturityRules) {
+    if (pattern.test(userTurns)) maturityIndicators.add(indicator);
+  }
+
+  // Urgency Signals from transcript keywords
+  const urgencyRules: [RegExp, string][] = [
+    [/\baudit\b/i, "Audit deadline"],
+    [/\bdeadline\b/i, "Compliance deadline"],
+    [/\bboard\b/i, "Board mandate"],
+    [/budget\s*approved/i, "Budget approved"],
+    [/this\s*quarter|Q[1-4]\b/i, "This quarter"],
+    [/\bASAP\b|\burgent\b/i, "Urgent"],
+  ];
+  for (const [pattern, signal] of urgencyRules) {
+    if (pattern.test(userTurns)) urgencySignals.add(signal);
+  }
+
+  // Engagement Signals: always add "Completed quiz"; add "Downloaded resource" for lead_magnet
+  engagementSignals.add("Completed quiz");
+  if (leadSource === "lead_magnet") engagementSignals.add("Downloaded resource");
+
+  return {
+    painPoints: [...painPoints],
+    maturityIndicators: [...maturityIndicators],
+    engagementSignals: [...engagementSignals],
+    urgencySignals: [...urgencySignals],
+  };
+}
+
 export default function LeadDetailPage({ params }: { params: { id: string } }) {
   const { fetchWithAuth } = useAuth();
   const [, navigate] = useLocation();
@@ -475,6 +576,9 @@ export default function LeadDetailPage({ params }: { params: { id: string } }) {
   // Qualification profile state
   const [qualSaving, setQualSaving] = useState(false);
   const [qualSaved, setQualSaved] = useState(false);
+  const [autoFillBannerVisible, setAutoFillBannerVisible] = useState(false);
+  const [reimportFlash, setReimportFlash] = useState(false);
+  const autoFillAppliedRef = useRef(false);
   const [qualProfile, setQualProfile] = useState({
     industry: "",
     employeeCount: "",
@@ -538,6 +642,55 @@ export default function LeadDetailPage({ params }: { params: { id: string } }) {
     ]).finally(() => setLoading(false));
   }, [leadId, loadLead, fetchWithAuth]);
 
+  // Auto-fill qualification signals from quiz data on first load
+  useEffect(() => {
+    if (autoFillAppliedRef.current) return;
+    if (!lead || quizMatches.length === 0) return;
+
+    autoFillAppliedRef.current = true;
+
+    const hasExistingSignals =
+      lead.painPoints.length > 0 ||
+      lead.maturityIndicators.length > 0 ||
+      lead.engagementSignals.length > 0 ||
+      lead.urgencySignals.length > 0;
+
+    if (!hasExistingSignals) {
+      const bestMatch = [...quizMatches].sort((a, b) => b.totalScore - a.totalScore)[0];
+      const derived = deriveSignalsFromQuiz(bestMatch, lead.source);
+      const hasAnyDerived =
+        derived.painPoints.length > 0 ||
+        derived.maturityIndicators.length > 0 ||
+        derived.engagementSignals.length > 0 ||
+        derived.urgencySignals.length > 0;
+      if (hasAnyDerived) {
+        setQualProfile(p => ({
+          ...p,
+          painPoints: derived.painPoints,
+          maturityIndicators: derived.maturityIndicators,
+          engagementSignals: derived.engagementSignals,
+          urgencySignals: derived.urgencySignals,
+        }));
+        setAutoFillBannerVisible(true);
+      }
+    }
+  }, [lead, quizMatches]);
+
+  const reimportFromQuiz = () => {
+    if (!lead || quizMatches.length === 0) return;
+    const bestMatch = [...quizMatches].sort((a, b) => b.totalScore - a.totalScore)[0];
+    const derived = deriveSignalsFromQuiz(bestMatch, lead.source);
+    setQualProfile(p => ({
+      ...p,
+      painPoints: [...new Set([...p.painPoints, ...derived.painPoints])],
+      maturityIndicators: [...new Set([...p.maturityIndicators, ...derived.maturityIndicators])],
+      engagementSignals: [...new Set([...p.engagementSignals, ...derived.engagementSignals])],
+      urgencySignals: [...new Set([...p.urgencySignals, ...derived.urgencySignals])],
+    }));
+    setReimportFlash(true);
+    setTimeout(() => setReimportFlash(false), 2500);
+  };
+
   const saveStatus = async (newStatus: LeadStatus) => {
     if (!lead || newStatus === lead.status) return;
     setSaving(true);
@@ -586,6 +739,7 @@ export default function LeadDetailPage({ params }: { params: { id: string } }) {
         const updated = await res.json() as Lead & { qualificationPending?: boolean };
         setLead(updated);
         setQualSaved(true);
+        setAutoFillBannerVisible(false);
         setTimeout(() => setQualSaved(false), 2500);
         if (updated.qualificationPending) {
           // Small delay to let the DB settle, then navigate to leads page
@@ -752,8 +906,8 @@ export default function LeadDetailPage({ params }: { params: { id: string } }) {
 
       {/* Qualification Profile */}
       <div className="bg-[#161B22] border border-border rounded-xl overflow-hidden">
-        <div className="px-5 py-3.5 border-b border-border bg-[#1C2128] flex items-center justify-between">
-          <div className="flex items-center gap-3">
+        <div className="px-5 py-3.5 border-b border-border bg-[#1C2128] flex items-center justify-between gap-3 flex-wrap">
+          <div className="flex items-center gap-3 flex-wrap">
             <h2 className="text-sm font-bold text-[#E6EDF3]">Qualification Profile</h2>
             {lead.score > 0 && (
               <div className="flex items-center gap-2">
@@ -768,6 +922,29 @@ export default function LeadDetailPage({ params }: { params: { id: string } }) {
                 </span>
                 <span className="text-sm font-bold text-[#E6EDF3]">{lead.score}<span className="text-xs font-normal text-muted-foreground">/100</span></span>
               </div>
+            )}
+            {quizMatches.length > 0 && (lead.painPoints.length > 0 || lead.maturityIndicators.length > 0 || lead.engagementSignals.length > 0 || lead.urgencySignals.length > 0) && (
+              <button
+                type="button"
+                onClick={reimportFromQuiz}
+                className="flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-lg border border-[#0078D4]/40 text-[#0078D4] hover:bg-[#0078D4]/10 transition-colors"
+              >
+                {reimportFlash ? (
+                  <>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} className="w-3.5 h-3.5 text-green-400">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                    </svg>
+                    <span className="text-green-400">Merged!</span>
+                  </>
+                ) : (
+                  <>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-3.5 h-3.5">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                    </svg>
+                    Re-import from quiz
+                  </>
+                )}
+              </button>
             )}
           </div>
           <p className="text-xs text-muted-foreground">Saved changes trigger automatic scoring</p>
@@ -836,6 +1013,28 @@ export default function LeadDetailPage({ params }: { params: { id: string } }) {
               />
             </div>
           </div>
+
+          {/* Auto-fill banner */}
+          {autoFillBannerVisible && (
+            <div className="flex items-start gap-3 rounded-lg border border-[#0078D4]/30 bg-[#0078D4]/10 px-4 py-3">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-4 h-4 text-[#0078D4] flex-shrink-0 mt-0.5">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
+              </svg>
+              <p className="text-xs text-[#E6EDF3] flex-1 leading-relaxed">
+                <span className="font-semibold text-[#0078D4]">Auto-filled from quiz answers</span> — review and save to apply.
+              </p>
+              <button
+                type="button"
+                onClick={() => setAutoFillBannerVisible(false)}
+                className="flex-shrink-0 text-muted-foreground hover:text-[#E6EDF3] transition-colors"
+                aria-label="Dismiss"
+              >
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-4 h-4">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+          )}
 
           {/* Tags */}
           <div className="space-y-5">
