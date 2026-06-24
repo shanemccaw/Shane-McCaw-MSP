@@ -285,6 +285,11 @@ export default function ClientDetailPage() {
   const [reportsLoading, setReportsLoading] = useState(false);
   const [expandedReportId, setExpandedReportId] = useState<number|null>(null);
 
+  // Invoices
+  const [showInvoices, setShowInvoices] = useState(false);
+  const [clientInvoices, setClientInvoices] = useState<Array<{id:number;invoiceNumber:string;invoiceType:string;status:string;amount:string;currency:string;dueDate:string|null;paidAt:string|null;discountAmount:string|null;couponCode:string|null;createdAt:string}>>([]);
+  const [invoicesLoading, setInvoicesLoading] = useState(false);
+
   const CRM_PORTAL_BASE = `${window.location.protocol}//${window.location.host}/crm`;
 
   const loadDocuments = useCallback(async () => {
@@ -361,6 +366,19 @@ export default function ClientDetailPage() {
       void loadHealthTrends();
     }
   }, [showAiRecs, clientId, loadClientNba, loadHealthTrends]);
+
+  const loadClientInvoices = useCallback(async () => {
+    if (!clientId) return;
+    setInvoicesLoading(true);
+    try {
+      const res = await fetchWithAuth(`/api/admin/invoices?clientUserId=${clientId}&sortBy=createdAt&sortDir=desc`);
+      if (res.ok) {
+        const all = await res.json() as Array<{id:number;clientUserId:number;invoiceNumber:string;invoiceType:string;status:string;amount:string;currency:string;dueDate:string|null;paidAt:string|null;discountAmount:string|null;couponCode:string|null;createdAt:string}>;
+        setClientInvoices(all.filter(i => i.clientUserId === clientId));
+      }
+    } catch { /* non-fatal */ }
+    finally { setInvoicesLoading(false); }
+  }, [fetchWithAuth, clientId]);
 
   const loadCommandCenter = useCallback(async () => {
     setCcLoading(true);
@@ -1641,6 +1659,92 @@ export default function ClientDetailPage() {
                           </div>
                         </div>
                       )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* ── Invoices Section ─────────────────────────────────────────────────── */}
+      <div className="bg-[#161B22] border border-border rounded-xl overflow-hidden">
+        <button
+          onClick={() => { setShowInvoices(s => { if (!s) void loadClientInvoices(); return !s; }); }}
+          className="w-full flex items-center justify-between px-5 py-4 hover:bg-[#1C2128] transition-colors text-left"
+        >
+          <div className="flex items-center gap-3">
+            <p className="text-sm font-bold text-[#E6EDF3]">Invoices</p>
+            {clientInvoices.length > 0 && (
+              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-[#0078D4]/15 text-[#0078D4] border border-[#0078D4]/20">
+                {clientInvoices.length}
+              </span>
+            )}
+            {clientInvoices.some(i => i.status === "overdue") && (
+              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-red-500/15 text-red-400 border border-red-500/20">
+                Overdue
+              </span>
+            )}
+          </div>
+          <svg className={`w-4 h-4 text-muted-foreground transition-transform ${showInvoices ? "rotate-180" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" /></svg>
+        </button>
+
+        {showInvoices && (
+          <div className="border-t border-border">
+            <div className="px-4 pt-3 pb-2 flex gap-2 flex-wrap">
+              <button
+                onClick={() => navigate(`/crm/invoices?client=${clientId}`)}
+                className="flex items-center gap-1.5 text-[10px] font-semibold text-muted-foreground hover:text-[#E6EDF3] transition-colors ml-auto"
+              >
+                View all invoices →
+              </button>
+            </div>
+            {invoicesLoading ? (
+              <p className="text-xs text-muted-foreground px-4 py-4 text-center">Loading invoices…</p>
+            ) : clientInvoices.length === 0 ? (
+              <div className="px-4 py-6 text-center">
+                <p className="text-xs text-muted-foreground">No invoices for this client yet.</p>
+                <button
+                  onClick={() => navigate("/crm/invoices")}
+                  className="mt-2 text-xs font-semibold text-[#0078D4] hover:underline"
+                >
+                  Create invoice →
+                </button>
+              </div>
+            ) : (
+              <div className="divide-y divide-border">
+                {clientInvoices.map(inv => {
+                  const statusCls: Record<string, string> = {
+                    paid: "bg-emerald-500/15 text-emerald-400",
+                    due: "bg-amber-500/15 text-amber-400",
+                    overdue: "bg-red-500/15 text-red-400",
+                    draft: "bg-[#30363D]/50 text-[#7D8590]",
+                  };
+                  const typeCls = inv.invoiceType === "retainer" ? "text-purple-400" : "text-[#0078D4]";
+                  const fmtAmt = (a: string) => new Intl.NumberFormat("en-US", { style: "currency", currency: (inv.currency ?? "usd").toUpperCase() }).format(parseFloat(a));
+                  return (
+                    <div
+                      key={inv.id}
+                      onClick={() => navigate(`/crm/invoices/${inv.id}`)}
+                      className="flex items-center gap-3 px-4 py-3 hover:bg-[#1C2128] transition-colors cursor-pointer"
+                    >
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2">
+                          <p className="text-sm font-semibold text-[#E6EDF3]">{inv.invoiceNumber}</p>
+                          <span className={`text-[10px] font-bold ${typeCls}`}>{inv.invoiceType === "retainer" ? "Retainer" : "Instant"}</span>
+                        </div>
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                          {inv.dueDate ? `Due ${new Date(inv.dueDate).toLocaleDateString()}` : new Date(inv.createdAt).toLocaleDateString()}
+                        </p>
+                      </div>
+                      <div className="text-right flex-shrink-0">
+                        <p className="text-sm font-bold text-[#E6EDF3]">{fmtAmt(inv.amount)}</p>
+                        <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${statusCls[inv.status] ?? "bg-[#30363D]/50 text-[#7D8590]"}`}>
+                          {inv.status.charAt(0).toUpperCase() + inv.status.slice(1)}
+                        </span>
+                      </div>
+                      <svg className="w-4 h-4 text-muted-foreground flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" /></svg>
                     </div>
                   );
                 })}

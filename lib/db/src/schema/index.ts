@@ -251,6 +251,11 @@ export const invoicesTable = pgTable("invoices", {
   sharepointFileUrl: text("sharepoint_file_url"),
   couponCode: text("coupon_code"),
   discountAmount: numeric("discount_amount", { precision: 10, scale: 2 }),
+  invoiceType: text("invoice_type", { enum: ["instant", "retainer"] }).notNull().default("instant"),
+  stripeInvoiceId: text("stripe_invoice_id"),
+  billingCycleStart: timestamp("billing_cycle_start"),
+  billingCycleEnd: timestamp("billing_cycle_end"),
+  stripeSubscriptionId: text("stripe_subscription_id"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });

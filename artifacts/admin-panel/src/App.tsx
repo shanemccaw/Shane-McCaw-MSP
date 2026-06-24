@@ -18,6 +18,7 @@ import ProjectsPage from "@/pages/crm/Projects";
 import ProjectDetailPage from "@/pages/crm/ProjectDetail";
 import ReportsPage from "@/pages/crm/Reports";
 import InvoicesPage from "@/pages/crm/Invoices";
+import InvoiceDetailPage from "@/pages/crm/InvoiceDetail";
 import DocumentsPage from "@/pages/crm/Documents";
 import MessagesPage from "@/pages/crm/Messages";
 import PurchasesPage from "@/pages/crm/Purchases";
@@ -149,6 +150,9 @@ function Router() {
       </Route>
       <Route path="/crm/reports">
         <RequireAdmin><DashboardShell><ReportsPage /></DashboardShell></RequireAdmin>
+      </Route>
+      <Route path="/crm/invoices/:id">
+        <RequireAdmin><DashboardShell><InvoiceDetailPage /></DashboardShell></RequireAdmin>
       </Route>
       <Route path="/crm/invoices">
         <RequireAdmin><DashboardShell><InvoicesPage /></DashboardShell></RequireAdmin>

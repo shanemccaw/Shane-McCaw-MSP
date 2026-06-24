@@ -5483,9 +5483,58 @@ router.get("/admin/projects/:id/report-autofill", requireAdmin, async (req: Requ
 });
 
 // ─── ADMIN: Invoices ─────────────────────────────────────────────────────────
-router.get("/admin/invoices", requireAdmin, async (_req: Request, res: Response) => {
-  const invoices = await db.select().from(invoicesTable).orderBy(desc(invoicesTable.createdAt));
-  res.json(invoices);
+router.get("/admin/invoices", requireAdmin, async (req: Request, res: Response) => {
+  const { type, status, sortBy = "createdAt", sortDir = "desc" } = req.query as {
+    type?: string; status?: string; sortBy?: string; sortDir?: string;
+  };
+
+  const conditions: ReturnType<typeof eq>[] = [];
+  if (type && type !== "all") conditions.push(eq(invoicesTable.invoiceType, type as "instant" | "retainer"));
+  if (status && status !== "all") conditions.push(eq(invoicesTable.status, status as "draft" | "due" | "paid" | "overdue"));
+
+  const sortColumnMap = {
+    createdAt: invoicesTable.createdAt,
+    amount: invoicesTable.amount,
+    dueDate: invoicesTable.dueDate,
+    status: invoicesTable.status,
+    invoiceNumber: invoicesTable.invoiceNumber,
+  } as const;
+  const sortColumn = sortColumnMap[sortBy as keyof typeof sortColumnMap] ?? invoicesTable.createdAt;
+  const orderFn = sortDir === "asc" ? asc(sortColumn) : desc(sortColumn);
+
+  const rows = await db.select({
+    id: invoicesTable.id,
+    clientUserId: invoicesTable.clientUserId,
+    projectId: invoicesTable.projectId,
+    invoiceNumber: invoicesTable.invoiceNumber,
+    description: invoicesTable.description,
+    amount: invoicesTable.amount,
+    currency: invoicesTable.currency,
+    status: invoicesTable.status,
+    dueDate: invoicesTable.dueDate,
+    paidAt: invoicesTable.paidAt,
+    pdfFilename: invoicesTable.pdfFilename,
+    stripeSessionId: invoicesTable.stripeSessionId,
+    sharepointFileUrl: invoicesTable.sharepointFileUrl,
+    couponCode: invoicesTable.couponCode,
+    discountAmount: invoicesTable.discountAmount,
+    invoiceType: invoicesTable.invoiceType,
+    stripeInvoiceId: invoicesTable.stripeInvoiceId,
+    billingCycleStart: invoicesTable.billingCycleStart,
+    billingCycleEnd: invoicesTable.billingCycleEnd,
+    stripeSubscriptionId: invoicesTable.stripeSubscriptionId,
+    createdAt: invoicesTable.createdAt,
+    updatedAt: invoicesTable.updatedAt,
+    clientName: usersTable.name,
+    clientEmail: usersTable.email,
+    clientCompany: usersTable.company,
+  })
+  .from(invoicesTable)
+  .leftJoin(usersTable, eq(invoicesTable.clientUserId, usersTable.id))
+  .where(conditions.length === 0 ? undefined : conditions.length === 1 ? conditions[0] : and(...conditions))
+  .orderBy(orderFn);
+
+  res.json(rows);
 });
 
 router.post("/admin/invoices", requireAdmin, uploadInvoice.single("pdf"), async (req: Request, res: Response) => {

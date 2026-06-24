@@ -435,6 +435,13 @@
       "when": 1750867200000,
       "tag": "0059_add_ai_intelligence_tables",
       "breakpoints": true
+    },
+    {
+      "idx": 60,
+      "version": "7",
+      "when": 1750953600000,
+      "tag": "0060_add_invoice_type_fields",
+      "breakpoints": true
     }
   ]
 }

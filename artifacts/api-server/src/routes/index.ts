@@ -45,6 +45,7 @@ import adminQuizPainConfigRouter from "./admin-quiz-pain-config";
 import aiNextBestActionsRouter from "./ai-next-best-actions";
 import analyticsForecastRouter from "./analytics-forecast";
 import clientHealthTrendsRouter from "./client-health-trends";
+import adminFinanceRouter from "./admin-finance";
 
 const router: IRouter = Router();
 
@@ -94,5 +95,6 @@ router.use(adminQuizPainConfigRouter);
 router.use(aiNextBestActionsRouter);
 router.use(analyticsForecastRouter);
 router.use(clientHealthTrendsRouter);
+router.use(adminFinanceRouter);
 
 export default router;
