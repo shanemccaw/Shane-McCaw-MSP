@@ -22,14 +22,24 @@ interface Service {
 
 
 function fmtService(s: Service) {
-  if (s.orderWorkflow?.length && s.basePrice) {
-    const base = parseFloat(s.basePrice).toLocaleString("en-US", { minimumFractionDigits: 0 });
-    const max = s.maxPrice ? parseFloat(s.maxPrice).toLocaleString("en-US", { minimumFractionDigits: 0 }) : null;
-    const range = max ? `$${base} – $${max}` : `from $${base}`;
+  const fmt = (v: string | null) => {
+    if (!v) return null;
+    const n = parseFloat(v);
+    if (isNaN(n)) return null;
+    return "$" + n.toLocaleString("en-US", { minimumFractionDigits: 0 });
+  };
+  const base = fmt(s.basePrice);
+  const max = fmt(s.maxPrice);
+  if (base && max) {
+    const range = `${base} – ${max}`;
+    return s.billingType === "recurring_monthly" ? `${range}/mo` : range;
+  }
+  if (base) {
+    const range = `from ${base}`;
     return s.billingType === "recurring_monthly" ? `${range}/mo` : range;
   }
   if (!s.price) return "Contact for pricing";
-  const formatted = `$${parseFloat(s.price).toLocaleString("en-US", { minimumFractionDigits: 0 })}`;
+  const formatted = fmt(s.price)!;
   return s.billingType === "recurring_monthly" ? `${formatted}/mo` : formatted;
 }
 
@@ -224,10 +234,10 @@ export default function OnboardingSelect() {
   const selectedServices = services.filter(s => selectedIds.has(s.id));
   const oneTimeTotal = selectedServices
     .filter(s => s.billingType === "one_time" && !s.orderWorkflow?.length)
-    .reduce((sum, s) => sum + fmtNum(s.price), 0);
+    .reduce((sum, s) => sum + fmtNum(s.price ?? s.basePrice), 0);
   const monthlyTotal = selectedServices
     .filter(s => s.billingType === "recurring_monthly" && !s.orderWorkflow?.length)
-    .reduce((sum, s) => sum + fmtNum(s.price), 0);
+    .reduce((sum, s) => sum + fmtNum(s.price ?? s.basePrice), 0);
 
   const hasWizardServices = selectedServices.some(s => s.orderWorkflow?.length && s.basePrice);
   const microOffers = services.filter(s => s.billingType === "one_time");
