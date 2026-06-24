@@ -1,6 +1,7 @@
 import { Feather } from "@expo/vector-icons";
+import * as Haptics from "expo-haptics";
 import { useRouter } from "expo-router";
-import React from "react";
+import React, { useCallback, useRef, useState } from "react";
 import {
   Platform,
   Pressable,
@@ -14,7 +15,9 @@ import { useQuery } from "@tanstack/react-query";
 
 import { useAuth } from "@/contexts/AuthContext";
 import { useColors } from "@/hooks/useColors";
+import { useQuickAccess, QuickAccessItem } from "@/hooks/useQuickAccess";
 import { Badge } from "@/components/Badge";
+import { Toast } from "@/components/Toast";
 
 interface MenuItem {
   icon: keyof typeof Feather.glyphMap;
@@ -24,8 +27,20 @@ interface MenuItem {
   description?: string;
 }
 
-function MenuRow({ item, colors }: { item: MenuItem; colors: ReturnType<typeof useColors> }) {
+function MenuRow({
+  item,
+  colors,
+  pinned,
+  onLongPress,
+}: {
+  item: MenuItem;
+  colors: ReturnType<typeof useColors>;
+  pinned: boolean;
+  onLongPress: () => void;
+}) {
   const router = useRouter();
+  // Prevent the tap from firing as navigation when the user actually long-pressed
+  const suppressNextPress = useRef(false);
   return (
     <Pressable
       style={({ pressed }) => [
@@ -33,7 +48,18 @@ function MenuRow({ item, colors }: { item: MenuItem; colors: ReturnType<typeof u
         { backgroundColor: colors.card, borderColor: colors.border },
         pressed && { opacity: 0.75 },
       ]}
-      onPress={() => router.push(item.route as Parameters<typeof router.push>[0])}
+      onPress={() => {
+        if (suppressNextPress.current) {
+          suppressNextPress.current = false;
+          return;
+        }
+        router.push(item.route as Parameters<typeof router.push>[0]);
+      }}
+      onLongPress={() => {
+        suppressNextPress.current = true;
+        onLongPress();
+      }}
+      delayLongPress={400}
     >
       <View style={[styles.menuIcon, { backgroundColor: colors.primary + "18" }]}>
         <Feather name={item.icon} size={18} color={colors.primary} />
@@ -49,6 +75,9 @@ function MenuRow({ item, colors }: { item: MenuItem; colors: ReturnType<typeof u
           <Text style={styles.badgeText}>{item.badge > 99 ? "99+" : item.badge}</Text>
         </View>
       ) : null}
+      {pinned && (
+        <Feather name="bookmark" size={14} color={colors.primary} style={{ marginRight: 4 }} />
+      )}
       <Feather name="chevron-right" size={16} color={colors.mutedForeground} />
     </Pressable>
   );
@@ -59,6 +88,35 @@ export default function MoreScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const topPad = Platform.OS === "web" ? 67 : insets.top;
+  const { isPinned, addItem, removeItem, hintSeen, dismissHint } = useQuickAccess();
+
+  const [toastMsg, setToastMsg] = useState("");
+  const [toastKey, setToastKey] = useState(0);
+
+  const showToast = useCallback((msg: string) => {
+    setToastMsg(msg);
+    setToastKey((k) => k + 1);
+  }, []);
+
+  const handleLongPress = useCallback(
+    (item: MenuItem) => {
+      void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      if (isPinned(item.route)) {
+        removeItem(item.route);
+        showToast(`"${item.label}" removed from Quick Access`);
+      } else {
+        const qa: QuickAccessItem = {
+          label: item.label,
+          icon: item.icon,
+          route: item.route,
+        };
+        addItem(qa);
+        showToast(`"${item.label}" added to Quick Access`);
+      }
+      if (!hintSeen) dismissHint();
+    },
+    [isPinned, addItem, removeItem, showToast, hintSeen, dismissHint]
+  );
 
   const { data: conversations } = useQuery<{ unreadCount: number }[]>({
     queryKey: ["admin-conversations"],
@@ -118,6 +176,7 @@ export default function MoreScreen() {
     <View style={[styles.container, { backgroundColor: colors.background, paddingTop: topPad }]}>
       <View style={[styles.header, { borderBottomColor: colors.border }]}>
         <Text style={[styles.title, { color: colors.text }]}>More</Text>
+        <Text style={[styles.hint, { color: colors.mutedForeground }]}>Hold any item to pin</Text>
       </View>
 
       <ScrollView
@@ -151,7 +210,12 @@ export default function MoreScreen() {
             <View style={[styles.sectionGroup, { borderColor: colors.border }]}>
               {section.items.map((item, i) => (
                 <View key={item.label}>
-                  <MenuRow item={item} colors={colors} />
+                  <MenuRow
+                    item={item}
+                    colors={colors}
+                    pinned={isPinned(item.route)}
+                    onLongPress={() => handleLongPress(item)}
+                  />
                   {i < section.items.length - 1 && (
                     <View style={[styles.separator, { backgroundColor: colors.border }]} />
                   )}
@@ -161,14 +225,24 @@ export default function MoreScreen() {
           </View>
         ))}
       </ScrollView>
+
+      <Toast message={toastMsg} toastKey={toastKey} />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  header: { paddingHorizontal: 20, paddingVertical: 14, borderBottomWidth: 1 },
+  header: {
+    paddingHorizontal: 20,
+    paddingVertical: 14,
+    borderBottomWidth: 1,
+    flexDirection: "row",
+    alignItems: "baseline",
+    gap: 10,
+  },
   title: { fontSize: 26, fontFamily: "Inter_700Bold", letterSpacing: -0.5 },
+  hint: { fontSize: 12, fontFamily: "Inter_400Regular", flex: 1, textAlign: "right" },
   scroll: { paddingTop: 16 },
   userCard: {
     flexDirection: "row",

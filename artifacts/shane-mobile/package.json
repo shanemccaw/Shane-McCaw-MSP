@@ -57,6 +57,7 @@
   },
   "dependencies": {
     "expo-notifications": "^0.32.17",
-    "expo-secure-store": "^56.0.4"
+    "expo-secure-store": "^56.0.4",
+    "react-native-draggable-flatlist": "^4.0.3"
   }
 }

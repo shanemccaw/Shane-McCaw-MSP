@@ -15,11 +15,13 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { useAuth } from "@/contexts/AuthContext";
 import { useColors } from "@/hooks/useColors";
+import { useQuickAccess } from "@/hooks/useQuickAccess";
 import { Card } from "@/components/Card";
 import { Badge } from "@/components/Badge";
 import { ErrorBanner } from "@/components/ErrorBanner";
 import { SectionHeader } from "@/components/SectionHeader";
 import { ListSkeleton } from "@/components/SkeletonLoader";
+import { DraggableQuickAccessGrid } from "@/components/DraggableQuickAccessGrid";
 
 interface KPIs {
   revenueMtd?: number;
@@ -85,6 +87,7 @@ export default function HomeScreen() {
   const router = useRouter();
   const qc = useQueryClient();
   const [refreshing, setRefreshing] = useState(false);
+  const { items: quickItems, reorder, removeItem, hintSeen, dismissHint } = useQuickAccess();
 
   const { data: kpis, isLoading: kpisLoading, error: kpisError, refetch: refetchKpis } = useQuery<KPIs>({
     queryKey: ["admin-kpis"],
@@ -238,31 +241,26 @@ export default function HomeScreen() {
               </View>
             )}
 
-            {/* Quick Actions */}
+            {/* Quick Access */}
             <SectionHeader title="Quick Access" />
-            <View style={styles.quickGrid}>
-              {[
-                { label: "Clients", icon: "users" as const, route: "/(tabs)/clients" },
-                { label: "Pipeline", icon: "trending-up" as const, route: "/(tabs)/pipeline" },
-                { label: "Projects", icon: "grid" as const, route: "/(tabs)/projects" },
-                { label: "Messages", icon: "message-circle" as const, route: "/(tabs)/more/messages" },
-                { label: "Script Runner", icon: "terminal" as const, route: "/(tabs)/more/script-runner" },
-                { label: "Analytics", icon: "bar-chart-2" as const, route: "/(tabs)/more/analytics" },
-              ].map((item) => (
-                <Pressable
-                  key={item.label}
-                  style={({ pressed }) => [
-                    styles.quickBtn,
-                    { backgroundColor: colors.card, borderColor: colors.border },
-                    pressed && { opacity: 0.7 },
-                  ]}
-                  onPress={() => router.push(item.route as Parameters<typeof router.push>[0])}
-                >
-                  <Feather name={item.icon} size={20} color={colors.primary} />
-                  <Text style={[styles.quickLabel, { color: colors.text }]}>{item.label}</Text>
-                </Pressable>
-              ))}
-            </View>
+            {!hintSeen && (
+              <Pressable
+                onPress={dismissHint}
+                style={[styles.hintBanner, { backgroundColor: colors.primary + "18", borderColor: colors.primary + "40" }]}
+              >
+                <Feather name="move" size={14} color={colors.primary} />
+                <Text style={[styles.hintText, { color: colors.primary }]}>
+                  Hold any item to rearrange · Hold More items to pin here
+                </Text>
+                <Feather name="x" size={14} color={colors.primary} />
+              </Pressable>
+            )}
+            <DraggableQuickAccessGrid
+              items={quickItems}
+              onReorder={reorder}
+              onRemove={removeItem}
+              onFirstInteraction={!hintSeen ? dismissHint : undefined}
+            />
 
             {/* Activity Stream */}
             <SectionHeader title="Recent Activity" />
@@ -335,9 +333,18 @@ const styles = StyleSheet.create({
   actionMeta: { flexDirection: "row", gap: 6, marginTop: 8, flexWrap: "wrap" },
   emptySection: { marginHorizontal: 16, borderRadius: 14, padding: 16, flexDirection: "row", alignItems: "center", gap: 8, borderWidth: 1 },
   emptySectionText: { fontSize: 14, fontFamily: "Inter_400Regular" },
-  quickGrid: { flexDirection: "row", flexWrap: "wrap", gap: 10, paddingHorizontal: 16 },
-  quickBtn: { width: "31%", borderRadius: 14, padding: 14, alignItems: "center", gap: 8, borderWidth: 1 },
-  quickLabel: { fontSize: 12, fontFamily: "Inter_500Medium", textAlign: "center" },
+  hintBanner: {
+    marginHorizontal: 16,
+    marginBottom: 10,
+    borderRadius: 10,
+    borderWidth: 1,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  hintText: { flex: 1, fontSize: 12, fontFamily: "Inter_400Regular" },
   activityRow: { flexDirection: "row", alignItems: "center", gap: 10, paddingVertical: 10, paddingHorizontal: 16, borderBottomWidth: 1 },
   activityIcon: { width: 32, height: 32, borderRadius: 16, alignItems: "center", justifyContent: "center", flexShrink: 0 },
   activityContent: { flex: 1 },
