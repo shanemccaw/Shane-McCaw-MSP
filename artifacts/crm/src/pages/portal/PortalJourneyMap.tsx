@@ -36,7 +36,7 @@ interface JourneyStage {
   icon: React.ReactNode;
   link: string;
   linkLabel: string;
-  status: "complete" | "active" | "upcoming";
+  status: "complete" | "active" | "upcoming" | "waiting";
   completedNote?: string;
   alwaysShowLink?: boolean;
 }
@@ -55,6 +55,7 @@ function stageStatusClass(status: JourneyStage["status"]): string {
   switch (status) {
     case "complete": return "bg-green-500 text-white";
     case "active":   return "bg-[#0078D4] text-white shadow-lg shadow-[#0078D4]/30";
+    case "waiting":  return "bg-amber-400 text-white shadow-lg shadow-amber-400/30";
     case "upcoming": return "bg-gray-100 text-gray-400 border border-gray-200";
   }
 }
@@ -63,6 +64,7 @@ function stageCardClass(status: JourneyStage["status"]): string {
   switch (status) {
     case "complete": return "border-green-200 bg-white";
     case "active":   return "border-[#0078D4] bg-white ring-2 ring-[#0078D4]/20";
+    case "waiting":  return "border-amber-300 bg-amber-50 ring-2 ring-amber-200/60";
     case "upcoming": return "border-border bg-white/60";
   }
 }
@@ -71,6 +73,7 @@ function stageLabelClass(status: JourneyStage["status"]): string {
   switch (status) {
     case "complete": return "text-green-600";
     case "active":   return "text-[#0078D4]";
+    case "waiting":  return "text-amber-700";
     case "upcoming": return "text-gray-400";
   }
 }
@@ -87,6 +90,12 @@ function StatusPill({ status }: { status: JourneyStage["status"] }) {
       <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full bg-[#0078D4]/10 text-[#0078D4] animate-pulse">
         <svg className="w-2.5 h-2.5" fill="currentColor" viewBox="0 0 8 8"><circle cx="4" cy="4" r="4" /></svg>
         Active
+      </span>
+    );
+    case "waiting": return (
+      <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 animate-pulse">
+        <svg className="w-2.5 h-2.5" fill="currentColor" viewBox="0 0 8 8"><circle cx="4" cy="4" r="4" /></svg>
+        Waiting for customer
       </span>
     );
     case "upcoming": return (
@@ -174,7 +183,7 @@ export default function PortalJourneyMap() {
       icon: <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" /></svg>,
       link: "/portal/automation-setup",
       linkLabel: "Set Up Automation",
-      status: automationSetupDone ? "complete" : "upcoming",
+      status: automationSetupDone ? "complete" : "waiting",
       completedNote: "Azure credentials verified",
       alwaysShowLink: true,
     },
@@ -289,14 +298,14 @@ export default function PortalJourneyMap() {
                     <div className="flex-1 min-w-0">
                       <div className="flex items-start justify-between gap-2 flex-wrap mb-1">
                         <div>
-                          <h3 className={`text-sm font-bold ${stage.status === "upcoming" ? "text-gray-400" : "text-[#0A2540]"}`}>{stage.label}</h3>
+                          <h3 className={`text-sm font-bold ${stage.status === "upcoming" ? "text-gray-400" : stage.status === "waiting" ? "text-amber-700" : "text-[#0A2540]"}`}>{stage.label}</h3>
                           {stage.status === "complete" && stage.completedNote && (
                             <p className="text-[10px] text-green-600 font-semibold mt-0.5">✓ {stage.completedNote}</p>
                           )}
                         </div>
                         <StatusPill status={stage.status} />
                       </div>
-                      <p className={`text-xs leading-relaxed mb-3 ${stage.status === "upcoming" ? "text-gray-400" : "text-muted-foreground"}`}>
+                      <p className={`text-xs leading-relaxed mb-3 ${stage.status === "upcoming" ? "text-gray-400" : stage.status === "waiting" ? "text-amber-700/80" : "text-muted-foreground"}`}>
                         {stage.description}
                       </p>
                       {(stage.status !== "upcoming" || stage.alwaysShowLink) && (
