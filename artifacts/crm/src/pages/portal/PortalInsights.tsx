@@ -72,20 +72,20 @@ const INDUSTRY_BENCHMARKS = {
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function scoreColor(score: number): string {
-  if (score >= 80) return "text-green-600";
-  if (score >= 55) return "text-amber-600";
+  if (score >= 70) return "text-green-600";
+  if (score >= 40) return "text-amber-600";
   return "text-red-600";
 }
 
 function scoreBg(score: number): string {
-  if (score >= 80) return "bg-green-50 border-green-200";
-  if (score >= 55) return "bg-amber-50 border-amber-200";
+  if (score >= 70) return "bg-green-50 border-green-200";
+  if (score >= 40) return "bg-amber-50 border-amber-200";
   return "bg-red-50 border-red-200";
 }
 
 function scoreBar(score: number): string {
-  if (score >= 80) return "bg-green-500";
-  if (score >= 55) return "bg-amber-500";
+  if (score >= 70) return "bg-green-500";
+  if (score >= 40) return "bg-amber-500";
   return "bg-red-500";
 }
 
