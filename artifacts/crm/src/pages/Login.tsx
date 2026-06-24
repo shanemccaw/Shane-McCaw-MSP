@@ -1,8 +1,8 @@
 import { useState } from "react";
 import { useAuth, isMfaChallenge, type MfaChallenge } from "@/contexts/AuthContext";
-import { useLocation } from "wouter";
+import { useLocation, useSearch } from "wouter";
 import { startAuthentication } from "@simplewebauthn/browser";
-import { Loader2, Eye, EyeOff } from "lucide-react";
+import { Loader2, Eye, EyeOff, Mail } from "lucide-react";
 
 // ─── Auth helpers ──────────────────────────────────────────────────────────────
 function redirectAfterAuth(role: string, setLocation: (path: string) => void) {
@@ -441,6 +441,8 @@ function MfaChallengeScreen({
 export default function LoginPage() {
   const { login, completeMfaLogin } = useAuth();
   const [, setLocation] = useLocation();
+  const search = useSearch();
+  const fromPurchase = new URLSearchParams(search).get("from") === "purchase";
 
   const [mode, setMode]                 = useState<"login" | "forgot">("login");
   const [email, setEmail]               = useState("");
@@ -555,6 +557,21 @@ export default function LoginPage() {
               {mode === "forgot" ? "Enter your email to receive a reset link" : "Secure client portal — sign in to continue"}
             </p>
           </div>
+
+          {/* Purchase context hint */}
+          {fromPurchase && (
+            <div className="bg-[#0078D4]/8 border border-[#0078D4]/25 rounded-2xl px-4 py-3.5 mb-5 flex items-start gap-3">
+              <div className="w-7 h-7 rounded-lg bg-[#0078D4]/15 flex items-center justify-center flex-shrink-0 mt-0.5">
+                <Mail className="w-3.5 h-3.5 text-[#0078D4]" />
+              </div>
+              <div>
+                <p className="text-sm font-bold text-[#0A2540] leading-snug mb-0.5">Check your email first</p>
+                <p className="text-xs text-muted-foreground leading-relaxed">
+                  We sent a password-setup link to your inbox. Click that link to activate your account, then sign in here.
+                </p>
+              </div>
+            </div>
+          )}
 
           {/* Card */}
           <div className="bg-white rounded-2xl shadow-2xl shadow-[#0A2540]/10 border border-[#E4EAF2]">

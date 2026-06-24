@@ -454,8 +454,8 @@ export default function OnboardingSuccess() {
             </div>
           )}
 
-          {/* New account: setup link sent by email */}
-          {setupEmailSent && (
+          {/* Guest account: always show email setup guidance */}
+          {!user && !setupDone && (
             <div className="bg-white border border-[#0078D4]/30 rounded-2xl p-5 text-left mb-6 flex items-start gap-3">
               <div className="w-8 h-8 rounded-xl bg-[#0078D4]/10 flex items-center justify-center flex-shrink-0 mt-0.5">
                 <Mail className="w-4 h-4 text-[#0078D4]" />
@@ -463,7 +463,7 @@ export default function OnboardingSuccess() {
               <div>
                 <p className="text-sm font-bold text-[#0A2540] mb-0.5">Check your email to activate your account</p>
                 <p className="text-xs text-muted-foreground">
-                  We sent a password-setup link to{clientEmail ? <> <strong>{clientEmail}</strong></> : " your email address"}. Click the link in that email to set your password and access your project dashboard.
+                  We sent a password-setup link to{clientEmail ? <> <strong>{clientEmail}</strong></> : " your email address"}. Click that link to choose your password — then sign in to access your project dashboard.
                 </p>
               </div>
             </div>
@@ -591,12 +591,13 @@ export default function OnboardingSuccess() {
                 Go to dashboard
               </button>
             )}
-            {!user && !setupDone && !setupEmailSent && (
+            {!user && !setupDone && (
               <button
-                onClick={() => setLocation("/login")}
+                onClick={() => setLocation("/login?from=purchase")}
                 className="flex items-center justify-center gap-2 border border-border bg-white text-[#0A2540] font-semibold px-5 py-3 rounded-xl hover:bg-[#F7F9FC] transition-colors text-sm"
               >
-                Sign in to portal
+                Sign in after setup
+                <ArrowRight className="w-4 h-4" />
               </button>
             )}
           </div>
