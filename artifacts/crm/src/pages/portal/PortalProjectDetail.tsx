@@ -994,33 +994,35 @@ export default function PortalProjectDetail() {
         )}
 
         {/* ── Secondary Tab Bar ── */}
-        <div className="flex items-center gap-1 mb-6 border-b border-border">
-          <button
-            onClick={() => setSecondaryTab(null)}
-            className={`px-4 py-2.5 text-sm font-semibold border-b-2 transition-colors -mb-px ${
-              secondaryTab === null
-                ? "border-[#0A2540] text-[#0A2540]"
-                : "border-transparent text-muted-foreground hover:text-[#0A2540]"
-            }`}
-          >
-            Workflow Explorer
-          </button>
-          {secondaryTabs.map(t => (
+        <div className="overflow-x-auto mb-6 border-b border-border -mx-4 px-4 sm:mx-0 sm:px-0">
+          <div className="flex items-center gap-1 min-w-max">
             <button
-              key={t.key}
-              onClick={() => setSecondaryTab(t.key)}
-              className={`px-4 py-2.5 text-sm font-semibold border-b-2 transition-colors -mb-px ${
-                secondaryTab === t.key
-                  ? "border-[#0078D4] text-[#0078D4]"
+              onClick={() => setSecondaryTab(null)}
+              className={`flex-shrink-0 whitespace-nowrap px-4 py-2.5 text-sm font-semibold border-b-2 transition-colors -mb-px ${
+                secondaryTab === null
+                  ? "border-[#0A2540] text-[#0A2540]"
                   : "border-transparent text-muted-foreground hover:text-[#0A2540]"
               }`}
             >
-              {t.label}
-              {t.count !== undefined && t.count > 0 && (
-                <span className="ml-1.5 text-xs bg-[#0078D4]/10 text-[#0078D4] px-1.5 py-0.5 rounded-full">{t.count}</span>
-              )}
+              Workflow Explorer
             </button>
-          ))}
+            {secondaryTabs.map(t => (
+              <button
+                key={t.key}
+                onClick={() => setSecondaryTab(t.key)}
+                className={`flex-shrink-0 whitespace-nowrap px-4 py-2.5 text-sm font-semibold border-b-2 transition-colors -mb-px ${
+                  secondaryTab === t.key
+                    ? "border-[#0078D4] text-[#0078D4]"
+                    : "border-transparent text-muted-foreground hover:text-[#0A2540]"
+                }`}
+              >
+                {t.label}
+                {t.count !== undefined && t.count > 0 && (
+                  <span className="ml-1.5 text-xs bg-[#0078D4]/10 text-[#0078D4] px-1.5 py-0.5 rounded-full">{t.count}</span>
+                )}
+              </button>
+            ))}
+          </div>
         </div>
 
         {/* ── Workflow Explorer (default view) ── */}

@@ -3,6 +3,7 @@ import { Link, useLocation } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
 import PortalTour, { useTour } from "@/components/PortalTour";
 import { useAssistantChat } from "@/hooks/useAssistantChat";
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 
 interface NavItem {
   label: string;
@@ -179,10 +180,10 @@ export function ClientSidebar({ unreadNotifications = 0, unreadMessages = 0, has
   );
 }
 
-function MobileBottomNav({ unreadMessages = 0, hasArchivedProjects = false }: { unreadMessages?: number; hasArchivedProjects?: boolean }) {
+function MobileBottomNav({ unreadMessages = 0, hasArchivedProjects = false, appRegPending = false }: { unreadMessages?: number; hasArchivedProjects?: boolean; appRegPending?: boolean }) {
   const [location] = useLocation();
   const { user, logout } = useAuth();
-  const [showAccount, setShowAccount] = useState(false);
+  const [showMore, setShowMore] = useState(false);
 
   const { startTour } = useTour();
 
@@ -218,45 +219,109 @@ function MobileBottomNav({ unreadMessages = 0, hasArchivedProjects = false }: { 
       dataTour: "messages",
       icon: <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" /></svg>,
     },
-    ...(hasArchivedProjects ? [{
-      label: "Archive",
-      path: "/portal/archive",
-      icon: (<svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" /></svg>),
-    }] : []),
   ];
+
+  const secondaryNavItems = [
+    {
+      label: "Activity",
+      path: "/portal/activity",
+      icon: <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0018 18a8.967 8.967 0 00-6 2.292m0-14.25v14.25" /></svg>,
+    },
+    ...(hasArchivedProjects ? [{
+      label: "Project Archive",
+      path: "/portal/archive",
+      icon: <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" /></svg>,
+    }] : []),
+    {
+      label: "M365 Profile",
+      path: "/portal/m365-profile",
+      icon: <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" /></svg>,
+    },
+    {
+      label: "Automation Setup",
+      path: "/portal/automation-setup",
+      badge: appRegPending ? 1 : 0,
+      icon: <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" /></svg>,
+    },
+    {
+      label: "Profile",
+      path: "/portal/profile",
+      icon: <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>,
+    },
+    {
+      label: "Security",
+      path: "/portal/security",
+      icon: <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" /></svg>,
+    },
+    {
+      label: "Insights",
+      path: "/portal/insights",
+      icon: <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg>,
+    },
+    {
+      label: "Journey Map",
+      path: "/portal/journey",
+      icon: <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" /></svg>,
+    },
+  ];
+
+  const isMoreActive = secondaryNavItems.some(item =>
+    item.path === location || location.startsWith(item.path + "/")
+  );
 
   return (
     <>
-      {showAccount && (
-        <div className="fixed inset-0 z-50" onClick={() => setShowAccount(false)}>
-          <div className="absolute bottom-[64px] inset-x-4" onClick={(e) => e.stopPropagation()}>
-            <div className="bg-white rounded-xl shadow-2xl border border-border p-4">
-              <p className="text-xs text-muted-foreground mb-0.5">Signed in as</p>
-              <p className="text-sm font-semibold text-[#0A2540] truncate mb-3">{user?.email}</p>
-              <Link href="/portal/profile" onClick={() => setShowAccount(false)}>
-                <div className="w-full text-left text-sm font-semibold text-[#0078D4] hover:text-[#0078D4]/80 py-1.5 transition-colors flex items-center gap-2 mb-1">
-                  <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>
-                  Profile settings
-                </div>
-              </Link>
-              <button
-                onClick={() => { setShowAccount(false); startTour(); }}
-                className="w-full text-left text-sm font-semibold text-[#0A2540] hover:text-[#0078D4] py-1.5 transition-colors flex items-center gap-2 mb-1"
-              >
-                <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-                Take the tour
-              </button>
-              <button
-                onClick={() => { setShowAccount(false); logout(); }}
-                className="w-full text-left text-sm font-semibold text-red-600 hover:text-red-700 py-1.5 transition-colors flex items-center gap-2"
-              >
-                <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" /></svg>
-                Sign out
-              </button>
-            </div>
+      <Sheet open={showMore} onOpenChange={setShowMore}>
+        <SheetContent side="bottom" className="rounded-t-2xl max-h-[85vh] overflow-y-auto pb-safe">
+          <SheetHeader className="mb-4">
+            <SheetTitle className="text-[#0A2540]">More</SheetTitle>
+          </SheetHeader>
+
+          <nav className="space-y-1 mb-6">
+            {secondaryNavItems.map(item => {
+              const isActive = location === item.path || location.startsWith(item.path + "/");
+              return (
+                <Link key={item.path} href={item.path} onClick={() => setShowMore(false)}>
+                  <div className={`flex items-center gap-3 px-3 py-3 rounded-xl transition-colors ${
+                    isActive
+                      ? "bg-[#0078D4]/10 text-[#0078D4]"
+                      : "text-[#0A2540] hover:bg-gray-50"
+                  }`}>
+                    <span className={`flex-shrink-0 ${isActive ? "text-[#0078D4]" : "text-[#0A2540]/60"}`}>
+                      {item.icon}
+                    </span>
+                    <span className="text-sm font-semibold flex-1">{item.label}</span>
+                    {"badge" in item && item.badge !== undefined && item.badge > 0 && (
+                      <span className="w-5 h-5 rounded-full bg-[#0078D4] text-white text-[10px] font-bold flex items-center justify-center flex-shrink-0">
+                        {item.badge > 9 ? "9+" : item.badge}
+                      </span>
+                    )}
+                  </div>
+                </Link>
+              );
+            })}
+          </nav>
+
+          <div className="border-t border-border pt-4 space-y-1">
+            <p className="text-xs text-muted-foreground px-3 mb-2 truncate">Signed in as {user?.email}</p>
+            <button
+              onClick={() => { setShowMore(false); startTour(); }}
+              className="w-full flex items-center gap-3 px-3 py-3 rounded-xl text-[#0A2540] hover:bg-gray-50 transition-colors text-sm font-semibold text-left"
+            >
+              <svg className="w-5 h-5 flex-shrink-0 text-[#0A2540]/60" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+              Take the tour
+            </button>
+            <button
+              onClick={() => { setShowMore(false); logout(); }}
+              className="w-full flex items-center gap-3 px-3 py-3 rounded-xl text-red-600 hover:bg-red-50 transition-colors text-sm font-semibold text-left"
+            >
+              <svg className="w-5 h-5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" /></svg>
+              Sign out
+            </button>
           </div>
-        </div>
-      )}
+        </SheetContent>
+      </Sheet>
+
       <nav className="fixed bottom-0 inset-x-0 bg-[#0A2540] border-t border-white/10 flex md:hidden z-40 safe-area-bottom">
         {primaryTabs.map(item => {
           const isActive = item.path === "/portal" ? location === "/portal" : location.startsWith(item.path);
@@ -265,7 +330,7 @@ function MobileBottomNav({ unreadMessages = 0, hasArchivedProjects = false }: { 
               key={item.path}
               href={item.path}
               className="flex-1"
-              onClick={() => setShowAccount(false)}
+              onClick={() => setShowMore(false)}
             >
               <div
                 data-tour={item.dataTour}
@@ -285,11 +350,16 @@ function MobileBottomNav({ unreadMessages = 0, hasArchivedProjects = false }: { 
           );
         })}
         <button
-          onClick={() => setShowAccount(!showAccount)}
-          className={`flex-1 flex flex-col items-center justify-center py-2 gap-0.5 transition-colors ${showAccount ? "text-[#0078D4]" : "text-white/45 hover:text-white/70"}`}
+          onClick={() => setShowMore(!showMore)}
+          className={`flex-1 flex flex-col items-center justify-center py-2 gap-0.5 transition-colors relative ${showMore || isMoreActive ? "text-[#0078D4]" : "text-white/45 hover:text-white/70"}`}
         >
-          <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>
-          <span className="text-[9px] font-semibold leading-none">Account</span>
+          <span className="relative">
+            <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16" /></svg>
+            {appRegPending && (
+              <span className="absolute -top-1 -right-1 w-3.5 h-3.5 rounded-full bg-red-500 text-white text-[8px] font-bold flex items-center justify-center">!</span>
+            )}
+          </span>
+          <span className="text-[9px] font-semibold leading-none">More</span>
         </button>
       </nav>
     </>
@@ -540,7 +610,7 @@ export default function PortalLayout({ children, unreadNotifications = 0, unread
         <main className="flex-1 overflow-auto min-w-0 pb-16 md:pb-0">
           {children}
         </main>
-        <MobileBottomNav unreadMessages={unreadMessages} hasArchivedProjects={hasArchivedProjects} />
+        <MobileBottomNav unreadMessages={unreadMessages} hasArchivedProjects={hasArchivedProjects} appRegPending={appRegPending} />
       </div>
       <PortalTour />
       <AiAssistant />
