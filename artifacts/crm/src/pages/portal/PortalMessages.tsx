@@ -16,7 +16,9 @@ export default function PortalMessages() {
   const [loading, setLoading] = useState(true);
   const [body, setBody] = useState("");
   const [sending, setSending] = useState(false);
+  const [composerRows, setComposerRows] = useState(2);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const loadMessages = async () => {
     try {
@@ -51,34 +53,52 @@ export default function PortalMessages() {
       });
       if (res.ok) {
         setBody("");
+        setComposerRows(2);
         await loadMessages();
       }
     } catch { /* ignore */ }
     setSending(false);
+    textareaRef.current?.focus();
   };
 
   const isFromMe = (msg: Message) => msg.senderUserId === user?.id;
 
   return (
     <PortalLayout>
-      <div className="flex flex-col h-screen">
+      {/* h-[calc(100vh-4rem)] accounts for the 64px mobile bottom nav (pb-16 on main);
+          md:h-screen takes over once the sidebar replaces the bottom nav */}
+      <div className="flex flex-col h-[calc(100vh-4rem)] md:h-screen">
+
         {/* Header */}
-        <div className="px-6 py-5 border-b border-border bg-white flex-shrink-0">
+        <div className="px-4 sm:px-6 py-3 sm:py-5 border-b border-border bg-white flex-shrink-0">
           <div className="flex items-center gap-3">
+            {/* Mobile back button — visible only on small screens */}
+            <button
+              onClick={() => window.history.back()}
+              className="md:hidden flex items-center justify-center w-11 h-11 -ml-2 rounded-xl text-[#0A2540] hover:bg-[#0A2540]/5 active:bg-[#0A2540]/10 transition-colors flex-shrink-0"
+              aria-label="Go back"
+            >
+              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+              </svg>
+            </button>
+
             <div className="w-10 h-10 rounded-xl bg-[#0078D4] flex items-center justify-center flex-shrink-0">
               <svg className="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
               </svg>
             </div>
-            <div>
+            <div className="min-w-0">
               <p className="text-sm font-bold text-[#0A2540]">Shane McCaw</p>
-              <p className="text-xs text-muted-foreground">Microsoft 365 Architect · Usually responds same day</p>
+              <p className="text-xs text-muted-foreground truncate">
+                <span className="hidden sm:inline">Microsoft 365 Architect · </span>Usually responds same day
+              </p>
             </div>
           </div>
         </div>
 
-        {/* Messages */}
-        <div className="flex-1 overflow-y-auto px-6 py-6 space-y-4">
+        {/* Messages — flex-1 + min-h-0 lets this shrink and scroll inside the fixed-height outer container */}
+        <div className="flex-1 overflow-y-auto min-h-0 px-4 sm:px-6 py-4 sm:py-6 space-y-4">
           {loading ? (
             <div className="flex items-center justify-center py-20">
               <div className="w-6 h-6 border-3 border-[#0078D4] border-t-transparent rounded-full animate-spin" />
@@ -97,7 +117,7 @@ export default function PortalMessages() {
             const fromMe = isFromMe(msg);
             return (
               <div key={msg.id} className={`flex ${fromMe ? "justify-end" : "justify-start"}`}>
-                <div className={`max-w-[75%] rounded-2xl px-4 py-3 ${
+                <div className={`max-w-[85%] sm:max-w-[75%] rounded-2xl px-4 py-3 ${
                   fromMe
                     ? "bg-[#0078D4] text-white rounded-br-md"
                     : "bg-white border border-border text-[#0A2540] rounded-bl-md shadow-sm"
@@ -113,21 +133,30 @@ export default function PortalMessages() {
           <div ref={bottomRef} />
         </div>
 
-        {/* Input */}
-        <div className="px-6 py-4 border-t border-border bg-white flex-shrink-0">
-          <form onSubmit={handleSend} className="flex items-end gap-3">
+        {/* Composer */}
+        <div className="px-4 sm:px-6 py-3 sm:py-4 border-t border-border bg-white flex-shrink-0">
+          <form onSubmit={handleSend} className="flex items-end gap-2 sm:gap-3">
             <textarea
+              ref={textareaRef}
               value={body}
               onChange={e => setBody(e.target.value)}
-              onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void handleSend(e as unknown as React.FormEvent); } }}
-              placeholder="Type a message… (Enter to send, Shift+Enter for new line)"
-              rows={2}
-              className="flex-1 border border-border rounded-xl px-4 py-3 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-[#0078D4] transition-shadow"
+              onFocus={() => setComposerRows(3)}
+              onBlur={() => { if (!body.trim()) setComposerRows(2); }}
+              onKeyDown={e => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  void handleSend(e as unknown as React.FormEvent);
+                }
+              }}
+              placeholder="Type a message…"
+              rows={composerRows}
+              className="flex-1 border border-border rounded-xl px-4 py-3 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-[#0078D4] transition-all"
             />
             <button
               type="submit"
               disabled={!body.trim() || sending}
-              className="w-10 h-10 rounded-xl bg-[#0078D4] text-white flex items-center justify-center hover:bg-[#0078D4]/90 transition-colors disabled:opacity-40 flex-shrink-0"
+              className="w-11 h-11 min-w-[44px] min-h-[44px] rounded-xl bg-[#0078D4] text-white flex items-center justify-center hover:bg-[#0078D4]/90 active:scale-95 transition-all disabled:opacity-40 flex-shrink-0"
+              aria-label="Send message"
             >
               {sending ? (
                 <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
@@ -138,7 +167,9 @@ export default function PortalMessages() {
               )}
             </button>
           </form>
+          <p className="mt-2 text-xs text-muted-foreground hidden sm:block">Enter to send · Shift+Enter for a new line</p>
         </div>
+
       </div>
     </PortalLayout>
   );
