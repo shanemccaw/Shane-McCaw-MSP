@@ -697,7 +697,8 @@ function KanbanBoard({
   return (
     <>
       <DndContext sensors={sensors} onDragStart={handleDragStart} onDragOver={handleDragOver} onDragEnd={handleDragEnd}>
-        <div className="grid grid-cols-2 xl:grid-cols-4 gap-4">
+        <div className="overflow-x-auto">
+        <div className="grid grid-cols-2 xl:grid-cols-4 gap-4 min-w-[480px]">
           {COLUMNS.map(col => (
             <DroppableColumn
               key={col.key}
@@ -712,6 +713,7 @@ function KanbanBoard({
               onReply={handleReply}
             />
           ))}
+        </div>
         </div>
         <DragOverlay>
           {activeTask ? <CardOverlay task={activeTask} /> : null}
@@ -1920,7 +1922,7 @@ export default function ProjectDetailPage() {
                     <label className="block text-xs font-semibold text-[#E6EDF3] mb-1">Modules <span className="font-normal text-muted-foreground">(one per line)</span></label>
                     <textarea rows={3} value={taskForm.metaModules} onChange={e => setTaskForm(f => ({ ...f, metaModules: e.target.value }))} placeholder={"Intro to Microsoft 365\nTeams Setup & Best Practices\nSharePoint Fundamentals"} className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400 bg-[#1C2128] text-[#E6EDF3] resize-none" />
                   </div>
-                  <div className="grid grid-cols-2 gap-2">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                     <div>
                       <label className="block text-xs font-semibold text-[#E6EDF3] mb-1">Estimated hours</label>
                       <input type="number" value={taskForm.metaEstimatedHours} onChange={e => setTaskForm(f => ({ ...f, metaEstimatedHours: e.target.value }))} placeholder="4" className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400 bg-[#1C2128] text-[#E6EDF3]" />
@@ -1939,7 +1941,7 @@ export default function ProjectDetailPage() {
               {taskForm.taskType === "environmentHealthCheck" && (
                 <div className="sm:col-span-2 border border-green-500/20 bg-green-500/10 rounded-lg p-3 space-y-2">
                   <p className="text-[10px] font-bold uppercase tracking-wider text-green-400">🔍 Health Check Details</p>
-                  <div className="grid grid-cols-2 gap-2">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                     <div>
                       <label className="block text-xs font-semibold text-[#E6EDF3] mb-1">Health status</label>
                       <select value={taskForm.metaHealthStatus} onChange={e => setTaskForm(f => ({ ...f, metaHealthStatus: e.target.value }))} className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-400 bg-[#161B22]">
@@ -1998,7 +2000,7 @@ export default function ProjectDetailPage() {
               {taskForm.taskType === "discovery" && (
                 <div className="sm:col-span-2 border border-pink-200 bg-pink-50/50 rounded-lg p-3 space-y-2">
                   <p className="text-[10px] font-bold uppercase tracking-wider text-pink-700">🔬 Discovery Details</p>
-                  <div className="grid grid-cols-2 gap-2">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                     <div>
                       <label className="block text-xs font-semibold text-[#E6EDF3] mb-1">Risk score</label>
                       <select value={taskForm.metaRiskScore} onChange={e => setTaskForm(f => ({ ...f, metaRiskScore: e.target.value }))} className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-pink-400 bg-[#161B22]">

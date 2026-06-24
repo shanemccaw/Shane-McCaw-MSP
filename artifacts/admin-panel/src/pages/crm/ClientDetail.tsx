@@ -1330,7 +1330,7 @@ export default function ClientDetailPage() {
                     onChange={e => setDocForm(f => ({ ...f, name: e.target.value }))}
                     className="w-full px-3 py-2 text-sm border border-border rounded-lg bg-[#0D1117] text-[#E6EDF3] focus:outline-none focus:ring-2 focus:ring-[#0078D4]"
                   />
-                  <div className="grid grid-cols-2 gap-2">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                     <select
                       value={docForm.category}
                       onChange={e => setDocForm(f => ({ ...f, category: e.target.value }))}
