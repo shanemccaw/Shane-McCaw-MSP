@@ -1,5 +1,6 @@
 import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
+import { useLocalSearchParams } from "expo-router";
 import React, { useState } from "react";
 import {
   ActivityIndicator,
@@ -18,11 +19,14 @@ import { useAuth } from "@/contexts/AuthContext";
 export default function LoginScreen() {
   const { login } = useAuth();
   const insets = useSafeAreaInsets();
+  const { reason } = useLocalSearchParams<{ reason?: string }>();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+
+  const sessionExpired = reason === "session_expired";
 
   async function handleLogin() {
     if (!email.trim() || !password) {
@@ -63,6 +67,15 @@ export default function LoginScreen() {
           <Text style={styles.appName}>Shane McCaw</Text>
           <Text style={styles.tagline}>Admin Portal</Text>
         </View>
+
+        {sessionExpired && (
+          <View style={styles.sessionBanner}>
+            <Feather name="clock" size={14} color="#0078D4" />
+            <Text style={styles.sessionBannerText}>
+              Your session expired — please sign in again
+            </Text>
+          </View>
+        )}
 
         <View style={styles.card}>
           <Text style={styles.cardTitle}>Sign in</Text>
@@ -150,7 +163,7 @@ const styles = StyleSheet.create({
   },
   logoWrap: {
     alignItems: "center",
-    marginBottom: 40,
+    marginBottom: 24,
   },
   logoCircle: {
     width: 72,
@@ -177,6 +190,24 @@ const styles = StyleSheet.create({
     fontFamily: "Inter_400Regular",
     color: "#8FA3B8",
     marginTop: 4,
+  },
+  sessionBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    backgroundColor: "#0078D422",
+    borderWidth: 1,
+    borderColor: "#0078D455",
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    marginBottom: 16,
+  },
+  sessionBannerText: {
+    flex: 1,
+    fontSize: 13,
+    fontFamily: "Inter_400Regular",
+    color: "#60AAFF",
   },
   card: {
     backgroundColor: "#FFFFFF",

@@ -224,6 +224,21 @@ export default function MoreScreen() {
             </View>
           </View>
         ))}
+
+        <Pressable
+          onPress={async () => {
+            await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+            await logout();
+          }}
+          style={({ pressed }) => [
+            styles.signOutBtn,
+            { backgroundColor: colors.destructive + "14", borderColor: colors.destructive + "44" },
+            pressed && { opacity: 0.75 },
+          ]}
+        >
+          <Feather name="log-out" size={16} color={colors.destructive} />
+          <Text style={[styles.signOutText, { color: colors.destructive }]}>Sign Out</Text>
+        </Pressable>
       </ScrollView>
 
       <Toast message={toastMsg} toastKey={toastKey} />
@@ -268,4 +283,16 @@ const styles = StyleSheet.create({
   badge: { minWidth: 20, height: 20, borderRadius: 10, alignItems: "center", justifyContent: "center", paddingHorizontal: 5 },
   badgeText: { color: "#fff", fontSize: 10, fontFamily: "Inter_700Bold" },
   separator: { height: 1, marginLeft: 62 },
+  signOutBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 10,
+    marginHorizontal: 16,
+    marginBottom: 12,
+    paddingVertical: 14,
+    borderRadius: 14,
+    borderWidth: 1,
+  },
+  signOutText: { fontSize: 15, fontFamily: "Inter_600SemiBold" },
 });
