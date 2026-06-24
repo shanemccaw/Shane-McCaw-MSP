@@ -238,7 +238,7 @@ export default function CouponsPage() {
     <div className="p-6 max-w-5xl mx-auto">
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-[#0A2540]">Coupons</h1>
+          <h1 className="text-2xl font-bold text-[#E6EDF3]">Coupons</h1>
           <p className="text-sm text-muted-foreground mt-0.5">Create and manage promo codes for checkout discounts</p>
         </div>
         <button
@@ -251,20 +251,20 @@ export default function CouponsPage() {
       </div>
 
       {showForm && (
-        <div className="bg-white border border-border rounded-2xl p-5 mb-6 shadow-sm">
+        <div className="bg-[#161B22] border border-border rounded-2xl p-5 mb-6 shadow-sm">
           <div className="flex items-center justify-between mb-4">
-            <h2 className="font-bold text-[#0A2540] text-sm flex items-center gap-2">
+            <h2 className="font-bold text-[#E6EDF3] text-sm flex items-center gap-2">
               <Tag className="w-4 h-4 text-[#0078D4]" />
               {editingId ? "Edit Coupon" : "Create Coupon"}
             </h2>
-            <button onClick={closeForm} className="text-muted-foreground hover:text-[#0A2540]">
+            <button onClick={closeForm} className="text-muted-foreground hover:text-[#E6EDF3]">
               <X className="w-4 h-4" />
             </button>
           </div>
 
           <div className="grid sm:grid-cols-2 gap-4">
             <div>
-              <label className="block text-xs font-semibold text-[#0A2540] mb-1.5">Code <span className="text-red-500">*</span></label>
+              <label className="block text-xs font-semibold text-[#E6EDF3] mb-1.5">Code <span className="text-red-500">*</span></label>
               <input
                 type="text"
                 value={form.code}
@@ -276,7 +276,7 @@ export default function CouponsPage() {
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-[#0A2540] mb-1.5">Discount type <span className="text-red-500">*</span></label>
+              <label className="block text-xs font-semibold text-[#E6EDF3] mb-1.5">Discount type <span className="text-red-500">*</span></label>
               <div className="flex gap-2">
                 {(["fixed", "percentage"] as const).map(t => (
                   <button
@@ -295,7 +295,7 @@ export default function CouponsPage() {
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-[#0A2540] mb-1.5">
+              <label className="block text-xs font-semibold text-[#E6EDF3] mb-1.5">
                 Discount value <span className="text-red-500">*</span>
               </label>
               <div className="relative">
@@ -316,7 +316,7 @@ export default function CouponsPage() {
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-[#0A2540] mb-1.5">Max uses</label>
+              <label className="block text-xs font-semibold text-[#E6EDF3] mb-1.5">Max uses</label>
               <input
                 type="number"
                 min="1"
@@ -330,7 +330,7 @@ export default function CouponsPage() {
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-[#0A2540] mb-1.5">Expiry date</label>
+              <label className="block text-xs font-semibold text-[#E6EDF3] mb-1.5">Expiry date</label>
               <input
                 type="date"
                 value={form.expiresAt}
@@ -348,10 +348,10 @@ export default function CouponsPage() {
                 >
                   {form.active
                     ? <ToggleRight className="w-8 h-8 text-[#0078D4]" />
-                    : <ToggleLeft className="w-8 h-8 text-gray-300" />
+                    : <ToggleLeft className="w-8 h-8 text-[#484F58]" />
                   }
                 </button>
-                <span className="text-xs font-semibold text-[#0A2540]">
+                <span className="text-xs font-semibold text-[#E6EDF3]">
                   {form.active ? "Active" : "Inactive"}
                 </span>
               </label>
@@ -359,7 +359,7 @@ export default function CouponsPage() {
           </div>
 
           {formError && (
-            <p className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2 mt-4">{formError}</p>
+            <p className="text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2 mt-4">{formError}</p>
           )}
 
           <div className="flex items-center gap-3 mt-5 pt-4 border-t border-border">
@@ -371,14 +371,14 @@ export default function CouponsPage() {
               {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : null}
               {saving ? "Saving…" : editingId ? "Update Coupon" : "Create Coupon"}
             </button>
-            <button onClick={closeForm} className="text-sm text-muted-foreground hover:text-[#0A2540] px-3 py-2">
+            <button onClick={closeForm} className="text-sm text-muted-foreground hover:text-[#E6EDF3] px-3 py-2">
               Cancel
             </button>
           </div>
         </div>
       )}
 
-      <div className="bg-white border border-border rounded-2xl overflow-hidden">
+      <div className="bg-[#161B22] border border-border rounded-2xl overflow-hidden">
         {loading ? (
           <div className="flex items-center justify-center py-12 text-muted-foreground gap-2 text-sm">
             <Loader2 className="w-4 h-4 animate-spin" />
@@ -389,7 +389,7 @@ export default function CouponsPage() {
             <div className="w-12 h-12 rounded-full bg-[#0078D4]/10 flex items-center justify-center mb-3">
               <Tag className="w-6 h-6 text-[#0078D4]" />
             </div>
-            <p className="font-semibold text-[#0A2540] mb-1">No coupons yet</p>
+            <p className="font-semibold text-[#E6EDF3] mb-1">No coupons yet</p>
             <p className="text-sm text-muted-foreground mb-4">Create your first promo code to offer discounts at checkout.</p>
             <button
               onClick={openCreate}
@@ -403,7 +403,7 @@ export default function CouponsPage() {
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="bg-[#F7F9FC] border-b border-border text-left">
+                <tr className="bg-[#1C2128] border-b border-border text-left">
                   <th className="px-4 py-3 text-xs font-bold text-muted-foreground uppercase tracking-wider w-6"></th>
                   <th className="px-4 py-3 text-xs font-bold text-muted-foreground uppercase tracking-wider">Code</th>
                   <th className="px-4 py-3 text-xs font-bold text-muted-foreground uppercase tracking-wider">Discount</th>
@@ -424,7 +424,7 @@ export default function CouponsPage() {
 
                   return (
                     <React.Fragment key={coupon.id}>
-                      <tr className={`transition-colors ${isExpanded ? "bg-[#F7F9FC]/70" : "hover:bg-[#F7F9FC]/50"}`}>
+                      <tr className={`transition-colors ${isExpanded ? "bg-[#1C2128]/70" : "hover:bg-[#1C2128]/50"}`}>
                         <td className="px-3 py-3">
                           <button
                             onClick={() => void toggleRedemptions(coupon)}
@@ -441,21 +441,21 @@ export default function CouponsPage() {
                           </button>
                         </td>
                         <td className="px-4 py-3">
-                          <span className="font-mono font-bold text-[#0A2540] text-sm tracking-wide">
+                          <span className="font-mono font-bold text-[#E6EDF3] text-sm tracking-wide">
                             {coupon.code}
                           </span>
                         </td>
                         <td className="px-4 py-3">
                           <span className={`inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-full ${
                             coupon.discountType === "percentage"
-                              ? "bg-purple-100 text-purple-700"
+                              ? "bg-purple-500/15 text-purple-400"
                               : "bg-emerald-100 text-emerald-700"
                           }`}>
                             {formatDiscount(coupon)}
                             <span className="text-[10px] font-normal opacity-70">off</span>
                           </span>
                         </td>
-                        <td className="px-4 py-3 text-[#0A2540] font-mono text-xs">
+                        <td className="px-4 py-3 text-[#E6EDF3] font-mono text-xs">
                           {formatUses(coupon)}
                         </td>
                         <td className="px-4 py-3">
@@ -465,7 +465,7 @@ export default function CouponsPage() {
                             className="focus:outline-none"
                           >
                             {effectivelyInactive ? (
-                              <span className="inline-flex items-center gap-1 text-xs bg-gray-100 text-gray-500 px-2.5 py-1 rounded-full font-medium">
+                              <span className="inline-flex items-center gap-1 text-xs bg-[#30363D]/50 text-[#7D8590] px-2.5 py-1 rounded-full font-medium">
                                 {expired ? "Expired" : exhausted ? "Exhausted" : "Inactive"}
                               </span>
                             ) : (
@@ -491,7 +491,7 @@ export default function CouponsPage() {
                             <button
                               onClick={() => void handleDelete(coupon)}
                               disabled={deletingId === coupon.id}
-                              className="p-1.5 text-muted-foreground hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50"
+                              className="p-1.5 text-muted-foreground hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors disabled:opacity-50"
                               title="Delete"
                             >
                               {deletingId === coupon.id
@@ -505,11 +505,11 @@ export default function CouponsPage() {
 
                       {isExpanded && (
                         <tr key={`${coupon.id}-redemptions`}>
-                          <td colSpan={7} className="bg-[#F7F9FC] border-b border-border px-0 py-0">
+                          <td colSpan={7} className="bg-[#1C2128] border-b border-border px-0 py-0">
                             <div className="px-6 py-4">
                               <div className="flex items-center gap-2 mb-3">
                                 <History className="w-3.5 h-3.5 text-[#0078D4]" />
-                                <span className="text-xs font-bold text-[#0A2540] uppercase tracking-wider">
+                                <span className="text-xs font-bold text-[#E6EDF3] uppercase tracking-wider">
                                   Redemption History — {coupon.code}
                                 </span>
                               </div>
@@ -536,7 +536,7 @@ export default function CouponsPage() {
                                   </thead>
                                   <tbody className="divide-y divide-border/40">
                                     {couponRedemptions.map(r => (
-                                      <tr key={r.id} className="text-[#0A2540]">
+                                      <tr key={r.id} className="text-[#E6EDF3]">
                                         <td className="py-2 pr-4">
                                           {r.userName || r.userEmail ? (
                                             <div>

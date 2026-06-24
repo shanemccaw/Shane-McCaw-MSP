@@ -55,7 +55,7 @@ export function TagInput({ value, onChange, placeholder = "Type and press Enter 
           <button
             type="button"
             onClick={e => { e.stopPropagation(); removeTag(i); }}
-            className="hover:text-[#0A2540] transition-colors ml-0.5"
+            className="hover:text-[#E6EDF3] transition-colors ml-0.5"
             aria-label={`Remove ${tag}`}
           >
             <X className="w-3 h-3" />

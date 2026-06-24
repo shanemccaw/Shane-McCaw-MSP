@@ -31,7 +31,7 @@ function EmptyState() {
           <path strokeLinecap="round" strokeLinejoin="round" d="M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0018 18a8.967 8.967 0 00-6 2.292m0-14.25v14.25" />
         </svg>
       </div>
-      <p className="text-sm font-semibold text-[#0A2540]">No activity yet</p>
+      <p className="text-sm font-semibold text-[#E6EDF3]">No activity yet</p>
       <p className="text-xs text-muted-foreground mt-1">Actions will appear here as they happen.</p>
     </div>
   );
@@ -40,18 +40,18 @@ function EmptyState() {
 function EntityBadge({ type }: { type: string }) {
   const label = ENTITY_TYPE_LABELS[type] ?? type;
   const colorMap: Record<string, string> = {
-    kanban_task: "bg-blue-100 text-blue-700",
-    invoice: "bg-green-100 text-green-700",
-    contract: "bg-purple-100 text-purple-700",
-    service: "bg-orange-100 text-orange-700",
-    project: "bg-cyan-100 text-cyan-700",
-    workflow_step: "bg-yellow-100 text-yellow-700",
-    status_report: "bg-indigo-100 text-indigo-700",
-    lead: "bg-pink-100 text-pink-700",
-    user: "bg-gray-100 text-gray-600",
-    document: "bg-teal-100 text-teal-700",
+    kanban_task: "bg-[#0078D4]/100/15 text-blue-400",
+    invoice: "bg-green-500/15 text-green-400",
+    contract: "bg-purple-500/15 text-purple-400",
+    service: "bg-orange-500/15 text-orange-400",
+    project: "bg-cyan-500/15 text-cyan-400",
+    workflow_step: "bg-yellow-500/15 text-yellow-400",
+    status_report: "bg-indigo-500/15 text-indigo-400",
+    lead: "bg-pink-500/15 text-pink-400",
+    user: "bg-[#30363D]/50 text-[#7D8590]",
+    document: "bg-teal-500/15 text-teal-400",
   };
-  const cls = colorMap[type] ?? "bg-gray-100 text-gray-600";
+  const cls = colorMap[type] ?? "bg-[#30363D]/50 text-[#7D8590]";
   return (
     <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full flex-shrink-0 ${cls}`}>{label}</span>
   );
@@ -113,18 +113,18 @@ export default function ActivityLogPage() {
   return (
     <div className="px-6 py-8 max-w-5xl mx-auto">
       <div className="mb-6">
-        <h1 className="text-2xl font-extrabold text-[#0A2540]">Activity Log</h1>
+        <h1 className="text-2xl font-extrabold text-[#E6EDF3]">Activity Log</h1>
         <p className="text-sm text-muted-foreground mt-1">Chronological audit trail of all admin and client actions.</p>
       </div>
 
       {/* Filters */}
-      <div className="bg-white border border-border rounded-xl p-4 mb-6 flex flex-wrap gap-3 items-end">
+      <div className="bg-[#161B22] border border-border rounded-xl p-4 mb-6 flex flex-wrap gap-3 items-end">
         <div className="flex flex-col gap-1 min-w-[160px]">
-          <label className="text-xs font-semibold text-[#0A2540]">Client</label>
+          <label className="text-xs font-semibold text-[#E6EDF3]">Client</label>
           <select
             value={clientFilter}
             onChange={e => setClientFilter(e.target.value)}
-            className="text-sm border border-border rounded-lg px-3 py-1.5 bg-white focus:outline-none focus:ring-1 focus:ring-[#0078D4]"
+            className="text-sm border border-border rounded-lg px-3 py-1.5 bg-[#161B22] focus:outline-none focus:ring-1 focus:ring-[#0078D4]"
           >
             <option value="">All Clients</option>
             {clients.map(c => (
@@ -134,11 +134,11 @@ export default function ActivityLogPage() {
         </div>
 
         <div className="flex flex-col gap-1 min-w-[160px]">
-          <label className="text-xs font-semibold text-[#0A2540]">Entity Type</label>
+          <label className="text-xs font-semibold text-[#E6EDF3]">Entity Type</label>
           <select
             value={entityFilter}
             onChange={e => setEntityFilter(e.target.value)}
-            className="text-sm border border-border rounded-lg px-3 py-1.5 bg-white focus:outline-none focus:ring-1 focus:ring-[#0078D4]"
+            className="text-sm border border-border rounded-lg px-3 py-1.5 bg-[#161B22] focus:outline-none focus:ring-1 focus:ring-[#0078D4]"
           >
             <option value="all">All Types</option>
             {Object.entries(ENTITY_TYPE_LABELS).map(([k, v]) => (
@@ -148,29 +148,29 @@ export default function ActivityLogPage() {
         </div>
 
         <div className="flex flex-col gap-1">
-          <label className="text-xs font-semibold text-[#0A2540]">From</label>
+          <label className="text-xs font-semibold text-[#E6EDF3]">From</label>
           <input
             type="date"
             value={fromDate}
             onChange={e => setFromDate(e.target.value)}
-            className="text-sm border border-border rounded-lg px-3 py-1.5 bg-white focus:outline-none focus:ring-1 focus:ring-[#0078D4]"
+            className="text-sm border border-border rounded-lg px-3 py-1.5 bg-[#161B22] focus:outline-none focus:ring-1 focus:ring-[#0078D4]"
           />
         </div>
 
         <div className="flex flex-col gap-1">
-          <label className="text-xs font-semibold text-[#0A2540]">To</label>
+          <label className="text-xs font-semibold text-[#E6EDF3]">To</label>
           <input
             type="date"
             value={toDate}
             onChange={e => setToDate(e.target.value)}
-            className="text-sm border border-border rounded-lg px-3 py-1.5 bg-white focus:outline-none focus:ring-1 focus:ring-[#0078D4]"
+            className="text-sm border border-border rounded-lg px-3 py-1.5 bg-[#161B22] focus:outline-none focus:ring-1 focus:ring-[#0078D4]"
           />
         </div>
 
         {(clientFilter || entityFilter !== "all" || fromDate || toDate) && (
           <button
             onClick={() => { setClientFilter(""); setEntityFilter("all"); setFromDate(""); setToDate(""); }}
-            className="text-xs text-muted-foreground hover:text-[#0A2540] underline mt-5"
+            className="text-xs text-muted-foreground hover:text-[#E6EDF3] underline mt-5"
           >
             Clear filters
           </button>
@@ -178,7 +178,7 @@ export default function ActivityLogPage() {
       </div>
 
       {/* Log */}
-      <div className="bg-white border border-border rounded-xl overflow-hidden">
+      <div className="bg-[#161B22] border border-border rounded-xl overflow-hidden">
         {loading ? (
           <Spinner />
         ) : !data || data.entries.length === 0 ? (
@@ -187,10 +187,10 @@ export default function ActivityLogPage() {
           <>
             <div className="divide-y divide-border">
               {data.entries.map(entry => (
-                <div key={entry.id} className="flex items-start gap-3 px-5 py-3.5 hover:bg-[#F7F9FC]/60 transition-colors">
+                <div key={entry.id} className="flex items-start gap-3 px-5 py-3.5 hover:bg-[#1C2128]/60 transition-colors">
                   <RoleDot role={entry.actorRole} />
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm text-[#0A2540] leading-snug">{formatAuditEntry(entry)}</p>
+                    <p className="text-sm text-[#E6EDF3] leading-snug">{formatAuditEntry(entry)}</p>
                   </div>
                   <EntityBadge type={entry.entityType} />
                 </div>
@@ -199,7 +199,7 @@ export default function ActivityLogPage() {
 
             {/* Pagination */}
             {totalPages > 1 && (
-              <div className="flex items-center justify-between px-5 py-3 border-t border-border bg-[#F7F9FC]/40">
+              <div className="flex items-center justify-between px-5 py-3 border-t border-border bg-[#1C2128]/40">
                 <p className="text-xs text-muted-foreground">
                   {((page - 1) * (data.pageSize ?? 25)) + 1}–{Math.min(page * (data.pageSize ?? 25), data.total)} of {data.total}
                 </p>
@@ -207,7 +207,7 @@ export default function ActivityLogPage() {
                   <button
                     onClick={() => setPage(p => Math.max(1, p - 1))}
                     disabled={page === 1}
-                    className="px-3 py-1.5 text-xs font-semibold rounded-lg border border-border bg-white hover:bg-[#F7F9FC] disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                    className="px-3 py-1.5 text-xs font-semibold rounded-lg border border-border bg-[#161B22] hover:bg-[#1C2128] disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
                   >
                     ← Prev
                   </button>
@@ -215,7 +215,7 @@ export default function ActivityLogPage() {
                   <button
                     onClick={() => setPage(p => Math.min(totalPages, p + 1))}
                     disabled={page >= totalPages}
-                    className="px-3 py-1.5 text-xs font-semibold rounded-lg border border-border bg-white hover:bg-[#F7F9FC] disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                    className="px-3 py-1.5 text-xs font-semibold rounded-lg border border-border bg-[#161B22] hover:bg-[#1C2128] disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
                   >
                     Next →
                   </button>

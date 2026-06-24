@@ -138,7 +138,7 @@ function ClientEmailPanel({ client, onClose }: ClientEmailPanelProps) {
 
   return (
     <tr>
-      <td colSpan={5} className="px-0 py-0 bg-blue-50/40 border-b border-blue-100">
+      <td colSpan={5} className="px-0 py-0 bg-[#0078D4]/10/40 border-b border-blue-100">
         <div className="px-5 py-4">
           <div className="flex items-center justify-between mb-3">
             <div>
@@ -146,12 +146,12 @@ function ClientEmailPanel({ client, onClose }: ClientEmailPanelProps) {
                 Email Activity
               </span>
               {clientDomain && (
-                <span className="ml-2 text-xs text-gray-400 font-mono">@{clientDomain}</span>
+                <span className="ml-2 text-xs text-[#7D8590] font-mono">@{clientDomain}</span>
               )}
             </div>
             <button
               onClick={onClose}
-              className="text-gray-400 hover:text-gray-600 transition-colors"
+              className="text-[#7D8590] hover:text-[#7D8590] transition-colors"
               aria-label="Close"
             >
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -161,14 +161,14 @@ function ClientEmailPanel({ client, onClose }: ClientEmailPanelProps) {
           </div>
 
           {loading ? (
-            <div className="flex items-center gap-2 py-4 text-sm text-gray-400">
+            <div className="flex items-center gap-2 py-4 text-sm text-[#7D8590]">
               <div className="w-4 h-4 border-2 border-[#0078D4] border-t-transparent rounded-full animate-spin" />
               Loading emails…
             </div>
           ) : error ? (
-            <p className="text-sm text-red-600">{error}</p>
+            <p className="text-sm text-red-400">{error}</p>
           ) : !hasAny ? (
-            <p className="text-sm text-gray-400 py-2">
+            <p className="text-sm text-[#7D8590] py-2">
               No emails found from <span className="font-mono">@{clientDomain}</span>.
               {" "}Emails appear here as soon as they are ingested from the M365 mailbox.
             </p>
@@ -183,13 +183,13 @@ function ClientEmailPanel({ client, onClose }: ClientEmailPanelProps) {
                     {unlinked.map(row => (
                       <div
                         key={row.email.id}
-                        className="flex items-center gap-3 bg-white border border-amber-100 rounded-lg px-3 py-2.5"
+                        className="flex items-center gap-3 bg-[#161B22] border border-amber-100 rounded-lg px-3 py-2.5"
                       >
                         <div className="flex-1 min-w-0">
-                          <p className="text-xs font-medium text-[#0A2540] truncate">
+                          <p className="text-xs font-medium text-[#E6EDF3] truncate">
                             {row.email.subject ?? "(no subject)"}
                           </p>
-                          <p className="text-[10px] text-gray-400 truncate">
+                          <p className="text-[10px] text-[#7D8590] truncate">
                             {row.email.senderAddress} · {timeAgo(row.email.receivedAt)}
                           </p>
                         </div>
@@ -215,20 +215,20 @@ function ClientEmailPanel({ client, onClose }: ClientEmailPanelProps) {
                     {linkedToThis.map(row => (
                       <div
                         key={row.email.id}
-                        className="flex items-center gap-3 bg-white border border-emerald-100 rounded-lg px-3 py-2.5"
+                        className="flex items-center gap-3 bg-[#161B22] border border-emerald-100 rounded-lg px-3 py-2.5"
                       >
                         <div className="flex-1 min-w-0">
-                          <p className="text-xs font-medium text-[#0A2540] truncate">
+                          <p className="text-xs font-medium text-[#E6EDF3] truncate">
                             {row.email.subject ?? "(no subject)"}
                           </p>
-                          <p className="text-[10px] text-gray-400 truncate">
+                          <p className="text-[10px] text-[#7D8590] truncate">
                             {row.email.senderAddress} · {timeAgo(row.email.receivedAt)}
                           </p>
                         </div>
                         <button
                           disabled={assigningId === row.email.id}
                           onClick={() => void handleUnlink(row.email.id)}
-                          className="shrink-0 px-2.5 py-1 text-[11px] font-semibold border border-gray-200 text-gray-500 rounded-md hover:bg-gray-50 hover:text-red-600 hover:border-red-200 disabled:opacity-50 transition-colors"
+                          className="shrink-0 px-2.5 py-1 text-[11px] font-semibold border border-[#30363D] text-[#7D8590] rounded-md hover:bg-[#1C2128] hover:text-red-400 hover:border-red-500/20 disabled:opacity-50 transition-colors"
                         >
                           {assigningId === row.email.id ? "Unlinking…" : "Unlink"}
                         </button>
@@ -240,20 +240,20 @@ function ClientEmailPanel({ client, onClose }: ClientEmailPanelProps) {
 
               {linkedToOther.length > 0 && (
                 <div>
-                  <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">
+                  <p className="text-[10px] font-bold text-[#7D8590] uppercase tracking-widest mb-2">
                     Linked to another client · {linkedToOther.length}
                   </p>
                   <div className="space-y-1.5">
                     {linkedToOther.map(row => (
                       <div
                         key={row.email.id}
-                        className="flex items-center gap-3 bg-white border border-gray-100 rounded-lg px-3 py-2.5 opacity-60"
+                        className="flex items-center gap-3 bg-[#161B22] border border-[#30363D] rounded-lg px-3 py-2.5 opacity-60"
                       >
                         <div className="flex-1 min-w-0">
-                          <p className="text-xs font-medium text-[#0A2540] truncate">
+                          <p className="text-xs font-medium text-[#E6EDF3] truncate">
                             {row.email.subject ?? "(no subject)"}
                           </p>
-                          <p className="text-[10px] text-gray-400 truncate">
+                          <p className="text-[10px] text-[#7D8590] truncate">
                             {row.email.senderAddress} · linked to {row.clientName ?? row.clientEmail} · {timeAgo(row.email.receivedAt)}
                           </p>
                         </div>
@@ -384,11 +384,11 @@ function ClientSharePointPanel({ client, onClose, onUpdate }: {
 
   return (
     <tr>
-      <td colSpan={5} className="px-0 py-0 bg-blue-50/40 border-b border-blue-100">
+      <td colSpan={5} className="px-0 py-0 bg-[#0078D4]/10/40 border-b border-blue-100">
         <div className="px-5 py-4">
           <div className="flex items-center justify-between mb-3">
             <span className="text-xs font-bold text-[#0078D4] uppercase tracking-widest">SharePoint Site</span>
-            <button onClick={onClose} className="text-gray-400 hover:text-gray-600 transition-colors" aria-label="Close">
+            <button onClick={onClose} className="text-[#7D8590] hover:text-[#7D8590] transition-colors" aria-label="Close">
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
               </svg>
@@ -396,12 +396,12 @@ function ClientSharePointPanel({ client, onClose, onUpdate }: {
           </div>
 
           {siteUrl ? (
-            <div className="flex items-center gap-3 bg-white border border-[#0078D4]/20 rounded-lg px-3 py-2.5 mb-3">
+            <div className="flex items-center gap-3 bg-[#161B22] border border-[#0078D4]/20 rounded-lg px-3 py-2.5 mb-3">
               <svg className="w-5 h-5 text-[#0078D4] flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
               </svg>
               <div className="flex-1 min-w-0">
-                <p className="text-xs font-semibold text-[#0A2540]">Site linked</p>
+                <p className="text-xs font-semibold text-[#E6EDF3]">Site linked</p>
                 <a href={siteUrl} target="_blank" rel="noopener noreferrer"
                   className="text-[11px] text-[#0078D4] hover:underline truncate block">{siteUrl}</a>
               </div>
@@ -416,11 +416,11 @@ function ClientSharePointPanel({ client, onClose, onUpdate }: {
               </a>
             </div>
           ) : (
-            <div className="flex items-center gap-3 bg-white border border-gray-200 rounded-lg px-3 py-2.5 mb-3">
-              <svg className="w-5 h-5 text-gray-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+            <div className="flex items-center gap-3 bg-[#161B22] border border-[#30363D] rounded-lg px-3 py-2.5 mb-3">
+              <svg className="w-5 h-5 text-[#7D8590] flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
               </svg>
-              <p className="flex-1 text-xs text-gray-500">No SharePoint site linked yet.</p>
+              <p className="flex-1 text-xs text-[#7D8590]">No SharePoint site linked yet.</p>
               <button onClick={() => void handleProvision()} disabled={provisioning}
                 className="flex-shrink-0 flex items-center gap-1.5 text-xs font-semibold bg-[#0078D4] text-white px-3 py-1.5 rounded-lg hover:bg-[#005fa3] disabled:opacity-50 transition-colors">
                 {provisioning ? <span className="w-3 h-3 border-2 border-white/40 border-t-white rounded-full animate-spin inline-block" /> : null}
@@ -430,11 +430,11 @@ function ClientSharePointPanel({ client, onClose, onUpdate }: {
           )}
 
           <div>
-            <p className="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1.5">Manual URL</p>
+            <p className="text-[10px] font-bold text-[#7D8590] uppercase tracking-widest mb-1.5">Manual URL</p>
             <div className="flex gap-2">
               <input type="url" value={urlInput} onChange={e => setUrlInput(e.target.value)}
                 placeholder="https://tenant.sharepoint.com/sites/…"
-                className="flex-1 border border-border rounded-lg px-3 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-[#0078D4] bg-white" />
+                className="flex-1 border border-border rounded-lg px-3 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-[#0078D4] bg-[#161B22]" />
               <button onClick={() => void handleSave()} disabled={saving}
                 className="flex-shrink-0 text-xs font-semibold border border-[#0078D4] text-[#0078D4] px-3 py-1.5 rounded-lg hover:bg-[#0078D4]/10 disabled:opacity-50 transition-colors">
                 {saving ? "Saving…" : "Save"}
@@ -498,15 +498,15 @@ function DeleteConfirmDialog({
     <Dialog open onOpenChange={open => { if (!open && !deleting) onClose(); }}>
       <DialogContent className="max-w-md">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2 text-red-600">
+          <DialogTitle className="flex items-center gap-2 text-red-400">
             <svg className="w-5 h-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
             </svg>
             Permanently delete client?
           </DialogTitle>
           <DialogDescription asChild>
-            <div className="text-sm text-gray-600 mt-1">
-              You are about to permanently delete <strong className="text-[#0A2540]">{clientLabel}</strong> and all their associated data. This cannot be undone.
+            <div className="text-sm text-[#7D8590] mt-1">
+              You are about to permanently delete <strong className="text-[#E6EDF3]">{clientLabel}</strong> and all their associated data. This cannot be undone.
             </div>
           </DialogDescription>
         </DialogHeader>
@@ -514,18 +514,18 @@ function DeleteConfirmDialog({
         <div className="space-y-3">
           {/* Dependency summary */}
           {previewLoading ? (
-            <div className="flex items-center gap-2 py-3 text-sm text-gray-400">
+            <div className="flex items-center gap-2 py-3 text-sm text-[#7D8590]">
               <div className="w-4 h-4 border-2 border-[#0078D4] border-t-transparent rounded-full animate-spin" />
               Checking what will be deleted…
             </div>
           ) : previewError ? (
-            <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-3">
-              <p className="text-sm font-semibold text-red-700 mb-1">Could not load dependency summary</p>
-              <p className="text-xs text-red-600 mb-2">{previewError}</p>
-              <p className="text-xs text-red-700 mb-3">Deletion is blocked until the summary loads successfully. This protects you from accidentally removing data you didn't know existed.</p>
+            <div className="bg-red-500/10 border border-red-500/20 rounded-lg px-4 py-3">
+              <p className="text-sm font-semibold text-red-400 mb-1">Could not load dependency summary</p>
+              <p className="text-xs text-red-400 mb-2">{previewError}</p>
+              <p className="text-xs text-red-400 mb-3">Deletion is blocked until the summary loads successfully. This protects you from accidentally removing data you didn't know existed.</p>
               <button
                 onClick={loadPreview}
-                className="text-xs font-semibold text-red-700 border border-red-300 bg-white px-3 py-1.5 rounded-lg hover:bg-red-50 transition-colors"
+                className="text-xs font-semibold text-red-400 border border-red-300 bg-[#161B22] px-3 py-1.5 rounded-lg hover:bg-red-500/10 transition-colors"
               >
                 Retry
               </button>
@@ -533,17 +533,17 @@ function DeleteConfirmDialog({
           ) : preview ? (
             <>
               {summaryItems.length === 0 ? (
-                <div className="bg-gray-50 border border-border rounded-lg px-4 py-3">
-                  <p className="text-sm text-gray-500">This client has no associated records. Only their account will be removed.</p>
+                <div className="bg-[#161B22] border border-border rounded-lg px-4 py-3">
+                  <p className="text-sm text-[#7D8590]">This client has no associated records. Only their account will be removed.</p>
                 </div>
               ) : (
-                <div className="bg-gray-50 border border-border rounded-lg px-4 py-3">
-                  <p className="text-xs font-semibold text-[#0A2540] uppercase tracking-wider mb-2">Will be permanently erased</p>
+                <div className="bg-[#161B22] border border-border rounded-lg px-4 py-3">
+                  <p className="text-xs font-semibold text-[#E6EDF3] uppercase tracking-wider mb-2">Will be permanently erased</p>
                   <div className="grid grid-cols-2 gap-x-6 gap-y-1">
                     {summaryItems.map(item => (
                       <div key={item.label} className="flex items-center justify-between text-sm">
-                        <span className="text-gray-600">{item.label}</span>
-                        <span className="font-semibold text-[#0A2540]">{item.count}</span>
+                        <span className="text-[#7D8590]">{item.label}</span>
+                        <span className="font-semibold text-[#E6EDF3]">{item.count}</span>
                       </div>
                     ))}
                   </div>
@@ -552,15 +552,15 @@ function DeleteConfirmDialog({
 
               {/* Warnings */}
               {hasWarnings && (
-                <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 space-y-1.5">
-                  <p className="text-xs font-bold text-amber-800 uppercase tracking-wider">⚠ Warnings</p>
+                <div className="bg-amber-500/100/10 border border-amber-500/20 rounded-lg px-4 py-3 space-y-1.5">
+                  <p className="text-xs font-bold text-amber-400 uppercase tracking-wider">⚠ Warnings</p>
                   {preview.unpaidInvoices > 0 && (
-                    <p className="text-sm text-amber-800">
+                    <p className="text-sm text-amber-400">
                       This client has <strong>{preview.unpaidInvoices} unpaid invoice{preview.unpaidInvoices !== 1 ? "s" : ""}</strong>. Deleting will erase them without collecting payment.
                     </p>
                   )}
                   {preview.hasActiveStripeSubscription && (
-                    <p className="text-sm text-amber-800">
+                    <p className="text-sm text-amber-400">
                       This client has an <strong>active Stripe subscription</strong>. Cancel it in the Stripe dashboard before deleting to avoid continued billing.
                     </p>
                   )}
@@ -574,7 +574,7 @@ function DeleteConfirmDialog({
           <button
             onClick={onClose}
             disabled={deleting}
-            className="flex-1 border border-border text-sm font-medium px-4 py-2 rounded-lg hover:bg-gray-50 disabled:opacity-50 transition-colors"
+            className="flex-1 border border-border text-sm font-medium px-4 py-2 rounded-lg hover:bg-[#1C2128] disabled:opacity-50 transition-colors"
           >
             Cancel
           </button>
@@ -756,7 +756,7 @@ export default function ClientsPage() {
     <div className="p-6 max-w-[1200px]">
       <div className="flex items-center justify-between mb-4">
         <div>
-          <h1 className="text-xl font-bold text-[#0A2540]">Client Accounts</h1>
+          <h1 className="text-xl font-bold text-[#E6EDF3]">Client Accounts</h1>
           <p className="text-sm text-muted-foreground mt-0.5">Manage portal access for consulting clients. Use "View as Client" to preview the portal as any client.</p>
         </div>
         <button
@@ -779,13 +779,13 @@ export default function ClientsPage() {
           placeholder="Search by name, email or company…"
           value={search}
           onChange={e => setSearch(e.target.value)}
-          className="w-full pl-9 pr-3 py-2 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4] bg-white"
+          className="w-full pl-9 pr-3 py-2 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4] bg-[#161B22]"
         />
       </div>
 
       {showForm && (
-        <div className="bg-[#F7F9FC] border border-border rounded-xl p-5 mb-6">
-          <h3 className="text-sm font-bold text-[#0A2540] mb-1">{editingId ? "Edit Client" : "Add New Client"}</h3>
+        <div className="bg-[#1C2128] border border-border rounded-xl p-5 mb-6">
+          <h3 className="text-sm font-bold text-[#E6EDF3] mb-1">{editingId ? "Edit Client" : "Add New Client"}</h3>
           {!editingId && (
             <p className="text-xs text-muted-foreground mb-4">
               A portal invite email will be sent automatically so the client can set their own password.
@@ -793,32 +793,32 @@ export default function ClientsPage() {
           )}
           <form onSubmit={handleSubmit} className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <label className="block text-xs font-semibold text-[#0A2540] mb-1">Email *</label>
+              <label className="block text-xs font-semibold text-[#E6EDF3] mb-1">Email *</label>
               <input type="email" required value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))}
-                className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4]" />
+                className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4] bg-[#1C2128] text-[#E6EDF3]" />
             </div>
             <div>
-              <label className="block text-xs font-semibold text-[#0A2540] mb-1">Name</label>
+              <label className="block text-xs font-semibold text-[#E6EDF3] mb-1">Name</label>
               <input type="text" value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
-                className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4]" />
+                className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4] bg-[#1C2128] text-[#E6EDF3]" />
             </div>
             <div>
-              <label className="block text-xs font-semibold text-[#0A2540] mb-1">Company</label>
+              <label className="block text-xs font-semibold text-[#E6EDF3] mb-1">Company</label>
               <input type="text" value={form.company} onChange={e => setForm(f => ({ ...f, company: e.target.value }))}
-                className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4]" />
+                className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4] bg-[#1C2128] text-[#E6EDF3]" />
             </div>
             <div>
-              <label className="block text-xs font-semibold text-[#0A2540] mb-1">Phone</label>
+              <label className="block text-xs font-semibold text-[#E6EDF3] mb-1">Phone</label>
               <input type="text" value={form.phone} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))}
-                className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4]" />
+                className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4] bg-[#1C2128] text-[#E6EDF3]" />
             </div>
-            {error && <div className="sm:col-span-2 text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{error}</div>}
+            {error && <div className="sm:col-span-2 text-sm text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2">{error}</div>}
             <div className="sm:col-span-2 flex gap-3">
               <button type="submit" disabled={saving} className="bg-[#0078D4] text-white text-sm font-semibold px-5 py-2 rounded-lg hover:bg-[#0078D4]/90 disabled:opacity-50 transition-colors">
                 {saving ? "Saving…" : editingId ? "Save Changes" : "Create & Send Invite"}
               </button>
               <button type="button" onClick={() => { setShowForm(false); setEditingId(null); setError(""); }}
-                className="border border-border text-sm font-medium px-5 py-2 rounded-lg hover:bg-[#F7F9FC] transition-colors">
+                className="border border-border text-sm font-medium px-5 py-2 rounded-lg hover:bg-[#1C2128] transition-colors">
                 Cancel
               </button>
             </div>
@@ -831,13 +831,13 @@ export default function ClientsPage() {
           <div className="w-6 h-6 border-4 border-[#0078D4] border-t-transparent rounded-full animate-spin" />
         </div>
       ) : clients.length === 0 ? (
-        <div className="bg-white border border-border rounded-xl p-10 text-center text-muted-foreground text-sm">
+        <div className="bg-[#161B22] border border-border rounded-xl p-10 text-center text-muted-foreground text-sm">
           No clients yet. Add a client account to give them portal access.
         </div>
       ) : (
-        <div className="bg-white border border-border rounded-xl overflow-hidden">
+        <div className="bg-[#161B22] border border-border rounded-xl overflow-hidden">
           <table className="w-full text-sm">
-            <thead className="bg-[#F7F9FC] border-b border-border">
+            <thead className="bg-[#1C2128] border-b border-border">
               <tr>
                 <th className="text-left px-5 py-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Name / Email</th>
                 <th className="text-left px-5 py-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground hidden sm:table-cell">Company</th>
@@ -851,13 +851,13 @@ export default function ClientsPage() {
                 <tr><td colSpan={5} className="px-5 py-8 text-center text-muted-foreground text-sm">No clients match your search.</td></tr>
               ) : filteredClients.map(c => (
                 <>
-                  <tr key={c.id} className={`border-b border-border last:border-0 hover:bg-[#F7F9FC] transition-colors ${expandedClientId === c.id ? "bg-blue-50/30" : ""}`}>
+                  <tr key={c.id} className={`border-b border-border last:border-0 hover:bg-[#1C2128] transition-colors ${expandedClientId === c.id ? "bg-[#0078D4]/10/30" : ""}`}>
                     <td className="px-5 py-3.5">
                       <button
                         onClick={() => navigate(`/crm/clients/${c.id}`)}
                         className="text-left group"
                       >
-                        <p className="font-semibold text-[#0A2540] group-hover:text-[#0078D4] transition-colors">{c.name ?? "—"}</p>
+                        <p className="font-semibold text-[#E6EDF3] group-hover:text-[#0078D4] transition-colors">{c.name ?? "—"}</p>
                         <p className="text-xs text-muted-foreground">{c.email}</p>
                       </button>
                     </td>
@@ -871,7 +871,7 @@ export default function ClientsPage() {
                           className={`flex items-center gap-1 text-xs font-semibold transition-colors ${
                             expandedClientId === c.id
                               ? "text-[#0078D4]"
-                              : "text-gray-500 hover:text-[#0078D4]"
+                              : "text-[#7D8590] hover:text-[#0078D4]"
                           }`}
                           title="View emails from this client's domain"
                         >
@@ -886,7 +886,7 @@ export default function ClientsPage() {
                         >
                           Details
                         </button>
-                        <button onClick={() => handleEdit(c)} className="text-xs font-semibold text-gray-500 hover:text-[#0078D4]">Edit</button>
+                        <button onClick={() => handleEdit(c)} className="text-xs font-semibold text-[#7D8590] hover:text-[#0078D4]">Edit</button>
                         <button
                           onClick={() => void handleResendInvite(c)}
                           disabled={resendingInviteId === c.id}
@@ -905,7 +905,7 @@ export default function ClientsPage() {
                         <button
                           onClick={() => handleViewAs(c)}
                           disabled={viewAsLoading === c.id}
-                          className="flex items-center gap-1 text-xs font-semibold text-amber-600 hover:text-amber-700 hover:underline disabled:opacity-50 transition-colors"
+                          className="flex items-center gap-1 text-xs font-semibold text-amber-600 hover:text-amber-400 hover:underline disabled:opacity-50 transition-colors"
                           title="Open the client portal as this client (read-only, 30 min session)"
                         >
                           {viewAsLoading === c.id ? (
@@ -923,7 +923,7 @@ export default function ClientsPage() {
                           className={`flex items-center gap-1 text-xs font-semibold transition-colors ${
                             expandedSpClientId === c.id
                               ? "text-[#0078D4]"
-                              : "text-gray-500 hover:text-[#0078D4]"
+                              : "text-[#7D8590] hover:text-[#0078D4]"
                           }`}
                           title="Manage SharePoint site for this client"
                         >
@@ -945,7 +945,7 @@ export default function ClientsPage() {
                           </svg>
                           M365 Profile
                         </button>
-                        <button onClick={() => setDeleteTarget(c)} className="text-xs font-semibold text-red-500 hover:text-red-700">Delete</button>
+                        <button onClick={() => setDeleteTarget(c)} className="text-xs font-semibold text-red-500 hover:text-red-400">Delete</button>
                       </div>
                     </td>
                   </tr>

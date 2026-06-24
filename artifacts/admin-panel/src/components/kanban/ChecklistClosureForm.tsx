@@ -18,7 +18,7 @@ interface Props {
 }
 
 const inputCls =
-  "w-full border border-border rounded-lg px-3 py-2 text-sm text-[#0A2540] focus:outline-none focus:ring-2 focus:ring-[#0078D4]/40 bg-white placeholder:text-muted-foreground/60";
+  "w-full border border-border rounded-lg px-3 py-2 text-sm text-[#E6EDF3] focus:outline-none focus:ring-2 focus:ring-[#0078D4]/40 bg-[#1C2128] placeholder:text-muted-foreground/60";
 
 const ChecklistClosureForm = forwardRef<ChecklistClosureFormHandle, Props>(
   ({ fields }, ref) => {

@@ -190,7 +190,7 @@ function Toggle({ value, onChange }: { value: boolean; onChange: (v: boolean) =>
       onClick={() => onChange(!value)}
       className={`relative inline-flex h-5 w-9 flex-shrink-0 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-[#0078D4] focus:ring-offset-1 ${value ? "bg-[#0078D4]" : "bg-gray-300"}`}
     >
-      <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow-sm transition-transform ${value ? "translate-x-[18px]" : "translate-x-[3px]"}`} />
+      <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-[#1C2128] shadow-sm transition-transform ${value ? "translate-x-[18px]" : "translate-x-[3px]"}`} />
     </button>
   );
 }
@@ -198,7 +198,7 @@ function Toggle({ value, onChange }: { value: boolean; onChange: (v: boolean) =>
 function YesNoRow({ label, value, onChange }: { label: string; value: boolean; onChange: (v: boolean) => void }) {
   return (
     <div className="flex items-center justify-between py-2.5 border-b border-border/40 last:border-0">
-      <span className="text-sm text-[#0A2540] pr-4">{label}</span>
+      <span className="text-sm text-[#E6EDF3] pr-4">{label}</span>
       <div className="flex items-center gap-2 flex-shrink-0">
         <span className={`text-xs font-semibold w-6 text-right ${value ? "text-[#0078D4]" : "text-gray-400"}`}>{value ? "Yes" : "No"}</span>
         <Toggle value={value} onChange={onChange} />
@@ -210,7 +210,7 @@ function YesNoRow({ label, value, onChange }: { label: string; value: boolean; o
 function FieldRow({ label, children, error }: { label: string; children: React.ReactNode; error?: string }) {
   return (
     <div className="grid grid-cols-1 sm:grid-cols-[180px_1fr] gap-1.5 items-start">
-      <label className="text-xs font-semibold text-[#0A2540] pt-2.5 leading-tight">{label}</label>
+      <label className="text-xs font-semibold text-[#E6EDF3] pt-2.5 leading-tight">{label}</label>
       <div>
         {children}
         {error && <p className="mt-1 text-xs text-red-600">{error}</p>}
@@ -219,8 +219,8 @@ function FieldRow({ label, children, error }: { label: string; children: React.R
   );
 }
 
-const inputCls = "w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4] bg-white";
-const inputErrCls = "w-full border border-red-400 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-400 bg-white";
+const inputCls = "w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4] bg-[#1C2128]";
+const inputErrCls = "w-full border border-red-400 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-400 bg-[#1C2128]";
 
 function TextInput({ value, onChange, placeholder, error }: { value: string; onChange: (v: string) => void; placeholder?: string; error?: string }) {
   return <input type="text" value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder} className={error ? inputErrCls : inputCls} />;
@@ -251,7 +251,7 @@ function MultiSelect({ value, onChange, options }: { value: string[]; onChange: 
         return (
           <button key={opt} type="button"
             onClick={() => onChange(sel ? value.filter(v => v !== opt) : [...value, opt])}
-            className={`text-xs font-semibold px-2.5 py-1 rounded-full border transition-colors ${sel ? "bg-[#0078D4] text-white border-[#0078D4]" : "bg-white text-[#0A2540] border-border hover:border-[#0078D4]"}`}
+            className={`text-xs font-semibold px-2.5 py-1 rounded-full border transition-colors ${sel ? "bg-[#0078D4] text-white border-[#0078D4]" : "bg-[#1C2128] text-[#E6EDF3] border-border hover:border-[#0078D4]"}`}
           >{opt}</button>
         );
       })}
@@ -260,7 +260,7 @@ function MultiSelect({ value, onChange, options }: { value: string[]; onChange: 
 }
 
 function SectionTitle({ children }: { children: React.ReactNode }) {
-  return <p className="text-[10px] font-bold uppercase tracking-widest text-[#0A2540]/50 mt-4 mb-1 first:mt-0">{children}</p>;
+  return <p className="text-[10px] font-bold uppercase tracking-widest text-[#E6EDF3]/50 mt-4 mb-1 first:mt-0">{children}</p>;
 }
 
 function ToggleRow({ label, value, onChange }: { label: string; value: boolean; onChange: (v: boolean) => void }) {
@@ -315,7 +315,7 @@ function Step2({ p, set, errors }: { p: M365Profile; set: (k: keyof M365Profile,
       <FieldRow label="Active User %" error={errors.activeUserPercent}>
         <NumberInput value={p.activeUserPercent} onChange={v => set("activeUserPercent", v)} placeholder="85" error={errors.activeUserPercent} />
       </FieldRow>
-      <div className="bg-[#F7F9FC] border border-border rounded-xl px-4 pt-3 pb-1 mt-1">
+      <div className="bg-[#1C2128] border border-border rounded-xl px-4 pt-3 pb-1 mt-1">
         <SectionTitle>Workload Adoption</SectionTitle>
         <YesNoRow label="All users licensed?" value={p.allUsersLicensed} onChange={v => set("allUsersLicensed", v)} />
         <YesNoRow label="Exchange Online in use" value={p.usesExchange} onChange={v => set("usesExchange", v)} />
@@ -350,7 +350,7 @@ function Step3({ p, set, errors }: { p: M365Profile; set: (k: keyof M365Profile,
       <FieldRow label="Primary Auth Method">
         <SelectInput value={p.authMethod} onChange={v => set("authMethod", v)} options={authOptions} />
       </FieldRow>
-      <div className="bg-[#F7F9FC] border border-border rounded-xl px-4 pt-3 pb-1 mt-1">
+      <div className="bg-[#1C2128] border border-border rounded-xl px-4 pt-3 pb-1 mt-1">
         <SectionTitle>Configuration Flags</SectionTitle>
         <YesNoRow label="External sharing enabled" value={p.externalSharingEnabled} onChange={v => set("externalSharingEnabled", v)} />
         <YesNoRow label="Guest users present" value={p.guestUsersPresent} onChange={v => set("guestUsersPresent", v)} />
@@ -364,7 +364,7 @@ function Step3({ p, set, errors }: { p: M365Profile; set: (k: keyof M365Profile,
 
 function Step4({ p, set }: { p: M365Profile; set: (k: keyof M365Profile, v: unknown) => void }) {
   return (
-    <div className="bg-[#F7F9FC] border border-border rounded-xl px-4 pt-3 pb-1">
+    <div className="bg-[#1C2128] border border-border rounded-xl px-4 pt-3 pb-1">
       <SectionTitle>Identity &amp; Access</SectionTitle>
       <YesNoRow label="MFA enforced for all users" value={p.mfaEnforced} onChange={v => set("mfaEnforced", v)} />
       <YesNoRow label="Conditional Access policies configured" value={p.conditionalAccessEnabled} onChange={v => set("conditionalAccessEnabled", v)} />
@@ -387,7 +387,7 @@ function Step5({ p, set, errors }: { p: M365Profile; set: (k: keyof M365Profile,
   const scoreOpts = ["1 – Not ready", "2 – Early stages", "3 – Partially ready", "4 – Mostly ready", "5 – Fully ready"].map((s, i) => ({ value: String(i + 1), label: s }));
   return (
     <div className="space-y-3">
-      <div className="bg-[#F7F9FC] border border-border rounded-xl px-4 pt-3 pb-1">
+      <div className="bg-[#1C2128] border border-border rounded-xl px-4 pt-3 pb-1">
         <SectionTitle>License Status</SectionTitle>
         <YesNoRow label="Has M365 Copilot licenses" value={p.hasCopilotLicenses} onChange={v => set("hasCopilotLicenses", v)} />
       </div>
@@ -548,16 +548,16 @@ function Step7({ p, onJump, onDownloadPdf, downloading }: { p: M365Profile; onJu
         </button>
       </div>
       {sections.map(section => (
-        <div key={section.title} className="bg-[#F7F9FC] border border-border rounded-xl p-4">
+        <div key={section.title} className="bg-[#1C2128] border border-border rounded-xl p-4">
           <div className="flex items-center justify-between mb-2">
-            <p className="text-[10px] font-bold uppercase tracking-widest text-[#0A2540]/60">{section.title}</p>
+            <p className="text-[10px] font-bold uppercase tracking-widest text-[#E6EDF3]/60">{section.title}</p>
             <button onClick={() => onJump(section.step)} className="text-[11px] font-semibold text-[#0078D4] hover:underline">Edit</button>
           </div>
           <div className="space-y-1">
             {section.rows.map(([label, value]) => (
               <div key={label} className="flex gap-3 text-xs">
                 <span className="text-gray-500 flex-shrink-0 w-32">{label}</span>
-                <span className="text-[#0A2540] font-medium break-words flex-1">{value}</span>
+                <span className="text-[#E6EDF3] font-medium break-words flex-1">{value}</span>
               </div>
             ))}
           </div>
@@ -671,14 +671,14 @@ export function M365ProfileWizard({
     <Dialog open onOpenChange={open => { if (!open && !saving) onClose(); }}>
       <DialogContent className="max-w-2xl flex flex-col p-0 gap-0 max-h-[88vh]">
         <DialogHeader className="px-6 pt-5 pb-4 border-b border-border flex-shrink-0">
-          <DialogTitle className="text-[#0A2540] text-sm font-bold">
+          <DialogTitle className="text-[#E6EDF3] text-sm font-bold">
             M365 Environment Profile — {clientName}
           </DialogTitle>
           <p className="text-xs text-muted-foreground mt-0.5">{STEPS[step].description}</p>
           <div className="flex items-center gap-2.5 mt-3">
             <div className="flex gap-1">
               {STEPS.map((_, i) => (
-                <div key={i} className={`h-1.5 rounded-full transition-all duration-300 ${i === step ? "w-6 bg-[#0078D4]" : i < step ? "w-3 bg-[#0078D4]/50" : "w-3 bg-gray-200"}`} />
+                <div key={i} className={`h-1.5 rounded-full transition-all duration-300 ${i === step ? "w-6 bg-[#0078D4]" : i < step ? "w-3 bg-[#0078D4]/50" : "w-3 bg-[#30363D]"}`} />
               ))}
             </div>
             <span className="text-[10px] font-semibold text-muted-foreground ml-auto">Step {step + 1} of {STEPS.length}</span>
@@ -686,7 +686,7 @@ export function M365ProfileWizard({
         </DialogHeader>
 
         <div className="flex-1 overflow-y-auto px-6 py-5 min-h-0">
-          <h2 className="text-sm font-bold text-[#0A2540] mb-4">{STEPS[step].title}</h2>
+          <h2 className="text-sm font-bold text-[#E6EDF3] mb-4">{STEPS[step].title}</h2>
           {loading ? (
             <div className="flex items-center justify-center py-16">
               <div className="w-6 h-6 border-4 border-[#0078D4] border-t-transparent rounded-full animate-spin" />
@@ -698,7 +698,7 @@ export function M365ProfileWizard({
           <button
             onClick={goBack}
             disabled={step === 0 || saving}
-            className="text-sm font-medium text-[#0A2540] border border-border px-4 py-2 rounded-lg hover:bg-[#F7F9FC] disabled:opacity-30 transition-colors"
+            className="text-sm font-medium text-[#E6EDF3] border border-border px-4 py-2 rounded-lg hover:bg-[#1C2128] disabled:opacity-30 transition-colors"
           >
             ← Back
           </button>

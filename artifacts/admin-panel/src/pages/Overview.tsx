@@ -192,7 +192,7 @@ function ActivityIcon({ type }: { type: string }) {
     </div>
   );
   return (
-    <div className={`${cls} bg-amber-500/15`}>
+    <div className={`${cls} bg-amber-500/100/15`}>
       <svg className="w-3.5 h-3.5 text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
         <path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
       </svg>
@@ -328,14 +328,14 @@ export default function OverviewPage() {
           <div className="flex items-center gap-2 mb-3">
             <div className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
             <h2 className="text-sm font-bold text-[#7D8590] uppercase tracking-widest">Customer Questions</h2>
-            <span className="text-xs font-bold bg-amber-500/15 text-amber-400 border border-amber-500/20 px-2 py-0.5 rounded-full">
+            <span className="text-xs font-bold bg-amber-500/100/15 text-amber-400 border border-amber-500/20 px-2 py-0.5 rounded-full">
               {data.pendingQuestions?.length ?? 0} pending
             </span>
           </div>
           <div className="space-y-2">
             {data.pendingQuestions?.map(q => (
-              <div key={q.id} className="bg-amber-500/10 border border-amber-500/20 rounded-xl px-4 py-3.5 flex items-start gap-3">
-                <div className="w-8 h-8 rounded-full bg-amber-500/20 flex items-center justify-center flex-shrink-0 mt-0.5">
+              <div key={q.id} className="bg-amber-500/100/10 border border-amber-500/20 rounded-xl px-4 py-3.5 flex items-start gap-3">
+                <div className="w-8 h-8 rounded-full bg-amber-500/100/20 flex items-center justify-center flex-shrink-0 mt-0.5">
                   <svg className="w-4 h-4 text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                     <path strokeLinecap="round" strokeLinejoin="round" d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                   </svg>
@@ -358,7 +358,7 @@ export default function OverviewPage() {
                 </div>
                 {q.projectId && (
                   <Link href={`/crm/projects/${q.projectId}`}>
-                    <span className="flex-shrink-0 text-xs font-semibold text-amber-400 border border-amber-500/30 bg-amber-500/10 hover:bg-amber-500/20 px-3 py-1.5 rounded-lg transition-colors whitespace-nowrap cursor-pointer">
+                    <span className="flex-shrink-0 text-xs font-semibold text-amber-400 border border-amber-500/30 bg-amber-500/100/10 hover:bg-amber-500/100/20 px-3 py-1.5 rounded-lg transition-colors whitespace-nowrap cursor-pointer">
                       Go to Project →
                     </span>
                   </Link>
@@ -594,8 +594,8 @@ export default function OverviewPage() {
               const critical = days > 0 && days <= 14;
               const isUrgent = expired || critical;
               return (
-                <div key={cred.id} className={`border rounded-xl px-4 py-3.5 flex items-center gap-3 ${isUrgent ? "bg-red-500/10 border-red-500/20" : "bg-amber-500/10 border-amber-500/20"}`}>
-                  <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${isUrgent ? "bg-red-500/20" : "bg-amber-500/20"}`}>
+                <div key={cred.id} className={`border rounded-xl px-4 py-3.5 flex items-center gap-3 ${isUrgent ? "bg-red-500/10 border-red-500/20" : "bg-amber-500/100/10 border-amber-500/20"}`}>
+                  <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${isUrgent ? "bg-red-500/20" : "bg-amber-500/100/20"}`}>
                     <svg className={`w-4 h-4 ${isUrgent ? "text-red-400" : "text-amber-400"}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                       <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                     </svg>
@@ -612,7 +612,7 @@ export default function OverviewPage() {
                   </div>
                   {cred.clientUserId && (
                     <Link href={`/crm/clients/${cred.clientUserId}`}>
-                      <span className={`flex-shrink-0 text-xs font-semibold border px-3 py-1.5 rounded-lg transition-colors whitespace-nowrap cursor-pointer ${isUrgent ? "text-red-400 border-red-500/30 bg-red-500/10 hover:bg-red-500/20" : "text-amber-400 border-amber-500/30 bg-amber-500/10 hover:bg-amber-500/20"}`}>
+                      <span className={`flex-shrink-0 text-xs font-semibold border px-3 py-1.5 rounded-lg transition-colors whitespace-nowrap cursor-pointer ${isUrgent ? "text-red-400 border-red-500/30 bg-red-500/10 hover:bg-red-500/100/20" : "text-amber-400 border-amber-500/30 bg-amber-500/100/10 hover:bg-amber-500/100/20"}`}>
                         Go to Client →
                       </span>
                     </Link>
@@ -637,8 +637,8 @@ export default function OverviewPage() {
           ) : data && (
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               {data.unpaidInvoiceCount > 0 && (
-                <div className={`border rounded-xl p-4 flex items-start gap-3 ${data.overdueInvoiceCount > 0 ? "bg-red-500/10 border-red-500/20" : "bg-amber-500/10 border-amber-500/20"}`}>
-                  <div className={`w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 ${data.overdueInvoiceCount > 0 ? "bg-red-500/20" : "bg-amber-500/20"}`}>
+                <div className={`border rounded-xl p-4 flex items-start gap-3 ${data.overdueInvoiceCount > 0 ? "bg-red-500/10 border-red-500/20" : "bg-amber-500/100/10 border-amber-500/20"}`}>
+                  <div className={`w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 ${data.overdueInvoiceCount > 0 ? "bg-red-500/20" : "bg-amber-500/100/20"}`}>
                     <svg className={`w-5 h-5 ${data.overdueInvoiceCount > 0 ? "text-red-400" : "text-amber-400"}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                       <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                     </svg>
@@ -657,8 +657,8 @@ export default function OverviewPage() {
                 </div>
               )}
               {data.staleLeadCount > 0 && (
-                <div className="bg-amber-500/10 border border-amber-500/20 rounded-xl p-4 flex items-start gap-3">
-                  <div className="w-9 h-9 rounded-xl bg-amber-500/20 flex items-center justify-center flex-shrink-0">
+                <div className="bg-amber-500/100/10 border border-amber-500/20 rounded-xl p-4 flex items-start gap-3">
+                  <div className="w-9 h-9 rounded-xl bg-amber-500/100/20 flex items-center justify-center flex-shrink-0">
                     <svg className="w-5 h-5 text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                       <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                     </svg>

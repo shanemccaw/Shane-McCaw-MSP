@@ -51,16 +51,16 @@ interface PurchaseDetail {
 
 function statusBadge(status: string) {
   const base = "text-xs font-semibold px-2.5 py-1 rounded-full capitalize";
-  if (status === "paid") return `${base} bg-green-100 text-green-700`;
-  if (status === "overdue") return `${base} bg-red-100 text-red-700`;
-  return `${base} bg-yellow-100 text-yellow-700`;
+  if (status === "paid") return `${base} bg-green-500/15 text-green-400`;
+  if (status === "overdue") return `${base} bg-red-500/15 text-red-400`;
+  return `${base} bg-yellow-500/15 text-yellow-400`;
 }
 
 function Card({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div className="bg-white border border-border rounded-xl overflow-hidden">
-      <div className="px-5 py-3.5 border-b border-border bg-[#F7F9FC]">
-        <h2 className="text-sm font-semibold text-[#0A2540]">{title}</h2>
+    <div className="bg-[#161B22] border border-border rounded-xl overflow-hidden">
+      <div className="px-5 py-3.5 border-b border-border bg-[#1C2128]">
+        <h2 className="text-sm font-semibold text-[#E6EDF3]">{title}</h2>
       </div>
       <div className="px-5 py-4 space-y-3">{children}</div>
     </div>
@@ -71,7 +71,7 @@ function Row({ label, value }: { label: string; value: React.ReactNode }) {
   return (
     <div className="flex items-start gap-4 text-sm">
       <span className="w-44 shrink-0 text-muted-foreground">{label}</span>
-      <span className="text-[#0A2540] font-medium break-all">{value ?? "—"}</span>
+      <span className="text-[#E6EDF3] font-medium break-all">{value ?? "—"}</span>
     </div>
   );
 }
@@ -125,7 +125,7 @@ export default function PurchaseDetailPage() {
         <button onClick={() => navigate("/crm/purchases")} className="text-sm text-[#0078D4] hover:underline mb-4 flex items-center gap-1">
           ← Purchases
         </button>
-        <div className="bg-red-50 border border-red-200 rounded-xl p-6 text-sm text-red-700">
+        <div className="bg-red-500/10 border border-red-500/20 rounded-xl p-6 text-sm text-red-400">
           {error ?? "Purchase not found."}
         </div>
       </div>
@@ -151,7 +151,7 @@ export default function PurchaseDetailPage() {
           ← Purchases
         </button>
         <div className="flex items-center gap-3 flex-wrap">
-          <h1 className="text-xl font-bold text-[#0A2540]">{detail.invoiceNumber}</h1>
+          <h1 className="text-xl font-bold text-[#E6EDF3]">{detail.invoiceNumber}</h1>
           <span className={statusBadge(detail.status)}>{detail.status}</span>
         </div>
       </div>
@@ -171,11 +171,11 @@ export default function PurchaseDetailPage() {
             label="Promo Code Applied"
             value={
               <span className="inline-flex items-center gap-2">
-                <span className="font-mono bg-green-50 text-green-700 border border-green-200 text-xs font-semibold px-2 py-0.5 rounded">
+                <span className="font-mono bg-green-500/10 text-green-400 border border-green-500/20 text-xs font-semibold px-2 py-0.5 rounded">
                   {detail.couponCode}
                 </span>
                 {detail.discountAmount && (
-                  <span className="text-green-700 text-xs font-semibold">
+                  <span className="text-green-400 text-xs font-semibold">
                     −${parseFloat(detail.discountAmount).toFixed(2)} savings
                   </span>
                 )}
@@ -204,9 +204,9 @@ export default function PurchaseDetailPage() {
                     <div key={i} className="flex items-center justify-between px-5 py-3 text-sm">
                       <span className="text-muted-foreground">{s.stepTitle}</span>
                       <div className="flex items-center gap-2 text-right">
-                        <span className="font-medium text-[#0A2540]">{s.optionLabel}</span>
+                        <span className="font-medium text-[#E6EDF3]">{s.optionLabel}</span>
                         {s.priceAdjustment !== 0 ? (
-                          <span className={`text-xs font-semibold ${s.priceAdjustment > 0 ? "text-green-600" : "text-red-600"}`}>
+                          <span className={`text-xs font-semibold ${s.priceAdjustment > 0 ? "text-green-400" : "text-red-400"}`}>
                             {s.priceAdjustment > 0 ? `+$${s.priceAdjustment}` : `-$${Math.abs(s.priceAdjustment)}`}
                           </span>
                         ) : (

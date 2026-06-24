@@ -156,10 +156,10 @@ function Avatar({ name, email, size = "md" }: { name: string | null; email: stri
 function SkeletonDetail() {
   return (
     <div className="p-6 space-y-4 animate-pulse">
-      <div className="h-5 w-2/3 bg-gray-200 rounded" />
-      <div className="h-4 w-1/2 bg-gray-100 rounded" />
-      <div className="h-4 w-1/3 bg-gray-100 rounded" />
-      <div className="mt-6 h-40 bg-gray-100 rounded-xl" />
+      <div className="h-5 w-2/3 bg-[#1C2128] rounded" />
+      <div className="h-4 w-1/2 bg-[#1C2128] rounded" />
+      <div className="h-4 w-1/3 bg-[#1C2128] rounded" />
+      <div className="mt-6 h-40 bg-[#1C2128] rounded-xl" />
     </div>
   );
 }
@@ -192,9 +192,9 @@ function EmailListPanel({
   ];
 
   return (
-    <div className="flex flex-col h-full border-r border-gray-100 bg-white">
+    <div className="flex flex-col h-full border-r border-[#30363D] bg-[#161B22]">
       {/* Tab bar */}
-      <div className="flex gap-0 border-b border-gray-100 shrink-0">
+      <div className="flex gap-0 border-b border-[#30363D] shrink-0">
         {tabs.map(t => (
           <button
             key={t.key}
@@ -202,7 +202,7 @@ function EmailListPanel({
             className={`flex-1 px-3 py-3 text-xs font-semibold border-b-2 transition-colors -mb-px ${
               tab === t.key
                 ? "border-[#0078D4] text-[#0078D4]"
-                : "border-transparent text-gray-500 hover:text-gray-700"
+                : "border-transparent text-[#7D8590] hover:text-[#C9D1D9]"
             }`}
           >
             {t.label}
@@ -217,15 +217,15 @@ function EmailListPanel({
             <div className="w-6 h-6 border-2 border-[#0078D4] border-t-transparent rounded-full animate-spin" />
           </div>
         ) : error ? (
-          <div className="p-4 text-sm text-red-600">{error}</div>
+          <div className="p-4 text-sm text-red-400">{error}</div>
         ) : emails.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-14 px-4 text-center gap-3">
-            <div className="w-10 h-10 bg-gray-100 rounded-xl flex items-center justify-center">
-              <svg className="w-5 h-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+            <div className="w-10 h-10 bg-[#1C2128] rounded-xl flex items-center justify-center">
+              <svg className="w-5 h-5 text-[#7D8590]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M21.75 6.75v10.5a2.25 2.25 0 01-2.25 2.25h-15a2.25 2.25 0 01-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25m19.5 0v.243a2.25 2.25 0 01-1.07 1.916l-7.5 4.615a2.25 2.25 0 01-2.36 0L3.32 8.91a2.25 2.25 0 01-1.07-1.916V6.75" />
               </svg>
             </div>
-            <p className="text-xs text-gray-500">
+            <p className="text-xs text-[#7D8590]">
               {tab === "unlinked"
                 ? "All senders matched to a client."
                 : tab === "linked"
@@ -234,7 +234,7 @@ function EmailListPanel({
             </p>
           </div>
         ) : (
-          <div className="divide-y divide-gray-50">
+          <div className="divide-y divide-[#30363D]">
             {emails.map(row => {
               const active = row.email.id === selectedId;
               const linked = Boolean(row.email.linkedUserId);
@@ -244,28 +244,28 @@ function EmailListPanel({
                   key={row.email.id}
                   onClick={() => onSelect(row.email.id)}
                   className={`w-full text-left px-4 py-3 flex gap-3 transition-colors ${
-                    active ? "bg-blue-50/80 border-l-2 border-[#0078D4]" : "hover:bg-gray-50/50 border-l-2 border-transparent"
+                    active ? "bg-[#0078D4]/10 border-l-2 border-[#0078D4]" : "hover:bg-[#1C2128]/50 border-l-2 border-transparent"
                   }`}
                 >
                   <Avatar name={displayName !== row.email.senderAddress ? displayName : null} email={row.email.senderAddress} />
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between gap-2">
-                      <span className="text-xs font-semibold text-[#0A2540] truncate">{displayName}</span>
-                      <span className="text-[10px] text-gray-400 shrink-0 whitespace-nowrap">{timeAgo(row.email.receivedAt)}</span>
+                      <span className="text-xs font-semibold text-[#E6EDF3] truncate">{displayName}</span>
+                      <span className="text-[10px] text-[#7D8590] shrink-0 whitespace-nowrap">{timeAgo(row.email.receivedAt)}</span>
                     </div>
-                    <p className="text-xs text-gray-700 truncate mt-0.5">
+                    <p className="text-xs text-[#C9D1D9] truncate mt-0.5">
                       {row.email.subject ?? "(no subject)"}
                     </p>
-                    <p className="text-[11px] text-gray-400 truncate mt-0.5 leading-tight">
+                    <p className="text-[11px] text-[#7D8590] truncate mt-0.5 leading-tight">
                       {row.email.bodyPreview ?? ""}
                     </p>
                     <div className="mt-1.5 flex items-center gap-1.5">
                       {linked ? (
-                        <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-blue-100 text-blue-700 max-w-[130px] truncate">
+                        <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-[#0078D4]/100/15 text-blue-400 max-w-[130px] truncate">
                           {row.clientName ?? row.clientEmail ?? "Linked"}
                         </span>
                       ) : (
-                        <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-amber-100 text-amber-700">
+                        <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-amber-500/100/15 text-amber-400">
                           Unlinked
                         </span>
                       )}
@@ -280,21 +280,21 @@ function EmailListPanel({
 
       {/* Pagination */}
       {totalPages > 1 && (
-        <div className="shrink-0 px-4 py-2.5 border-t border-gray-100 flex items-center justify-between">
-          <span className="text-[10px] text-gray-400">{total} total</span>
+        <div className="shrink-0 px-4 py-2.5 border-t border-[#30363D] flex items-center justify-between">
+          <span className="text-[10px] text-[#7D8590]">{total} total</span>
           <div className="flex items-center gap-1.5">
             <button
               onClick={() => onPageChange(Math.max(1, page - 1))}
               disabled={page === 1}
-              className="w-6 h-6 flex items-center justify-center rounded border border-gray-200 text-gray-500 text-xs hover:bg-gray-50 disabled:opacity-40"
+              className="w-6 h-6 flex items-center justify-center rounded border border-[#30363D] text-[#7D8590] text-xs hover:bg-[#1C2128] disabled:opacity-40"
             >
               ‹
             </button>
-            <span className="text-[10px] text-gray-500">{page}/{totalPages}</span>
+            <span className="text-[10px] text-[#7D8590]">{page}/{totalPages}</span>
             <button
               onClick={() => onPageChange(Math.min(totalPages, page + 1))}
               disabled={page === totalPages}
-              className="w-6 h-6 flex items-center justify-center rounded border border-gray-200 text-gray-500 text-xs hover:bg-gray-50 disabled:opacity-40"
+              className="w-6 h-6 flex items-center justify-center rounded border border-[#30363D] text-[#7D8590] text-xs hover:bg-[#1C2128] disabled:opacity-40"
             >
               ›
             </button>
@@ -499,7 +499,7 @@ function EmailDetailPanel({ emailId, reloadKey, clients, leads, onEmailReassigne
 
   if (emailId === null) {
     return (
-      <div className="flex flex-col items-center justify-center h-full gap-3 text-gray-400">
+      <div className="flex flex-col items-center justify-center h-full gap-3 text-[#7D8590]">
         <svg className="w-12 h-12 text-gray-200" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1}>
           <path strokeLinecap="round" strokeLinejoin="round" d="M21.75 6.75v10.5a2.25 2.25 0 01-2.25 2.25h-15a2.25 2.25 0 01-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25m19.5 0v.243a2.25 2.25 0 01-1.07 1.916l-7.5 4.615a2.25 2.25 0 01-2.36 0L3.32 8.91a2.25 2.25 0 01-1.07-1.916V6.75" />
         </svg>
@@ -509,7 +509,7 @@ function EmailDetailPanel({ emailId, reloadKey, clients, leads, onEmailReassigne
   }
 
   if (detailLoading) return <SkeletonDetail />;
-  if (detailError) return <div className="p-6 text-sm text-red-600">{detailError}</div>;
+  if (detailError) return <div className="p-6 text-sm text-red-400">{detailError}</div>;
   if (!detail) return null;
 
   const senderName = detail.email.rawFrom
@@ -521,16 +521,16 @@ function EmailDetailPanel({ emailId, reloadKey, clients, leads, onEmailReassigne
   return (
     <div className="flex flex-col h-full overflow-y-auto">
       {/* Email header */}
-      <div className="px-6 pt-5 pb-4 border-b border-gray-100 shrink-0">
-        <h2 className="text-base font-bold text-[#0A2540] leading-snug mb-3">
+      <div className="px-6 pt-5 pb-4 border-b border-[#30363D] shrink-0">
+        <h2 className="text-base font-bold text-[#E6EDF3] leading-snug mb-3">
           {detail.email.subject ?? "(no subject)"}
         </h2>
         <div className="flex items-start gap-3">
           <Avatar name={senderName !== detail.email.senderAddress ? senderName : null} email={detail.email.senderAddress} size="md" />
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-semibold text-[#0A2540]">{senderName}</p>
-            <p className="text-xs text-gray-500">{detail.email.senderAddress}</p>
-            <p className="text-xs text-gray-400 mt-0.5">{formatDateLong(detail.email.receivedAt)}</p>
+            <p className="text-sm font-semibold text-[#E6EDF3]">{senderName}</p>
+            <p className="text-xs text-[#7D8590]">{detail.email.senderAddress}</p>
+            <p className="text-xs text-[#7D8590] mt-0.5">{formatDateLong(detail.email.receivedAt)}</p>
           </div>
           {/* Assign dropdown */}
           <div className="shrink-0">
@@ -541,7 +541,7 @@ function EmailDetailPanel({ emailId, reloadKey, clients, leads, onEmailReassigne
                 const val = e.target.value;
                 void handleAssign(val === "" ? null : parseInt(val, 10));
               }}
-              className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 text-gray-700 bg-white focus:outline-none focus:ring-1 focus:ring-[#0078D4] disabled:opacity-50 max-w-[180px]"
+              className="text-xs border border-[#30363D] rounded-lg px-2 py-1.5 text-[#C9D1D9] bg-[#161B22] focus:outline-none focus:ring-1 focus:ring-[#0078D4] disabled:opacity-50 max-w-[180px]"
             >
               <option value="">— Unassigned —</option>
               {clients.map(c => (
@@ -555,24 +555,24 @@ function EmailDetailPanel({ emailId, reloadKey, clients, leads, onEmailReassigne
       </div>
 
       {/* Email body */}
-      <div className="px-6 py-4 border-b border-gray-100 shrink-0">
+      <div className="px-6 py-4 border-b border-[#30363D] shrink-0">
         {detail.bodyContentType === "html" && detail.bodyContent ? (
           <iframe
             srcDoc={detail.bodyContent}
             sandbox="allow-same-origin"
-            className="w-full min-h-[280px] border-0 rounded-lg bg-white"
+            className="w-full min-h-[280px] border-0 rounded-lg bg-[#161B22]"
             title="Email body"
             style={{ height: "320px" }}
           />
         ) : detail.bodyContent ? (
-          <pre className="text-sm text-gray-700 whitespace-pre-wrap font-sans leading-relaxed max-h-72 overflow-y-auto">
+          <pre className="text-sm text-[#C9D1D9] whitespace-pre-wrap font-sans leading-relaxed max-h-72 overflow-y-auto">
             {detail.bodyContent}
           </pre>
         ) : (
-          <p className="text-sm text-gray-400 italic">No body content available.</p>
+          <p className="text-sm text-[#7D8590] italic">No body content available.</p>
         )}
         {!detail.graphAvailable && (
-          <p className="mt-2 text-[10px] text-gray-400 italic">
+          <p className="mt-2 text-[10px] text-[#7D8590] italic">
             Showing preview only — configure Graph credentials to load the full email body.
           </p>
         )}
@@ -580,21 +580,21 @@ function EmailDetailPanel({ emailId, reloadKey, clients, leads, onEmailReassigne
 
       {/* Client context */}
       {detail.clientId ? (
-        <div className="px-6 py-4 border-b border-gray-100 shrink-0">
-          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">Client</p>
-          <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-xl">
+        <div className="px-6 py-4 border-b border-[#30363D] shrink-0">
+          <p className="text-[10px] font-bold text-[#7D8590] uppercase tracking-widest mb-2">Client</p>
+          <div className="flex items-center gap-3 p-3 bg-[#161B22] rounded-xl">
             <Avatar name={detail.clientName} email={detail.clientEmail ?? ""} />
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-semibold text-[#0A2540]">{detail.clientName ?? detail.clientEmail}</p>
-              {detail.clientCompany && <p className="text-xs text-gray-500">{detail.clientCompany}</p>}
-              {detail.clientEmail && <p className="text-xs text-gray-400">{detail.clientEmail}</p>}
+              <p className="text-sm font-semibold text-[#E6EDF3]">{detail.clientName ?? detail.clientEmail}</p>
+              {detail.clientCompany && <p className="text-xs text-[#7D8590]">{detail.clientCompany}</p>}
+              {detail.clientEmail && <p className="text-xs text-[#7D8590]">{detail.clientEmail}</p>}
             </div>
           </div>
 
           {/* Mode toggle: Project vs Lead */}
           <div className="mt-3">
             <div className="flex items-center justify-between mb-2">
-              <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">
+              <p className="text-[10px] font-bold text-[#7D8590] uppercase tracking-widest">
                 {linkMode === "project" ? "Linked Project" : "Linked Lead"}
               </p>
               <button
@@ -611,7 +611,7 @@ function EmailDetailPanel({ emailId, reloadKey, clients, leads, onEmailReassigne
             {linkMode === "project" ? (
               <>
                 {detail.linkedProjectTitle && (
-                  <div className="mb-2 flex items-center gap-2 px-3 py-2 bg-blue-50 border border-blue-100 rounded-xl">
+                  <div className="mb-2 flex items-center gap-2 px-3 py-2 bg-[#0078D4]/100/10 border border-blue-500/20 rounded-xl">
                     <svg className="w-3.5 h-3.5 text-[#0078D4] shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                       <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 12.75V12A2.25 2.25 0 014.5 9.75h15A2.25 2.25 0 0121.75 12v.75m-8.69-6.44l-2.12-2.12a1.5 1.5 0 00-1.061-.44H4.5A2.25 2.25 0 002.25 6v12a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9a2.25 2.25 0 00-2.25-2.25h-5.379a1.5 1.5 0 01-1.06-.44z" />
                     </svg>
@@ -625,15 +625,15 @@ function EmailDetailPanel({ emailId, reloadKey, clients, leads, onEmailReassigne
                   </div>
                 )}
                 {projectsLoading ? (
-                  <div className="text-xs text-gray-400 animate-pulse">Loading projects…</div>
+                  <div className="text-xs text-[#7D8590] animate-pulse">Loading projects…</div>
                 ) : activeProjects.length === 0 ? (
-                  <p className="text-xs text-gray-400">No active projects for this client.</p>
+                  <p className="text-xs text-[#7D8590]">No active projects for this client.</p>
                 ) : (
                   <div className="flex gap-2">
                     <select
                       value={selectedProjectId}
                       onChange={e => setSelectedProjectId(e.target.value)}
-                      className="flex-1 border border-gray-200 rounded-lg px-2 py-1.5 text-xs text-gray-700 focus:outline-none focus:ring-1 focus:ring-[#0078D4]"
+                      className="flex-1 border border-[#30363D] rounded-lg px-2 py-1.5 text-xs text-[#C9D1D9] focus:outline-none focus:ring-1 focus:ring-[#0078D4]"
                     >
                       <option value="">— None —</option>
                       {activeProjects.map(p => (
@@ -670,7 +670,7 @@ function EmailDetailPanel({ emailId, reloadKey, clients, leads, onEmailReassigne
                   <select
                     value={selectedLeadId}
                     onChange={e => setSelectedLeadId(e.target.value)}
-                    className="flex-1 border border-gray-200 rounded-lg px-2 py-1.5 text-xs text-gray-700 focus:outline-none focus:ring-1 focus:ring-[#0078D4]"
+                    className="flex-1 border border-[#30363D] rounded-lg px-2 py-1.5 text-xs text-[#C9D1D9] focus:outline-none focus:ring-1 focus:ring-[#0078D4]"
                   >
                     <option value="">— None —</option>
                     {leads.map(l => (
@@ -689,11 +689,11 @@ function EmailDetailPanel({ emailId, reloadKey, clients, leads, onEmailReassigne
                 </div>
               </>
             )}
-            {linkError && <p className="mt-1.5 text-xs text-red-600">{linkError}</p>}
+            {linkError && <p className="mt-1.5 text-xs text-red-400">{linkError}</p>}
           </div>
         </div>
       ) : (
-        <div className="px-6 py-4 border-b border-gray-100 shrink-0">
+        <div className="px-6 py-4 border-b border-[#30363D] shrink-0">
           <div className="flex items-center gap-2 text-amber-600 mb-3">
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
@@ -702,7 +702,7 @@ function EmailDetailPanel({ emailId, reloadKey, clients, leads, onEmailReassigne
           </div>
 
           {/* Lead picker */}
-          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">Linked Lead</p>
+          <p className="text-[10px] font-bold text-[#7D8590] uppercase tracking-widest mb-2">Linked Lead</p>
           {detail.linkedLeadName && (
             <div className="mb-2 flex items-center gap-2 px-3 py-2 bg-purple-50 border border-purple-100 rounded-xl">
               <svg className="w-3.5 h-3.5 text-purple-600 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -721,7 +721,7 @@ function EmailDetailPanel({ emailId, reloadKey, clients, leads, onEmailReassigne
             <select
               value={selectedLeadId}
               onChange={e => setSelectedLeadId(e.target.value)}
-              className="flex-1 border border-gray-200 rounded-lg px-2 py-1.5 text-xs text-gray-700 focus:outline-none focus:ring-1 focus:ring-[#0078D4]"
+              className="flex-1 border border-[#30363D] rounded-lg px-2 py-1.5 text-xs text-[#C9D1D9] focus:outline-none focus:ring-1 focus:ring-[#0078D4]"
             >
               <option value="">— None —</option>
               {leads.map(l => (
@@ -738,14 +738,14 @@ function EmailDetailPanel({ emailId, reloadKey, clients, leads, onEmailReassigne
               {linkSaving ? "…" : "Save"}
             </button>
           </div>
-          {linkError && <p className="mt-1.5 text-xs text-red-600">{linkError}</p>}
+          {linkError && <p className="mt-1.5 text-xs text-red-400">{linkError}</p>}
         </div>
       )}
 
       {/* Next Steps */}
       <div className="px-6 py-4 shrink-0">
         <div className="flex items-center justify-between mb-2">
-          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Next Step</p>
+          <p className="text-[10px] font-bold text-[#7D8590] uppercase tracking-widest">Next Step</p>
           {!nextStepOpen && !createdTask && detail.clientId && (
             <button
               onClick={() => setNextStepOpen(true)}
@@ -760,43 +760,43 @@ function EmailDetailPanel({ emailId, reloadKey, clients, leads, onEmailReassigne
         </div>
 
         {createdTask ? (
-          <div className="flex items-center gap-2 p-3 bg-green-50 border border-green-100 rounded-xl">
-            <svg className="w-4 h-4 text-green-600 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <div className="flex items-center gap-2 p-3 bg-green-500/10 border border-green-500/20 rounded-xl">
+            <svg className="w-4 h-4 text-green-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
             <div className="flex-1 min-w-0">
-              <p className="text-xs font-semibold text-green-800 truncate">{createdTask.title}</p>
-              <p className="text-[10px] text-green-600">Task added to project backlog</p>
+              <p className="text-xs font-semibold text-green-400 truncate">{createdTask.title}</p>
+              <p className="text-[10px] text-green-400">Task added to project backlog</p>
             </div>
             <button
               onClick={() => setCreatedTask(null)}
-              className="text-[10px] text-green-600 hover:text-green-800 font-semibold"
+              className="text-[10px] text-green-400 hover:text-green-400 font-semibold"
             >
               + Add another
             </button>
           </div>
         ) : nextStepOpen ? (
-          <form onSubmit={e => void handleCreateTask(e)} className="p-4 bg-gray-50 border border-gray-100 rounded-xl space-y-3">
+          <form onSubmit={e => void handleCreateTask(e)} className="p-4 bg-[#161B22] border border-[#30363D] rounded-xl space-y-3">
             <div>
-              <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest block mb-1">Task title</label>
+              <label className="text-[10px] font-bold text-[#7D8590] uppercase tracking-widest block mb-1">Task title</label>
               <input
                 type="text"
                 value={taskTitle}
                 onChange={e => setTaskTitle(e.target.value)}
                 placeholder="e.g. Follow up on proposal"
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-[#0A2540] focus:outline-none focus:ring-1 focus:ring-[#0078D4]"
+                className="w-full border border-[#30363D] rounded-lg px-3 py-2 text-sm text-[#E6EDF3] focus:outline-none focus:ring-1 focus:ring-[#0078D4]"
                 required
               />
             </div>
             <div>
-              <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest block mb-1">Project</label>
+              <label className="text-[10px] font-bold text-[#7D8590] uppercase tracking-widest block mb-1">Project</label>
               {activeProjects.length === 0 ? (
-                <p className="text-xs text-gray-400 italic">No active projects for this client.</p>
+                <p className="text-xs text-[#7D8590] italic">No active projects for this client.</p>
               ) : (
                 <select
                   value={taskProjectId}
                   onChange={e => setTaskProjectId(e.target.value)}
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-700 focus:outline-none focus:ring-1 focus:ring-[#0078D4]"
+                  className="w-full border border-[#30363D] rounded-lg px-3 py-2 text-sm text-[#C9D1D9] focus:outline-none focus:ring-1 focus:ring-[#0078D4]"
                   required
                 >
                   <option value="">Select project…</option>
@@ -808,11 +808,11 @@ function EmailDetailPanel({ emailId, reloadKey, clients, leads, onEmailReassigne
             </div>
             <div className="flex gap-3">
               <div className="flex-1">
-                <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest block mb-1">Priority</label>
+                <label className="text-[10px] font-bold text-[#7D8590] uppercase tracking-widest block mb-1">Priority</label>
                 <select
                   value={taskPriority}
                   onChange={e => setTaskPriority(e.target.value)}
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-700 focus:outline-none focus:ring-1 focus:ring-[#0078D4]"
+                  className="w-full border border-[#30363D] rounded-lg px-3 py-2 text-sm text-[#C9D1D9] focus:outline-none focus:ring-1 focus:ring-[#0078D4]"
                 >
                   <option value="">None</option>
                   <option value="low">Low</option>
@@ -822,31 +822,31 @@ function EmailDetailPanel({ emailId, reloadKey, clients, leads, onEmailReassigne
                 </select>
               </div>
               <div className="flex-1">
-                <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest block mb-1">Due date</label>
+                <label className="text-[10px] font-bold text-[#7D8590] uppercase tracking-widest block mb-1">Due date</label>
                 <input
                   type="date"
                   value={taskDueDate}
                   onChange={e => setTaskDueDate(e.target.value)}
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-700 focus:outline-none focus:ring-1 focus:ring-[#0078D4]"
+                  className="w-full border border-[#30363D] rounded-lg px-3 py-2 text-sm text-[#C9D1D9] focus:outline-none focus:ring-1 focus:ring-[#0078D4]"
                 />
               </div>
             </div>
             <div>
-              <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest block mb-1">Notes (optional)</label>
+              <label className="text-[10px] font-bold text-[#7D8590] uppercase tracking-widest block mb-1">Notes (optional)</label>
               <textarea
                 value={taskNotes}
                 onChange={e => setTaskNotes(e.target.value)}
                 rows={2}
                 placeholder="Additional context…"
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-[#0A2540] focus:outline-none focus:ring-1 focus:ring-[#0078D4] resize-none"
+                className="w-full border border-[#30363D] rounded-lg px-3 py-2 text-sm text-[#E6EDF3] focus:outline-none focus:ring-1 focus:ring-[#0078D4] resize-none"
               />
             </div>
-            {taskError && <p className="text-xs text-red-600">{taskError}</p>}
+            {taskError && <p className="text-xs text-red-400">{taskError}</p>}
             <div className="flex gap-2 justify-end">
               <button
                 type="button"
                 onClick={() => setNextStepOpen(false)}
-                className="px-3 py-1.5 text-xs text-gray-600 hover:text-gray-800 font-medium"
+                className="px-3 py-1.5 text-xs text-[#7D8590] hover:text-[#E6EDF3] font-medium"
               >
                 Cancel
               </button>
@@ -860,9 +860,9 @@ function EmailDetailPanel({ emailId, reloadKey, clients, leads, onEmailReassigne
             </div>
           </form>
         ) : !detail.clientId ? (
-          <p className="text-xs text-gray-400 italic">Link a client above to add follow-up tasks.</p>
+          <p className="text-xs text-[#7D8590] italic">Link a client above to add follow-up tasks.</p>
         ) : (
-          <p className="text-xs text-gray-400 italic">No follow-up tasks yet.</p>
+          <p className="text-xs text-[#7D8590] italic">No follow-up tasks yet.</p>
         )}
       </div>
     </div>
@@ -939,20 +939,20 @@ function EmailSettings({ clients }: EmailSettingsProps) {
   }
 
   return (
-    <div className="border-t border-gray-100 bg-white shrink-0">
+    <div className="border-t border-[#30363D] bg-[#161B22] shrink-0">
       <button
         onClick={() => setOpen(v => !v)}
-        className="w-full flex items-center justify-between px-4 py-3 text-left hover:bg-gray-50/50 transition-colors"
+        className="w-full flex items-center justify-between px-4 py-3 text-left hover:bg-[#1C2128]/50 transition-colors"
       >
         <div className="flex items-center gap-2">
-          <svg className="w-3.5 h-3.5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <svg className="w-3.5 h-3.5 text-[#7D8590]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M10.343 3.94c.09-.542.56-.94 1.11-.94h1.093c.55 0 1.02.398 1.11.94l.149.894c.07.424.384.764.78.93.398.164.855.142 1.205-.108l.737-.527a1.125 1.125 0 011.45.12l.773.774c.39.389.44 1.002.12 1.45l-.527.737c-.25.35-.272.806-.107 1.204.165.397.505.71.93.78l.893.15c.543.09.94.56.94 1.109v1.094c0 .55-.397 1.02-.94 1.11l-.893.149c-.425.07-.765.383-.93.78-.165.398-.143.854.107 1.204l.527.738c.32.447.269 1.06-.12 1.45l-.774.773a1.125 1.125 0 01-1.449.12l-.738-.527c-.35-.25-.806-.272-1.203-.107-.397.165-.71.505-.781.929l-.149.894c-.09.542-.56.94-1.11.94h-1.094c-.55 0-1.019-.398-1.11-.94l-.148-.894c-.071-.424-.384-.764-.781-.93-.398-.164-.854-.142-1.204.108l-.738.527c-.447.32-1.06.269-1.45-.12l-.773-.774a1.125 1.125 0 01-.12-1.45l.527-.737c.25-.35.273-.806.108-1.204-.165-.397-.505-.71-.93-.78l-.894-.15c-.542-.09-.94-.56-.94-1.109v-1.094c0-.55.398-1.02.94-1.11l.894-.149c.424-.07.765-.383.93-.78.165-.398.143-.854-.107-1.204l-.527-.738a1.125 1.125 0 01.12-1.45l.773-.773a1.125 1.125 0 011.45-.12l.737.527c.35.25.807.272 1.204.107.397-.165.71-.505.78-.929l.15-.894z" />
             <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
           </svg>
-          <span className="text-xs font-semibold text-gray-600">Email Settings</span>
+          <span className="text-xs font-semibold text-[#7D8590]">Email Settings</span>
         </div>
         <svg
-          className={`w-3.5 h-3.5 text-gray-400 transition-transform duration-200 ${open ? "rotate-180" : ""}`}
+          className={`w-3.5 h-3.5 text-[#7D8590] transition-transform duration-200 ${open ? "rotate-180" : ""}`}
           fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}
         >
           <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
@@ -960,35 +960,35 @@ function EmailSettings({ clients }: EmailSettingsProps) {
       </button>
 
       {open && (
-        <div className="border-t border-gray-50">
+        <div className="border-t border-[#30363D]">
           {/* Matching Rules */}
           <div className="px-4 py-3">
-            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">Matching Rules</p>
-            <p className="text-[11px] text-gray-500 mb-3 leading-relaxed">
+            <p className="text-[10px] font-bold text-[#7D8590] uppercase tracking-widest mb-2">Matching Rules</p>
+            <p className="text-[11px] text-[#7D8590] mb-3 leading-relaxed">
               Auto-link inbound emails by exact address (e.g. <span className="font-mono">john@outlook.com</span>) or domain (e.g. <span className="font-mono">@contoso.com</span>).
             </p>
             {rulesLoading ? (
-              <p className="text-xs text-gray-400 animate-pulse">Loading rules…</p>
+              <p className="text-xs text-[#7D8590] animate-pulse">Loading rules…</p>
             ) : rulesError ? (
-              <p className="text-xs text-red-600">{rulesError}</p>
+              <p className="text-xs text-red-400">{rulesError}</p>
             ) : rules.length === 0 ? (
-              <p className="text-xs text-gray-400 mb-3">No rules defined yet.</p>
+              <p className="text-xs text-[#7D8590] mb-3">No rules defined yet.</p>
             ) : (
               <div className="space-y-1.5 mb-3">
                 {rules.map(row => (
-                  <div key={row.rule.id} className="flex items-center gap-2 py-1.5 px-3 bg-gray-50 rounded-lg">
+                  <div key={row.rule.id} className="flex items-center gap-2 py-1.5 px-3 bg-[#161B22] rounded-lg">
                     <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full ${
                       row.rule.domain.includes("@")
-                        ? "bg-purple-100 text-purple-700"
-                        : "bg-blue-100 text-blue-700"
+                        ? "bg-purple-500/15 text-purple-400"
+                        : "bg-[#0078D4]/100/15 text-blue-400"
                     }`}>
                       {row.rule.domain.includes("@") ? "Addr" : "Dom"}
                     </span>
-                    <span className="font-mono text-xs text-[#0A2540] flex-1 truncate">{ruleLabel(row.rule.domain)}</span>
-                    <span className="text-xs text-gray-500 truncate max-w-[100px]">{row.clientName ?? row.clientEmail}</span>
+                    <span className="font-mono text-xs text-[#E6EDF3] flex-1 truncate">{ruleLabel(row.rule.domain)}</span>
+                    <span className="text-xs text-[#7D8590] truncate max-w-[100px]">{row.clientName ?? row.clientEmail}</span>
                     <button
                       onClick={() => void deleteRule(row.rule.id)}
-                      className="text-[10px] text-red-500 hover:text-red-700 font-medium shrink-0"
+                      className="text-[10px] text-red-500 hover:text-red-400 font-medium shrink-0"
                     >
                       ✕
                     </button>
@@ -1003,13 +1003,13 @@ function EmailSettings({ clients }: EmailSettingsProps) {
                 placeholder="john@outlook.com or contoso.com"
                 value={newRuleValue}
                 onChange={e => setNewRuleValue(e.target.value)}
-                className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-xs text-[#0A2540] focus:outline-none focus:ring-1 focus:ring-[#0078D4]"
+                className="w-full border border-[#30363D] rounded-lg px-3 py-1.5 text-xs text-[#E6EDF3] focus:outline-none focus:ring-1 focus:ring-[#0078D4]"
               />
               <div className="flex gap-2">
                 <select
                   value={newRuleUserId}
                   onChange={e => setNewRuleUserId(e.target.value)}
-                  className="flex-1 border border-gray-200 rounded-lg px-2 py-1.5 text-xs text-gray-700 focus:outline-none focus:ring-1 focus:ring-[#0078D4]"
+                  className="flex-1 border border-[#30363D] rounded-lg px-2 py-1.5 text-xs text-[#C9D1D9] focus:outline-none focus:ring-1 focus:ring-[#0078D4]"
                 >
                   <option value="">Select client…</option>
                   {clients.map(c => (
@@ -1030,7 +1030,7 @@ function EmailSettings({ clients }: EmailSettingsProps) {
           </div>
 
           {/* Setup instructions */}
-          <div className="px-4 py-3 border-t border-gray-50 bg-blue-50/60">
+          <div className="px-4 py-3 border-t border-[#30363D] bg-[#0078D4]/10">
             <p className="text-[10px] font-bold text-[#0078D4] uppercase tracking-widest mb-1.5">Connect M365 Mailbox</p>
             <ol className="text-[11px] text-blue-800 space-y-1 list-decimal list-inside leading-relaxed">
               <li>Register an Azure AD app → grant <span className="font-mono">Mail.Read</span> permission → admin-consent.</li>
@@ -1108,9 +1108,9 @@ export default function EmailActivityPage() {
   return (
     <div className="flex flex-col h-[calc(100vh-48px)]">
       {/* Page header */}
-      <div className="px-6 py-4 border-b border-gray-100 bg-white shrink-0">
-        <h1 className="text-lg font-bold text-[#0A2540]">Email Activity</h1>
-        <p className="text-xs text-gray-500 mt-0.5">
+      <div className="px-6 py-4 border-b border-[#30363D] bg-[#161B22] shrink-0">
+        <h1 className="text-lg font-bold text-[#E6EDF3]">Email Activity</h1>
+        <p className="text-xs text-[#7D8590] mt-0.5">
           M365 mailbox emails matched to clients by sender address or domain.
         </p>
       </div>
@@ -1118,7 +1118,7 @@ export default function EmailActivityPage() {
       {/* Split pane */}
       <div className="flex-1 flex overflow-hidden">
         {/* Left: email list + settings */}
-        <div className="w-[340px] shrink-0 flex flex-col overflow-hidden border-r border-gray-100">
+        <div className="w-[340px] shrink-0 flex flex-col overflow-hidden border-r border-[#30363D]">
           <div className="flex-1 overflow-hidden flex flex-col">
             <EmailListPanel
               emails={emails}
@@ -1139,7 +1139,7 @@ export default function EmailActivityPage() {
         </div>
 
         {/* Right: email detail */}
-        <div className="flex-1 overflow-hidden bg-white">
+        <div className="flex-1 overflow-hidden bg-[#161B22]">
           <EmailDetailPanel
             emailId={selectedEmailId}
             reloadKey={reloadKey}

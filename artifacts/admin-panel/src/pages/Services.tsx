@@ -150,8 +150,8 @@ function resolveIcon(name: string | null): LucideIcon {
 const BADGE_COLORS: Record<string, string> = {
   Popular: "bg-[#0078D4]/10 text-[#0078D4]",
   New: "bg-emerald-100 text-emerald-700",
-  "Best Value": "bg-amber-100 text-amber-700",
-  Featured: "bg-purple-100 text-purple-700",
+  "Best Value": "bg-amber-500/100/15 text-amber-400",
+  Featured: "bg-purple-500/15 text-purple-400",
 };
 
 function badgeClass(badge: string): string {
@@ -182,7 +182,7 @@ function OfferCardPreview({ form }: { form: Partial<Service> }) {
   const billingLabel = form.billingType === "recurring_monthly" ? "Monthly retainer" : "One-time";
 
   return (
-    <div className="bg-white rounded-xl border border-border p-6 flex flex-col shadow-sm">
+    <div className="bg-[#161B22] rounded-xl border border-border p-6 flex flex-col shadow-sm">
       {/* Header row — icon + badge */}
       <div className="flex items-start justify-between mb-4">
         <div className="w-11 h-11 rounded-lg bg-[#0078D4]/10 flex items-center justify-center flex-shrink-0">
@@ -206,7 +206,7 @@ function OfferCardPreview({ form }: { form: Partial<Service> }) {
       <p className="text-[#0078D4] text-3xl font-extrabold mb-1">{priceDisplay}</p>
 
       {/* Title */}
-      <h3 className="text-xl font-bold text-[#0A2540] mb-1">{form.name || <span className="text-gray-300">Untitled Service</span>}</h3>
+      <h3 className="text-xl font-bold text-[#E6EDF3] mb-1">{form.name || <span className="text-[#484F58]">Untitled Service</span>}</h3>
 
       {/* Tagline */}
       {form.tagline && (
@@ -221,12 +221,12 @@ function OfferCardPreview({ form }: { form: Partial<Service> }) {
       {/* Meta row — turnaround + billing type */}
       <div className="flex flex-wrap gap-2 mb-4">
         {form.turnaround && (
-          <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground bg-[#F7F9FC] px-3 py-1.5 rounded-full border border-border">
+          <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground bg-[#1C2128] px-3 py-1.5 rounded-full border border-border">
             <Clock className="w-3.5 h-3.5 text-[#0078D4]" />
             {form.turnaround}
           </span>
         )}
-        <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground bg-[#F7F9FC] px-3 py-1.5 rounded-full border border-border">
+        <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground bg-[#1C2128] px-3 py-1.5 rounded-full border border-border">
           {billingLabel}
         </span>
       </div>
@@ -234,14 +234,14 @@ function OfferCardPreview({ form }: { form: Partial<Service> }) {
       {/* Target audience */}
       {form.targetAudience && (
         <p className="text-sm text-muted-foreground italic mb-4">
-          <span className="font-semibold not-italic text-[#0A2540]">Best for:</span> {form.targetAudience}
+          <span className="font-semibold not-italic text-[#E6EDF3]">Best for:</span> {form.targetAudience}
         </p>
       )}
 
       {/* Deliverables */}
       {form.deliverables && form.deliverables.length > 0 && (
         <div className="mb-4">
-          <p className="text-sm font-semibold text-[#0A2540] mb-1.5">Deliverables:</p>
+          <p className="text-sm font-semibold text-[#E6EDF3] mb-1.5">Deliverables:</p>
           <ul className="space-y-1">
             {form.deliverables.map((line, i) => (
               <li key={i} className="flex items-start gap-2 text-sm text-muted-foreground">
@@ -256,7 +256,7 @@ function OfferCardPreview({ form }: { form: Partial<Service> }) {
       {/* What's Included */}
       {inclusions.length > 0 && (
         <div className="border-t border-border pt-4 mb-4">
-          <p className="text-sm font-semibold text-[#0A2540] mb-3">What's Included:</p>
+          <p className="text-sm font-semibold text-[#E6EDF3] mb-3">What's Included:</p>
           <ul className="space-y-2">
             {inclusions.map((item, j) => (
               <li key={j} className="flex items-start gap-2 text-sm text-foreground">
@@ -271,7 +271,7 @@ function OfferCardPreview({ form }: { form: Partial<Service> }) {
       {/* Features */}
       {features.length > 0 && features !== form.inclusions && (
         <div className="border-t border-border pt-4 mb-4">
-          <p className="text-sm font-semibold text-[#0A2540] mb-3">Features:</p>
+          <p className="text-sm font-semibold text-[#E6EDF3] mb-3">Features:</p>
           <ul className="space-y-1.5">
             {features.map((item, j) => (
               <li key={j} className="flex items-start gap-2 text-sm text-muted-foreground">
@@ -392,30 +392,30 @@ function WorkflowBuilder({ service, onClose }: { service: Service; onClose: () =
   };
 
   return (
-    <div className="border border-[#0078D4]/30 bg-[#F7F9FC] rounded-xl p-5 mb-6">
+    <div className="border border-[#0078D4]/30 bg-[#1C2128] rounded-xl p-5 mb-6">
       <div className="flex items-center justify-between mb-4 gap-3 flex-wrap">
         <div>
-          <h4 className="text-sm font-bold text-[#0A2540]">Order Workflow — {service.name}</h4>
+          <h4 className="text-sm font-bold text-[#E6EDF3]">Order Workflow — {service.name}</h4>
           <p className="text-xs text-muted-foreground mt-0.5">Build the questionnaire clients walk through to calculate their final price.</p>
         </div>
         <div className="flex items-center gap-2">
           <button
             onClick={() => { setShowCopyFrom(p => !p); setCopySourceId(""); }}
-            className={`text-xs font-semibold px-3 py-1.5 rounded-lg border transition-colors ${showCopyFrom ? "bg-[#0078D4] text-white border-[#0078D4]" : "border-gray-300 text-gray-600 hover:border-[#0078D4] hover:text-[#0078D4]"}`}
+            className={`text-xs font-semibold px-3 py-1.5 rounded-lg border transition-colors ${showCopyFrom ? "bg-[#0078D4] text-white border-[#0078D4]" : "border-[#30363D] text-[#7D8590] hover:border-[#0078D4] hover:text-[#0078D4]"}`}
           >
             Copy from…
           </button>
-          <button onClick={onClose} className="text-xs text-muted-foreground hover:text-[#0A2540] font-medium">Close</button>
+          <button onClick={onClose} className="text-xs text-muted-foreground hover:text-[#E6EDF3] font-medium">Close</button>
         </div>
       </div>
 
       {showCopyFrom && (
-        <div className="bg-white border border-border rounded-xl p-4 mb-4 space-y-3">
-          <p className="text-xs font-semibold text-[#0A2540]">Copy workflow steps from another service</p>
+        <div className="bg-[#161B22] border border-border rounded-xl p-4 mb-4 space-y-3">
+          <p className="text-xs font-semibold text-[#E6EDF3]">Copy workflow steps from another service</p>
           <select
             value={copySourceId}
             onChange={e => setCopySourceId(e.target.value)}
-            className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4] bg-white"
+            className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4] bg-[#161B22]"
           >
             <option value="">— Select a service —</option>
             {allServices.map(s => (
@@ -424,7 +424,7 @@ function WorkflowBuilder({ service, onClose }: { service: Service; onClose: () =
           </select>
           <div className="flex items-center gap-4">
             {(["replace", "append"] as const).map(m => (
-              <label key={m} className="flex items-center gap-1.5 text-xs text-[#0A2540] cursor-pointer">
+              <label key={m} className="flex items-center gap-1.5 text-xs text-[#E6EDF3] cursor-pointer">
                 <input type="radio" name="copyMode" value={m} checked={copyMode === m} onChange={() => setCopyMode(m)} className="text-[#0078D4]" />
                 {m === "replace" ? "Replace current steps" : "Append to current steps"}
               </label>
@@ -439,7 +439,7 @@ function WorkflowBuilder({ service, onClose }: { service: Service; onClose: () =
               {copying ? <Loader2 className="w-3 h-3 animate-spin" /> : null}
               {copying ? "Copying…" : "Copy steps"}
             </button>
-            <button onClick={() => setShowCopyFrom(false)} className="text-xs text-gray-500 hover:text-gray-700 px-2 py-1.5">Cancel</button>
+            <button onClick={() => setShowCopyFrom(false)} className="text-xs text-[#7D8590] hover:text-[#C9D1D9] px-2 py-1.5">Cancel</button>
           </div>
         </div>
       )}
@@ -448,40 +448,40 @@ function WorkflowBuilder({ service, onClose }: { service: Service; onClose: () =
       ) : (
         <>
           {steps.length === 0 && (
-            <p className="text-sm text-muted-foreground bg-white border border-border rounded-lg px-4 py-3 mb-4">
+            <p className="text-sm text-muted-foreground bg-[#161B22] border border-border rounded-lg px-4 py-3 mb-4">
               No steps yet. Add a step to create the wizard questionnaire.
             </p>
           )}
           <div className="space-y-4">
             {steps.map((step, si) => (
-              <div key={step.id} className="bg-white border border-border rounded-xl p-4">
+              <div key={step.id} className="bg-[#161B22] border border-border rounded-xl p-4">
                 <div className="flex items-center gap-2 mb-3">
                   <div className="flex flex-col gap-0.5">
-                    <button onClick={() => moveStep(si, -1)} disabled={si === 0} className="text-muted-foreground hover:text-[#0A2540] disabled:opacity-30 transition-colors"><ChevronUp className="w-3.5 h-3.5" /></button>
-                    <button onClick={() => moveStep(si, 1)} disabled={si === steps.length - 1} className="text-muted-foreground hover:text-[#0A2540] disabled:opacity-30 transition-colors"><ChevronDown className="w-3.5 h-3.5" /></button>
+                    <button onClick={() => moveStep(si, -1)} disabled={si === 0} className="text-muted-foreground hover:text-[#E6EDF3] disabled:opacity-30 transition-colors"><ChevronUp className="w-3.5 h-3.5" /></button>
+                    <button onClick={() => moveStep(si, 1)} disabled={si === steps.length - 1} className="text-muted-foreground hover:text-[#E6EDF3] disabled:opacity-30 transition-colors"><ChevronDown className="w-3.5 h-3.5" /></button>
                   </div>
                   <span className="text-xs font-bold text-[#0078D4] bg-[#0078D4]/10 rounded-full w-6 h-6 flex items-center justify-center flex-shrink-0">{si + 1}</span>
                   <input type="text" placeholder="Step title" value={step.title} onChange={e => updateStepTitle(si, e.target.value)}
-                    className="flex-1 border border-border rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4]" />
-                  <button onClick={() => removeStep(si)} className="text-red-400 hover:text-red-600 transition-colors flex-shrink-0"><Trash2 className="w-4 h-4" /></button>
+                    className="flex-1 border border-border rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4] bg-[#1C2128] text-[#E6EDF3]" />
+                  <button onClick={() => removeStep(si)} className="text-red-400 hover:text-red-400 transition-colors flex-shrink-0"><Trash2 className="w-4 h-4" /></button>
                 </div>
                 <div className="ml-12 mb-3">
                   <textarea placeholder="Step description (optional)" value={step.description ?? ""} rows={2}
                     onChange={e => updateStepDescription(si, e.target.value)}
-                    className="w-full border border-border rounded-lg px-3 py-1.5 text-xs text-muted-foreground focus:outline-none focus:ring-2 focus:ring-[#0078D4] resize-none" />
+                    className="w-full border border-border rounded-lg px-3 py-1.5 text-xs text-muted-foreground focus:outline-none focus:ring-2 focus:ring-[#0078D4] bg-[#1C2128] text-[#E6EDF3] resize-none" />
                 </div>
                 <div className="ml-12 space-y-2">
                   {step.options.length === 0 && <p className="text-xs text-muted-foreground italic">No options yet.</p>}
                   {step.options.map((opt, oi) => (
                     <div key={opt.id} className="grid grid-cols-1 sm:grid-cols-[1fr_110px_28px] gap-2 items-start">
                       <input type="text" placeholder="Option label" value={opt.label} onChange={e => updateOption(si, oi, "label", e.target.value)}
-                        className="border border-border rounded-lg px-3 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-[#0078D4]" />
+                        className="border border-border rounded-lg px-3 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-[#0078D4] bg-[#1C2128] text-[#E6EDF3]" />
                       <div className="relative">
                         <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">+$</span>
                         <input type="number" min="0" step="1" placeholder="0" value={opt.priceAdjustment} onChange={e => updateOption(si, oi, "priceAdjustment", parseFloat(e.target.value) || 0)}
-                          className="w-full border border-border rounded-lg pl-7 pr-3 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-[#0078D4]" />
+                          className="w-full border border-border rounded-lg pl-7 pr-3 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-[#0078D4] bg-[#1C2128] text-[#E6EDF3]" />
                       </div>
-                      <button onClick={() => removeOption(si, oi)} className="text-red-400 hover:text-red-600 transition-colors h-[30px] flex items-center justify-center"><Trash2 className="w-3.5 h-3.5" /></button>
+                      <button onClick={() => removeOption(si, oi)} className="text-red-400 hover:text-red-400 transition-colors h-[30px] flex items-center justify-center"><Trash2 className="w-3.5 h-3.5" /></button>
                     </div>
                   ))}
                   <button onClick={() => addOption(si)} className="flex items-center gap-1.5 text-xs font-semibold text-[#0078D4] hover:text-[#005A9E] transition-colors mt-1">
@@ -499,8 +499,8 @@ function WorkflowBuilder({ service, onClose }: { service: Service; onClose: () =
               {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
               {saving ? "Saving…" : "Save Workflow"}
             </button>
-            {savedMsg && <span className="text-xs text-green-600 font-semibold">✓ Saved</span>}
-            {saveError && <span className="text-xs text-red-600 font-semibold">{saveError}</span>}
+            {savedMsg && <span className="text-xs text-green-400 font-semibold">✓ Saved</span>}
+            {saveError && <span className="text-xs text-red-400 font-semibold">{saveError}</span>}
           </div>
         </>
       )}
@@ -756,12 +756,12 @@ export default function ServicesPage() {
   return (
     <div className="flex h-full">
       {/* Service list */}
-      <div className="w-72 flex-shrink-0 border-r border-gray-200 bg-white overflow-y-auto flex flex-col">
-        <div className="p-4 border-b border-gray-100 space-y-2">
+      <div className="w-72 flex-shrink-0 border-r border-[#30363D] bg-[#161B22] overflow-y-auto flex flex-col">
+        <div className="p-4 border-b border-[#30363D] space-y-2">
           <div className="flex items-center justify-between gap-2">
             <div>
-              <h2 className="font-semibold text-[#0A2540] text-sm">Service Offerings</h2>
-              <p className="text-xs text-gray-500 mt-0.5">{services.length} services</p>
+              <h2 className="font-semibold text-[#E6EDF3] text-sm">Service Offerings</h2>
+              <p className="text-xs text-[#7D8590] mt-0.5">{services.length} services</p>
             </div>
             <button
               onClick={() => { setShowCreate(true); setSelected(null); setForm({}); setShowWorkflow(false); setShowAssign(false); }}
@@ -776,7 +776,7 @@ export default function ServicesPage() {
           <button
             onClick={() => void handleGenerateAllPdfs()}
             disabled={bulkGenerating || loading}
-            className="w-full flex items-center justify-center gap-1.5 border border-gray-200 text-gray-600 hover:bg-gray-50 hover:text-[#0A2540] disabled:opacity-50 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors"
+            className="w-full flex items-center justify-center gap-1.5 border border-[#30363D] text-[#7D8590] hover:bg-[#1C2128] hover:text-[#E6EDF3] disabled:opacity-50 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors"
           >
             {bulkGenerating
               ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> {bulkProgress ? `${bulkProgress.done} / ${bulkProgress.total} done` : "Starting…"}</>
@@ -784,27 +784,27 @@ export default function ServicesPage() {
             }
           </button>
           {bulkResults && (
-            <p className={`text-xs text-center ${bulkResults.failed > 0 ? "text-amber-600" : "text-green-600"}`}>
+            <p className={`text-xs text-center ${bulkResults.failed > 0 ? "text-amber-600" : "text-green-400"}`}>
               {bulkResults.succeeded} PDF{bulkResults.succeeded !== 1 ? "s" : ""} generated
               {bulkResults.failed > 0 && ` · ${bulkResults.failed} failed`}
             </p>
           )}
         </div>
         {loading ? (
-          <div className="p-8 text-center text-sm text-gray-400">Loading…</div>
+          <div className="p-8 text-center text-sm text-[#7D8590]">Loading…</div>
         ) : (
           <div className="divide-y divide-gray-100 flex-1 overflow-y-auto">
             {services.map(s => (
-              <div key={s.id} className={`group flex items-center gap-1 pr-2 hover:bg-gray-50 transition-colors ${selected?.id === s.id ? "bg-blue-50 border-l-2 border-[#0078D4]" : ""}`}>
+              <div key={s.id} className={`group flex items-center gap-1 pr-2 hover:bg-[#1C2128] transition-colors ${selected?.id === s.id ? "bg-[#0078D4]/10 border-l-2 border-[#0078D4]" : ""}`}>
                 <button onClick={() => selectService(s)} className="flex-1 text-left px-4 py-3.5 min-w-0">
-                  <p className="font-medium text-sm text-[#0A2540] leading-snug truncate">{s.name}</p>
+                  <p className="font-medium text-sm text-[#E6EDF3] leading-snug truncate">{s.name}</p>
                   <div className="flex items-center gap-2 mt-1">
-                    <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${s.billingType === "recurring_monthly" ? "bg-purple-100 text-purple-700" : "bg-green-100 text-green-700"}`}>
+                    <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${s.billingType === "recurring_monthly" ? "bg-purple-500/15 text-purple-400" : "bg-green-500/15 text-green-400"}`}>
                       {s.billingType === "recurring_monthly" ? "Monthly retainer" : "One-time charge"}
                     </span>
-                    {s.price && <span className="text-xs text-gray-500">${parseFloat(s.price).toLocaleString()}</span>}
+                    {s.price && <span className="text-xs text-[#7D8590]">${parseFloat(s.price).toLocaleString()}</span>}
                     {!s.price && s.basePrice && (
-                      <span className="text-xs text-gray-500">
+                      <span className="text-xs text-[#7D8590]">
                         ${parseFloat(s.basePrice).toLocaleString()}{s.maxPrice ? `–$${parseFloat(s.maxPrice).toLocaleString()}` : "+"}
                       </span>
                     )}
@@ -812,7 +812,7 @@ export default function ServicesPage() {
                 </button>
                 <button
                   onClick={e => { e.stopPropagation(); setDeleteTarget(s); }}
-                  className="flex-shrink-0 p-1.5 rounded text-gray-300 hover:text-red-500 hover:bg-red-50 transition-colors opacity-0 group-hover:opacity-100"
+                  className="flex-shrink-0 p-1.5 rounded text-[#484F58] hover:text-red-500 hover:bg-red-500/10 transition-colors opacity-0 group-hover:opacity-100"
                   title="Delete service"
                 >
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -830,15 +830,15 @@ export default function ServicesPage() {
         {showCreate ? (
           <form onSubmit={handleCreate} className="p-6 max-w-md">
             <div className="flex items-center justify-between mb-6">
-              <h2 className="text-xl font-bold text-[#0A2540]">New Service</h2>
+              <h2 className="text-xl font-bold text-[#E6EDF3]">New Service</h2>
               <button type="button" onClick={() => setShowCreate(false)}
-                className="text-gray-400 hover:text-gray-600 transition-colors text-sm">
+                className="text-[#7D8590] hover:text-[#7D8590] transition-colors text-sm">
                 Cancel
               </button>
             </div>
-            <div className="bg-white rounded-xl border border-gray-200 p-6 space-y-5">
+            <div className="bg-[#161B22] rounded-xl border border-[#30363D] p-6 space-y-5">
               <div>
-                <label className="block text-xs font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">
+                <label className="block text-xs font-semibold text-[#7D8590] mb-1.5 uppercase tracking-wide">
                   Name <span className="text-red-500">*</span>
                 </label>
                 <input
@@ -852,35 +852,35 @@ export default function ServicesPage() {
                       slug: p.slug || name.toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, ""),
                     }));
                   }}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4]"
+                  className="w-full border border-[#30363D] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4]"
                   placeholder="e.g. Microsoft 365 Audit"
                 />
               </div>
               <div>
-                <label className="block text-xs font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">
+                <label className="block text-xs font-semibold text-[#7D8590] mb-1.5 uppercase tracking-wide">
                   Slug <span className="text-red-500">*</span>
                 </label>
                 <input
                   type="text" required
                   value={createForm.slug}
                   onChange={e => setCreateForm(p => ({ ...p, slug: e.target.value.toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "") }))}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-[#0078D4]"
+                  className="w-full border border-[#30363D] rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-[#0078D4]"
                   placeholder="url-friendly-slug"
                 />
               </div>
               <div>
-                <label className="block text-xs font-semibold text-gray-600 mb-2 uppercase tracking-wide">Billing Type</label>
+                <label className="block text-xs font-semibold text-[#7D8590] mb-2 uppercase tracking-wide">Billing Type</label>
                 <div className="flex gap-3">
                   {[
                     { value: "one_time", label: "One-time charge" },
                     { value: "recurring_monthly", label: "Monthly retainer" },
                   ].map(opt => (
-                    <label key={opt.value} className={`flex items-center gap-2.5 flex-1 border rounded-xl p-3 cursor-pointer transition-all ${createForm.billingType === opt.value ? "border-[#0078D4] bg-blue-50" : "border-gray-200 hover:border-gray-300"}`}>
+                    <label key={opt.value} className={`flex items-center gap-2.5 flex-1 border rounded-xl p-3 cursor-pointer transition-all ${createForm.billingType === opt.value ? "border-[#0078D4] bg-[#0078D4]/10" : "border-[#30363D] hover:border-[#30363D]"}`}>
                       <input type="radio" name="createBillingType" value={opt.value}
                         checked={createForm.billingType === opt.value}
                         onChange={() => setCreateForm(p => ({ ...p, billingType: opt.value as "one_time" | "recurring_monthly" }))}
                         className="text-[#0078D4]" />
-                      <span className="text-sm font-medium text-[#0A2540]">{opt.label}</span>
+                      <span className="text-sm font-medium text-[#E6EDF3]">{opt.label}</span>
                     </label>
                   ))}
                 </div>
@@ -893,7 +893,7 @@ export default function ServicesPage() {
           </form>
         ) : !selected ? (
           <div className="flex items-center justify-center h-full">
-            <div className="text-center text-gray-400">
+            <div className="text-center text-[#7D8590]">
               <svg className="w-12 h-12 mx-auto mb-3 opacity-30" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2 2v2m4 6h.01M5 20h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
               </svg>
@@ -905,19 +905,19 @@ export default function ServicesPage() {
           <div className="p-6">
             {/* Header with actions */}
             <div className="flex items-center justify-between mb-6 gap-3 flex-wrap">
-              <h2 className="text-xl font-bold text-[#0A2540]">Edit Service</h2>
+              <h2 className="text-xl font-bold text-[#E6EDF3]">Edit Service</h2>
               <div className="flex items-center gap-2 flex-wrap">
                 <button
                   type="button"
                   onClick={() => { setShowAssign(p => !p); setShowWorkflow(false); setAssignError(""); setAssignForm(f => ({ ...f, serviceId: String(selected.id) })); }}
-                  className={`text-xs font-semibold px-3 py-1.5 rounded-lg border transition-colors ${showAssign ? "bg-[#0078D4] text-white border-[#0078D4]" : "border-gray-300 text-gray-600 hover:border-[#0078D4] hover:text-[#0078D4]"}`}
+                  className={`text-xs font-semibold px-3 py-1.5 rounded-lg border transition-colors ${showAssign ? "bg-[#0078D4] text-white border-[#0078D4]" : "border-[#30363D] text-[#7D8590] hover:border-[#0078D4] hover:text-[#0078D4]"}`}
                 >
                   Assign to Client
                 </button>
                 <button
                   type="button"
                   onClick={() => { setShowWorkflow(p => !p); setShowAssign(false); }}
-                  className={`text-xs font-semibold px-3 py-1.5 rounded-lg border transition-colors ${showWorkflow ? "bg-[#0078D4] text-white border-[#0078D4]" : "border-gray-300 text-gray-600 hover:border-[#0078D4] hover:text-[#0078D4]"}`}
+                  className={`text-xs font-semibold px-3 py-1.5 rounded-lg border transition-colors ${showWorkflow ? "bg-[#0078D4] text-white border-[#0078D4]" : "border-[#30363D] text-[#7D8590] hover:border-[#0078D4] hover:text-[#0078D4]"}`}
                 >
                   {selected.orderWorkflow && selected.orderWorkflow.length > 0
                     ? `Workflow (${selected.orderWorkflow.length} step${selected.orderWorkflow.length !== 1 ? "s" : ""})`
@@ -935,49 +935,49 @@ export default function ServicesPage() {
 
             {/* Assign to Client panel */}
             {showAssign && (
-              <div className="bg-[#F7F9FC] border border-border rounded-xl p-5 mb-6">
-                <h3 className="text-sm font-bold text-[#0A2540] mb-4">Assign to Client</h3>
+              <div className="bg-[#1C2128] border border-border rounded-xl p-5 mb-6">
+                <h3 className="text-sm font-bold text-[#E6EDF3] mb-4">Assign to Client</h3>
                 <form onSubmit={handleAssign} className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-xs font-semibold text-[#0A2540] mb-1">Client <span className="text-red-500">*</span></label>
+                    <label className="block text-xs font-semibold text-[#E6EDF3] mb-1">Client <span className="text-red-500">*</span></label>
                     <select required value={assignForm.clientUserId} onChange={e => setAssignForm(f => ({ ...f, clientUserId: e.target.value }))}
-                      className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4] bg-white">
+                      className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4] bg-[#161B22]">
                       <option value="">— Select Client —</option>
                       {clients.map(c => <option key={c.id} value={c.id}>{c.name ?? c.email}</option>)}
                     </select>
                   </div>
                   <div>
-                    <label className="block text-xs font-semibold text-[#0A2540] mb-1">Service <span className="text-red-500">*</span></label>
+                    <label className="block text-xs font-semibold text-[#E6EDF3] mb-1">Service <span className="text-red-500">*</span></label>
                     <select required value={assignForm.serviceId} onChange={e => setAssignForm(f => ({ ...f, serviceId: e.target.value }))}
-                      className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4] bg-white">
+                      className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4] bg-[#161B22]">
                       <option value="">— Select Service —</option>
                       {services.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
                     </select>
                   </div>
                   <div>
-                    <label className="block text-xs font-semibold text-[#0A2540] mb-1">Start Date</label>
+                    <label className="block text-xs font-semibold text-[#E6EDF3] mb-1">Start Date</label>
                     <input type="date" value={assignForm.startDate} onChange={e => setAssignForm(f => ({ ...f, startDate: e.target.value }))}
-                      className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4]" />
+                      className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4] bg-[#1C2128] text-[#E6EDF3]" />
                   </div>
                   <div>
-                    <label className="block text-xs font-semibold text-[#0A2540] mb-1">Next Milestone Date</label>
+                    <label className="block text-xs font-semibold text-[#E6EDF3] mb-1">Next Milestone Date</label>
                     <input type="date" value={assignForm.nextMilestoneDate} onChange={e => setAssignForm(f => ({ ...f, nextMilestoneDate: e.target.value }))}
-                      className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4]" />
+                      className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4] bg-[#1C2128] text-[#E6EDF3]" />
                   </div>
                   <div className="sm:col-span-2">
-                    <label className="block text-xs font-semibold text-[#0A2540] mb-1">Next Milestone Description</label>
+                    <label className="block text-xs font-semibold text-[#E6EDF3] mb-1">Next Milestone Description</label>
                     <input value={assignForm.nextMilestone} onChange={e => setAssignForm(f => ({ ...f, nextMilestone: e.target.value }))}
-                      className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4]" />
+                      className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4] bg-[#1C2128] text-[#E6EDF3]" />
                   </div>
                   {assignError && (
-                    <div className="sm:col-span-2 text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{assignError}</div>
+                    <div className="sm:col-span-2 text-sm text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2">{assignError}</div>
                   )}
                   <div className="sm:col-span-2 flex gap-3">
                     <button type="submit" disabled={assigning} className="bg-[#0078D4] text-white text-sm font-semibold px-5 py-2 rounded-lg hover:bg-[#0078D4]/90 disabled:opacity-50 transition-colors">
                       {assigning ? "Assigning…" : "Assign Service"}
                     </button>
                     <button type="button" onClick={() => { setShowAssign(false); setAssignError(""); }}
-                      className="border border-border text-sm font-medium px-5 py-2 rounded-lg hover:bg-[#F7F9FC] transition-colors">Cancel</button>
+                      className="border border-border text-sm font-medium px-5 py-2 rounded-lg hover:bg-[#1C2128] transition-colors">Cancel</button>
                   </div>
                 </form>
               </div>
@@ -992,96 +992,96 @@ export default function ServicesPage() {
             <div className="flex gap-6 items-start">
               <div className="flex-1 min-w-0">
             <form onSubmit={handleSave}>
-              <div className="bg-white rounded-xl border border-gray-200 p-6 space-y-5">
+              <div className="bg-[#161B22] rounded-xl border border-[#30363D] p-6 space-y-5">
                 <div>
-                  <label className="block text-xs font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">Name <span className="text-red-500">*</span></label>
+                  <label className="block text-xs font-semibold text-[#7D8590] mb-1.5 uppercase tracking-wide">Name <span className="text-red-500">*</span></label>
                   <input type="text" value={form.name ?? ""} required
                     onChange={e => setField("name", e.target.value)}
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4]" />
+                    className="w-full border border-[#30363D] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4] bg-[#1C2128] text-[#E6EDF3]" />
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">Slug</label>
+                  <label className="block text-xs font-semibold text-[#7D8590] mb-1.5 uppercase tracking-wide">Slug</label>
                   <input type="text" value={form.slug ?? ""}
                     onChange={e => setField("slug", e.target.value.toLowerCase().replace(/\s+/g, "-") || null)}
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-[#0078D4]"
+                    className="w-full border border-[#30363D] rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-[#0078D4]"
                     placeholder="url-friendly-slug" />
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">Category</label>
+                  <label className="block text-xs font-semibold text-[#7D8590] mb-1.5 uppercase tracking-wide">Category</label>
                   <input type="text" value={form.category ?? ""}
                     onChange={e => setField("category", e.target.value || null)}
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4]" />
+                    className="w-full border border-[#30363D] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4] bg-[#1C2128] text-[#E6EDF3]" />
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">Description</label>
+                  <label className="block text-xs font-semibold text-[#7D8590] mb-1.5 uppercase tracking-wide">Description</label>
                   <textarea value={form.description ?? ""} rows={3}
                     onChange={e => setField("description", e.target.value || null)}
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4] resize-none" />
+                    className="w-full border border-[#30363D] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4] bg-[#1C2128] text-[#E6EDF3] resize-none" />
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">Deliverables</label>
+                  <label className="block text-xs font-semibold text-[#7D8590] mb-1.5 uppercase tracking-wide">Deliverables</label>
                   <TagInput
                     value={form.deliverables ?? null}
                     onChange={v => setField("deliverables", v)}
                     placeholder="Type a deliverable, press Enter…"
                   />
-                  <p className="mt-1 text-xs text-gray-400">Press Enter or Tab to add each item.</p>
+                  <p className="mt-1 text-xs text-[#7D8590]">Press Enter or Tab to add each item.</p>
                 </div>
 
                 {/* Pricing */}
                 <div className="grid grid-cols-3 gap-4">
                   <div>
-                    <label className="block text-xs font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">Fixed Price ($)</label>
+                    <label className="block text-xs font-semibold text-[#7D8590] mb-1.5 uppercase tracking-wide">Fixed Price ($)</label>
                     <input type="number" value={form.price ?? ""} min="0" step="0.01"
                       onChange={e => setField("price", e.target.value || null)}
-                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4]" />
+                      className="w-full border border-[#30363D] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4] bg-[#1C2128] text-[#E6EDF3]" />
                   </div>
                   <div>
-                    <label className="block text-xs font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">Base Price ($)</label>
+                    <label className="block text-xs font-semibold text-[#7D8590] mb-1.5 uppercase tracking-wide">Base Price ($)</label>
                     <input type="number" value={form.basePrice ?? ""} min="0" step="0.01"
                       onChange={e => setField("basePrice", e.target.value || null)}
-                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4]"
+                      className="w-full border border-[#30363D] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4]"
                       placeholder="Range min" />
                   </div>
                   <div>
-                    <label className="block text-xs font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">Max Price ($)</label>
+                    <label className="block text-xs font-semibold text-[#7D8590] mb-1.5 uppercase tracking-wide">Max Price ($)</label>
                     <input type="number" value={form.maxPrice ?? ""} min="0" step="0.01"
                       onChange={e => setField("maxPrice", e.target.value || null)}
-                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4]"
+                      className="w-full border border-[#30363D] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4]"
                       placeholder="Range max" />
                   </div>
                 </div>
 
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-xs font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">Duration (days)</label>
+                    <label className="block text-xs font-semibold text-[#7D8590] mb-1.5 uppercase tracking-wide">Duration (days)</label>
                     <input type="number" value={form.durationDays ?? ""} min="1"
                       onChange={e => setField("durationDays", e.target.value ? parseInt(e.target.value) : null)}
-                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4]" />
+                      className="w-full border border-[#30363D] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4] bg-[#1C2128] text-[#E6EDF3]" />
                   </div>
                   <div>
-                    <label className="block text-xs font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">Turnaround</label>
+                    <label className="block text-xs font-semibold text-[#7D8590] mb-1.5 uppercase tracking-wide">Turnaround</label>
                     <input type="text" value={form.turnaround ?? ""}
                       onChange={e => setField("turnaround", e.target.value || null)}
-                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4]"
+                      className="w-full border border-[#30363D] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4]"
                       placeholder="e.g. 5 business days" />
                   </div>
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold text-gray-600 mb-2 uppercase tracking-wide">Billing Type</label>
+                  <label className="block text-xs font-semibold text-[#7D8590] mb-2 uppercase tracking-wide">Billing Type</label>
                   <div className="flex gap-3">
                     {[
                       { value: "one_time", label: "One-time charge" },
                       { value: "recurring_monthly", label: "Monthly retainer" },
                     ].map(opt => (
-                      <label key={opt.value} className={`flex items-center gap-2.5 flex-1 border rounded-xl p-3 cursor-pointer transition-all ${form.billingType === opt.value ? "border-[#0078D4] bg-blue-50" : "border-gray-200 hover:border-gray-300"}`}>
+                      <label key={opt.value} className={`flex items-center gap-2.5 flex-1 border rounded-xl p-3 cursor-pointer transition-all ${form.billingType === opt.value ? "border-[#0078D4] bg-[#0078D4]/10" : "border-[#30363D] hover:border-[#30363D]"}`}>
                         <input type="radio" name="billingType" value={opt.value}
                           checked={form.billingType === opt.value}
                           onChange={() => setField("billingType", opt.value)}
                           className="text-[#0078D4]" />
                         <div>
-                          <p className="text-sm font-medium text-[#0A2540]">{opt.label}</p>
+                          <p className="text-sm font-medium text-[#E6EDF3]">{opt.label}</p>
                         </div>
                       </label>
                     ))}
@@ -1091,32 +1091,32 @@ export default function ServicesPage() {
                   <input type="checkbox" id="isPublic" checked={form.isPublic ?? true}
                     onChange={e => setField("isPublic", e.target.checked)}
                     className="rounded" />
-                  <label htmlFor="isPublic" className="text-sm font-medium text-gray-700">Visible on public site</label>
+                  <label htmlFor="isPublic" className="text-sm font-medium text-[#C9D1D9]">Visible on public site</label>
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">Linked Workflow Template</label>
+                  <label className="block text-xs font-semibold text-[#7D8590] mb-1.5 uppercase tracking-wide">Linked Workflow Template</label>
                   <select
                     value={form.workflowTemplateId ?? ""}
                     onChange={e => setField("workflowTemplateId", e.target.value ? Number(e.target.value) : null)}
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4]"
+                    className="w-full border border-[#30363D] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4]"
                   >
                     <option value="">— None —</option>
                     {workflowTemplates.map(wf => (
                       <option key={wf.id} value={wf.id}>{wf.name}</option>
                     ))}
                   </select>
-                  <p className="mt-1 text-xs text-gray-400">When a client activates this service, these workflow steps are seeded automatically.</p>
+                  <p className="mt-1 text-xs text-[#7D8590]">When a client activates this service, these workflow steps are seeded automatically.</p>
                 </div>
 
-                <div className="pt-4 border-t border-gray-100">
-                  <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-4">Marketing Fields</p>
+                <div className="pt-4 border-t border-[#30363D]">
+                  <p className="text-xs font-bold text-[#7D8590] uppercase tracking-wider mb-4">Marketing Fields</p>
                   <div className="space-y-4">
                     <div>
-                      <label className="block text-xs font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">Service Type</label>
+                      <label className="block text-xs font-semibold text-[#7D8590] mb-1.5 uppercase tracking-wide">Service Type</label>
                       <select value={form.serviceType ?? ""}
                         onChange={e => setField("serviceType", e.target.value || null)}
-                        className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4]">
+                        className="w-full border border-[#30363D] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4] bg-[#1C2128] text-[#E6EDF3]">
                         <option value="">— none —</option>
                         <option value="micro_offer">micro_offer</option>
                         <option value="retainer">retainer</option>
@@ -1124,87 +1124,87 @@ export default function ServicesPage() {
                       </select>
                     </div>
                     <div>
-                      <label className="block text-xs font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">Service Tier</label>
+                      <label className="block text-xs font-semibold text-[#7D8590] mb-1.5 uppercase tracking-wide">Service Tier</label>
                       <select value={form.tier ?? ""}
                         onChange={e => setField("tier", e.target.value || null)}
-                        className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4] bg-white">
+                        className="w-full border border-[#30363D] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4] bg-[#161B22]">
                         <option value="">— none —</option>
                         <option value="entry">Entry Tier</option>
                         <option value="core">Core Tier</option>
                         <option value="strategic">Strategic Tier</option>
                       </select>
-                      <p className="mt-1 text-xs text-gray-400">Controls which group this service appears in on the Services page.</p>
+                      <p className="mt-1 text-xs text-[#7D8590]">Controls which group this service appears in on the Services page.</p>
                     </div>
                     <div>
-                      <label className="block text-xs font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">Tagline</label>
+                      <label className="block text-xs font-semibold text-[#7D8590] mb-1.5 uppercase tracking-wide">Tagline</label>
                       <input type="text" value={form.tagline ?? ""}
                         onChange={e => setField("tagline", e.target.value || null)}
-                        className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4]" />
+                        className="w-full border border-[#30363D] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4] bg-[#1C2128] text-[#E6EDF3]" />
                     </div>
                     <div>
-                      <label className="block text-xs font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">Target Audience</label>
+                      <label className="block text-xs font-semibold text-[#7D8590] mb-1.5 uppercase tracking-wide">Target Audience</label>
                       <textarea value={form.targetAudience ?? ""} rows={2}
                         onChange={e => setField("targetAudience", e.target.value || null)}
-                        className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4] resize-none" />
+                        className="w-full border border-[#30363D] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4] bg-[#1C2128] text-[#E6EDF3] resize-none" />
                     </div>
                     <div>
-                      <label className="block text-xs font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">Inclusions</label>
+                      <label className="block text-xs font-semibold text-[#7D8590] mb-1.5 uppercase tracking-wide">Inclusions</label>
                       <TagInput
                         value={form.inclusions ?? null}
                         onChange={v => setField("inclusions", v)}
                         placeholder="Type an inclusion, press Enter…"
                       />
-                      <p className="mt-1 text-xs text-gray-400">Press Enter or Tab to add each item.</p>
+                      <p className="mt-1 text-xs text-[#7D8590]">Press Enter or Tab to add each item.</p>
                     </div>
                     <div>
-                      <label className="block text-xs font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">Features</label>
+                      <label className="block text-xs font-semibold text-[#7D8590] mb-1.5 uppercase tracking-wide">Features</label>
                       <TagInput
                         value={form.features ?? null}
                         onChange={v => setField("features", v)}
                         placeholder="Type a feature, press Enter…"
                       />
-                      <p className="mt-1 text-xs text-gray-400">Press Enter or Tab to add each item.</p>
+                      <p className="mt-1 text-xs text-[#7D8590]">Press Enter or Tab to add each item.</p>
                     </div>
                     <div className="grid grid-cols-2 gap-4">
                       <div>
-                        <label className="block text-xs font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">Badge</label>
+                        <label className="block text-xs font-semibold text-[#7D8590] mb-1.5 uppercase tracking-wide">Badge</label>
                         <input type="text" value={form.badge ?? ""}
                           onChange={e => setField("badge", e.target.value || null)}
                           placeholder="e.g. Most requested"
-                          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4]" />
+                          className="w-full border border-[#30363D] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4] bg-[#1C2128] text-[#E6EDF3]" />
                       </div>
                       <div>
-                        <label className="block text-xs font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">Hours/Month</label>
+                        <label className="block text-xs font-semibold text-[#7D8590] mb-1.5 uppercase tracking-wide">Hours/Month</label>
                         <input type="text" value={form.hoursPerMonth ?? ""}
                           onChange={e => setField("hoursPerMonth", e.target.value || null)}
                           placeholder="e.g. 10 hours"
-                          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4]" />
+                          className="w-full border border-[#30363D] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4] bg-[#1C2128] text-[#E6EDF3]" />
                       </div>
                     </div>
                     <div className="grid grid-cols-2 gap-4">
                       <div>
-                        <label className="block text-xs font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">Icon</label>
+                        <label className="block text-xs font-semibold text-[#7D8590] mb-1.5 uppercase tracking-wide">Icon</label>
                         <select
                           value={form.iconName ?? ""}
                           onChange={e => setField("iconName", e.target.value || null)}
-                          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4] bg-white"
+                          className="w-full border border-[#30363D] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4] bg-[#161B22]"
                         >
                           <option value="">— Default (Sparkles) —</option>
                           {ICON_NAMES.map(name => (
                             <option key={name} value={name}>{name}</option>
                           ))}
                         </select>
-                        <p className="mt-1 text-xs text-gray-400">Preview updates in the card →</p>
+                        <p className="mt-1 text-xs text-[#7D8590]">Preview updates in the card →</p>
                       </div>
                       <div>
-                        <label className="block text-xs font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">Sort Order</label>
+                        <label className="block text-xs font-semibold text-[#7D8590] mb-1.5 uppercase tracking-wide">Sort Order</label>
                         <input type="number" value={form.sortOrder ?? 0} min="0"
                           onChange={e => setField("sortOrder", parseInt(e.target.value) || 0)}
-                          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4]" />
+                          className="w-full border border-[#30363D] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4] bg-[#1C2128] text-[#E6EDF3]" />
                       </div>
                     </div>
                     <div>
-                      <label className="block text-xs font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">Page Href</label>
+                      <label className="block text-xs font-semibold text-[#7D8590] mb-1.5 uppercase tracking-wide">Page Href</label>
                       <input
                         type="text"
                         list="known-page-hrefs"
@@ -1214,7 +1214,7 @@ export default function ServicesPage() {
                         className={`w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4] ${
                           (() => {
                             const v = validatePageHref(form.pageHref);
-                            return v === "no-slash" || v === "unknown" ? "border-amber-400 bg-amber-50" : "border-gray-300";
+                            return v === "no-slash" || v === "unknown" ? "border-amber-400 bg-amber-500/10" : "border-[#30363D]";
                           })()
                         }`}
                       />
@@ -1223,7 +1223,7 @@ export default function ServicesPage() {
                       </datalist>
                       {validatePageHref(form.pageHref) === "no-slash" && (
                         <p className="mt-1.5 text-xs text-amber-600 flex items-center gap-1">
-                          <span>⚠</span> Page href must start with <code className="font-mono bg-amber-100 px-1 rounded">/</code> — this link will be broken.
+                          <span>⚠</span> Page href must start with <code className="font-mono bg-amber-500/20 px-1 rounded">/</code> — this link will be broken.
                         </p>
                       )}
                       {validatePageHref(form.pageHref) === "unknown" && (
@@ -1236,12 +1236,12 @@ export default function ServicesPage() {
                       <input type="checkbox" id="highlighted" checked={form.highlighted ?? false}
                         onChange={e => setField("highlighted", e.target.checked)}
                         className="rounded" />
-                      <label htmlFor="highlighted" className="text-sm font-medium text-gray-700">Highlighted (Most Popular)</label>
+                      <label htmlFor="highlighted" className="text-sm font-medium text-[#C9D1D9]">Highlighted (Most Popular)</label>
                     </div>
                   </div>
                 </div>
               </div>
-              <div className="pt-5 border-t border-gray-100 mt-5">
+              <div className="pt-5 border-t border-[#30363D] mt-5">
                 <button type="submit" disabled={saving}
                   className="w-full bg-[#0078D4] text-white rounded-lg px-5 py-2.5 text-sm font-medium hover:bg-[#006CBE] transition-colors disabled:opacity-60">
                   {saving ? "Saving…" : "Save Changes"}
@@ -1250,11 +1250,11 @@ export default function ServicesPage() {
             </form>
 
             {/* Service Overview PDF */}
-            <div className="bg-white rounded-xl border border-gray-200 p-6 mt-5">
+            <div className="bg-[#161B22] rounded-xl border border-[#30363D] p-6 mt-5">
               <div className="flex items-center justify-between mb-3 gap-3 flex-wrap">
                 <div>
-                  <p className="text-xs font-bold text-gray-500 uppercase tracking-wider">Service Overview PDF</p>
-                  <p className="text-xs text-gray-400 mt-0.5">Pre-generate a PDF brochure to send with overview download requests.</p>
+                  <p className="text-xs font-bold text-[#7D8590] uppercase tracking-wider">Service Overview PDF</p>
+                  <p className="text-xs text-[#7D8590] mt-0.5">Pre-generate a PDF brochure to send with overview download requests.</p>
                 </div>
                 <div className="flex items-center gap-2">
                   {form.overviewPdfKey && (
@@ -1279,12 +1279,12 @@ export default function ServicesPage() {
                 </div>
               </div>
               {form.overviewPdfGeneratedAt ? (
-                <p className="text-xs text-gray-400 flex items-center gap-1.5">
+                <p className="text-xs text-[#7D8590] flex items-center gap-1.5">
                   <CheckCircle className="w-3.5 h-3.5 text-green-500 flex-shrink-0" />
                   Last generated {new Date(form.overviewPdfGeneratedAt).toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short" })}
                 </p>
               ) : (
-                <p className="text-xs text-gray-400 flex items-center gap-1.5">
+                <p className="text-xs text-[#7D8590] flex items-center gap-1.5">
                   <Clock className="w-3.5 h-3.5 flex-shrink-0" />
                   No PDF generated yet — click Generate PDF to create one
                 </p>
@@ -1294,7 +1294,7 @@ export default function ServicesPage() {
 
               {/* Live card preview */}
               <div className="w-72 flex-shrink-0 sticky top-6">
-                <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">Live Preview</p>
+                <p className="text-xs font-bold text-[#7D8590] uppercase tracking-wider mb-3">Live Preview</p>
                 <OfferCardPreview form={form} />
               </div>
             </div>{/* end two-column flex */}

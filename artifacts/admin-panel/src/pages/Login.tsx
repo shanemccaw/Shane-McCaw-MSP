@@ -103,8 +103,8 @@ function MfaChallengeScreen({
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
           </svg>
         </div>
-        <h2 className="text-xl font-bold text-[#0A2540]">Two-Factor Verification</h2>
-        <p className="text-sm text-gray-500 mt-1">An extra step is required for admin access</p>
+        <h2 className="text-xl font-bold text-[#E6EDF3]">Two-Factor Verification</h2>
+        <p className="text-sm text-[#7D8590] mt-1">An extra step is required for admin access</p>
       </div>
 
       {challenge.methods.length > 1 && (
@@ -116,7 +116,7 @@ function MfaChallengeScreen({
               className={`flex-1 text-xs font-semibold px-3 py-2 rounded-lg border transition-colors ${
                 activeMethod === m
                   ? "bg-[#0078D4] text-white border-[#0078D4]"
-                  : "border-gray-200 text-gray-500 hover:border-[#0078D4]/40"
+                  : "border-[#30363D] text-[#7D8590] hover:border-[#0078D4]/40"
               }`}
             >
               {methodLabel[m] ?? m}
@@ -126,14 +126,14 @@ function MfaChallengeScreen({
       )}
 
       {error && (
-        <div className="bg-red-50 border border-red-200 text-red-700 text-sm px-3 py-2.5 rounded-lg">
+        <div className="bg-red-500/10 border border-red-500/20 text-red-400 text-sm px-3 py-2.5 rounded-lg">
           {error}
         </div>
       )}
 
       {activeMethod === "passkey" ? (
         <div className="space-y-3">
-          <p className="text-sm text-gray-500 text-center">
+          <p className="text-sm text-[#7D8590] text-center">
             Use your registered passkey (biometric or hardware key) to complete sign-in.
           </p>
           <button
@@ -149,7 +149,7 @@ function MfaChallengeScreen({
         </div>
       ) : activeMethod === "sms" && !smsSent ? (
         <div className="space-y-3">
-          <p className="text-sm text-gray-500 text-center">Send a 6-digit code to your registered phone number to verify your identity.</p>
+          <p className="text-sm text-[#7D8590] text-center">Send a 6-digit code to your registered phone number to verify your identity.</p>
           <button
             onClick={() => void sendSms()}
             disabled={loading}
@@ -161,7 +161,7 @@ function MfaChallengeScreen({
       ) : (
         <form onSubmit={(e) => void verifyCode(e)} className="space-y-3">
           <div>
-            <label className="block text-xs font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">
+            <label className="block text-xs font-semibold text-[#7D8590] mb-1.5 uppercase tracking-wide">
               {activeMethod === "totp" ? "6-digit authenticator code" : "SMS verification code"}
             </label>
             <input
@@ -172,11 +172,11 @@ function MfaChallengeScreen({
               onChange={e => setCode(e.target.value.replace(/\D/g, ""))}
               placeholder="000000"
               autoFocus
-              className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4] transition font-mono text-center tracking-widest"
+              className="w-full border border-[#30363D] rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4] transition font-mono text-center tracking-widest"
             />
             {activeMethod === "sms" && (
               <div className="flex items-center justify-between mt-1">
-                <p className="text-xs text-gray-400">Check your phone for the code</p>
+                <p className="text-xs text-[#7D8590]">Check your phone for the code</p>
                 <button type="button" onClick={() => void sendSms()} disabled={loading}
                   className="text-xs text-[#0078D4] hover:underline disabled:opacity-50">Resend</button>
               </div>
@@ -194,7 +194,7 @@ function MfaChallengeScreen({
 
       <button
         onClick={onBack}
-        className="w-full text-xs text-gray-400 hover:text-gray-600 transition-colors text-center"
+        className="w-full text-xs text-[#7D8590] hover:text-[#7D8590] transition-colors text-center"
       >
         ← Back to login
       </button>
@@ -238,7 +238,7 @@ export default function LoginPage() {
 
   return (
     <div className="min-h-screen bg-[#0A2540] flex items-center justify-center p-4">
-      <div className="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-sm">
+      <div className="bg-[#161B22] rounded-2xl shadow-2xl p-8 w-full max-w-sm">
         {mfaChallenge ? (
           <MfaChallengeScreen
             challenge={mfaChallenge}
@@ -253,37 +253,37 @@ export default function LoginPage() {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
                 </svg>
               </div>
-              <h1 className="text-2xl font-bold text-[#0A2540]">Admin Panel</h1>
-              <p className="text-sm text-gray-500 mt-1">Shane McCaw Consulting</p>
+              <h1 className="text-2xl font-bold text-[#E6EDF3]">Admin Panel</h1>
+              <p className="text-sm text-[#7D8590] mt-1">Shane McCaw Consulting</p>
             </div>
 
             <form onSubmit={(e) => void handleSubmit(e)} className="space-y-4">
               <div>
-                <label className="block text-xs font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">Email</label>
+                <label className="block text-xs font-semibold text-[#7D8590] mb-1.5 uppercase tracking-wide">Email</label>
                 <input
                   type="email"
                   value={email}
                   onChange={e => setEmail(e.target.value)}
                   required
                   autoFocus
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4] transition"
+                  className="w-full border border-[#30363D] rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4] transition"
                   placeholder="admin@example.com"
                 />
               </div>
               <div>
-                <label className="block text-xs font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">Password</label>
+                <label className="block text-xs font-semibold text-[#7D8590] mb-1.5 uppercase tracking-wide">Password</label>
                 <input
                   type="password"
                   value={password}
                   onChange={e => setPassword(e.target.value)}
                   required
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4] transition"
+                  className="w-full border border-[#30363D] rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4] transition"
                   placeholder="••••••••"
                 />
               </div>
 
               {error && (
-                <div className="bg-red-50 border border-red-200 text-red-700 text-sm px-3 py-2.5 rounded-lg">
+                <div className="bg-red-500/10 border border-red-500/20 text-red-400 text-sm px-3 py-2.5 rounded-lg">
                   {error}
                 </div>
               )}

@@ -37,17 +37,17 @@ interface JobHistoryRow {
 }
 
 const JOB_STATUS_CFG: Record<string, { cls: string }> = {
-  "Never run":  { cls: "bg-gray-100 text-gray-600" },
-  "New":        { cls: "bg-blue-100 text-blue-700" },
-  "Activating": { cls: "bg-blue-100 text-blue-700" },
-  "Running":    { cls: "bg-yellow-100 text-yellow-700" },
-  "Completed":  { cls: "bg-green-100 text-green-700" },
-  "Failed":     { cls: "bg-red-100 text-red-700" },
-  "Stopped":    { cls: "bg-gray-100 text-gray-600" },
-  "Suspended":  { cls: "bg-orange-100 text-orange-700" },
+  "Never run":  { cls: "bg-[#30363D]/50 text-[#7D8590]" },
+  "New":        { cls: "bg-[#0078D4]/100/15 text-blue-400" },
+  "Activating": { cls: "bg-[#0078D4]/100/15 text-blue-400" },
+  "Running":    { cls: "bg-yellow-500/15 text-yellow-400" },
+  "Completed":  { cls: "bg-green-500/15 text-green-400" },
+  "Failed":     { cls: "bg-red-500/15 text-red-400" },
+  "Stopped":    { cls: "bg-[#30363D]/50 text-[#7D8590]" },
+  "Suspended":  { cls: "bg-orange-500/15 text-orange-400" },
 };
 
-const inputCls = "w-full border border-border rounded-lg px-3 py-2 text-sm text-[#0A2540] focus:outline-none focus:ring-2 focus:ring-[#0078D4]/40 bg-white";
+const inputCls = "w-full border border-border rounded-lg px-3 py-2 text-sm text-[#E6EDF3] focus:outline-none focus:ring-2 focus:ring-[#0078D4]/40 bg-[#161B22]";
 const labelCls = "block text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1";
 
 function formatRelative(dateStr: string): string {
@@ -265,19 +265,19 @@ export default function ScriptRunnerPage() {
     }
   };
 
-  const statusCfg = JOB_STATUS_CFG[jobStatus] ?? { cls: "bg-gray-100 text-gray-600" };
+  const statusCfg = JOB_STATUS_CFG[jobStatus] ?? { cls: "bg-[#30363D]/50 text-[#7D8590]" };
   const canRun = !!selectedCredId && !!selectedRunbook && !running && (governanceAreas === null || governanceAreas.length > 0);
 
   return (
     <div className="p-6 max-w-5xl mx-auto space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-bold text-[#0A2540]">Script Runner</h1>
+          <h1 className="text-xl font-bold text-[#E6EDF3]">Script Runner</h1>
           <p className="text-sm text-muted-foreground mt-0.5">Run Azure Automation Runbooks against customer tenants</p>
         </div>
         <button
           onClick={() => navigate("/crm/clients")}
-          className="inline-flex items-center gap-1.5 text-sm font-semibold text-[#0078D4] border border-[#0078D4]/30 hover:border-[#0078D4] hover:bg-blue-50 rounded-lg px-3 py-2 transition-colors"
+          className="inline-flex items-center gap-1.5 text-sm font-semibold text-[#0078D4] border border-[#0078D4]/30 hover:border-[#0078D4] hover:bg-[#0078D4]/10 rounded-lg px-3 py-2 transition-colors"
         >
           <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
@@ -287,17 +287,17 @@ export default function ScriptRunnerPage() {
       </div>
 
       {azureConfigured === false && (
-        <div className="rounded-xl border border-amber-200 bg-amber-50 p-5 space-y-3">
+        <div className="rounded-xl border border-amber-500/20 bg-amber-500/100/10 p-5 space-y-3">
           <div className="flex items-start gap-3">
             <svg className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
             </svg>
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-bold text-amber-800 mb-1">Azure Automation is not configured</p>
-              <p className="text-xs text-amber-700 leading-relaxed mb-3">
+              <p className="text-sm font-bold text-amber-400 mb-1">Azure Automation is not configured</p>
+              <p className="text-xs text-amber-400 leading-relaxed mb-3">
                 Add the following 7 secrets to <strong>Replit Secrets</strong> (Tools → Secrets in the sidebar) to enable Script Runner. The values come from your Azure App Registration and Automation account.
               </p>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-1 font-mono text-xs text-amber-900">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-1 font-mono text-xs text-amber-400">
                 {[
                   ["AZURE_CLIENT_ID", "App Registration client ID"],
                   ["AZURE_CLIENT_SECRET", "App Registration client secret"],
@@ -309,7 +309,7 @@ export default function ScriptRunnerPage() {
                 ].map(([key, hint]) => (
                   <div key={key} className="flex flex-col py-0.5">
                     <span className="font-bold">{key}</span>
-                    <span className="text-amber-700 font-sans text-[10px]">{hint}</span>
+                    <span className="text-amber-400 font-sans text-[10px]">{hint}</span>
                   </div>
                 ))}
               </div>
@@ -324,13 +324,13 @@ export default function ScriptRunnerPage() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Configuration sidebar */}
         <div className="space-y-4">
-          <div className="bg-white border border-border rounded-xl p-4 space-y-4">
+          <div className="bg-[#161B22] border border-border rounded-xl p-4 space-y-4">
             <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Configuration</p>
 
             <div>
               <label className={labelCls}>Customer</label>
               {loadingCredentials ? (
-                <div className="h-9 bg-gray-100 rounded-lg animate-pulse" />
+                <div className="h-9 bg-[#1C2128] rounded-lg animate-pulse" />
               ) : (
                 <select
                   className={inputCls}
@@ -348,7 +348,7 @@ export default function ScriptRunnerPage() {
             <div>
               <label className={labelCls}>Runbook</label>
               {loadingRunbooks ? (
-                <div className="h-9 bg-gray-100 rounded-lg animate-pulse" />
+                <div className="h-9 bg-[#1C2128] rounded-lg animate-pulse" />
               ) : (
                 <select
                   className={inputCls}
@@ -395,7 +395,7 @@ export default function ScriptRunnerPage() {
 
           {/* Customers list — managed from CRM */}
           {credentials.length > 0 && (
-            <div className="bg-white border border-border rounded-xl p-4 space-y-1">
+            <div className="bg-[#161B22] border border-border rounded-xl p-4 space-y-1">
               <div className="flex items-center justify-between mb-2">
                 <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Customers</p>
                 <button
@@ -408,7 +408,7 @@ export default function ScriptRunnerPage() {
               {credentials.map(c => (
                 <div key={c.id} className="flex items-center gap-2 py-1.5">
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-[#0A2540] truncate">{c.displayName}</p>
+                    <p className="text-sm font-medium text-[#E6EDF3] truncate">{c.displayName}</p>
                     <p className="text-[10px] text-muted-foreground truncate">
                       {c.credentialType === "certificate" ? "Certificate" : "Client Secret"}
                     </p>
@@ -432,8 +432,8 @@ export default function ScriptRunnerPage() {
 
         {/* Log panel */}
         <div className="lg:col-span-2 space-y-3">
-          <div className="bg-white border border-border rounded-xl overflow-hidden">
-            <div className="flex items-center justify-between px-4 py-3 border-b border-border bg-[#F7F9FC]">
+          <div className="bg-[#161B22] border border-border rounded-xl overflow-hidden">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-border bg-[#1C2128]">
               <div className="flex items-center gap-2 min-w-0">
                 <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground flex-shrink-0">
                   {logLabel ? "Replayed Output" : "Live Output"}
@@ -450,7 +450,7 @@ export default function ScriptRunnerPage() {
                 {logLines.length > 0 && !running && (
                   <button
                     onClick={() => { setLogLines([]); setJobStatus("Never run"); setLogLabel(null); }}
-                    className="text-[10px] font-semibold text-muted-foreground hover:text-[#0A2540] transition-colors"
+                    className="text-[10px] font-semibold text-muted-foreground hover:text-[#E6EDF3] transition-colors"
                   >
                     Clear
                   </button>
@@ -460,7 +460,7 @@ export default function ScriptRunnerPage() {
 
             <div className="bg-gray-900 min-h-64 max-h-[600px] overflow-y-auto p-4 font-mono text-xs text-gray-100">
               {logLines.length === 0 ? (
-                <p className="text-gray-500 italic">Select a customer and runbook, then click Run to start.</p>
+                <p className="text-[#7D8590] italic">Select a customer and runbook, then click Run to start.</p>
               ) : (
                 <div className="space-y-0.5">
                   {logLines.map((line, i) => (
@@ -475,8 +475,8 @@ export default function ScriptRunnerPage() {
       </div>
 
       {/* Job History */}
-      <div className="bg-white border border-border rounded-xl overflow-hidden">
-        <div className="flex items-center justify-between px-4 py-3 border-b border-border bg-[#F7F9FC]">
+      <div className="bg-[#161B22] border border-border rounded-xl overflow-hidden">
+        <div className="flex items-center justify-between px-4 py-3 border-b border-border bg-[#1C2128]">
           <div className="flex items-center gap-2">
             <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Run History</p>
             {history.length > 0 && (
@@ -505,7 +505,7 @@ export default function ScriptRunnerPage() {
         {loadingHistory ? (
           <div className="p-6 space-y-3">
             {[...Array(3)].map((_, i) => (
-              <div key={i} className="h-10 bg-gray-100 rounded-lg animate-pulse" />
+              <div key={i} className="h-10 bg-[#1C2128] rounded-lg animate-pulse" />
             ))}
           </div>
         ) : history.length === 0 ? (
@@ -519,7 +519,7 @@ export default function ScriptRunnerPage() {
         ) : (
           <div className="divide-y divide-border">
             {/* Header row */}
-            <div className="grid grid-cols-[1fr_1fr_auto_auto_auto] gap-4 px-4 py-2 bg-gray-50">
+            <div className="grid grid-cols-[1fr_1fr_auto_auto_auto] gap-4 px-4 py-2 bg-[#161B22]">
               <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Runbook</span>
               <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Customer</span>
               <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Duration</span>
@@ -527,17 +527,17 @@ export default function ScriptRunnerPage() {
               <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Status</span>
             </div>
             {history.map(row => {
-              const cfg = JOB_STATUS_CFG[row.status] ?? { cls: "bg-gray-100 text-gray-600" };
+              const cfg = JOB_STATUS_CFG[row.status] ?? { cls: "bg-[#30363D]/50 text-[#7D8590]" };
               const isReplaying = replayingJobId === row.jobId;
               const hasOutput = !!row.output;
               return (
                 <div
                   key={row.id}
                   onClick={hasOutput && !running ? () => void handleReplay(row) : undefined}
-                  className={`grid grid-cols-[1fr_1fr_auto_auto_auto] gap-4 px-4 py-3 items-center transition-colors group ${hasOutput && !running ? "cursor-pointer hover:bg-blue-50/40" : "hover:bg-gray-50/50"}`}
+                  className={`grid grid-cols-[1fr_1fr_auto_auto_auto] gap-4 px-4 py-3 items-center transition-colors group ${hasOutput && !running ? "cursor-pointer hover:bg-[#0078D4]/10/40" : "hover:bg-[#1C2128]/50"}`}
                   title={hasOutput ? "Click to replay stored output" : undefined}
                 >
-                  <span className="text-sm font-medium text-[#0A2540] truncate" title={row.runbookName}>
+                  <span className="text-sm font-medium text-[#E6EDF3] truncate" title={row.runbookName}>
                     {row.runbookName}
                   </span>
                   <span className="text-sm text-muted-foreground truncate" title={row.customerName}>
@@ -559,7 +559,7 @@ export default function ScriptRunnerPage() {
                         className="p-1 rounded text-muted-foreground group-hover:text-[#0078D4] transition-colors"
                       >
                         {isReplaying ? (
-                          <div className="w-3.5 h-3.5 border-2 border-gray-300 border-t-[#0078D4] rounded-full animate-spin" />
+                          <div className="w-3.5 h-3.5 border-2 border-[#30363D] border-t-[#0078D4] rounded-full animate-spin" />
                         ) : (
                           <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                             <path strokeLinecap="round" strokeLinejoin="round" d="M5 3l14 9-14 9V3z" />
@@ -616,7 +616,7 @@ function StripeReplayCard() {
   }
 
   return (
-    <div className="bg-white border border-border rounded-xl p-5 space-y-4">
+    <div className="bg-[#161B22] border border-border rounded-xl p-5 space-y-4">
       <div className="flex items-start gap-3">
         <div className="w-9 h-9 rounded-xl bg-[#0078D4]/10 flex items-center justify-center flex-shrink-0">
           <svg className="w-4.5 h-4.5 text-[#0078D4]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -624,7 +624,7 @@ function StripeReplayCard() {
           </svg>
         </div>
         <div>
-          <h2 className="text-sm font-bold text-[#0A2540]">Replay Stripe Session</h2>
+          <h2 className="text-sm font-bold text-[#E6EDF3]">Replay Stripe Session</h2>
           <p className="text-xs text-muted-foreground mt-0.5">
             Manually reprocess a paid Checkout Session that the webhook missed. Idempotent — safe to run if already processed.
           </p>
@@ -657,7 +657,7 @@ function StripeReplayCard() {
       </form>
 
       {result && (
-        <div className={`flex items-center gap-2 rounded-lg px-3 py-2.5 text-xs font-medium ${result.status === "created" ? "bg-emerald-50 text-emerald-700 border border-emerald-200" : "bg-gray-50 text-gray-600 border border-gray-200"}`}>
+        <div className={`flex items-center gap-2 rounded-lg px-3 py-2.5 text-xs font-medium ${result.status === "created" ? "bg-emerald-50 text-emerald-700 border border-emerald-200" : "bg-[#161B22] text-[#7D8590] border border-[#30363D]"}`}>
           {result.status === "created" ? (
             <>
               <svg className="w-3.5 h-3.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -677,7 +677,7 @@ function StripeReplayCard() {
       )}
 
       {error && (
-        <div className="flex items-center gap-2 rounded-lg px-3 py-2.5 text-xs font-medium bg-red-50 text-red-700 border border-red-200">
+        <div className="flex items-center gap-2 rounded-lg px-3 py-2.5 text-xs font-medium bg-red-500/10 text-red-400 border border-red-500/20">
           <svg className="w-3.5 h-3.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
           </svg>

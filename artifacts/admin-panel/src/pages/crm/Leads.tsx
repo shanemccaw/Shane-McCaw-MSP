@@ -42,26 +42,26 @@ interface LinkedEmail {
 }
 
 const STATUS_COLORS: Record<LeadStatus, string> = {
-  new: "bg-blue-100 text-blue-700",
-  contacted: "bg-yellow-100 text-yellow-700",
-  qualified: "bg-purple-100 text-purple-700",
-  converted: "bg-green-100 text-green-700",
-  archived: "bg-gray-100 text-gray-500",
+  new: "bg-[#0078D4]/100/15 text-blue-400",
+  contacted: "bg-yellow-500/15 text-yellow-400",
+  qualified: "bg-purple-500/15 text-purple-400",
+  converted: "bg-green-500/15 text-green-400",
+  archived: "bg-[#30363D]/50 text-[#7D8590]",
 };
 
 const SOURCE_COLORS: Record<LeadSource, string> = {
   contact_form: "bg-[#0078D4]/10 text-[#0078D4]",
-  lead_magnet: "bg-teal-100 text-teal-700",
+  lead_magnet: "bg-teal-500/15 text-teal-400",
 };
 
 function StatCard({ label, value, icon }: { label: string; value: number; icon: React.ReactNode }) {
   return (
-    <div className="bg-white border border-border rounded-xl p-5 flex items-center gap-4">
+    <div className="bg-[#161B22] border border-border rounded-xl p-5 flex items-center gap-4">
       <div className="w-11 h-11 rounded-xl bg-[#0078D4]/10 flex items-center justify-center flex-shrink-0">
         {icon}
       </div>
       <div>
-        <p className="text-2xl font-extrabold text-[#0A2540]">{value}</p>
+        <p className="text-2xl font-extrabold text-[#E6EDF3]">{value}</p>
         <p className="text-xs text-muted-foreground mt-0.5">{label}</p>
       </div>
     </div>
@@ -111,7 +111,7 @@ function SlideOver({ lead, onClose, onStatusChange }: {
   return (
     <div className="fixed inset-0 z-50 flex">
       <div className="flex-1 bg-black/40" onClick={onClose} />
-      <div className="w-full sm:max-w-md bg-white shadow-2xl overflow-y-auto flex flex-col">
+      <div className="w-full sm:max-w-md bg-[#161B22] shadow-2xl overflow-y-auto flex flex-col">
         <div className="flex items-center justify-between px-6 py-4 border-b border-border bg-[#0A2540]">
           <h2 className="text-white font-bold">Lead Details</h2>
           <button onClick={onClose} className="text-white/60 hover:text-white transition-colors text-xl leading-none">×</button>
@@ -119,7 +119,7 @@ function SlideOver({ lead, onClose, onStatusChange }: {
         <div className="flex-1 px-6 py-6 space-y-5">
           <div>
             <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1">Name</p>
-            <p className="text-[#0A2540] font-semibold">{lead.name}</p>
+            <p className="text-[#E6EDF3] font-semibold">{lead.name}</p>
           </div>
           <div>
             <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1">Email</p>
@@ -128,25 +128,25 @@ function SlideOver({ lead, onClose, onStatusChange }: {
           {lead.company && (
             <div>
               <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1">Company</p>
-              <p className="text-[#0A2540] text-sm">{lead.company}{lead.companySize ? ` (${lead.companySize})` : ""}</p>
+              <p className="text-[#E6EDF3] text-sm">{lead.company}{lead.companySize ? ` (${lead.companySize})` : ""}</p>
             </div>
           )}
           {lead.serviceArea && (
             <div>
               <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1">Service Area</p>
-              <p className="text-[#0A2540] text-sm">{lead.serviceArea}</p>
+              <p className="text-[#E6EDF3] text-sm">{lead.serviceArea}</p>
             </div>
           )}
           {lead.message && (
             <div>
               <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1">Message</p>
-              <p className="text-[#0A2540] text-sm leading-relaxed whitespace-pre-wrap">{lead.message}</p>
+              <p className="text-[#E6EDF3] text-sm leading-relaxed whitespace-pre-wrap">{lead.message}</p>
             </div>
           )}
           {lead.howFound && (
             <div>
               <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1">How They Found Shane</p>
-              <p className="text-[#0A2540] text-sm">{lead.howFound}</p>
+              <p className="text-[#E6EDF3] text-sm">{lead.howFound}</p>
             </div>
           )}
           <div className="flex gap-4">
@@ -158,7 +158,7 @@ function SlideOver({ lead, onClose, onStatusChange }: {
             </div>
             <div>
               <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1">Date</p>
-              <p className="text-sm text-[#0A2540]">{new Date(lead.createdAt).toLocaleDateString()}</p>
+              <p className="text-sm text-[#E6EDF3]">{new Date(lead.createdAt).toLocaleDateString()}</p>
             </div>
           </div>
           <div>
@@ -166,7 +166,7 @@ function SlideOver({ lead, onClose, onStatusChange }: {
             <select
               value={status}
               onChange={e => setStatus(e.target.value as LeadStatus)}
-              className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4] bg-white"
+              className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4] bg-[#161B22]"
             >
               <option value="new">New</option>
               <option value="contacted">Contacted</option>
@@ -192,7 +192,7 @@ function SlideOver({ lead, onClose, onStatusChange }: {
                 Loading…
               </div>
             ) : linkedEmails.length === 0 ? (
-              <div className="rounded-lg border border-dashed border-border bg-[#F7F9FC] px-4 py-5 text-center">
+              <div className="rounded-lg border border-dashed border-border bg-[#1C2128] px-4 py-5 text-center">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} className="w-7 h-7 mx-auto text-muted-foreground/40 mb-1.5">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M21.75 6.75v10.5a2.25 2.25 0 01-2.25 2.25h-15a2.25 2.25 0 01-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25m19.5 0v.243a2.25 2.25 0 01-1.07 1.916l-7.5 4.615a2.25 2.25 0 01-2.36 0L3.32 8.91a2.25 2.25 0 01-1.07-1.916V6.75" />
                 </svg>
@@ -202,8 +202,8 @@ function SlideOver({ lead, onClose, onStatusChange }: {
             ) : (
               <ul className="space-y-2">
                 {linkedEmails.map(email => (
-                  <li key={email.id} className="rounded-lg border border-border bg-[#F7F9FC] px-3.5 py-3">
-                    <p className="text-xs font-semibold text-[#0A2540] truncate">{email.subject ?? "(no subject)"}</p>
+                  <li key={email.id} className="rounded-lg border border-border bg-[#1C2128] px-3.5 py-3">
+                    <p className="text-xs font-semibold text-[#E6EDF3] truncate">{email.subject ?? "(no subject)"}</p>
                     <p className="text-xs text-muted-foreground mt-0.5 truncate">{email.rawFrom ?? email.senderAddress}</p>
                     <div className="flex items-center justify-between mt-1.5">
                       <p className="text-xs text-muted-foreground/70">{new Date(email.receivedAt).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}</p>
@@ -230,7 +230,7 @@ function SlideOver({ lead, onClose, onStatusChange }: {
           </button>
           <button
             onClick={onClose}
-            className="px-4 border border-border rounded-lg text-sm font-medium text-muted-foreground hover:bg-[#F7F9FC] transition-colors"
+            className="px-4 border border-border rounded-lg text-sm font-medium text-muted-foreground hover:bg-[#1C2128] transition-colors"
           >
             Cancel
           </button>
@@ -308,7 +308,7 @@ export default function LeadsPage() {
   return (
     <div className="p-6 max-w-[1200px]">
       <div className="mb-6">
-        <h1 className="text-xl font-bold text-[#0A2540]">Leads</h1>
+        <h1 className="text-xl font-bold text-[#E6EDF3]">Leads</h1>
         <p className="text-sm text-muted-foreground mt-0.5">Manage inbound leads from the contact form and lead magnet.</p>
       </div>
 
@@ -327,20 +327,20 @@ export default function LeadsPage() {
         />
       </div>
 
-      <div className="bg-white border border-border rounded-xl overflow-hidden">
+      <div className="bg-[#161B22] border border-border rounded-xl overflow-hidden">
         <div className="px-5 pt-5 pb-4 border-b border-border">
           <div className="flex flex-col sm:flex-row sm:items-center gap-4">
             <div className="flex flex-wrap gap-1.5">
               {STATUS_TABS.map(tab => (
                 <button key={tab.key} onClick={() => handleFilterChange(tab.key)}
-                  className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-colors ${statusFilter === tab.key ? "bg-[#0078D4] text-white" : "bg-[#F7F9FC] text-muted-foreground hover:bg-[#0078D4]/10 hover:text-[#0078D4]"}`}>
+                  className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-colors ${statusFilter === tab.key ? "bg-[#0078D4] text-white" : "bg-[#1C2128] text-muted-foreground hover:bg-[#0078D4]/10 hover:text-[#0078D4]"}`}>
                   {tab.label}
                 </button>
               ))}
             </div>
             <div className="sm:ml-auto">
               <select value={sourceFilter} onChange={e => handleSourceChange(e.target.value)}
-                className="border border-border rounded-lg px-3 py-1.5 text-xs font-medium bg-white focus:outline-none focus:ring-2 focus:ring-[#0078D4]">
+                className="border border-border rounded-lg px-3 py-1.5 text-xs font-medium bg-[#161B22] focus:outline-none focus:ring-2 focus:ring-[#0078D4] bg-[#1C2128] text-[#E6EDF3]">
                 <option value="all">All Sources</option>
                 <option value="contact_form">Contact Form</option>
                 <option value="lead_magnet">Lead Magnet</option>
@@ -362,7 +362,7 @@ export default function LeadsPage() {
             <div className="hidden sm:block overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="border-b border-border bg-[#F7F9FC]">
+                  <tr className="border-b border-border bg-[#1C2128]">
                     <th className="text-left px-5 py-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Name</th>
                     <th className="text-left px-5 py-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Email</th>
                     <th className="text-left px-5 py-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground hidden md:table-cell">Company</th>
@@ -374,8 +374,8 @@ export default function LeadsPage() {
                 <tbody>
                   {leads.map(lead => (
                     <tr key={lead.id} onClick={() => setSelectedLead(lead)}
-                      className="border-b border-border last:border-0 hover:bg-[#F7F9FC] cursor-pointer transition-colors">
-                      <td className="px-5 py-3.5 font-semibold text-[#0A2540]">{lead.name}</td>
+                      className="border-b border-border last:border-0 hover:bg-[#1C2128] cursor-pointer transition-colors">
+                      <td className="px-5 py-3.5 font-semibold text-[#E6EDF3]">{lead.name}</td>
                       <td className="px-5 py-3.5 text-muted-foreground">{lead.email}</td>
                       <td className="px-5 py-3.5 text-muted-foreground hidden md:table-cell">{lead.company ?? "—"}</td>
                       <td className="px-5 py-3.5">
@@ -399,9 +399,9 @@ export default function LeadsPage() {
             <div className="sm:hidden divide-y divide-border">
               {leads.map(lead => (
                 <div key={lead.id} onClick={() => setSelectedLead(lead)}
-                  className="px-4 py-3 flex items-center gap-3 cursor-pointer hover:bg-[#F7F9FC] transition-colors">
+                  className="px-4 py-3 flex items-center gap-3 cursor-pointer hover:bg-[#1C2128] transition-colors">
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-semibold text-[#0A2540] truncate">{lead.name}</p>
+                    <p className="text-sm font-semibold text-[#E6EDF3] truncate">{lead.name}</p>
                     <p className="text-xs text-muted-foreground truncate">{lead.email}</p>
                   </div>
                   <div className="flex flex-col items-end gap-1 flex-shrink-0">
@@ -424,12 +424,12 @@ export default function LeadsPage() {
             <div className="flex gap-2">
               <button disabled={page <= 1}
                 onClick={() => { const p = page - 1; setPage(p); void fetchLeads(p, statusFilter, sourceFilter); }}
-                className="px-3 py-1.5 border border-border rounded-lg text-xs font-medium disabled:opacity-40 hover:bg-[#F7F9FC] transition-colors">
+                className="px-3 py-1.5 border border-border rounded-lg text-xs font-medium disabled:opacity-40 hover:bg-[#1C2128] transition-colors">
                 Prev
               </button>
               <button disabled={page >= totalPages}
                 onClick={() => { const p = page + 1; setPage(p); void fetchLeads(p, statusFilter, sourceFilter); }}
-                className="px-3 py-1.5 border border-border rounded-lg text-xs font-medium disabled:opacity-40 hover:bg-[#F7F9FC] transition-colors">
+                className="px-3 py-1.5 border border-border rounded-lg text-xs font-medium disabled:opacity-40 hover:bg-[#1C2128] transition-colors">
                 Next
               </button>
             </div>

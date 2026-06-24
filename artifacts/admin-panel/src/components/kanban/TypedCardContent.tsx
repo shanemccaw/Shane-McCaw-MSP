@@ -171,7 +171,7 @@ function ActionBtn({
         e.stopPropagation();
         onClick?.();
       }}
-      className="text-[9px] font-semibold px-2 py-1 rounded border border-border bg-white hover:bg-[#0078D4] hover:text-white hover:border-[#0078D4] transition-colors text-[#0A2540]"
+      className="text-[9px] font-semibold px-2 py-1 rounded border border-border bg-[#1C2128] hover:bg-[#0078D4] hover:text-white hover:border-[#0078D4] transition-colors text-[#E6EDF3]"
     >
       {label}
     </button>
@@ -187,7 +187,7 @@ function TrainingBody({ m }: { m: TrainingMetadata }) {
       {modules.length > 0 && (
         <div>
           <div className="flex items-center justify-between mb-1">
-            <p className="text-[10px] font-semibold text-[#0A2540]">
+            <p className="text-[10px] font-semibold text-[#E6EDF3]">
               {done}/{modules.length} modules complete
             </p>
             {m.estimatedHours && remaining.length > 0 && (
@@ -204,7 +204,7 @@ function TrainingBody({ m }: { m: TrainingMetadata }) {
           </div>
           {remaining.length > 0 && (
             <p className="text-[10px] text-muted-foreground mt-1.5">
-              Next up: <span className="font-medium text-[#0A2540]">{remaining[0].name}</span>
+              Next up: <span className="font-medium text-[#E6EDF3]">{remaining[0].name}</span>
             </p>
           )}
         </div>
@@ -236,7 +236,7 @@ function HealthCheckBody({ m }: { m: HealthCheckMetadata }) {
       {m.lastRunDate && (
         <p className="text-[10px] text-muted-foreground">
           Last checked:{" "}
-          <span className="font-medium text-[#0A2540]">
+          <span className="font-medium text-[#E6EDF3]">
             {new Date(m.lastRunDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
           </span>
           {m.lastRunBy && <span> by {m.lastRunBy}</span>}
@@ -244,12 +244,12 @@ function HealthCheckBody({ m }: { m: HealthCheckMetadata }) {
       )}
       {m.scriptName && (
         <p className="text-[10px] text-muted-foreground">
-          Script: <span className="font-semibold text-[#0A2540]">{m.scriptName}</span>
+          Script: <span className="font-semibold text-[#E6EDF3]">{m.scriptName}</span>
           {m.scriptVersion && <span className="ml-1 text-muted-foreground">v{m.scriptVersion}</span>}
         </p>
       )}
       {m.outputSummary && (
-        <p className="text-[10px] text-[#0A2540] leading-snug italic">{m.outputSummary}</p>
+        <p className="text-[10px] text-[#E6EDF3] leading-snug italic">{m.outputSummary}</p>
       )}
       <div className="flex gap-1 flex-wrap pt-1">
         <ActionBtn label="Run Again" />
@@ -270,16 +270,16 @@ function GovernanceBody({ m }: { m: GovernanceMetadata }) {
   return (
     <div className="space-y-2">
       {m.postureSummary && (
-        <p className="text-[10px] text-[#0A2540] leading-snug">{m.postureSummary}</p>
+        <p className="text-[10px] text-[#E6EDF3] leading-snug">{m.postureSummary}</p>
       )}
       {allItems.length > 0 && (
         <div>
-          <p className="text-[10px] font-semibold text-[#0A2540] mb-1">What's been configured:</p>
+          <p className="text-[10px] font-semibold text-[#E6EDF3] mb-1">What's been configured:</p>
           <div className="space-y-0.5">
             {allItems.map((item, i) => (
               <div key={i} className="flex items-center gap-1.5">
                 <span className="material-symbols-outlined text-blue-600 flex-shrink-0" style={{ fontSize: "13px" }}>check_circle</span>
-                <span className="text-[10px] text-[#0A2540]">{item}</span>
+                <span className="text-[10px] text-[#E6EDF3]">{item}</span>
               </div>
             ))}
           </div>
@@ -299,12 +299,12 @@ function AutomationBody({ m }: { m: AutomationMetadata }) {
     <div className="space-y-2">
       {flows.length > 0 && (
         <div>
-          <p className="text-[10px] font-semibold text-[#0A2540] mb-1">Your automations:</p>
+          <p className="text-[10px] font-semibold text-[#E6EDF3] mb-1">Your automations:</p>
           <div className="space-y-1">
             {flows.map((flow, i) => (
               <div key={i} className="flex items-center gap-1.5">
                 <span className={`w-2 h-2 rounded-full flex-shrink-0 ${FLOW_DOT[flow.status] ?? "bg-gray-400"}`} />
-                <span className="text-[10px] text-[#0A2540] truncate">{flow.name}</span>
+                <span className="text-[10px] text-[#E6EDF3] truncate">{flow.name}</span>
                 <span className="text-[9px] text-muted-foreground ml-auto flex-shrink-0">
                   {FLOW_STATUS_LABEL[flow.status] ?? flow.status}
                 </span>
@@ -328,12 +328,12 @@ function DocumentBody({ m }: { m: DocumentMetadata }) {
     <div className="space-y-2">
       {docs.length > 0 && (
         <div>
-          <p className="text-[10px] font-semibold text-[#0A2540] mb-1">Documents:</p>
+          <p className="text-[10px] font-semibold text-[#E6EDF3] mb-1">Documents:</p>
           <div className="space-y-1.5">
             {docs.map((doc, i) => (
               <div key={i} className="flex items-center gap-1.5">
                 <div className="flex-1 min-w-0">
-                  <p className="text-[10px] font-medium text-[#0A2540] truncate">{doc.name}</p>
+                  <p className="text-[10px] font-medium text-[#E6EDF3] truncate">{doc.name}</p>
                   <span className={`text-[9px] px-1.5 py-0.5 rounded font-semibold ${APPROVAL_CLS[doc.approvalStatus]}`}>
                     {APPROVAL_LABEL[doc.approvalStatus]}
                   </span>
@@ -411,18 +411,18 @@ function DiscoveryBody({ m }: { m: DiscoveryMetadata }) {
         </span>
       )}
       {(m.findingsSummary || recs.length > 0) && (
-        <div className="bg-gray-50 border border-l-4 border-gray-200 border-l-pink-400 rounded px-2 py-1.5 space-y-1.5">
+        <div className="bg-gray-50 border border-l-4 border-[#30363D] border-l-pink-400 rounded px-2 py-1.5 space-y-1.5">
           {m.findingsSummary && (
-            <p className="text-[10px] text-[#0A2540] leading-snug">{m.findingsSummary}</p>
+            <p className="text-[10px] text-[#E6EDF3] leading-snug">{m.findingsSummary}</p>
           )}
           {recs.length > 0 && (
             <div>
-              <p className="text-[10px] font-semibold text-[#0A2540] mb-1">Recommended next steps:</p>
+              <p className="text-[10px] font-semibold text-[#E6EDF3] mb-1">Recommended next steps:</p>
               <div className="space-y-0.5">
                 {recs.map((r, i) => (
                   <div key={i} className="flex items-start gap-1">
                     <span className="material-symbols-outlined text-pink-500 flex-shrink-0" style={{ fontSize: "13px", marginTop: "1px" }}>arrow_right_alt</span>
-                    <span className="text-[10px] text-[#0A2540]">{r}</span>
+                    <span className="text-[10px] text-[#E6EDF3]">{r}</span>
                   </div>
                 ))}
               </div>
@@ -530,9 +530,9 @@ function ModalActionBtn({ label, onClick, variant = "default" }: {
   variant?: "default" | "primary" | "danger";
 }) {
   const cls = {
-    default:  "text-sm font-semibold text-[#0A2540] border border-border bg-white hover:bg-gray-50",
+    default:  "text-sm font-semibold text-[#E6EDF3] border border-border bg-[#1C2128] hover:bg-[#30363D]",
     primary:  "text-sm font-semibold text-white bg-[#0078D4] hover:bg-[#0078D4]/90",
-    danger:   "text-sm font-semibold text-red-700 border border-red-300 bg-white hover:bg-red-50",
+    danger:   "text-sm font-semibold text-red-400 border border-red-500/30 bg-[#1C2128] hover:bg-red-500/10",
   }[variant];
   return (
     <button onClick={e => { e.stopPropagation(); onClick?.(); }}
@@ -553,7 +553,7 @@ function GenericModalBody({ m }: { m: Record<string, unknown> }) {
       {checklist.length > 0 && (
         <div>
           <div className="flex items-center justify-between mb-1.5">
-            <span className="text-sm font-semibold text-[#0A2540]">{done}/{checklist.length} steps complete</span>
+            <span className="text-sm font-semibold text-[#E6EDF3]">{done}/{checklist.length} steps complete</span>
             <span className="text-xs text-muted-foreground">{Math.round((done / checklist.length) * 100)}%</span>
           </div>
           <div className="w-full bg-gray-100 rounded-full h-2.5">
@@ -568,7 +568,7 @@ function GenericModalBody({ m }: { m: Record<string, unknown> }) {
             {deliverables.map((d, i) => (
               <div key={i} className="flex items-center gap-2.5 bg-blue-50 border border-blue-100 rounded-lg px-3 py-2">
                 <span className="w-2 h-2 rounded-full bg-[#0078D4] flex-shrink-0" />
-                <span className="text-sm text-[#0A2540]">{d}</span>
+                <span className="text-sm text-[#E6EDF3]">{d}</span>
               </div>
             ))}
           </div>
@@ -589,7 +589,7 @@ function TrainingModalBody({ m, mode }: { m: Record<string, unknown>; mode: "adm
     <div className="space-y-4">
       <div>
         <div className="flex items-center justify-between mb-1.5">
-          <span className="text-sm font-semibold text-[#0A2540]">{done}/{modules.length} modules complete</span>
+          <span className="text-sm font-semibold text-[#E6EDF3]">{done}/{modules.length} modules complete</span>
           {remainingMins > 0 && <span className="text-xs text-muted-foreground">~{remainingMins >= 60 ? `${Math.round(remainingMins / 60 * 10) / 10}h` : `${remainingMins}m`} remaining</span>}
         </div>
         <div className="w-full bg-gray-100 rounded-full h-2.5">
@@ -598,11 +598,11 @@ function TrainingModalBody({ m, mode }: { m: Record<string, unknown>; mode: "adm
       </div>
       <div className="space-y-1.5">
         {modules.map((mod, i) => (
-          <div key={i} className={`flex items-center gap-3 rounded-lg px-3 py-2.5 ${mod.completed ? "bg-purple-50 border border-purple-100" : "bg-white border border-border"}`}>
+          <div key={i} className={`flex items-center gap-3 rounded-lg px-3 py-2.5 ${mod.completed ? "bg-purple-500/10 border border-purple-500/20" : "bg-[#1C2128] border border-border"}`}>
             <div className={`w-5 h-5 rounded-full flex-shrink-0 flex items-center justify-center ${mod.completed ? "bg-purple-500" : "border-2 border-gray-300"}`}>
               {mod.completed && <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>}
             </div>
-            <span className={`text-sm flex-1 leading-snug ${mod.completed ? "line-through text-muted-foreground" : "text-[#0A2540] font-medium"}`}>{mod.name}</span>
+            <span className={`text-sm flex-1 leading-snug ${mod.completed ? "line-through text-muted-foreground" : "text-[#E6EDF3] font-medium"}`}>{mod.name}</span>
             {mod.durationMins && <span className="text-xs text-muted-foreground flex-shrink-0">{mod.durationMins}m</span>}
           </div>
         ))}
@@ -628,17 +628,17 @@ function HealthCheckModalBody({ m, mode }: { m: Record<string, unknown>; mode: "
   return (
     <div className="space-y-4">
       {hm.outputSummary && (
-        <div className="bg-[#F7F9FC] border border-border rounded-lg px-4 py-3">
+        <div className="bg-[#1C2128] border border-border rounded-lg px-4 py-3">
           <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1.5">Output Summary</p>
-          <p className="text-sm text-[#0A2540] leading-relaxed">{hm.outputSummary}</p>
+          <p className="text-sm text-[#E6EDF3] leading-relaxed">{hm.outputSummary}</p>
         </div>
       )}
       {(hm.lastRunDate || (mode === "admin" && hm.lastRunBy)) && (
         <div className="flex flex-wrap gap-4 text-xs text-muted-foreground">
           {hm.lastRunDate && (
-            <span>Last run: <span className="font-semibold text-[#0A2540]">{new Date(hm.lastRunDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</span></span>
+            <span>Last run: <span className="font-semibold text-[#E6EDF3]">{new Date(hm.lastRunDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</span></span>
           )}
-          {mode === "admin" && hm.lastRunBy && <span>by <span className="font-semibold text-[#0A2540]">{hm.lastRunBy}</span></span>}
+          {mode === "admin" && hm.lastRunBy && <span>by <span className="font-semibold text-[#E6EDF3]">{hm.lastRunBy}</span></span>}
         </div>
       )}
       {mode === "admin" && hm.scriptName && (
@@ -668,16 +668,16 @@ function GovernanceModalBody({ m, mode }: { m: Record<string, unknown>; mode: "a
   return (
     <div className="space-y-4">
       {gm.postureSummary && (
-        <p className="text-sm text-[#0A2540] leading-relaxed bg-blue-50 border border-blue-100 rounded-lg px-4 py-3">{gm.postureSummary}</p>
+        <p className="text-sm text-[#E6EDF3] leading-relaxed bg-blue-50 border border-blue-100 rounded-lg px-4 py-3">{gm.postureSummary}</p>
       )}
       {sections.map(sec => (
         <div key={sec.label}>
           <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-2">{sec.label}</p>
           <div className="space-y-1.5">
             {sec.items.map((item, i) => (
-              <div key={i} className="flex items-center gap-2.5 bg-white border border-border rounded-lg px-3 py-2">
+              <div key={i} className="flex items-center gap-2.5 bg-[#1C2128] border border-border rounded-lg px-3 py-2">
                 <span className="material-symbols-outlined text-blue-600 flex-shrink-0" style={{ fontSize: "16px" }}>check_circle</span>
-                <span className="text-sm text-[#0A2540]">{item}</span>
+                <span className="text-sm text-[#E6EDF3]">{item}</span>
               </div>
             ))}
           </div>
@@ -717,10 +717,10 @@ function AutomationModalBody({ m, mode }: { m: Record<string, unknown>; mode: "a
         <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-2">Automations</p>
         <div className="space-y-1.5">
           {flows.map((flow, i) => (
-            <div key={i} className={`flex items-center gap-3 rounded-lg px-3 py-2.5 border ${flow.status === "error" ? "bg-red-50 border-red-200" : "bg-white border-border"}`}>
+            <div key={i} className={`flex items-center gap-3 rounded-lg px-3 py-2.5 border ${flow.status === "error" ? "bg-red-500/10 border-red-500/20" : "bg-[#1C2128] border-border"}`}>
               <span className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${FLOW_DOT[flow.status] ?? "bg-gray-400"}`} />
               <div className="flex-1 min-w-0">
-                <p className={`text-sm font-medium truncate ${flow.status === "error" ? "text-red-800" : "text-[#0A2540]"}`}>{flow.name}</p>
+                <p className={`text-sm font-medium truncate ${flow.status === "error" ? "text-red-800" : "text-[#E6EDF3]"}`}>{flow.name}</p>
                 {mode === "admin" && flow.trigger && <p className="text-[10px] text-muted-foreground">Trigger: {flow.trigger}</p>}
               </div>
               <span className={`text-xs font-semibold flex-shrink-0 ${flow.status === "error" ? "text-red-700" : "text-muted-foreground"}`}>
@@ -750,10 +750,10 @@ function DocumentModalBody({ m, mode }: { m: Record<string, unknown>; mode: "adm
     <div className="space-y-4">
       <div className="space-y-2">
         {docs.map((doc, i) => (
-          <div key={i} className={`rounded-lg border px-4 py-3 space-y-2 ${doc.approvalStatus === "revision_requested" ? "bg-amber-50 border-amber-200" : doc.approvalStatus === "approved" ? "bg-green-50 border-green-200" : "bg-white border-border"}`}>
+          <div key={i} className={`rounded-lg border px-4 py-3 space-y-2 ${doc.approvalStatus === "revision_requested" ? "bg-amber-500/10 border-amber-500/20" : doc.approvalStatus === "approved" ? "bg-green-500/10 border-green-500/20" : "bg-[#1C2128] border-border"}`}>
             <div className="flex items-start justify-between gap-2">
               <div>
-                <p className="text-sm font-semibold text-[#0A2540]">{doc.name}</p>
+                <p className="text-sm font-semibold text-[#E6EDF3]">{doc.name}</p>
                 {doc.version && <p className="text-[10px] text-muted-foreground">v{doc.version}</p>}
               </div>
               <span className={`text-xs font-bold px-2 py-0.5 rounded-full flex-shrink-0 ${APPROVAL_CLS[doc.approvalStatus]}`}>
@@ -804,7 +804,7 @@ function DiscoveryModalBody({ m, mode }: { m: Record<string, unknown>; mode: "ad
       {dm.findingsSummary && (
         <div className={`border-l-4 rounded-r-lg px-4 py-3 ${dm.riskScore === "critical" || dm.riskScore === "high" ? "bg-red-50 border-red-400" : dm.riskScore === "medium" ? "bg-yellow-50 border-yellow-400" : "bg-gray-50 border-gray-300"}`}>
           <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1.5">Findings</p>
-          <p className="text-sm text-[#0A2540] leading-relaxed">{dm.findingsSummary}</p>
+          <p className="text-sm text-[#E6EDF3] leading-relaxed">{dm.findingsSummary}</p>
         </div>
       )}
       {recs.length > 0 && (
@@ -814,7 +814,7 @@ function DiscoveryModalBody({ m, mode }: { m: Record<string, unknown>; mode: "ad
             {recs.map((r, i) => (
               <li key={i} className="flex items-start gap-3">
                 <span className="flex-shrink-0 w-5 h-5 rounded-full bg-pink-100 text-pink-700 text-[10px] font-bold flex items-center justify-center mt-0.5">{i + 1}</span>
-                <span className="text-sm text-[#0A2540] leading-relaxed">{r}</span>
+                <span className="text-sm text-[#E6EDF3] leading-relaxed">{r}</span>
               </li>
             ))}
           </ol>
@@ -888,7 +888,7 @@ export function GovernanceAreasPicker({
           disabled={disabled}
           className="accent-[#0078D4]"
         />
-        <span className="text-sm font-semibold text-[#0A2540]">ALL</span>
+        <span className="text-sm font-semibold text-[#E6EDF3]">ALL</span>
         <span className="text-[10px] text-muted-foreground">(runs across all areas)</span>
       </label>
       <div className={`grid grid-cols-2 gap-y-1.5 gap-x-2 pl-2 ${isAll ? "opacity-40" : ""}`}>
@@ -904,7 +904,7 @@ export function GovernanceAreasPicker({
               disabled={disabled || isAll}
               className="accent-[#0078D4]"
             />
-            <span className="text-xs text-[#0A2540]">{area}</span>
+            <span className="text-xs text-[#E6EDF3]">{area}</span>
           </label>
         ))}
       </div>
@@ -922,13 +922,13 @@ export interface ScriptMetadata {
 }
 
 const JOB_STATUS_CFG: Record<string, { cls: string; label: string }> = {
-  "Never run":  { cls: "bg-gray-100 text-gray-600 border border-gray-200", label: "Never run" },
+  "Never run":  { cls: "bg-gray-100 text-gray-600 border border-[#30363D]", label: "Never run" },
   "New":        { cls: "bg-blue-100 text-blue-700 border border-blue-200", label: "Queued" },
   "Activating": { cls: "bg-blue-100 text-blue-700 border border-blue-200", label: "Activating" },
   "Running":    { cls: "bg-yellow-100 text-yellow-700 border border-yellow-200", label: "Running" },
   "Completed":  { cls: "bg-green-100 text-green-700 border border-green-200", label: "Completed" },
   "Failed":     { cls: "bg-red-100 text-red-700 border border-red-200", label: "Failed" },
-  "Stopped":    { cls: "bg-gray-100 text-gray-600 border border-gray-200", label: "Stopped" },
+  "Stopped":    { cls: "bg-gray-100 text-gray-600 border border-[#30363D]", label: "Stopped" },
   "Suspended":  { cls: "bg-orange-100 text-orange-700 border border-orange-200", label: "Suspended" },
 };
 
@@ -1042,7 +1042,7 @@ function ScriptModalBody({
     }
   };
 
-  const statusCfg = JOB_STATUS_CFG[liveStatus] ?? { cls: "bg-gray-100 text-gray-600 border border-gray-200", label: liveStatus };
+  const statusCfg = JOB_STATUS_CFG[liveStatus] ?? { cls: "bg-gray-100 text-gray-600 border border-[#30363D]", label: liveStatus };
 
   return (
     <div className="space-y-4">
@@ -1050,12 +1050,12 @@ function ScriptModalBody({
         <div className="flex-1 space-y-1 min-w-0">
           <div>
             <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Runbook</p>
-            <p className="text-sm font-semibold text-[#0A2540] font-mono truncate">{sm.runbookName ?? <span className="italic font-normal text-muted-foreground">Not configured</span>}</p>
+            <p className="text-sm font-semibold text-[#E6EDF3] font-mono truncate">{sm.runbookName ?? <span className="italic font-normal text-muted-foreground">Not configured</span>}</p>
           </div>
           {sm.credentialName && (
             <div>
               <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Customer</p>
-              <p className="text-sm text-[#0A2540]">{sm.credentialName}</p>
+              <p className="text-sm text-[#E6EDF3]">{sm.credentialName}</p>
             </div>
           )}
         </div>
@@ -1063,7 +1063,7 @@ function ScriptModalBody({
       </div>
 
       {mode === "admin" && (
-        <div className="bg-[#F7F9FC] border border-border rounded-lg p-3">
+        <div className="bg-[#1C2128] border border-border rounded-lg p-3">
           <GovernanceAreasPicker
             value={governanceAreas}
             onChange={setGovernanceAreas}
@@ -1112,7 +1112,7 @@ function ScriptModalBody({
       )}
 
       {(!sm.runbookName || !sm.credentialId) && mode === "admin" && (
-        <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+        <p className="text-xs text-amber-700 bg-amber-500/10 border border-amber-200 rounded-lg px-3 py-2">
           This task is not fully configured. Set a Runbook and Customer via task metadata to enable execution.
         </p>
       )}

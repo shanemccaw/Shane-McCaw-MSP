@@ -44,17 +44,17 @@ interface Props {
 }
 
 const COLUMN_CONFIG: Record<string, { label: string; cls: string }> = {
-  backlog:              { label: "Backlog",              cls: "bg-gray-100 text-gray-600 border border-gray-200" },
+  backlog:              { label: "Backlog",              cls: "bg-gray-100 text-gray-600 border border-[#30363D]" },
   in_progress:         { label: "In Progress",          cls: "bg-blue-100 text-blue-700 border border-blue-200" },
   waiting_on_customer: { label: "Waiting on Customer",  cls: "bg-amber-100 text-amber-700 border border-amber-200" },
-  completed:           { label: "Completed",            cls: "bg-green-100 text-green-700 border border-green-200" },
+  completed:           { label: "Completed",            cls: "bg-green-100 text-green-700 border border-green-500/20" },
 };
 
 const PRIORITY_CONFIG: Record<string, { label: string; cls: string; dot: string }> = {
   critical: { label: "Critical", cls: "bg-red-100 text-red-700 border border-red-200",      dot: "bg-red-500" },
   high:     { label: "High",     cls: "bg-orange-100 text-orange-700 border border-orange-200", dot: "bg-orange-500" },
   medium:   { label: "Medium",   cls: "bg-blue-100 text-blue-700 border border-blue-200",   dot: "bg-blue-500" },
-  low:      { label: "Low",      cls: "bg-gray-100 text-gray-500 border border-gray-200",   dot: "bg-gray-400" },
+  low:      { label: "Low",      cls: "bg-gray-100 text-gray-500 border border-[#30363D]",   dot: "bg-gray-400" },
 };
 
 interface EditForm {
@@ -78,7 +78,7 @@ interface StoredClosureData {
 
 function ChecklistClosureDataView({ data }: { data: StoredClosureData }) {
   return (
-    <div className="mt-2 bg-white border border-[#0078D4]/20 rounded-lg p-3 space-y-2.5">
+    <div className="mt-2 bg-[#1C2128] border border-[#0078D4]/20 rounded-lg p-3 space-y-2.5">
       <p className="text-[9px] font-bold uppercase tracking-wider text-[#0078D4] mb-1.5">
         Captured details · {new Date(data.capturedAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
       </p>
@@ -91,7 +91,7 @@ function ChecklistClosureDataView({ data }: { data: StoredClosureData }) {
             {Array.isArray(answer) ? (
               <ul className="space-y-0.5">
                 {answer.map((row, i) => (
-                  <li key={i} className="text-xs text-[#0A2540] flex items-start gap-1">
+                  <li key={i} className="text-xs text-[#E6EDF3] flex items-start gap-1">
                     <span className="text-[#0078D4] flex-shrink-0 mt-0.5">·</span>
                     {field.type === "url" ? (
                       <a href={row} target="_blank" rel="noreferrer" className="underline text-[#0078D4] break-all">{row}</a>
@@ -104,7 +104,7 @@ function ChecklistClosureDataView({ data }: { data: StoredClosureData }) {
             ) : field.type === "url" ? (
               <a href={answer} target="_blank" rel="noreferrer" className="text-xs text-[#0078D4] underline break-all">{answer}</a>
             ) : (
-              <p className="text-xs text-[#0A2540] whitespace-pre-wrap leading-snug">{answer}</p>
+              <p className="text-xs text-[#E6EDF3] whitespace-pre-wrap leading-snug">{answer}</p>
             )}
           </div>
         );
@@ -191,7 +191,7 @@ function EngineerDetailSection({
 
   if (!hasAny && uploadedLocal.length === 0) {
     return (
-      <div className="bg-[#F7F9FC] border border-border rounded-lg p-4">
+      <div className="bg-[#1C2128] border border-border rounded-lg p-4">
         <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1">Engineer Detail</p>
         <p className="text-xs text-muted-foreground italic">No engineer detail has been added to this task's template yet.</p>
       </div>
@@ -199,8 +199,8 @@ function EngineerDetailSection({
   }
 
   return (
-    <div className="bg-[#F7F9FC] border border-border rounded-lg p-4 space-y-4">
-      <p className="text-[10px] font-bold uppercase tracking-wider text-[#0A2540]">Engineer Detail</p>
+    <div className="bg-[#1C2128] border border-border rounded-lg p-4 space-y-4">
+      <p className="text-[10px] font-bold uppercase tracking-wider text-[#E6EDF3]">Engineer Detail</p>
 
       {/* Instructions */}
       {instructions.length > 0 && (
@@ -212,7 +212,7 @@ function EngineerDetailSection({
                 <span className="flex-shrink-0 w-4 h-4 rounded-full bg-[#0078D4]/10 text-[#0078D4] text-[9px] font-bold flex items-center justify-center mt-0.5">
                   {i + 1}
                 </span>
-                <span className="text-xs text-[#0A2540] leading-relaxed">{inst}</span>
+                <span className="text-xs text-[#E6EDF3] leading-relaxed">{inst}</span>
               </li>
             ))}
           </ol>
@@ -224,7 +224,7 @@ function EngineerDetailSection({
         <div>
           <div className="flex items-center justify-between mb-2">
             <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Checklist</p>
-            <span className="text-[9px] font-semibold text-muted-foreground bg-white border border-border rounded-full px-2 py-0.5">
+            <span className="text-[9px] font-semibold text-muted-foreground bg-[#1C2128] border border-border rounded-full px-2 py-0.5">
               {checkedCount}/{checklist.length} done
             </span>
           </div>
@@ -237,7 +237,7 @@ function EngineerDetailSection({
               return (
                 <div key={item.id}>
                   <div
-                    className={`flex items-center gap-2.5 rounded-lg px-2 py-1.5 transition-colors ${isChecked ? "bg-green-50" : "bg-white hover:bg-gray-50"} border ${isChecked ? "border-green-200" : "border-border"}`}
+                    className={`flex items-center gap-2.5 rounded-lg px-2 py-1.5 transition-colors ${isChecked ? "bg-green-500/10" : "bg-[#161B22] hover:bg-[#1C2128]"} border ${isChecked ? "border-green-500/20" : "border-border"}`}
                   >
                     <button
                       type="button"
@@ -246,7 +246,7 @@ function EngineerDetailSection({
                       className="relative flex-shrink-0 focus:outline-none"
                       aria-label={isChecked ? "Uncheck" : "Check"}
                     >
-                      <div className={`w-4 h-4 rounded border-2 flex items-center justify-center transition-colors ${isChecked ? "bg-green-500 border-green-500" : "border-gray-300 bg-white hover:border-[#0078D4]"}`}>
+                      <div className={`w-4 h-4 rounded border-2 flex items-center justify-center transition-colors ${isChecked ? "bg-green-500 border-green-500" : "border-[#30363D] bg-[#1C2128] hover:border-[#0078D4]"}`}>
                         {isToggling ? (
                           <div className="w-2 h-2 border border-white/60 border-t-white rounded-full animate-spin" />
                         ) : isChecked ? (
@@ -256,7 +256,7 @@ function EngineerDetailSection({
                         ) : null}
                       </div>
                     </button>
-                    <span className={`text-xs leading-snug flex-1 transition-colors ${isChecked ? "line-through text-muted-foreground" : "text-[#0A2540]"}`}>
+                    <span className={`text-xs leading-snug flex-1 transition-colors ${isChecked ? "line-through text-muted-foreground" : "text-[#E6EDF3]"}`}>
                       {item.label}
                     </span>
                     {capturedData && (
@@ -289,7 +289,7 @@ function EngineerDetailSection({
           <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-2">Artifacts Produced</p>
           <div className="flex flex-wrap gap-1.5 mb-2">
             {artifactsProduced.map((artifact, i) => (
-              <span key={i} className="inline-flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200">
+              <span key={i} className="inline-flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-700 border border-amber-200">
                 <svg className="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                 </svg>
@@ -301,7 +301,7 @@ function EngineerDetailSection({
           {uploadedLocal.length > 0 && (
             <div className="flex flex-wrap gap-1.5 mb-2">
               {uploadedLocal.map((fname, i) => (
-                <span key={i} className="inline-flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 rounded-full bg-green-50 text-green-700 border border-green-200">
+                <span key={i} className="inline-flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 rounded-full bg-green-500/10 text-green-700 border border-green-500/20">
                   <svg className="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                     <path strokeLinecap="round" strokeLinejoin="round" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
                   </svg>
@@ -392,7 +392,7 @@ function GenericKanbanCardModal({ task, stepTitle, open, onClose, mode = "client
 
   if (!task || !localTask) return null;
 
-  const colCfg = COLUMN_CONFIG[localTask.column] ?? { label: localTask.column, cls: "bg-gray-100 text-gray-600 border border-gray-200" };
+  const colCfg = COLUMN_CONFIG[localTask.column] ?? { label: localTask.column, cls: "bg-gray-100 text-gray-600 border border-[#30363D]" };
   const priorityCfg = localTask.priority ? PRIORITY_CONFIG[localTask.priority] : null;
 
   const handleSave = async () => {
@@ -436,7 +436,7 @@ function GenericKanbanCardModal({ task, stepTitle, open, onClose, mode = "client
     onUpdate?.(merged);
   };
 
-  const inputCls = "w-full border border-border rounded-lg px-3 py-2 text-sm text-[#0A2540] focus:outline-none focus:ring-2 focus:ring-[#0078D4]/40 bg-white";
+  const inputCls = "w-full border border-border rounded-lg px-3 py-2 text-sm text-[#E6EDF3] focus:outline-none focus:ring-2 focus:ring-[#0078D4]/40 bg-[#1C2128]";
   const labelCls = "block text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1";
 
   const meta = (localTask.taskMetadata ?? {}) as Record<string, unknown>;
@@ -466,7 +466,7 @@ function GenericKanbanCardModal({ task, stepTitle, open, onClose, mode = "client
                   autoFocus
                 />
               ) : (
-                <DialogTitle className="text-base font-bold text-[#0A2540] leading-snug">
+                <DialogTitle className="text-base font-bold text-[#E6EDF3] leading-snug">
                   {localTask.title}
                 </DialogTitle>
               )}
@@ -540,7 +540,7 @@ function GenericKanbanCardModal({ task, stepTitle, open, onClose, mode = "client
               </div>
 
               {saveError && (
-                <p className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{saveError}</p>
+                <p className="text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2">{saveError}</p>
               )}
 
               <div className="flex items-center gap-2 pt-1">
@@ -555,7 +555,7 @@ function GenericKanbanCardModal({ task, stepTitle, open, onClose, mode = "client
                 <button
                   onClick={() => { setEditing(false); setSaveError(null); }}
                   disabled={saving}
-                  className="text-sm font-semibold text-muted-foreground hover:text-[#0A2540] px-3 py-2 transition-colors"
+                  className="text-sm font-semibold text-muted-foreground hover:text-[#E6EDF3] px-3 py-2 transition-colors"
                 >
                   Cancel
                 </button>
@@ -568,7 +568,7 @@ function GenericKanbanCardModal({ task, stepTitle, open, onClose, mode = "client
                 <div className={`flex items-start gap-2.5 rounded-lg px-4 py-3 ${
                   banner.variant === "error"   ? "bg-red-50 border border-red-200 text-red-800" :
                   banner.variant === "warning" ? "bg-amber-50 border border-amber-200 text-amber-800" :
-                                                 "bg-green-50 border border-green-200 text-green-800"
+                                                 "bg-green-500/10 border border-green-500/20 text-green-800"
                 }`}>
                   <span className="material-symbols-outlined flex-shrink-0 mt-0.5" style={{ fontSize: "18px" }}>
                     {banner.variant === "error" ? "error" : banner.variant === "warning" ? "warning" : "check_circle"}
@@ -594,7 +594,7 @@ function GenericKanbanCardModal({ task, stepTitle, open, onClose, mode = "client
               <div className="border border-border rounded-lg overflow-hidden">
                 <button
                   onClick={() => setTaskDetailsOpen(o => !o)}
-                  className="w-full flex items-center justify-between px-4 py-2.5 text-left bg-[#F7F9FC] hover:bg-gray-100 transition-colors"
+                  className="w-full flex items-center justify-between px-4 py-2.5 text-left bg-[#1C2128] hover:bg-gray-100 transition-colors"
                 >
                   <div className="flex items-center gap-2 flex-wrap">
                     <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Task Details</p>
@@ -619,7 +619,7 @@ function GenericKanbanCardModal({ task, stepTitle, open, onClose, mode = "client
                     {localTask.description && (
                       <div>
                         <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1">Description</p>
-                        <p className="text-sm text-[#0A2540] leading-relaxed">{localTask.description}</p>
+                        <p className="text-sm text-[#E6EDF3] leading-relaxed">{localTask.description}</p>
                       </div>
                     )}
                     {(localTask.assignedTo || localTask.dueDate || stepTitle) && (
@@ -666,7 +666,7 @@ function GenericKanbanCardModal({ task, stepTitle, open, onClose, mode = "client
                   {localTask.completionStatus && (
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Result:</span>
-                      <span className="text-xs font-semibold text-green-700 bg-green-50 border border-green-200 rounded-full px-2.5 py-0.5">
+                      <span className="text-xs font-semibold text-green-700 bg-green-500/10 border border-green-500/20 rounded-full px-2.5 py-0.5">
                         ✓ {localTask.completionStatus}
                       </span>
                     </div>
@@ -674,7 +674,7 @@ function GenericKanbanCardModal({ task, stepTitle, open, onClose, mode = "client
                   {localTask.completionNotes && (
                     <div>
                       <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1.5">Output / Notes</p>
-                      <pre className="text-xs text-[#0A2540] bg-[#F7F9FC] border border-border rounded-lg px-3 py-2.5 whitespace-pre-wrap font-mono leading-relaxed max-h-52 overflow-y-auto">
+                      <pre className="text-xs text-[#E6EDF3] bg-[#1C2128] border border-border rounded-lg px-3 py-2.5 whitespace-pre-wrap font-mono leading-relaxed max-h-52 overflow-y-auto">
                         {localTask.completionNotes}
                       </pre>
                     </div>
@@ -715,7 +715,7 @@ function GenericKanbanCardModal({ task, stepTitle, open, onClose, mode = "client
                   </span>
                 )}
                 {checklist.length > 0 && (
-                  <span className={`inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-full ${checkedCount === checklist.length ? "bg-green-100 text-green-700 border border-green-200" : "bg-gray-100 text-gray-600 border border-gray-200"}`}>
+                  <span className={`inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-full ${checkedCount === checklist.length ? "bg-green-100 text-green-700 border border-green-500/20" : "bg-gray-100 text-gray-600 border border-[#30363D]"}`}>
                     <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                       <path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
                     </svg>
@@ -727,7 +727,7 @@ function GenericKanbanCardModal({ task, stepTitle, open, onClose, mode = "client
               {localTask.description && (
                 <div>
                   <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1">Description</p>
-                  <p className="text-sm text-[#0A2540] leading-relaxed">{localTask.description}</p>
+                  <p className="text-sm text-[#E6EDF3] leading-relaxed">{localTask.description}</p>
                 </div>
               )}
 
@@ -772,7 +772,7 @@ function GenericKanbanCardModal({ task, stepTitle, open, onClose, mode = "client
                   {localTask.completionStatus && (
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Result:</span>
-                      <span className="text-xs font-semibold text-green-700 bg-green-50 border border-green-200 rounded-full px-2.5 py-0.5">
+                      <span className="text-xs font-semibold text-green-700 bg-green-500/10 border border-green-500/20 rounded-full px-2.5 py-0.5">
                         ✓ {localTask.completionStatus}
                       </span>
                     </div>
@@ -780,7 +780,7 @@ function GenericKanbanCardModal({ task, stepTitle, open, onClose, mode = "client
                   {localTask.completionNotes && (
                     <div>
                       <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1.5">Output / Notes</p>
-                      <pre className="text-xs text-[#0A2540] bg-[#F7F9FC] border border-border rounded-lg px-3 py-2.5 whitespace-pre-wrap font-mono leading-relaxed max-h-52 overflow-y-auto">
+                      <pre className="text-xs text-[#E6EDF3] bg-[#1C2128] border border-border rounded-lg px-3 py-2.5 whitespace-pre-wrap font-mono leading-relaxed max-h-52 overflow-y-auto">
                         {localTask.completionNotes}
                       </pre>
                     </div>

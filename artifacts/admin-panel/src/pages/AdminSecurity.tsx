@@ -10,8 +10,8 @@ function AlertBox({ alert }: { alert: Alert }) {
   return (
     <div className={`flex items-start gap-3 rounded-xl px-4 py-3 text-sm border mb-4 ${
       alert.type === "success"
-        ? "bg-green-50 border-green-200 text-green-800"
-        : "bg-red-50 border-red-200 text-red-700"
+        ? "bg-green-500/10 border-green-500/20 text-green-400"
+        : "bg-red-500/10 border-red-500/20 text-red-400"
     }`}>
       <svg className="w-4 h-4 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
         {alert.type === "success"
@@ -104,7 +104,7 @@ export default function AdminSecurity() {
     <DashboardShell>
       <div className="max-w-lg mx-auto py-6 space-y-6">
         <div>
-          <h1 className="text-xl font-bold text-[#0A2540]">Admin Security</h1>
+          <h1 className="text-xl font-bold text-[#E6EDF3]">Admin Security</h1>
           <p className="text-sm text-muted-foreground mt-1">
             Register a passkey (biometric or hardware key) for a second factor on admin login.
           </p>
@@ -118,7 +118,7 @@ export default function AdminSecurity() {
             Loading…
           </div>
         ) : (
-          <div className="bg-white rounded-2xl border border-border shadow-sm overflow-hidden">
+          <div className="bg-[#161B22] rounded-2xl border border-border shadow-sm overflow-hidden">
             <div className="px-5 py-4 border-b border-border flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <div className="w-9 h-9 rounded-xl bg-[#0078D4]/10 flex items-center justify-center">
@@ -127,12 +127,12 @@ export default function AdminSecurity() {
                   </svg>
                 </div>
                 <div>
-                  <h3 className="text-sm font-semibold text-[#0A2540]">Passkey (Biometric / Hardware Key)</h3>
+                  <h3 className="text-sm font-semibold text-[#E6EDF3]">Passkey (Biometric / Hardware Key)</h3>
                   <p className="text-xs text-muted-foreground">Fingerprint, Face ID, or security key</p>
                 </div>
               </div>
               {status.count > 0 && (
-                <span className="inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full bg-green-100 text-green-700 border border-green-200">
+                <span className="inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full bg-green-500/15 text-green-400 border border-green-500/20">
                   <span className="w-1.5 h-1.5 rounded-full bg-green-500 inline-block" />
                   {status.count} key{status.count !== 1 ? "s" : ""}
                 </span>
@@ -166,7 +166,7 @@ export default function AdminSecurity() {
                     <button
                       onClick={() => void handleRemove()}
                       disabled={removing}
-                      className="text-xs font-semibold text-red-600 border border-red-200 px-3 py-1.5 rounded-lg hover:bg-red-50 transition-colors disabled:opacity-50"
+                      className="text-xs font-semibold text-red-400 border border-red-500/20 px-3 py-1.5 rounded-lg hover:bg-red-500/10 transition-colors disabled:opacity-50"
                     >
                       {removing ? "Removing…" : "Remove all"}
                     </button>
@@ -177,8 +177,8 @@ export default function AdminSecurity() {
           </div>
         )}
 
-        <div className="bg-[#F7F9FC] border border-border rounded-2xl px-5 py-4">
-          <h4 className="text-xs font-bold uppercase tracking-wider text-[#0A2540] mb-2">How it works</h4>
+        <div className="bg-[#1C2128] border border-border rounded-2xl px-5 py-4">
+          <h4 className="text-xs font-bold uppercase tracking-wider text-[#E6EDF3] mb-2">How it works</h4>
           <ul className="space-y-1.5 text-sm text-muted-foreground">
             <li className="flex items-start gap-2">
               <span className="text-[#0078D4] font-bold mt-0.5">1.</span>

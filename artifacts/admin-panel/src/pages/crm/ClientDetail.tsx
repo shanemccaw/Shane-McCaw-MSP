@@ -53,10 +53,10 @@ function ExpiryBadge({ expiresOn }: { expiresOn: string | null }) {
   const expired = days <= 0;
   const critical = days > 0 && days <= 14;
   const color = expired
-    ? "bg-red-100 text-red-700 border-red-200"
+    ? "bg-red-500/15 text-red-400 border-red-500/20"
     : critical
-      ? "bg-red-100 text-red-600 border-red-200"
-      : "bg-amber-100 text-amber-700 border-amber-200";
+      ? "bg-red-100 text-red-400 border-red-500/20"
+      : "bg-amber-500/100/15 text-amber-400 border-amber-500/20";
   const label = expired
     ? "Expired"
     : `Expires in ${days} day${days !== 1 ? "s" : ""}`;
@@ -92,7 +92,7 @@ const EMPTY_CRED: CredForm = {
 };
 
 const inputCls =
-  "w-full border border-border rounded-lg px-3 py-2 text-sm text-[#0A2540] focus:outline-none focus:ring-2 focus:ring-[#0078D4]/40 bg-white";
+  "w-full border border-border rounded-lg px-3 py-2 text-sm text-[#E6EDF3] focus:outline-none focus:ring-2 focus:ring-[#0078D4]/40 bg-[#161B22]";
 const labelCls =
   "block text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1";
 
@@ -100,7 +100,7 @@ function Field({ label, value }: { label: string; value: React.ReactNode }) {
   return (
     <div>
       <p className={labelCls}>{label}</p>
-      <p className="text-sm text-[#0A2540]">{value ?? "—"}</p>
+      <p className="text-sm text-[#E6EDF3]">{value ?? "—"}</p>
     </div>
   );
 }
@@ -400,7 +400,7 @@ export default function ClientDetailPage() {
           </svg>
           All Clients
         </button>
-        <p className="text-sm text-red-600">{loadError ?? "Client not found."}</p>
+        <p className="text-sm text-red-400">{loadError ?? "Client not found."}</p>
       </div>
     );
   }
@@ -422,7 +422,7 @@ export default function ClientDetailPage() {
 
         <div className="flex items-start justify-between gap-4 flex-wrap">
           <div>
-            <h1 className="text-xl font-bold text-[#0A2540]">
+            <h1 className="text-xl font-bold text-[#E6EDF3]">
               {client.name ?? client.email}
             </h1>
             <p className="text-sm text-muted-foreground mt-0.5">{client.email}</p>
@@ -435,11 +435,11 @@ export default function ClientDetailPage() {
             <button
               onClick={() => void handleViewAs()}
               disabled={viewAsLoading}
-              className="flex items-center gap-1.5 text-xs font-semibold border border-border px-3 py-1.5 rounded-lg hover:bg-[#F7F9FC] disabled:opacity-50 transition-colors"
+              className="flex items-center gap-1.5 text-xs font-semibold border border-border px-3 py-1.5 rounded-lg hover:bg-[#1C2128] disabled:opacity-50 transition-colors"
               title="Open the client portal as this client (30 min session)"
             >
               {viewAsLoading ? (
-                <span className="w-3 h-3 border-2 border-gray-400 border-t-transparent rounded-full animate-spin" />
+                <span className="w-3 h-3 border-2 border-[#484F58] border-t-transparent rounded-full animate-spin" />
               ) : (
                 <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
@@ -453,8 +453,8 @@ export default function ClientDetailPage() {
       </div>
 
       {/* ── Client Information ──────────────────────────────────────── */}
-      <div className="bg-white border border-border rounded-xl overflow-hidden">
-        <div className="flex items-center justify-between px-5 py-3.5 border-b border-border bg-[#F7F9FC]">
+      <div className="bg-[#161B22] border border-border rounded-xl overflow-hidden">
+        <div className="flex items-center justify-between px-5 py-3.5 border-b border-border bg-[#1C2128]">
           <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
             Client Information
           </p>
@@ -518,7 +518,7 @@ export default function ClientDetailPage() {
               <button
                 type="button"
                 onClick={() => setEditingInfo(false)}
-                className="border border-border text-xs font-medium px-4 py-1.5 rounded-lg hover:bg-[#F7F9FC] transition-colors"
+                className="border border-border text-xs font-medium px-4 py-1.5 rounded-lg hover:bg-[#1C2128] transition-colors"
               >
                 Cancel
               </button>
@@ -556,8 +556,8 @@ export default function ClientDetailPage() {
       </div>
 
       {/* ── Two-Factor Authentication ───────────────────────────────── */}
-      <div className="bg-white border border-border rounded-xl overflow-hidden">
-        <div className="flex items-center justify-between px-5 py-3.5 border-b border-border bg-[#F7F9FC]">
+      <div className="bg-[#161B22] border border-border rounded-xl overflow-hidden">
+        <div className="flex items-center justify-between px-5 py-3.5 border-b border-border bg-[#1C2128]">
           <div>
             <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
               Two-Factor Authentication
@@ -569,7 +569,7 @@ export default function ClientDetailPage() {
           {!mfaLoading && mfaMethods.length > 0 && !showMfaConfirm && (
             <button
               onClick={() => setShowMfaConfirm(true)}
-              className="flex items-center gap-1.5 text-xs font-semibold text-red-600 border border-red-200 bg-red-50 px-3 py-1.5 rounded-lg hover:bg-red-100 transition-colors flex-shrink-0"
+              className="flex items-center gap-1.5 text-xs font-semibold text-red-400 border border-red-500/20 bg-red-500/10 px-3 py-1.5 rounded-lg hover:bg-red-500/20 transition-colors flex-shrink-0"
             >
               <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -580,24 +580,24 @@ export default function ClientDetailPage() {
         </div>
 
         {mfaLoading ? (
-          <div className="p-5 flex items-center gap-2 text-sm text-gray-400">
+          <div className="p-5 flex items-center gap-2 text-sm text-[#7D8590]">
             <div className="w-4 h-4 border-2 border-[#0078D4] border-t-transparent rounded-full animate-spin" />
             Loading…
           </div>
         ) : showMfaConfirm ? (
           <div className="p-5 space-y-4">
-            <div className="flex items-start gap-3 rounded-lg border border-red-200 bg-red-50 px-4 py-3">
+            <div className="flex items-start gap-3 rounded-lg border border-red-500/20 bg-red-500/10 px-4 py-3">
               <svg className="w-4 h-4 text-red-500 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
               <div>
-                <p className="text-xs font-bold text-red-700">Confirm MFA Reset</p>
-                <p className="text-[11px] text-red-600 mt-0.5">
+                <p className="text-xs font-bold text-red-400">Confirm MFA Reset</p>
+                <p className="text-[11px] text-red-400 mt-0.5">
                   This will permanently remove the following method{mfaMethods.length !== 1 ? "s" : ""} and send a notification email to the client:
                 </p>
                 <ul className="mt-2 space-y-1">
                   {mfaMethods.map(m => (
-                    <li key={m} className="flex items-center gap-1.5 text-[11px] font-semibold text-red-700">
+                    <li key={m} className="flex items-center gap-1.5 text-[11px] font-semibold text-red-400">
                       <span className="w-1 h-1 rounded-full bg-red-500 flex-shrink-0" />
                       {MFA_LABELS[m] ?? m}
                     </li>
@@ -620,7 +620,7 @@ export default function ClientDetailPage() {
                 type="button"
                 onClick={() => setShowMfaConfirm(false)}
                 disabled={resettingMfa}
-                className="border border-border text-xs font-medium px-4 py-1.5 rounded-lg hover:bg-[#F7F9FC] disabled:opacity-50 transition-colors"
+                className="border border-border text-xs font-medium px-4 py-1.5 rounded-lg hover:bg-[#1C2128] disabled:opacity-50 transition-colors"
               >
                 Cancel
               </button>
@@ -631,7 +631,7 @@ export default function ClientDetailPage() {
             {mfaMethods.map(m => (
               <span
                 key={m}
-                className="inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full bg-green-100 text-green-700 border border-green-200"
+                className="inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full bg-green-500/15 text-green-400 border border-green-500/20"
               >
                 <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
@@ -648,8 +648,8 @@ export default function ClientDetailPage() {
       </div>
 
       {/* ── Azure / Script Runner Credential ───────────────────────── */}
-      <div className="bg-white border border-border rounded-xl overflow-hidden">
-        <div className="flex items-center justify-between px-5 py-3.5 border-b border-border bg-[#F7F9FC]">
+      <div className="bg-[#161B22] border border-border rounded-xl overflow-hidden">
+        <div className="flex items-center justify-between px-5 py-3.5 border-b border-border bg-[#1C2128]">
           <div>
             <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
               Script Runner · Azure Tenant Credential
@@ -671,7 +671,7 @@ export default function ClientDetailPage() {
                 <button
                   onClick={() => void handleDeleteCred()}
                   disabled={deletingCred}
-                  className="text-xs font-semibold text-red-500 hover:text-red-700 disabled:opacity-50 transition-colors"
+                  className="text-xs font-semibold text-red-500 hover:text-red-400 disabled:opacity-50 transition-colors"
                 >
                   {deletingCred ? "Removing…" : "Remove"}
                 </button>
@@ -691,7 +691,7 @@ export default function ClientDetailPage() {
         </div>
 
         {credLoading ? (
-          <div className="p-5 flex items-center gap-2 text-sm text-gray-400">
+          <div className="p-5 flex items-center gap-2 text-sm text-[#7D8590]">
             <div className="w-4 h-4 border-2 border-[#0078D4] border-t-transparent rounded-full animate-spin" />
             Loading…
           </div>
@@ -801,7 +801,7 @@ export default function ClientDetailPage() {
               <button
                 type="button"
                 onClick={() => setEditingCred(false)}
-                className="border border-border text-xs font-medium px-4 py-1.5 rounded-lg hover:bg-[#F7F9FC] transition-colors"
+                className="border border-border text-xs font-medium px-4 py-1.5 rounded-lg hover:bg-[#1C2128] transition-colors"
               >
                 Cancel
               </button>
@@ -810,17 +810,17 @@ export default function ClientDetailPage() {
         ) : azureCred ? (
           <div className="p-5 space-y-4">
             {azureCred.expiresOn && daysUntil(azureCred.expiresOn) <= EXPIRY_WARN_DAYS && (
-              <div className={`flex items-start gap-3 rounded-lg border px-4 py-3 ${daysUntil(azureCred.expiresOn) <= 0 ? "bg-red-50 border-red-200" : daysUntil(azureCred.expiresOn) <= 14 ? "bg-red-50 border-red-200" : "bg-amber-50 border-amber-200"}`}>
+              <div className={`flex items-start gap-3 rounded-lg border px-4 py-3 ${daysUntil(azureCred.expiresOn) <= 0 ? "bg-red-500/10 border-red-500/20" : daysUntil(azureCred.expiresOn) <= 14 ? "bg-red-500/10 border-red-500/20" : "bg-amber-500/100/10 border-amber-500/20"}`}>
                 <svg className={`w-4 h-4 flex-shrink-0 mt-0.5 ${daysUntil(azureCred.expiresOn) <= 14 ? "text-red-500" : "text-amber-500"}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
                 <div>
-                  <p className={`text-xs font-bold ${daysUntil(azureCred.expiresOn) <= 14 ? "text-red-700" : "text-amber-800"}`}>
+                  <p className={`text-xs font-bold ${daysUntil(azureCred.expiresOn) <= 14 ? "text-red-400" : "text-amber-400"}`}>
                     {daysUntil(azureCred.expiresOn) <= 0
                       ? "Client secret has expired — Script Runner will fail for this client"
                       : `Client secret expires in ${daysUntil(azureCred.expiresOn)} day${daysUntil(azureCred.expiresOn) !== 1 ? "s" : ""} — rotate it before it expires`}
                   </p>
-                  <p className={`text-[11px] mt-0.5 ${daysUntil(azureCred.expiresOn) <= 14 ? "text-red-600" : "text-amber-700"}`}>
+                  <p className={`text-[11px] mt-0.5 ${daysUntil(azureCred.expiresOn) <= 14 ? "text-red-400" : "text-amber-400"}`}>
                     Expiry: {new Date(azureCred.expiresOn).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}
                     {" — "}Create a new client secret in Azure AD, then update this credential.
                   </p>
@@ -831,7 +831,7 @@ export default function ClientDetailPage() {
               <div>
                 <p className={labelCls}>Display Name</p>
                 <div className="flex items-center gap-2 flex-wrap">
-                  <p className="text-sm text-[#0A2540]">{azureCred.displayName}</p>
+                  <p className="text-sm text-[#E6EDF3]">{azureCred.displayName}</p>
                   <ExpiryBadge expiresOn={azureCred.expiresOn} />
                 </div>
               </div>
@@ -849,15 +849,15 @@ export default function ClientDetailPage() {
               />
               <div>
                 <p className={labelCls}>Tenant ID</p>
-                <p className="text-xs text-[#0A2540] font-mono break-all">{azureCred.tenantId}</p>
+                <p className="text-xs text-[#E6EDF3] font-mono break-all">{azureCred.tenantId}</p>
               </div>
               <div>
                 <p className={labelCls}>Client ID (App Reg)</p>
-                <p className="text-xs text-[#0A2540] font-mono break-all">{azureCred.clientId}</p>
+                <p className="text-xs text-[#E6EDF3] font-mono break-all">{azureCred.clientId}</p>
               </div>
               <div>
                 <p className={labelCls}>Key Vault Secret</p>
-                <p className="text-xs text-[#0A2540] font-mono">{azureCred.keyVaultSecretName}</p>
+                <p className="text-xs text-[#E6EDF3] font-mono">{azureCred.keyVaultSecretName}</p>
               </div>
             </div>
           </div>
@@ -878,8 +878,8 @@ export default function ClientDetailPage() {
       </div>
 
       {/* ── Automation Credentials (client-submitted App Registration) ─── */}
-      <div className="bg-white border border-border rounded-xl overflow-hidden">
-        <div className="flex items-center justify-between px-5 py-3.5 border-b border-border bg-[#F7F9FC]">
+      <div className="bg-[#161B22] border border-border rounded-xl overflow-hidden">
+        <div className="flex items-center justify-between px-5 py-3.5 border-b border-border bg-[#1C2128]">
           <div>
             <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
               Automation Credentials · Client App Registration
@@ -891,7 +891,7 @@ export default function ClientDetailPage() {
         </div>
 
         {appRegLoading ? (
-          <div className="p-5 flex items-center gap-2 text-sm text-gray-400">
+          <div className="p-5 flex items-center gap-2 text-sm text-[#7D8590]">
             <div className="w-4 h-4 border-2 border-[#0078D4] border-t-transparent rounded-full animate-spin" />
             Loading…
           </div>
@@ -899,17 +899,17 @@ export default function ClientDetailPage() {
           <div className="p-5 space-y-4">
             <div className="flex items-center gap-3 flex-wrap">
               {appReg.status === "verified" ? (
-                <span className="inline-flex items-center gap-1.5 text-xs font-bold px-2.5 py-1 rounded-full bg-green-100 text-green-700 border border-green-200">
+                <span className="inline-flex items-center gap-1.5 text-xs font-bold px-2.5 py-1 rounded-full bg-green-500/15 text-green-400 border border-green-500/20">
                   <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
                   Verified
                 </span>
               ) : appReg.status === "submitted" ? (
-                <span className="inline-flex items-center gap-1.5 text-xs font-bold px-2.5 py-1 rounded-full bg-amber-100 text-amber-700 border border-amber-200">
-                  <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+                <span className="inline-flex items-center gap-1.5 text-xs font-bold px-2.5 py-1 rounded-full bg-amber-500/100/15 text-amber-400 border border-amber-500/20">
+                  <span className="w-1.5 h-1.5 rounded-full bg-amber-500/100" />
                   Submitted · Pending Verification
                 </span>
               ) : (
-                <span className="inline-flex items-center gap-1.5 text-xs font-bold px-2.5 py-1 rounded-full bg-red-100 text-red-700 border border-red-200">
+                <span className="inline-flex items-center gap-1.5 text-xs font-bold px-2.5 py-1 rounded-full bg-red-500/15 text-red-400 border border-red-500/20">
                   <span className="w-1.5 h-1.5 rounded-full bg-red-500" />
                   Pending
                 </span>
@@ -918,17 +918,17 @@ export default function ClientDetailPage() {
             </div>
 
             {appReg.expiresOn && daysUntil(appReg.expiresOn) <= EXPIRY_WARN_DAYS && (
-              <div className={`flex items-start gap-3 rounded-lg border px-4 py-3 ${daysUntil(appReg.expiresOn) <= 14 ? "bg-red-50 border-red-200" : "bg-amber-50 border-amber-200"}`}>
+              <div className={`flex items-start gap-3 rounded-lg border px-4 py-3 ${daysUntil(appReg.expiresOn) <= 14 ? "bg-red-500/10 border-red-500/20" : "bg-amber-500/100/10 border-amber-500/20"}`}>
                 <svg className={`w-4 h-4 flex-shrink-0 mt-0.5 ${daysUntil(appReg.expiresOn) <= 14 ? "text-red-500" : "text-amber-500"}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
                 <div>
-                  <p className={`text-xs font-bold ${daysUntil(appReg.expiresOn) <= 14 ? "text-red-700" : "text-amber-800"}`}>
+                  <p className={`text-xs font-bold ${daysUntil(appReg.expiresOn) <= 14 ? "text-red-400" : "text-amber-400"}`}>
                     {daysUntil(appReg.expiresOn) <= 0
                       ? "Client App Registration secret has expired — runbooks will fail for this client"
                       : `Client App Registration secret expires in ${daysUntil(appReg.expiresOn)} day${daysUntil(appReg.expiresOn) !== 1 ? "s" : ""} — rotate it before it expires`}
                   </p>
-                  <p className={`text-[11px] mt-0.5 ${daysUntil(appReg.expiresOn) <= 14 ? "text-red-600" : "text-amber-700"}`}>
+                  <p className={`text-[11px] mt-0.5 ${daysUntil(appReg.expiresOn) <= 14 ? "text-red-400" : "text-amber-400"}`}>
                     Expiry: {new Date(appReg.expiresOn).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}
                     {" — "}Have the client create a new App Registration secret, then resubmit via their portal.
                   </p>
@@ -939,20 +939,20 @@ export default function ClientDetailPage() {
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
               <div>
                 <p className={labelCls}>Tenant ID</p>
-                <p className="text-xs text-[#0A2540] font-mono break-all">{appReg.tenantId}</p>
+                <p className="text-xs text-[#E6EDF3] font-mono break-all">{appReg.tenantId}</p>
               </div>
               <div>
                 <p className={labelCls}>Client ID (App Reg)</p>
-                <p className="text-xs text-[#0A2540] font-mono break-all">{appReg.azureClientId}</p>
+                <p className="text-xs text-[#E6EDF3] font-mono break-all">{appReg.azureClientId}</p>
               </div>
               <div>
                 <p className={labelCls}>Key Vault Secret</p>
-                <p className="text-xs text-[#0A2540] font-mono">{appReg.keyVaultSecretName}</p>
+                <p className="text-xs text-[#E6EDF3] font-mono">{appReg.keyVaultSecretName}</p>
               </div>
               {appReg.submittedAt && (
                 <div>
                   <p className={labelCls}>Submitted</p>
-                  <p className="text-sm text-[#0A2540]">
+                  <p className="text-sm text-[#E6EDF3]">
                     {new Date(appReg.submittedAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
                   </p>
                 </div>
@@ -960,7 +960,7 @@ export default function ClientDetailPage() {
               {appReg.verifiedAt && (
                 <div>
                   <p className={labelCls}>Verified</p>
-                  <p className="text-sm text-[#0A2540]">
+                  <p className="text-sm text-[#E6EDF3]">
                     {new Date(appReg.verifiedAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
                   </p>
                 </div>
@@ -986,7 +986,7 @@ export default function ClientDetailPage() {
                 <button
                   onClick={() => void handleSetAppRegStatus("submitted")}
                   disabled={verifyingAppReg}
-                  className="text-xs font-semibold text-amber-700 border border-amber-300 bg-amber-50 px-4 py-1.5 rounded-lg hover:bg-amber-100 disabled:opacity-50 transition-colors"
+                  className="text-xs font-semibold text-amber-400 border border-amber-500/30 bg-amber-500/10 px-4 py-1.5 rounded-lg hover:bg-amber-500/20 disabled:opacity-50 transition-colors"
                 >
                   Revert to Submitted
                 </button>

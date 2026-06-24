@@ -58,7 +58,7 @@ function RecordPreviewCard({ index, record, validation, isBulk }: {
   const hasId = typeof rec?.id === "number";
 
   return (
-    <div className={`rounded-lg border text-sm ${validation.ok ? "border-gray-200 bg-white" : "border-red-200 bg-red-50"}`}>
+    <div className={`rounded-lg border text-sm ${validation.ok ? "border-[#30363D] bg-[#161B22]" : "border-red-500/20 bg-red-500/10"}`}>
       <button
         type="button"
         onClick={() => setExpanded(e => !e)}
@@ -68,16 +68,16 @@ function RecordPreviewCard({ index, record, validation, isBulk }: {
           ? <CheckCircle2 className="w-3.5 h-3.5 text-green-500 shrink-0" />
           : <AlertCircle className="w-3.5 h-3.5 text-red-500 shrink-0" />
         }
-        <span className="flex-1 font-medium text-gray-800 truncate">
+        <span className="flex-1 font-medium text-[#E6EDF3] truncate">
           {isBulk ? `[${index}] ` : ""}{title}
         </span>
         {hasId && (
-          <span className="text-xs text-gray-400 shrink-0">update #{rec.id as number}</span>
+          <span className="text-xs text-[#7D8590] shrink-0">update #{rec.id as number}</span>
         )}
         {!hasId && validation.ok && (
           <span className="text-xs text-green-600 shrink-0">new</span>
         )}
-        <span className="text-gray-400 text-xs">{expanded ? "▲" : "▼"}</span>
+        <span className="text-[#7D8590] text-xs">{expanded ? "▲" : "▼"}</span>
       </button>
       {expanded && (
         <div className="px-3 pb-3 space-y-1.5">
@@ -86,7 +86,7 @@ function RecordPreviewCard({ index, record, validation, isBulk }: {
               {Object.entries(rec).filter(([k]) => k !== "id").map(([k, v]) => (
                 <div key={k} className="flex gap-2 text-xs">
                   <span className="font-mono text-gray-500 shrink-0 w-24 truncate">{k}</span>
-                  <span className="text-gray-700 truncate">
+                  <span className="text-[#E6EDF3] truncate">
                     {Array.isArray(v)
                       ? `[${(v as unknown[]).length} item${(v as unknown[]).length !== 1 ? "s" : ""}]`
                       : typeof v === "object" && v !== null
@@ -156,14 +156,14 @@ export default function JsonImportModal({
   }, [exampleJson]);
 
   const editorBorderClass = !raw.trim()
-    ? "border-gray-200"
+    ? "border-[#30363D]"
     : parseResult.syntaxError
       ? "border-red-400"
       : parseResult.valid && invalidCount > 0
         ? "border-amber-400"
         : parseResult.valid
           ? "border-green-400"
-          : "border-gray-200";
+          : "border-[#30363D]";
 
   const submit = async () => {
     if (!allValid) return;
@@ -230,21 +230,21 @@ export default function JsonImportModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
-      <div className="bg-white rounded-xl shadow-2xl w-full max-w-5xl flex flex-col" style={{ maxHeight: "90vh" }}>
+      <div className="bg-[#161B22] rounded-xl shadow-2xl w-full max-w-5xl flex flex-col" style={{ maxHeight: "90vh" }}>
         <div className="flex items-center justify-between px-6 py-4 border-b shrink-0">
-          <h2 className="font-semibold text-gray-900">JSON Import</h2>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600"><X className="w-5 h-5" /></button>
+          <h2 className="font-semibold text-[#E6EDF3]">JSON Import</h2>
+          <button onClick={onClose} className="text-[#7D8590] hover:text-[#7D8590]"><X className="w-5 h-5" /></button>
         </div>
 
         <div className="flex-1 flex overflow-hidden">
           <div className="flex-1 flex flex-col border-r min-w-0">
-            <div className="flex items-center gap-2 px-4 py-2.5 border-b bg-gray-50 shrink-0">
-              <span className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Editor</span>
+            <div className="flex items-center gap-2 px-4 py-2.5 border-b bg-[#161B22] shrink-0">
+              <span className="text-xs font-semibold text-[#7D8590] uppercase tracking-wide">Editor</span>
               <div className="flex-1" />
               <button
                 type="button"
                 onClick={handleLoadExample}
-                className="flex items-center gap-1 px-2.5 py-1 text-xs border border-gray-200 rounded hover:bg-white text-gray-600"
+                className="flex items-center gap-1 px-2.5 py-1 text-xs border border-[#30363D] rounded hover:bg-[#1C2128] text-[#7D8590]"
               >
                 <BookOpen className="w-3 h-3" /> Load Example
               </button>
@@ -252,7 +252,7 @@ export default function JsonImportModal({
                 type="button"
                 onClick={handleFormat}
                 disabled={!raw.trim() || !!parseResult.syntaxError}
-                className="flex items-center gap-1 px-2.5 py-1 text-xs border border-gray-200 rounded hover:bg-white text-gray-600 disabled:opacity-40"
+                className="flex items-center gap-1 px-2.5 py-1 text-xs border border-[#30363D] rounded hover:bg-[#1C2128] text-[#7D8590] disabled:opacity-40"
               >
                 <Wand2 className="w-3 h-3" /> Format
               </button>
@@ -270,7 +270,7 @@ export default function JsonImportModal({
               />
             </div>
 
-            <div className="flex items-center gap-3 px-4 py-2 border-t bg-gray-50 text-xs text-gray-400 shrink-0">
+            <div className="flex items-center gap-3 px-4 py-2 border-t bg-[#161B22] text-xs text-[#7D8590] shrink-0">
               <span>{lineCount} line{lineCount !== 1 ? "s" : ""}</span>
               <span>·</span>
               <span>{charCount} char{charCount !== 1 ? "s" : ""}</span>
@@ -284,8 +284,8 @@ export default function JsonImportModal({
           </div>
 
           <div className="w-80 flex flex-col shrink-0">
-            <div className="flex items-center gap-2 px-4 py-2.5 border-b bg-gray-50 shrink-0">
-              <span className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Preview</span>
+            <div className="flex items-center gap-2 px-4 py-2.5 border-b bg-[#161B22] shrink-0">
+              <span className="text-xs font-semibold text-[#7D8590] uppercase tracking-wide">Preview</span>
               <div className="flex-1" />
               {parseResult.valid && validations.length > 0 && (
                 <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${allValid ? "bg-green-100 text-green-700" : "bg-amber-100 text-amber-700"}`}>
@@ -298,12 +298,12 @@ export default function JsonImportModal({
 
             <div className="flex-1 overflow-y-auto p-3 space-y-2">
               {!raw.trim() ? (
-                <div className="flex flex-col items-center justify-center h-full text-center text-gray-400 py-8">
+                <div className="flex flex-col items-center justify-center h-full text-center text-[#7D8590] py-8">
                   <p className="text-sm font-medium">No JSON yet</p>
                   <p className="text-xs mt-1">Paste JSON or click "Load Example"</p>
                 </div>
               ) : parseResult.syntaxError ? (
-                <div className="rounded-lg border border-red-200 bg-red-50 p-3">
+                <div className="rounded-lg border border-red-500/20 bg-red-500/10 p-3">
                   <div className="flex items-start gap-2">
                     <AlertCircle className="w-4 h-4 text-red-500 shrink-0 mt-0.5" />
                     <div>
@@ -313,7 +313,7 @@ export default function JsonImportModal({
                   </div>
                 </div>
               ) : validations.length === 0 ? (
-                <div className="rounded-lg border border-amber-200 bg-amber-50 p-3">
+                <div className="rounded-lg border border-amber-200 bg-amber-500/10 p-3">
                   <p className="text-sm text-amber-700">No records found in JSON.</p>
                 </div>
               ) : (
@@ -329,7 +329,7 @@ export default function JsonImportModal({
               )}
 
               {networkErrors.length > 0 && (
-                <div className="rounded-lg border border-red-200 bg-red-50 p-3 space-y-1">
+                <div className="rounded-lg border border-red-500/20 bg-red-500/10 p-3 space-y-1">
                   <p className="text-xs font-semibold text-red-700">Import errors</p>
                   {networkErrors.map((e, i) => (
                     <p key={i} className="text-xs text-red-600">• {e}</p>
@@ -340,12 +340,12 @@ export default function JsonImportModal({
           </div>
         </div>
 
-        <div className="flex items-center justify-between px-6 py-4 border-t bg-gray-50 shrink-0">
+        <div className="flex items-center justify-between px-6 py-4 border-t bg-[#161B22] shrink-0">
           <p className="text-xs text-gray-500">
             Records with an <code className="bg-gray-100 px-1 rounded">id</code> field are updated; without one, a new record is created.
           </p>
           <div className="flex gap-2">
-            <button onClick={onClose} className="px-4 py-2 text-sm text-gray-600 border border-gray-200 rounded-lg hover:bg-white">
+            <button onClick={onClose} className="px-4 py-2 text-sm text-[#7D8590] border border-[#30363D] rounded-lg hover:bg-[#1C2128]">
               Cancel
             </button>
             <button

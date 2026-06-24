@@ -147,7 +147,7 @@ function StringListEditor({
   return (
     <div>
       <div className="flex items-center justify-between mb-1.5">
-        <span className="text-[10px] font-bold uppercase tracking-wider text-gray-500">{label}</span>
+        <span className="text-[10px] font-bold uppercase tracking-wider text-[#7D8590]">{label}</span>
         <button type="button" onClick={addItem} className="text-[9px] font-semibold text-[#0078D4] hover:underline">
           + Add
         </button>
@@ -157,13 +157,13 @@ function StringListEditor({
           <div key={i} className="flex items-center gap-1">
             <div className="flex flex-col gap-0.5 flex-shrink-0">
               <button type="button" onClick={() => moveUp(i)} disabled={i === 0}
-                className="p-0.5 text-gray-300 hover:text-gray-500 disabled:opacity-20 leading-none">
+                className="p-0.5 text-[#484F58] hover:text-[#7D8590] disabled:opacity-20 leading-none">
                 <svg className="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 15l7-7 7 7" />
                 </svg>
               </button>
               <button type="button" onClick={() => moveDown(i)} disabled={i === items.length - 1}
-                className="p-0.5 text-gray-300 hover:text-gray-500 disabled:opacity-20 leading-none">
+                className="p-0.5 text-[#484F58] hover:text-[#7D8590] disabled:opacity-20 leading-none">
                 <svg className="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M19 9l-7 7-7-7" />
                 </svg>
@@ -173,16 +173,16 @@ function StringListEditor({
               value={item}
               placeholder={placeholder ?? "Enter item…"}
               onChange={e => updateItem(i, e.target.value)}
-              className="flex-1 border border-gray-200 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-[#0078D4]"
+              className="flex-1 border border-[#30363D] rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-[#0078D4]"
             />
-            <button type="button" onClick={() => removeItem(i)} className="flex-shrink-0 p-1 text-gray-300 hover:text-red-400">
+            <button type="button" onClick={() => removeItem(i)} className="flex-shrink-0 p-1 text-[#484F58] hover:text-red-400">
               <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
               </svg>
             </button>
           </div>
         ))}
-        {items.length === 0 && <p className="text-[10px] text-gray-400 italic">No items yet.</p>}
+        {items.length === 0 && <p className="text-[10px] text-[#7D8590] italic">No items yet.</p>}
       </div>
     </div>
   );
@@ -214,7 +214,7 @@ function ChecklistEditor({
   return (
     <div>
       <div className="flex items-center justify-between mb-1.5">
-        <span className="text-[10px] font-bold uppercase tracking-wider text-gray-500">Checklist</span>
+        <span className="text-[10px] font-bold uppercase tracking-wider text-[#7D8590]">Checklist</span>
         <button type="button" onClick={addItem} className="text-[9px] font-semibold text-[#0078D4] hover:underline">
           + Add item
         </button>
@@ -224,33 +224,33 @@ function ChecklistEditor({
           <div key={item.id} className="flex items-center gap-1">
             <div className="flex flex-col gap-0.5 flex-shrink-0">
               <button type="button" onClick={() => moveUp(i)} disabled={i === 0}
-                className="p-0.5 text-gray-300 hover:text-gray-500 disabled:opacity-20 leading-none">
+                className="p-0.5 text-[#484F58] hover:text-[#7D8590] disabled:opacity-20 leading-none">
                 <svg className="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 15l7-7 7 7" />
                 </svg>
               </button>
               <button type="button" onClick={() => moveDown(i)} disabled={i === items.length - 1}
-                className="p-0.5 text-gray-300 hover:text-gray-500 disabled:opacity-20 leading-none">
+                className="p-0.5 text-[#484F58] hover:text-[#7D8590] disabled:opacity-20 leading-none">
                 <svg className="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M19 9l-7 7-7-7" />
                 </svg>
               </button>
             </div>
-            <span className="flex-shrink-0 w-3.5 h-3.5 rounded border border-gray-300 bg-white" />
+            <span className="flex-shrink-0 w-3.5 h-3.5 rounded border border-[#30363D] bg-[#161B22]" />
             <input
               value={item.label}
               placeholder="Checklist item…"
               onChange={e => updateLabel(item.id, e.target.value)}
-              className="flex-1 border border-gray-200 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-[#0078D4]"
+              className="flex-1 border border-[#30363D] rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-[#0078D4]"
             />
-            <button type="button" onClick={() => removeItem(item.id)} className="flex-shrink-0 p-1 text-gray-300 hover:text-red-400">
+            <button type="button" onClick={() => removeItem(item.id)} className="flex-shrink-0 p-1 text-[#484F58] hover:text-red-400">
               <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
               </svg>
             </button>
           </div>
         ))}
-        {items.length === 0 && <p className="text-[10px] text-gray-400 italic">No checklist items yet.</p>}
+        {items.length === 0 && <p className="text-[10px] text-[#7D8590] italic">No checklist items yet.</p>}
       </div>
     </div>
   );
@@ -319,7 +319,7 @@ function SortableStepCard({
         ref={setNodeRef}
         style={style}
         className={`flex flex-col gap-2 px-3 py-2.5 rounded-lg border shadow-sm ${
-          isSelected ? "bg-blue-50 border-[#0078D4]" : "bg-white border-[#0078D4]"
+          isSelected ? "bg-[#0078D4]/10 border-[#0078D4]" : "bg-[#161B22] border-[#0078D4]"
         }`}
       >
         <input
@@ -342,7 +342,7 @@ function SortableStepCard({
           </button>
           <button
             onClick={cancelEdit}
-            className="text-xs text-gray-500 hover:text-gray-700 px-2 py-1"
+            className="text-xs text-[#7D8590] hover:text-[#C9D1D9] px-2 py-1"
           >
             Cancel
           </button>
@@ -357,8 +357,8 @@ function SortableStepCard({
       style={style}
       className={`group flex items-center gap-2 px-3 py-2.5 rounded-lg border cursor-pointer transition-colors ${
         isSelected
-          ? "bg-blue-50 border-[#0078D4] shadow-sm"
-          : "bg-white border-gray-200 hover:border-gray-300 hover:bg-gray-50"
+          ? "bg-[#0078D4]/10 border-[#0078D4] shadow-sm"
+          : "bg-[#161B22] border-[#30363D] hover:border-[#30363D] hover:bg-[#1C2128]"
       }`}
       onClick={onSelect}
     >
@@ -366,7 +366,7 @@ function SortableStepCard({
       <button
         {...attributes}
         {...listeners}
-        className="flex-shrink-0 p-0.5 text-gray-300 hover:text-gray-400 cursor-grab active:cursor-grabbing"
+        className="flex-shrink-0 p-0.5 text-[#484F58] hover:text-[#7D8590] cursor-grab active:cursor-grabbing"
         onClick={e => e.stopPropagation()}
         title="Drag to reorder"
       >
@@ -379,22 +379,22 @@ function SortableStepCard({
 
       {/* Step number */}
       <div className={`flex-shrink-0 w-5 h-5 rounded-full text-[10px] font-bold flex items-center justify-center ${
-        isSelected ? "bg-[#0078D4] text-white" : "bg-gray-100 text-gray-500"
+        isSelected ? "bg-[#0078D4] text-white" : "bg-[#30363D]/50 text-[#7D8590]"
       }`}>
         {idx + 1}
       </div>
 
       {/* Title + task count */}
       <div className="flex-1 min-w-0 flex items-baseline gap-1.5">
-        <span className="text-sm font-medium text-[#0A2540] truncate block leading-snug">{step.title}</span>
+        <span className="text-sm font-medium text-[#E6EDF3] truncate block leading-snug">{step.title}</span>
         {taskCount > 0 && (
-          <span className="flex-shrink-0 text-[10px] text-gray-400 bg-gray-100 rounded-full px-1.5 py-0.5">
+          <span className="flex-shrink-0 text-[10px] text-[#7D8590] bg-[#1C2128] rounded-full px-1.5 py-0.5">
             {taskCount}
           </span>
         )}
         {missingCount > 0 && (
           <span
-            className="flex-shrink-0 text-[9px] font-bold bg-amber-100 text-amber-700 border border-amber-300 rounded-full px-1.5 py-0.5 leading-none"
+            className="flex-shrink-0 text-[9px] font-bold bg-amber-500/100/15 text-amber-400 border border-amber-500/30 rounded-full px-1.5 py-0.5 leading-none"
             title={`${missingCount} task${missingCount === 1 ? "" : "s"} missing asset sets`}
           >
             {missingCount}
@@ -406,7 +406,7 @@ function SortableStepCard({
       <div className="flex items-center gap-0.5 flex-shrink-0">
         <button
           onClick={startEdit}
-          className="p-1 text-gray-400 hover:text-[#0078D4] rounded"
+          className="p-1 text-[#7D8590] hover:text-[#0078D4] rounded"
           title="Rename step"
         >
           <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -416,7 +416,7 @@ function SortableStepCard({
         <button
           onClick={e => { e.stopPropagation(); onMoveUp(); }}
           disabled={idx === 0}
-          className="p-1 text-gray-300 hover:text-gray-500 disabled:opacity-20 rounded"
+          className="p-1 text-[#484F58] hover:text-[#7D8590] disabled:opacity-20 rounded"
           title="Move up"
         >
           <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -426,7 +426,7 @@ function SortableStepCard({
         <button
           onClick={e => { e.stopPropagation(); onMoveDown(); }}
           disabled={idx === totalSteps - 1}
-          className="p-1 text-gray-300 hover:text-gray-500 disabled:opacity-20 rounded"
+          className="p-1 text-[#484F58] hover:text-[#7D8590] disabled:opacity-20 rounded"
           title="Move down"
         >
           <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -435,7 +435,7 @@ function SortableStepCard({
         </button>
         <button
           onClick={e => { e.stopPropagation(); onDelete(); }}
-          className="p-1 text-gray-300 hover:text-red-500 rounded"
+          className="p-1 text-[#484F58] hover:text-red-500 rounded"
           title="Delete step"
         >
           <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -490,8 +490,8 @@ function SortableTaskRow({
       style={style}
       className={`flex items-center gap-2 rounded-lg border px-3 py-2.5 cursor-pointer transition-colors ${
         isMissingAssets
-          ? "bg-amber-50 border-amber-200 hover:border-amber-400 hover:bg-amber-100"
-          : "bg-white border-gray-200 hover:border-[#0078D4] hover:bg-blue-50"
+          ? "bg-amber-500/10 border-amber-500/20 hover:border-amber-400 hover:bg-amber-500/20"
+          : "bg-[#161B22] border-[#30363D] hover:border-[#0078D4] hover:bg-[#0078D4]/10"
       }`}
       onClick={() => onEdit(task)}
     >
@@ -499,7 +499,7 @@ function SortableTaskRow({
       <button
         {...attributes}
         {...listeners}
-        className="flex-shrink-0 p-0.5 text-gray-300 hover:text-gray-400 cursor-grab active:cursor-grabbing"
+        className="flex-shrink-0 p-0.5 text-[#484F58] hover:text-[#7D8590] cursor-grab active:cursor-grabbing"
         onClick={e => e.stopPropagation()}
         title="Drag to reorder"
       >
@@ -512,9 +512,9 @@ function SortableTaskRow({
 
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-1.5">
-          <span className="text-sm text-[#0A2540] leading-snug">{task.title}</span>
+          <span className="text-sm text-[#E6EDF3] leading-snug">{task.title}</span>
           {isMissingAssets && (
-            <span className="flex-shrink-0 inline-flex items-center gap-0.5 text-[9px] font-bold bg-amber-200 text-amber-800 border border-amber-300 rounded-full px-1.5 py-0.5 leading-none">
+            <span className="flex-shrink-0 inline-flex items-center gap-0.5 text-[9px] font-bold bg-amber-200 text-amber-400 border border-amber-500/30 rounded-full px-1.5 py-0.5 leading-none">
               <svg className="w-2 h-2" fill="currentColor" viewBox="0 0 20 20">
                 <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
               </svg>
@@ -551,7 +551,7 @@ function SortableTaskRow({
               );
             })()}
             {!task.checklistId && task.checklist && task.checklist.length > 0 && (
-              <span className="text-[9px] bg-blue-50 text-blue-600 border border-blue-100 px-1.5 py-0.5 rounded font-semibold">
+              <span className="text-[9px] bg-[#0078D4]/10 text-[#0078D4] border border-blue-100 px-1.5 py-0.5 rounded font-semibold">
                 {task.checklist.length} checklist item{task.checklist.length !== 1 ? "s" : ""}
               </span>
             )}
@@ -564,7 +564,7 @@ function SortableTaskRow({
               );
             })()}
             {!task.artifactsId && task.artifactsProduced && task.artifactsProduced.length > 0 && (
-              <span className="text-[9px] bg-amber-50 text-amber-600 border border-amber-100 px-1.5 py-0.5 rounded font-semibold">
+              <span className="text-[9px] bg-amber-500/10 text-amber-600 border border-amber-100 px-1.5 py-0.5 rounded font-semibold">
                 {task.artifactsProduced.length} artifact{task.artifactsProduced.length !== 1 ? "s" : ""}
               </span>
             )}
@@ -577,7 +577,7 @@ function SortableTaskRow({
               );
             })()}
             {!task.deliverablesId && task.clientDeliverables && task.clientDeliverables.length > 0 && (
-              <span className="text-[9px] bg-green-50 text-green-600 border border-green-100 px-1.5 py-0.5 rounded font-semibold">
+              <span className="text-[9px] bg-green-500/10 text-green-400 border border-green-500/20 px-1.5 py-0.5 rounded font-semibold">
                 {task.clientDeliverables.length} deliverable{task.clientDeliverables.length !== 1 ? "s" : ""}
               </span>
             )}
@@ -589,7 +589,7 @@ function SortableTaskRow({
       <div className="flex items-center gap-1 flex-shrink-0">
         <button
           onClick={() => onEdit(task)}
-          className="p-1.5 text-gray-400 hover:text-[#0078D4] rounded hover:bg-blue-50"
+          className="p-1.5 text-[#7D8590] hover:text-[#0078D4] rounded hover:bg-[#0078D4]/10"
           title="Edit task"
         >
           <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -598,7 +598,7 @@ function SortableTaskRow({
         </button>
         <button
           onClick={() => onDelete(task)}
-          className="p-1.5 text-gray-400 hover:text-red-500 rounded hover:bg-red-50"
+          className="p-1.5 text-[#7D8590] hover:text-red-500 rounded hover:bg-red-500/10"
           title="Delete task"
         >
           <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -663,16 +663,16 @@ function TaskDrawer({
 
       {/* Drawer panel */}
       <div
-        className={`fixed top-0 right-0 h-full w-[480px] bg-white shadow-2xl z-50 flex flex-col transition-transform duration-300 ease-in-out ${
+        className={`fixed top-0 right-0 h-full w-[480px] bg-[#161B22] shadow-2xl z-50 flex flex-col transition-transform duration-300 ease-in-out ${
           open ? "translate-x-0" : "translate-x-full"
         }`}
       >
         {/* Header */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200 flex-shrink-0">
-          <h3 className="font-semibold text-[#0A2540] text-base">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-[#30363D] flex-shrink-0">
+          <h3 className="font-semibold text-[#E6EDF3] text-base">
             {isNew ? "Add Task" : "Edit Task"}
           </h3>
-          <button onClick={onClose} className="p-1.5 text-gray-400 hover:text-gray-600 rounded">
+          <button onClick={onClose} className="p-1.5 text-[#7D8590] hover:text-[#7D8590] rounded">
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
             </svg>
@@ -680,7 +680,7 @@ function TaskDrawer({
         </div>
 
         {/* Tabs */}
-        <div className="flex border-b border-gray-200 px-5 flex-shrink-0">
+        <div className="flex border-b border-[#30363D] px-5 flex-shrink-0">
           {(["basic", "assets", "inline"] as DrawerTab[]).map(t => (
             <button
               key={t}
@@ -688,7 +688,7 @@ function TaskDrawer({
               className={`px-3 py-2.5 text-xs font-semibold border-b-2 transition-colors -mb-px ${
                 tab === t
                   ? "border-[#0078D4] text-[#0078D4]"
-                  : "border-transparent text-gray-500 hover:text-gray-700"
+                  : "border-transparent text-[#7D8590] hover:text-[#C9D1D9]"
               }`}
             >
               {t === "basic" ? "Basic" : t === "assets" ? "Asset Library" : "Inline Detail"}
@@ -701,34 +701,34 @@ function TaskDrawer({
           {tab === "basic" && (
             <>
               <div>
-                <label className="block text-xs font-semibold text-gray-600 mb-1 uppercase tracking-wide">Title *</label>
+                <label className="block text-xs font-semibold text-[#7D8590] mb-1 uppercase tracking-wide">Title *</label>
                 <input
                   autoFocus
                   type="text"
                   value={form.title}
                   placeholder="Task title"
                   onChange={e => setForm(p => ({ ...p, title: e.target.value }))}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4]"
+                  className="w-full border border-[#30363D] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4]"
                 />
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-semibold text-gray-600 mb-1 uppercase tracking-wide">Group</label>
+                  <label className="block text-xs font-semibold text-[#7D8590] mb-1 uppercase tracking-wide">Group</label>
                   <select
                     value={form.groupName}
                     onChange={e => setForm(p => ({ ...p, groupName: e.target.value }))}
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4]"
+                    className="w-full border border-[#30363D] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4]"
                   >
                     <option value="">No group</option>
                     {GROUP_OPTIONS.map(o => <option key={o} value={o}>{o}</option>)}
                   </select>
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-gray-600 mb-1 uppercase tracking-wide">Type</label>
+                  <label className="block text-xs font-semibold text-[#7D8590] mb-1 uppercase tracking-wide">Type</label>
                   <select
                     value={form.taskType}
                     onChange={e => setForm(p => ({ ...p, taskType: e.target.value }))}
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4]"
+                    className="w-full border border-[#30363D] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4]"
                   >
                     <option value="">No type</option>
                     {TASK_TYPE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
@@ -736,13 +736,13 @@ function TaskDrawer({
                 </div>
               </div>
               <div>
-                <label className="block text-xs font-semibold text-gray-600 mb-1 uppercase tracking-wide">Description</label>
+                <label className="block text-xs font-semibold text-[#7D8590] mb-1 uppercase tracking-wide">Description</label>
                 <textarea
                   value={form.description}
                   placeholder="Optional description…"
                   rows={4}
                   onChange={e => setForm(p => ({ ...p, description: e.target.value }))}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4] resize-none"
+                  className="w-full border border-[#30363D] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4] resize-none"
                 />
               </div>
             </>
@@ -756,44 +756,44 @@ function TaskDrawer({
                 </p>
               </div>
               <div>
-                <label className="block text-xs font-semibold text-gray-600 mb-1 uppercase tracking-wide">Instruction Set</label>
+                <label className="block text-xs font-semibold text-[#7D8590] mb-1 uppercase tracking-wide">Instruction Set</label>
                 <select
                   value={form.instructionSetId ?? ""}
                   onChange={e => setForm(p => ({ ...p, instructionSetId: e.target.value ? Number(e.target.value) : null }))}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4]"
+                  className="w-full border border-[#30363D] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4]"
                 >
                   <option value="">None (use inline)</option>
                   {instructionSets.map(a => <option key={a.id} value={a.id}>{a.title}</option>)}
                 </select>
               </div>
               <div>
-                <label className="block text-xs font-semibold text-gray-600 mb-1 uppercase tracking-wide">Checklist</label>
+                <label className="block text-xs font-semibold text-[#7D8590] mb-1 uppercase tracking-wide">Checklist</label>
                 <select
                   value={form.checklistId ?? ""}
                   onChange={e => setForm(p => ({ ...p, checklistId: e.target.value ? Number(e.target.value) : null }))}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4]"
+                  className="w-full border border-[#30363D] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4]"
                 >
                   <option value="">None (use inline)</option>
                   {checklists.map(a => <option key={a.id} value={a.id}>{a.title}</option>)}
                 </select>
               </div>
               <div>
-                <label className="block text-xs font-semibold text-gray-600 mb-1 uppercase tracking-wide">Artifact Set</label>
+                <label className="block text-xs font-semibold text-[#7D8590] mb-1 uppercase tracking-wide">Artifact Set</label>
                 <select
                   value={form.artifactsId ?? ""}
                   onChange={e => setForm(p => ({ ...p, artifactsId: e.target.value ? Number(e.target.value) : null }))}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4]"
+                  className="w-full border border-[#30363D] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4]"
                 >
                   <option value="">None (use inline)</option>
                   {artifactSets.map(a => <option key={a.id} value={a.id}>{a.title}</option>)}
                 </select>
               </div>
               <div>
-                <label className="block text-xs font-semibold text-gray-600 mb-1 uppercase tracking-wide">Deliverable Set</label>
+                <label className="block text-xs font-semibold text-[#7D8590] mb-1 uppercase tracking-wide">Deliverable Set</label>
                 <select
                   value={form.deliverablesId ?? ""}
                   onChange={e => setForm(p => ({ ...p, deliverablesId: e.target.value ? Number(e.target.value) : null }))}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4]"
+                  className="w-full border border-[#30363D] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4]"
                 >
                   <option value="">None (use inline)</option>
                   {deliverableSets.map(a => <option key={a.id} value={a.id}>{a.title}</option>)}
@@ -831,10 +831,10 @@ function TaskDrawer({
         </div>
 
         {/* Footer */}
-        <div className="flex items-center justify-end gap-3 px-5 py-4 border-t border-gray-200 flex-shrink-0 bg-gray-50">
+        <div className="flex items-center justify-end gap-3 px-5 py-4 border-t border-[#30363D] flex-shrink-0 bg-[#161B22]">
           <button
             onClick={onClose}
-            className="text-sm text-gray-500 px-4 py-2 rounded-lg hover:bg-gray-100 font-medium"
+            className="text-sm text-[#7D8590] px-4 py-2 rounded-lg hover:bg-[#1C2128] font-medium"
           >
             Cancel
           </button>
@@ -1458,18 +1458,18 @@ export default function WorkflowsPage() {
   return (
     <div className="flex h-full overflow-hidden">
       {/* ── Template list sidebar ──────────────────────────────────────────── */}
-      <div className="w-64 flex-shrink-0 border-r border-gray-200 bg-white overflow-y-auto flex flex-col">
-        <div className="p-4 border-b border-gray-100 flex items-center justify-between">
+      <div className="w-64 flex-shrink-0 border-r border-[#30363D] bg-[#161B22] overflow-y-auto flex flex-col">
+        <div className="p-4 border-b border-[#30363D] flex items-center justify-between">
           <div>
-            <h2 className="font-semibold text-[#0A2540] text-sm">Workflow Templates</h2>
-            <p className="text-xs text-gray-500 mt-0.5">{templates.length} templates</p>
+            <h2 className="font-semibold text-[#E6EDF3] text-sm">Workflow Templates</h2>
+            <p className="text-xs text-[#7D8590] mt-0.5">{templates.length} templates</p>
           </div>
           <div className="flex items-center gap-1.5">
             <button
               onClick={() => void handleExportAllTemplates()}
               disabled={templates.length === 0}
               title="Download all templates as JSON"
-              className="flex items-center gap-1 text-xs text-gray-600 hover:text-[#0078D4] px-2.5 py-1.5 rounded-lg border border-gray-200 hover:border-[#0078D4] hover:bg-blue-50 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+              className="flex items-center gap-1 text-xs text-[#7D8590] hover:text-[#0078D4] px-2.5 py-1.5 rounded-lg border border-[#30363D] hover:border-[#0078D4] hover:bg-[#0078D4]/10 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
             >
               <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
@@ -1486,22 +1486,22 @@ export default function WorkflowsPage() {
           </div>
         </div>
         {loading ? (
-          <div className="p-8 text-center text-sm text-gray-400">Loading…</div>
+          <div className="p-8 text-center text-sm text-[#7D8590]">Loading…</div>
         ) : templates.length === 0 ? (
-          <div className="p-8 text-center text-sm text-gray-400">No templates yet.</div>
+          <div className="p-8 text-center text-sm text-[#7D8590]">No templates yet.</div>
         ) : (
           <div className="divide-y divide-gray-100 flex-1">
             {templates.map(t => (
               <button
                 key={t.id}
                 onClick={() => void selectTemplate(t)}
-                className={`w-full text-left px-4 py-3.5 hover:bg-gray-50 transition-colors ${
-                  selected?.id === t.id ? "bg-blue-50 border-l-2 border-[#0078D4]" : ""
+                className={`w-full text-left px-4 py-3.5 hover:bg-[#1C2128] transition-colors ${
+                  selected?.id === t.id ? "bg-[#0078D4]/10 border-l-2 border-[#0078D4]" : ""
                 }`}
               >
-                <p className="font-medium text-sm text-[#0A2540] leading-snug truncate">{t.name}</p>
+                <p className="font-medium text-sm text-[#E6EDF3] leading-snug truncate">{t.name}</p>
                 {t.serviceId && (
-                  <p className="text-xs text-gray-400 mt-0.5 truncate">
+                  <p className="text-xs text-[#7D8590] mt-0.5 truncate">
                     {services.find(s => s.id === t.serviceId)?.name ?? "Linked to service"}
                   </p>
                 )}
@@ -1514,7 +1514,7 @@ export default function WorkflowsPage() {
       {/* ── Main content ───────────────────────────────────────────────────── */}
       {!selected ? (
         <div className="flex-1 flex items-center justify-center">
-          <div className="text-center text-gray-400">
+          <div className="text-center text-[#7D8590]">
             <svg className="w-12 h-12 mx-auto mb-3 opacity-30" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
             </svg>
@@ -1524,35 +1524,35 @@ export default function WorkflowsPage() {
       ) : (
         <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
           {/* Template header */}
-          <form onSubmit={saveTemplate} className="flex-shrink-0 border-b border-gray-200 bg-white px-5 py-3">
+          <form onSubmit={saveTemplate} className="flex-shrink-0 border-b border-[#30363D] bg-[#161B22] px-5 py-3">
             <div className="flex items-center gap-4">
               <div className="flex-1 min-w-0 grid grid-cols-3 gap-3">
                 <div>
-                  <label className="block text-[10px] font-bold uppercase tracking-wide text-gray-500 mb-0.5">Name</label>
+                  <label className="block text-[10px] font-bold uppercase tracking-wide text-[#7D8590] mb-0.5">Name</label>
                   <input
                     type="text"
                     value={detailForm.name}
                     required
                     onChange={e => setDetailForm(p => ({ ...p, name: e.target.value }))}
-                    className="w-full border border-gray-300 rounded px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4]"
+                    className="w-full border border-[#30363D] rounded px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4]"
                   />
                 </div>
                 <div>
-                  <label className="block text-[10px] font-bold uppercase tracking-wide text-gray-500 mb-0.5">Description</label>
+                  <label className="block text-[10px] font-bold uppercase tracking-wide text-[#7D8590] mb-0.5">Description</label>
                   <input
                     type="text"
                     value={detailForm.description}
                     onChange={e => setDetailForm(p => ({ ...p, description: e.target.value }))}
-                    className="w-full border border-gray-300 rounded px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4]"
+                    className="w-full border border-[#30363D] rounded px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4]"
                     placeholder="Optional"
                   />
                 </div>
                 <div>
-                  <label className="block text-[10px] font-bold uppercase tracking-wide text-gray-500 mb-0.5">Default Service</label>
+                  <label className="block text-[10px] font-bold uppercase tracking-wide text-[#7D8590] mb-0.5">Default Service</label>
                   <select
                     value={detailForm.serviceId ?? ""}
                     onChange={e => setDetailForm(p => ({ ...p, serviceId: e.target.value ? parseInt(e.target.value) : null }))}
-                    className="w-full border border-gray-300 rounded px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4]"
+                    className="w-full border border-[#30363D] rounded px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4]"
                   >
                     <option value="">None</option>
                     {services.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
@@ -1584,14 +1584,14 @@ export default function WorkflowsPage() {
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
                       </svg>
                       Generate Asset Sets
-                      <span className="ml-0.5 text-[9px] bg-purple-100 text-purple-700 rounded-full px-1.5 py-0.5 font-semibold">{tasksMissingAssets}</span>
+                      <span className="ml-0.5 text-[9px] bg-purple-500/15 text-purple-400 rounded-full px-1.5 py-0.5 font-semibold">{tasksMissingAssets}</span>
                     </>
                   )}
                 </button>
                 <button
                   type="button"
                   onClick={deleteTemplate}
-                  className="text-xs text-red-500 hover:text-red-700 px-3 py-1.5 border border-red-200 rounded-lg hover:bg-red-50 transition-colors"
+                  className="text-xs text-red-500 hover:text-red-400 px-3 py-1.5 border border-red-500/20 rounded-lg hover:bg-red-500/10 transition-colors"
                 >
                   Delete
                 </button>
@@ -1609,11 +1609,11 @@ export default function WorkflowsPage() {
           {/* Two-column body */}
           <div className="flex flex-1 min-h-0 overflow-hidden">
             {/* ── Steps column ──────────────────────────────────────────── */}
-            <div className="w-72 flex-shrink-0 border-r border-gray-200 bg-gray-50 flex flex-col overflow-hidden">
-              <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 bg-white flex-shrink-0">
-                <h3 className="text-sm font-semibold text-[#0A2540]">
+            <div className="w-72 flex-shrink-0 border-r border-[#30363D] bg-[#161B22] flex flex-col overflow-hidden">
+              <div className="flex items-center justify-between px-4 py-3 border-b border-[#30363D] bg-[#161B22] flex-shrink-0">
+                <h3 className="text-sm font-semibold text-[#E6EDF3]">
                   Steps
-                  <span className="ml-1.5 text-gray-400 font-normal text-xs">({steps.length})</span>
+                  <span className="ml-1.5 text-[#7D8590] font-normal text-xs">({steps.length})</span>
                 </h3>
               </div>
 
@@ -1639,14 +1639,14 @@ export default function WorkflowsPage() {
                 </DndContext>
 
                 {steps.length === 0 && !addingStep && (
-                  <p className="text-xs text-gray-400 italic text-center py-6">No steps yet.</p>
+                  <p className="text-xs text-[#7D8590] italic text-center py-6">No steps yet.</p>
                 )}
 
                 {/* Bulk Tools expanded panels — rendered inside steps column */}
                 {jsonImportOpen && (() => {
                   const { parsed, error } = parseTemplateSteps(jsonImportText);
                   return (
-                    <div className="rounded-lg border border-cyan-200 bg-gray-50 p-3 space-y-2 mt-2">
+                    <div className="rounded-lg border border-cyan-200 bg-[#161B22] p-3 space-y-2 mt-2">
                       <p className="text-[10px] font-bold text-[#00B4D8] uppercase tracking-wide">Import from JSON</p>
                       <textarea
                         autoFocus
@@ -1654,13 +1654,13 @@ export default function WorkflowsPage() {
                         value={jsonImportText}
                         onChange={e => setJsonImportText(e.target.value)}
                         placeholder={`[\n  {\n    "title": "Discovery",\n    "tasks": [\n      { "title": "Review tenant", "groupName": "Engineer Tasks" }\n    ]\n  }\n]`}
-                        className="w-full border border-gray-300 rounded px-2 py-1.5 text-[11px] font-mono focus:outline-none focus:ring-1 focus:ring-[#00B4D8] resize-y bg-white"
+                        className="w-full border border-[#30363D] rounded px-2 py-1.5 text-[11px] font-mono focus:outline-none focus:ring-1 focus:ring-[#00B4D8] resize-y bg-[#161B22]"
                       />
                       {jsonImportText.trim() && error && (
-                        <p className="text-[10px] text-red-600 bg-red-50 border border-red-100 rounded px-2 py-1 font-mono">{error}</p>
+                        <p className="text-[10px] text-red-400 bg-red-500/10 border border-red-500/20 rounded px-2 py-1 font-mono">{error}</p>
                       )}
                       {parsed && parsed.length > 0 && (
-                        <p className="text-[10px] text-gray-500">
+                        <p className="text-[10px] text-[#7D8590]">
                           {parsed.length} step{parsed.length !== 1 ? "s" : ""} · {parsed.reduce((n, s) => n + (s.tasks?.length ?? 0), 0)} tasks
                         </p>
                       )}
@@ -1675,7 +1675,7 @@ export default function WorkflowsPage() {
                             : `Import ${parsed ? parsed.length : ""} Step${parsed?.length !== 1 ? "s" : ""}`}
                         </button>
                         <button type="button" onClick={() => { setJsonImportOpen(false); setJsonImportText(""); }}
-                          className="text-[10px] font-medium px-2 py-1.5 rounded hover:bg-gray-200 text-gray-600">
+                          className="text-[10px] font-medium px-2 py-1.5 rounded hover:bg-gray-200 text-[#7D8590]">
                           Cancel
                         </button>
                       </div>
@@ -1704,10 +1704,10 @@ export default function WorkflowsPage() {
                         value={engImportText}
                         onChange={e => setEngImportText(e.target.value)}
                         placeholder={`[\n  {\n    "title": "Review tenant",\n    "instructions": ["Log into admin"],\n    "checklist": [{ "id": "c1", "label": "Done" }]\n  }\n]`}
-                        className="w-full border border-purple-200 rounded px-2 py-1.5 text-[11px] font-mono focus:outline-none focus:ring-1 focus:ring-purple-400 resize-y bg-white"
+                        className="w-full border border-purple-200 rounded px-2 py-1.5 text-[11px] font-mono focus:outline-none focus:ring-1 focus:ring-purple-400 resize-y bg-[#161B22]"
                       />
                       {engImportText.trim() && error && (
-                        <p className="text-[10px] text-red-600 bg-red-50 border border-red-100 rounded px-2 py-1 font-mono">{error}</p>
+                        <p className="text-[10px] text-red-400 bg-red-500/10 border border-red-500/20 rounded px-2 py-1 font-mono">{error}</p>
                       )}
                       {parsed && parsed.length > 0 && (
                         <p className="text-[10px] text-purple-600">
@@ -1725,7 +1725,7 @@ export default function WorkflowsPage() {
                             : `Update ${matchCount} Task${matchCount !== 1 ? "s" : ""}`}
                         </button>
                         <button type="button" onClick={() => { setEngImportOpen(false); setEngImportText(""); }}
-                          className="text-[10px] font-medium px-2 py-1.5 rounded hover:bg-gray-200 text-gray-600">
+                          className="text-[10px] font-medium px-2 py-1.5 rounded hover:bg-gray-200 text-[#7D8590]">
                           Cancel
                         </button>
                       </div>
@@ -1735,7 +1735,7 @@ export default function WorkflowsPage() {
               </div>
 
               {/* Add step */}
-              <div className="flex-shrink-0 p-3 border-t border-gray-200 bg-white">
+              <div className="flex-shrink-0 p-3 border-t border-[#30363D] bg-[#161B22]">
                 {addingStep ? (
                   <div className="space-y-2">
                     <input
@@ -1748,7 +1748,7 @@ export default function WorkflowsPage() {
                         if (e.key === "Enter") void addStep();
                         if (e.key === "Escape") { setAddingStep(false); setNewStepTitle(""); }
                       }}
-                      className="w-full border border-gray-300 rounded px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4]"
+                      className="w-full border border-[#30363D] rounded px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4]"
                     />
                     <div className="flex gap-2">
                       <button
@@ -1760,7 +1760,7 @@ export default function WorkflowsPage() {
                       </button>
                       <button
                         onClick={() => { setAddingStep(false); setNewStepTitle(""); }}
-                        className="text-xs text-gray-500 px-3 py-1.5 hover:text-gray-700"
+                        className="text-xs text-[#7D8590] px-3 py-1.5 hover:text-[#C9D1D9]"
                       >
                         Cancel
                       </button>
@@ -1782,7 +1782,7 @@ export default function WorkflowsPage() {
                 <div className="mt-3">
                   <button
                     onClick={() => setBulkOpen(v => !v)}
-                    className="w-full flex items-center justify-between text-[10px] font-bold uppercase tracking-wide text-gray-400 hover:text-gray-600 py-1"
+                    className="w-full flex items-center justify-between text-[10px] font-bold uppercase tracking-wide text-[#7D8590] hover:text-[#7D8590] py-1"
                   >
                     <span>Bulk Tools</span>
                     <svg className={`w-3 h-3 transition-transform ${bulkOpen ? "rotate-180" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1794,7 +1794,7 @@ export default function WorkflowsPage() {
                     <div className="mt-2 space-y-1">
                       <button
                         onClick={exportToJson}
-                        className="w-full flex items-center gap-1.5 text-xs text-gray-600 hover:text-[#0078D4] px-2 py-1.5 rounded hover:bg-gray-100"
+                        className="w-full flex items-center gap-1.5 text-xs text-[#7D8590] hover:text-[#0078D4] px-2 py-1.5 rounded hover:bg-[#1C2128]"
                       >
                         <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                           <path strokeLinecap="round" strokeLinejoin="round" d="M17 8v-2a2 2 0 00-2-2H5a2 2 0 00-2 2v2M9 12l3-3 3 3M12 21V9" />
@@ -1826,9 +1826,9 @@ export default function WorkflowsPage() {
             </div>
 
             {/* ── Task panel ────────────────────────────────────────────── */}
-            <div className="flex-1 flex flex-col min-w-0 overflow-hidden bg-white">
+            <div className="flex-1 flex flex-col min-w-0 overflow-hidden bg-[#161B22]">
               {!selectedStep ? (
-                <div className="flex-1 flex items-center justify-center text-gray-400">
+                <div className="flex-1 flex items-center justify-center text-[#7D8590]">
                   <div className="text-center">
                     <svg className="w-8 h-8 mx-auto mb-2 opacity-30" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 15l-2 5L9 9l11 4-5 2zm0 0l5 5" />
@@ -1839,10 +1839,10 @@ export default function WorkflowsPage() {
               ) : (
                 <>
                   {/* Task panel header */}
-                  <div className="flex items-center justify-between px-5 py-3.5 border-b border-gray-200 flex-shrink-0">
+                  <div className="flex items-center justify-between px-5 py-3.5 border-b border-[#30363D] flex-shrink-0">
                     <div>
-                      <h3 className="font-semibold text-[#0A2540] text-sm">{selectedStep.title}</h3>
-                      <p className="text-xs text-gray-400 mt-0.5">
+                      <h3 className="font-semibold text-[#E6EDF3] text-sm">{selectedStep.title}</h3>
+                      <p className="text-xs text-[#7D8590] mt-0.5">
                         {showMissingOnly
                           ? `${stepTasks.length} of ${allStepTasks.length} task${allStepTasks.length !== 1 ? "s" : ""} missing sets`
                           : `${allStepTasks.length} task${allStepTasks.length !== 1 ? "s" : ""}`}
@@ -1853,8 +1853,8 @@ export default function WorkflowsPage() {
                         onClick={() => setShowMissingOnly(v => !v)}
                         className={`flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg border transition-colors ${
                           showMissingOnly
-                            ? "bg-amber-500 text-white border-amber-500 hover:bg-amber-600"
-                            : "bg-amber-50 text-amber-700 border-amber-300 hover:bg-amber-100"
+                            ? "bg-amber-500/100 text-white border-amber-500 hover:bg-amber-600"
+                            : "bg-amber-500/10 text-amber-400 border-amber-500/30 hover:bg-amber-500/20"
                         }`}
                         title={showMissingOnly ? "Show all tasks" : `Filter to ${stepMissingCount} task${stepMissingCount === 1 ? "" : "s"} missing asset sets`}
                       >
@@ -1875,11 +1875,11 @@ export default function WorkflowsPage() {
                             <svg className="w-8 h-8 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                             </svg>
-                            <p className="text-sm font-medium text-green-700">All tasks in this step have asset sets linked.</p>
-                            <button onClick={() => setShowMissingOnly(false)} className="text-xs text-gray-400 hover:text-gray-600 underline">Show all tasks</button>
+                            <p className="text-sm font-medium text-green-400">All tasks in this step have asset sets linked.</p>
+                            <button onClick={() => setShowMissingOnly(false)} className="text-xs text-[#7D8590] hover:text-[#7D8590] underline">Show all tasks</button>
                           </div>
                         )
-                        : <p className="text-xs text-gray-400 italic text-center py-8">No tasks yet for this step.</p>
+                        : <p className="text-xs text-[#7D8590] italic text-center py-8">No tasks yet for this step.</p>
                     )}
 
                     <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={(e: DragEndEvent) => void handleTaskDragEnd(e)}>
@@ -1888,8 +1888,8 @@ export default function WorkflowsPage() {
                           renderedGroups.map(group => (
                             <div key={group}>
                               <div className="flex items-center gap-2 mb-2">
-                                <span className="text-[10px] font-bold uppercase tracking-wide text-gray-400">{group}</span>
-                                <div className="flex-1 h-px bg-gray-100" />
+                                <span className="text-[10px] font-bold uppercase tracking-wide text-[#7D8590]">{group}</span>
+                                <div className="flex-1 h-px bg-[#1C2128]" />
                               </div>
                               <div className="space-y-1.5">
                                 {(tasksByGroup[group] ?? []).map(task => (
@@ -1913,7 +1913,7 @@ export default function WorkflowsPage() {
                   </div>
 
                   {/* Add Task button */}
-                  <div className="flex-shrink-0 px-5 py-4 border-t border-gray-100">
+                  <div className="flex-shrink-0 px-5 py-4 border-t border-[#30363D]">
                     <button
                       onClick={openDrawerNew}
                       className="w-full bg-[#0078D4] text-white text-sm font-semibold py-2.5 rounded-lg hover:bg-[#006CBE] transition-colors flex items-center justify-center gap-2"

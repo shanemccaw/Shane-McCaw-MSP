@@ -162,32 +162,32 @@ export default function SharePointPage() {
   return (
     <div className="p-6 max-w-5xl">
       <div className="mb-6">
-        <h1 className="text-2xl font-bold text-[#0A2540]">Hub Storage</h1>
+        <h1 className="text-2xl font-bold text-[#E6EDF3]">Hub Storage</h1>
         <p className="text-sm text-muted-foreground mt-1">Browse your SharePoint hub site and manage per-client site provisioning.</p>
       </div>
 
       {/* Graph credentials warning */}
       {config && !config.graphConfigured && (
-        <div className="mb-6 bg-amber-50 border border-amber-200 rounded-xl p-4 flex gap-3">
+        <div className="mb-6 bg-amber-500/100/10 border border-amber-500/20 rounded-xl p-4 flex gap-3">
           <svg className="w-5 h-5 text-amber-500 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
           </svg>
           <div>
-            <p className="text-sm font-semibold text-amber-800">Microsoft Graph not configured</p>
-            <p className="text-xs text-amber-700 mt-0.5">Set <code className="bg-amber-100 px-1 rounded">GRAPH_TENANT_ID</code>, <code className="bg-amber-100 px-1 rounded">GRAPH_CLIENT_ID</code>, and <code className="bg-amber-100 px-1 rounded">GRAPH_CLIENT_SECRET</code> in Replit Secrets to enable automatic site browsing and provisioning. Required Graph permissions: <strong>Sites.ReadWrite.All</strong>, <strong>Group.ReadWrite.All</strong>.</p>
+            <p className="text-sm font-semibold text-amber-400">Microsoft Graph not configured</p>
+            <p className="text-xs text-amber-400 mt-0.5">Set <code className="bg-amber-500/20 px-1 rounded">GRAPH_TENANT_ID</code>, <code className="bg-amber-500/20 px-1 rounded">GRAPH_CLIENT_ID</code>, and <code className="bg-amber-500/20 px-1 rounded">GRAPH_CLIENT_SECRET</code> in Replit Secrets to enable automatic site browsing and provisioning. Required Graph permissions: <strong>Sites.ReadWrite.All</strong>, <strong>Group.ReadWrite.All</strong>.</p>
           </div>
         </div>
       )}
 
       {/* Hub site configuration */}
-      <div className="bg-white border border-border rounded-xl p-5 mb-6">
-        <h2 className="text-sm font-bold text-[#0A2540] uppercase tracking-wider mb-4">Hub Site Configuration</h2>
+      <div className="bg-[#161B22] border border-border rounded-xl p-5 mb-6">
+        <h2 className="text-sm font-bold text-[#E6EDF3] uppercase tracking-wider mb-4">Hub Site Configuration</h2>
         {configLoading ? (
           <div className="h-10 bg-muted/20 rounded animate-pulse" />
         ) : (
           <div className="space-y-3">
             {config?.hubSiteUrl && (
-              <div className="flex items-center gap-2 text-sm text-[#0A2540]/70">
+              <div className="flex items-center gap-2 text-sm text-[#E6EDF3]/70">
                 <svg className="w-4 h-4 text-green-500 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
@@ -214,7 +214,7 @@ export default function SharePointPage() {
                   href={config.hubSiteUrl}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="flex items-center gap-1.5 border border-border text-sm font-medium px-3 py-2 rounded-lg hover:bg-[#F7F9FC] transition-colors text-[#0A2540]"
+                  className="flex items-center gap-1.5 border border-border text-sm font-medium px-3 py-2 rounded-lg hover:bg-[#1C2128] transition-colors text-[#E6EDF3]"
                 >
                   <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                     <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 6H5.25A2.25 2.25 0 003 8.25v10.5A2.25 2.25 0 005.25 21h10.5A2.25 2.25 0 0018 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25" />
@@ -228,7 +228,7 @@ export default function SharePointPage() {
       </div>
 
       {/* File browser */}
-      <div className="bg-white border border-border rounded-xl overflow-hidden">
+      <div className="bg-[#161B22] border border-border rounded-xl overflow-hidden">
         <div className="px-5 py-4 border-b border-border flex items-center justify-between gap-3">
           <div className="flex items-center gap-1.5 text-sm min-w-0">
             {breadcrumbs.map((crumb, i) => (
@@ -238,7 +238,7 @@ export default function SharePointPage() {
                   onClick={() => navigateToBreadcrumb(crumb)}
                   className={`truncate transition-colors ${
                     i === breadcrumbs.length - 1
-                      ? "font-semibold text-[#0A2540] cursor-default"
+                      ? "font-semibold text-[#E6EDF3] cursor-default"
                       : "text-[#0078D4] hover:underline"
                   }`}
                 >
@@ -269,7 +269,7 @@ export default function SharePointPage() {
                 <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
               </svg>
             </div>
-            <p className="text-sm font-semibold text-[#0A2540]">Graph credentials required</p>
+            <p className="text-sm font-semibold text-[#E6EDF3]">Graph credentials required</p>
             <p className="text-xs text-muted-foreground mt-1 max-w-sm">Configure the Graph API credentials in Replit Secrets to browse SharePoint files here.</p>
           </div>
         ) : !config.hubSiteId ? (
@@ -279,14 +279,14 @@ export default function SharePointPage() {
                 <path strokeLinecap="round" strokeLinejoin="round" d="M12 10.5v6m3-3H9m4.06-7.19l-2.12-2.12a1.5 1.5 0 00-1.061-.44H4.5A2.25 2.25 0 002.25 6v12a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9a2.25 2.25 0 00-2.25-2.25h-5.379a1.5 1.5 0 01-1.06-.44z" />
               </svg>
             </div>
-            <p className="text-sm font-semibold text-[#0A2540]">No hub site configured</p>
+            <p className="text-sm font-semibold text-[#E6EDF3]">No hub site configured</p>
             <p className="text-xs text-muted-foreground mt-1 max-w-sm">Enter your SharePoint hub site URL above and click Save. The site ID will be resolved automatically.</p>
           </div>
         ) : itemsLoading ? (
           <Spinner />
         ) : itemsError ? (
           <div className="flex flex-col items-center justify-center py-12 text-center px-6">
-            <p className="text-sm font-semibold text-red-600">Error loading files</p>
+            <p className="text-sm font-semibold text-red-400">Error loading files</p>
             <p className="text-xs text-muted-foreground mt-1">{itemsError}</p>
             <button onClick={() => void loadItems(currentPath)} className="mt-3 text-xs text-[#0078D4] hover:underline">Try again</button>
           </div>
@@ -300,11 +300,11 @@ export default function SharePointPage() {
               <button
                 key={item.id}
                 onClick={() => navigateToFolder(item)}
-                className="w-full flex items-center gap-3 px-5 py-3 hover:bg-[#F7F9FC] transition-colors text-left group"
+                className="w-full flex items-center gap-3 px-5 py-3 hover:bg-[#1C2128] transition-colors text-left group"
               >
                 <FileIcon type={item.type} />
                 <span className="flex-1 min-w-0">
-                  <span className={`text-sm truncate block ${item.type === "folder" ? "font-medium text-[#0A2540]" : "text-[#0A2540]/80"}`}>
+                  <span className={`text-sm truncate block ${item.type === "folder" ? "font-medium text-[#E6EDF3]" : "text-[#E6EDF3]/80"}`}>
                     {item.name}
                   </span>
                   {item.size != null && (

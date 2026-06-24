@@ -78,20 +78,20 @@ export default function CategoriesPage() {
   return (
     <div className="p-6 max-w-3xl mx-auto">
       <div className="mb-6">
-        <h1 className="text-xl font-bold text-gray-900">Asset Library Categories</h1>
-        <p className="text-sm text-gray-500 mt-0.5">Shared categories for Instruction Sets, Checklists, Artifact Sets, and Deliverable Sets. Renaming a category updates all assets using it.</p>
+        <h1 className="text-xl font-bold text-[#E6EDF3]">Asset Library Categories</h1>
+        <p className="text-sm text-[#7D8590] mt-0.5">Shared categories for Instruction Sets, Checklists, Artifact Sets, and Deliverable Sets. Renaming a category updates all assets using it.</p>
       </div>
 
       {/* Create new category */}
-      <div className="bg-white rounded-xl border border-gray-200 p-4 mb-6">
-        <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wide mb-2">New Category</label>
+      <div className="bg-[#161B22] rounded-xl border border-[#30363D] p-4 mb-6">
+        <label className="block text-xs font-semibold text-[#C9D1D9] uppercase tracking-wide mb-2">New Category</label>
         <div className="flex gap-2">
           <input
             value={newName}
             onChange={e => setNewName(e.target.value)}
             onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); handleCreate(); } }}
             placeholder="Category name…"
-            className="flex-1 border border-gray-200 rounded px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-[#0078D4]"
+            className="flex-1 border border-[#30363D] rounded px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-[#0078D4]"
           />
           <button
             onClick={handleCreate}
@@ -107,23 +107,23 @@ export default function CategoriesPage() {
       {isLoading ? (
         <div className="flex justify-center py-12"><div className="w-6 h-6 border-2 border-[#0078D4] border-t-transparent rounded-full animate-spin"/></div>
       ) : cats.length === 0 ? (
-        <div className="text-center py-12 text-gray-400">
+        <div className="text-center py-12 text-[#7D8590]">
           <p className="font-medium">No categories yet</p>
           <p className="text-sm mt-1">Create one above to get started.</p>
         </div>
       ) : (
-        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+        <div className="bg-[#161B22] rounded-xl border border-[#30363D] overflow-hidden">
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-gray-100 bg-gray-50">
-                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Name</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide w-40">Created</th>
+              <tr className="border-b border-[#30363D] bg-[#161B22]">
+                <th className="px-4 py-3 text-left text-xs font-semibold text-[#7D8590] uppercase tracking-wide">Name</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-[#7D8590] uppercase tracking-wide w-40">Created</th>
                 <th className="px-4 py-3 w-28"/>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">
               {cats.map(cat => (
-                <tr key={cat.id} className="hover:bg-gray-50/50">
+                <tr key={cat.id} className="hover:bg-[#1C2128]/50">
                   <td className="px-4 py-3">
                     {editingId === cat.id ? (
                       <input
@@ -137,10 +137,10 @@ export default function CategoriesPage() {
                         className="w-full border border-[#0078D4] rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-[#0078D4]"
                       />
                     ) : (
-                      <span className="font-medium text-gray-900">{cat.name}</span>
+                      <span className="font-medium text-[#E6EDF3]">{cat.name}</span>
                     )}
                   </td>
-                  <td className="px-4 py-3 text-gray-400 text-xs">{new Date(cat.createdAt).toLocaleDateString()}</td>
+                  <td className="px-4 py-3 text-[#7D8590] text-xs">{new Date(cat.createdAt).toLocaleDateString()}</td>
                   <td className="px-4 py-3">
                     <div className="flex items-center justify-end gap-1">
                       {editingId === cat.id ? (
@@ -153,7 +153,7 @@ export default function CategoriesPage() {
                           >
                             <Check className="w-3.5 h-3.5"/>
                           </button>
-                          <button onClick={cancelEdit} className="p-1.5 text-gray-400 hover:text-gray-600 rounded" title="Cancel">
+                          <button onClick={cancelEdit} className="p-1.5 text-[#7D8590] hover:text-[#7D8590] rounded" title="Cancel">
                             <X className="w-3.5 h-3.5"/>
                           </button>
                         </>
@@ -161,14 +161,14 @@ export default function CategoriesPage() {
                         <>
                           <button
                             onClick={() => startEdit(cat)}
-                            className="p-1.5 text-gray-400 hover:text-[#0078D4] rounded"
+                            className="p-1.5 text-[#7D8590] hover:text-[#0078D4] rounded"
                             title="Rename"
                           >
                             <Pencil className="w-3.5 h-3.5"/>
                           </button>
                           <button
                             onClick={() => { setDeleteTarget(cat); setDeleteError(null); }}
-                            className="p-1.5 text-gray-400 hover:text-red-500 rounded"
+                            className="p-1.5 text-[#7D8590] hover:text-red-500 rounded"
                             title="Delete"
                           >
                             <Trash2 className="w-3.5 h-3.5"/>
@@ -190,7 +190,7 @@ export default function CategoriesPage() {
             <AlertDialogTitle>Delete category?</AlertDialogTitle>
             <AlertDialogDescription>
               {deleteError ? (
-                <span className="text-red-600">{deleteError}</span>
+                <span className="text-red-400">{deleteError}</span>
               ) : (
                 <>Are you sure you want to delete <strong>"{deleteTarget?.name}"</strong>? This is only possible if no assets are using it.</>
               )}

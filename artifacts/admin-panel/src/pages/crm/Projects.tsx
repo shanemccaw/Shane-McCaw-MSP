@@ -80,8 +80,8 @@ const TRACKS: TrackConfig[] = [
 ];
 
 const STATUS_BADGE: Record<string, { label: string; cls: string }> = {
-  active: { label: "In Progress", cls: "bg-blue-100 text-blue-700" },
-  on_hold: { label: "Paused", cls: "bg-amber-100 text-amber-700" },
+  active: { label: "In Progress", cls: "bg-[#0078D4]/100/15 text-blue-400" },
+  on_hold: { label: "Paused", cls: "bg-amber-500/100/15 text-amber-400" },
   completed: { label: "Complete", cls: "bg-emerald-100 text-emerald-700" },
 };
 
@@ -128,7 +128,7 @@ function SegmentedBar({ steps }: { steps: WorkflowStep[] }) {
 }
 
 function StatusBadge({ status }: { status: string }) {
-  const cfg = STATUS_BADGE[status] ?? { label: status, cls: "bg-gray-100 text-gray-600" };
+  const cfg = STATUS_BADGE[status] ?? { label: status, cls: "bg-[#30363D]/50 text-[#7D8590]" };
   return (
     <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wide ${cfg.cls}`}>
       {cfg.label}
@@ -160,14 +160,14 @@ function ServiceCard({
   else if (project.status === "on_hold") actionBtn = { label: "Resume", icon: "play_arrow" };
 
   return (
-    <div className="bg-white border border-border rounded-xl overflow-hidden hover:shadow-sm transition-shadow">
+    <div className="bg-[#161B22] border border-border rounded-xl overflow-hidden hover:shadow-sm transition-shadow">
       <div className="px-5 pt-4 pb-3 space-y-3">
         <div className="flex items-start justify-between gap-3">
           <div className="flex items-center gap-2.5 min-w-0">
             <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0" style={{ background: `${trackColor}18` }}>
               <MatIcon name="dataset" className="text-sm" style={{ color: trackColor } as React.CSSProperties} />
             </div>
-            <p className="font-semibold text-[#0A2540] text-sm leading-tight truncate">{project.title}</p>
+            <p className="font-semibold text-[#E6EDF3] text-sm leading-tight truncate">{project.title}</p>
           </div>
           <StatusBadge status={project.status} />
         </div>
@@ -177,21 +177,21 @@ function ServiceCard({
         <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs">
           <div>
             <span className="text-muted-foreground">Milestone</span>
-            <p className="font-medium text-[#0A2540] truncate">{currentStep?.title ?? project.phase ?? "—"}</p>
+            <p className="font-medium text-[#E6EDF3] truncate">{currentStep?.title ?? project.phase ?? "—"}</p>
           </div>
           <div>
             <span className="text-muted-foreground">Next Action</span>
-            <p className="font-medium text-[#0A2540] truncate">
+            <p className="font-medium text-[#E6EDF3] truncate">
               {steps.length > 0 ? `Step ${completedCount + 1} of ${steps.length}` : project.phase ?? "—"}
             </p>
           </div>
           <div>
             <span className="text-muted-foreground">ETA</span>
-            <p className="font-medium text-[#0A2540]">{eta}</p>
+            <p className="font-medium text-[#E6EDF3]">{eta}</p>
           </div>
           <div>
             <span className="text-muted-foreground">Progress</span>
-            <p className="font-medium text-[#0A2540]">{project.progress}%</p>
+            <p className="font-medium text-[#E6EDF3]">{project.progress}%</p>
           </div>
         </div>
       </div>
@@ -200,13 +200,13 @@ function ServiceCard({
         <div className="flex items-center gap-3">
           <button
             onClick={onEdit}
-            className="text-xs font-medium text-muted-foreground hover:text-[#0A2540] transition-colors"
+            className="text-xs font-medium text-muted-foreground hover:text-[#E6EDF3] transition-colors"
           >
             Edit
           </button>
           <button
             onClick={onDelete}
-            className="text-xs font-medium text-red-400 hover:text-red-600 transition-colors"
+            className="text-xs font-medium text-red-400 hover:text-red-400 transition-colors"
           >
             Delete
           </button>
@@ -274,7 +274,7 @@ function RetainerCard({
             { label: "Active Pillars", value: String(activePillars), icon: "grid_view", color: "#a78bfa" },
             { label: "Priority Status", value: priorityLabel, icon: "flag", color: "#fb923c" },
           ].map(tile => (
-            <div key={tile.label} className="bg-white/5 rounded-lg p-3 border border-white/10">
+            <div key={tile.label} className="bg-[#161B22]/5 rounded-lg p-3 border border-white/10">
               <div className="flex items-center gap-1.5 mb-1">
                 <MatIcon name={tile.icon} className="text-sm" style={{ color: tile.color } as React.CSSProperties} />
                 <span className="text-[10px] text-[#94a3b8] uppercase tracking-wide">{tile.label}</span>
@@ -338,12 +338,12 @@ function TrackSection({
           <div className="flex items-center gap-2">
             <span className="text-[10px] font-bold text-muted-foreground tracking-widest uppercase">Track {track.num}</span>
             <span className="text-xs text-border">·</span>
-            <span className="text-sm font-bold text-[#0A2540]">{track.label}</span>
+            <span className="text-sm font-bold text-[#E6EDF3]">{track.label}</span>
           </div>
           <p className="text-xs text-muted-foreground">{track.description}</p>
         </div>
         <div className="ml-auto">
-          <span className="text-xs font-semibold text-muted-foreground bg-[#F7F9FC] border border-border rounded-full px-2.5 py-0.5">
+          <span className="text-xs font-semibold text-muted-foreground bg-[#1C2128] border border-border rounded-full px-2.5 py-0.5">
             {projects.length} {projects.length === 1 ? "engagement" : "engagements"}
           </span>
         </div>
@@ -384,7 +384,7 @@ function PortfolioHeader() {
       <span className="inline-block text-[10px] font-bold text-[#0078D4] bg-[#0078D4]/10 rounded-full px-3 py-1 uppercase tracking-widest mb-3">
         Global Portfolio
       </span>
-      <h2 className="text-2xl font-extrabold text-[#0A2540] tracking-tight">Active Services Portfolio</h2>
+      <h2 className="text-2xl font-extrabold text-[#E6EDF3] tracking-tight">Active Services Portfolio</h2>
       <div className="mt-3 border-b border-border" />
     </div>
   );
@@ -408,14 +408,14 @@ function PortfolioFooterBar({ projects }: { projects: ProjectWithSteps[] }) {
   ];
 
   return (
-    <div className="mt-8 border border-border rounded-xl bg-[#F7F9FC] overflow-hidden">
+    <div className="mt-8 border border-border rounded-xl bg-[#1C2128] overflow-hidden">
       <div className="grid grid-cols-2 sm:grid-cols-4 divide-x divide-y sm:divide-y-0 divide-border">
         {metrics.map(m => (
           <div key={m.label} className="flex items-center gap-3 px-5 py-4">
             <MatIcon name={m.icon} className="text-2xl text-[#0078D4]" />
             <div>
               <p className="text-xs text-muted-foreground">{m.label}</p>
-              <p className="text-lg font-extrabold text-[#0A2540]">{m.value}</p>
+              <p className="text-lg font-extrabold text-[#E6EDF3]">{m.value}</p>
             </div>
           </div>
         ))}
@@ -572,7 +572,7 @@ export default function ProjectsPage() {
     <div className="p-6 max-w-[1200px]">
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-xl font-bold text-[#0A2540]">Projects</h1>
+          <h1 className="text-xl font-bold text-[#E6EDF3]">Projects</h1>
           <p className="text-sm text-muted-foreground mt-0.5">
             Manage client projects grouped by engagement track. Click <strong>Details</strong> to open the kanban board.
           </p>
@@ -589,23 +589,23 @@ export default function ProjectsPage() {
       </div>
 
       {showForm && (
-        <div className="bg-[#F7F9FC] border border-border rounded-xl p-5 mb-6">
-          <h3 className="text-sm font-bold text-[#0A2540] mb-4">{editingId ? "Edit Project" : "New Project"}</h3>
+        <div className="bg-[#1C2128] border border-border rounded-xl p-5 mb-6">
+          <h3 className="text-sm font-bold text-[#E6EDF3] mb-4">{editingId ? "Edit Project" : "New Project"}</h3>
           <form onSubmit={e => void handleSubmit(e)} className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="sm:col-span-2">
-              <label className="block text-xs font-semibold text-[#0A2540] mb-1">Title *</label>
+              <label className="block text-xs font-semibold text-[#E6EDF3] mb-1">Title *</label>
               <input required value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))}
-                className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4]" />
+                className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4] bg-[#1C2128] text-[#E6EDF3]" />
             </div>
             <div className="sm:col-span-2">
-              <label className="block text-xs font-semibold text-[#0A2540] mb-1">Description</label>
+              <label className="block text-xs font-semibold text-[#E6EDF3] mb-1">Description</label>
               <textarea rows={2} value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
-                className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4] resize-none" />
+                className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4] bg-[#1C2128] text-[#E6EDF3] resize-none" />
             </div>
             <div>
-              <label className="block text-xs font-semibold text-[#0A2540] mb-1">Client</label>
+              <label className="block text-xs font-semibold text-[#E6EDF3] mb-1">Client</label>
               <select value={form.clientUserId} onChange={e => setForm(f => ({ ...f, clientUserId: e.target.value }))}
-                className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4] bg-white">
+                className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4] bg-[#161B22]">
                 <option value="">— Unassigned —</option>
                 {clients.map(c => (
                   <option key={c.id} value={c.id}>{c.name ?? c.email}{c.company ? ` (${c.company})` : ""}</option>
@@ -613,21 +613,21 @@ export default function ProjectsPage() {
               </select>
             </div>
             <div>
-              <label className="block text-xs font-semibold text-[#0A2540] mb-1">Type</label>
+              <label className="block text-xs font-semibold text-[#E6EDF3] mb-1">Type</label>
               <select value={form.projectType} onChange={e => setForm(f => ({ ...f, projectType: e.target.value }))}
-                className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4] bg-white">
+                className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4] bg-[#161B22]">
                 <option value="project">Project-Based</option>
                 <option value="retainer">Monthly Retainer</option>
               </select>
             </div>
             {!editingId && (
               <div className="sm:col-span-2">
-                <label className="block text-xs font-semibold text-[#0A2540] mb-1">
+                <label className="block text-xs font-semibold text-[#E6EDF3] mb-1">
                   Workflow Template
                   <span className="ml-1.5 text-[10px] font-normal text-muted-foreground">(auto-provisions steps + tasks for the first stage)</span>
                 </label>
                 <select value={form.workflowTemplateId} onChange={e => setForm(f => ({ ...f, workflowTemplateId: e.target.value }))}
-                  className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4] bg-white">
+                  className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4] bg-[#161B22]">
                   <option value="">— No workflow (blank project) —</option>
                   {workflowTemplates.map(t => (
                     <option key={t.id} value={t.id}>{t.name}{t.description ? ` — ${t.description}` : ""}</option>
@@ -636,36 +636,36 @@ export default function ProjectsPage() {
               </div>
             )}
             <div>
-              <label className="block text-xs font-semibold text-[#0A2540] mb-1">Status</label>
+              <label className="block text-xs font-semibold text-[#E6EDF3] mb-1">Status</label>
               <select value={form.status} onChange={e => setForm(f => ({ ...f, status: e.target.value }))}
-                className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4] bg-white">
+                className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4] bg-[#161B22]">
                 <option value="active">Active</option>
                 <option value="on_hold">On Hold</option>
                 <option value="completed">Completed</option>
               </select>
             </div>
             <div>
-              <label className="block text-xs font-semibold text-[#0A2540] mb-1">Phase</label>
+              <label className="block text-xs font-semibold text-[#E6EDF3] mb-1">Phase</label>
               <input value={form.phase} onChange={e => setForm(f => ({ ...f, phase: e.target.value }))}
-                placeholder="e.g. Pilot Phase" className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4]" />
+                placeholder="e.g. Pilot Phase" className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4] bg-[#1C2128] text-[#E6EDF3]" />
             </div>
             <div>
-              <label className="block text-xs font-semibold text-[#0A2540] mb-1">Progress ({form.progress}%)</label>
+              <label className="block text-xs font-semibold text-[#E6EDF3] mb-1">Progress ({form.progress}%)</label>
               <input type="range" min={0} max={100} value={form.progress} onChange={e => setForm(f => ({ ...f, progress: Number(e.target.value) }))}
                 className="w-full accent-[#0078D4]" />
             </div>
             <div>
-              <label className="block text-xs font-semibold text-[#0A2540] mb-1">Start Date</label>
+              <label className="block text-xs font-semibold text-[#E6EDF3] mb-1">Start Date</label>
               <input type="date" value={form.startDate} onChange={e => setForm(f => ({ ...f, startDate: e.target.value }))}
-                className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4]" />
+                className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4] bg-[#1C2128] text-[#E6EDF3]" />
             </div>
             <div>
-              <label className="block text-xs font-semibold text-[#0A2540] mb-1">Target End Date</label>
+              <label className="block text-xs font-semibold text-[#E6EDF3] mb-1">Target End Date</label>
               <input type="date" value={form.endDate} onChange={e => setForm(f => ({ ...f, endDate: e.target.value }))}
-                className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4]" />
+                className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4] bg-[#1C2128] text-[#E6EDF3]" />
             </div>
             {error && (
-              <div className="sm:col-span-2 text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{error}</div>
+              <div className="sm:col-span-2 text-sm text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2">{error}</div>
             )}
             <div className="sm:col-span-2 flex gap-3">
               <button type="submit" disabled={saving}
@@ -673,7 +673,7 @@ export default function ProjectsPage() {
                 {saving ? "Saving…" : editingId ? "Save Changes" : "Create Project"}
               </button>
               <button type="button" onClick={() => { setShowForm(false); setEditingId(null); setError(""); }}
-                className="border border-border text-sm font-medium px-5 py-2 rounded-lg hover:bg-[#F7F9FC] transition-colors">
+                className="border border-border text-sm font-medium px-5 py-2 rounded-lg hover:bg-[#1C2128] transition-colors">
                 Cancel
               </button>
             </div>

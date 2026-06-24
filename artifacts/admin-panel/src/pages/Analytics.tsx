@@ -43,12 +43,12 @@ function safeHref(raw: string): string {
 }
 
 function SkeletonCard({ h = "h-24" }: { h?: string }) {
-  return <div className={`${h} bg-white border border-gray-100 rounded-xl animate-pulse`} />;
+  return <div className={`${h} bg-[#161B22] border border-[#30363D] rounded-xl animate-pulse`} />;
 }
 
 function SectionError({ message }: { message: string }) {
   return (
-    <div className="flex items-center gap-2 p-3 bg-red-50 border border-red-100 rounded-xl text-xs text-red-600">
+    <div className="flex items-center gap-2 p-3 bg-red-500/10 border border-red-500/20 rounded-xl text-xs text-red-400">
       <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
         <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
       </svg>
@@ -62,7 +62,7 @@ function SortBtn({ col, sortCol, sortDir, onSort }: { col: string; sortCol: stri
   return (
     <button onClick={() => onSort(col)} className="inline-flex items-center gap-0.5 group">
       <span className={active ? "text-[#0078D4]" : ""}>{col}</span>
-      <svg className={`w-3 h-3 ml-0.5 transition-transform ${active && sortDir === "asc" ? "rotate-180" : ""} ${active ? "text-[#0078D4]" : "text-gray-300 group-hover:text-gray-400"}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+      <svg className={`w-3 h-3 ml-0.5 transition-transform ${active && sortDir === "asc" ? "rotate-180" : ""} ${active ? "text-[#0078D4]" : "text-[#484F58] group-hover:text-[#7D8590]"}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
         <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
       </svg>
     </button>
@@ -234,25 +234,25 @@ export default function AnalyticsPage() {
       {/* Header */}
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
-          <h1 className="text-xl font-bold text-[#0A2540]">Site Analytics</h1>
-          <p className="text-sm text-gray-500 mt-0.5">First-party traffic data for Shane McCaw Consulting.</p>
+          <h1 className="text-xl font-bold text-[#E6EDF3]">Site Analytics</h1>
+          <p className="text-sm text-[#7D8590] mt-0.5">First-party traffic data for Shane McCaw Consulting.</p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           {/* Live badge */}
           {live !== null && (
-            <div className="flex items-center gap-1.5 bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-semibold px-3 py-1.5 rounded-full">
+            <div className="flex items-center gap-1.5 bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-semibold px-3 py-1.5 rounded-full">
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
               {live} live now
             </div>
           )}
           {/* Range selector — presets + custom */}
           <div className="flex items-center gap-2 flex-wrap">
-            <div className="flex items-center bg-white border border-gray-200 rounded-lg overflow-hidden shadow-sm">
+            <div className="flex items-center bg-[#161B22] border border-[#30363D] rounded-lg overflow-hidden shadow-sm">
               {(["today", "7d", "30d", "90d"] as Preset[]).map((r) => (
                 <button
                   key={r}
                   onClick={() => { setPreset(r); setIsCustom(false); }}
-                  className={`px-3 py-1.5 text-xs font-semibold transition-colors ${!isCustom && preset === r ? "bg-[#0078D4] text-white" : "text-gray-600 hover:bg-gray-50"}`}
+                  className={`px-3 py-1.5 text-xs font-semibold transition-colors ${!isCustom && preset === r ? "bg-[#0078D4] text-white" : "text-[#7D8590] hover:bg-[#1C2128]"}`}
                 >
                   {PRESET_LABELS[r]}
                 </button>
@@ -263,21 +263,21 @@ export default function AnalyticsPage() {
                   if (!customEnd) setCustomEnd(isoDate(new Date()));
                   setIsCustom(true);
                 }}
-                className={`px-3 py-1.5 text-xs font-semibold transition-colors border-l border-gray-200 ${isCustom ? "bg-[#0078D4] text-white" : "text-gray-600 hover:bg-gray-50"}`}
+                className={`px-3 py-1.5 text-xs font-semibold transition-colors border-l border-[#30363D] ${isCustom ? "bg-[#0078D4] text-white" : "text-[#7D8590] hover:bg-[#1C2128]"}`}
               >
                 Custom
               </button>
             </div>
             {isCustom && (
-              <div className="flex items-center gap-1.5 bg-white border border-gray-200 rounded-lg px-2 py-1 shadow-sm">
+              <div className="flex items-center gap-1.5 bg-[#161B22] border border-[#30363D] rounded-lg px-2 py-1 shadow-sm">
                 <input type="date" value={customStart} max={customEnd || isoDate(new Date())}
                   onChange={e => setCustomStart(e.target.value)}
-                  className="text-xs text-gray-700 border-0 outline-none bg-transparent cursor-pointer"
+                  className="text-xs text-[#C9D1D9] border-0 outline-none bg-transparent cursor-pointer"
                 />
-                <span className="text-gray-400 text-xs">→</span>
+                <span className="text-[#7D8590] text-xs">→</span>
                 <input type="date" value={customEnd} min={customStart} max={isoDate(new Date())}
                   onChange={e => setCustomEnd(e.target.value)}
-                  className="text-xs text-gray-700 border-0 outline-none bg-transparent cursor-pointer"
+                  className="text-xs text-[#C9D1D9] border-0 outline-none bg-transparent cursor-pointer"
                 />
                 <button
                   onClick={() => { if (customStart && customEnd) void load(preset, true, customStart, customEnd); }}
@@ -312,30 +312,30 @@ export default function AnalyticsPage() {
               label: "Page Views",
               value: fmt(kpis.pageviews),
               icon: "M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z",
-              color: "text-purple-600 bg-purple-100",
+              color: "text-purple-400 bg-purple-500/15",
             },
             {
               label: "Avg. Time on Page",
               value: fmtTime(kpis.avgTimeOnPage),
               icon: "M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z",
-              color: "text-teal-600 bg-teal-100",
+              color: "text-teal-400 bg-teal-500/15",
             },
             {
               label: "Bounce Rate",
               value: `${kpis.bounceRate}%`,
               icon: "M13 7h8m0 0v8m0-8l-8 8-4-4-6 6",
-              color: kpis.bounceRate > 70 ? "text-red-600 bg-red-100" : "text-emerald-600 bg-emerald-100",
+              color: kpis.bounceRate > 70 ? "text-red-400 bg-red-500/15" : "text-emerald-400 bg-emerald-500/15",
             },
           ].map(card => (
-            <div key={card.label} className="bg-white border border-gray-100 rounded-xl p-5 flex items-start gap-4 shadow-sm">
+            <div key={card.label} className="bg-[#161B22] border border-[#30363D] rounded-xl p-5 flex items-start gap-4 shadow-sm">
               <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${card.color}`}>
                 <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                   <path strokeLinecap="round" strokeLinejoin="round" d={card.icon} />
                 </svg>
               </div>
               <div>
-                <p className="text-2xl font-bold text-[#0A2540]">{card.value}</p>
-                <p className="text-xs text-gray-500 font-medium mt-0.5">{card.label}</p>
+                <p className="text-2xl font-bold text-[#E6EDF3]">{card.value}</p>
+                <p className="text-xs text-[#7D8590] font-medium mt-0.5">{card.label}</p>
               </div>
             </div>
           ))}
@@ -343,25 +343,25 @@ export default function AnalyticsPage() {
       )}
 
       {/* Pageviews Chart */}
-      <section className="bg-white border border-gray-100 rounded-xl p-5 shadow-sm">
-        <h2 className="text-sm font-bold text-[#0A2540] uppercase tracking-widest mb-4">Page Views Over Time</h2>
+      <section className="bg-[#161B22] border border-[#30363D] rounded-xl p-5 shadow-sm">
+        <h2 className="text-sm font-bold text-[#E6EDF3] uppercase tracking-widest mb-4">Page Views Over Time</h2>
         {seriesLoading ? (
-          <div className="h-56 bg-gray-50 rounded-lg animate-pulse" />
+          <div className="h-56 bg-[#161B22] rounded-lg animate-pulse" />
         ) : !series || series.length === 0 ? (
-          <p className="text-sm text-gray-400 text-center py-16">No data yet — traffic will appear here once visitors arrive.</p>
+          <p className="text-sm text-[#7D8590] text-center py-16">No data yet — traffic will appear here once visitors arrive.</p>
         ) : (
           <ResponsiveContainer width="100%" height={220}>
             <LineChart data={series} margin={{ top: 4, right: 8, left: -16, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" vertical={false} />
+              <CartesianGrid strokeDasharray="3 3" stroke="#30363D" vertical={false} />
               {/* @ts-expect-error recharts types incompatible with this React version */}
-              <XAxis dataKey="date" tick={{ fontSize: 10, fill: "#9ca3af" }} axisLine={false} tickLine={false}
+              <XAxis dataKey="date" tick={{ fontSize: 10, fill: "#7D8590" }} axisLine={false} tickLine={false}
                 tickFormatter={(d: string) => { const [, m, day] = d.split("-"); return `${m}/${day}`; }}
               />
               {/* @ts-expect-error recharts types incompatible with this React version */}
-              <YAxis tick={{ fontSize: 10, fill: "#9ca3af" }} axisLine={false} tickLine={false} allowDecimals={false} />
+              <YAxis tick={{ fontSize: 10, fill: "#7D8590" }} axisLine={false} tickLine={false} allowDecimals={false} />
               {/* @ts-expect-error recharts types incompatible with this React version */}
               <RechartsTooltip
-                contentStyle={{ fontSize: 12, borderRadius: 8, border: "1px solid #e5e7eb" }}
+                contentStyle={{ fontSize: 12, borderRadius: 8, border: "1px solid #30363D", background: "#1C2128", color: "#E6EDF3" }}
                 formatter={(v: number) => [v, "Views"]}
               />
               {/* @ts-expect-error recharts types incompatible with this React version */}
@@ -374,20 +374,20 @@ export default function AnalyticsPage() {
       {/* Two-column: Top Pages + Traffic Sources */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Top Pages — sortable */}
-        <section className="bg-white border border-gray-100 rounded-xl p-5 shadow-sm">
-          <h2 className="text-sm font-bold text-[#0A2540] uppercase tracking-widest mb-4">Top Pages</h2>
+        <section className="bg-[#161B22] border border-[#30363D] rounded-xl p-5 shadow-sm">
+          <h2 className="text-sm font-bold text-[#E6EDF3] uppercase tracking-widest mb-4">Top Pages</h2>
           {topPagesLoading ? (
-            <div className="space-y-2">{Array.from({ length: 6 }).map((_, i) => <div key={i} className="h-8 bg-gray-50 rounded-lg animate-pulse" />)}</div>
+            <div className="space-y-2">{Array.from({ length: 6 }).map((_, i) => <div key={i} className="h-8 bg-[#161B22] rounded-lg animate-pulse" />)}</div>
           ) : !topPages || topPages.length === 0 ? (
-            <p className="text-xs text-gray-400 text-center py-8">No page view data yet.</p>
+            <p className="text-xs text-[#7D8590] text-center py-8">No page view data yet.</p>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-xs">
                 <thead>
-                  <tr className="border-b border-gray-100">
-                    <th className="text-left py-2 pr-3 font-semibold text-gray-400 uppercase tracking-widest text-[10px]">Page</th>
+                  <tr className="border-b border-[#30363D]">
+                    <th className="text-left py-2 pr-3 font-semibold text-[#7D8590] uppercase tracking-widest text-[10px]">Page</th>
                     {(["Views", "Avg Time", "Bounce"] as const).map(col => (
-                      <th key={col} className="text-right py-2 pr-3 font-semibold text-gray-400 uppercase tracking-widest text-[10px] cursor-pointer select-none">
+                      <th key={col} className="text-right py-2 pr-3 font-semibold text-[#7D8590] uppercase tracking-widest text-[10px] cursor-pointer select-none">
                         <SortBtn col={col} sortCol={topPagesSort.col} sortDir={topPagesSort.dir}
                           onSort={c => setTopPagesSort(s => toggleSort(s, c))} />
                       </th>
@@ -396,12 +396,12 @@ export default function AnalyticsPage() {
                 </thead>
                 <tbody>
                   {sortedPages().map((row, i) => (
-                    <tr key={i} className="border-b border-gray-50 hover:bg-gray-50 transition-colors">
-                      <td className="py-2 pr-3 text-[#0A2540] font-medium truncate max-w-[180px]" title={row.page}>{row.page || "/"}</td>
-                      <td className="py-2 pr-3 text-right text-gray-600 font-semibold">{fmt(row.views)}</td>
-                      <td className="py-2 pr-3 text-right text-gray-500">{row.avgDuration ? fmtTime(row.avgDuration) : "—"}</td>
+                    <tr key={i} className="border-b border-[#30363D] hover:bg-[#1C2128] transition-colors">
+                      <td className="py-2 pr-3 text-[#E6EDF3] font-medium truncate max-w-[180px]" title={row.page}>{row.page || "/"}</td>
+                      <td className="py-2 pr-3 text-right text-[#7D8590] font-semibold">{fmt(row.views)}</td>
+                      <td className="py-2 pr-3 text-right text-[#7D8590]">{row.avgDuration ? fmtTime(row.avgDuration) : "—"}</td>
                       <td className="py-2 text-right">
-                        <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${row.bounceRate > 70 ? "bg-red-100 text-red-600" : "bg-gray-100 text-gray-600"}`}>
+                        <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${row.bounceRate > 70 ? "bg-red-500/15 text-red-400" : "bg-[#30363D]/50 text-[#7D8590]"}`}>
                           {row.bounceRate}%
                         </span>
                       </td>
@@ -414,22 +414,22 @@ export default function AnalyticsPage() {
         </section>
 
         {/* Traffic Sources */}
-        <section className="bg-white border border-gray-100 rounded-xl p-5 shadow-sm">
-          <h2 className="text-sm font-bold text-[#0A2540] uppercase tracking-widest mb-4">Traffic Sources</h2>
+        <section className="bg-[#161B22] border border-[#30363D] rounded-xl p-5 shadow-sm">
+          <h2 className="text-sm font-bold text-[#E6EDF3] uppercase tracking-widest mb-4">Traffic Sources</h2>
           {topReferrersLoading ? (
-            <div className="space-y-2">{Array.from({ length: 6 }).map((_, i) => <div key={i} className="h-8 bg-gray-50 rounded-lg animate-pulse" />)}</div>
+            <div className="space-y-2">{Array.from({ length: 6 }).map((_, i) => <div key={i} className="h-8 bg-[#161B22] rounded-lg animate-pulse" />)}</div>
           ) : !topReferrers || topReferrers.length === 0 ? (
-            <p className="text-xs text-gray-400 text-center py-8">No referrer data yet.</p>
+            <p className="text-xs text-[#7D8590] text-center py-8">No referrer data yet.</p>
           ) : (
             <div className="space-y-2.5">
               {topReferrers.map((row, i) => (
                 <div key={i} className="flex items-center gap-3">
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between mb-1">
-                      <span className="text-xs font-medium text-[#0A2540] truncate">{row.source}</span>
-                      <span className="text-xs text-gray-500 ml-2 shrink-0">{fmt(row.sessions)} ({row.pct}%)</span>
+                      <span className="text-xs font-medium text-[#E6EDF3] truncate">{row.source}</span>
+                      <span className="text-xs text-[#7D8590] ml-2 shrink-0">{fmt(row.sessions)} ({row.pct}%)</span>
                     </div>
-                    <div className="h-1.5 rounded-full bg-gray-100 overflow-hidden">
+                    <div className="h-1.5 rounded-full bg-[#30363D] overflow-hidden">
                       <div className="h-full rounded-full bg-[#0078D4]" style={{ width: `${row.pct}%` }} />
                     </div>
                   </div>
@@ -443,27 +443,27 @@ export default function AnalyticsPage() {
       {/* Two-column: CTA Events + Outbound Links */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* CTA Events */}
-        <section className="bg-white border border-gray-100 rounded-xl p-5 shadow-sm">
-          <h2 className="text-sm font-bold text-[#0A2540] uppercase tracking-widest mb-4">CTA &amp; Click Events</h2>
+        <section className="bg-[#161B22] border border-[#30363D] rounded-xl p-5 shadow-sm">
+          <h2 className="text-sm font-bold text-[#E6EDF3] uppercase tracking-widest mb-4">CTA &amp; Click Events</h2>
           {topEventsLoading ? (
-            <div className="space-y-2">{Array.from({ length: 6 }).map((_, i) => <div key={i} className="h-8 bg-gray-50 rounded-lg animate-pulse" />)}</div>
+            <div className="space-y-2">{Array.from({ length: 6 }).map((_, i) => <div key={i} className="h-8 bg-[#161B22] rounded-lg animate-pulse" />)}</div>
           ) : !topEvents || topEvents.length === 0 ? (
-            <p className="text-xs text-gray-400 text-center py-8">No click events recorded yet.</p>
+            <p className="text-xs text-[#7D8590] text-center py-8">No click events recorded yet.</p>
           ) : (
             <div className="space-y-4">
               {topEventsByType.slice(0, 4).map(([eventType, events]) => (
                 <div key={eventType}>
-                  <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-2">
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-[#7D8590] mb-2">
                     {EVENT_TYPE_LABELS[eventType] ?? eventType}
                   </p>
                   <div className="space-y-1">
                     {events.slice(0, 5).map((ev, i) => (
                       <div key={i} className="flex items-center gap-2 py-1">
                         <div className="flex-1 min-w-0">
-                          <span className="text-xs text-[#0A2540] font-medium truncate block">{ev.label}</span>
-                          <span className="text-[10px] text-gray-400 truncate block">{ev.page}</span>
+                          <span className="text-xs text-[#E6EDF3] font-medium truncate block">{ev.label}</span>
+                          <span className="text-[10px] text-[#7D8590] truncate block">{ev.page}</span>
                         </div>
-                        <span className="text-xs font-bold text-gray-600 shrink-0">{fmt(ev.count)}</span>
+                        <span className="text-xs font-bold text-[#7D8590] shrink-0">{fmt(ev.count)}</span>
                       </div>
                     ))}
                   </div>
@@ -474,35 +474,35 @@ export default function AnalyticsPage() {
         </section>
 
         {/* Outbound Links — sanitized hrefs */}
-        <section className="bg-white border border-gray-100 rounded-xl p-5 shadow-sm">
-          <h2 className="text-sm font-bold text-[#0A2540] uppercase tracking-widest mb-4">Outbound Link Clicks</h2>
+        <section className="bg-[#161B22] border border-[#30363D] rounded-xl p-5 shadow-sm">
+          <h2 className="text-sm font-bold text-[#E6EDF3] uppercase tracking-widest mb-4">Outbound Link Clicks</h2>
           {topLinksLoading ? (
-            <div className="space-y-2">{Array.from({ length: 6 }).map((_, i) => <div key={i} className="h-8 bg-gray-50 rounded-lg animate-pulse" />)}</div>
+            <div className="space-y-2">{Array.from({ length: 6 }).map((_, i) => <div key={i} className="h-8 bg-[#161B22] rounded-lg animate-pulse" />)}</div>
           ) : !topLinks || topLinks.length === 0 ? (
-            <p className="text-xs text-gray-400 text-center py-8">No outbound clicks recorded yet.</p>
+            <p className="text-xs text-[#7D8590] text-center py-8">No outbound clicks recorded yet.</p>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-xs">
                 <thead>
-                  <tr className="border-b border-gray-100">
-                    <th className="text-left py-2 pr-3 font-semibold text-gray-400 uppercase tracking-widest text-[10px]">Label</th>
-                    <th className="text-left py-2 pr-3 font-semibold text-gray-400 uppercase tracking-widest text-[10px]">Destination</th>
-                    <th className="text-right py-2 font-semibold text-gray-400 uppercase tracking-widest text-[10px]">Clicks</th>
+                  <tr className="border-b border-[#30363D]">
+                    <th className="text-left py-2 pr-3 font-semibold text-[#7D8590] uppercase tracking-widest text-[10px]">Label</th>
+                    <th className="text-left py-2 pr-3 font-semibold text-[#7D8590] uppercase tracking-widest text-[10px]">Destination</th>
+                    <th className="text-right py-2 font-semibold text-[#7D8590] uppercase tracking-widest text-[10px]">Clicks</th>
                   </tr>
                 </thead>
                 <tbody>
                   {topLinks.map((row, i) => {
                     const href = safeHref(row.href);
                     return (
-                      <tr key={i} className="border-b border-gray-50 hover:bg-gray-50 transition-colors">
-                        <td className="py-2 pr-3 text-[#0A2540] font-medium truncate max-w-[140px]">{row.label || "—"}</td>
-                        <td className="py-2 pr-3 text-gray-400 truncate max-w-[200px]">
+                      <tr key={i} className="border-b border-[#30363D] hover:bg-[#1C2128] transition-colors">
+                        <td className="py-2 pr-3 text-[#E6EDF3] font-medium truncate max-w-[140px]">{row.label || "—"}</td>
+                        <td className="py-2 pr-3 text-[#7D8590] truncate max-w-[200px]">
                           {href
                             ? <a href={href} target="_blank" rel="noopener noreferrer" className="hover:text-[#0078D4] transition-colors">{href}</a>
-                            : <span className="text-gray-300 italic text-[10px]">{row.href ? "(non-http url)" : "—"}</span>
+                            : <span className="text-[#484F58] italic text-[10px]">{row.href ? "(non-http url)" : "—"}</span>
                           }
                         </td>
-                        <td className="py-2 text-right font-bold text-gray-600">{fmt(row.count)}</td>
+                        <td className="py-2 text-right font-bold text-[#7D8590]">{fmt(row.count)}</td>
                       </tr>
                     );
                   })}
@@ -514,24 +514,24 @@ export default function AnalyticsPage() {
       </div>
 
       {/* Top CTAs with CTR — sortable */}
-      <section className="bg-white border border-gray-100 rounded-xl p-5 shadow-sm">
+      <section className="bg-[#161B22] border border-[#30363D] rounded-xl p-5 shadow-sm">
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-sm font-bold text-[#0A2540] uppercase tracking-widest">Top CTAs — Click-Through Rates</h2>
-          <span className="text-[10px] text-gray-400">CTR = clicks ÷ page views</span>
+          <h2 className="text-sm font-bold text-[#E6EDF3] uppercase tracking-widest">Top CTAs — Click-Through Rates</h2>
+          <span className="text-[10px] text-[#7D8590]">CTR = clicks ÷ page views</span>
         </div>
         {topCtasLoading ? (
-          <div className="space-y-2">{Array.from({ length: 8 }).map((_, i) => <div key={i} className="h-8 bg-gray-50 rounded-lg animate-pulse" />)}</div>
+          <div className="space-y-2">{Array.from({ length: 8 }).map((_, i) => <div key={i} className="h-8 bg-[#161B22] rounded-lg animate-pulse" />)}</div>
         ) : !topCtas || topCtas.length === 0 ? (
-          <p className="text-xs text-gray-400 text-center py-8">No CTA click data yet — CTAs and nav links will appear here once visitors click them.</p>
+          <p className="text-xs text-[#7D8590] text-center py-8">No CTA click data yet — CTAs and nav links will appear here once visitors click them.</p>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-xs">
               <thead>
-                <tr className="border-b border-gray-100">
-                  <th className="text-left py-2 pr-3 font-semibold text-gray-400 uppercase tracking-widest text-[10px]">CTA Label</th>
-                  <th className="text-left py-2 pr-3 font-semibold text-gray-400 uppercase tracking-widest text-[10px]">Page</th>
+                <tr className="border-b border-[#30363D]">
+                  <th className="text-left py-2 pr-3 font-semibold text-[#7D8590] uppercase tracking-widest text-[10px]">CTA Label</th>
+                  <th className="text-left py-2 pr-3 font-semibold text-[#7D8590] uppercase tracking-widest text-[10px]">Page</th>
                   {(["Clicks", "Views", "CTR"] as const).map(col => (
-                    <th key={col} className="text-right py-2 pr-3 font-semibold text-gray-400 uppercase tracking-widest text-[10px] cursor-pointer select-none">
+                    <th key={col} className="text-right py-2 pr-3 font-semibold text-[#7D8590] uppercase tracking-widest text-[10px] cursor-pointer select-none">
                       <SortBtn col={col} sortCol={topCtasSort.col} sortDir={topCtasSort.dir}
                         onSort={c => setTopCtasSort(s => toggleSort(s, c))} />
                     </th>
@@ -540,13 +540,13 @@ export default function AnalyticsPage() {
               </thead>
               <tbody>
                 {sortedCtas().map((row, i) => (
-                  <tr key={i} className="border-b border-gray-50 hover:bg-gray-50 transition-colors">
-                    <td className="py-2 pr-3 text-[#0A2540] font-medium truncate max-w-[180px]">{row.label}</td>
-                    <td className="py-2 pr-3 text-gray-500 truncate max-w-[160px]">{row.page || "/"}</td>
-                    <td className="py-2 pr-3 text-right font-semibold text-gray-700">{fmt(row.clicks)}</td>
-                    <td className="py-2 pr-3 text-right text-gray-500">{fmt(row.pageViews)}</td>
+                  <tr key={i} className="border-b border-[#30363D] hover:bg-[#1C2128] transition-colors">
+                    <td className="py-2 pr-3 text-[#E6EDF3] font-medium truncate max-w-[180px]">{row.label}</td>
+                    <td className="py-2 pr-3 text-[#7D8590] truncate max-w-[160px]">{row.page || "/"}</td>
+                    <td className="py-2 pr-3 text-right font-semibold text-[#C9D1D9]">{fmt(row.clicks)}</td>
+                    <td className="py-2 pr-3 text-right text-[#7D8590]">{fmt(row.pageViews)}</td>
                     <td className="py-2 text-right">
-                      <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${row.ctr >= 5 ? "bg-emerald-100 text-emerald-700" : row.ctr >= 2 ? "bg-blue-100 text-[#0078D4]" : "bg-gray-100 text-gray-500"}`}>
+                      <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${row.ctr >= 5 ? "bg-emerald-100 text-emerald-700" : row.ctr >= 2 ? "bg-blue-100 text-[#0078D4]" : "bg-[#30363D]/50 text-[#7D8590]"}`}>
                         {row.ctr}%
                       </span>
                     </td>

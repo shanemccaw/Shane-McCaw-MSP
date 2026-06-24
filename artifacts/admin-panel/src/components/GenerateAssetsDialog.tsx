@@ -208,7 +208,7 @@ export function GenerateAssetsDialog({ templateId, open, onClose }: GenerateAsse
         onEscapeKeyDown={e => { if (!state.done) e.preventDefault(); }}
       >
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2 text-[#0A2540]">
+          <DialogTitle className="flex items-center gap-2 text-[#E6EDF3]">
             <svg className="w-4 h-4 text-purple-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
             </svg>
@@ -272,13 +272,13 @@ export function GenerateAssetsDialog({ templateId, open, onClose }: GenerateAsse
           {state.log.length > 0 && (
             <div
               ref={logRef}
-              className="max-h-48 overflow-y-auto space-y-1 rounded-lg border border-gray-100 bg-gray-50 p-2"
+              className="max-h-48 overflow-y-auto space-y-1 rounded-lg border border-[#30363D] bg-[#161B22] p-2"
             >
               {state.log.map((entry, i) => (
                 <div
                   key={i}
                   className={`flex items-start gap-2 text-xs rounded px-2 py-1.5 ${
-                    entry.failed ? "bg-red-50 text-red-700" : "bg-white text-gray-700 border border-gray-100"
+                    entry.failed ? "bg-red-500/10 text-red-400" : "bg-[#1C2128] text-[#E6EDF3] border border-[#30363D]"
                   }`}
                 >
                   {entry.failed ? (
@@ -343,7 +343,7 @@ export function GenerateAssetsDialog({ templateId, open, onClose }: GenerateAsse
 
           {/* ── Error ── */}
           {state.done && state.error && (
-            <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-3">
+            <div className="rounded-lg border border-red-500/20 bg-red-500/10 px-3 py-3">
               <p className="text-sm font-semibold text-red-700">Generation failed</p>
               <p className="text-xs text-red-600 mt-0.5">{state.error}</p>
             </div>
@@ -354,7 +354,7 @@ export function GenerateAssetsDialog({ templateId, open, onClose }: GenerateAsse
           <button
             onClick={onClose}
             disabled={!state.done}
-            className="px-4 py-2 text-sm font-medium rounded-lg border border-gray-200 text-gray-700 hover:bg-gray-50 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+            className="px-4 py-2 text-sm font-medium rounded-lg border border-[#30363D] text-[#E6EDF3] hover:bg-gray-50 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
           >
             {state.done ? "Close" : "Running…"}
           </button>

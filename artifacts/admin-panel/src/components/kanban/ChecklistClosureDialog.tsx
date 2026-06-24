@@ -126,11 +126,11 @@ export default function ChecklistClosureDialog({
     <Dialog open={open} onOpenChange={(o) => { if (!o) onCancel(); }}>
       <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle className="text-base font-bold text-[#0A2540] leading-snug">
+          <DialogTitle className="text-base font-bold text-[#E6EDF3] leading-snug">
             Complete checklist item
           </DialogTitle>
           <p className="text-xs text-muted-foreground mt-0.5 leading-snug">
-            <span className="font-semibold text-[#0A2540]">{itemLabel}</span>
+            <span className="font-semibold text-[#E6EDF3]">{itemLabel}</span>
             {taskTitle && (
               <span> · {taskTitle}</span>
             )}
@@ -146,7 +146,7 @@ export default function ChecklistClosureDialog({
               </div>
               {[1, 2, 3].map((i) => (
                 <div key={i} className="space-y-1.5 animate-pulse">
-                  <div className="h-2.5 w-24 rounded bg-gray-200" />
+                  <div className="h-2.5 w-24 rounded bg-[#30363D]" />
                   <div className="h-9 w-full rounded-lg bg-gray-100" />
                 </div>
               ))}
@@ -158,7 +158,7 @@ export default function ChecklistClosureDialog({
           )}
 
           {error && (
-            <p className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2 mt-3">
+            <p className="text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2 mt-3">
               {error}
             </p>
           )}
@@ -169,7 +169,7 @@ export default function ChecklistClosureDialog({
             type="button"
             onClick={onCancel}
             disabled={phase === "submitting"}
-            className="text-sm font-semibold text-muted-foreground hover:text-[#0A2540] px-3 py-2 transition-colors disabled:opacity-50"
+            className="text-sm font-semibold text-muted-foreground hover:text-[#E6EDF3] px-3 py-2 transition-colors disabled:opacity-50"
           >
             Cancel
           </button>
