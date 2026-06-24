@@ -341,7 +341,7 @@ export default function RetainersOverview() {
       </div>
 
       {/* Hero */}
-      <section className="bg-[#0A2540] pt-[110px] pb-20 px-6 text-center">
+      <section className="bg-[#0A2540] pt-[130px] pb-20 px-6 text-center">
         <div className="max-w-[860px] mx-auto">
           <div className="inline-flex items-center gap-2 bg-white/10 text-white text-xs font-bold uppercase tracking-wider px-3 py-1.5 rounded-full mb-6">
             <Zap className="w-3.5 h-3.5 text-[#00B4D8]" />

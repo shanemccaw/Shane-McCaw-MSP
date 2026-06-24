@@ -157,7 +157,7 @@ export default function M365HealthQuiz() {
       />
 
       {/* ── 1. Hero ── */}
-      <section className="relative min-h-[90vh] flex items-center justify-center overflow-hidden bg-[#0A2540] pt-[110px] pb-[110px]">
+      <section className="relative min-h-[90vh] flex items-center justify-center overflow-hidden bg-[#0A2540] pt-[130px] pb-[110px]">
         <div className="absolute inset-0 bg-gradient-to-br from-[#0A2540] via-[#0d2f50] to-[#0A2540]" />
         <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_30%_50%,rgba(0,120,212,0.15),transparent_60%)]" />
         <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_70%_20%,rgba(0,180,216,0.1),transparent_50%)]" />
