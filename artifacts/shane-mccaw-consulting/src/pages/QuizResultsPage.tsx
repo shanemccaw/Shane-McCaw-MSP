@@ -108,7 +108,7 @@ export default function QuizResultsPage() {
         description="View your Microsoft 365 maturity assessment results from Shane McCaw Consulting."
       />
 
-      <div className="min-h-screen bg-[#0A2540] pt-24 pb-16">
+      <div className="min-h-screen bg-[#0A2540] pt-[110px] pb-16">
         <div className="max-w-2xl mx-auto px-4 sm:px-6">
 
           {/* Loading */}

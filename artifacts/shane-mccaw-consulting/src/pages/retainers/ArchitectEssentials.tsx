@@ -152,7 +152,7 @@ export default function ArchitectEssentials() {
       </div>
 
       {/* Hero */}
-      <section className="bg-[#0A2540] pt-16 pb-20 px-6">
+      <section className="bg-[#0A2540] pt-[110px] pb-20 px-6">
         <div className="max-w-[900px] mx-auto text-center">
           <div className="flex flex-wrap items-center justify-center gap-2 mb-6">
             <div className="inline-flex items-center gap-2 bg-white/10 text-white text-xs font-bold uppercase tracking-wider px-3 py-1.5 rounded-full">
