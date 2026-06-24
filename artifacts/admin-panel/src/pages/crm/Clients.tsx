@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, useCallback, useMemo, Fragment } from "react";
+import { createPortal } from "react-dom";
 import { useLocation } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
@@ -481,6 +482,14 @@ export default function ClientsPage() {
   const [filterOnboarding, setFilterOnboarding] = useState<"all" | "complete" | "pending">("all");
   const [hoverRowId, setHoverRowId] = useState<number | null>(null);
   const [menuOpenId, setMenuOpenId] = useState<number | null>(null);
+  const [menuPos, setMenuPos] = useState<{ top: number; right: number } | null>(null);
+
+  useEffect(() => {
+    if (menuOpenId === null) return;
+    const close = () => { setMenuOpenId(null); setMenuPos(null); };
+    document.addEventListener("click", close, { capture: true });
+    return () => document.removeEventListener("click", close, { capture: true });
+  }, [menuOpenId]);
 
   // Bulk selection
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
@@ -1020,7 +1029,7 @@ export default function ClientsPage() {
                     <Fragment key={c.id}>
                       <tr
                         onMouseEnter={() => setHoverRowId(c.id)}
-                        onMouseLeave={() => { setHoverRowId(null); if (menuOpenId === c.id) setMenuOpenId(null); }}
+                        onMouseLeave={() => setHoverRowId(null)}
                         className={`border-b border-border last:border-0 transition-colors ${expandedEmailId === c.id || expandedSpId === c.id ? "bg-[#1C2128]" : hoverRowId === c.id ? "bg-[#1C2128]" : ""}`}
                       >
                         {/* Checkbox */}
@@ -1183,7 +1192,13 @@ export default function ClientsPage() {
                             {/* ⋯ menu button for more actions */}
                             <div className="relative">
                               <button
-                                onClick={e => { e.stopPropagation(); setMenuOpenId(prev => prev === c.id ? null : c.id); }}
+                                onClick={e => {
+                                  e.stopPropagation();
+                                  if (menuOpenId === c.id) { setMenuOpenId(null); setMenuPos(null); return; }
+                                  const rect = e.currentTarget.getBoundingClientRect();
+                                  setMenuPos({ top: rect.bottom + 4, right: window.innerWidth - rect.right });
+                                  setMenuOpenId(c.id);
+                                }}
                                 className={`text-muted-foreground hover:text-[#E6EDF3] transition-colors ${hoverRowId === c.id || menuOpenId === c.id ? "opacity-100" : "opacity-0 pointer-events-none"}`}
                                 title="More actions"
                               >
@@ -1191,30 +1206,6 @@ export default function ClientsPage() {
                                   <path strokeLinecap="round" strokeLinejoin="round" d="M5 12h.01M12 12h.01M19 12h.01M6 12a1 1 0 11-2 0 1 1 0 012 0zm7 0a1 1 0 11-2 0 1 1 0 012 0zm7 0a1 1 0 11-2 0 1 1 0 012 0z" />
                                 </svg>
                               </button>
-
-                              {menuOpenId === c.id && (
-                                <div className="absolute right-0 top-full mt-1 z-20 w-44 bg-[#1C2128] border border-border rounded-xl shadow-xl overflow-hidden">
-                                  {[
-                                    { label: "View Client", action: () => { navigate(`/crm/clients/${c.id}`); setMenuOpenId(null); } },
-                                    { label: "Edit Info", action: () => { handleEdit(c); setMenuOpenId(null); } },
-                                    { label: "Email Activity", action: () => { setExpandedEmailId(prev => prev === c.id ? null : c.id); setExpandedSpId(null); setMenuOpenId(null); } },
-                                    { label: "SharePoint Site", action: () => { setExpandedSpId(prev => prev === c.id ? null : c.id); setExpandedEmailId(null); setMenuOpenId(null); } },
-                                    { label: "M365 Profile", action: () => { setM365ClientId(c.id); setMenuOpenId(null); } },
-                                    { label: "Resend Invite", action: () => { void handleResendInvite(c); setMenuOpenId(null); } },
-                                    { label: "View as Client", action: () => { void handleViewAs(c); setMenuOpenId(null); } },
-                                    { label: "Generate Report", action: () => { navigate("/crm/reports"); setMenuOpenId(null); }, dim: true },
-                                    { label: "Delete Client", action: () => { setDeleteTarget(c); setMenuOpenId(null); }, danger: true },
-                                  ].map(({ label, action, danger, dim }) => (
-                                    <button
-                                      key={label}
-                                      onClick={action}
-                                      className={`w-full text-left text-xs px-3.5 py-2 hover:bg-[#30363D] transition-colors ${danger ? "text-red-400" : dim ? "text-muted-foreground" : "text-[#E6EDF3]"}`}
-                                    >
-                                      {label}
-                                    </button>
-                                  ))}
-                                </div>
-                              )}
                             </div>
                           </div>
                         </td>
@@ -1279,6 +1270,41 @@ export default function ClientsPage() {
           onClose={() => setM365ClientId(null)}
         />
       )}
+
+      {/* Portal dropdown — renders outside overflow-hidden table wrapper */}
+      {menuOpenId !== null && menuPos !== null && (() => {
+        const client = clients.find(c => c.id === menuOpenId);
+        if (!client) return null;
+        const c = client;
+        return createPortal(
+          <div
+            className="fixed z-[9999] w-44 bg-[#1C2128] border border-border rounded-xl shadow-xl overflow-hidden"
+            style={{ top: menuPos.top, right: menuPos.right }}
+            onClick={e => e.stopPropagation()}
+          >
+            {[
+              { label: "View Client", action: () => { navigate(`/crm/clients/${c.id}`); setMenuOpenId(null); } },
+              { label: "Edit Info", action: () => { handleEdit(c); setMenuOpenId(null); } },
+              { label: "Email Activity", action: () => { setExpandedEmailId(prev => prev === c.id ? null : c.id); setExpandedSpId(null); setMenuOpenId(null); } },
+              { label: "SharePoint Site", action: () => { setExpandedSpId(prev => prev === c.id ? null : c.id); setExpandedEmailId(null); setMenuOpenId(null); } },
+              { label: "M365 Profile", action: () => { setM365ClientId(c.id); setMenuOpenId(null); } },
+              { label: "Resend Invite", action: () => { void handleResendInvite(c); setMenuOpenId(null); } },
+              { label: "View as Client", action: () => { void handleViewAs(c); setMenuOpenId(null); } },
+              { label: "Generate Report", action: () => { navigate("/crm/reports"); setMenuOpenId(null); }, dim: true },
+              { label: "Delete Client", action: () => { setDeleteTarget(c); setMenuOpenId(null); }, danger: true },
+            ].map(({ label, action, danger, dim }) => (
+              <button
+                key={label}
+                onClick={action}
+                className={`w-full text-left text-xs px-3.5 py-2 hover:bg-[#30363D] transition-colors ${danger ? "text-red-400" : dim ? "text-muted-foreground" : "text-[#E6EDF3]"}`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>,
+          document.body
+        );
+      })()}
     </div>
   );
 }
