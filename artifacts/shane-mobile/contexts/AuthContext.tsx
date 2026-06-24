@@ -1,5 +1,7 @@
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as SecureStore from "expo-secure-store";
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
+import { Platform } from "react-native";
 
 const BASE_URL = `https://${process.env.EXPO_PUBLIC_DOMAIN}`;
 
@@ -29,15 +31,30 @@ const KEY_REFRESH_TOKEN = "auth_refresh_token";
 const KEY_USER = "auth_user";
 
 async function secureGet(key: string): Promise<string | null> {
-  return SecureStore.getItemAsync(key);
+  if (Platform.OS === "web") return AsyncStorage.getItem(key);
+  try {
+    return await SecureStore.getItemAsync(key);
+  } catch {
+    return AsyncStorage.getItem(key);
+  }
 }
 
 async function secureSet(key: string, value: string): Promise<void> {
-  return SecureStore.setItemAsync(key, value);
+  if (Platform.OS === "web") return AsyncStorage.setItem(key, value);
+  try {
+    await SecureStore.setItemAsync(key, value);
+  } catch {
+    return AsyncStorage.setItem(key, value);
+  }
 }
 
 async function secureDel(key: string): Promise<void> {
-  return SecureStore.deleteItemAsync(key);
+  if (Platform.OS === "web") return AsyncStorage.removeItem(key);
+  try {
+    await SecureStore.deleteItemAsync(key);
+  } catch {
+    return AsyncStorage.removeItem(key);
+  }
 }
 
 async function doLogin(
