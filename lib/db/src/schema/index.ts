@@ -1007,7 +1007,7 @@ export const clientDocumentsTable = pgTable("client_documents", {
   id: serial("id").primaryKey(),
   clientUserId: integer("client_user_id").notNull().references(() => usersTable.id, { onDelete: "cascade" }),
   name: text("name").notNull(),
-  category: text("category", { enum: ["contracts", "reports", "proposals", "sows", "assessments", "other"] }).notNull().default("other"),
+  category: text("category", { enum: ["contracts", "reports", "proposals", "deliverables", "assessments", "misc"] }).notNull().default("misc"),
   description: text("description"),
   fileUrl: text("file_url"),
   filename: text("filename"),
