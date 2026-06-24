@@ -64,7 +64,7 @@ app.listen(port, (err) => {
     });
   }
 
-  checkWebhookHealthOnStartup(logger).catch((err) => {
+  checkWebhookHealthOnStartup(logger, { autoFix: true }).catch((err) => {
     logger.warn({ err }, "Stripe webhook health check failed (non-fatal)");
   });
 

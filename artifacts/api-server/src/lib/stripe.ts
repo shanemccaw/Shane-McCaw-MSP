@@ -58,11 +58,24 @@ export function getStripeKey(): string {
  * domain and logs the result. Designed to be called once at server startup
  * so that missing-endpoint regressions are immediately visible in logs.
  *
+ * When `autoFix: true`, missing endpoints are automatically created via the
+ * Stripe API. The newly-issued signing secret is logged at WARN level with
+ * clear instructions — the operator must copy it into the appropriate Replit
+ * Secret (`STRIPE_WEBHOOK_SECRET` in dev, `STRIPE_WEBHOOK_SECRET_PROD` in prod)
+ * for webhook signature verification to work after the endpoint is created.
+ *
  * Non-fatal: any error (Stripe API down, key missing, etc.) is caught and
  * logged as a warning so it never prevents the server from starting.
  */
-export async function checkWebhookHealthOnStartup(logger: { info: (obj: Record<string, unknown>, msg: string) => void; warn: (obj: Record<string, unknown>, msg: string) => void }): Promise<void> {
+export async function checkWebhookHealthOnStartup(
+  logger: {
+    info: (obj: Record<string, unknown>, msg: string) => void;
+    warn: (obj: Record<string, unknown>, msg: string) => void;
+  },
+  opts: { autoFix?: boolean } = {},
+): Promise<void> {
   const WEBHOOK_PATH = "/api/portal/stripe/webhook";
+  const REQUIRED_EVENTS = ["checkout.session.completed"] as const;
 
   let stripeKey: string;
   try {
@@ -84,6 +97,7 @@ export async function checkWebhookHealthOnStartup(logger: { info: (obj: Record<s
     : domains;
 
   const expectedUrls = relevantDomains.map((d) => `https://${d}${WEBHOOK_PATH}`);
+  const secretEnvVar = isProd ? "STRIPE_WEBHOOK_SECRET_PROD" : "STRIPE_WEBHOOK_SECRET";
 
   try {
     const { default: Stripe } = await import("stripe");
@@ -99,11 +113,50 @@ export async function checkWebhookHealthOnStartup(logger: { info: (obj: Record<s
         { urls: present, account: isProd ? "live" : "test" },
         "Stripe webhook health: ✓ endpoint registered",
       );
-    } else {
+      return;
+    }
+
+    if (!opts.autoFix) {
       logger.warn(
-        { missing, present, account: isProd ? "live" : "test", fix: "pnpm --filter @workspace/scripts run sync-webhooks -- --fix" },
+        {
+          missing,
+          present,
+          account: isProd ? "live" : "test",
+          fix: "pnpm --filter @workspace/scripts run sync-webhooks -- --fix",
+        },
         "Stripe webhook health: ⚠ missing webhook endpoint(s) — payments will NOT trigger provisioning. Run sync-webhooks --fix to register.",
       );
+      return;
+    }
+
+    // autoFix: create each missing endpoint and log the signing secret prominently
+    for (const url of missing) {
+      try {
+        const endpoint = await stripe.webhookEndpoints.create({
+          url,
+          enabled_events: REQUIRED_EVENTS as unknown as import("stripe").Stripe.WebhookEndpointCreateParams.EnabledEvent[],
+          description: `Auto-registered by server startup (${isProd ? "prod" : "dev"})`,
+        });
+        logger.warn(
+          {
+            url,
+            endpointId: endpoint.id,
+            account: isProd ? "live" : "test",
+            signingSecret: endpoint.secret ?? "(retrieve from Stripe Dashboard)",
+            ACTION_REQUIRED: `Copy the signingSecret value above into Replit Secret: ${secretEnvVar}`,
+          },
+          `Stripe webhook health: ✓ auto-created endpoint. ACTION REQUIRED — save the signingSecret to Replit Secret ${secretEnvVar} or webhook verification will fail.`,
+        );
+      } catch (createErr) {
+        logger.warn(
+          {
+            err: createErr,
+            url,
+            fix: "pnpm --filter @workspace/scripts run sync-webhooks -- --fix",
+          },
+          "Stripe webhook health: ⚠ failed to auto-create endpoint — run sync-webhooks --fix manually.",
+        );
+      }
     }
   } catch (err) {
     logger.warn({ err }, "Stripe webhook health: check failed (non-fatal)");
