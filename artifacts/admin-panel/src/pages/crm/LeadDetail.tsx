@@ -1,6 +1,9 @@
 import { useState, useEffect, useCallback } from "react";
 import { useLocation } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
+import {
+  AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, ReferenceLine,
+} from "recharts";
 
 type LeadStatus = "new" | "contacted" | "qualified" | "converted" | "archived";
 type LeadSource = "contact_form" | "lead_magnet";
@@ -64,6 +67,24 @@ interface LinkedEmail {
   rawFrom: string | null;
   receivedAt: string;
   bodyPreview?: string | null;
+}
+
+interface LeadQualification {
+  id: number;
+  leadId: number;
+  newScore: number;
+  previousScore: number;
+  stage: "AQL" | "SQL";
+  recommendedNextStep: string | null;
+  workflowType: string | null;
+  evidence: string[];
+  scoreFit: number;
+  scorePain: number;
+  scoreMaturity: number;
+  scoreIntent: number;
+  scoreUrgency: number;
+  status: "pending" | "approved" | "rejected" | "snoozed";
+  createdAt: string;
 }
 
 const STATUS_COLORS: Record<LeadStatus, string> = {
@@ -241,6 +262,147 @@ function EmptyState({ icon, title, subtitle }: { icon: React.ReactNode; title: s
   );
 }
 
+const STAGE_COLORS: Record<string, string> = {
+  SQL: "bg-purple-500/20 text-purple-300 border-purple-500/30",
+  AQL: "bg-blue-500/20 text-blue-300 border-blue-500/30",
+};
+
+const STATUS_BADGE: Record<string, string> = {
+  approved: "bg-green-500/20 text-green-300",
+  rejected: "bg-red-500/20 text-red-300",
+  snoozed: "bg-yellow-500/20 text-yellow-300",
+  pending: "bg-[#30363D] text-[#7D8590]",
+};
+
+function ScoreHistoryChart({ history }: { history: LeadQualification[] }) {
+  if (history.length === 0) {
+    return (
+      <EmptyState
+        icon={
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} className="w-10 h-10">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M7.5 14.25v2.25m3-4.5v4.5m3-6.75v6.75m3-9v9M6 20.25h12A2.25 2.25 0 0020.25 18V6A2.25 2.25 0 0018 3.75H6A2.25 2.25 0 003.75 6v12A2.25 2.25 0 006 20.25z" />
+          </svg>
+        }
+        title="No scoring events yet"
+        subtitle="Save the qualification profile to generate the first score."
+      />
+    );
+  }
+
+  // Chart data: oldest first so the line goes left→right chronologically
+  const chartData: { date: string; score: number; stage: string }[] = [...history].reverse().map(q => ({
+    date: new Date(q.createdAt).toLocaleDateString(undefined, { month: "short", day: "numeric" }),
+    score: q.newScore,
+    stage: q.stage,
+  }));
+
+  // Add a synthetic "start" point at previousScore of the earliest record
+  const earliest = history[history.length - 1];
+  if (earliest.previousScore > 0) {
+    chartData.unshift({ date: "Start", score: earliest.previousScore, stage: "" });
+  }
+
+  return (
+    <div className="space-y-5">
+      {/* Sparkline chart */}
+      <div className="h-36">
+        <ResponsiveContainer width="100%" height="100%">
+          <AreaChart data={chartData} margin={{ top: 4, right: 8, left: -20, bottom: 0 }}>
+            <defs>
+              <linearGradient id="scoreGrad" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="5%" stopColor="#0078D4" stopOpacity={0.3} />
+                <stop offset="95%" stopColor="#0078D4" stopOpacity={0} />
+              </linearGradient>
+            </defs>
+            <CartesianGrid strokeDasharray="3 3" stroke="#30363D" vertical={false} />
+            <XAxis dataKey="date" tick={{ fill: "#7D8590", fontSize: 10 }} axisLine={false} tickLine={false} />
+            <YAxis domain={[0, 100]} tick={{ fill: "#7D8590", fontSize: 10 }} axisLine={false} tickLine={false} />
+            <RechartsTooltip
+              contentStyle={{ background: "#1C2128", border: "1px solid #30363D", borderRadius: 8, fontSize: 12 }}
+              labelStyle={{ color: "#E6EDF3", fontWeight: 700 }}
+              itemStyle={{ color: "#0078D4" }}
+              formatter={(value: number) => [`${value}/100`, "Score"]}
+            />
+            <ReferenceLine y={60} stroke="#3B82F6" strokeDasharray="4 2" label={{ value: "AQL", fill: "#3B82F6", fontSize: 9, position: "right" }} />
+            <ReferenceLine y={75} stroke="#A855F7" strokeDasharray="4 2" label={{ value: "SQL", fill: "#A855F7", fontSize: 9, position: "right" }} />
+            <Area type="monotone" dataKey="score" stroke="#0078D4" strokeWidth={2} fill="url(#scoreGrad)" dot={{ fill: "#0078D4", r: 3, strokeWidth: 0 }} activeDot={{ r: 5 }} />
+          </AreaChart>
+        </ResponsiveContainer>
+      </div>
+
+      {/* Event list — newest first */}
+      <div className="space-y-2">
+        {history.map((q, i) => {
+          const delta = q.newScore - q.previousScore;
+          const isFirst = i === history.length - 1;
+          return (
+            <div key={q.id} className={`relative pl-7 ${!isFirst ? "pb-2" : ""}`}>
+              {i < history.length - 1 && (
+                <div className="absolute left-3 top-6 bottom-0 w-px bg-border" />
+              )}
+              <div className={`absolute left-1.5 top-1.5 w-3 h-3 rounded-full border-2 ${
+                q.stage === "SQL" ? "bg-purple-500 border-purple-400" :
+                q.stage === "AQL" ? "bg-blue-500 border-blue-400" :
+                "bg-[#0078D4] border-[#005A9E]"
+              }`} />
+              <div className="bg-[#1C2128] border border-border rounded-lg px-3.5 py-2.5 space-y-1.5">
+                <div className="flex items-center justify-between gap-2 flex-wrap">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-sm font-bold text-[#E6EDF3]">{q.previousScore} → {q.newScore}<span className="text-xs font-normal text-muted-foreground">/100</span></span>
+                    {delta !== 0 && (
+                      <span className={`text-xs font-semibold ${delta > 0 ? "text-green-400" : "text-red-400"}`}>
+                        {delta > 0 ? `+${delta}` : delta}
+                      </span>
+                    )}
+                    <span className={`text-[10px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded border ${STAGE_COLORS[q.stage] ?? "bg-[#30363D] text-[#7D8590] border-border"}`}>
+                      {q.stage}
+                    </span>
+                    <span className={`text-[10px] font-semibold uppercase px-1.5 py-0.5 rounded ${STATUS_BADGE[q.status] ?? STATUS_BADGE.pending}`}>
+                      {q.status}
+                    </span>
+                  </div>
+                  <span className="text-xs text-muted-foreground flex-shrink-0">
+                    {new Date(q.createdAt).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}
+                  </span>
+                </div>
+
+                {/* Sub-scores */}
+                <div className="flex flex-wrap gap-x-3 gap-y-0.5">
+                  {([
+                    ["Fit", q.scoreFit],
+                    ["Pain", q.scorePain],
+                    ["Maturity", q.scoreMaturity],
+                    ["Intent", q.scoreIntent],
+                    ["Urgency", q.scoreUrgency],
+                  ] as [string, number][]).map(([label, val]) => (
+                    <span key={label} className="text-[10px] text-muted-foreground">
+                      {label} <span className="text-[#E6EDF3] font-semibold">{val}</span>
+                    </span>
+                  ))}
+                </div>
+
+                {q.recommendedNextStep && (
+                  <p className="text-xs text-muted-foreground leading-snug">
+                    <span className="text-[#0078D4] font-semibold">Next: </span>{q.recommendedNextStep}
+                  </p>
+                )}
+
+                {Array.isArray(q.evidence) && q.evidence.length > 0 && (
+                  <div className="flex flex-wrap gap-1 pt-0.5">
+                    {q.evidence.map((e, ei) => (
+                      <span key={ei} className="text-[10px] bg-[#161B22] border border-border rounded px-1.5 py-0.5 text-muted-foreground">{e}</span>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 const PAIN_POINT_OPTIONS = [
   "Governance", "Compliance", "Security", "Migration", "Copilot", "AI Readiness",
   "SharePoint", "Power Platform", "Teams", "Training", "Adoption", "Licensing", "Cost Optimization",
@@ -303,6 +465,7 @@ export default function LeadDetailPage({ params }: { params: { id: string } }) {
   const [lead, setLead] = useState<Lead | null>(null);
   const [quizMatches, setQuizMatches] = useState<QuizMatch[]>([]);
   const [emails, setEmails] = useState<LinkedEmail[]>([]);
+  const [qualHistory, setQualHistory] = useState<LeadQualification[]>([]);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
   const [status, setStatus] = useState<LeadStatus>("new");
@@ -368,6 +531,10 @@ export default function LeadDetailPage({ params }: { params: { id: string } }) {
         .then(r => r.ok ? r.json() as Promise<LinkedEmail[]> : [])
         .then(data => setEmails(data))
         .catch(() => setEmails([])),
+      fetchWithAuth(`/api/leads/${leadId}/qualifications`)
+        .then(r => r.ok ? r.json() as Promise<LeadQualification[]> : [])
+        .then(data => setQualHistory(data))
+        .catch(() => setQualHistory([])),
     ]).finally(() => setLoading(false));
   }, [leadId, loadLead, fetchWithAuth]);
 
@@ -731,6 +898,17 @@ export default function LeadDetailPage({ params }: { params: { id: string } }) {
                 : "Score will be computed when you save."}
             </p>
           </div>
+        </div>
+      </div>
+
+      {/* Score History */}
+      <div className="bg-[#161B22] border border-border rounded-xl overflow-hidden">
+        <div className="px-5 py-3.5 border-b border-border bg-[#1C2128] flex items-center justify-between">
+          <h2 className="text-sm font-bold text-[#E6EDF3]">Score History</h2>
+          <span className="text-xs text-muted-foreground">{qualHistory.length} event{qualHistory.length !== 1 ? "s" : ""}</span>
+        </div>
+        <div className="px-5 py-5">
+          <ScoreHistoryChart history={qualHistory} />
         </div>
       </div>
 

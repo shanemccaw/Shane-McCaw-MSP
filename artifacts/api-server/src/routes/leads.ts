@@ -488,4 +488,18 @@ router.patch("/leads/:id", requireAdmin, async (req: Request, res: Response) => 
   res.json({ ...updated, qualificationPending });
 });
 
+// GET /api/leads/:id/qualifications — score history for a lead
+router.get("/:id/qualifications", requireAdmin, async (req: Request, res: Response) => {
+  const id = parseInt(req.params.id, 10);
+  if (isNaN(id)) { res.status(400).json({ error: "Invalid lead id" }); return; }
+
+  const rows = await db
+    .select()
+    .from(leadQualificationsTable)
+    .where(eq(leadQualificationsTable.leadId, id))
+    .orderBy(desc(leadQualificationsTable.createdAt));
+
+  res.json(rows);
+});
+
 export default router;
