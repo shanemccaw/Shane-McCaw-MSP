@@ -4,6 +4,7 @@ import { useForm, Controller, type Control } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useAuth } from "@/contexts/AuthContext";
+import { REQUIRED_PERMISSIONS } from "@/lib/requiredPermissions";
 
 // ── M365 profile schema — full field set matching Admin wizard ─────────────────
 
@@ -109,20 +110,6 @@ const M365_SUB_STEPS = [
   { label: "Security & Compliance" },
   { label: "Copilot Readiness" },
 ] as const;
-
-// ── App Registration permissions ──────────────────────────────────────────────
-
-const REQUIRED_PERMISSIONS = [
-  {
-    category: "Microsoft Graph — Application permissions",
-    items: [
-      "Sites.ReadWrite.All",
-      "User.Read.All",
-      "Directory.Read.All",
-      "Group.ReadWrite.All",
-    ],
-  },
-];
 
 // ── Small UI helpers ──────────────────────────────────────────────────────────
 
@@ -673,10 +660,13 @@ function StepAppRegistration({ onSaveAndContinue, onBack, onSkip }: { onSaveAndC
                   <div className="px-5 py-2 bg-[#0A2540]/[0.03]">
                     <span className="text-[10px] font-bold uppercase tracking-widest text-[#0A2540]/50">{group.category}</span>
                   </div>
-                  {group.items.map(perm => (
-                    <div key={perm} className="px-5 py-2.5 flex items-center justify-between gap-3">
-                      <code className="text-xs font-mono font-semibold text-[#0078D4] bg-[#0078D4]/8 px-2 py-0.5 rounded">{perm}</code>
-                      <CopyButton text={perm} />
+                  {group.permissions.map(({ permission, reason }) => (
+                    <div key={permission} className="px-5 py-2.5 flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <code className="text-xs font-mono font-semibold text-[#0078D4] bg-[#0078D4]/8 px-2 py-0.5 rounded">{permission}</code>
+                        <p className="text-xs text-gray-500 mt-1">{reason}</p>
+                      </div>
+                      <CopyButton text={permission} />
                     </div>
                   ))}
                 </div>
