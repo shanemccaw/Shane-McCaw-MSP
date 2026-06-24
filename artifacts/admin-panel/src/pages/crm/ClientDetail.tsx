@@ -96,6 +96,31 @@ interface AppRegRecord {
   expiresOn: string | null;
 }
 
+interface NbaAction {
+  id: number;
+  action: string;
+  rationale: string | null;
+  entityType: string;
+  entityId: number | null;
+  entityName: string | null;
+  confidence: number;
+  priority: number;
+  linkPath: string | null;
+  resolvedAt: string | null;
+  createdAt: string;
+}
+
+interface HealthTrendCategory {
+  date: string;
+  score: number;
+}
+
+interface HealthTrendsResponse {
+  byCategory: Record<string, HealthTrendCategory[]>;
+  deltas: Array<{ category: string; latestScore: number; delta: number }>;
+  insight: string | null;
+}
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 const EXPIRY_WARN_DAYS = 60;
@@ -245,6 +270,14 @@ export default function ClientDetailPage() {
   const [docFormOpen, setDocFormOpen] = useState(false);
   const [savingDoc, setSavingDoc] = useState(false);
 
+  // AI Recommendations
+  const [showAiRecs, setShowAiRecs] = useState(false);
+  const [clientNba, setClientNba] = useState<NbaAction[] | null>(null);
+  const [clientNbaLoading, setClientNbaLoading] = useState(false);
+  const [clientNbaGenerating, setClientNbaGenerating] = useState(false);
+  const [healthTrends, setHealthTrends] = useState<HealthTrendsResponse | null>(null);
+  const [healthTrendsLoading, setHealthTrendsLoading] = useState(false);
+
   // Status Reports
   const [showReports, setShowReports] = useState(false);
   const [statusReports, setStatusReports] = useState<Array<{id:number;title:string;period:string;reportStatus:string;clientStatus:string;executiveSummary:string|null;keyOutcomes:string|null;sentAt:string|null;reportDate:string|null;createdAt:string;projectId:number|null}>>([]);
@@ -280,6 +313,53 @@ export default function ClientDetailPage() {
       setReportsLoading(false);
     }
   }, [fetchWithAuth, clientId]);
+
+  const loadClientNba = useCallback(async () => {
+    if (!clientId) return;
+    setClientNbaLoading(true);
+    try {
+      const res = await fetchWithAuth(`/api/ai/next-best-actions?entityType=client&entityId=${clientId}`);
+      if (res.ok) setClientNba(await res.json() as NbaAction[]);
+    } catch { /* non-fatal */ }
+    finally { setClientNbaLoading(false); }
+  }, [fetchWithAuth, clientId]);
+
+  const generateClientNba = useCallback(async () => {
+    if (!clientId) return;
+    setClientNbaGenerating(true);
+    try {
+      const res = await fetchWithAuth("/api/ai/next-best-actions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ entityType: "client", entityId: clientId }),
+      });
+      if (res.ok) await loadClientNba();
+    } catch { /* non-fatal */ }
+    finally { setClientNbaGenerating(false); }
+  }, [fetchWithAuth, clientId, loadClientNba]);
+
+  const resolveClientNba = useCallback(async (id: number) => {
+    const res = await fetchWithAuth(`/api/ai/next-best-actions/${id}/resolve`, { method: "POST" });
+    if (res.ok) setClientNba(prev => prev?.filter(a => a.id !== id) ?? null);
+  }, [fetchWithAuth]);
+
+  const loadHealthTrends = useCallback(async () => {
+    if (!clientId) return;
+    setHealthTrendsLoading(true);
+    try {
+      const res = await fetchWithAuth(`/api/clients/${clientId}/health/trends`);
+      if (res.ok) setHealthTrends(await res.json() as HealthTrendsResponse);
+    } catch { /* non-fatal */ }
+    finally { setHealthTrendsLoading(false); }
+  }, [fetchWithAuth, clientId]);
+
+  // Load AI data when tab is opened
+  useEffect(() => {
+    if (showAiRecs && clientId) {
+      void loadClientNba();
+      void loadHealthTrends();
+    }
+  }, [showAiRecs, clientId, loadClientNba, loadHealthTrends]);
 
   const loadCommandCenter = useCallback(async () => {
     setCcLoading(true);
@@ -1979,6 +2059,142 @@ export default function ClientDetailPage() {
             </div>
           </div>
         )}
+
+        {/* ── AI Recommendations ── */}
+        <div className="border border-[#30363D] rounded-xl overflow-hidden">
+          <button
+            onClick={() => setShowAiRecs(o => !o)}
+            className="w-full flex items-center justify-between px-5 py-4 bg-[#161B22] hover:bg-[#1C2128] transition-colors"
+          >
+            <div className="flex items-center gap-2.5">
+              <div className="w-7 h-7 rounded-lg bg-[#0078D4]/15 flex items-center justify-center flex-shrink-0">
+                <svg className="w-3.5 h-3.5 text-[#58A6FF]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                </svg>
+              </div>
+              <div className="text-left">
+                <p className="text-sm font-bold text-[#E6EDF3]">AI Recommendations</p>
+                <p className="text-[10px] text-[#7D8590]">Next best actions + health trend for this client</p>
+              </div>
+              {clientNba && clientNba.length > 0 && (
+                <span className="text-xs font-bold bg-[#0078D4]/15 text-[#0078D4] border border-[#0078D4]/20 px-2 py-0.5 rounded-full">{clientNba.length}</span>
+              )}
+            </div>
+            <svg className={`w-4 h-4 text-[#7D8590] transition-transform ${showAiRecs ? "rotate-180" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+            </svg>
+          </button>
+
+          {showAiRecs && (
+            <div className="border-t border-[#30363D] bg-[#0D1117] p-5 space-y-5">
+              {/* Next Best Actions */}
+              <div>
+                <div className="flex items-center justify-between mb-3">
+                  <h4 className="text-xs font-bold text-[#7D8590] uppercase tracking-widest">Next Best Actions</h4>
+                  <button onClick={() => void generateClientNba()} disabled={clientNbaGenerating} className="flex items-center gap-1.5 text-xs font-semibold text-[#58A6FF] hover:text-[#0078D4] disabled:opacity-50 transition-colors">
+                    {clientNbaGenerating ? <svg className="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg> : null}
+                    {clientNbaGenerating ? "Generating…" : clientNba ? "Refresh" : "Generate"}
+                  </button>
+                </div>
+                {clientNbaLoading ? (
+                  <div className="space-y-2">{[0,1,2].map(i => <div key={i} className="h-14 bg-[#161B22] rounded-xl animate-pulse" />)}</div>
+                ) : !clientNba || clientNba.length === 0 ? (
+                  <p className="text-xs text-[#7D8590] py-3">No actions yet — click Generate to have Claude analyse this client's activity and surface the most impactful next steps.</p>
+                ) : (
+                  <div className="space-y-2">
+                    {clientNba.map(action => (
+                      <div key={action.id} className="bg-[#161B22] border border-[#30363D] rounded-xl px-4 py-3 flex items-start justify-between gap-3">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-1.5 mb-1">
+                            <span className="text-[9px] font-bold text-[#0078D4] bg-[#0078D4]/10 px-1.5 py-0.5 rounded">{action.confidence}% confidence</span>
+                          </div>
+                          <p className="text-xs text-[#E6EDF3] leading-relaxed">{action.action}</p>
+                          {action.rationale && <p className="text-[10px] text-[#7D8590] mt-0.5">{action.rationale}</p>}
+                        </div>
+                        <button onClick={() => void resolveClientNba(action.id)} className="text-[10px] font-semibold text-[#484F58] hover:text-emerald-400 border border-[#30363D] hover:border-emerald-500/30 px-2 py-0.5 rounded-lg transition-colors whitespace-nowrap flex-shrink-0">✓ Done</button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Health Trends — always render all 8 categories */}
+              {healthTrends !== null && (
+                <div>
+                  <h4 className="text-xs font-bold text-[#7D8590] uppercase tracking-widest mb-1">M365 Health Trends — Last 90 Days</h4>
+                  {healthTrends.insight && (
+                    <p className="text-[10px] text-[#7D8590] italic mb-3 leading-relaxed">{healthTrends.insight}</p>
+                  )}
+                  <div className="grid grid-cols-2 gap-3">
+                    {(["governance", "security", "compliance", "copilot", "identity", "collaboration", "productivity", "data"] as const).map(cat => {
+                      const points = healthTrends.byCategory[cat] ?? [];
+                      const delta = healthTrends.deltas.find(d => d.category === cat);
+                      const latest = delta?.latestScore ?? points[points.length - 1]?.score;
+                      const change = delta?.delta ?? 0;
+                      const hasData = points.length > 0;
+                      const color = !hasData ? "#484F58" : (latest ?? 0) >= 70 ? "#10B981" : (latest ?? 0) >= 40 ? "#F59E0B" : "#EF4444";
+                      const catLabel = cat.charAt(0).toUpperCase() + cat.slice(1);
+                      return (
+                        <div key={cat} className="bg-[#0D1117] border border-[#30363D] rounded-lg p-2.5">
+                          <div className="flex items-center justify-between mb-1">
+                            <p className="text-[10px] font-semibold text-[#7D8590]">{catLabel}</p>
+                            <div className="flex items-center gap-1">
+                              {hasData ? (
+                                <>
+                                  <span className="text-xs font-bold" style={{ color }}>{latest ?? "—"}</span>
+                                  {change !== 0 && (
+                                    <span className={`text-[9px] font-semibold ${change > 0 ? "text-emerald-400" : "text-red-400"}`}>
+                                      {change > 0 ? "↑" : "↓"}{Math.abs(change)}
+                                    </span>
+                                  )}
+                                </>
+                              ) : (
+                                <span className="text-[9px] text-[#484F58]">No data</span>
+                              )}
+                            </div>
+                          </div>
+                          {hasData ? (
+                            <LineChart width={140} height={44} data={points}>
+                              <Line type="monotone" dataKey="score" stroke={color} strokeWidth={1.5} dot={false} activeDot={{ r: 3 }} />
+                              <XAxis dataKey="date" hide />
+                              <YAxis domain={[0, 100]} hide />
+                              <Tooltip
+                                contentStyle={{ fontSize: 10, borderRadius: 6, border: "1px solid #30363D", background: "#1C2128", color: "#E6EDF3", padding: "4px 8px" }}
+                                content={({ active, payload, label }) => {
+                                  if (!active || !payload?.length) return null;
+                                  const score = payload[0].value as number;
+                                  const idx = points.findIndex(p => p.date === label);
+                                  const prev = idx > 0 ? points[idx - 1].score : null;
+                                  const ptDelta = prev !== null ? score - prev : null;
+                                  return (
+                                    <div style={{ fontSize: 10, borderRadius: 6, border: "1px solid #30363D", background: "#1C2128", color: "#E6EDF3", padding: "4px 8px" }}>
+                                      <div className="font-semibold">{label}</div>
+                                      <div>{catLabel}: <span className="font-bold">{score}</span></div>
+                                      {ptDelta !== null && (
+                                        <div style={{ color: ptDelta > 0 ? "#10B981" : ptDelta < 0 ? "#EF4444" : "#7D8590" }}>
+                                          {ptDelta > 0 ? "↑" : ptDelta < 0 ? "↓" : "→"} {Math.abs(ptDelta)} vs prev
+                                        </div>
+                                      )}
+                                    </div>
+                                  );
+                                }}
+                              />
+                            </LineChart>
+                          ) : (
+                            <div className="h-[44px] flex items-center justify-center">
+                              <p className="text-[9px] text-[#484F58] text-center">Snapshot data will appear here once recorded</p>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+              {healthTrendsLoading && <div className="h-40 bg-[#161B22] rounded-xl animate-pulse" />}
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );

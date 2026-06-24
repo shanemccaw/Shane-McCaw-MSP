@@ -37,6 +37,20 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 
+interface NbaAction {
+  id: number;
+  action: string;
+  rationale: string | null;
+  entityType: string;
+  entityId: number | null;
+  entityName: string | null;
+  confidence: number;
+  priority: number;
+  linkPath: string | null;
+  resolvedAt: string | null;
+  createdAt: string;
+}
+
 interface Project {
   id: number;
   title: string;
@@ -988,6 +1002,12 @@ export default function ProjectDetailPage() {
   const [regeneratingArtifact, setRegeneratingArtifact] = useState<string | null>(null);
   const [confirmGenerateOpen, setConfirmGenerateOpen] = useState(false);
   const [confirmRegenerateTarget, setConfirmRegenerateTarget] = useState<string | null>(null);
+
+  // AI Recommendations
+  const [showAiRecs, setShowAiRecs] = useState(false);
+  const [projectNba, setProjectNba] = useState<NbaAction[] | null>(null);
+  const [projectNbaLoading, setProjectNbaLoading] = useState(false);
+  const [projectNbaGenerating, setProjectNbaGenerating] = useState(false);
   const [generateProgress, setGenerateProgress] = useState<{ count: number; total: number; currentName: string } | null>(null);
   const [artifactErrors, setArtifactErrors] = useState<Record<string, string>>({});
   const [draftLoading, setDraftLoading] = useState(false);
@@ -1362,6 +1382,39 @@ export default function ProjectDetailPage() {
       setAuditLoading(false);
     }
   }, [projectId, fetchWithAuth]);
+
+  const loadProjectNba = useCallback(async () => {
+    if (!projectId) return;
+    setProjectNbaLoading(true);
+    try {
+      const res = await fetchWithAuth(`/api/ai/next-best-actions?entityType=project&entityId=${projectId}`);
+      if (res.ok) setProjectNba(await res.json() as NbaAction[]);
+    } catch { /* non-fatal */ }
+    finally { setProjectNbaLoading(false); }
+  }, [fetchWithAuth, projectId]);
+
+  const generateProjectNba = useCallback(async () => {
+    if (!projectId) return;
+    setProjectNbaGenerating(true);
+    try {
+      const res = await fetchWithAuth("/api/ai/next-best-actions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ entityType: "project", entityId: projectId }),
+      });
+      if (res.ok) await loadProjectNba();
+    } catch { /* non-fatal */ }
+    finally { setProjectNbaGenerating(false); }
+  }, [fetchWithAuth, projectId, loadProjectNba]);
+
+  const resolveProjectNba = useCallback(async (id: number) => {
+    const res = await fetchWithAuth(`/api/ai/next-best-actions/${id}/resolve`, { method: "POST" });
+    if (res.ok) setProjectNba(prev => prev?.filter(a => a.id !== id) ?? null);
+  }, [fetchWithAuth]);
+
+  useEffect(() => {
+    if (showAiRecs && projectId) void loadProjectNba();
+  }, [showAiRecs, projectId, loadProjectNba]);
 
   const handleToggleAudit = () => {
     if (!auditOpen && auditLogs.length === 0) {
@@ -2882,6 +2935,64 @@ export default function ProjectDetailPage() {
       </AlertDialog>
 
       {/* Card detail modal */}
+      {/* ── AI Recommendations ── */}
+      <div className="border border-[#30363D] rounded-xl overflow-hidden">
+        <button
+          onClick={() => setShowAiRecs(o => !o)}
+          className="w-full flex items-center justify-between px-5 py-4 bg-[#161B22] hover:bg-[#1C2128] transition-colors"
+        >
+          <div className="flex items-center gap-2.5">
+            <div className="w-7 h-7 rounded-lg bg-[#0078D4]/15 flex items-center justify-center flex-shrink-0">
+              <svg className="w-3.5 h-3.5 text-[#58A6FF]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+              </svg>
+            </div>
+            <div className="text-left">
+              <p className="text-sm font-bold text-[#E6EDF3]">AI Recommendations</p>
+              <p className="text-[10px] text-[#7D8590]">Claude-powered next best actions for this project</p>
+            </div>
+            {projectNba && projectNba.length > 0 && (
+              <span className="text-xs font-bold bg-[#0078D4]/15 text-[#0078D4] border border-[#0078D4]/20 px-2 py-0.5 rounded-full">{projectNba.length}</span>
+            )}
+          </div>
+          <svg className={`w-4 h-4 text-[#7D8590] transition-transform ${showAiRecs ? "rotate-180" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+          </svg>
+        </button>
+
+        {showAiRecs && (
+          <div className="border-t border-[#30363D] bg-[#0D1117] p-5">
+            <div className="flex items-center justify-between mb-3">
+              <h4 className="text-xs font-bold text-[#7D8590] uppercase tracking-widest">Next Best Actions</h4>
+              <button onClick={() => void generateProjectNba()} disabled={projectNbaGenerating} className="flex items-center gap-1.5 text-xs font-semibold text-[#58A6FF] hover:text-[#0078D4] disabled:opacity-50 transition-colors">
+                {projectNbaGenerating ? <svg className="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg> : null}
+                {projectNbaGenerating ? "Generating…" : projectNba ? "Refresh" : "Generate"}
+              </button>
+            </div>
+            {projectNbaLoading ? (
+              <div className="space-y-2">{[0,1,2].map(i => <div key={i} className="h-14 bg-[#161B22] rounded-xl animate-pulse" />)}</div>
+            ) : !projectNba || projectNba.length === 0 ? (
+              <p className="text-xs text-[#7D8590] py-3">No actions yet — click Generate to have Claude analyse this project's tasks, timeline, and status to surface the most impactful next steps.</p>
+            ) : (
+              <div className="space-y-2">
+                {projectNba.map(action => (
+                  <div key={action.id} className="bg-[#161B22] border border-[#30363D] rounded-xl px-4 py-3 flex items-start justify-between gap-3">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-1.5 mb-1">
+                        <span className="text-[9px] font-bold text-[#0078D4] bg-[#0078D4]/10 px-1.5 py-0.5 rounded">{action.confidence}% confidence</span>
+                      </div>
+                      <p className="text-xs text-[#E6EDF3] leading-relaxed">{action.action}</p>
+                      {action.rationale && <p className="text-[10px] text-[#7D8590] mt-0.5">{action.rationale}</p>}
+                    </div>
+                    <button onClick={() => void resolveProjectNba(action.id)} className="text-[10px] font-semibold text-[#484F58] hover:text-emerald-400 border border-[#30363D] hover:border-emerald-500/30 px-2 py-0.5 rounded-lg transition-colors whitespace-nowrap flex-shrink-0">✓ Done</button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
       <KanbanCardModal
         task={selectedTask}
         stepTitle={selectedStepTitle}

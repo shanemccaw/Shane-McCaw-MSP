@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer,
+  ComposedChart, Area, ReferenceLine,
 } from "recharts";
 
 type Preset = "today" | "7d" | "30d" | "90d";
@@ -19,6 +20,9 @@ interface TopEvent { eventType: string; label: string; page: string; count: numb
 interface TopReferrer { source: string; sessions: number; pct: number }
 interface TopLink { href: string; label: string; count: number }
 interface TopCta { page: string; label: string; clicks: number; pageViews: number; ctr: number }
+
+interface ForecastRow { period: string; forecast: number; lowerBound: number; upperBound: number }
+interface RevenueForecast { rows: ForecastRow[]; narrative: string | null; generatedAt: string | null }
 
 type SortDir = "asc" | "desc";
 
@@ -80,6 +84,12 @@ const EVENT_TYPE_LABELS: Record<string, string> = {
   scroll_milestone: "Scroll",
 };
 
+function fmtUsd(n: number) {
+  if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1_000) return `$${(n / 1_000).toFixed(1)}k`;
+  return `$${Math.round(n).toLocaleString()}`;
+}
+
 export default function AnalyticsPage() {
   const { fetchWithAuth } = useAuth();
 
@@ -94,6 +104,10 @@ export default function AnalyticsPage() {
 
   const [series, setSeries] = useState<Series[] | null>(null);
   const [seriesLoading, setSeriesLoading] = useState(true);
+
+  const [revForecast, setRevForecast] = useState<RevenueForecast | null>(null);
+  const [revLoading, setRevLoading] = useState(false);
+  const [revGenerating, setRevGenerating] = useState(false);
 
   const [topPages, setTopPages] = useState<TopPage[] | null>(null);
   const [topPagesLoading, setTopPagesLoading] = useState(true);
@@ -113,6 +127,7 @@ export default function AnalyticsPage() {
   const [topCtasSort, setTopCtasSort] = useState<{ col: string; dir: SortDir }>({ col: "Clicks", dir: "desc" });
 
   const [live, setLive] = useState<number | null>(null);
+  const [activeTab, setActiveTab] = useState<"analytics" | "forecasting">("analytics");
 
   function buildQs(extra?: Record<string, string>): string {
     const params = new URLSearchParams(extra ?? {});
@@ -172,6 +187,26 @@ export default function AnalyticsPage() {
   useEffect(() => {
     if (!isCustom) void load(preset, false, "", "");
   }, [preset, isCustom, load]);
+
+  const loadForecast = useCallback(async () => {
+    setRevLoading(true);
+    try {
+      const res = await fetchWithAuth("/api/analytics/revenue/forecast");
+      if (res.ok) setRevForecast(await res.json() as RevenueForecast);
+    } catch { /* non-fatal */ }
+    finally { setRevLoading(false); }
+  }, [fetchWithAuth]);
+
+  const generateForecast = useCallback(async () => {
+    setRevGenerating(true);
+    try {
+      const res = await fetchWithAuth("/api/analytics/revenue/forecast/generate", { method: "POST" });
+      if (res.ok) setRevForecast(await res.json() as RevenueForecast);
+    } catch { /* non-fatal */ }
+    finally { setRevGenerating(false); }
+  }, [fetchWithAuth]);
+
+  useEffect(() => { void loadForecast(); }, [loadForecast]);
 
   useEffect(() => {
     const poll = async () => {
@@ -292,6 +327,24 @@ export default function AnalyticsPage() {
         </div>
       </div>
 
+      {/* Tab Bar */}
+      <div className="flex items-center border-b border-[#30363D] -mt-2 mb-2">
+        {(["analytics", "forecasting"] as const).map(tab => (
+          <button
+            key={tab}
+            onClick={() => setActiveTab(tab)}
+            className={`px-4 py-2 text-xs font-semibold capitalize transition-colors border-b-2 -mb-px ${
+              activeTab === tab
+                ? "border-[#0078D4] text-[#58A6FF]"
+                : "border-transparent text-[#7D8590] hover:text-[#E6EDF3]"
+            }`}
+          >
+            {tab === "forecasting" ? "Revenue Forecasting" : "Site Analytics"}
+          </button>
+        ))}
+      </div>
+
+      {activeTab === "analytics" && (<>
       {/* KPI Ribbon */}
       {kpisLoading ? (
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
@@ -353,18 +406,14 @@ export default function AnalyticsPage() {
           <ResponsiveContainer width="100%" height={220}>
             <LineChart data={series} margin={{ top: 4, right: 8, left: -16, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#30363D" vertical={false} />
-              {/* @ts-expect-error recharts types incompatible with this React version */}
               <XAxis dataKey="date" tick={{ fontSize: 10, fill: "#7D8590" }} axisLine={false} tickLine={false}
                 tickFormatter={(d: string) => { const [, m, day] = d.split("-"); return `${m}/${day}`; }}
               />
-              {/* @ts-expect-error recharts types incompatible with this React version */}
               <YAxis tick={{ fontSize: 10, fill: "#7D8590" }} axisLine={false} tickLine={false} allowDecimals={false} />
-              {/* @ts-expect-error recharts types incompatible with this React version */}
               <RechartsTooltip
                 contentStyle={{ fontSize: 12, borderRadius: 8, border: "1px solid #30363D", background: "#1C2128", color: "#E6EDF3" }}
                 formatter={(v: number) => [v, "Views"]}
               />
-              {/* @ts-expect-error recharts types incompatible with this React version */}
               <Line type="monotone" dataKey="views" stroke="#0078D4" strokeWidth={2} dot={false} activeDot={{ r: 4 }} />
             </LineChart>
           </ResponsiveContainer>
@@ -513,7 +562,136 @@ export default function AnalyticsPage() {
         </section>
       </div>
 
-      {/* Top CTAs with CTR — sortable */}
+      </>)}
+
+      {/* ── Forecasting Tab ── */}
+      {activeTab === "forecasting" && (
+      <section className="bg-[#161B22] border border-[#30363D] rounded-xl p-5 shadow-sm">
+        <div className="flex items-center justify-between flex-wrap gap-3 mb-4">
+          <div>
+            <h2 className="text-sm font-bold text-[#E6EDF3] uppercase tracking-widest">12-Month Revenue Forecast</h2>
+            <p className="text-[10px] text-[#7D8590] mt-0.5">AI-powered forecast with confidence bands based on historical invoices &amp; MRR</p>
+          </div>
+          <div className="flex items-center gap-2">
+            {revForecast?.generatedAt && (
+              <span className="text-[10px] text-[#484F58]">Updated {new Date(revForecast.generatedAt).toLocaleDateString("en-US", { month: "short", day: "numeric" })}</span>
+            )}
+            <button
+              onClick={() => void generateForecast()}
+              disabled={revGenerating}
+              className="flex items-center gap-1.5 text-xs font-semibold bg-[#0078D4] text-white px-3 py-1.5 rounded-lg hover:bg-[#0078D4]/80 disabled:opacity-50 transition-colors"
+            >
+              {revGenerating ? (
+                <><svg className="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>Generating…</>
+              ) : (
+                <><svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" /></svg>Generate Forecast</>
+              )}
+            </button>
+          </div>
+        </div>
+
+        {revLoading ? (
+          <div className="h-64 bg-[#1C2128] rounded-xl animate-pulse" />
+        ) : !revForecast || revForecast.rows.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-16 text-center">
+            <div className="w-12 h-12 rounded-xl bg-[#0078D4]/15 flex items-center justify-center mb-3">
+              <svg className="w-6 h-6 text-[#58A6FF]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z" />
+              </svg>
+            </div>
+            <p className="text-sm font-semibold text-[#E6EDF3]">No forecast yet</p>
+            <p className="text-xs text-[#7D8590] mt-1 max-w-[260px]">Click Generate Forecast to have Claude analyze your revenue history and predict the next 12 months.</p>
+          </div>
+        ) : (
+          <>
+            {revForecast.narrative && (
+              <div className="bg-[#0078D4]/10 border border-[#0078D4]/20 rounded-xl px-4 py-3 mb-5 flex items-start gap-2">
+                <svg className="w-4 h-4 text-[#58A6FF] flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                </svg>
+                <p className="text-xs text-[#E6EDF3]/90 leading-relaxed">{revForecast.narrative}</p>
+              </div>
+            )}
+
+            <ResponsiveContainer width="100%" height={280}>
+              <ComposedChart data={revForecast.rows} margin={{ top: 4, right: 8, left: 8, bottom: 0 }}>
+                <defs>
+                  <linearGradient id="forecastGrad" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#0078D4" stopOpacity={0.2} />
+                    <stop offset="95%" stopColor="#0078D4" stopOpacity={0} />
+                  </linearGradient>
+                  <linearGradient id="bandGrad" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#7C3AED" stopOpacity={0.15} />
+                    <stop offset="95%" stopColor="#7C3AED" stopOpacity={0} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" stroke="#30363D" vertical={false} />
+                <XAxis dataKey="period" tick={{ fontSize: 9, fill: "#7D8590" }} axisLine={false} tickLine={false}
+                  tickFormatter={v => { const [y, m] = (v as string).split("-"); return `${["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][parseInt(m)-1]} ${String(y).slice(2)}`; }} />
+                <YAxis tick={{ fontSize: 9, fill: "#7D8590" }} axisLine={false} tickLine={false}
+                  tickFormatter={v => fmtUsd(v as number)} />
+                <RechartsTooltip contentStyle={{ fontSize: 11, borderRadius: 8, border: "1px solid #30363D", background: "#1C2128", color: "#E6EDF3" }}
+                  formatter={(v: number, name: string) => [fmtUsd(v), name === "forecast" ? "Forecast" : name === "upperBound" ? "Upper Band" : "Lower Band"]} />
+                <Area type="monotone" dataKey="upperBound" stroke="transparent" fill="url(#bandGrad)" strokeWidth={0} name="upperBound" />
+                <Area type="monotone" dataKey="forecast" stroke="#0078D4" fill="url(#forecastGrad)" strokeWidth={2} name="forecast" dot={false} />
+                <Area type="monotone" dataKey="lowerBound" stroke="transparent" fill="transparent" strokeWidth={0} name="lowerBound" />
+                <ReferenceLine y={revForecast.rows[0]?.forecast ?? 0} stroke="#7D8590" strokeDasharray="4 4" strokeWidth={1} />
+              </ComposedChart>
+            </ResponsiveContainer>
+
+            {/* Full 12-month table */}
+            <div className="mt-6 pt-5 border-t border-[#30363D]">
+              <h3 className="text-xs font-bold text-[#7D8590] uppercase tracking-widest mb-3">Monthly Breakdown — All 12 Months</h3>
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="border-b border-[#30363D]">
+                      <th className="text-left py-2 pr-4 font-semibold text-[#7D8590] uppercase tracking-widest text-[10px]">Month</th>
+                      <th className="text-right py-2 pr-4 font-semibold text-[#7D8590] uppercase tracking-widest text-[10px]">Forecast</th>
+                      <th className="text-right py-2 pr-4 font-semibold text-[#7D8590] uppercase tracking-widest text-[10px]">Lower Bound</th>
+                      <th className="text-right py-2 pr-4 font-semibold text-[#7D8590] uppercase tracking-widest text-[10px]">Upper Bound</th>
+                      <th className="text-right py-2 font-semibold text-[#7D8590] uppercase tracking-widest text-[10px]">Range</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {revForecast.rows.map((r, i) => {
+                      const [y, m] = r.period.split("-");
+                      const label = `${["January","February","March","April","May","June","July","August","September","October","November","December"][parseInt(m)-1]} ${y}`;
+                      const range = r.upperBound - r.lowerBound;
+                      const isFirst = i === 0;
+                      return (
+                        <tr key={r.period} className={`border-b border-[#30363D] hover:bg-[#1C2128] transition-colors ${isFirst ? "bg-[#0078D4]/5" : ""}`}>
+                          <td className="py-2.5 pr-4 font-medium text-[#E6EDF3]">
+                            {isFirst && <span className="text-[9px] font-bold text-[#0078D4] bg-[#0078D4]/10 px-1 py-0.5 rounded mr-1.5">Next</span>}
+                            {label}
+                          </td>
+                          <td className="py-2.5 pr-4 text-right font-bold text-[#E6EDF3]">{fmtUsd(r.forecast)}</td>
+                          <td className="py-2.5 pr-4 text-right text-[#7D8590]">{fmtUsd(r.lowerBound)}</td>
+                          <td className="py-2.5 pr-4 text-right text-[#7D8590]">{fmtUsd(r.upperBound)}</td>
+                          <td className="py-2.5 text-right text-[#484F58] text-[10px]">±{fmtUsd(range / 2)}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                  <tfoot>
+                    <tr className="border-t border-[#30363D]">
+                      <td className="pt-3 pr-4 text-[10px] font-bold text-[#7D8590] uppercase tracking-widest">12-Month Total</td>
+                      <td className="pt-3 pr-4 text-right font-bold text-[#E6EDF3]">{fmtUsd(revForecast.rows.reduce((s, r) => s + r.forecast, 0))}</td>
+                      <td className="pt-3 pr-4 text-right text-[#7D8590]">{fmtUsd(revForecast.rows.reduce((s, r) => s + r.lowerBound, 0))}</td>
+                      <td className="pt-3 pr-4 text-right text-[#7D8590]">{fmtUsd(revForecast.rows.reduce((s, r) => s + r.upperBound, 0))}</td>
+                      <td />
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+            </div>
+          </>
+        )}
+      </section>
+      )}
+
+      {activeTab === "analytics" && (
+      <>{/* Top CTAs with CTR — sortable */}
       <section className="bg-[#161B22] border border-[#30363D] rounded-xl p-5 shadow-sm">
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-sm font-bold text-[#E6EDF3] uppercase tracking-widest">Top CTAs — Click-Through Rates</h2>
@@ -557,6 +735,7 @@ export default function AnalyticsPage() {
           </div>
         )}
       </section>
+      </>)}
     </div>
   );
 }

@@ -993,6 +993,54 @@ export const inboxMessageLinksTable = pgTable("inbox_message_links", {
 export type InsertInboxMessageLink = typeof inboxMessageLinksTable.$inferInsert;
 export type InboxMessageLink = typeof inboxMessageLinksTable.$inferSelect;
 
+// ── Intelligence Layer ──────────────────────────────────────────────────────────
+
+// Next Best Actions — AI-generated action recommendations for Shane
+export const nextBestActionsTable = pgTable("next_best_actions", {
+  id: serial("id").primaryKey(),
+  entityType: text("entity_type", { enum: ["client", "project", "lead", "opportunity", "general"] }).notNull().default("general"),
+  entityId: integer("entity_id"),
+  entityName: text("entity_name"),
+  action: text("action").notNull(),
+  rationale: text("rationale"),
+  confidence: integer("confidence").notNull().default(50),
+  linkPath: text("link_path"),
+  resolvedAt: timestamp("resolved_at"),
+  generatedAt: timestamp("generated_at").notNull().defaultNow(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export type InsertNextBestAction = typeof nextBestActionsTable.$inferInsert;
+export type NextBestAction = typeof nextBestActionsTable.$inferSelect;
+
+// Revenue Forecasts — AI-generated monthly revenue predictions
+export const revenueForecastsTable = pgTable("revenue_forecasts", {
+  id: serial("id").primaryKey(),
+  period: text("period").notNull(),
+  forecast: numeric("forecast", { precision: 12, scale: 2 }).notNull(),
+  lowerBound: numeric("lower_bound", { precision: 12, scale: 2 }).notNull(),
+  upperBound: numeric("upper_bound", { precision: 12, scale: 2 }).notNull(),
+  narrative: text("narrative"),
+  generatedAt: timestamp("generated_at").notNull().defaultNow(),
+});
+
+export type InsertRevenueForecast = typeof revenueForecastsTable.$inferInsert;
+export type RevenueForecast = typeof revenueForecastsTable.$inferSelect;
+
+// Client Health History — daily snapshots of M365 health scores per client per category
+export const clientHealthHistoryTable = pgTable("client_health_history", {
+  id: serial("id").primaryKey(),
+  clientId: integer("client_id").notNull().references(() => usersTable.id, { onDelete: "cascade" }),
+  category: text("category", {
+    enum: ["governance", "security", "compliance", "copilot", "identity", "collaboration", "productivity", "data"],
+  }).notNull(),
+  score: integer("score").notNull(),
+  recordedAt: timestamp("recorded_at").notNull().defaultNow(),
+});
+
+export type InsertClientHealthHistory = typeof clientHealthHistoryTable.$inferInsert;
+export type ClientHealthHistory = typeof clientHealthHistoryTable.$inferSelect;
+
 // Quiz Pain Signal Config — single-row admin-editable config for quiz→pain mappings
 export const quizPainSignalConfigTable = pgTable("quiz_pain_signal_config", {
   id: serial("id").primaryKey(),

@@ -5,6 +5,7 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip,
   ResponsiveContainer, Legend, LineChart, Line, RadarChart, Radar, PolarGrid,
   PolarAngleAxis, PolarRadiusAxis, AreaChart, Area, FunnelChart, Funnel, LabelList,
+  ComposedChart, ReferenceLine,
 } from "recharts";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
@@ -75,6 +76,33 @@ interface ClientHealth {
 }
 
 interface AiInsight { title: string; narrative: string; metric: string }
+
+interface NbaAction {
+  id: number;
+  entityType: string;
+  entityId: number | null;
+  entityName: string | null;
+  action: string;
+  rationale: string | null;
+  confidence: number;
+  linkPath: string | null;
+  resolvedAt: string | null;
+  generatedAt: string;
+}
+
+interface ForecastRow { period: string; forecast: number; lowerBound: number; upperBound: number }
+interface RevenueForecast { rows: ForecastRow[]; narrative: string | null; generatedAt: string | null }
+
+interface HealthAlert {
+  clientId: number;
+  clientName: string;
+  company: string | null;
+  category: string;
+  latestScore: number;
+  earliestScore: number;
+  delta: number;
+}
+
 interface DbStatusDev { appliedCount: number; lastAppliedTag: string | null; lastAppliedAt: string | null; pendingCount: number; pendingTags: string[] }
 interface DbStatusProdAvailable { available: true; appliedCount: number; lastAppliedTag: string | null; lastAppliedAt: string | null; pendingCount: number; pendingTags: string[] }
 interface DbStatusProdUnavailable { available: false; reason: string }
@@ -938,6 +966,18 @@ export default function OverviewPage() {
   const [aiLoading, setAiLoading] = useState(true);
   const [aiError, setAiError] = useState<string | null>(null);
 
+  const [nbaActions, setNbaActions] = useState<NbaAction[] | null>(null);
+  const [nbaLoading, setNbaLoading] = useState(false);
+  const [nbaGenerating, setNbaGenerating] = useState(false);
+  const [nbaError, setNbaError] = useState<string | null>(null);
+
+  const [revForecast, setRevForecast] = useState<RevenueForecast | null>(null);
+  const [revLoading, setRevLoading] = useState(false);
+  const [revGenerating, setRevGenerating] = useState(false);
+
+  const [healthAlerts, setHealthAlerts] = useState<HealthAlert[] | null>(null);
+  const [healthAlertsLoading, setHealthAlertsLoading] = useState(false);
+
   const [expiringCreds, setExpiringCreds] = useState<ExpiringCredSummary | null>(null);
   const [dbStatus, setDbStatus] = useState<DbStatus | null>(null);
   const [dbStatusLoading, setDbStatusLoading] = useState(true);
@@ -1017,6 +1057,73 @@ export default function OverviewPage() {
   }, [fetchWithAuth]);
 
   useEffect(() => { void fetchAiInsights(); }, [fetchAiInsights]);
+
+  const loadNba = useCallback(async () => {
+    setNbaLoading(true);
+    setNbaError(null);
+    try {
+      const res = await fetchWithAuth("/api/ai/next-best-actions");
+      if (!res.ok) return;
+      setNbaActions(await res.json() as NbaAction[]);
+    } catch {
+      // non-fatal
+    } finally { setNbaLoading(false); }
+  }, [fetchWithAuth]);
+
+  const generateNba = useCallback(async () => {
+    setNbaGenerating(true);
+    setNbaError(null);
+    try {
+      const res = await fetchWithAuth("/api/ai/next-best-actions/generate", { method: "POST" });
+      if (!res.ok) { const b = await res.json() as { error?: string }; throw new Error(b.error ?? `HTTP ${res.status}`); }
+      await loadNba();
+    } catch (e) {
+      setNbaError(e instanceof Error ? e.message : "Failed to generate actions");
+    } finally { setNbaGenerating(false); }
+  }, [fetchWithAuth, loadNba]);
+
+  const resolveNba = useCallback(async (id: number) => {
+    await fetchWithAuth(`/api/ai/next-best-actions/${id}/resolve`, { method: "POST" });
+    setNbaActions(prev => prev ? prev.filter(a => a.id !== id) : prev);
+  }, [fetchWithAuth]);
+
+  const loadForecast = useCallback(async () => {
+    setRevLoading(true);
+    try {
+      const res = await fetchWithAuth("/api/analytics/revenue/forecast");
+      if (!res.ok) return;
+      setRevForecast(await res.json() as RevenueForecast);
+    } catch {
+      // non-fatal
+    } finally { setRevLoading(false); }
+  }, [fetchWithAuth]);
+
+  const generateForecast = useCallback(async () => {
+    setRevGenerating(true);
+    try {
+      const res = await fetchWithAuth("/api/analytics/revenue/forecast/generate", { method: "POST" });
+      if (res.ok) setRevForecast(await res.json() as RevenueForecast);
+    } catch {
+      // non-fatal
+    } finally { setRevGenerating(false); }
+  }, [fetchWithAuth]);
+
+  const loadHealthAlerts = useCallback(async () => {
+    setHealthAlertsLoading(true);
+    try {
+      const res = await fetchWithAuth("/api/admin/health/alerts");
+      if (!res.ok) return;
+      setHealthAlerts(await res.json() as HealthAlert[]);
+    } catch {
+      // non-fatal
+    } finally { setHealthAlertsLoading(false); }
+  }, [fetchWithAuth]);
+
+  useEffect(() => {
+    void loadNba();
+    void loadForecast();
+    void loadHealthAlerts();
+  }, [loadNba, loadForecast, loadHealthAlerts]);
 
   // KPI sparkline data
   const revenueSparkData = data?.revenueByMonth.slice(-6).map(m => m.oneTime + m.recurring) ?? [];
@@ -1142,6 +1249,136 @@ export default function OverviewPage() {
       {/* ── AI Insights Panel ── */}
       <AiInsightsPanel insights={aiInsights} loading={aiLoading} error={aiError} onRefresh={fetchAiInsights} />
 
+      {/* ── Next Best Actions Panel ── */}
+      <section>
+        <div className="flex items-center justify-between flex-wrap gap-3 mb-3">
+          <div className="flex items-center gap-2">
+            <div className="w-2 h-2 rounded-full bg-[#0078D4] animate-pulse" />
+            <h2 className="text-sm font-bold text-[#7D8590] uppercase tracking-widest">Next Best Actions</h2>
+            {nbaActions && nbaActions.length > 0 && (
+              <span className="text-xs font-bold bg-[#0078D4]/15 text-[#0078D4] border border-[#0078D4]/20 px-2 py-0.5 rounded-full">{nbaActions.length} pending</span>
+            )}
+          </div>
+          <button
+            onClick={() => void generateNba()}
+            disabled={nbaGenerating}
+            className="flex items-center gap-1.5 text-xs font-semibold bg-[#0078D4] text-white px-3 py-1.5 rounded-lg hover:bg-[#0078D4]/80 disabled:opacity-50 transition-colors"
+          >
+            {nbaGenerating ? (
+              <><svg className="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>Generating…</>
+            ) : (
+              <><svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" /></svg>Generate Actions</>
+            )}
+          </button>
+        </div>
+
+        {nbaError && (
+          <div className="bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-3 mb-3 text-xs text-red-400">{nbaError}</div>
+        )}
+
+        {nbaLoading ? (
+          <div className="space-y-2">{Array.from({ length: 3 }).map((_, i) => <div key={i} className="h-16 bg-[#161B22] border border-[#30363D] rounded-xl animate-pulse" />)}</div>
+        ) : !nbaActions || nbaActions.length === 0 ? (
+          <div className="bg-[#161B22] border border-[#30363D] rounded-xl p-6 flex flex-col items-center text-center">
+            <div className="w-10 h-10 rounded-xl bg-[#0078D4]/10 flex items-center justify-center mb-2">
+              <svg className="w-5 h-5 text-[#58A6FF]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+              </svg>
+            </div>
+            <p className="text-sm font-semibold text-[#E6EDF3]">No actions queued</p>
+            <p className="text-xs text-[#7D8590] mt-1">Click Generate Actions to have Claude analyse your pipeline, clients, and projects and surface the 5 highest-impact things to do today.</p>
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {nbaActions.map(action => {
+              const confidenceColor = action.confidence >= 80 ? "text-emerald-400 bg-emerald-500/10 border-emerald-500/20" :
+                action.confidence >= 60 ? "text-[#0078D4] bg-[#0078D4]/10 border-[#0078D4]/20" :
+                "text-amber-400 bg-amber-500/10 border-amber-500/20";
+              const entityBadgeColor = action.entityType === "client" ? "text-teal-400 bg-teal-500/10" :
+                action.entityType === "project" ? "text-purple-400 bg-purple-500/10" :
+                action.entityType === "lead" ? "text-amber-400 bg-amber-500/10" :
+                action.entityType === "opportunity" ? "text-emerald-400 bg-emerald-500/10" :
+                "text-[#7D8590] bg-[#30363D]";
+              return (
+                <div key={action.id} className="bg-[#161B22] border border-[#30363D] rounded-xl px-4 py-3.5 flex items-start gap-3 hover:border-[#0078D4]/30 transition-colors">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap mb-1">
+                      <span className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded ${entityBadgeColor}`}>{action.entityType}</span>
+                      {action.entityName && <span className="text-[10px] font-semibold text-[#E6EDF3]">{action.entityName}</span>}
+                      <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded border ${confidenceColor}`}>{action.confidence}% confidence</span>
+                    </div>
+                    <p className="text-xs text-[#E6EDF3] leading-relaxed">{action.action}</p>
+                    {action.rationale && <p className="text-[10px] text-[#7D8590] mt-0.5 leading-relaxed">{action.rationale}</p>}
+                  </div>
+                  <div className="flex flex-col items-end gap-1.5 flex-shrink-0 ml-2">
+                    {action.linkPath && (
+                      <Link href={action.linkPath}>
+                        <span className="text-[10px] font-semibold text-[#58A6FF] hover:text-[#0078D4] cursor-pointer transition-colors whitespace-nowrap">Go →</span>
+                      </Link>
+                    )}
+                    <button
+                      onClick={() => void resolveNba(action.id)}
+                      className="text-[10px] font-semibold text-[#484F58] hover:text-emerald-400 border border-[#30363D] hover:border-emerald-500/30 px-2 py-0.5 rounded-lg transition-colors whitespace-nowrap"
+                    >
+                      ✓ Done
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </section>
+
+      {/* ── Health Alerts ── */}
+      {healthAlerts && healthAlerts.length > 0 && (
+        <section>
+          <div className="flex items-center gap-2 mb-3">
+            <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
+            <h2 className="text-sm font-bold text-[#7D8590] uppercase tracking-widest">Client Health Alerts</h2>
+            <span className="text-xs font-bold bg-red-500/15 text-red-400 border border-red-500/20 px-2 py-0.5 rounded-full">{healthAlerts.length} alert{healthAlerts.length !== 1 ? "s" : ""}</span>
+            <span className="text-[10px] text-[#484F58]">≥10pt change in 30 days</span>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            {healthAlerts.slice(0, 9).map((alert, i) => {
+              const isDrop = alert.delta < 0;
+              const absChange = Math.abs(alert.delta);
+              return (
+                <div key={i} className={`border rounded-xl px-4 py-3.5 flex items-start gap-3 ${isDrop ? "bg-red-500/8 border-red-500/20" : "bg-emerald-500/8 border-emerald-500/20"}`}>
+                  <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 text-sm ${isDrop ? "bg-red-500/15" : "bg-emerald-500/15"}`}>
+                    {isDrop ? "↓" : "↑"}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <Link href={`/crm/clients/${alert.clientId}`}>
+                      <span className={`text-xs font-bold cursor-pointer hover:underline ${isDrop ? "text-red-300" : "text-emerald-300"}`}>
+                        {alert.clientName}
+                      </span>
+                    </Link>
+                    {alert.company && <p className="text-[10px] text-[#7D8590]">{alert.company}</p>}
+                    <p className={`text-[10px] mt-0.5 font-semibold ${isDrop ? "text-red-400" : "text-emerald-400"}`}>
+                      {alert.category} {isDrop ? "dropped" : "improved"} {absChange}pt → {alert.latestScore}/100
+                    </p>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </section>
+      )}
+      {!healthAlertsLoading && healthAlerts && healthAlerts.length === 0 && (
+        <section>
+          <div className="flex items-center gap-2 mb-3">
+            <h2 className="text-sm font-bold text-[#7D8590] uppercase tracking-widest">Client Health Alerts</h2>
+          </div>
+          <div className="bg-emerald-500/5 border border-emerald-500/15 rounded-xl px-4 py-3 flex items-center gap-2">
+            <svg className="w-4 h-4 text-emerald-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+            </svg>
+            <p className="text-xs text-emerald-400">No significant health changes in the last 30 days — all clients are stable.</p>
+          </div>
+        </section>
+      )}
+
       {/* ── Customer Questions Alert ── */}
       {!loading && !error && data && (data.pendingQuestions?.length ?? 0) > 0 && (
         <section>
@@ -1189,6 +1426,84 @@ export default function OverviewPage() {
 
       {/* ── Project Velocity ── */}
       <ProjectVelocitySection data={data} loading={loading} error={error} />
+
+      {/* ── Revenue Forecast ── */}
+      <section>
+        <div className="flex items-center justify-between flex-wrap gap-3 mb-3">
+          <div className="flex items-center gap-2">
+            <h2 className="text-sm font-bold text-[#7D8590] uppercase tracking-widest">12-Month Revenue Forecast</h2>
+            <span className="text-[10px] font-semibold text-[#484F58]">AI · linear regression + MRR baseline</span>
+          </div>
+          <div className="flex items-center gap-2">
+            {revForecast?.generatedAt && <span className="text-[10px] text-[#484F58]">Updated {new Date(revForecast.generatedAt).toLocaleDateString("en-US", { month: "short", day: "numeric" })}</span>}
+            <button onClick={() => void generateForecast()} disabled={revGenerating} className="flex items-center gap-1.5 text-xs font-semibold text-[#58A6FF] hover:text-[#0078D4] disabled:opacity-50 transition-colors">
+              {revGenerating ? <svg className="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg> : null}
+              {revGenerating ? "Generating…" : revForecast ? "Refresh" : "Generate"}
+            </button>
+          </div>
+        </div>
+
+        {revLoading ? (
+          <div className="h-52 bg-[#161B22] border border-[#30363D] rounded-xl animate-pulse" />
+        ) : !revForecast || revForecast.rows.length === 0 ? (
+          <div className="bg-[#161B22] border border-[#30363D] rounded-xl p-5 flex items-center gap-4">
+            <div className="w-10 h-10 rounded-xl bg-[#0078D4]/10 flex items-center justify-center flex-shrink-0">
+              <svg className="w-5 h-5 text-[#58A6FF]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z" />
+              </svg>
+            </div>
+            <div>
+              <p className="text-sm font-semibold text-[#E6EDF3]">No forecast generated yet</p>
+              <p className="text-xs text-[#7D8590] mt-0.5">Click Generate to have Claude predict the next 12 months from your invoice history and MRR.</p>
+            </div>
+          </div>
+        ) : (
+          <div className="bg-[#161B22] border border-[#30363D] rounded-xl p-5">
+            {revForecast.narrative && (
+              <div className="flex items-start gap-2 bg-[#0078D4]/8 border border-[#0078D4]/20 rounded-xl px-3 py-2.5 mb-4">
+                <svg className="w-3.5 h-3.5 text-[#58A6FF] flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                </svg>
+                <p className="text-[11px] text-[#E6EDF3]/80 leading-relaxed">{revForecast.narrative}</p>
+              </div>
+            )}
+            <ResponsiveContainer width="100%" height={200}>
+              <ComposedChart data={revForecast.rows} margin={{ top: 4, right: 4, left: 8, bottom: 0 }}>
+                <defs>
+                  <linearGradient id="fcastGradOv" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#0078D4" stopOpacity={0.25} />
+                    <stop offset="95%" stopColor="#0078D4" stopOpacity={0} />
+                  </linearGradient>
+                  <linearGradient id="bandGradOv" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#7C3AED" stopOpacity={0.12} />
+                    <stop offset="95%" stopColor="#7C3AED" stopOpacity={0} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" stroke="#30363D" vertical={false} />
+                <XAxis dataKey="period" tick={{ fontSize: 9, fill: "#7D8590" }} axisLine={false} tickLine={false}
+                  tickFormatter={v => { const [,m] = (v as string).split("-"); return ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][parseInt(m)-1] ?? m; }} />
+                <YAxis tick={{ fontSize: 9, fill: "#7D8590" }} axisLine={false} tickLine={false}
+                  tickFormatter={v => fmt(v as number)} />
+                <RechartsTooltip contentStyle={{ fontSize: 11, borderRadius: 8, border: "1px solid #30363D", background: "#1C2128", color: "#E6EDF3" }}
+                  formatter={(v: number, name: string) => [fmt(v), name === "forecast" ? "Forecast" : name === "upperBound" ? "Upper" : "Lower"]} />
+                <Area type="monotone" dataKey="upperBound" stroke="transparent" fill="url(#bandGradOv)" strokeWidth={0} />
+                <Area type="monotone" dataKey="forecast" stroke="#0078D4" fill="url(#fcastGradOv)" strokeWidth={2} dot={false} />
+                <Area type="monotone" dataKey="lowerBound" stroke="transparent" fill="transparent" strokeWidth={0} />
+                <ReferenceLine y={revForecast.rows[0]?.forecast ?? 0} stroke="#30363D" strokeDasharray="4 4" strokeWidth={1} />
+              </ComposedChart>
+            </ResponsiveContainer>
+            <div className="flex flex-wrap gap-3 mt-3 pt-3 border-t border-[#30363D]">
+              {revForecast.rows.slice(0, 3).map(r => (
+                <div key={r.period} className="bg-[#1C2128] rounded-lg px-3 py-2">
+                  <p className="text-[10px] text-[#7D8590]">{(() => { const [y,m] = r.period.split("-"); return `${["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][parseInt(m)-1]} ${y}`; })()}</p>
+                  <p className="text-sm font-bold text-[#E6EDF3]">{fmt(r.forecast)}</p>
+                  <p className="text-[10px] text-[#484F58]">{fmt(r.lowerBound)}–{fmt(r.upperBound)}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </section>
 
       {/* ── Recent Reports + Activity Feed ── */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">

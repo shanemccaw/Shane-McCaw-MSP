@@ -428,6 +428,13 @@
       "when": 1750780800000,
       "tag": "0058_add_onboarding_wizard_completed_at",
       "breakpoints": true
+    },
+    {
+      "idx": 59,
+      "version": "7",
+      "when": 1750867200000,
+      "tag": "0059_add_ai_intelligence_tables",
+      "breakpoints": true
     }
   ]
 }

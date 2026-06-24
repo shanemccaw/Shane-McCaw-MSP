@@ -129,4 +129,54 @@ app.listen(port, (err) => {
   }).catch((err: unknown) => {
     logger.warn({ err }, "Migration: email_templates.recipient_type failed (non-fatal)");
   });
+
+  pool.query(`
+    CREATE TABLE IF NOT EXISTS next_best_actions (
+      id SERIAL PRIMARY KEY,
+      entity_type TEXT NOT NULL DEFAULT 'general',
+      entity_id INTEGER,
+      entity_name TEXT,
+      action TEXT NOT NULL,
+      rationale TEXT,
+      confidence INTEGER NOT NULL DEFAULT 50,
+      link_path TEXT,
+      resolved_at TIMESTAMP,
+      generated_at TIMESTAMP NOT NULL DEFAULT NOW(),
+      created_at TIMESTAMP NOT NULL DEFAULT NOW()
+    )
+  `).then(() => {
+    logger.info("Migration: next_best_actions table ensured");
+  }).catch((err: unknown) => {
+    logger.warn({ err }, "Migration: next_best_actions table failed (non-fatal)");
+  });
+
+  pool.query(`
+    CREATE TABLE IF NOT EXISTS revenue_forecasts (
+      id SERIAL PRIMARY KEY,
+      period TEXT NOT NULL,
+      forecast NUMERIC(12,2) NOT NULL,
+      lower_bound NUMERIC(12,2) NOT NULL,
+      upper_bound NUMERIC(12,2) NOT NULL,
+      narrative TEXT,
+      generated_at TIMESTAMP NOT NULL DEFAULT NOW()
+    )
+  `).then(() => {
+    logger.info("Migration: revenue_forecasts table ensured");
+  }).catch((err: unknown) => {
+    logger.warn({ err }, "Migration: revenue_forecasts table failed (non-fatal)");
+  });
+
+  pool.query(`
+    CREATE TABLE IF NOT EXISTS client_health_history (
+      id SERIAL PRIMARY KEY,
+      client_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      category TEXT NOT NULL,
+      score INTEGER NOT NULL,
+      recorded_at TIMESTAMP NOT NULL DEFAULT NOW()
+    )
+  `).then(() => {
+    logger.info("Migration: client_health_history table ensured");
+  }).catch((err: unknown) => {
+    logger.warn({ err }, "Migration: client_health_history table failed (non-fatal)");
+  });
 });

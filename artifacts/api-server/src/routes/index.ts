@@ -42,6 +42,9 @@ import adminDbStatusRouter from "./admin-db-status";
 import adminClientsRouter from "./admin-clients";
 import inboxRouter from "./inbox";
 import adminQuizPainConfigRouter from "./admin-quiz-pain-config";
+import aiNextBestActionsRouter from "./ai-next-best-actions";
+import analyticsForecastRouter from "./analytics-forecast";
+import clientHealthTrendsRouter from "./client-health-trends";
 
 const router: IRouter = Router();
 
@@ -88,5 +91,8 @@ router.use(opportunitiesRouter);
 router.use(adminDbStatusRouter);
 router.use(inboxRouter);
 router.use(adminQuizPainConfigRouter);
+router.use(aiNextBestActionsRouter);
+router.use(analyticsForecastRouter);
+router.use(clientHealthTrendsRouter);
 
 export default router;
