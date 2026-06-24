@@ -30,19 +30,22 @@ interface KPIs {
 }
 
 interface TopPage {
-  path: string;
+  page: string;
   views: number;
-  percentage?: number;
+  avgDuration?: number | null;
+  bounceRate?: number;
 }
 
 interface TopEvent {
-  name: string;
+  label: string;
+  eventType?: string;
   count: number;
 }
 
 interface Referrer {
   source: string;
-  count: number;
+  sessions: number;
+  pct?: number;
 }
 
 interface PageviewPoint {
@@ -152,7 +155,7 @@ export default function AnalyticsScreen() {
   const sparkValues = (pageviewsSeries ?? []).map((p) => p.views);
   const maxPages = Math.max(...(topPages ?? []).map((p) => p.views), 1);
   const maxEvents = Math.max(...(topEvents ?? []).map((e) => e.count), 1);
-  const maxRefs = Math.max(...(referrers ?? []).map((r) => r.count ?? 0), 1);
+  const maxRefs = Math.max(...(referrers ?? []).map((r) => r.sessions ?? 0), 1);
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
@@ -221,7 +224,7 @@ export default function AnalyticsScreen() {
             <View style={{ paddingHorizontal: 16, gap: 6 }}>
               {topPages?.map((p, i) => (
                 <View key={i} style={[styles.tableRow, { backgroundColor: colors.card, borderColor: colors.border }]}>
-                  <Text style={[styles.tableCell, { color: colors.text }]} numberOfLines={1}>{p.path}</Text>
+                  <Text style={[styles.tableCell, { color: colors.text }]} numberOfLines={1}>{p.page}</Text>
                   <View style={styles.tableRight}>
                     <MiniBar value={p.views ?? 0} max={maxPages} color={colors.primary} />
                     <Text style={[styles.tableNum, { color: colors.primary }]}>{(p.views ?? 0).toLocaleString()}</Text>
@@ -239,7 +242,7 @@ export default function AnalyticsScreen() {
             <View style={{ paddingHorizontal: 16, gap: 6 }}>
               {topEvents?.map((e, i) => (
                 <View key={i} style={[styles.tableRow, { backgroundColor: colors.card, borderColor: colors.border }]}>
-                  <Text style={[styles.tableCell, { color: colors.text }]} numberOfLines={1}>{e.name}</Text>
+                  <Text style={[styles.tableCell, { color: colors.text }]} numberOfLines={1}>{e.label}</Text>
                   <View style={styles.tableRight}>
                     <MiniBar value={e.count ?? 0} max={maxEvents} color={colors.teal} />
                     <Text style={[styles.tableNum, { color: colors.teal }]}>{(e.count ?? 0).toLocaleString()}</Text>
@@ -259,8 +262,8 @@ export default function AnalyticsScreen() {
                 <View key={i} style={[styles.tableRow, { backgroundColor: colors.card, borderColor: colors.border }]}>
                   <Text style={[styles.tableCell, { color: colors.text }]} numberOfLines={1}>{r.source || "Direct"}</Text>
                   <View style={styles.tableRight}>
-                    <MiniBar value={r.count ?? 0} max={maxRefs} color={colors.success} />
-                    <Text style={[styles.tableNum, { color: colors.success }]}>{(r.count ?? 0).toLocaleString()}</Text>
+                    <MiniBar value={r.sessions ?? 0} max={maxRefs} color={colors.success} />
+                    <Text style={[styles.tableNum, { color: colors.success }]}>{(r.sessions ?? 0).toLocaleString()}</Text>
                   </View>
                 </View>
               ))}

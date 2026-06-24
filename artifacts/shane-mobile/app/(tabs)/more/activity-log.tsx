@@ -65,8 +65,8 @@ export default function ActivityLogScreen() {
     queryFn: async () => {
       const res = await fetchWithAuth("/api/audit-logs?limit=50");
       if (!res.ok) throw new Error("Failed to load activity log");
-      const json = await res.json() as { logs?: ActivityEntry[] } | ActivityEntry[];
-      return Array.isArray(json) ? json : (json.logs ?? []);
+      const json = await res.json() as { entries?: ActivityEntry[] } | ActivityEntry[];
+      return Array.isArray(json) ? json : (json.entries ?? []);
     },
     staleTime: 30000,
   });

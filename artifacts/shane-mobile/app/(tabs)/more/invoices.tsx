@@ -54,15 +54,10 @@ export default function InvoicesScreen() {
   const { data, isLoading, error, refetch } = useQuery<Invoice[]>({
     queryKey: ["admin-invoices"],
     queryFn: async () => {
-      const res = await fetchWithAuth("/api/portal/invoices?admin=true&limit=50");
-      if (!res.ok) {
-        const res2 = await fetchWithAuth("/api/admin/invoices?limit=50");
-        if (!res2.ok) return [];
-        const json2 = await res2.json() as { invoices?: Invoice[] } | Invoice[];
-        return Array.isArray(json2) ? json2 : (json2.invoices ?? []);
-      }
-      const json = await res.json() as { invoices?: Invoice[] } | Invoice[];
-      return Array.isArray(json) ? json : (json.invoices ?? []);
+      const res = await fetchWithAuth("/api/admin/invoices");
+      if (!res.ok) throw new Error("Failed to load invoices");
+      const json = await res.json() as Invoice[];
+      return Array.isArray(json) ? json : [];
     },
     staleTime: 60000,
   });

@@ -62,10 +62,19 @@ export default function ProjectsScreen() {
   const { data, isLoading, error, refetch } = useQuery<Project[]>({
     queryKey: ["projects"],
     queryFn: async () => {
-      const res = await fetchWithAuth("/api/admin/engagement-projects");
+      const res = await fetchWithAuth("/api/admin/projects");
       if (!res.ok) throw new Error("Failed to load projects");
-      const json = await res.json() as { projects?: Project[] } | Project[];
-      return Array.isArray(json) ? json : (json.projects ?? []);
+      const json = await res.json() as Array<{ id: number; title: string; status: string; phase?: string | null; progress?: number | null; clientUserId?: number | null; endDate?: string | null; createdAt?: string; updatedAt?: string }>;
+      const rows = Array.isArray(json) ? json : [];
+      return rows.map((p) => ({
+        id: p.id,
+        name: p.title,
+        status: p.status,
+        phase: p.phase,
+        progress: p.progress,
+        dueDate: p.endDate,
+        updatedAt: p.updatedAt,
+      })) as Project[];
     },
     staleTime: 60000,
   });
