@@ -151,6 +151,7 @@ function ServiceCard({
   onDelete: () => void;
   trackColor: string;
 }) {
+  const [, navigate] = useLocation();
   const currentStep = steps.find(s => s.status === "in_progress") ?? steps.find(s => s.status === "pending");
   const completedCount = steps.filter(s => s.status === "completed").length;
   const eta = project.endDate ? new Date(project.endDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "—";
@@ -210,6 +211,14 @@ function ServiceCard({
           >
             Delete
           </button>
+          {project.clientUserId && (
+            <button
+              onClick={() => navigate(`/crm/clients/${project.clientUserId}`)}
+              className="text-xs font-medium text-[#7D8590] hover:text-[#0078D4] transition-colors"
+            >
+              Client →
+            </button>
+          )}
         </div>
         <button
           onClick={onDetails}
@@ -236,6 +245,7 @@ function RetainerCard({
   onEdit: () => void;
   onDelete: () => void;
 }) {
+  const [, navigate] = useLocation();
   const completedSteps = steps.filter(s => s.status === "completed").length;
   const hoursBase = Math.round(project.progress * 0.4);
   const governanceScore = project.status === "completed" ? 98 : project.status === "active" ? Math.max(72, Math.round(project.progress * 0.28 + 70)) : 65;
@@ -295,6 +305,14 @@ function RetainerCard({
         <div className="flex items-center gap-3">
           <button onClick={onEdit} className="text-xs font-medium text-[#94a3b8] hover:text-white transition-colors">Edit</button>
           <button onClick={onDelete} className="text-xs font-medium text-red-400 hover:text-red-300 transition-colors">Delete</button>
+          {project.clientUserId && (
+            <button
+              onClick={() => navigate(`/crm/clients/${project.clientUserId}`)}
+              className="text-xs font-medium text-[#60a5fa]/70 hover:text-[#60a5fa] transition-colors"
+            >
+              Client →
+            </button>
+          )}
         </div>
         <button
           onClick={onDetails}

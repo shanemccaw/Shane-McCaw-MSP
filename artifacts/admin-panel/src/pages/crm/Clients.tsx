@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import { useLocation } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
@@ -345,13 +345,13 @@ function ClientSharePointPanel({
         toast({ title: "Provision failed", description: err.error, variant: "destructive" });
         return;
       }
-      const data = await res.json() as { status: string; siteUrl?: string; sharepointSiteId?: string };
-      if (data.status === "provisioned" && data.siteUrl) {
-        setUrlInput(data.siteUrl);
-        onUpdate({ sharepointSiteUrl: data.siteUrl, sharepointSiteId: data.sharepointSiteId ?? null });
-        toast({ title: "SharePoint site provisioned" });
+      const data = await res.json() as { ok?: boolean; alreadyProvisioned?: boolean; provisioning?: boolean; sharepointSiteUrl?: string; sharepointSiteId?: string };
+      if (data.sharepointSiteUrl) {
+        setUrlInput(data.sharepointSiteUrl);
+        onUpdate({ sharepointSiteUrl: data.sharepointSiteUrl, sharepointSiteId: data.sharepointSiteId ?? null });
+        toast({ title: data.alreadyProvisioned ? "SharePoint site already provisioned" : "SharePoint site provisioned" });
       } else {
-        toast({ title: "Provisioning started", description: "The site is being created. Check back in a moment." });
+        toast({ title: "Provisioning started", description: "The site is being created in the background. Check back in a minute." });
       }
     } finally {
       setProvisioning(false);
@@ -453,6 +453,12 @@ export default function ClientsPage() {
   const [m365ClientId, setM365ClientId] = useState<number | null>(null);
   const [resendingInviteId, setResendingInviteId] = useState<number | null>(null);
   const [viewAsLoading, setViewAsLoading] = useState<number | null>(null);
+  const [sortKey, setSortKey] = useState<"name" | "projects" | "tasks" | "score" | "joined">("joined");
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
+  const [filterStatus, setFilterStatus] = useState<"all" | "active" | "no-projects">("all");
+  const [filterTier, setFilterTier] = useState<"all" | "Expert" | "Intermediate" | "Beginner">("all");
+  const [hoverRowId, setHoverRowId] = useState<number | null>(null);
+  const [menuOpenId, setMenuOpenId] = useState<number | null>(null);
 
   const load = async () => {
     try {
@@ -565,14 +571,61 @@ export default function ClientsPage() {
     }
   };
 
-  const filteredClients = clients.filter(c => {
+  const sortedFilteredClients = useMemo(() => {
     const q = search.toLowerCase();
-    return (
+    let result = clients.filter(c =>
       c.email.toLowerCase().includes(q) ||
       (c.name ?? "").toLowerCase().includes(q) ||
       (c.company ?? "").toLowerCase().includes(q)
     );
-  });
+
+    if (filterStatus === "active") result = result.filter(c => c.activeProjectCount > 0);
+    if (filterStatus === "no-projects") result = result.filter(c => c.projectCount === 0);
+    if (filterTier !== "all") result = result.filter(c => c.quizTier === filterTier);
+
+    return [...result].sort((a, b) => {
+      let aVal: string | number, bVal: string | number;
+      switch (sortKey) {
+        case "name":
+          aVal = (a.name ?? a.email).toLowerCase();
+          bVal = (b.name ?? b.email).toLowerCase();
+          break;
+        case "projects":
+          aVal = a.activeProjectCount;
+          bVal = b.activeProjectCount;
+          break;
+        case "tasks":
+          aVal = a.openTaskCount;
+          bVal = b.openTaskCount;
+          break;
+        case "score":
+          aVal = a.quizScore ?? -1;
+          bVal = b.quizScore ?? -1;
+          break;
+        case "joined":
+        default:
+          aVal = new Date(a.createdAt).getTime();
+          bVal = new Date(b.createdAt).getTime();
+          break;
+      }
+      const cmp = typeof aVal === "string" ? aVal.localeCompare(bVal as string) : (aVal as number) - (bVal as number);
+      return sortDir === "asc" ? cmp : -cmp;
+    });
+  }, [clients, search, filterStatus, filterTier, sortKey, sortDir]);
+
+  function toggleSort(key: typeof sortKey) {
+    if (sortKey === key) setSortDir(d => d === "asc" ? "desc" : "asc");
+    else { setSortKey(key); setSortDir("desc"); }
+  }
+
+  function SortIcon({ col }: { col: typeof sortKey }) {
+    if (sortKey !== col) return <svg className="w-3 h-3 text-[#484F58] inline ml-1" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M8 9l4-4 4 4m0 6l-4 4-4-4" /></svg>;
+    return sortDir === "asc"
+      ? <svg className="w-3 h-3 text-[#0078D4] inline ml-1" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M5 15l7-7 7 7" /></svg>
+      : <svg className="w-3 h-3 text-[#0078D4] inline ml-1" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" /></svg>;
+  }
+
+  const activeFilterCount = (filterStatus !== "all" ? 1 : 0) + (filterTier !== "all" ? 1 : 0);
 
   const inputCls =
     "w-full border border-border rounded-lg px-3 py-2 text-sm text-[#E6EDF3] focus:outline-none focus:ring-2 focus:ring-[#0078D4] bg-[#1C2128]";
@@ -653,7 +706,7 @@ export default function ClientsPage() {
         </div>
       )}
 
-      {/* ── Table ───────────────────────────────────────────────────── */}
+      {/* ── Table + Filter Sidebar ──────────────────────────────────── */}
       {loading ? (
         <div className="flex items-center justify-center py-16">
           <div className="w-6 h-6 border-4 border-[#0078D4] border-t-transparent rounded-full animate-spin" />
@@ -663,199 +716,269 @@ export default function ClientsPage() {
           No clients yet. Add a client account to give them portal access.
         </div>
       ) : (
-        <div className="bg-[#161B22] border border-border rounded-xl overflow-hidden">
-          <table className="w-full text-sm">
-            <thead className="bg-[#1C2128] border-b border-border">
-              <tr>
-                <th className="text-left px-5 py-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Name / Email</th>
-                <th className="text-left px-5 py-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground hidden sm:table-cell">Company</th>
-                <th className="text-center px-4 py-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground hidden md:table-cell">Projects</th>
-                <th className="text-center px-4 py-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground hidden md:table-cell">Open Tasks</th>
-                <th className="text-center px-4 py-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground hidden lg:table-cell">M365 Score</th>
-                <th className="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground hidden xl:table-cell">Joined</th>
-                <th className="px-5 py-3" />
-              </tr>
-            </thead>
-            <tbody>
-              {filteredClients.length === 0 ? (
-                <tr>
-                  <td colSpan={7} className="px-5 py-8 text-center text-muted-foreground text-sm">
-                    No clients match your search.
-                  </td>
-                </tr>
-              ) : (
-                filteredClients.map(c => (
-                  <>
-                    <tr
-                      key={c.id}
-                      className={`border-b border-border last:border-0 hover:bg-[#1C2128] transition-colors ${expandedEmailId === c.id || expandedSpId === c.id ? "bg-[#1C2128]" : ""}`}
-                    >
-                      {/* Name / Email */}
-                      <td className="px-5 py-3.5">
-                        <button
-                          onClick={() => navigate(`/crm/clients/${c.id}`)}
-                          className="text-left group"
-                        >
-                          <p className="font-semibold text-[#E6EDF3] group-hover:text-[#0078D4] transition-colors leading-tight">
-                            {c.name ?? <span className="text-[#484F58]">—</span>}
-                          </p>
-                          <p className="text-xs text-muted-foreground">{c.email}</p>
-                        </button>
-                      </td>
-
-                      {/* Company */}
-                      <td className="px-5 py-3.5 text-sm text-muted-foreground hidden sm:table-cell">
-                        {c.company ?? "—"}
-                      </td>
-
-                      {/* Projects */}
-                      <td className="px-4 py-3.5 text-center hidden md:table-cell">
-                        {c.projectCount === 0 ? (
-                          <span className="text-xs text-[#484F58]">—</span>
-                        ) : (
-                          <div className="inline-flex items-center gap-1">
-                            {c.activeProjectCount > 0 && (
-                              <span className="text-xs font-bold text-[#0078D4]">{c.activeProjectCount}</span>
-                            )}
-                            {c.projectCount > c.activeProjectCount && (
-                              <span className="text-xs text-[#484F58]">
-                                {c.activeProjectCount > 0 ? `+${c.projectCount - c.activeProjectCount}` : c.projectCount}
-                              </span>
-                            )}
-                            {c.activeProjectCount > 0 && (
-                              <span className="w-1.5 h-1.5 rounded-full bg-[#0078D4] inline-block" />
-                            )}
-                          </div>
-                        )}
-                      </td>
-
-                      {/* Open Tasks */}
-                      <td className="px-4 py-3.5 text-center hidden md:table-cell">
-                        {c.openTaskCount === 0 ? (
-                          <span className="text-xs text-[#484F58]">—</span>
-                        ) : (
-                          <span className={`text-xs font-bold tabular-nums ${c.openTaskCount > 5 ? "text-amber-400" : "text-[#E6EDF3]"}`}>
-                            {c.openTaskCount}
-                          </span>
-                        )}
-                      </td>
-
-                      {/* M365 Score */}
-                      <td className="px-4 py-3.5 text-center hidden lg:table-cell">
-                        <div className="flex flex-col items-center gap-0.5">
-                          <ScoreBadge score={c.quizScore} />
-                          <TierBadge tier={c.quizTier} />
-                        </div>
-                      </td>
-
-                      {/* Joined */}
-                      <td className="px-4 py-3.5 text-xs text-muted-foreground hidden xl:table-cell whitespace-nowrap">
-                        {new Date(c.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
-                      </td>
-
-                      {/* Actions */}
-                      <td className="px-5 py-3.5">
-                        <div className="flex items-center gap-2.5 flex-wrap justify-end">
-                          <button
-                            onClick={() => navigate(`/crm/clients/${c.id}`)}
-                            className="flex items-center gap-1 text-xs font-semibold text-[#0078D4] hover:underline"
-                            title="Open command center"
-                          >
-                            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                              <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 6H5.25A2.25 2.25 0 003 8.25v10.5A2.25 2.25 0 005.25 21h10.5A2.25 2.25 0 0018 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25" />
-                            </svg>
-                            Open
-                          </button>
-
-                          <button
-                            onClick={() => handleEdit(c)}
-                            className="text-xs font-semibold text-[#7D8590] hover:text-[#E6EDF3]"
-                          >
-                            Edit
-                          </button>
-
-                          <button
-                            onClick={() => { setExpandedEmailId(prev => prev === c.id ? null : c.id); setExpandedSpId(null); }}
-                            className={`flex items-center gap-1 text-xs font-semibold transition-colors ${expandedEmailId === c.id ? "text-[#0078D4]" : "text-[#7D8590] hover:text-[#0078D4]"}`}
-                            title="View email activity"
-                          >
-                            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                              <path strokeLinecap="round" strokeLinejoin="round" d="M21.75 6.75v10.5a2.25 2.25 0 01-2.25 2.25h-15a2.25 2.25 0 01-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25m19.5 0v.243a2.25 2.25 0 01-1.07 1.916l-7.5 4.615a2.25 2.25 0 01-2.36 0L3.32 8.91a2.25 2.25 0 01-1.07-1.916V6.75" />
-                            </svg>
-                            Emails
-                          </button>
-
-                          <button
-                            onClick={() => { setExpandedSpId(prev => prev === c.id ? null : c.id); setExpandedEmailId(null); }}
-                            className={`flex items-center gap-1 text-xs font-semibold transition-colors ${expandedSpId === c.id ? "text-[#0078D4]" : "text-[#7D8590] hover:text-[#0078D4]"}`}
-                            title="Manage SharePoint site"
-                          >
-                            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                              <path strokeLinecap="round" strokeLinejoin="round" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
-                            </svg>
-                            SP
-                            {c.sharepointSiteUrl && (
-                              <span className="w-1.5 h-1.5 rounded-full bg-green-500 inline-block" />
-                            )}
-                          </button>
-
-                          <button
-                            onClick={() => setM365ClientId(c.id)}
-                            className="flex items-center gap-1 text-xs font-semibold text-[#7D8590] hover:text-[#0078D4] transition-colors"
-                            title="M365 environment profile"
-                          >
-                            M365
-                          </button>
-
-                          <button
-                            onClick={() => void handleResendInvite(c)}
-                            disabled={resendingInviteId === c.id}
-                            className="text-xs font-semibold text-indigo-400 hover:text-indigo-300 disabled:opacity-50 transition-colors"
-                            title="Resend portal invite"
-                          >
-                            {resendingInviteId === c.id ? "Sending…" : "Invite"}
-                          </button>
-
-                          <button
-                            onClick={() => void handleViewAs(c)}
-                            disabled={viewAsLoading === c.id}
-                            className="text-xs font-semibold text-amber-400 hover:text-amber-300 disabled:opacity-50 transition-colors"
-                            title="View portal as this client"
-                          >
-                            {viewAsLoading === c.id ? "…" : "View as"}
-                          </button>
-
-                          <button
-                            onClick={() => setDeleteTarget(c)}
-                            className="text-xs font-semibold text-red-500 hover:text-red-400"
-                          >
-                            Delete
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-
-                    {expandedEmailId === c.id && (
-                      <ClientEmailPanel
-                        key={`email-${c.id}`}
-                        client={c}
-                        onClose={() => setExpandedEmailId(null)}
-                      />
-                    )}
-
-                    {expandedSpId === c.id && (
-                      <ClientSharePointPanel
-                        key={`sp-${c.id}`}
-                        client={c}
-                        onClose={() => setExpandedSpId(null)}
-                        onUpdate={patch => setClients(prev => prev.map(x => x.id === c.id ? { ...x, ...patch } : x))}
-                      />
-                    )}
-                  </>
-                ))
+        <div className="flex gap-4 items-start">
+          {/* Filter Sidebar */}
+          <div className="w-44 flex-shrink-0 bg-[#161B22] border border-border rounded-xl overflow-hidden">
+            <div className="flex items-center justify-between px-3 py-2.5 bg-[#1C2128] border-b border-border">
+              <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Filters</p>
+              {activeFilterCount > 0 && (
+                <button
+                  onClick={() => { setFilterStatus("all"); setFilterTier("all"); }}
+                  className="text-[10px] font-semibold text-[#0078D4] hover:underline"
+                >
+                  Clear {activeFilterCount}
+                </button>
               )}
-            </tbody>
-          </table>
+            </div>
+
+            <div className="p-3 space-y-4">
+              {/* Status filter */}
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1.5">Status</p>
+                <div className="space-y-1">
+                  {(["all", "active", "no-projects"] as const).map(opt => {
+                    const labels = { all: "All clients", active: "Has projects", "no-projects": "No projects" };
+                    return (
+                      <button
+                        key={opt}
+                        onClick={() => setFilterStatus(opt)}
+                        className={`w-full text-left text-xs px-2 py-1 rounded transition-colors ${filterStatus === opt ? "bg-[#0078D4]/15 text-[#0078D4] font-semibold" : "text-muted-foreground hover:text-[#E6EDF3] hover:bg-[#1C2128]"}`}
+                      >
+                        {labels[opt]}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* M365 Tier filter */}
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1.5">M365 Tier</p>
+                <div className="space-y-1">
+                  {(["all", "Expert", "Intermediate", "Beginner"] as const).map(opt => (
+                    <button
+                      key={opt}
+                      onClick={() => setFilterTier(opt)}
+                      className={`w-full text-left text-xs px-2 py-1 rounded transition-colors ${filterTier === opt ? "bg-[#0078D4]/15 text-[#0078D4] font-semibold" : "text-muted-foreground hover:text-[#E6EDF3] hover:bg-[#1C2128]"}`}
+                    >
+                      {opt === "all" ? "All tiers" : opt}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Quick stats */}
+              <div className="border-t border-border pt-3 space-y-1.5">
+                <div className="flex justify-between text-[10px]">
+                  <span className="text-muted-foreground">Total</span>
+                  <span className="text-[#E6EDF3] font-semibold">{clients.length}</span>
+                </div>
+                <div className="flex justify-between text-[10px]">
+                  <span className="text-muted-foreground">Showing</span>
+                  <span className="text-[#E6EDF3] font-semibold">{sortedFilteredClients.length}</span>
+                </div>
+                <div className="flex justify-between text-[10px]">
+                  <span className="text-muted-foreground">With M365</span>
+                  <span className="text-[#E6EDF3] font-semibold">{clients.filter(c => c.quizScore !== null).length}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Table */}
+          <div className="flex-1 min-w-0 bg-[#161B22] border border-border rounded-xl overflow-hidden">
+            <table className="w-full text-sm">
+              <thead className="bg-[#1C2128] border-b border-border">
+                <tr>
+                  <th className="text-left px-5 py-3">
+                    <button onClick={() => toggleSort("name")} className="flex items-center text-xs font-semibold uppercase tracking-wider text-muted-foreground hover:text-[#E6EDF3] transition-colors">
+                      Name / Email<SortIcon col="name" />
+                    </button>
+                  </th>
+                  <th className="text-left px-5 py-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground hidden sm:table-cell">Company</th>
+                  <th className="text-center px-4 py-3 hidden md:table-cell">
+                    <button onClick={() => toggleSort("projects")} className="flex items-center gap-0 mx-auto text-xs font-semibold uppercase tracking-wider text-muted-foreground hover:text-[#E6EDF3] transition-colors">
+                      Projects<SortIcon col="projects" />
+                    </button>
+                  </th>
+                  <th className="text-center px-4 py-3 hidden md:table-cell">
+                    <button onClick={() => toggleSort("tasks")} className="flex items-center gap-0 mx-auto text-xs font-semibold uppercase tracking-wider text-muted-foreground hover:text-[#E6EDF3] transition-colors">
+                      Open Tasks<SortIcon col="tasks" />
+                    </button>
+                  </th>
+                  <th className="text-center px-4 py-3 hidden lg:table-cell">
+                    <button onClick={() => toggleSort("score")} className="flex items-center gap-0 mx-auto text-xs font-semibold uppercase tracking-wider text-muted-foreground hover:text-[#E6EDF3] transition-colors">
+                      M365 Score<SortIcon col="score" />
+                    </button>
+                  </th>
+                  <th className="text-left px-4 py-3 hidden xl:table-cell">
+                    <button onClick={() => toggleSort("joined")} className="flex items-center text-xs font-semibold uppercase tracking-wider text-muted-foreground hover:text-[#E6EDF3] transition-colors">
+                      Joined<SortIcon col="joined" />
+                    </button>
+                  </th>
+                  <th className="px-5 py-3" />
+                </tr>
+              </thead>
+              <tbody>
+                {sortedFilteredClients.length === 0 ? (
+                  <tr>
+                    <td colSpan={7} className="px-5 py-8 text-center text-muted-foreground text-sm">
+                      No clients match your filters.
+                    </td>
+                  </tr>
+                ) : (
+                  sortedFilteredClients.map(c => (
+                    <>
+                      <tr
+                        key={c.id}
+                        onMouseEnter={() => setHoverRowId(c.id)}
+                        onMouseLeave={() => { setHoverRowId(null); if (menuOpenId === c.id) setMenuOpenId(null); }}
+                        className={`border-b border-border last:border-0 transition-colors ${expandedEmailId === c.id || expandedSpId === c.id ? "bg-[#1C2128]" : hoverRowId === c.id ? "bg-[#1C2128]" : ""}`}
+                      >
+                        {/* Name / Email */}
+                        <td className="px-5 py-3.5">
+                          <button onClick={() => navigate(`/crm/clients/${c.id}`)} className="text-left group">
+                            <p className="font-semibold text-[#E6EDF3] group-hover:text-[#0078D4] transition-colors leading-tight">
+                              {c.name ?? <span className="text-[#484F58]">—</span>}
+                            </p>
+                            <p className="text-xs text-muted-foreground">{c.email}</p>
+                          </button>
+                        </td>
+
+                        {/* Company */}
+                        <td className="px-5 py-3.5 text-sm text-muted-foreground hidden sm:table-cell">{c.company ?? "—"}</td>
+
+                        {/* Projects */}
+                        <td className="px-4 py-3.5 text-center hidden md:table-cell">
+                          {c.projectCount === 0 ? (
+                            <span className="text-xs text-[#484F58]">—</span>
+                          ) : (
+                            <div className="inline-flex items-center gap-1">
+                              {c.activeProjectCount > 0 && <span className="text-xs font-bold text-[#0078D4]">{c.activeProjectCount}</span>}
+                              {c.projectCount > c.activeProjectCount && (
+                                <span className="text-xs text-[#484F58]">{c.activeProjectCount > 0 ? `+${c.projectCount - c.activeProjectCount}` : c.projectCount}</span>
+                              )}
+                              {c.activeProjectCount > 0 && <span className="w-1.5 h-1.5 rounded-full bg-[#0078D4] inline-block" />}
+                            </div>
+                          )}
+                        </td>
+
+                        {/* Open Tasks */}
+                        <td className="px-4 py-3.5 text-center hidden md:table-cell">
+                          {c.openTaskCount === 0 ? (
+                            <span className="text-xs text-[#484F58]">—</span>
+                          ) : (
+                            <span className={`text-xs font-bold tabular-nums ${c.openTaskCount > 5 ? "text-amber-400" : "text-[#E6EDF3]"}`}>{c.openTaskCount}</span>
+                          )}
+                        </td>
+
+                        {/* M365 Score */}
+                        <td className="px-4 py-3.5 text-center hidden lg:table-cell">
+                          <div className="flex flex-col items-center gap-0.5">
+                            <ScoreBadge score={c.quizScore} />
+                            <TierBadge tier={c.quizTier} />
+                          </div>
+                        </td>
+
+                        {/* Joined */}
+                        <td className="px-4 py-3.5 text-xs text-muted-foreground hidden xl:table-cell whitespace-nowrap">
+                          {new Date(c.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                        </td>
+
+                        {/* Actions — always-visible core + hover dropdown menu */}
+                        <td className="px-3 py-3.5">
+                          <div className="flex items-center gap-2 justify-end">
+                            {/* Core always-visible actions */}
+                            <button
+                              onClick={() => navigate(`/crm/clients/${c.id}`)}
+                              className="text-xs font-semibold text-[#0078D4] hover:underline"
+                            >
+                              Open
+                            </button>
+
+                            {/* Hover-revealed actions */}
+                            <div className={`flex items-center gap-2 transition-opacity ${hoverRowId === c.id ? "opacity-100" : "opacity-0 pointer-events-none"}`}>
+                              <button
+                                onClick={() => navigate("/crm/projects")}
+                                className="text-xs font-semibold text-[#7D8590] hover:text-[#E6EDF3] transition-colors"
+                                title="Add project"
+                              >
+                                + Project
+                              </button>
+                              <button
+                                onClick={() => navigate("/crm/projects")}
+                                className="text-xs font-semibold text-[#7D8590] hover:text-[#E6EDF3] transition-colors"
+                                title="Add task"
+                              >
+                                + Task
+                              </button>
+                              <button
+                                onClick={() => navigate("/email-activity")}
+                                className="text-xs font-semibold text-[#7D8590] hover:text-[#E6EDF3] transition-colors"
+                                title="Email client"
+                              >
+                                Email
+                              </button>
+                            </div>
+
+                            {/* ⋯ menu button for more actions */}
+                            <div className="relative">
+                              <button
+                                onClick={e => { e.stopPropagation(); setMenuOpenId(prev => prev === c.id ? null : c.id); }}
+                                className={`text-muted-foreground hover:text-[#E6EDF3] transition-colors ${hoverRowId === c.id || menuOpenId === c.id ? "opacity-100" : "opacity-0 pointer-events-none"}`}
+                                title="More actions"
+                              >
+                                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                  <path strokeLinecap="round" strokeLinejoin="round" d="M5 12h.01M12 12h.01M19 12h.01M6 12a1 1 0 11-2 0 1 1 0 012 0zm7 0a1 1 0 11-2 0 1 1 0 012 0zm7 0a1 1 0 11-2 0 1 1 0 012 0z" />
+                                </svg>
+                              </button>
+
+                              {menuOpenId === c.id && (
+                                <div className="absolute right-0 top-full mt-1 z-20 w-44 bg-[#1C2128] border border-border rounded-xl shadow-xl overflow-hidden">
+                                  {[
+                                    { label: "View Client", action: () => { navigate(`/crm/clients/${c.id}`); setMenuOpenId(null); } },
+                                    { label: "Edit Info", action: () => { handleEdit(c); setMenuOpenId(null); } },
+                                    { label: "Email Activity", action: () => { setExpandedEmailId(prev => prev === c.id ? null : c.id); setExpandedSpId(null); setMenuOpenId(null); } },
+                                    { label: "SharePoint Site", action: () => { setExpandedSpId(prev => prev === c.id ? null : c.id); setExpandedEmailId(null); setMenuOpenId(null); } },
+                                    { label: "M365 Profile", action: () => { setM365ClientId(c.id); setMenuOpenId(null); } },
+                                    { label: "Resend Invite", action: () => { void handleResendInvite(c); setMenuOpenId(null); } },
+                                    { label: "View as Client", action: () => { void handleViewAs(c); setMenuOpenId(null); } },
+                                    { label: "Generate Report", action: () => { navigate("/crm/reports"); setMenuOpenId(null); }, dim: true },
+                                    { label: "Delete Client", action: () => { setDeleteTarget(c); setMenuOpenId(null); }, danger: true },
+                                  ].map(({ label, action, danger, dim }) => (
+                                    <button
+                                      key={label}
+                                      onClick={action}
+                                      className={`w-full text-left text-xs px-3.5 py-2 hover:bg-[#30363D] transition-colors ${danger ? "text-red-400" : dim ? "text-muted-foreground" : "text-[#E6EDF3]"}`}
+                                    >
+                                      {label}
+                                    </button>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </td>
+                      </tr>
+
+                      {expandedEmailId === c.id && (
+                        <ClientEmailPanel key={`email-${c.id}`} client={c} onClose={() => setExpandedEmailId(null)} />
+                      )}
+
+                      {expandedSpId === c.id && (
+                        <ClientSharePointPanel
+                          key={`sp-${c.id}`}
+                          client={c}
+                          onClose={() => setExpandedSpId(null)}
+                          onUpdate={patch => setClients(prev => prev.map(x => x.id === c.id ? { ...x, ...patch } : x))}
+                        />
+                      )}
+                    </>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 
