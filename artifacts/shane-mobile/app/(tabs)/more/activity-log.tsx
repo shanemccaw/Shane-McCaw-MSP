@@ -63,7 +63,7 @@ export default function ActivityLogScreen() {
   const { data, isLoading, error, refetch } = useQuery<ActivityEntry[]>({
     queryKey: ["admin-activity-log"],
     queryFn: async () => {
-      const res = await fetchWithAuth("/api/admin/audit-logs?limit=50");
+      const res = await fetchWithAuth("/api/audit-logs?limit=50");
       if (!res.ok) throw new Error("Failed to load activity log");
       const json = await res.json() as { logs?: ActivityEntry[] } | ActivityEntry[];
       return Array.isArray(json) ? json : (json.logs ?? []);

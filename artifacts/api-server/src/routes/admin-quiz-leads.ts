@@ -48,6 +48,21 @@ router.get("/admin/quiz-leads", requireAdmin, async (req, res) => {
   }
 });
 
+// GET /api/admin/quiz-leads/:id — single quiz lead detail
+router.get("/admin/quiz-leads/:id", requireAdmin, async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ error: "Invalid ID" });
+
+  try {
+    const [row] = await db.select().from(quizLeadsTable).where(eq(quizLeadsTable.id, id)).limit(1);
+    if (!row) return res.status(404).json({ error: "Quiz lead not found" });
+    return res.json(row);
+  } catch (err) {
+    req.log.error({ err }, "admin/quiz-leads/:id GET failed");
+    return res.status(500).json({ error: "Failed to fetch quiz lead" });
+  }
+});
+
 // GET /api/admin/quiz-leads/stats — summary counts
 router.get("/admin/quiz-leads/stats", requireAdmin, async (req, res) => {
   try {

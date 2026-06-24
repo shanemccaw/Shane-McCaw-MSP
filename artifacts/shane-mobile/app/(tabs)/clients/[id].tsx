@@ -250,7 +250,7 @@ function HealthTab({ clientId, fetchWithAuth, colors }: { clientId: number; fetc
   const { data, isLoading } = useQuery({
     queryKey: ["client-health", clientId],
     queryFn: async () => {
-      const res = await fetchWithAuth(`/api/admin/clients/${clientId}/health-trends`);
+      const res = await fetchWithAuth(`/api/clients/${clientId}/health/trends`);
       if (!res.ok) return null;
       return res.json();
     },
