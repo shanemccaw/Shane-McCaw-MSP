@@ -1,4 +1,5 @@
-import { useState, useCallback, useEffect, useRef } from "react";
+import { useState, useCallback, useEffect } from "react";
+import { useLocation } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
 
 type LeadStatus = "new" | "contacted" | "qualified" | "converted" | "archived";
@@ -33,14 +34,6 @@ interface LeadStats {
   fromLeadMagnet: number;
 }
 
-interface LinkedEmail {
-  id: number;
-  subject: string | null;
-  senderAddress: string;
-  rawFrom: string | null;
-  receivedAt: string;
-}
-
 const STATUS_COLORS: Record<LeadStatus, string> = {
   new: "bg-[#0078D4]/100/15 text-blue-400",
   contacted: "bg-yellow-500/15 text-yellow-400",
@@ -68,181 +61,9 @@ function StatCard({ label, value, icon }: { label: string; value: number; icon: 
   );
 }
 
-function SlideOver({ lead, onClose, onStatusChange }: {
-  lead: Lead;
-  onClose: () => void;
-  onStatusChange: () => void;
-}) {
-  const { fetchWithAuth } = useAuth();
-  const [status, setStatus] = useState<LeadStatus>(lead.status);
-  const [saving, setSaving] = useState(false);
-  const [linkedEmails, setLinkedEmails] = useState<LinkedEmail[]>([]);
-  const [emailsLoading, setEmailsLoading] = useState(true);
-  const fetchedRef = useRef<number | null>(null);
-
-  useEffect(() => {
-    if (fetchedRef.current === lead.id) return;
-    fetchedRef.current = lead.id;
-    setEmailsLoading(true);
-    fetchWithAuth(`/api/leads/${lead.id}/emails`)
-      .then(r => r.ok ? r.json() as Promise<LinkedEmail[]> : [])
-      .then(data => setLinkedEmails(data))
-      .catch(() => setLinkedEmails([]))
-      .finally(() => setEmailsLoading(false));
-  }, [lead.id, fetchWithAuth]);
-
-  const save = async () => {
-    setSaving(true);
-    try {
-      const res = await fetchWithAuth(`/api/leads/${lead.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status }),
-      });
-      if (res.ok) {
-        onStatusChange();
-        onClose();
-      }
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  return (
-    <div className="fixed inset-0 z-50 flex">
-      <div className="flex-1 bg-black/40" onClick={onClose} />
-      <div className="w-full sm:max-w-md bg-[#161B22] shadow-2xl overflow-y-auto flex flex-col">
-        <div className="flex items-center justify-between px-6 py-4 border-b border-border bg-[#0A2540]">
-          <h2 className="text-white font-bold">Lead Details</h2>
-          <button onClick={onClose} className="text-white/60 hover:text-white transition-colors text-xl leading-none">×</button>
-        </div>
-        <div className="flex-1 px-6 py-6 space-y-5">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1">Name</p>
-            <p className="text-[#E6EDF3] font-semibold">{lead.name}</p>
-          </div>
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1">Email</p>
-            <a href={`mailto:${lead.email}`} className="text-[#0078D4] hover:underline text-sm">{lead.email}</a>
-          </div>
-          {lead.company && (
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1">Company</p>
-              <p className="text-[#E6EDF3] text-sm">{lead.company}{lead.companySize ? ` (${lead.companySize})` : ""}</p>
-            </div>
-          )}
-          {lead.serviceArea && (
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1">Service Area</p>
-              <p className="text-[#E6EDF3] text-sm">{lead.serviceArea}</p>
-            </div>
-          )}
-          {lead.message && (
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1">Message</p>
-              <p className="text-[#E6EDF3] text-sm leading-relaxed whitespace-pre-wrap">{lead.message}</p>
-            </div>
-          )}
-          {lead.howFound && (
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1">How They Found Shane</p>
-              <p className="text-[#E6EDF3] text-sm">{lead.howFound}</p>
-            </div>
-          )}
-          <div className="flex gap-4">
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1">Source</p>
-              <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${SOURCE_COLORS[lead.source]}`}>
-                {lead.source === "contact_form" ? "Contact Form" : "Lead Magnet"}
-              </span>
-            </div>
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1">Date</p>
-              <p className="text-sm text-[#E6EDF3]">{new Date(lead.createdAt).toLocaleDateString()}</p>
-            </div>
-          </div>
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">Update Status</p>
-            <select
-              value={status}
-              onChange={e => setStatus(e.target.value as LeadStatus)}
-              className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4] bg-[#161B22]"
-            >
-              <option value="new">New</option>
-              <option value="contacted">Contacted</option>
-              <option value="qualified">Qualified</option>
-              <option value="converted">Converted</option>
-              <option value="archived">Archived</option>
-            </select>
-          </div>
-
-          <div>
-            <div className="flex items-center justify-between mb-2">
-              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Linked Emails</p>
-              <a
-                href="/admin-panel/email-activity"
-                className="text-xs text-[#0078D4] hover:underline font-medium"
-              >
-                Open Inbox →
-              </a>
-            </div>
-            {emailsLoading ? (
-              <div className="flex items-center gap-2 py-3 text-xs text-muted-foreground">
-                <div className="w-4 h-4 border-2 border-[#0078D4] border-t-transparent rounded-full animate-spin flex-shrink-0" />
-                Loading…
-              </div>
-            ) : linkedEmails.length === 0 ? (
-              <div className="rounded-lg border border-dashed border-border bg-[#1C2128] px-4 py-5 text-center">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} className="w-7 h-7 mx-auto text-muted-foreground/40 mb-1.5">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M21.75 6.75v10.5a2.25 2.25 0 01-2.25 2.25h-15a2.25 2.25 0 01-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25m19.5 0v.243a2.25 2.25 0 01-1.07 1.916l-7.5 4.615a2.25 2.25 0 01-2.36 0L3.32 8.91a2.25 2.25 0 01-1.07-1.916V6.75" />
-                </svg>
-                <p className="text-xs text-muted-foreground">No emails linked to this lead yet.</p>
-                <p className="text-xs text-muted-foreground/70 mt-0.5">Pin emails from the inbox to see them here.</p>
-              </div>
-            ) : (
-              <ul className="space-y-2">
-                {linkedEmails.map(email => (
-                  <li key={email.id} className="rounded-lg border border-border bg-[#1C2128] px-3.5 py-3">
-                    <p className="text-xs font-semibold text-[#E6EDF3] truncate">{email.subject ?? "(no subject)"}</p>
-                    <p className="text-xs text-muted-foreground mt-0.5 truncate">{email.rawFrom ?? email.senderAddress}</p>
-                    <div className="flex items-center justify-between mt-1.5">
-                      <p className="text-xs text-muted-foreground/70">{new Date(email.receivedAt).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}</p>
-                      <a
-                        href="/admin-panel/email-activity"
-                        className="text-xs text-[#0078D4] hover:underline font-medium"
-                      >
-                        View in inbox
-                      </a>
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-        </div>
-        <div className="px-6 py-4 border-t border-border flex gap-3">
-          <button
-            onClick={save}
-            disabled={saving || status === lead.status}
-            className="flex-1 bg-[#0078D4] text-white font-semibold rounded-lg py-2.5 text-sm hover:bg-[#0078D4]/90 transition-colors disabled:opacity-40"
-          >
-            {saving ? "Saving…" : "Save Changes"}
-          </button>
-          <button
-            onClick={onClose}
-            className="px-4 border border-border rounded-lg text-sm font-medium text-muted-foreground hover:bg-[#1C2128] transition-colors"
-          >
-            Cancel
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 export default function LeadsPage() {
   const { fetchWithAuth } = useAuth();
-  const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
+  const [, navigate] = useLocation();
   const [stats, setStats] = useState<LeadStats | null>(null);
   const [leads, setLeads] = useState<Lead[]>([]);
   const [total, setTotal] = useState(0);
@@ -277,10 +98,6 @@ export default function LeadsPage() {
   useEffect(() => {
     void Promise.all([fetchStats(), fetchLeads(1, "all", "all")]);
   }, [fetchStats, fetchLeads]);
-
-  const handleStatusChange = () => {
-    void Promise.all([fetchLeads(page, statusFilter, sourceFilter), fetchStats()]);
-  };
 
   const handleFilterChange = (newStatus: string) => {
     setStatusFilter(newStatus);
@@ -373,7 +190,7 @@ export default function LeadsPage() {
                 </thead>
                 <tbody>
                   {leads.map(lead => (
-                    <tr key={lead.id} onClick={() => setSelectedLead(lead)}
+                    <tr key={lead.id} onClick={() => navigate(`/crm/leads/${lead.id}`)}
                       className="border-b border-border last:border-0 hover:bg-[#1C2128] cursor-pointer transition-colors">
                       <td className="px-5 py-3.5 font-semibold text-[#E6EDF3]">{lead.name}</td>
                       <td className="px-5 py-3.5 text-muted-foreground">{lead.email}</td>
@@ -398,7 +215,7 @@ export default function LeadsPage() {
             </div>
             <div className="sm:hidden divide-y divide-border">
               {leads.map(lead => (
-                <div key={lead.id} onClick={() => setSelectedLead(lead)}
+                <div key={lead.id} onClick={() => navigate(`/crm/leads/${lead.id}`)}
                   className="px-4 py-3 flex items-center gap-3 cursor-pointer hover:bg-[#1C2128] transition-colors">
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-semibold text-[#E6EDF3] truncate">{lead.name}</p>
@@ -437,9 +254,6 @@ export default function LeadsPage() {
         )}
       </div>
 
-      {selectedLead && (
-        <SlideOver lead={selectedLead} onClose={() => setSelectedLead(null)} onStatusChange={handleStatusChange} />
-      )}
     </div>
   );
 }

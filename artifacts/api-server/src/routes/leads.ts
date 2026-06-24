@@ -1,5 +1,5 @@
 import { Router, type IRouter, type Request, type Response } from "express";
-import { db, leadsTable, emailsTable, servicesTable } from "@workspace/db";
+import { db, leadsTable, emailsTable, servicesTable, quizLeadsTable } from "@workspace/db";
 import { eq, desc, count, gte, and, ilike, or, type SQL } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/requireAuth";
 import {
@@ -228,6 +228,49 @@ router.get("/leads", requireAdmin, async (req: Request, res: Response) => {
   res.json({ leads, total: totalRow?.count ?? 0, page, limit });
 });
 
+router.get("/leads/:id", requireAdmin, async (req: Request, res: Response) => {
+  const id = parseInt(String(req.params.id ?? ""), 10);
+  if (isNaN(id)) {
+    res.status(400).json({ error: "Invalid lead ID" });
+    return;
+  }
+
+  const [lead] = await db.select().from(leadsTable).where(eq(leadsTable.id, id)).limit(1);
+  if (!lead) {
+    res.status(404).json({ error: "Lead not found" });
+    return;
+  }
+
+  res.json(lead);
+});
+
+router.get("/leads/:id/quiz-matches", requireAdmin, async (req: Request, res: Response) => {
+  const id = parseInt(String(req.params.id ?? ""), 10);
+  if (isNaN(id)) {
+    res.status(400).json({ error: "Invalid lead ID" });
+    return;
+  }
+
+  const [lead] = await db
+    .select({ email: leadsTable.email })
+    .from(leadsTable)
+    .where(eq(leadsTable.id, id))
+    .limit(1);
+
+  if (!lead) {
+    res.status(404).json({ error: "Lead not found" });
+    return;
+  }
+
+  const matches = await db
+    .select()
+    .from(quizLeadsTable)
+    .where(eq(quizLeadsTable.email, lead.email))
+    .orderBy(desc(quizLeadsTable.createdAt));
+
+  res.json(matches);
+});
+
 router.get("/leads/:id/emails", requireAdmin, async (req: Request, res: Response) => {
   const id = parseInt(String(req.params.id ?? ""), 10);
   if (isNaN(id)) {
@@ -242,6 +285,7 @@ router.get("/leads/:id/emails", requireAdmin, async (req: Request, res: Response
       senderAddress: emailsTable.senderAddress,
       rawFrom: emailsTable.rawFrom,
       receivedAt: emailsTable.receivedAt,
+      bodyPreview: emailsTable.bodyPreview,
     })
     .from(emailsTable)
     .where(eq(emailsTable.linkedLeadId, id))
