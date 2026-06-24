@@ -32,6 +32,7 @@ import OpportunityDetailPage from "@/pages/crm/OpportunityDetail";
 import OverviewPage from "@/pages/Overview";
 import AnalyticsPage from "@/pages/Analytics";
 import EmailActivityPage from "@/pages/EmailActivity";
+import InboxPage from "@/pages/inbox/Inbox";
 import ActivityLogPage from "@/pages/ActivityLog";
 import SharePointPage from "@/pages/SharePoint";
 import TemplateLibraryPage from "@/pages/templates/TemplateLibrary";
@@ -190,9 +191,14 @@ function Router() {
         <RequireAdmin><DashboardShell><AnalyticsPage /></DashboardShell></RequireAdmin>
       </Route>
 
-      {/* Email Activity */}
+      {/* Inbox (replaces Email Activity) */}
+      <Route path="/inbox">
+        <RequireAdmin><DashboardShell><InboxPage /></DashboardShell></RequireAdmin>
+      </Route>
+
+      {/* Legacy email-activity redirect */}
       <Route path="/email-activity">
-        <RequireAdmin><DashboardShell><EmailActivityPage /></DashboardShell></RequireAdmin>
+        <Redirect to="/inbox" />
       </Route>
 
       {/* Activity Log */}

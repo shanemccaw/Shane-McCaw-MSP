@@ -277,8 +277,8 @@ const NAV_GROUPS: NavGroup[] = [
         ),
       },
       {
-        label: "Email Activity",
-        path: "/email-activity",
+        label: "Inbox",
+        path: "/inbox",
         icon: (
           <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21.75 6.75v10.5a2.25 2.25 0 01-2.25 2.25h-15a2.25 2.25 0 01-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25m19.5 0v.243a2.25 2.25 0 01-1.07 1.916l-7.5 4.615a2.25 2.25 0 01-2.36 0L3.32 8.91a2.25 2.25 0 01-1.07-1.916V6.75" />
@@ -356,7 +356,7 @@ function readCollapsedGroups(): Set<string> {
 
 function getGroupBadgeCount(group: NavGroup, unreadEmailCount: number): number {
   return group.items.reduce((sum, item) => {
-    if (item.label === "Email Activity") return sum + unreadEmailCount;
+    if (item.label === "Inbox") return sum + unreadEmailCount;
     return sum;
   }, 0);
 }
@@ -493,11 +493,11 @@ function TopHeader({
         </kbd>
       </div>
 
-      {/* Notification bell — email activity badge */}
-      <Link href="/email-activity">
+      {/* Notification bell — inbox badge */}
+      <Link href="/inbox">
         <button
           className="relative p-1.5 text-[#7D8590] hover:text-[#E6EDF3] rounded-lg hover:bg-[#1C2128] transition-colors"
-          title="Email Activity"
+          title="Inbox"
         >
           <svg className="w-[18px] h-[18px]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
@@ -626,7 +626,7 @@ function SidebarContent({
               >
                 {group.items.map(item => {
                   const isActive = location === item.path || location.startsWith(item.path + "/");
-                  const itemBadge = item.label === "Email Activity" ? unreadEmailCount : 0;
+                  const itemBadge = item.label === "Inbox" ? unreadEmailCount : 0;
                   return (
                     <NavItemLink
                       key={item.label + item.path}
@@ -720,7 +720,7 @@ export default function DashboardShell({ children }: { children: ReactNode }) {
   const refreshUnreadCount = useCallback(() => { void fetchCount(); }, [fetchCount]);
 
   useEffect(() => {
-    if (location === "/email-activity") {
+    if (location === "/inbox") {
       saveLastSeenAt(Date.now());
       setUnreadEmailCount(0);
       if (pollTimerRef.current) { clearInterval(pollTimerRef.current); pollTimerRef.current = null; }

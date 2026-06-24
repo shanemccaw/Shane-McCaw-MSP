@@ -39,6 +39,7 @@ import mfaRouter from "./mfa";
 import opportunitiesRouter from "./opportunities";
 import adminDbStatusRouter from "./admin-db-status";
 import adminClientsRouter from "./admin-clients";
+import inboxRouter from "./inbox";
 
 const router: IRouter = Router();
 
@@ -82,5 +83,6 @@ router.use(bookingRouter);
 router.use(mfaRouter);
 router.use(opportunitiesRouter);
 router.use(adminDbStatusRouter);
+router.use(inboxRouter);
 
 export default router;

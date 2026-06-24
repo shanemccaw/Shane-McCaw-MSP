@@ -976,3 +976,18 @@ export const leadQualificationsTable = pgTable("lead_qualifications", {
 
 export type InsertLeadQualification = typeof leadQualificationsTable.$inferInsert;
 export type LeadQualification = typeof leadQualificationsTable.$inferSelect;
+
+// Inbox Message Links — links a Graph message ID to CRM entities and tasks
+export const inboxMessageLinksTable = pgTable("inbox_message_links", {
+  id: serial("id").primaryKey(),
+  graphMessageId: text("graph_message_id").notNull().unique(),
+  leadId: integer("lead_id").references(() => leadsTable.id, { onDelete: "set null" }),
+  opportunityId: integer("opportunity_id").references(() => opportunitiesTable.id, { onDelete: "set null" }),
+  customerId: integer("customer_id").references(() => usersTable.id, { onDelete: "set null" }),
+  taskId: integer("task_id").references(() => kanbanTasksTable.id, { onDelete: "set null" }),
+  direction: text("direction", { enum: ["inbound", "outbound"] }).notNull().default("inbound"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export type InsertInboxMessageLink = typeof inboxMessageLinksTable.$inferInsert;
+export type InboxMessageLink = typeof inboxMessageLinksTable.$inferSelect;
