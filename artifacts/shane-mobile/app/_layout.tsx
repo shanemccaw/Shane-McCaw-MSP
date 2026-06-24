@@ -286,7 +286,10 @@ function RootLayoutNav() {
   routerRef.current = router;
 
   useEffect(() => {
-    if (!isLoading && !user && sessionExpired) {
+    if (isLoading) return;
+    if (user) {
+      routerRef.current.replace("/(tabs)");
+    } else if (sessionExpired) {
       routerRef.current.replace("/login?reason=session_expired");
     }
   }, [user, isLoading, sessionExpired]);
