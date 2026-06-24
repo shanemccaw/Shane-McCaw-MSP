@@ -37,9 +37,17 @@ interface ServiceRecord {
   highlighted: boolean;
   iconName: string | null;
   pageHref: string | null;
+  pageSlug: string | null;
   slug: string;
   serviceType: string;
   isPublic: boolean;
+}
+
+/** Always returns a usable detail URL for a service card. */
+function serviceDetailHref(service: ServiceRecord): string {
+  if (service.pageHref) return service.pageHref;
+  if (service.pageSlug) return `/micro-offers/${service.pageSlug}`;
+  return "/micro-offers";
 }
 
 // ── Static data ───────────────────────────────────────────────────────────────
@@ -334,13 +342,9 @@ export default function Home() {
                     <div className="w-10 h-10 rounded-lg bg-[#0078D4]/10 flex items-center justify-center mb-4 flex-shrink-0">
                       <ServiceIcon name={service.iconName} className="w-5 h-5 text-[#0078D4]" />
                     </div>
-                    {service.pageHref ? (
-                      <Link href={service.pageHref} className="font-extrabold text-[#0A2540] text-lg mb-1 leading-snug hover:text-[#0078D4] transition-colors">
-                        {service.name}
-                      </Link>
-                    ) : (
-                      <h3 className="font-extrabold text-[#0A2540] text-lg mb-1 leading-snug">{service.name}</h3>
-                    )}
+                    <Link href={serviceDetailHref(service)} className="font-extrabold text-[#0A2540] text-lg mb-1 leading-snug hover:text-[#0078D4] transition-colors">
+                      {service.name}
+                    </Link>
                     <div className="flex items-center gap-3 mb-4">
                       {priceRange && (
                         <span className="text-sm font-bold text-[#0078D4]">{priceRange}</span>
@@ -372,14 +376,12 @@ export default function Home() {
                       <CTAButton href={`/crm/portal/onboarding/select?service=${service.slug}`} className="text-xs px-4 py-2 w-full">
                         Get Started
                       </CTAButton>
-                      {service.pageHref && (
-                        <Link
-                          href={service.pageHref}
-                          className="inline-flex items-center justify-center gap-1.5 text-[#0078D4] text-sm font-semibold hover:underline"
-                        >
-                          Learn More <ArrowRight className="w-3.5 h-3.5" />
-                        </Link>
-                      )}
+                      <Link
+                        href={serviceDetailHref(service)}
+                        className="inline-flex items-center justify-center gap-1.5 text-[#0078D4] text-sm font-semibold hover:underline"
+                      >
+                        Learn More <ArrowRight className="w-3.5 h-3.5" />
+                      </Link>
                     </div>
                   </div>
                 );
