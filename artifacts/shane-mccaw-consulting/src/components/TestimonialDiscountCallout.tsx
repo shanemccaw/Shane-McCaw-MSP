@@ -1,14 +1,15 @@
-import { Tag, Star } from "lucide-react";
+import { Tag, Star, X } from "lucide-react";
 
 interface Props {
   variant?: "banner" | "card";
+  onClose?: () => void;
 }
 
-export function TestimonialDiscountCallout({ variant = "card" }: Props) {
+export function TestimonialDiscountCallout({ variant = "card", onClose }: Props) {
   if (variant === "banner") {
     return (
       <div className="bg-amber-50 border-y border-amber-200 py-3 px-6">
-        <div className="max-w-[1200px] mx-auto flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-center">
+        <div className="max-w-[1200px] mx-auto flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-center relative">
           <span className="inline-flex items-center gap-1.5 text-amber-700 font-bold text-sm">
             <Tag className="w-3.5 h-3.5" />
             New client offer
@@ -20,6 +21,15 @@ export function TestimonialDiscountCallout({ variant = "card" }: Props) {
             </span>{" "}
             for <strong>10% off</strong> your first engagement — in exchange for a short written testimonial or case study within 5 days.
           </span>
+          {onClose && (
+            <button
+              onClick={onClose}
+              aria-label="Dismiss offer banner"
+              className="absolute right-0 top-1/2 -translate-y-1/2 p-1.5 rounded-md text-amber-600 hover:text-amber-900 hover:bg-amber-100 transition-colors"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          )}
         </div>
       </div>
     );
