@@ -102,7 +102,7 @@ export default function ArticlesPage() {
     <div className="p-4 sm:p-6 max-w-5xl mx-auto">
       {/* Header */}
       {view !== "edit" && (
-        <div className="flex items-center justify-between mb-6">
+        <div className="flex items-center justify-between flex-wrap gap-4 mb-6">
           <div className="flex items-center gap-4">
             <div>
               <h1 className="text-xl font-bold text-[#E6EDF3]">

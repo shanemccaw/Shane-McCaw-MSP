@@ -1828,7 +1828,7 @@ export default function ProjectDetailPage() {
 
       {/* ── Kanban Board ───────────────────────────────────────────────── */}
       <section className="mb-8">
-        <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center justify-between flex-wrap gap-4 mb-4">
           <h2 className="text-sm font-bold uppercase tracking-wider text-[#E6EDF3]">Kanban Board</h2>
           <button
             onClick={() => setAddTaskOpen(s => !s)}
@@ -2512,7 +2512,7 @@ export default function ProjectDetailPage() {
 
       {/* ── Workflow Phases & Milestones ───────────────────────────────── */}
       <section>
-        <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center justify-between flex-wrap gap-4 mb-4">
           <h2 className="text-sm font-bold uppercase tracking-wider text-[#E6EDF3]">Workflow Phases &amp; Milestones</h2>
         </div>
 
@@ -2588,7 +2588,7 @@ export default function ProjectDetailPage() {
             No workflow steps yet. Click <strong>Add Step</strong> to create the first phase.
           </div>
         ) : (
-          <div className="bg-[#161B22] border border-border rounded-xl overflow-hidden">
+          <div className="bg-[#161B22] border border-border rounded-xl overflow-hidden overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="bg-[#1C2128] border-b border-border">

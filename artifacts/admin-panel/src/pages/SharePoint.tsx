@@ -229,7 +229,7 @@ export default function SharePointPage() {
 
       {/* File browser */}
       <div className="bg-[#161B22] border border-border rounded-xl overflow-hidden">
-        <div className="px-5 py-4 border-b border-border flex items-center justify-between gap-3">
+        <div className="px-5 py-4 border-b border-border flex items-center justify-between flex-wrap gap-3">
           <div className="flex items-center gap-1.5 text-sm min-w-0">
             {breadcrumbs.map((crumb, i) => (
               <span key={i} className="flex items-center gap-1.5 min-w-0">

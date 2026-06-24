@@ -40,7 +40,7 @@ function ArchivedProjectCard({ project }: { project: Project }) {
       <article className="bg-white rounded-xl p-6 border border-gray-100 hover:-translate-y-0.5 hover:shadow-lg transition-all duration-200 cursor-pointer group"
         style={{ boxShadow: "0 2px 10px rgba(15,23,42,0.04)" }}>
         <div className="space-y-4">
-          <div className="flex items-start justify-between gap-4">
+          <div className="flex items-start justify-between flex-wrap gap-4">
             <div className="flex items-center gap-4">
               <div className="w-12 h-12 rounded-xl bg-green-50 flex items-center justify-center text-green-600 flex-shrink-0">
                 <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
@@ -88,7 +88,7 @@ function ArchivedProjectCard({ project }: { project: Project }) {
             </div>
           )}
 
-          <div className="grid grid-cols-2 gap-4 pt-1 border-t border-gray-50">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-1 border-t border-gray-50">
             <div>
               <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-0.5">Started</p>
               <p className="text-[13px] font-semibold text-[#0A2540]">{formatDate(project.startDate)}</p>

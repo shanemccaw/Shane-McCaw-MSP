@@ -234,7 +234,7 @@ function AiInsightsPanel({ insights, loading, error, onRefresh }: {
 }) {
   return (
     <section className="bg-[#0D1117] border border-[#30363D] rounded-xl p-5">
-      <div className="flex items-center justify-between mb-4">
+      <div className="flex items-center justify-between flex-wrap gap-4 mb-4">
         <div className="flex items-center gap-2.5">
           <div className="w-7 h-7 rounded-lg bg-[#0078D4]/15 flex items-center justify-center">
             <svg className="w-3.5 h-3.5 text-[#58A6FF]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -1347,7 +1347,7 @@ export default function OverviewPage() {
 
       {/* ── Database Status ── */}
       <section>
-        <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center justify-between flex-wrap gap-3 mb-3">
           <div className="flex items-center gap-2">
             <h2 className="text-sm font-bold text-[#7D8590] uppercase tracking-widest">Database Status</h2>
             {dbStatus && dbStatus.prod.available && dbStatus.prod.pendingCount > 0 && (

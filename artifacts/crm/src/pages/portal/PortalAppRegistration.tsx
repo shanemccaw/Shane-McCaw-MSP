@@ -311,7 +311,7 @@ export default function PortalAppRegistration() {
 
         {/* ── Credential form / status ─────────────────────────────────────────── */}
         <div className="bg-white border border-border rounded-xl overflow-hidden">
-          <div className="px-5 py-3.5 border-b border-border bg-[#F7F9FC] flex items-center justify-between gap-3">
+          <div className="px-5 py-3.5 border-b border-border bg-[#F7F9FC] flex items-center justify-between flex-wrap gap-3">
             <p className="text-[10px] font-bold uppercase tracking-wider text-gray-500">
               {updateMode
                 ? "Update Credentials"

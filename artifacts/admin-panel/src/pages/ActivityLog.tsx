@@ -199,7 +199,7 @@ export default function ActivityLogPage() {
 
             {/* Pagination */}
             {totalPages > 1 && (
-              <div className="flex items-center justify-between px-5 py-3 border-t border-border bg-[#1C2128]/40">
+              <div className="flex items-center justify-between flex-wrap gap-3 px-5 py-3 border-t border-border bg-[#1C2128]/40">
                 <p className="text-xs text-muted-foreground">
                   {((page - 1) * (data.pageSize ?? 25)) + 1}–{Math.min(page * (data.pageSize ?? 25), data.total)} of {data.total}
                 </p>

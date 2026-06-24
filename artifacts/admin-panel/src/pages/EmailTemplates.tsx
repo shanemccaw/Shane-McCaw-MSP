@@ -483,9 +483,9 @@ export default function EmailTemplatesPage() {
         />
       )}
 
-      <div className="flex h-[calc(100vh-64px)] overflow-hidden">
+      <div className="flex flex-col lg:flex-row lg:h-[calc(100vh-64px)] overflow-hidden">
         {/* ── Template list ───────────────────────────────────────────────────── */}
-        <aside className="w-64 shrink-0 border-r bg-[#161B22] flex flex-col overflow-hidden">
+        <aside className="w-full lg:w-64 shrink-0 border-b lg:border-b-0 border-r-0 lg:border-r bg-[#161B22] flex flex-col overflow-hidden max-h-64 lg:max-h-none">
           <div className="px-4 py-3 border-b">
             <h1 className="text-sm font-semibold text-[#E6EDF3]">Email Templates</h1>
             <p className="text-xs text-[#7D8590] mt-0.5">{filteredTemplates.length} of {templates.length} templates</p>

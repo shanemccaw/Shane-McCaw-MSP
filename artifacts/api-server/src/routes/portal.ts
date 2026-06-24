@@ -12,6 +12,7 @@ import { listDriveItems, graphCredentialsPresent, createProjectFolder, uploadFil
 import { setSecretValue, getSecretValue, getSecretMetadata } from "../lib/azure-keyvault";
 import { ClientSecretCredential } from "@azure/identity";
 import { uploadInvoiceToSharePoint } from "../lib/invoice-sharepoint";
+import { getPortalBaseUrl } from "../lib/portal-url";
 import { generateM365ProfilePdf } from "../lib/m365-profile-pdf";
 import multer from "multer";
 import path from "path";
@@ -3483,8 +3484,7 @@ async function processStripeEvent(req: Request, event: import("stripe").Stripe.E
 
         // Client welcome emails — sent once per session using idempotency checks.
         if (buyer?.email) {
-          const clientBaseUrl = process.env.PORTAL_BASE_URL
-            ?? `${process.env.REPLIT_DEV_DOMAIN ? `https://${process.env.REPLIT_DEV_DOMAIN}` : ""}/crm`;
+          const clientBaseUrl = getPortalBaseUrl();
 
           if (!buyer.passwordHash) {
             // Atomic: advisory-locked transaction finds an existing valid token or
@@ -3745,8 +3745,7 @@ router.post("/admin/clients", requireAdmin, async (req: Request, res: Response) 
   // Generate a setup token and send the portal invite email
   try {
     const { token: setupToken } = await ensureClientSetupToken(client.id);
-    const baseUrl = process.env.PORTAL_BASE_URL
-      ?? `${process.env.REPLIT_DEV_DOMAIN ? `https://${process.env.REPLIT_DEV_DOMAIN}` : ""}/crm`;
+    const baseUrl = getPortalBaseUrl();
     const setupUrl = `${baseUrl}/portal/onboarding/success?setup_token=${setupToken}`;
     void sendEmailFromTemplate(
       "account-setup",
@@ -3781,8 +3780,7 @@ router.post("/admin/clients/:id/resend-invite", requireAdmin, async (req: Reques
     const expiresAt = new Date(Date.now() + 72 * 60 * 60 * 1000);
     await db.insert(accountSetupTokensTable).values({ userId: id, token, expiresAt });
 
-    const baseUrl = process.env.PORTAL_BASE_URL
-      ?? `${process.env.REPLIT_DEV_DOMAIN ? `https://${process.env.REPLIT_DEV_DOMAIN}` : ""}/crm`;
+    const baseUrl = getPortalBaseUrl();
     const setupUrl = `${baseUrl}/portal/onboarding/success?setup_token=${token}`;
 
     await sendEmailFromTemplate(
@@ -6195,8 +6193,7 @@ router.post("/portal/onboarding/provision/:sessionId", async (req: Request, res:
       .limit(1);
     const hasPassword = !!(provUser?.passwordHash);
     let sentSetupEmail = false;
-    const baseUrl = process.env.PORTAL_BASE_URL
-      ?? `${process.env.REPLIT_DEV_DOMAIN ? `https://${process.env.REPLIT_DEV_DOMAIN}` : ""}/crm`;
+    const baseUrl = getPortalBaseUrl();
     if (!hasPassword && provUser?.email) {
       // Atomic: advisory-locked transaction finds an existing valid token or
       // creates one — concurrent webhook + success-page calls produce exactly one.

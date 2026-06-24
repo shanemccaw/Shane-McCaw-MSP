@@ -344,10 +344,10 @@ export default function Dashboard2() {
 
   return (
     <PortalLayout>
-      <div className="p-10 max-w-[1280px] mx-auto space-y-12">
+      <div className="px-4 sm:px-6 py-6 sm:py-8 max-w-[1280px] mx-auto space-y-12">
 
         {/* Page Header */}
-        <header className="flex items-center justify-between pb-6 border-b border-[#c6c6cd]">
+        <header className="flex items-center justify-between flex-wrap gap-4 pb-6 border-b border-[#c6c6cd]">
           <h2 className="text-3xl font-semibold text-[#191c1e] tracking-tight">Executive Dashboard</h2>
           <div className="flex items-center gap-4">
             <div className="flex items-center gap-2 px-4 py-2 bg-white rounded-full border border-[#c6c6cd]">

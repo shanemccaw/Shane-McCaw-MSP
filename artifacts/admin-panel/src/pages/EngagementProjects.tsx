@@ -283,7 +283,7 @@ export default function EngagementProjectsPage() {
 
   return (
     <div className="p-4 sm:p-6 max-w-5xl mx-auto">
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex items-center justify-between flex-wrap gap-4 mb-6">
         <div>
           <h1 className="text-xl font-extrabold text-[#E6EDF3]">Engagement Projects</h1>
           <p className="text-sm text-[#7D8590] mt-0.5">

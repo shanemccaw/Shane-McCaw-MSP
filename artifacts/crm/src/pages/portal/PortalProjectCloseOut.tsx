@@ -252,7 +252,7 @@ export default function PortalProjectCloseOut({
 
         {/* ── Engagement Progress ── */}
         <div className="bg-white rounded-2xl p-7 shadow-sm mb-6">
-          <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center justify-between flex-wrap gap-4 mb-3">
             <h2 className="text-sm font-bold text-[#0A2540]">Engagement Progress</h2>
             <span className="text-lg font-extrabold text-green-600">100%</span>
           </div>

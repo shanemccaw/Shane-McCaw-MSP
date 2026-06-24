@@ -227,7 +227,7 @@ export default function PortalContractDetail() {
           </nav>
 
           {/* Toolbar — outside the paper */}
-          <div className="flex items-center justify-between mb-5">
+          <div className="flex items-center justify-between flex-wrap gap-4 mb-5">
             <div className="flex items-center gap-2">
               <div className="w-2 h-2 rounded-full bg-green-500" />
               <span className="text-xs font-semibold text-green-700">
@@ -299,6 +299,7 @@ export default function PortalContractDetail() {
                     <h2 className="text-[0.65rem] font-bold uppercase tracking-widest text-[#0A2540] mb-3">
                       Service Order Details
                     </h2>
+                    <div className="overflow-x-auto">
                     <table className="w-full text-[0.8rem] border-collapse">
                       <tbody>
                         {wizardItems.map(sel => (
@@ -327,6 +328,7 @@ export default function PortalContractDetail() {
                         )}
                       </tbody>
                     </table>
+                    </div>
                   </div>
                 )}
 

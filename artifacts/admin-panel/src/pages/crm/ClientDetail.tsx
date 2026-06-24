@@ -750,7 +750,7 @@ export default function ClientDetailPage() {
 
           {/* Profile card */}
           <div className="bg-[#161B22] border border-border rounded-xl overflow-hidden">
-            <div className="flex items-center justify-between px-4 py-3 bg-[#1C2128] border-b border-border">
+            <div className="flex items-center justify-between flex-wrap gap-3 px-4 py-3 bg-[#1C2128] border-b border-border">
               <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Profile</p>
               {!editingInfo && (
                 <button
@@ -895,7 +895,7 @@ export default function ClientDetailPage() {
 
           {/* Active Projects */}
           <div className="bg-[#161B22] border border-border rounded-xl overflow-hidden">
-            <div className="flex items-center justify-between px-5 py-3.5 bg-[#1C2128] border-b border-border">
+            <div className="flex items-center justify-between flex-wrap gap-3 px-5 py-3.5 bg-[#1C2128] border-b border-border">
               <div className="flex items-center gap-2">
                 <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Active Projects</p>
                 {activeProjects.length > 0 && (
@@ -1014,7 +1014,7 @@ export default function ClientDetailPage() {
 
           {/* Kanban Bucket Preview */}
           <div className="bg-[#161B22] border border-border rounded-xl overflow-hidden">
-            <div className="flex items-center justify-between px-4 py-3 bg-[#1C2128] border-b border-border">
+            <div className="flex items-center justify-between flex-wrap gap-3 px-4 py-3 bg-[#1C2128] border-b border-border">
               <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Kanban Preview</p>
               <button onClick={() => navigate("/crm/projects")} className="text-[10px] text-muted-foreground hover:text-[#0078D4] transition-colors">View Board →</button>
             </div>

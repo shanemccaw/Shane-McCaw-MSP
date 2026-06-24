@@ -100,9 +100,9 @@ export default function ContractTemplatesPage() {
   }
 
   return (
-    <div className="flex h-full">
+    <div className="flex flex-col lg:flex-row h-full">
       {/* Service list */}
-      <div className="w-72 flex-shrink-0 border-r border-[#30363D] bg-[#161B22] overflow-y-auto">
+      <div className="w-full lg:w-72 flex-shrink-0 border-b lg:border-b-0 border-r-0 lg:border-r border-[#30363D] bg-[#161B22] overflow-y-auto max-h-60 lg:max-h-none">
         <div className="p-4 border-b border-[#30363D]">
           <h2 className="font-semibold text-[#E6EDF3] text-sm">Contract Templates</h2>
           <p className="text-xs text-[#7D8590] mt-0.5">One per service offering</p>

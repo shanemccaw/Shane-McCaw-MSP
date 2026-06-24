@@ -236,7 +236,7 @@ export default function LeadsPage() {
         )}
 
         {totalPages > 1 && (
-          <div className="flex items-center justify-between px-5 py-4 border-t border-border">
+          <div className="flex items-center justify-between flex-wrap gap-3 px-5 py-4 border-t border-border">
             <p className="text-xs text-muted-foreground">
               Showing {(page - 1) * LIMIT + 1}–{Math.min(page * LIMIT, total)} of {total}
             </p>

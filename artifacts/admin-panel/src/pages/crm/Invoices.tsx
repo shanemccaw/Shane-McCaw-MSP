@@ -174,7 +174,7 @@ export default function InvoicesPage() {
           </button>
         </div>
       ) : (
-        <div className="bg-[#161B22] border border-border rounded-xl overflow-hidden">
+        <div className="bg-[#161B22] border border-border rounded-xl overflow-hidden overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-[#1C2128] border-b border-border">
               <tr>

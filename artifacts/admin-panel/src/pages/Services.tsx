@@ -184,7 +184,7 @@ function OfferCardPreview({ form }: { form: Partial<Service> }) {
   return (
     <div className="bg-[#161B22] rounded-xl border border-border p-6 flex flex-col shadow-sm">
       {/* Header row — icon + badge */}
-      <div className="flex items-start justify-between mb-4">
+      <div className="flex items-start justify-between flex-wrap gap-4 mb-4">
         <div className="w-11 h-11 rounded-lg bg-[#0078D4]/10 flex items-center justify-center flex-shrink-0">
           <Icon className="w-5 h-5 text-[#0078D4]" />
         </div>
@@ -829,7 +829,7 @@ export default function ServicesPage() {
       <div className="flex-1 overflow-y-auto">
         {showCreate ? (
           <form onSubmit={handleCreate} className="p-6 max-w-md">
-            <div className="flex items-center justify-between mb-6">
+            <div className="flex items-center justify-between flex-wrap gap-4 mb-6">
               <h2 className="text-xl font-bold text-[#E6EDF3]">New Service</h2>
               <button type="button" onClick={() => setShowCreate(false)}
                 className="text-[#7D8590] hover:text-[#7D8590] transition-colors text-sm">

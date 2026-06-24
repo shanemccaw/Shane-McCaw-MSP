@@ -206,7 +206,7 @@ function ServiceCard({
         </div>
       </div>
 
-      <div className="border-t border-border px-5 py-2.5 flex items-center justify-between">
+      <div className="border-t border-border px-5 py-2.5 flex items-center justify-between flex-wrap gap-3">
         <div className="flex items-center gap-3">
           <button
             onClick={onEdit}
@@ -863,7 +863,7 @@ export default function ProjectsPage() {
           <PortfolioHeader />
 
           {viewMode === "list" ? (
-            <div className="bg-[#161B22] border border-border rounded-xl overflow-hidden">
+            <div className="bg-[#161B22] border border-border rounded-xl overflow-hidden overflow-x-auto">
               <table className="w-full text-sm">
                 <thead className="bg-[#1C2128] border-b border-border">
                   <tr>

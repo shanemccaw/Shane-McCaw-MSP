@@ -186,7 +186,7 @@ export default function PortalRetainerDetail({
 
             {/* Executive Summary & Strategy */}
             <div className="bg-white p-8 rounded-xl shadow-sm border-l-4 border-[#0A2540]">
-              <div className="flex justify-between items-start mb-6">
+              <div className="flex justify-between items-start flex-wrap gap-4 mb-6">
                 <div>
                   <h3 className="text-lg font-bold text-[#0A2540] mb-1">Executive Summary &amp; Strategy</h3>
                   {project.description && (
@@ -334,7 +334,7 @@ export default function PortalRetainerDetail({
 
             {/* Governance Health Score */}
             <div className="bg-white p-8 rounded-xl shadow-sm">
-              <div className="flex justify-between items-center mb-6">
+              <div className="flex justify-between items-center flex-wrap gap-4 mb-6">
                 <h3 className="text-[11px] font-bold text-muted-foreground uppercase tracking-widest">Engagement Health</h3>
                 <span className="text-[#00B4D8] font-bold text-2xl">{overallPct}%</span>
               </div>

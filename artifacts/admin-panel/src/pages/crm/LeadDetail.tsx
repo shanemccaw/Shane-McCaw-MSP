@@ -194,7 +194,7 @@ function QuizCard({ quiz }: { quiz: QuizMatch }) {
 
   return (
     <div className="bg-[#1C2128] border border-border rounded-xl p-4 space-y-4">
-      <div className="flex items-start justify-between gap-3">
+      <div className="flex items-start justify-between flex-wrap gap-3">
         <div className="space-y-1.5">
           <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-[#0078D4]/10 text-[#0078D4]">
             {QUIZ_TYPE_LABELS[quiz.quizType] ?? quiz.quizType}

@@ -236,7 +236,7 @@ export default function CouponsPage() {
 
   return (
     <div className="p-4 sm:p-6 max-w-5xl mx-auto">
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex items-center justify-between flex-wrap gap-4 mb-6">
         <div>
           <h1 className="text-2xl font-bold text-[#E6EDF3]">Coupons</h1>
           <p className="text-sm text-muted-foreground mt-0.5">Create and manage promo codes for checkout discounts</p>
@@ -252,7 +252,7 @@ export default function CouponsPage() {
 
       {showForm && (
         <div className="bg-[#161B22] border border-border rounded-2xl p-5 mb-6 shadow-sm">
-          <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center justify-between flex-wrap gap-4 mb-4">
             <h2 className="font-bold text-[#E6EDF3] text-sm flex items-center gap-2">
               <Tag className="w-4 h-4 text-[#0078D4]" />
               {editingId ? "Edit Coupon" : "Create Coupon"}

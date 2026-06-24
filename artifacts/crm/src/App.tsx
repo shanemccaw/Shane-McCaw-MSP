@@ -141,7 +141,7 @@ function Router() {
         <OnboardingContract />
       </Route>
       <Route path="/portal/onboarding/success">
-        <RequireAuth role="client"><OnboardingSuccess /></RequireAuth>
+        <OnboardingSuccess />
       </Route>
 
       <Route>

@@ -328,7 +328,7 @@ export default function ScriptRunnerPage() {
 
   return (
     <div className="p-4 sm:p-6 max-w-5xl mx-auto space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-4">
         <div>
           <h1 className="text-xl font-bold text-[#E6EDF3]">Script Runner</h1>
           <p className="text-sm text-muted-foreground mt-0.5">Run Azure Automation Runbooks against customer tenants</p>
@@ -491,7 +491,7 @@ export default function ScriptRunnerPage() {
         {/* Log panel */}
         <div className="lg:col-span-2 space-y-3">
           <div className="bg-[#161B22] border border-border rounded-xl overflow-hidden">
-            <div className="flex items-center justify-between px-4 py-3 border-b border-border bg-[#1C2128]">
+            <div className="flex items-center justify-between flex-wrap gap-3 px-4 py-3 border-b border-border bg-[#1C2128]">
               <div className="flex items-center gap-2 min-w-0">
                 <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground flex-shrink-0">
                   {logLabel ? "Replayed Output" : "Live Output"}
@@ -671,7 +671,7 @@ export default function ScriptRunnerPage() {
 
       {/* Job History */}
       <div className="bg-[#161B22] border border-border rounded-xl overflow-hidden">
-        <div className="flex items-center justify-between px-4 py-3 border-b border-border bg-[#1C2128]">
+        <div className="flex items-center justify-between flex-wrap gap-3 px-4 py-3 border-b border-border bg-[#1C2128]">
           <div className="flex items-center gap-2">
             <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Run History</p>
             {history.length > 0 && (

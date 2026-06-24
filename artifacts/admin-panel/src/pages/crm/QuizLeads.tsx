@@ -206,7 +206,7 @@ function SlideOver({ lead, onClose, onRefresh }: {
 
           {/* Score overview */}
           <div className="bg-[#1C2128] rounded-xl p-4">
-            <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center justify-between flex-wrap gap-3 mb-3">
               <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Total Score</p>
               <span className="text-lg font-extrabold text-[#E6EDF3]">{lead.totalScore} <span className="text-sm font-normal text-muted-foreground">/ {totalMax}</span></span>
             </div>
@@ -395,7 +395,7 @@ export default function QuizLeadsPage() {
 
       {/* Quick Wins Selector results */}
       <div className="bg-[#161B22] border border-border rounded-xl p-5 mb-6">
-        <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center justify-between flex-wrap gap-4 mb-4">
           <div>
             <p className="text-sm font-bold text-[#E6EDF3]">Quick Wins Selector</p>
             <p className="text-xs text-muted-foreground mt-0.5">
@@ -564,7 +564,7 @@ export default function QuizLeadsPage() {
         )}
 
         {totalPages > 1 && (
-          <div className="flex items-center justify-between px-5 py-4 border-t border-border">
+          <div className="flex items-center justify-between flex-wrap gap-3 px-5 py-4 border-t border-border">
             <p className="text-xs text-muted-foreground">
               Showing {(page - 1) * LIMIT + 1}–{Math.min(page * LIMIT, total)} of {total}
             </p>

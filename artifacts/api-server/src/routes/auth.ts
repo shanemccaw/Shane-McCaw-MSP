@@ -6,6 +6,7 @@ import { db, usersTable, passwordResetTokensTable, impersonationTokensTable, acc
 import { eq, and } from "drizzle-orm";
 import type { CookieOptions } from "express";
 import { sendEmailFromTemplate, passwordResetEmail, PORTAL_URL } from "../lib/mailer";
+import { getPortalBaseUrl } from "../lib/portal-url";
 import { signMfaToken } from "./mfa";
 
 const loginLimiter = rateLimit({
@@ -253,7 +254,7 @@ router.post("/auth/forgot-password", async (req: Request, res: Response) => {
 
     await db.insert(accountSetupTokensTable).values({ userId: user.id, token, expiresAt });
 
-    const baseUrl = process.env.PORTAL_BASE_URL ?? `${process.env.REPLIT_DEV_DOMAIN ? `https://${process.env.REPLIT_DEV_DOMAIN}` : ""}/crm`;
+    const baseUrl = getPortalBaseUrl();
     const setupUrl = `${baseUrl}/portal/onboarding/success?setup_token=${token}`;
 
     void sendEmailFromTemplate(

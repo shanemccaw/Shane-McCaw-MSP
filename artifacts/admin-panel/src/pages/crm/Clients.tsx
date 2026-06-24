@@ -236,7 +236,7 @@ function ClientEmailPanel({ client, onClose }: { client: EnrichedClient; onClose
     <tr>
       <td colSpan={7} className="px-0 py-0 border-b border-border bg-[#0078D4]/5">
         <div className="px-5 py-4">
-          <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center justify-between flex-wrap gap-3 mb-3">
             <span className="text-xs font-bold text-[#0078D4] uppercase tracking-widest">
               Email Activity · @{clientDomain}
             </span>
@@ -393,7 +393,7 @@ function ClientSharePointPanel({
     <tr>
       <td colSpan={7} className="px-0 py-0 border-b border-border bg-[#0078D4]/5">
         <div className="px-5 py-4">
-          <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center justify-between flex-wrap gap-3 mb-3">
             <span className="text-xs font-bold text-[#0078D4] uppercase tracking-widest">SharePoint Site</span>
             <button onClick={onClose} className="text-[#7D8590] hover:text-[#E6EDF3] transition-colors">
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -912,7 +912,7 @@ export default function ClientsPage() {
           </div>
 
           {/* Table */}
-          <div className="flex-1 min-w-0 bg-[#161B22] border border-border rounded-xl overflow-hidden">
+          <div className="flex-1 min-w-0 bg-[#161B22] border border-border rounded-xl overflow-hidden overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="bg-[#1C2128] border-b border-border">
                 <tr>
