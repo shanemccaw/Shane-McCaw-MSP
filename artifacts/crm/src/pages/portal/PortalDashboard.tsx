@@ -25,23 +25,49 @@ const SCORECARD_DEFS: { key: M365ScoreCategory; label: string }[] = [
 ];
 
 function ringColor(s: number) { return s >= 80 ? "#22c55e" : s >= 55 ? "#f59e0b" : "#ef4444"; }
-function ringBg(s: number) { return s >= 80 ? "border-green-200 bg-green-50/60" : s >= 55 ? "border-amber-200 bg-amber-50/60" : "border-red-200 bg-red-50/60"; }
+function ringTopBar(s: number) { return s >= 80 ? "bg-green-500" : s >= 55 ? "bg-amber-400" : "bg-red-500"; }
+function statusLabel(s: number) { return s >= 80 ? "Healthy" : s >= 55 ? "Attention" : "Critical"; }
+function statusBadge(s: number) { return s >= 80 ? "bg-green-500/20 text-green-300 border-green-500/30" : s >= 55 ? "bg-amber-400/20 text-amber-300 border-amber-400/30" : "bg-red-500/20 text-red-300 border-red-500/30"; }
 
-function ScoreRing({ score }: { score: number }) {
-  const r = 22;
+function ScoreRing({ score, size = 80 }: { score: number; size?: number }) {
+  const r = (size / 2) - 7;
   const circ = 2 * Math.PI * r;
+  const cx = size / 2;
   return (
-    <div className="relative w-14 h-14 flex-shrink-0">
-      <svg width="56" height="56" viewBox="0 0 56 56" className="-rotate-90">
-        <circle cx="28" cy="28" r={r} fill="none" stroke="#E8EDF2" strokeWidth="5" />
+    <div className="relative flex-shrink-0" style={{ width: size, height: size }}>
+      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="-rotate-90">
+        <circle cx={cx} cy={cx} r={r} fill="none" stroke="rgba(255,255,255,0.1)" strokeWidth="6" />
         <circle
-          cx="28" cy="28" r={r} fill="none"
-          stroke={ringColor(score)} strokeWidth="5" strokeLinecap="round"
+          cx={cx} cy={cx} r={r} fill="none"
+          stroke={ringColor(score)} strokeWidth="6" strokeLinecap="round"
           strokeDasharray={`${(score / 100) * circ} ${circ}`}
         />
       </svg>
       <div className="absolute inset-0 flex items-center justify-center">
-        <span className="text-[11px] font-extrabold text-[#0A2540]">{score}%</span>
+        <span className="text-sm font-black text-white">{score}%</span>
+      </div>
+    </div>
+  );
+}
+
+function OverallRing({ score }: { score: number }) {
+  const size = 96;
+  const r = (size / 2) - 8;
+  const circ = 2 * Math.PI * r;
+  const cx = size / 2;
+  return (
+    <div className="relative flex-shrink-0" style={{ width: size, height: size }}>
+      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="-rotate-90">
+        <circle cx={cx} cy={cx} r={r} fill="none" stroke="rgba(255,255,255,0.12)" strokeWidth="7" />
+        <circle
+          cx={cx} cy={cx} r={r} fill="none"
+          stroke={ringColor(score)} strokeWidth="7" strokeLinecap="round"
+          strokeDasharray={`${(score / 100) * circ} ${circ}`}
+        />
+      </svg>
+      <div className="absolute inset-0 flex flex-col items-center justify-center">
+        <span className="text-xl font-black text-white leading-none">{score}%</span>
+        <span className="text-[9px] font-bold text-white/50 uppercase tracking-widest mt-0.5">Overall</span>
       </div>
     </div>
   );
@@ -220,70 +246,122 @@ export default function PortalDashboard() {
 
                 {/* M365 Environment Health Scorecards */}
                 <section>
-                  <div className="flex items-center justify-between mb-3">
-                    <div>
-                      <h2 className="text-base font-bold text-[#0A2540]">M365 Environment Health</h2>
-                      {scorecardHistory?.hasData && scorecardHistory.firstDate && (
-                        <p className="text-xs text-muted-foreground mt-0.5">
-                          Tracking since {new Date(scorecardHistory.firstDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
-                        </p>
-                      )}
-                    </div>
-                    <Link href="/portal/m365-profile">
-                      <span className="text-sm text-[#0078D4] font-semibold hover:underline cursor-pointer">Update profile →</span>
-                    </Link>
-                  </div>
-
                   {!scorecardHistory?.hasData ? (
-                    <div className="bg-white border border-border rounded-xl p-6 flex items-center gap-4">
-                      <div className="w-10 h-10 rounded-xl bg-[#0078D4]/10 flex items-center justify-center flex-shrink-0">
-                        <svg className="w-5 h-5 text-[#0078D4]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-                        </svg>
+                    /* ── Empty state: dark command panel with CTA ── */
+                    <div className="rounded-2xl overflow-hidden">
+                      <div className="bg-[#0A2540] px-6 py-5 flex items-center justify-between gap-4">
+                        <div className="flex items-center gap-3">
+                          <div className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
+                          <div>
+                            <p className="text-[10px] font-bold tracking-[0.2em] uppercase text-white/40">Mission Status</p>
+                            <h2 className="text-base font-black text-white tracking-tight">M365 Environment Health</h2>
+                          </div>
+                        </div>
+                        <Link href="/portal/m365-profile">
+                          <span className="text-xs font-bold text-[#0078D4] hover:text-white transition-colors cursor-pointer whitespace-nowrap">Set up profile →</span>
+                        </Link>
                       </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-semibold text-[#0A2540]">No scores yet</p>
-                        <p className="text-xs text-muted-foreground mt-0.5">Complete your M365 profile and save it to generate your first health scores.</p>
+                      <div className="bg-[#0d2d4a] border border-[#0A2540] rounded-b-2xl px-6 py-8 flex items-center gap-5">
+                        <div className="w-12 h-12 rounded-xl bg-[#0078D4]/20 border border-[#0078D4]/30 flex items-center justify-center flex-shrink-0">
+                          <svg className="w-6 h-6 text-[#0078D4]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                          </svg>
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-bold text-white">Awaiting baseline scan</p>
+                          <p className="text-xs text-white/40 mt-0.5">Complete your M365 profile and save it — we'll generate your first environment health scores immediately.</p>
+                        </div>
+                        <Link href="/portal/m365-profile">
+                          <span className="inline-flex items-center gap-1.5 bg-[#0078D4] hover:bg-[#005fa3] text-white text-xs font-bold px-4 py-2.5 rounded-lg transition-colors cursor-pointer whitespace-nowrap">
+                            Run baseline scan
+                            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M13 7l5 5m0 0l-5 5m5-5H6" />
+                            </svg>
+                          </span>
+                        </Link>
                       </div>
-                      <Link href="/portal/m365-profile">
-                        <span className="text-xs font-semibold text-[#0078D4] hover:underline cursor-pointer whitespace-nowrap">Set up profile →</span>
-                      </Link>
                     </div>
-                  ) : (
-                    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
-                      {SCORECARD_DEFS.map(({ key, label }) => {
-                        const current = scorecardHistory.latest?.[key] ?? 0;
-                        const baseline = scorecardHistory.first?.[key] ?? null;
-                        const delta = baseline !== null ? current - baseline : null;
-                        const isFirstSameAsLatest = scorecardHistory.firstDate === scorecardHistory.latestDate;
-                        const showHistory = baseline !== null && !isFirstSameAsLatest;
-                        return (
-                          <Link key={key} href="/portal/m365-profile">
-                            <div className={`border rounded-2xl p-4 flex flex-col items-center gap-2 cursor-pointer hover:shadow-md transition-all ${ringBg(current)}`}>
-                              <ScoreRing score={current} />
-                              <p className="text-xs font-semibold text-[#0A2540] text-center leading-snug">{label}</p>
-                              {showHistory && baseline !== null && (
-                                <div className="flex flex-col items-center gap-1 w-full">
-                                  <div className="flex items-center justify-center gap-1 text-[10px] text-muted-foreground">
-                                    <span title="Baseline">{baseline}%</span>
-                                    <svg className="w-2.5 h-2.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                                      <path strokeLinecap="round" strokeLinejoin="round" d="M13 7l5 5m0 0l-5 5m5-5H6" />
-                                    </svg>
-                                    <span className="font-bold text-[#0A2540]">{current}%</span>
-                                  </div>
-                                  {delta !== 0 && delta !== null && (
-                                    <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${delta > 0 ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}>
-                                      {delta > 0 ? "+" : ""}{delta}pts
+                  ) : (() => {
+                    const scores = SCORECARD_DEFS.map(d => scorecardHistory.latest?.[d.key] ?? 0);
+                    const overall = Math.round(scores.reduce((a, b) => a + b, 0) / scores.length);
+                    const isFirstSameAsLatest = scorecardHistory.firstDate === scorecardHistory.latestDate;
+                    return (
+                      <div className="rounded-2xl overflow-hidden shadow-lg">
+                        {/* ── Command header ── */}
+                        <div className="bg-[#0A2540] px-6 py-5">
+                          <div className="flex items-center justify-between gap-4 flex-wrap">
+                            <div className="flex items-center gap-4">
+                              <OverallRing score={overall} />
+                              <div>
+                                <p className="text-[10px] font-bold tracking-[0.2em] uppercase text-white/40">Mission Status</p>
+                                <h2 className="text-xl font-black text-white tracking-tight leading-tight">M365 Environment Health</h2>
+                                <div className="flex items-center gap-2 mt-1.5">
+                                  <span className={`inline-flex items-center gap-1.5 text-[10px] font-bold px-2.5 py-1 rounded-md border ${statusBadge(overall)}`}>
+                                    <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: ringColor(overall) }} />
+                                    {statusLabel(overall)}
+                                  </span>
+                                  {scorecardHistory.firstDate && (
+                                    <span className="text-[10px] text-white/30 font-medium">
+                                      Tracking since {new Date(scorecardHistory.firstDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
                                     </span>
                                   )}
                                 </div>
-                              )}
+                              </div>
                             </div>
-                          </Link>
-                        );
-                      })}
-                    </div>
-                  )}
+                            <Link href="/portal/m365-profile">
+                              <span className="text-xs font-bold text-[#0078D4] hover:text-white transition-colors cursor-pointer whitespace-nowrap">Update profile →</span>
+                            </Link>
+                          </div>
+                        </div>
+
+                        {/* ── Score cards ── */}
+                        <div className="bg-[#0d2d4a] border-x border-b border-[#0A2540]/80 rounded-b-2xl p-4">
+                          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+                            {SCORECARD_DEFS.map(({ key, label }) => {
+                              const current = scorecardHistory.latest?.[key] ?? 0;
+                              const baseline = scorecardHistory.first?.[key] ?? null;
+                              const delta = baseline !== null ? current - baseline : null;
+                              const showHistory = baseline !== null && !isFirstSameAsLatest;
+                              return (
+                                <Link key={key} href="/portal/m365-profile">
+                                  <div className="bg-[#0A2540] hover:bg-[#0e2f50] border border-white/5 hover:border-[#0078D4]/40 rounded-xl overflow-hidden cursor-pointer transition-all group hover:shadow-xl hover:shadow-black/30">
+                                    {/* colored top bar */}
+                                    <div className={`h-1 w-full ${ringTopBar(current)}`} />
+                                    <div className="p-4 flex flex-col items-center gap-3">
+                                      <ScoreRing score={current} size={72} />
+                                      <div className="text-center">
+                                        <p className="text-[11px] font-bold text-white/80 leading-snug uppercase tracking-wide">{label}</p>
+                                      </div>
+                                      {showHistory && baseline !== null ? (
+                                        <div className="w-full bg-white/5 rounded-lg px-3 py-2 flex flex-col items-center gap-1">
+                                          <div className="flex items-center gap-1.5 text-[11px] text-white/50">
+                                            <span>{baseline}%</span>
+                                            <svg className="w-3 h-3 flex-shrink-0 text-white/30" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                                              <path strokeLinecap="round" strokeLinejoin="round" d="M13 7l5 5m0 0l-5 5m5-5H6" />
+                                            </svg>
+                                            <span className="font-black text-white">{current}%</span>
+                                          </div>
+                                          {delta !== null && delta !== 0 && (
+                                            <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${delta > 0 ? "bg-green-500/20 text-green-400" : "bg-red-500/20 text-red-400"}`}>
+                                              {delta > 0 ? "+" : ""}{delta} pts
+                                            </span>
+                                          )}
+                                        </div>
+                                      ) : (
+                                        <div className="w-full bg-white/5 rounded-lg px-3 py-2 text-center">
+                                          <span className="text-[10px] text-white/30 font-medium">Baseline set</span>
+                                        </div>
+                                      )}
+                                    </div>
+                                  </div>
+                                </Link>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })()}
                 </section>
 
                 {/* M365 Profile Summary */}
