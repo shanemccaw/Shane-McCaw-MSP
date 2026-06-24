@@ -1001,3 +1001,21 @@ export const quizPainSignalConfigTable = pgTable("quiz_pain_signal_config", {
 });
 
 export type QuizPainSignalConfig = typeof quizPainSignalConfigTable.$inferSelect;
+
+// Client Documents — files / records attached to a client (not project-scoped)
+export const clientDocumentsTable = pgTable("client_documents", {
+  id: serial("id").primaryKey(),
+  clientUserId: integer("client_user_id").notNull().references(() => usersTable.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  category: text("category", { enum: ["contracts", "reports", "proposals", "sows", "assessments", "other"] }).notNull().default("other"),
+  description: text("description"),
+  fileUrl: text("file_url"),
+  filename: text("filename"),
+  mimeType: text("mime_type"),
+  sizeBytes: integer("size_bytes"),
+  uploadedBy: integer("uploaded_by").references(() => usersTable.id),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export type InsertClientDocument = typeof clientDocumentsTable.$inferInsert;
+export type ClientDocument = typeof clientDocumentsTable.$inferSelect;

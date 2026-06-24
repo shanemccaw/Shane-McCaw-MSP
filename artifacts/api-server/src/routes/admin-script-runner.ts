@@ -24,6 +24,7 @@ import {
   isTerminalStatus,
 } from "../lib/azure-automation";
 import { logger } from "../lib/logger";
+import { anthropic } from "@workspace/integrations-anthropic-ai";
 
 const router: IRouter = Router();
 
@@ -324,6 +325,83 @@ router.get("/admin/runbook-jobs/:jobId/replay", requireAdmin, async (req: Reques
   } catch (err) {
     logger.error({ err, jobId }, "admin-script-runner: failed to replay job output");
     res.status(500).json({ error: "Failed to replay job output" });
+  }
+});
+
+/**
+ * POST /api/admin/scripts/analyze
+ *
+ * Sends the log output from a completed runbook job to Claude for AI-powered
+ * analysis. Returns structured JSON: summary, risks, recommendations, nextSteps.
+ */
+router.post("/admin/scripts/analyze", requireAdmin, async (req: Request, res: Response) => {
+  const { output, runbookName, customerName } = req.body as {
+    output?: string;
+    runbookName?: string;
+    customerName?: string;
+  };
+
+  if (!output || typeof output !== "string" || !output.trim()) {
+    res.status(400).json({ error: "output is required" });
+    return;
+  }
+
+  const prompt = `You are a Microsoft 365 and Azure automation expert. Analyze the following PowerShell runbook execution output and provide a structured assessment.
+
+Runbook: ${runbookName ?? "Unknown Runbook"}
+Customer Tenant: ${customerName ?? "Unknown Customer"}
+
+=== EXECUTION OUTPUT ===
+${output.slice(0, 7000)}
+=== END OUTPUT ===
+
+Return a JSON object with exactly these fields:
+{
+  "summary": "2-3 sentence plain-English summary of what the runbook did and the overall outcome",
+  "risks": ["specific risk or issue found in the output"],
+  "recommendations": ["actionable recommendation based on what was found"],
+  "nextSteps": ["concrete next step for the M365 administrator"]
+}
+
+Rules:
+- Provide 2-5 items per array
+- Be specific about what you see in the output — reference actual values, errors, or warnings where present
+- If the output shows errors, surface them clearly in risks
+- Focus on Microsoft 365 security, governance, and Copilot readiness implications
+- Return ONLY the JSON object, no markdown fences, no other text`;
+
+  try {
+    const message = await anthropic.messages.create({
+      model: "claude-sonnet-4-6",
+      max_tokens: 8192,
+      messages: [{ role: "user", content: prompt }],
+    });
+
+    const textBlock = message.content.find(b => b.type === "text");
+    if (!textBlock || textBlock.type !== "text") {
+      res.status(500).json({ error: "No text response from AI" });
+      return;
+    }
+
+    const raw = textBlock.text.trim();
+    const jsonMatch = raw.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) {
+      logger.warn({ raw: raw.slice(0, 200) }, "admin-script-runner: AI response was not parseable JSON");
+      res.status(500).json({ error: "AI response was not valid JSON" });
+      return;
+    }
+
+    const result = JSON.parse(jsonMatch[0]) as {
+      summary: string;
+      risks: string[];
+      recommendations: string[];
+      nextSteps: string[];
+    };
+
+    res.json(result);
+  } catch (err) {
+    logger.error({ err }, "admin-script-runner: AI analysis failed");
+    res.status(500).json({ error: "AI analysis failed — check server logs" });
   }
 });
 

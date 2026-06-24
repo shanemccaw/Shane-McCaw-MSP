@@ -480,6 +480,9 @@ export default function ClientsPage() {
   const [hoverRowId, setHoverRowId] = useState<number | null>(null);
   const [menuOpenId, setMenuOpenId] = useState<number | null>(null);
 
+  // Bulk selection
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+
   const load = async () => {
     try {
       const res = await fetchWithAuth("/api/admin/clients/enriched");
@@ -913,6 +916,20 @@ export default function ClientsPage() {
             <table className="w-full text-sm">
               <thead className="bg-[#1C2128] border-b border-border">
                 <tr>
+                  <th className="pl-4 pr-2 py-3 w-10">
+                    <input
+                      type="checkbox"
+                      className="accent-[#0078D4] w-4 h-4 cursor-pointer"
+                      checked={sortedFilteredClients.length > 0 && sortedFilteredClients.every(c => selectedIds.has(c.id))}
+                      onChange={e => {
+                        if (e.target.checked) {
+                          setSelectedIds(new Set(sortedFilteredClients.map(c => c.id)));
+                        } else {
+                          setSelectedIds(new Set());
+                        }
+                      }}
+                    />
+                  </th>
                   <th className="text-left px-5 py-3">
                     <button onClick={() => toggleSort("name")} className="flex items-center text-xs font-semibold uppercase tracking-wider text-muted-foreground hover:text-[#E6EDF3] transition-colors">
                       Name / Email<SortIcon col="name" />
@@ -963,7 +980,7 @@ export default function ClientsPage() {
               <tbody>
                 {sortedFilteredClients.length === 0 ? (
                   <tr>
-                    <td colSpan={11} className="px-5 py-8 text-center text-muted-foreground text-sm">
+                    <td colSpan={12} className="px-5 py-8 text-center text-muted-foreground text-sm">
                       No clients match your filters.
                     </td>
                   </tr>
@@ -975,6 +992,21 @@ export default function ClientsPage() {
                         onMouseLeave={() => { setHoverRowId(null); if (menuOpenId === c.id) setMenuOpenId(null); }}
                         className={`border-b border-border last:border-0 transition-colors ${expandedEmailId === c.id || expandedSpId === c.id ? "bg-[#1C2128]" : hoverRowId === c.id ? "bg-[#1C2128]" : ""}`}
                       >
+                        {/* Checkbox */}
+                        <td className="pl-4 pr-2 py-3.5" onClick={e => e.stopPropagation()}>
+                          <input
+                            type="checkbox"
+                            className="accent-[#0078D4] w-4 h-4 cursor-pointer"
+                            checked={selectedIds.has(c.id)}
+                            onChange={e => {
+                              setSelectedIds(prev => {
+                                const next = new Set(prev);
+                                if (e.target.checked) next.add(c.id); else next.delete(c.id);
+                                return next;
+                              });
+                            }}
+                          />
+                        </td>
                         {/* Name / Email */}
                         <td className="px-5 py-3.5">
                           <button onClick={() => navigate(`/crm/clients/${c.id}`)} className="text-left group">
@@ -1157,6 +1189,28 @@ export default function ClientsPage() {
               </tbody>
             </table>
           </div>
+        </div>
+      )}
+
+      {/* ── Bulk Action Bar ── */}
+      {selectedIds.size > 0 && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 bg-[#1C2128] border border-border rounded-xl px-5 py-3 shadow-xl">
+          <span className="text-sm font-semibold text-[#E6EDF3]">{selectedIds.size} selected</span>
+          <div className="w-px h-4 bg-border" />
+          <button
+            onClick={() => {
+              toast({ title: "Send Status Email", description: `Status emails queued for ${selectedIds.size} client(s). (Coming soon)` });
+            }}
+            className="text-xs font-semibold text-white bg-[#0078D4] hover:bg-[#0078D4]/90 px-3 py-1.5 rounded-lg transition-colors"
+          >
+            Send Status Email
+          </button>
+          <button
+            onClick={() => setSelectedIds(new Set())}
+            className="text-xs font-semibold text-muted-foreground hover:text-[#E6EDF3] transition-colors"
+          >
+            Cancel
+          </button>
         </div>
       )}
 

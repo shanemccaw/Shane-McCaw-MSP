@@ -69,6 +69,22 @@ function formatDuration(startedAt: string, completedAt: string | null): string {
   return `${Math.floor(secs / 60)}m ${secs % 60}s`;
 }
 
+interface AIAnalysis {
+  summary: string;
+  risks: string[];
+  recommendations: string[];
+  nextSteps: string[];
+}
+
+const AI_TABS = [
+  { id: "summary", label: "Summary" },
+  { id: "risks", label: "Risks" },
+  { id: "recommendations", label: "Recommendations" },
+  { id: "nextSteps", label: "Next Steps" },
+] as const;
+
+type AITab = typeof AI_TABS[number]["id"];
+
 export default function ScriptRunnerPage() {
   const [, navigate] = useLocation();
   const { fetchWithAuth } = useAuth();
@@ -94,6 +110,12 @@ export default function ScriptRunnerPage() {
   const [history, setHistory] = useState<JobHistoryRow[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [replayingJobId, setReplayingJobId] = useState<string | null>(null);
+
+  // AI Analysis
+  const [aiAnalysis, setAiAnalysis] = useState<AIAnalysis | null>(null);
+  const [analyzingAI, setAnalyzingAI] = useState(false);
+  const [aiTab, setAiTab] = useState<AITab>("summary");
+  const [aiError, setAiError] = useState<string | null>(null);
 
   const loadHistory = useCallback(async () => {
     setLoadingHistory(true);
@@ -177,6 +199,8 @@ export default function ScriptRunnerPage() {
     setLogLines(["[Starting job…]"]);
     setLogLabel(null);
     setJobStatus("New");
+    setAiAnalysis(null);
+    setAiError(null);
 
     try {
       const areasPayload = governanceAreas !== null && governanceAreas.length > 0 ? governanceAreas : undefined;
@@ -239,6 +263,40 @@ export default function ScriptRunnerPage() {
     } catch {
       setLogLines(prev => [...prev, "[Network error]"]);
       setRunning(false);
+    }
+  };
+
+  const handleAnalyzeWithAI = async () => {
+    if (!logLines.length || running) return;
+    setAnalyzingAI(true);
+    setAiAnalysis(null);
+    setAiError(null);
+    setAiTab("summary");
+    const selectedCred = credentials.find(c => c.id === selectedCredId);
+    try {
+      const res = await fetchWithAuth("/api/admin/scripts/analyze", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          output: logLines.join("\n"),
+          runbookName: logLabel
+            ? logLabel.split(" — ")[0]?.trim()
+            : selectedRunbook || undefined,
+          customerName: logLabel
+            ? logLabel.split(" — ")[1]?.trim()
+            : selectedCred?.displayName,
+        }),
+      });
+      const data = await res.json() as AIAnalysis & { error?: string };
+      if (!res.ok) {
+        setAiError(data.error ?? "AI analysis failed");
+        return;
+      }
+      setAiAnalysis(data);
+    } catch {
+      setAiError("Request failed — check connection");
+    } finally {
+      setAnalyzingAI(false);
     }
   };
 
@@ -448,12 +506,28 @@ export default function ScriptRunnerPage() {
               <div className="flex items-center gap-2 flex-shrink-0">
                 <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${statusCfg.cls}`}>{jobStatus}</span>
                 {logLines.length > 0 && !running && (
-                  <button
-                    onClick={() => { setLogLines([]); setJobStatus("Never run"); setLogLabel(null); }}
-                    className="text-[10px] font-semibold text-muted-foreground hover:text-[#E6EDF3] transition-colors"
-                  >
-                    Clear
-                  </button>
+                  <div className="flex items-center gap-3">
+                    <button
+                      onClick={() => void handleAnalyzeWithAI()}
+                      disabled={analyzingAI}
+                      className="flex items-center gap-1 text-[10px] font-semibold bg-[#0078D4]/15 text-[#0078D4] border border-[#0078D4]/30 hover:bg-[#0078D4]/25 disabled:opacity-50 px-2 py-0.5 rounded-md transition-colors"
+                    >
+                      {analyzingAI ? (
+                        <div className="w-3 h-3 border-2 border-[#0078D4]/40 border-t-[#0078D4] rounded-full animate-spin" />
+                      ) : (
+                        <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                        </svg>
+                      )}
+                      {analyzingAI ? "Analyzing…" : "Analyze with AI"}
+                    </button>
+                    <button
+                      onClick={() => { setLogLines([]); setJobStatus("Never run"); setLogLabel(null); setAiAnalysis(null); setAiError(null); }}
+                      className="text-[10px] font-semibold text-muted-foreground hover:text-[#E6EDF3] transition-colors"
+                    >
+                      Clear
+                    </button>
+                  </div>
                 )}
               </div>
             </div>
@@ -471,6 +545,127 @@ export default function ScriptRunnerPage() {
               <div ref={logEndRef} />
             </div>
           </div>
+
+          {/* ── AI Analysis Panel ── */}
+          {(logLines.length > 0 || aiAnalysis) && (
+            <div className="bg-[#161B22] border border-border rounded-xl overflow-hidden">
+              {/* Header */}
+              <div className="px-4 py-3 bg-[#1C2128] border-b border-border">
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center gap-2">
+                    <div className="w-6 h-6 rounded-lg bg-[#0078D4]/15 flex items-center justify-center flex-shrink-0">
+                      <svg className="w-3.5 h-3.5 text-[#0078D4]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                      </svg>
+                    </div>
+                    <p className="text-xs font-bold text-[#E6EDF3]">AI Analysis</p>
+                    <span className="text-[10px] text-muted-foreground">powered by Claude</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => { toast({ title: "Update Client Scores", description: "Client assessment scores will be updated from this run. (Coming soon)" }); }}
+                      className="text-[10px] font-semibold text-emerald-400 border border-emerald-500/20 bg-emerald-500/10 hover:bg-emerald-500/20 px-2.5 py-1 rounded-lg transition-colors"
+                    >
+                      Update Client Scores
+                    </button>
+                    {!aiAnalysis && !analyzingAI && !running && (
+                      <button
+                        onClick={() => void handleAnalyzeWithAI()}
+                        className="text-[10px] font-semibold text-white bg-[#0078D4] hover:bg-[#0078D4]/90 px-2.5 py-1 rounded-lg transition-colors"
+                      >
+                        Run Analysis
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {/* Tabs */}
+                <div className="flex gap-1">
+                  {AI_TABS.map(tab => (
+                    <button
+                      key={tab.id}
+                      onClick={() => setAiTab(tab.id)}
+                      className={`text-[10px] font-semibold px-2.5 py-1 rounded-md transition-colors ${
+                        aiTab === tab.id
+                          ? "bg-[#0078D4]/20 text-[#0078D4]"
+                          : "text-muted-foreground hover:text-[#E6EDF3] hover:bg-[#30363D]"
+                      }`}
+                    >
+                      {tab.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Tab content */}
+              <div className="p-4 min-h-24">
+                {analyzingAI ? (
+                  <div className="flex items-center gap-3 py-6 justify-center">
+                    <div className="w-5 h-5 border-2 border-[#0078D4]/30 border-t-[#0078D4] rounded-full animate-spin" />
+                    <p className="text-sm text-muted-foreground">Analyzing execution output with AI…</p>
+                  </div>
+                ) : aiError ? (
+                  <div className="flex items-start gap-2 rounded-lg bg-red-500/10 border border-red-500/20 px-3 py-3">
+                    <svg className="w-3.5 h-3.5 text-red-400 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    <p className="text-xs text-red-400">{aiError}</p>
+                  </div>
+                ) : aiAnalysis ? (
+                  <div>
+                    {aiTab === "summary" && (
+                      <p className="text-sm text-[#E6EDF3]/90 leading-relaxed">{aiAnalysis.summary}</p>
+                    )}
+                    {aiTab === "risks" && (
+                      <ul className="space-y-2">
+                        {aiAnalysis.risks.map((r, i) => (
+                          <li key={i} className="flex items-start gap-2 text-xs text-[#E6EDF3]/90">
+                            <span className="text-red-400 flex-shrink-0 mt-0.5">▲</span>
+                            {r}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                    {aiTab === "recommendations" && (
+                      <ul className="space-y-2">
+                        {aiAnalysis.recommendations.map((r, i) => (
+                          <li key={i} className="flex items-start gap-2 text-xs text-[#E6EDF3]/90">
+                            <span className="text-[#0078D4] flex-shrink-0 mt-0.5">→</span>
+                            {r}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                    {aiTab === "nextSteps" && (
+                      <ul className="space-y-2">
+                        {aiAnalysis.nextSteps.map((s, i) => (
+                          <li key={i} className="flex items-start gap-2 text-xs text-[#E6EDF3]/90">
+                            <span className="text-emerald-400 font-bold flex-shrink-0 mt-0.5">{i + 1}.</span>
+                            {s}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                ) : !running ? (
+                  <div className="flex flex-col items-center justify-center py-6 gap-2">
+                    <p className="text-xs text-muted-foreground">Click <strong className="text-[#E6EDF3]">Analyze with AI</strong> above to generate a structured analysis of the run output.</p>
+                  </div>
+                ) : null}
+              </div>
+
+              {/* Future Triggers stub */}
+              <div className="border-t border-border px-4 py-3 bg-[#1C2128]/50">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-0.5">Future Triggers</p>
+                    <p className="text-[11px] text-muted-foreground">Auto-trigger workflows based on script output patterns or score thresholds.</p>
+                  </div>
+                  <span className="text-[10px] font-semibold text-[#0078D4] border border-[#0078D4]/20 bg-[#0078D4]/10 px-2 py-0.5 rounded-full">Coming soon</span>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 

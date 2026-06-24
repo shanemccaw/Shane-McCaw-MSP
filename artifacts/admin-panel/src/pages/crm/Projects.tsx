@@ -477,6 +477,11 @@ export default function ProjectsPage() {
   const [deleteTarget, setDeleteTarget] = useState<Project | null>(null);
   const [deleting, setDeleting] = useState(false);
 
+  // Filter + view state
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState<"all" | "active" | "on_hold" | "completed">("all");
+  const [viewMode, setViewMode] = useState<"card" | "list">("card");
+
   const load = async () => {
     const [projRes, clientRes, tmplRes] = await Promise.all([
       fetchWithAuth("/api/admin/projects"),
@@ -583,8 +588,29 @@ export default function ProjectsPage() {
     setShowForm(true);
   };
 
-  const byType = (type: string | string[]) =>
-    projects.filter(p => Array.isArray(type) ? type.includes(p.projectType) : p.projectType === type);
+  const byType = (type: string | string[]) => {
+    const statusMatch = (p: ProjectWithSteps) =>
+      statusFilter === "all" ? true : p.status === statusFilter;
+    const searchMatch = (p: ProjectWithSteps) =>
+      !search.trim() ? true : (
+        p.title.toLowerCase().includes(search.toLowerCase()) ||
+        (p.description ?? "").toLowerCase().includes(search.toLowerCase())
+      );
+    return projects.filter(p =>
+      (Array.isArray(type) ? type.includes(p.projectType) : p.projectType === type) &&
+      statusMatch(p) &&
+      searchMatch(p)
+    );
+  };
+
+  const filteredProjects = projects.filter(p => {
+    const statusMatch = statusFilter === "all" ? true : p.status === statusFilter;
+    const searchMatch = !search.trim() ? true : (
+      p.title.toLowerCase().includes(search.toLowerCase()) ||
+      (p.description ?? "").toLowerCase().includes(search.toLowerCase())
+    );
+    return statusMatch && searchMatch;
+  });
 
   return (
     <div className="p-6 max-w-[1200px]">
@@ -744,23 +770,163 @@ export default function ProjectsPage() {
         </div>
       ) : (
         <>
-          <PortfolioHeader />
-
-          <div className="space-y-10">
-            {TRACKS.map(track => (
-              <TrackSection
-                key={track.num}
-                track={track}
-                projects={byType(track.type)}
-                steps={steps}
-                onDetails={id => navigate(`/crm/projects/${id}`)}
-                onEdit={p => handleEdit(p)}
-                onDelete={p => setDeleteTarget(p)}
-              />
-            ))}
+          {/* ── KPI Banner ── */}
+          <div className="mb-4 grid grid-cols-2 sm:grid-cols-4 gap-3">
+            {(() => {
+              const active = filteredProjects.filter(p => p.status === "active").length;
+              const onHold = filteredProjects.filter(p => p.status === "on_hold").length;
+              const done = filteredProjects.filter(p => p.status === "completed").length;
+              const avg = filteredProjects.length > 0 ? Math.round(filteredProjects.reduce((s, p) => s + p.progress, 0) / filteredProjects.length) : 0;
+              return [
+                { label: "Active", value: String(active), color: "text-emerald-400" },
+                { label: "On Hold", value: String(onHold), color: "text-amber-400" },
+                { label: "Completed", value: String(done), color: "text-[#7D8590]" },
+                { label: "Avg Progress", value: `${avg}%`, color: "text-[#0078D4]" },
+              ].map(m => (
+                <div key={m.label} className="bg-[#161B22] border border-border rounded-xl px-4 py-3 flex items-center gap-3">
+                  <span className={`text-xl font-black ${m.color}`}>{m.value}</span>
+                  <span className="text-xs text-muted-foreground">{m.label}</span>
+                </div>
+              ));
+            })()}
           </div>
 
-          <PortfolioFooterBar projects={projects} />
+          {/* ── Filter bar ── */}
+          <div className="mb-6 flex flex-wrap items-center gap-3">
+            <div className="relative flex-1 min-w-[200px] max-w-xs">
+              <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-4.35-4.35M17 11A6 6 0 115 11a6 6 0 0112 0z" />
+              </svg>
+              <input
+                type="search"
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                placeholder="Search projects…"
+                className="w-full pl-9 pr-3 py-2 border border-border rounded-lg text-sm bg-[#161B22] text-[#E6EDF3] focus:outline-none focus:ring-2 focus:ring-[#0078D4]"
+              />
+            </div>
+            <div className="flex gap-1 bg-[#161B22] border border-border rounded-lg p-1">
+              {(["all", "active", "on_hold", "completed"] as const).map(s => (
+                <button
+                  key={s}
+                  onClick={() => setStatusFilter(s)}
+                  className={`text-xs font-semibold px-2.5 py-1 rounded-md transition-colors ${
+                    statusFilter === s
+                      ? "bg-[#0078D4] text-white"
+                      : "text-muted-foreground hover:text-[#E6EDF3]"
+                  }`}
+                >
+                  {s === "all" ? "All" : s === "on_hold" ? "On Hold" : s.charAt(0).toUpperCase() + s.slice(1)}
+                </button>
+              ))}
+            </div>
+            <div className="flex gap-1 bg-[#161B22] border border-border rounded-lg p-1 ml-auto">
+              <button
+                onClick={() => setViewMode("card")}
+                title="Card view"
+                className={`p-1.5 rounded transition-colors ${viewMode === "card" ? "bg-[#0078D4]/20 text-[#0078D4]" : "text-muted-foreground hover:text-[#E6EDF3]"}`}
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
+                </svg>
+              </button>
+              <button
+                onClick={() => setViewMode("list")}
+                title="List view"
+                className={`p-1.5 rounded transition-colors ${viewMode === "list" ? "bg-[#0078D4]/20 text-[#0078D4]" : "text-muted-foreground hover:text-[#E6EDF3]"}`}
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16" />
+                </svg>
+              </button>
+            </div>
+          </div>
+
+          <PortfolioHeader />
+
+          {viewMode === "list" ? (
+            <div className="bg-[#161B22] border border-border rounded-xl overflow-hidden">
+              <table className="w-full text-sm">
+                <thead className="bg-[#1C2128] border-b border-border">
+                  <tr>
+                    <th className="text-left px-5 py-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Project</th>
+                    <th className="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground hidden sm:table-cell">Type</th>
+                    <th className="text-center px-4 py-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground hidden md:table-cell">Status</th>
+                    <th className="text-center px-4 py-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground hidden md:table-cell">Progress</th>
+                    <th className="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground hidden lg:table-cell">Phase</th>
+                    <th className="px-4 py-3" />
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredProjects.length === 0 ? (
+                    <tr>
+                      <td colSpan={6} className="px-5 py-8 text-center text-muted-foreground text-sm">No projects match your filters.</td>
+                    </tr>
+                  ) : (
+                    filteredProjects.map(p => {
+                      const statusCls: Record<string, string> = {
+                        active: "bg-emerald-500/15 text-emerald-400 border-emerald-500/20",
+                        on_hold: "bg-amber-500/15 text-amber-400 border-amber-500/20",
+                        completed: "bg-[#30363D] text-[#7D8590] border-[#30363D]",
+                      };
+                      const statusLabel: Record<string, string> = { active: "Active", on_hold: "On Hold", completed: "Done" };
+                      return (
+                        <tr key={p.id} className="border-b border-border last:border-0 hover:bg-[#1C2128] transition-colors">
+                          <td className="px-5 py-3.5">
+                            <p className="font-semibold text-[#E6EDF3] truncate max-w-[200px]">{p.title}</p>
+                            {p.description && <p className="text-xs text-muted-foreground truncate max-w-[200px]">{p.description}</p>}
+                          </td>
+                          <td className="px-4 py-3.5 hidden sm:table-cell">
+                            <span className="text-xs text-muted-foreground">{p.projectType === "retainer" ? "Retainer" : "Project"}</span>
+                          </td>
+                          <td className="px-4 py-3.5 text-center hidden md:table-cell">
+                            <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${statusCls[p.status] ?? "bg-[#30363D] text-[#7D8590] border-[#30363D]"}`}>
+                              {statusLabel[p.status] ?? p.status}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3.5 text-center hidden md:table-cell">
+                            <div className="flex items-center gap-2 justify-center">
+                              <div className="w-20 h-1.5 bg-[#30363D] rounded-full overflow-hidden">
+                                <div className="h-full bg-[#0078D4] rounded-full" style={{ width: `${p.progress}%` }} />
+                              </div>
+                              <span className="text-xs tabular-nums text-muted-foreground">{p.progress}%</span>
+                            </div>
+                          </td>
+                          <td className="px-4 py-3.5 hidden lg:table-cell">
+                            <span className="text-xs text-muted-foreground">{p.phase ?? "—"}</span>
+                          </td>
+                          <td className="px-4 py-3.5">
+                            <button
+                              onClick={() => navigate(`/crm/projects/${p.id}`)}
+                              className="text-xs font-semibold text-[#0078D4] hover:underline"
+                            >
+                              Details →
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <div className="space-y-10">
+              {TRACKS.map(track => (
+                <TrackSection
+                  key={track.num}
+                  track={track}
+                  projects={byType(track.type)}
+                  steps={steps}
+                  onDetails={id => navigate(`/crm/projects/${id}`)}
+                  onEdit={p => handleEdit(p)}
+                  onDelete={p => setDeleteTarget(p)}
+                />
+              ))}
+            </div>
+          )}
+
+          <PortfolioFooterBar projects={filteredProjects} />
         </>
       )}
 

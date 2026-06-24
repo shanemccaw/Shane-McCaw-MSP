@@ -236,8 +236,29 @@ export default function ClientDetailPage() {
   const [showSettings, setShowSettings] = useState(false);
   const [showAiInsights, setShowAiInsights] = useState(true);
   const [showAssessments, setShowAssessments] = useState(true);
+  const [showDocuments, setShowDocuments] = useState(false);
+  const [clientDocuments, setClientDocuments] = useState<Array<{id:number;name:string;category:string;description:string|null;file_url:string|null;created_at:string}>>([]);
+  const [docsLoading, setDocsLoading] = useState(false);
+  const [docsCategory, setDocsCategory] = useState<string>("all");
+  const [docForm, setDocForm] = useState({ name: "", category: "contracts", description: "", file_url: "" });
+  const [docFormOpen, setDocFormOpen] = useState(false);
+  const [savingDoc, setSavingDoc] = useState(false);
 
   const CRM_PORTAL_BASE = `${window.location.protocol}//${window.location.host}/crm`;
+
+  const loadDocuments = useCallback(async () => {
+    if (!clientId) return;
+    setDocsLoading(true);
+    try {
+      const res = await fetchWithAuth(`/api/admin/clients/${clientId}/documents`);
+      if (res.ok) {
+        const data = await res.json() as typeof clientDocuments;
+        setClientDocuments(data);
+      }
+    } finally {
+      setDocsLoading(false);
+    }
+  }, [fetchWithAuth, clientId]);
 
   const loadCommandCenter = useCallback(async () => {
     setCcLoading(true);
@@ -293,8 +314,9 @@ export default function ClientDetailPage() {
       void loadAzureCred();
       void loadAppReg();
       void loadMfaMethods();
+      void loadDocuments();
     }
-  }, [loadCommandCenter, loadAzureCred, loadAppReg, loadMfaMethods, clientId]);
+  }, [loadCommandCenter, loadAzureCred, loadAppReg, loadMfaMethods, loadDocuments, clientId]);
 
   async function handleSaveInfo(e: React.FormEvent) {
     e.preventDefault();
@@ -1134,6 +1156,188 @@ export default function ClientDetailPage() {
             )}
           </div>
         </div>
+      </div>
+
+      {/* ── Document Hub Section ─────────────────────────────────────────────── */}
+      <div className="bg-[#161B22] border border-border rounded-xl overflow-hidden">
+        <button
+          onClick={() => { setShowDocuments(s => { if (!s) void loadDocuments(); return !s; }); }}
+          className="w-full flex items-center justify-between px-5 py-4 hover:bg-[#1C2128] transition-colors text-left"
+        >
+          <div className="flex items-center gap-3">
+            <p className="text-sm font-bold text-[#E6EDF3]">Document Hub</p>
+            {clientDocuments.length > 0 && (
+              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-[#0078D4]/15 text-[#0078D4] border border-[#0078D4]/20">
+                {clientDocuments.length} doc{clientDocuments.length !== 1 ? "s" : ""}
+              </span>
+            )}
+          </div>
+          <svg className={`w-4 h-4 text-muted-foreground transition-transform ${showDocuments ? "rotate-180" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" /></svg>
+        </button>
+
+        {showDocuments && (
+          <div className="border-t border-border">
+            {/* Category tabs */}
+            <div className="flex gap-1 px-4 pt-3 pb-2 flex-wrap">
+              {(["all", "contracts", "reports", "proposals", "sows", "assessments", "other"] as const).map(cat => {
+                const count = cat === "all" ? clientDocuments.length : clientDocuments.filter(d => d.category === cat).length;
+                return (
+                  <button
+                    key={cat}
+                    onClick={() => setDocsCategory(cat)}
+                    className={`text-[10px] font-semibold px-2.5 py-1 rounded-md transition-colors ${
+                      docsCategory === cat
+                        ? "bg-[#0078D4]/20 text-[#0078D4]"
+                        : "text-muted-foreground hover:text-[#E6EDF3] hover:bg-[#30363D]"
+                    }`}
+                  >
+                    {cat === "all" ? "All" : cat.charAt(0).toUpperCase() + cat.slice(1)}
+                    {count > 0 && <span className="ml-1 opacity-60">({count})</span>}
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* AI action buttons */}
+            <div className="px-4 pb-3 flex gap-2 flex-wrap">
+              {[
+                { label: "Summarize All", icon: "📋" },
+                { label: "Extract Action Items", icon: "✅" },
+                { label: "Generate SOW Draft", icon: "📝" },
+              ].map(action => (
+                <button
+                  key={action.label}
+                  onClick={() => toast({ title: action.label, description: "AI document actions coming soon." })}
+                  className="flex items-center gap-1.5 text-[10px] font-semibold border border-[#0078D4]/20 bg-[#0078D4]/10 text-[#0078D4] hover:bg-[#0078D4]/20 px-2.5 py-1 rounded-lg transition-colors"
+                >
+                  <span>{action.icon}</span>
+                  {action.label}
+                </button>
+              ))}
+            </div>
+
+            {/* Doc list */}
+            <div className="px-4 pb-4 space-y-2">
+              {docsLoading ? (
+                <p className="text-xs text-muted-foreground py-4 text-center">Loading documents…</p>
+              ) : (clientDocuments.filter(d => docsCategory === "all" || d.category === docsCategory)).length === 0 ? (
+                <p className="text-xs text-muted-foreground py-4 text-center">No documents in this category yet.</p>
+              ) : (
+                clientDocuments
+                  .filter(d => docsCategory === "all" || d.category === docsCategory)
+                  .map(doc => (
+                    <div key={doc.id} className="flex items-start justify-between gap-3 bg-[#1C2128] rounded-lg px-3 py-2.5">
+                      <div className="flex items-start gap-2 min-w-0">
+                        <svg className="w-4 h-4 text-[#0078D4] flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                        </svg>
+                        <div className="min-w-0">
+                          <p className="text-xs font-semibold text-[#E6EDF3] truncate">{doc.name}</p>
+                          {doc.description && <p className="text-[10px] text-muted-foreground">{doc.description}</p>}
+                          <div className="flex items-center gap-2 mt-0.5">
+                            <span className="text-[9px] font-bold uppercase text-[#0078D4]">{doc.category}</span>
+                            <span className="text-[9px] text-muted-foreground">{new Date(doc.created_at).toLocaleDateString()}</span>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2 flex-shrink-0">
+                        {doc.file_url && (
+                          <a href={doc.file_url} target="_blank" rel="noopener noreferrer" className="text-[10px] text-[#0078D4] hover:underline">View</a>
+                        )}
+                        <button
+                          onClick={async () => {
+                            await fetchWithAuth(`/api/admin/clients/${clientId}/documents/${doc.id}`, { method: "DELETE" });
+                            void loadDocuments();
+                          }}
+                          className="text-[10px] text-red-400 hover:text-red-300 transition-colors"
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    </div>
+                  ))
+              )}
+            </div>
+
+            {/* Add Document */}
+            {docFormOpen ? (
+              <div className="border-t border-border px-4 py-4">
+                <p className="text-xs font-bold text-[#E6EDF3] mb-3">Add Document</p>
+                <form
+                  onSubmit={async e => {
+                    e.preventDefault();
+                    if (!docForm.name.trim()) return;
+                    setSavingDoc(true);
+                    try {
+                      const res = await fetchWithAuth(`/api/admin/clients/${clientId}/documents`, {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify(docForm),
+                      });
+                      if (res.ok) {
+                        setDocForm({ name: "", category: "contracts", description: "", file_url: "" });
+                        setDocFormOpen(false);
+                        void loadDocuments();
+                      }
+                    } finally {
+                      setSavingDoc(false);
+                    }
+                  }}
+                  className="space-y-2"
+                >
+                  <input
+                    required
+                    placeholder="Document name"
+                    value={docForm.name}
+                    onChange={e => setDocForm(f => ({ ...f, name: e.target.value }))}
+                    className="w-full px-3 py-2 text-sm border border-border rounded-lg bg-[#0D1117] text-[#E6EDF3] focus:outline-none focus:ring-2 focus:ring-[#0078D4]"
+                  />
+                  <div className="grid grid-cols-2 gap-2">
+                    <select
+                      value={docForm.category}
+                      onChange={e => setDocForm(f => ({ ...f, category: e.target.value }))}
+                      className="px-3 py-2 text-sm border border-border rounded-lg bg-[#0D1117] text-[#E6EDF3] focus:outline-none focus:ring-2 focus:ring-[#0078D4]"
+                    >
+                      {["contracts", "reports", "proposals", "sows", "assessments", "other"].map(c => (
+                        <option key={c} value={c}>{c.charAt(0).toUpperCase() + c.slice(1)}</option>
+                      ))}
+                    </select>
+                    <input
+                      placeholder="URL (optional)"
+                      value={docForm.file_url}
+                      onChange={e => setDocForm(f => ({ ...f, file_url: e.target.value }))}
+                      className="px-3 py-2 text-sm border border-border rounded-lg bg-[#0D1117] text-[#E6EDF3] focus:outline-none focus:ring-2 focus:ring-[#0078D4]"
+                    />
+                  </div>
+                  <input
+                    placeholder="Description (optional)"
+                    value={docForm.description}
+                    onChange={e => setDocForm(f => ({ ...f, description: e.target.value }))}
+                    className="w-full px-3 py-2 text-sm border border-border rounded-lg bg-[#0D1117] text-[#E6EDF3] focus:outline-none focus:ring-2 focus:ring-[#0078D4]"
+                  />
+                  <div className="flex gap-2 justify-end">
+                    <button type="button" onClick={() => setDocFormOpen(false)} className="text-xs text-muted-foreground hover:text-[#E6EDF3] px-3 py-1.5">Cancel</button>
+                    <button type="submit" disabled={savingDoc} className="text-xs font-semibold text-white bg-[#0078D4] hover:bg-[#0078D4]/90 disabled:opacity-50 px-3 py-1.5 rounded-lg transition-colors">
+                      {savingDoc ? "Saving…" : "Save Document"}
+                    </button>
+                  </div>
+                </form>
+              </div>
+            ) : (
+              <div className="border-t border-border px-4 py-3">
+                <button
+                  onClick={() => setDocFormOpen(true)}
+                  className="flex items-center gap-2 text-xs font-semibold text-[#0078D4] hover:text-[#0078D4]/80 transition-colors"
+                >
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
+                  </svg>
+                  Add Document
+                </button>
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* ── Assessments Section ──────────────────────────────────────────────── */}
