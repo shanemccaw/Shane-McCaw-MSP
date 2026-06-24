@@ -648,6 +648,26 @@ export default function PortalProjectDetail() {
   const [selectedTask, setSelectedTask] = useState<KanbanCardModalTask | null>(null);
   const [selectedStepTitle, setSelectedStepTitle] = useState<string | null>(null);
 
+  // Tab bar scroll-fade — callback ref fires when the element actually mounts
+  // (avoids missing the mount when the component is still in loading state)
+  const [tabBarAtEnd, setTabBarAtEnd] = useState(false);
+  const tabBarCleanup = useRef<(() => void) | null>(null);
+  const tabBarRef = useCallback((el: HTMLDivElement | null) => {
+    tabBarCleanup.current?.();
+    tabBarCleanup.current = null;
+    if (!el) return;
+    const check = () =>
+      setTabBarAtEnd(el.scrollLeft + el.clientWidth >= el.scrollWidth - 2);
+    check();
+    el.addEventListener("scroll", check, { passive: true });
+    const ro = new ResizeObserver(check);
+    ro.observe(el);
+    tabBarCleanup.current = () => {
+      el.removeEventListener("scroll", check);
+      ro.disconnect();
+    };
+  }, []);
+
   // Status report acknowledgement state
   const [acknowledging, setAcknowledging] = useState(false);
   const [questionDialogReportId, setQuestionDialogReportId] = useState<number | null>(null);
@@ -1014,7 +1034,11 @@ export default function PortalProjectDetail() {
         )}
 
         {/* ── Secondary Tab Bar ── */}
-        <div className="overflow-x-auto mb-6 border-b border-border -mx-4 px-4 sm:mx-0 sm:px-0">
+        <div className="relative mb-6">
+          <div
+            ref={tabBarRef}
+            className="overflow-x-auto border-b border-border -mx-4 px-4 sm:mx-0 sm:px-0"
+          >
           <div className="flex items-center gap-1 min-w-max">
             <button
               onClick={() => changeTab(null)}
@@ -1043,6 +1067,15 @@ export default function PortalProjectDetail() {
               </button>
             ))}
           </div>
+          </div>
+          {/* Right-edge scroll hint — hidden once user reaches the last tab */}
+          {!tabBarAtEnd && (
+            <div
+              aria-hidden="true"
+              className="pointer-events-none absolute right-0 top-0 bottom-0 w-12 sm:hidden"
+              style={{ background: "linear-gradient(to right, transparent, white 90%)" }}
+            />
+          )}
         </div>
 
         {/* ── Workflow Explorer (default view) ── */}
