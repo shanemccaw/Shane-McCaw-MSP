@@ -3,6 +3,7 @@ import { Link } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
 import PortalLayout from "@/components/PortalLayout";
 import ActivityFeed from "@/components/ActivityFeed";
+import M365ProfileSummaryCard from "@/components/M365ProfileSummaryCard";
 import { type AuditLogEntry } from "@/lib/auditFormatter";
 
 interface Project {
@@ -169,6 +170,9 @@ export default function PortalDashboard() {
                     </Link>
                   </div>
                 )}
+
+                {/* M365 Profile Summary */}
+                <M365ProfileSummaryCard />
 
                 {/* Active Projects */}
                 <section>
