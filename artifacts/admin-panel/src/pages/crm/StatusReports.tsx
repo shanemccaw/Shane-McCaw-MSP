@@ -164,7 +164,7 @@ export default function StatusReportsPage() {
             <p className="text-xs text-[#7D8590]">Create your first status report to send to a client.</p>
           </div>
         ) : (
-          <div className="bg-[#161B22] border border-[#30363D] rounded-xl divide-y divide-gray-100">
+          <div className="bg-[#161B22] border border-[#30363D] rounded-xl divide-y divide-[#30363D]">
             {reports.map(r => (
               <div key={r.id} className="flex items-center gap-4 px-5 py-4 hover:bg-[#1C2128] transition-colors">
                 <div className="w-9 h-9 rounded-xl bg-[#0078D4]/10 flex items-center justify-center flex-shrink-0">
@@ -184,7 +184,7 @@ export default function StatusReportsPage() {
                     <span className="text-xs text-[#7D8590]">{new Date(r.updatedAt).toLocaleDateString()}</span>
                   </div>
                 </div>
-                <span className={`text-xs font-semibold px-2.5 py-1 rounded-full border ${r.reportStatus === "sent" ? "bg-emerald-50 text-emerald-700 border-emerald-200" : "bg-[#30363D]/50 text-[#7D8590] border-[#30363D]"}`}>
+                <span className={`text-xs font-semibold px-2.5 py-1 rounded-full border ${r.reportStatus === "sent" ? "bg-emerald-500/15 text-emerald-400 border-emerald-500/20" : "bg-[#30363D]/50 text-[#7D8590] border-[#30363D]"}`}>
                   {r.reportStatus === "sent" ? "Published" : "Draft"}
                 </span>
                 <div className="flex items-center gap-2 flex-shrink-0">

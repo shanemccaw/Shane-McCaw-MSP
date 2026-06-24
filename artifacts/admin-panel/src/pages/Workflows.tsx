@@ -1490,7 +1490,7 @@ export default function WorkflowsPage() {
         ) : templates.length === 0 ? (
           <div className="p-8 text-center text-sm text-[#7D8590]">No templates yet.</div>
         ) : (
-          <div className="divide-y divide-gray-100 flex-1">
+          <div className="divide-y divide-[#30363D] flex-1">
             {templates.map(t => (
               <button
                 key={t.id}
@@ -1675,7 +1675,7 @@ export default function WorkflowsPage() {
                             : `Import ${parsed ? parsed.length : ""} Step${parsed?.length !== 1 ? "s" : ""}`}
                         </button>
                         <button type="button" onClick={() => { setJsonImportOpen(false); setJsonImportText(""); }}
-                          className="text-[10px] font-medium px-2 py-1.5 rounded hover:bg-gray-200 text-[#7D8590]">
+                          className="text-[10px] font-medium px-2 py-1.5 rounded hover:bg-[#30363D] text-[#7D8590]">
                           Cancel
                         </button>
                       </div>
@@ -1725,7 +1725,7 @@ export default function WorkflowsPage() {
                             : `Update ${matchCount} Task${matchCount !== 1 ? "s" : ""}`}
                         </button>
                         <button type="button" onClick={() => { setEngImportOpen(false); setEngImportText(""); }}
-                          className="text-[10px] font-medium px-2 py-1.5 rounded hover:bg-gray-200 text-[#7D8590]">
+                          className="text-[10px] font-medium px-2 py-1.5 rounded hover:bg-[#30363D] text-[#7D8590]">
                           Cancel
                         </button>
                       </div>

@@ -756,7 +756,7 @@ export default function ClientsPage() {
     <div className="p-6 max-w-[1200px]">
       <div className="flex items-center justify-between mb-4">
         <div>
-          <h1 className="text-xl font-bold text-[#E6EDF3]">Client Accounts</h1>
+          <h1 className="text-xl font-bold text-[#E6EDF3]">Clients</h1>
           <p className="text-sm text-muted-foreground mt-0.5">Manage portal access for consulting clients. Use "View as Client" to preview the portal as any client.</p>
         </div>
         <button

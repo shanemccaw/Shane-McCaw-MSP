@@ -63,9 +63,9 @@ interface AutofillData {
 }
 
 const STATUS_COLORS: Record<string, string> = {
-  active: "bg-emerald-100 text-emerald-700 border-emerald-200",
-  on_hold: "bg-amber-100 text-amber-700 border-amber-200",
-  completed: "bg-blue-100 text-blue-700 border-blue-200",
+  active: "bg-emerald-500/15 text-emerald-400 border-emerald-500/20",
+  on_hold: "bg-amber-500/15 text-amber-400 border-amber-500/20",
+  completed: "bg-blue-500/15 text-blue-400 border-blue-500/20",
 };
 
 const STATUS_LABELS: Record<string, string> = {
@@ -810,7 +810,7 @@ export default function StatusReportForm({
                   {aiPreview.executiveSummary && (
                     <div className="flex flex-col gap-2">
                       <p className="text-[10px] font-bold uppercase tracking-widest text-[#0078D4]">Executive Summary</p>
-                      <div className="p-3 bg-blue-50/50 rounded-lg border border-blue-100 text-sm text-[#E6EDF3] leading-relaxed">
+                      <div className="p-3 bg-[#0078D4]/5 rounded-lg border border-[#0078D4]/15 text-sm text-[#E6EDF3] leading-relaxed">
                         {aiPreview.executiveSummary}
                       </div>
                       <button
@@ -873,7 +873,7 @@ export default function StatusReportForm({
                       onClick={() => void handlePushAllToKanban()}
                       disabled={pushAllLoading}
                       title="Push all unpushed steps to the project Kanban board as Backlog tasks"
-                      className="flex items-center gap-1 text-xs font-semibold text-emerald-700 border border-emerald-300 bg-emerald-50 hover:bg-emerald-100 disabled:opacity-50 disabled:cursor-not-allowed px-2.5 py-1 rounded-lg transition-colors"
+                      className="flex items-center gap-1 text-xs font-semibold text-emerald-400 border border-emerald-500/30 bg-emerald-500/10 hover:bg-emerald-500/20 disabled:opacity-50 disabled:cursor-not-allowed px-2.5 py-1 rounded-lg transition-colors"
                     >
                       {pushAllLoading ? (
                         <div className="w-3 h-3 border-2 border-emerald-600 border-t-transparent rounded-full animate-spin" />
@@ -924,7 +924,7 @@ export default function StatusReportForm({
                       />
                       <div className="flex items-center justify-between mt-2">
                         {s.kanbanTaskId ? (
-                          <span className="flex items-center gap-1 text-[10px] font-semibold text-emerald-700 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-full">
+                          <span className="flex items-center gap-1 text-[10px] font-semibold text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-full">
                             <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
                               <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
                             </svg>
@@ -978,7 +978,7 @@ export default function StatusReportForm({
                       </svg>
                     </div>
                     <h3 className="text-base font-bold text-[#E6EDF3]">Client Conversation</h3>
-                    <span className={`ml-auto text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full border ${report?.clientStatus === "has_questions" ? "bg-amber-50 text-amber-700 border-amber-200" : report?.clientStatus === "accepted" ? "bg-emerald-50 text-emerald-700 border-emerald-200" : "bg-[#1C2128] text-[#7D8590] border-[#30363D]"}`}>
+                    <span className={`ml-auto text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full border ${report?.clientStatus === "has_questions" ? "bg-amber-500/15 text-amber-400 border-amber-500/20" : report?.clientStatus === "accepted" ? "bg-emerald-500/15 text-emerald-400 border-emerald-500/20" : "bg-[#1C2128] text-[#7D8590] border-[#30363D]"}`}>
                       {report?.clientStatus === "has_questions" ? "Awaiting resolution" : report?.clientStatus === "accepted" ? "Resolved" : report?.clientStatus ?? ""}
                     </span>
                   </div>
@@ -986,12 +986,12 @@ export default function StatusReportForm({
                   <div className="space-y-3">
                     {/* Initial client question */}
                     {report?.clientQuestion && (
-                      <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3">
+                      <div className="bg-amber-500/10 border border-amber-500/20 rounded-lg px-4 py-3">
                         <div className="flex items-center gap-1.5 mb-1">
                           <div className="w-4 h-4 rounded-full bg-amber-400 flex items-center justify-center flex-shrink-0">
                             <span className="text-white text-[7px] font-bold">C</span>
                           </div>
-                          <p className="text-[10px] font-semibold text-amber-700 uppercase tracking-wide">Client Question</p>
+                          <p className="text-[10px] font-semibold text-amber-400 uppercase tracking-wide">Client Question</p>
                         </div>
                         <p className="text-sm text-[#E6EDF3] leading-relaxed">{report.clientQuestion}</p>
                       </div>
@@ -999,7 +999,7 @@ export default function StatusReportForm({
 
                     {/* Initial admin reply */}
                     {report?.adminReply && (
-                      <div className="border-l-4 border-[#0078D4] pl-4 bg-blue-50/40 rounded-r-lg py-3 pr-3">
+                      <div className="border-l-4 border-[#0078D4] pl-4 bg-[#0078D4]/5 rounded-r-lg py-3 pr-3">
                         <div className="flex items-center gap-1.5 mb-1">
                           <div className="w-4 h-4 rounded-full bg-[#0078D4] flex items-center justify-center flex-shrink-0">
                             <span className="text-white text-[7px] font-bold">SM</span>

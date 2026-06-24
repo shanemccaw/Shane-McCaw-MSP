@@ -159,7 +159,20 @@ export default function InvoicesPage() {
       {loading ? (
         <div className="flex items-center justify-center py-12"><div className="w-6 h-6 border-4 border-[#0078D4] border-t-transparent rounded-full animate-spin" /></div>
       ) : invoices.length === 0 ? (
-        <div className="bg-[#161B22] border border-border rounded-xl p-10 text-center text-muted-foreground text-sm">No invoices yet.</div>
+        <div className="bg-[#161B22] border border-border rounded-xl py-20 flex flex-col items-center text-center gap-2">
+          <div className="w-12 h-12 rounded-full bg-[#0078D4]/10 flex items-center justify-center mb-1">
+            <svg className="w-6 h-6 text-[#0078D4]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+            </svg>
+          </div>
+          <p className="font-semibold text-[#E6EDF3] text-sm">No invoices yet</p>
+          <p className="text-xs text-muted-foreground max-w-xs mb-3">Create your first invoice to bill a client for services delivered.</p>
+          <button onClick={() => { setShowForm(true); setError(""); }}
+            className="flex items-center gap-2 bg-[#0078D4] text-white text-xs font-semibold px-4 py-2 rounded-lg hover:bg-[#0078D4]/90 transition-colors">
+            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" /></svg>
+            New Invoice
+          </button>
+        </div>
       ) : (
         <div className="bg-[#161B22] border border-border rounded-xl overflow-hidden">
           <table className="w-full text-sm">

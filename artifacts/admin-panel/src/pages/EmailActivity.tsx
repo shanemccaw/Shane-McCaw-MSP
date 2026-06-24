@@ -1032,7 +1032,7 @@ function EmailSettings({ clients }: EmailSettingsProps) {
           {/* Setup instructions */}
           <div className="px-4 py-3 border-t border-[#30363D] bg-[#0078D4]/10">
             <p className="text-[10px] font-bold text-[#0078D4] uppercase tracking-widest mb-1.5">Connect M365 Mailbox</p>
-            <ol className="text-[11px] text-blue-800 space-y-1 list-decimal list-inside leading-relaxed">
+            <ol className="text-[11px] text-blue-400 space-y-1 list-decimal list-inside leading-relaxed">
               <li>Register an Azure AD app → grant <span className="font-mono">Mail.Read</span> permission → admin-consent.</li>
               <li>Set secrets: <span className="font-mono">GRAPH_TENANT_ID</span>, <span className="font-mono">GRAPH_CLIENT_ID</span>, <span className="font-mono">GRAPH_CLIENT_SECRET</span>, <span className="font-mono">GRAPH_MAIL_USER_ID</span>.</li>
               <li>Redeploy — Graph webhook registers automatically.</li>

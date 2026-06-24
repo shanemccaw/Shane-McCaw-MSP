@@ -147,7 +147,7 @@ export default function ChecklistClosureDialog({
               {[1, 2, 3].map((i) => (
                 <div key={i} className="space-y-1.5 animate-pulse">
                   <div className="h-2.5 w-24 rounded bg-[#30363D]" />
-                  <div className="h-9 w-full rounded-lg bg-gray-100" />
+                  <div className="h-9 w-full rounded-lg bg-[#30363D]" />
                 </div>
               ))}
             </div>

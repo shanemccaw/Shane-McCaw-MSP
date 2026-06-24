@@ -165,7 +165,7 @@ export default function ArticlesPage() {
                     <th className="text-center px-4 py-3 text-xs font-semibold text-[#7D8590] uppercase tracking-wide">Total</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-100">
+                <tbody className="divide-y divide-[#30363D]">
                   {Object.entries(shareData.counts)
                     .sort(([, a], [, b]) => b.total - a.total)
                     .map(([slug, counts]) => {
@@ -217,7 +217,7 @@ export default function ArticlesPage() {
                     <a href={`/resources/${article.slug}`} target="_blank" rel="noopener noreferrer"
                       className="text-xs text-[#7D8590] hover:text-[#0078D4] transition-colors px-2 py-1 rounded">View</a>
                     <button onClick={() => openEdit(article)}
-                      className="text-xs bg-[#1C2128] hover:bg-gray-200 text-[#C9D1D9] px-3 py-1.5 rounded-lg transition-colors font-medium">Edit</button>
+                      className="text-xs bg-[#1C2128] hover:bg-[#30363D] text-[#C9D1D9] px-3 py-1.5 rounded-lg transition-colors font-medium">Edit</button>
                     <button onClick={() => setDeleteTarget(article.slug)}
                       className="text-xs bg-red-500/10 hover:bg-red-500/20 text-red-400 px-3 py-1.5 rounded-lg transition-colors font-medium">Delete</button>
                   </div>

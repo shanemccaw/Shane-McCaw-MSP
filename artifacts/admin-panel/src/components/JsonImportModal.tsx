@@ -288,7 +288,7 @@ export default function JsonImportModal({
               <span className="text-xs font-semibold text-[#7D8590] uppercase tracking-wide">Preview</span>
               <div className="flex-1" />
               {parseResult.valid && validations.length > 0 && (
-                <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${allValid ? "bg-green-100 text-green-700" : "bg-amber-100 text-amber-700"}`}>
+                <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${allValid ? "bg-green-500/15 text-green-400" : "bg-amber-500/15 text-amber-400"}`}>
                   {allValid
                     ? `${validations.length} record${validations.length !== 1 ? "s" : ""} ready`
                     : `${validCount} ok · ${invalidCount} error${invalidCount !== 1 ? "s" : ""}`}
@@ -307,14 +307,14 @@ export default function JsonImportModal({
                   <div className="flex items-start gap-2">
                     <AlertCircle className="w-4 h-4 text-red-500 shrink-0 mt-0.5" />
                     <div>
-                      <p className="text-sm font-medium text-red-700">Syntax error</p>
+                      <p className="text-sm font-medium text-red-400">Syntax error</p>
                       <p className="text-xs text-red-600 mt-1">{parseResult.syntaxError}</p>
                     </div>
                   </div>
                 </div>
               ) : validations.length === 0 ? (
                 <div className="rounded-lg border border-amber-200 bg-amber-500/10 p-3">
-                  <p className="text-sm text-amber-700">No records found in JSON.</p>
+                  <p className="text-sm text-amber-400">No records found in JSON.</p>
                 </div>
               ) : (
                 validations.map((v, i) => (
@@ -330,7 +330,7 @@ export default function JsonImportModal({
 
               {networkErrors.length > 0 && (
                 <div className="rounded-lg border border-red-500/20 bg-red-500/10 p-3 space-y-1">
-                  <p className="text-xs font-semibold text-red-700">Import errors</p>
+                  <p className="text-xs font-semibold text-red-400">Import errors</p>
                   {networkErrors.map((e, i) => (
                     <p key={i} className="text-xs text-red-600">• {e}</p>
                   ))}
@@ -342,7 +342,7 @@ export default function JsonImportModal({
 
         <div className="flex items-center justify-between px-6 py-4 border-t bg-[#161B22] shrink-0">
           <p className="text-xs text-gray-500">
-            Records with an <code className="bg-gray-100 px-1 rounded">id</code> field are updated; without one, a new record is created.
+            Records with an <code className="bg-[#30363D] px-1 rounded text-[#E6EDF3]">id</code> field are updated; without one, a new record is created.
           </p>
           <div className="flex gap-2">
             <button onClick={onClose} className="px-4 py-2 text-sm text-[#7D8590] border border-[#30363D] rounded-lg hover:bg-[#1C2128]">

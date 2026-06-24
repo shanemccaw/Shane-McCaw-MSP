@@ -225,7 +225,7 @@ function RecipientBadge({ type }: { type: "client" | "admin" }) {
     );
   }
   return (
-    <span className="inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-semibold bg-[#0078D4]/10 text-blue-700 border border-[#0078D4]/20 shrink-0">
+    <span className="inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-semibold bg-[#0078D4]/10 text-blue-400 border border-[#0078D4]/20 shrink-0">
       Client
     </span>
   );
@@ -679,7 +679,7 @@ export default function EmailTemplatesPage() {
                       <div className="bg-[#161B22] rounded-md border divide-y">
                         {detail.variables.map((v) => (
                           <div key={v.name} className="flex items-start gap-3 px-3 py-2">
-                            <code className="text-xs bg-[#0078D4]/10 text-blue-700 px-1.5 py-0.5 rounded font-mono shrink-0">
+                            <code className="text-xs bg-[#0078D4]/10 text-blue-400 px-1.5 py-0.5 rounded font-mono shrink-0">
                               {`{{${v.name}}}`}
                             </code>
                             <span className="text-xs text-[#7D8590] pt-0.5">{v.description}</span>

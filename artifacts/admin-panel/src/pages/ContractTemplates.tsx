@@ -110,7 +110,7 @@ export default function ContractTemplatesPage() {
         {loadingServices ? (
           <div className="p-8 text-center text-sm text-[#7D8590]">Loading…</div>
         ) : (
-          <div className="divide-y divide-gray-100">
+          <div className="divide-y divide-[#30363D]">
             {services.map(s => (
               <button key={s.id} onClick={() => void selectService(s)}
                 className={`w-full text-left px-4 py-3.5 hover:bg-[#1C2128] transition-colors ${selected?.id === s.id ? "bg-[#0078D4]/10 border-l-2 border-[#0078D4]" : ""}`}>

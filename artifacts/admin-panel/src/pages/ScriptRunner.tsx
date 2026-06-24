@@ -657,7 +657,7 @@ function StripeReplayCard() {
       </form>
 
       {result && (
-        <div className={`flex items-center gap-2 rounded-lg px-3 py-2.5 text-xs font-medium ${result.status === "created" ? "bg-emerald-50 text-emerald-700 border border-emerald-200" : "bg-[#161B22] text-[#7D8590] border border-[#30363D]"}`}>
+        <div className={`flex items-center gap-2 rounded-lg px-3 py-2.5 text-xs font-medium ${result.status === "created" ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20" : "bg-[#161B22] text-[#7D8590] border border-[#30363D]"}`}>
           {result.status === "created" ? (
             <>
               <svg className="w-3.5 h-3.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>

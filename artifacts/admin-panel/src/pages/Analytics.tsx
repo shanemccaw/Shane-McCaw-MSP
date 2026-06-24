@@ -546,7 +546,7 @@ export default function AnalyticsPage() {
                     <td className="py-2 pr-3 text-right font-semibold text-[#C9D1D9]">{fmt(row.clicks)}</td>
                     <td className="py-2 pr-3 text-right text-[#7D8590]">{fmt(row.pageViews)}</td>
                     <td className="py-2 text-right">
-                      <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${row.ctr >= 5 ? "bg-emerald-100 text-emerald-700" : row.ctr >= 2 ? "bg-blue-100 text-[#0078D4]" : "bg-[#30363D]/50 text-[#7D8590]"}`}>
+                      <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${row.ctr >= 5 ? "bg-emerald-500/15 text-emerald-400" : row.ctr >= 2 ? "bg-blue-500/15 text-[#0078D4]" : "bg-[#30363D]/50 text-[#7D8590]"}`}>
                         {row.ctr}%
                       </span>
                     </td>

@@ -82,7 +82,7 @@ const TRACKS: TrackConfig[] = [
 const STATUS_BADGE: Record<string, { label: string; cls: string }> = {
   active: { label: "In Progress", cls: "bg-[#0078D4]/100/15 text-blue-400" },
   on_hold: { label: "Paused", cls: "bg-amber-500/100/15 text-amber-400" },
-  completed: { label: "Complete", cls: "bg-emerald-100 text-emerald-700" },
+  completed: { label: "Complete", cls: "bg-emerald-500/15 text-emerald-400" },
 };
 
 function MatIcon({ name, className = "", style }: { name: string; className?: string; style?: React.CSSProperties }) {
@@ -684,6 +684,25 @@ export default function ProjectsPage() {
       {loading ? (
         <div className="flex items-center justify-center py-16">
           <div className="w-6 h-6 border-4 border-[#0078D4] border-t-transparent rounded-full animate-spin" />
+        </div>
+      ) : projects.length === 0 ? (
+        <div className="bg-[#161B22] border border-border rounded-xl py-24 flex flex-col items-center text-center gap-2">
+          <div className="w-14 h-14 rounded-full bg-[#0078D4]/10 flex items-center justify-center mb-2">
+            <svg className="w-7 h-7 text-[#0078D4]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6A2.25 2.25 0 016 3.75h2.25A2.25 2.25 0 0110.5 6v2.25a2.25 2.25 0 01-2.25 2.25H6a2.25 2.25 0 01-2.25-2.25V6zM3.75 15.75A2.25 2.25 0 016 13.5h2.25a2.25 2.25 0 012.25 2.25V18a2.25 2.25 0 01-2.25 2.25H6A2.25 2.25 0 013.75 18v-2.25zM13.5 6a2.25 2.25 0 012.25-2.25H18A2.25 2.25 0 0120.25 6v2.25A2.25 2.25 0 0118 10.5h-2.25a2.25 2.25 0 01-2.25-2.25V6zM13.5 15.75a2.25 2.25 0 012.25-2.25H18a2.25 2.25 0 012.25 2.25V18A2.25 2.25 0 0118 20.25h-2.25A2.25 2.25 0 0113.5 18v-2.25z" />
+            </svg>
+          </div>
+          <p className="font-semibold text-[#E6EDF3]">No projects yet</p>
+          <p className="text-sm text-muted-foreground max-w-sm mb-3">Create your first project to start tracking client engagements across delivery tracks.</p>
+          <button
+            onClick={() => { setShowForm(true); setEditingId(null); setForm(EMPTY_FORM); setError(""); }}
+            className="flex items-center gap-2 bg-[#0078D4] text-white text-sm font-semibold px-4 py-2 rounded-lg hover:bg-[#0078D4]/90 transition-colors"
+          >
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
+            </svg>
+            New Project
+          </button>
         </div>
       ) : (
         <>

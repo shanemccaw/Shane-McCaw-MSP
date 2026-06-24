@@ -55,7 +55,7 @@ function ExpiryBadge({ expiresOn }: { expiresOn: string | null }) {
   const color = expired
     ? "bg-red-500/15 text-red-400 border-red-500/20"
     : critical
-      ? "bg-red-100 text-red-400 border-red-500/20"
+      ? "bg-red-500/10 text-red-400 border-red-500/20"
       : "bg-amber-500/100/15 text-amber-400 border-amber-500/20";
   const label = expired
     ? "Expired"

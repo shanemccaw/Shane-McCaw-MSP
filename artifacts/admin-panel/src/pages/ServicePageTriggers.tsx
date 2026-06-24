@@ -146,7 +146,7 @@ export default function ServicePageTriggersPage() {
   return (
     <div className="max-w-3xl mx-auto px-4 py-8">
       <div className="mb-8">
-        <h1 className="text-2xl font-bold text-[#E6EDF3] mb-2">Service Page Trigger Keys</h1>
+        <h1 className="text-2xl font-bold text-[#E6EDF3] mb-2">Service Triggers</h1>
         <p className="text-[#7D8590] text-sm leading-relaxed">
           Control which engagement projects appear in the "Common Project Engagements" section on each service page.
           Trigger keys are matched against the <strong>Triggered By</strong> field on each engagement project — any project

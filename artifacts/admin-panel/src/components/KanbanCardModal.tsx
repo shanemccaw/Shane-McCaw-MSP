@@ -44,17 +44,17 @@ interface Props {
 }
 
 const COLUMN_CONFIG: Record<string, { label: string; cls: string }> = {
-  backlog:              { label: "Backlog",              cls: "bg-gray-100 text-gray-600 border border-[#30363D]" },
-  in_progress:         { label: "In Progress",          cls: "bg-blue-100 text-blue-700 border border-blue-200" },
-  waiting_on_customer: { label: "Waiting on Customer",  cls: "bg-amber-100 text-amber-700 border border-amber-200" },
-  completed:           { label: "Completed",            cls: "bg-green-100 text-green-700 border border-green-500/20" },
+  backlog:              { label: "Backlog",              cls: "bg-[#30363D] text-[#7D8590] border border-[#30363D]" },
+  in_progress:         { label: "In Progress",          cls: "bg-blue-500/15 text-blue-400 border border-blue-500/20" },
+  waiting_on_customer: { label: "Waiting on Customer",  cls: "bg-amber-500/15 text-amber-400 border border-amber-500/20" },
+  completed:           { label: "Completed",            cls: "bg-green-500/15 text-green-400 border border-green-500/20" },
 };
 
 const PRIORITY_CONFIG: Record<string, { label: string; cls: string; dot: string }> = {
-  critical: { label: "Critical", cls: "bg-red-100 text-red-700 border border-red-200",      dot: "bg-red-500" },
-  high:     { label: "High",     cls: "bg-orange-100 text-orange-700 border border-orange-200", dot: "bg-orange-500" },
-  medium:   { label: "Medium",   cls: "bg-blue-100 text-blue-700 border border-blue-200",   dot: "bg-blue-500" },
-  low:      { label: "Low",      cls: "bg-gray-100 text-gray-500 border border-[#30363D]",   dot: "bg-gray-400" },
+  critical: { label: "Critical", cls: "bg-red-500/15 text-red-400 border border-red-500/20",      dot: "bg-red-500" },
+  high:     { label: "High",     cls: "bg-orange-500/15 text-orange-400 border border-orange-500/20", dot: "bg-orange-500" },
+  medium:   { label: "Medium",   cls: "bg-blue-500/15 text-blue-400 border border-blue-500/20",   dot: "bg-blue-500" },
+  low:      { label: "Low",      cls: "bg-[#30363D] text-[#7D8590] border border-[#30363D]",   dot: "bg-gray-400" },
 };
 
 interface EditForm {
@@ -263,7 +263,7 @@ function EngineerDetailSection({
                       <button
                         type="button"
                         onClick={() => setExpandedCaptured(e => ({ ...e, [item.id]: !e[item.id] }))}
-                        className="flex-shrink-0 inline-flex items-center gap-0.5 text-[9px] font-semibold text-[#0078D4] bg-blue-50 border border-[#0078D4]/20 hover:bg-blue-100 rounded px-1.5 py-0.5 transition-colors"
+                        className="flex-shrink-0 inline-flex items-center gap-0.5 text-[9px] font-semibold text-[#0078D4] bg-[#0078D4]/10 border border-[#0078D4]/20 hover:bg-[#0078D4]/20 rounded px-1.5 py-0.5 transition-colors"
                         title="View captured details"
                       >
                         <svg className="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -289,7 +289,7 @@ function EngineerDetailSection({
           <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-2">Artifacts Produced</p>
           <div className="flex flex-wrap gap-1.5 mb-2">
             {artifactsProduced.map((artifact, i) => (
-              <span key={i} className="inline-flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-700 border border-amber-200">
+              <span key={i} className="inline-flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-400 border border-amber-500/20">
                 <svg className="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                 </svg>
@@ -301,7 +301,7 @@ function EngineerDetailSection({
           {uploadedLocal.length > 0 && (
             <div className="flex flex-wrap gap-1.5 mb-2">
               {uploadedLocal.map((fname, i) => (
-                <span key={i} className="inline-flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 rounded-full bg-green-500/10 text-green-700 border border-green-500/20">
+                <span key={i} className="inline-flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 rounded-full bg-green-500/10 text-green-400 border border-green-500/20">
                   <svg className="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                     <path strokeLinecap="round" strokeLinejoin="round" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
                   </svg>
@@ -315,7 +315,7 @@ function EngineerDetailSection({
           <button
             type="button"
             onClick={() => fileInputRef.current?.click()}
-            className="inline-flex items-center gap-1.5 text-xs font-semibold text-[#0078D4] border border-[#0078D4]/30 hover:border-[#0078D4] hover:bg-blue-50 rounded-lg px-3 py-1.5 transition-colors"
+            className="inline-flex items-center gap-1.5 text-xs font-semibold text-[#0078D4] border border-[#0078D4]/30 hover:border-[#0078D4] hover:bg-[#0078D4]/10 rounded-lg px-3 py-1.5 transition-colors"
           >
             <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
@@ -331,7 +331,7 @@ function EngineerDetailSection({
           <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-2">Client Deliverables</p>
           <div className="flex flex-wrap gap-1.5">
             {clientDeliverables.map((deliverable, i) => (
-              <span key={i} className="inline-flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200">
+              <span key={i} className="inline-flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-400 border border-blue-500/20">
                 <svg className="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
                 </svg>
@@ -392,7 +392,7 @@ function GenericKanbanCardModal({ task, stepTitle, open, onClose, mode = "client
 
   if (!task || !localTask) return null;
 
-  const colCfg = COLUMN_CONFIG[localTask.column] ?? { label: localTask.column, cls: "bg-gray-100 text-gray-600 border border-[#30363D]" };
+  const colCfg = COLUMN_CONFIG[localTask.column] ?? { label: localTask.column, cls: "bg-[#30363D] text-[#7D8590] border border-[#30363D]" };
   const priorityCfg = localTask.priority ? PRIORITY_CONFIG[localTask.priority] : null;
 
   const handleSave = async () => {
@@ -453,7 +453,7 @@ function GenericKanbanCardModal({ task, stepTitle, open, onClose, mode = "client
           <div className="flex items-start gap-3 pr-2">
             <div className="flex-1 min-w-0">
               {localTask.groupName && (
-                <span className="inline-block text-[10px] font-semibold px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 mb-2">
+                <span className="inline-block text-[10px] font-semibold px-1.5 py-0.5 rounded bg-blue-500/15 text-blue-400 mb-2">
                   {localTask.groupName}
                 </span>
               )}
@@ -566,9 +566,9 @@ function GenericKanbanCardModal({ task, stepTitle, open, onClose, mode = "client
             <>
               {banner && (
                 <div className={`flex items-start gap-2.5 rounded-lg px-4 py-3 ${
-                  banner.variant === "error"   ? "bg-red-50 border border-red-200 text-red-800" :
-                  banner.variant === "warning" ? "bg-amber-50 border border-amber-200 text-amber-800" :
-                                                 "bg-green-500/10 border border-green-500/20 text-green-800"
+                  banner.variant === "error"   ? "bg-red-500/10 border border-red-500/20 text-red-400" :
+                  banner.variant === "warning" ? "bg-amber-500/10 border border-amber-500/20 text-amber-400" :
+                                                 "bg-green-500/10 border border-green-500/20 text-green-400"
                 }`}>
                   <span className="material-symbols-outlined flex-shrink-0 mt-0.5" style={{ fontSize: "18px" }}>
                     {banner.variant === "error" ? "error" : banner.variant === "warning" ? "warning" : "check_circle"}
@@ -594,7 +594,7 @@ function GenericKanbanCardModal({ task, stepTitle, open, onClose, mode = "client
               <div className="border border-border rounded-lg overflow-hidden">
                 <button
                   onClick={() => setTaskDetailsOpen(o => !o)}
-                  className="w-full flex items-center justify-between px-4 py-2.5 text-left bg-[#1C2128] hover:bg-gray-100 transition-colors"
+                  className="w-full flex items-center justify-between px-4 py-2.5 text-left bg-[#1C2128] hover:bg-[#30363D] transition-colors"
                 >
                   <div className="flex items-center gap-2 flex-wrap">
                     <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Task Details</p>
@@ -605,7 +605,7 @@ function GenericKanbanCardModal({ task, stepTitle, open, onClose, mode = "client
                       </span>
                     )}
                     {checklist.length > 0 && (
-                      <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${checkedCount === checklist.length ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-600"}`}>
+                      <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${checkedCount === checklist.length ? "bg-green-500/15 text-green-400" : "bg-[#30363D] text-[#7D8590]"}`}>
                         {checkedCount}/{checklist.length} done
                       </span>
                     )}
@@ -655,9 +655,9 @@ function GenericKanbanCardModal({ task, stepTitle, open, onClose, mode = "client
               </div>
 
               {localTask.column === "waiting_on_customer" && localTask.waitingReason && (
-                <div className="bg-amber-50 border border-amber-200 rounded-lg p-3.5">
+                <div className="bg-amber-500/10 border border-amber-500/20 rounded-lg p-3.5">
                   <p className="text-[10px] font-bold uppercase tracking-wider text-amber-600 mb-1.5">Waiting for</p>
-                  <p className="text-sm text-amber-800 leading-relaxed whitespace-pre-wrap">{localTask.waitingReason}</p>
+                  <p className="text-sm text-amber-300 leading-relaxed whitespace-pre-wrap">{localTask.waitingReason}</p>
                 </div>
               )}
 
@@ -666,7 +666,7 @@ function GenericKanbanCardModal({ task, stepTitle, open, onClose, mode = "client
                   {localTask.completionStatus && (
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Result:</span>
-                      <span className="text-xs font-semibold text-green-700 bg-green-500/10 border border-green-500/20 rounded-full px-2.5 py-0.5">
+                      <span className="text-xs font-semibold text-green-400 bg-green-500/10 border border-green-500/20 rounded-full px-2.5 py-0.5">
                         ✓ {localTask.completionStatus}
                       </span>
                     </div>
@@ -715,7 +715,7 @@ function GenericKanbanCardModal({ task, stepTitle, open, onClose, mode = "client
                   </span>
                 )}
                 {checklist.length > 0 && (
-                  <span className={`inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-full ${checkedCount === checklist.length ? "bg-green-100 text-green-700 border border-green-500/20" : "bg-gray-100 text-gray-600 border border-[#30363D]"}`}>
+                  <span className={`inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-full ${checkedCount === checklist.length ? "bg-green-500/15 text-green-400 border border-green-500/20" : "bg-[#30363D] text-[#7D8590] border border-[#30363D]"}`}>
                     <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                       <path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
                     </svg>
@@ -761,9 +761,9 @@ function GenericKanbanCardModal({ task, stepTitle, open, onClose, mode = "client
               )}
 
               {localTask.column === "waiting_on_customer" && localTask.waitingReason && (
-                <div className="bg-amber-50 border border-amber-200 rounded-lg p-3.5">
+                <div className="bg-amber-500/10 border border-amber-500/20 rounded-lg p-3.5">
                   <p className="text-[10px] font-bold uppercase tracking-wider text-amber-600 mb-1.5">Waiting for</p>
-                  <p className="text-sm text-amber-800 leading-relaxed whitespace-pre-wrap">{localTask.waitingReason}</p>
+                  <p className="text-sm text-amber-300 leading-relaxed whitespace-pre-wrap">{localTask.waitingReason}</p>
                 </div>
               )}
 
@@ -772,7 +772,7 @@ function GenericKanbanCardModal({ task, stepTitle, open, onClose, mode = "client
                   {localTask.completionStatus && (
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Result:</span>
-                      <span className="text-xs font-semibold text-green-700 bg-green-500/10 border border-green-500/20 rounded-full px-2.5 py-0.5">
+                      <span className="text-xs font-semibold text-green-400 bg-green-500/10 border border-green-500/20 rounded-full px-2.5 py-0.5">
                         ✓ {localTask.completionStatus}
                       </span>
                     </div>

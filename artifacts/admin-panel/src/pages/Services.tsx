@@ -149,7 +149,7 @@ function resolveIcon(name: string | null): LucideIcon {
 
 const BADGE_COLORS: Record<string, string> = {
   Popular: "bg-[#0078D4]/10 text-[#0078D4]",
-  New: "bg-emerald-100 text-emerald-700",
+  New: "bg-emerald-500/15 text-emerald-400",
   "Best Value": "bg-amber-500/100/15 text-amber-400",
   Featured: "bg-purple-500/15 text-purple-400",
 };
@@ -793,7 +793,7 @@ export default function ServicesPage() {
         {loading ? (
           <div className="p-8 text-center text-sm text-[#7D8590]">Loading…</div>
         ) : (
-          <div className="divide-y divide-gray-100 flex-1 overflow-y-auto">
+          <div className="divide-y divide-[#30363D] flex-1 overflow-y-auto">
             {services.map(s => (
               <div key={s.id} className={`group flex items-center gap-1 pr-2 hover:bg-[#1C2128] transition-colors ${selected?.id === s.id ? "bg-[#0078D4]/10 border-l-2 border-[#0078D4]" : ""}`}>
                 <button onClick={() => selectService(s)} className="flex-1 text-left px-4 py-3.5 min-w-0">

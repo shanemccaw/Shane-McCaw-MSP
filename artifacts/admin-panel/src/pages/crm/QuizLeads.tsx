@@ -280,7 +280,7 @@ function SlideOver({ lead, onClose, onRefresh }: {
             disabled={saving}
             className={`flex-1 font-semibold rounded-lg py-2.5 text-sm transition-colors disabled:opacity-40 ${
               contacted
-                ? "bg-[#1C2128] text-[#C9D1D9] hover:bg-gray-200"
+                ? "bg-[#1C2128] text-[#C9D1D9] hover:bg-[#30363D]"
                 : "bg-[#0078D4] text-white hover:bg-[#0078D4]/90"
             }`}
           >

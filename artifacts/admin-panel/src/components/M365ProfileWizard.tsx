@@ -188,7 +188,7 @@ function Toggle({ value, onChange }: { value: boolean; onChange: (v: boolean) =>
     <button
       type="button"
       onClick={() => onChange(!value)}
-      className={`relative inline-flex h-5 w-9 flex-shrink-0 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-[#0078D4] focus:ring-offset-1 ${value ? "bg-[#0078D4]" : "bg-gray-300"}`}
+      className={`relative inline-flex h-5 w-9 flex-shrink-0 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-[#0078D4] focus:ring-offset-1 ${value ? "bg-[#0078D4]" : "bg-[#30363D]"}`}
     >
       <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-[#1C2128] shadow-sm transition-transform ${value ? "translate-x-[18px]" : "translate-x-[3px]"}`} />
     </button>
@@ -267,7 +267,7 @@ function ToggleRow({ label, value, onChange }: { label: string; value: boolean; 
   return (
     <div className="flex items-center gap-3 pt-1.5">
       <Toggle value={value} onChange={onChange} />
-      <span className={`text-sm font-medium ${value ? "text-[#0078D4]" : "text-gray-500"}`}>{value ? "Yes" : "No"}</span>
+      <span className={`text-sm font-medium ${value ? "text-[#0078D4]" : "text-[#7D8590]"}`}>{value ? "Yes" : "No"}</span>
     </div>
   );
 }
@@ -556,7 +556,7 @@ function Step7({ p, onJump, onDownloadPdf, downloading }: { p: M365Profile; onJu
           <div className="space-y-1">
             {section.rows.map(([label, value]) => (
               <div key={label} className="flex gap-3 text-xs">
-                <span className="text-gray-500 flex-shrink-0 w-32">{label}</span>
+                <span className="text-[#7D8590] flex-shrink-0 w-32">{label}</span>
                 <span className="text-[#E6EDF3] font-medium break-words flex-1">{value}</span>
               </div>
             ))}
@@ -706,7 +706,7 @@ export function M365ProfileWizard({
             <button
               onClick={onClose}
               disabled={saving}
-              className="text-sm font-medium text-gray-500 hover:text-gray-700 px-3 py-2 transition-colors"
+              className="text-sm font-medium text-[#7D8590] hover:text-[#E6EDF3] px-3 py-2 transition-colors"
             >
               Cancel
             </button>

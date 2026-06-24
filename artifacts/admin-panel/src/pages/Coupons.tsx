@@ -449,7 +449,7 @@ export default function CouponsPage() {
                           <span className={`inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-full ${
                             coupon.discountType === "percentage"
                               ? "bg-purple-500/15 text-purple-400"
-                              : "bg-emerald-100 text-emerald-700"
+                              : "bg-emerald-500/15 text-emerald-400"
                           }`}>
                             {formatDiscount(coupon)}
                             <span className="text-[10px] font-normal opacity-70">off</span>
@@ -469,7 +469,7 @@ export default function CouponsPage() {
                                 {expired ? "Expired" : exhausted ? "Exhausted" : "Inactive"}
                               </span>
                             ) : (
-                              <span className="inline-flex items-center gap-1 text-xs bg-emerald-100 text-emerald-700 px-2.5 py-1 rounded-full font-medium">
+                              <span className="inline-flex items-center gap-1 text-xs bg-emerald-500/15 text-emerald-400 px-2.5 py-1 rounded-full font-medium">
                                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block" />
                                 Active
                               </span>
@@ -556,7 +556,7 @@ export default function CouponsPage() {
                                         </td>
                                         <td className="py-2 pr-4">
                                           {r.discountAmount != null ? (
-                                            <span className="text-emerald-700 font-mono font-medium">
+                                            <span className="text-emerald-400 font-mono font-medium">
                                               -{formatMoney(r.discountAmount)}
                                             </span>
                                           ) : (

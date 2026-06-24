@@ -309,17 +309,17 @@ export function GenerateAssetsDialog({ templateId, open, onClose }: GenerateAsse
           {state.done && state.summary && (
             <div className={`rounded-lg border px-3 py-3 space-y-1 ${
               (state.summary.failed ?? 0) > 0
-                ? "bg-amber-50 border-amber-200"
+                ? "bg-amber-500/10 border-amber-500/20"
                 : state.summary.processed === 0
-                  ? "bg-blue-50 border-blue-100"
-                  : "bg-green-50 border-green-200"
+                  ? "bg-[#0078D4]/10 border-[#0078D4]/20"
+                  : "bg-green-500/10 border-green-500/20"
             }`}>
               <p className={`text-sm font-semibold ${
                 (state.summary.failed ?? 0) > 0
-                  ? "text-amber-800"
+                  ? "text-amber-300"
                   : state.summary.processed === 0
-                    ? "text-blue-700"
-                    : "text-green-800"
+                    ? "text-blue-400"
+                    : "text-green-400"
               }`}>
                 {state.summary.processed === 0
                   ? "Nothing to generate"
@@ -344,7 +344,7 @@ export function GenerateAssetsDialog({ templateId, open, onClose }: GenerateAsse
           {/* ── Error ── */}
           {state.done && state.error && (
             <div className="rounded-lg border border-red-500/20 bg-red-500/10 px-3 py-3">
-              <p className="text-sm font-semibold text-red-700">Generation failed</p>
+              <p className="text-sm font-semibold text-red-400">Generation failed</p>
               <p className="text-xs text-red-600 mt-0.5">{state.error}</p>
             </div>
           )}
@@ -354,7 +354,7 @@ export function GenerateAssetsDialog({ templateId, open, onClose }: GenerateAsse
           <button
             onClick={onClose}
             disabled={!state.done}
-            className="px-4 py-2 text-sm font-medium rounded-lg border border-[#30363D] text-[#E6EDF3] hover:bg-gray-50 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+            className="px-4 py-2 text-sm font-medium rounded-lg border border-[#30363D] text-[#E6EDF3] hover:bg-[#30363D] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
           >
             {state.done ? "Close" : "Running…"}
           </button>

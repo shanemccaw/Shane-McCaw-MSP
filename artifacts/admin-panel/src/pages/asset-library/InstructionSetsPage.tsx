@@ -314,7 +314,7 @@ export default function InstructionSetsPage() {
                       <th className="px-4 py-3 w-28"/>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-gray-50">
+                  <tbody className="divide-y divide-[#30363D]">
                     {group.items.map(row => (
                       <tr key={row.id} className="hover:bg-[#1C2128]/50">
                         <td className="px-4 py-3 text-[#7D8590] font-mono text-xs">#{row.id}</td>

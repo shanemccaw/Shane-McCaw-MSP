@@ -316,7 +316,7 @@ export default function M365IntelligencePage() {
                   <th className="px-4 py-3" />
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-100">
+              <tbody className="divide-y divide-[#30363D]">
                 {filtered.length === 0 ? (
                   <tr>
                     <td colSpan={6} className="text-center py-10 text-sm text-[#7D8590]">
