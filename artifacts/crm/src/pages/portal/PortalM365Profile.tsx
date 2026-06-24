@@ -458,38 +458,6 @@ export default function PortalM365Profile() {
                   </div>
                 </CardSection>
 
-                <CardSection title="Engagement Details">
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <Field label="Decision Maker Name">
-                      <input {...register("decisionMakerName")} placeholder="John Doe" className={inputClass} />
-                    </Field>
-                    <Field label="Decision Maker Email">
-                      <input {...register("decisionMakerEmail")} type="email" placeholder="cto@acme.com" className={inputClass} />
-                    </Field>
-                    <Field label="Engagement Type">
-                      <input {...register("engagementType")} placeholder="e.g. Assessment, Deployment, Retainer" className={inputClass} />
-                    </Field>
-                    <Field label="Budget Range">
-                      <input {...register("budgetRange")} placeholder="e.g. $10k–$25k" className={inputClass} />
-                    </Field>
-                    <Field label="Engagement Start Date">
-                      <input {...register("engagementStartDate")} type="date" className={inputClass} />
-                    </Field>
-                    <Field label="Estimated Duration">
-                      <input {...register("estimatedDuration")} placeholder="e.g. 3 months, 6 weeks" className={inputClass} />
-                    </Field>
-                    <Field label="How did you hear about us?">
-                      <input {...register("referralSource")} placeholder="e.g. LinkedIn, Referral" className={inputClass} />
-                    </Field>
-                  </div>
-                  <Field label="Business Goals">
-                    <textarea {...register("businessGoals")} placeholder="Describe what you'd like to achieve with this engagement…" rows={3} className={`${inputClass} resize-none`} />
-                  </Field>
-                  <Field label="Known Blockers">
-                    <textarea {...register("knownBlockers")} placeholder="Any known blockers, constraints, or concerns…" rows={2} className={`${inputClass} resize-none`} />
-                  </Field>
-                </CardSection>
-
                 {saveButton}
               </div>
             )}
