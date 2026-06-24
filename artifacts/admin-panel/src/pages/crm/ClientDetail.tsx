@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback, useMemo } from "react";
 import { useParams, useLocation } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -977,33 +978,35 @@ export default function ClientDetailPage() {
           )}
 
           {/* AI Recommended Projects */}
-          <div className="bg-[#161B22] border border-border rounded-xl overflow-hidden">
-            <div className="px-5 py-3.5 bg-[#1C2128] border-b border-border flex items-center gap-2">
-              <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">AI Recommended Projects</p>
-              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-[#0078D4]/15 text-[#0078D4] border border-[#0078D4]/20">Preview</span>
-            </div>
-            <div className="divide-y divide-border">
-              {aiRecommended.map((rec, i) => (
-                <div key={i} className="px-5 py-3.5 hover:bg-[#1C2128] transition-colors">
-                  <div className="flex items-start gap-3">
-                    <div className="w-7 h-7 rounded-lg bg-[#0078D4]/10 flex items-center justify-center flex-shrink-0">
-                      <span className="material-symbols-outlined text-sm text-[#0078D4]" style={{ fontVariationSettings: "'FILL' 0" }}>{rec.icon}</span>
+          {aiRecommended.length > 0 && (
+            <div className="bg-[#161B22] border border-border rounded-xl overflow-hidden">
+              <div className="px-5 py-3.5 bg-[#1C2128] border-b border-border flex items-center gap-2">
+                <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">AI Recommended Projects</p>
+                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-[#0078D4]/15 text-[#0078D4] border border-[#0078D4]/20">Preview</span>
+              </div>
+              <div className="divide-y divide-border">
+                {aiRecommended.map((rec, i) => (
+                  <div key={i} className="px-5 py-3.5 hover:bg-[#1C2128] transition-colors">
+                    <div className="flex items-start gap-3">
+                      <div className="w-7 h-7 rounded-lg bg-[#0078D4]/10 flex items-center justify-center flex-shrink-0">
+                        <span className="material-symbols-outlined text-sm text-[#0078D4]" style={{ fontVariationSettings: "'FILL' 0" }}>{rec.icon}</span>
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-semibold text-[#E6EDF3]">{rec.title}</p>
+                        <p className="text-xs text-muted-foreground mt-0.5">{rec.reason}</p>
+                      </div>
+                      <button
+                        onClick={() => toast({ title: "AI Recommendation", description: `Create a project: ${rec.title}` })}
+                        className="text-[10px] font-semibold text-[#0078D4] hover:underline flex-shrink-0"
+                      >
+                        Create →
+                      </button>
                     </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-semibold text-[#E6EDF3]">{rec.title}</p>
-                      <p className="text-xs text-muted-foreground mt-0.5">{rec.reason}</p>
-                    </div>
-                    <button
-                      onClick={() => toast({ title: "AI Recommendation", description: `Create a project: ${rec.title}` })}
-                      className="text-[10px] font-semibold text-[#0078D4] hover:underline flex-shrink-0"
-                    >
-                      Create →
-                    </button>
                   </div>
-                </div>
-              ))}
+                ))}
+              </div>
             </div>
-          </div>
+          )}
         </div>
 
         {/* ── RIGHT COLUMN: Kanban Buckets + Inbox + Activity Feed ─────────── */}
@@ -1539,7 +1542,7 @@ export default function ClientDetailPage() {
         >
           <div className="flex items-center gap-3">
             <p className="text-sm font-bold text-[#E6EDF3]">Assessments</p>
-            {quiz && <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-400 border border-emerald-500/20">1 completed</span>}
+            {quizzes.length > 0 && <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-400 border border-emerald-500/20">{quizzes.length} completed</span>}
           </div>
           <svg className={`w-4 h-4 text-muted-foreground transition-transform ${showAssessments ? "rotate-180" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" /></svg>
         </button>
@@ -1548,8 +1551,9 @@ export default function ClientDetailPage() {
           <div className="border-t border-border">
             {quizzes.length > 0 ? (
               <div className="p-5 space-y-5">
-                {/* One card per quiz record */}
-                {quizzes.map((q, idx) => {
+                {/* Latest quiz record only */}
+                {(() => {
+                  const q = quizzes[0];
                   const qcs = (q.categoryScores ?? {}) as Record<string, number>;
                   const qEntries = Object.entries(qcs).filter(([, v]) => typeof v === "number") as [string, number][];
                   const sortedQ = [...qEntries].sort(([, a], [, b]) => a - b);
@@ -1558,7 +1562,7 @@ export default function ClientDetailPage() {
                     q.quizType === "governance" ? "Governance Maturity Assessment" :
                     "Copilot Readiness Assessment";
                   return (
-                    <div key={q.id ?? idx} className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                       {/* Score card */}
                       <div className="bg-[#1C2128] border border-border rounded-xl p-5">
                         <div className="flex items-start justify-between mb-3">
@@ -1639,27 +1643,50 @@ export default function ClientDetailPage() {
                           </p>
                         </div>
 
-                        {idx === 0 && (
-                          <div className="space-y-2">
-                            <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Tenant M365 Profile</p>
-                            {[
-                              { label: "Industry", value: mpIndustry },
-                              { label: "Employees", value: mpEmployees },
-                              { label: "Tenant Domain", value: mpDomain },
-                              { label: "IT Contact", value: mpITContact },
-                              { label: "License SKUs", value: mpLicenses },
-                            ].filter(({ value }) => value).map(({ label, value }) => (
-                              <div key={label} className="flex justify-between text-[10px]">
-                                <span className="text-muted-foreground">{label}</span>
-                                <span className="text-[#E6EDF3] font-medium max-w-[140px] text-right truncate">{value}</span>
-                              </div>
-                            ))}
-                          </div>
-                        )}
+                        <div className="space-y-2">
+                          <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Tenant M365 Profile</p>
+                          {[
+                            { label: "Industry", value: mpIndustry },
+                            { label: "Employees", value: mpEmployees },
+                            { label: "Tenant Domain", value: mpDomain },
+                            { label: "IT Contact", value: mpITContact },
+                            { label: "License SKUs", value: mpLicenses },
+                          ].filter(({ value }) => value).map(({ label, value }) => (
+                            <div key={label} className="flex justify-between text-[10px]">
+                              <span className="text-muted-foreground">{label}</span>
+                              <span className="text-[#E6EDF3] font-medium max-w-[140px] text-right truncate">{value}</span>
+                            </div>
+                          ))}
+                        </div>
                       </div>
                     </div>
                   );
-                })}
+                })()}
+
+                {/* Score History chart — only shown when ≥2 assessments exist */}
+                {quizzes.length >= 2 && (
+                  <div className="bg-[#1C2128] border border-border rounded-xl p-5">
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-4">Score History</p>
+                    <ResponsiveContainer width="100%" height={160}>
+                      <LineChart
+                        data={[...quizzes].reverse().map(q => ({
+                          date: new Date(q.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric" }),
+                          score: q.totalScore,
+                        }))}
+                        margin={{ top: 4, right: 8, left: -20, bottom: 0 }}
+                      >
+                        <CartesianGrid strokeDasharray="3 3" stroke="#30363D" />
+                        <XAxis dataKey="date" tick={{ fill: "#7D8590", fontSize: 10 }} axisLine={false} tickLine={false} />
+                        <YAxis domain={[0, 100]} tick={{ fill: "#7D8590", fontSize: 10 }} axisLine={false} tickLine={false} />
+                        <Tooltip
+                          contentStyle={{ backgroundColor: "#1C2128", border: "1px solid #30363D", borderRadius: "8px", fontSize: 12, color: "#E6EDF3" }}
+                          cursor={{ stroke: "#30363D" }}
+                        />
+                        <Line type="monotone" dataKey="score" name="Score" stroke="#0078D4" strokeWidth={2} dot={{ fill: "#0078D4", r: 4, strokeWidth: 0 }} activeDot={{ r: 6, fill: "#0078D4" }} />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  </div>
+                )}
               </div>
             ) : (
               <div className="p-8 text-center">
@@ -1815,12 +1842,13 @@ export default function ClientDetailPage() {
               )}
             </div>
 
-            {/* Azure Credential */}
+            {/* Azure App Registration / Script Runner Credentials — unified panel */}
             <div>
+              {/* Panel header */}
               <div className="flex items-center justify-between px-5 py-3.5 bg-[#1C2128]">
                 <div>
-                  <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Script Runner · Azure Tenant Credential</p>
-                  <p className="text-[11px] text-muted-foreground mt-0.5">App Registration for running runbooks in this client's M365 tenant</p>
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Azure App Registration / Script Runner Credentials</p>
+                  <p className="text-[11px] text-muted-foreground mt-0.5">Admin credential for runbooks · client-submitted app registration</p>
                 </div>
                 {!editingCred && !credLoading && (
                   azureCred ? (
@@ -1836,10 +1864,15 @@ export default function ClientDetailPage() {
                   )
                 )}
               </div>
+
+              {/* ── Admin credential (Script Runner) ── */}
+              <div className="px-5 pt-4 pb-1">
+                <p className="text-[10px] font-bold uppercase tracking-wider text-[#7D8590] mb-3">Admin Credential — Script Runner</p>
+              </div>
               {credLoading ? (
-                <div className="p-5 flex items-center gap-2 text-sm text-[#7D8590]"><div className="w-4 h-4 border-2 border-[#0078D4] border-t-transparent rounded-full animate-spin" />Loading…</div>
+                <div className="px-5 pb-4 flex items-center gap-2 text-sm text-[#7D8590]"><div className="w-4 h-4 border-2 border-[#0078D4] border-t-transparent rounded-full animate-spin" />Loading…</div>
               ) : editingCred ? (
-                <form onSubmit={handleSaveCred} className="p-5 space-y-4">
+                <form onSubmit={handleSaveCred} className="px-5 pb-5 space-y-4">
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div><label className={labelCls}>Display Name *</label><input required className={inputCls} value={credForm.displayName} onChange={e => setCredForm(f => ({ ...f, displayName: e.target.value }))} /></div>
                     <div><label className={labelCls}>Credential Type</label><select className={inputCls} value={credForm.credentialType} onChange={e => setCredForm(f => ({ ...f, credentialType: e.target.value as "secret" | "certificate" }))}><option value="secret">Client Secret</option><option value="certificate">Certificate</option></select></div>
@@ -1864,7 +1897,7 @@ export default function ClientDetailPage() {
                   </div>
                 </form>
               ) : azureCred ? (
-                <div className="p-5">
+                <div className="px-5 pb-4">
                   {azureCred.expiresOn && daysUntil(azureCred.expiresOn) <= EXPIRY_WARN_DAYS && (
                     <div className={`flex items-start gap-3 rounded-lg border px-4 py-3 mb-4 ${daysUntil(azureCred.expiresOn) <= 14 ? "bg-red-500/10 border-red-500/20" : "bg-amber-500/10 border-amber-500/20"}`}>
                       <svg className={`w-4 h-4 flex-shrink-0 mt-0.5 ${daysUntil(azureCred.expiresOn) <= 14 ? "text-red-500" : "text-amber-500"}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
@@ -1881,20 +1914,17 @@ export default function ClientDetailPage() {
                   </div>
                 </div>
               ) : (
-                <div className="p-5"><p className="text-sm text-muted-foreground">No Azure credential linked. Add one to enable Script Runner for this client.</p></div>
+                <div className="px-5 pb-4"><p className="text-sm text-muted-foreground">No admin credential linked. Add one to enable Script Runner for this client.</p></div>
               )}
-            </div>
 
-            {/* App Registration */}
-            <div>
-              <div className="px-5 py-3.5 bg-[#1C2128]">
-                <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Automation Credentials · Client App Registration</p>
-                <p className="text-[11px] text-muted-foreground mt-0.5">Submitted by the client via the portal</p>
+              {/* ── Client App Registration ── */}
+              <div className="border-t border-border px-5 pt-4 pb-1">
+                <p className="text-[10px] font-bold uppercase tracking-wider text-[#7D8590] mb-3">Client App Registration — Submitted via Portal</p>
               </div>
               {appRegLoading ? (
-                <div className="p-5 flex items-center gap-2 text-sm text-[#7D8590]"><div className="w-4 h-4 border-2 border-[#0078D4] border-t-transparent rounded-full animate-spin" />Loading…</div>
+                <div className="px-5 pb-5 flex items-center gap-2 text-sm text-[#7D8590]"><div className="w-4 h-4 border-2 border-[#0078D4] border-t-transparent rounded-full animate-spin" />Loading…</div>
               ) : appReg ? (
-                <div className="p-5 space-y-4">
+                <div className="px-5 pb-5 space-y-4">
                   <div className="flex items-center gap-3 flex-wrap">
                     {appReg.status === "verified" ? (
                       <span className="inline-flex items-center gap-1.5 text-xs font-bold px-2.5 py-1 rounded-full bg-green-500/15 text-green-400 border border-green-500/20"><svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>Verified</span>
@@ -1923,7 +1953,7 @@ export default function ClientDetailPage() {
                   </div>
                 </div>
               ) : (
-                <div className="p-5"><p className="text-sm text-muted-foreground">No App Registration submitted yet. The client submits their credentials via the portal during onboarding.</p></div>
+                <div className="px-5 pb-5"><p className="text-sm text-muted-foreground">No App Registration submitted yet. The client submits their credentials via the portal during onboarding.</p></div>
               )}
             </div>
           </div>
