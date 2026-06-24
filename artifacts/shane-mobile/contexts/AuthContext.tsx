@@ -1,4 +1,4 @@
-import AsyncStorage from "@react-native-async-storage/async-storage";
+import * as SecureStore from "expo-secure-store";
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 
 const BASE_URL = `https://${process.env.EXPO_PUBLIC_DOMAIN}`;
@@ -25,23 +25,25 @@ interface AuthContextValue extends AuthState {
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
-const KEY_EMAIL = "auth_email";
-const KEY_PASSWORD = "auth_password";
-const KEY_TOKEN = "auth_token";
+const KEY_REFRESH_TOKEN = "auth_refresh_token";
+const KEY_USER = "auth_user";
 
-async function storeGet(key: string): Promise<string | null> {
-  return AsyncStorage.getItem(key);
+async function secureGet(key: string): Promise<string | null> {
+  return SecureStore.getItemAsync(key);
 }
 
-async function storeSet(key: string, value: string): Promise<void> {
-  return AsyncStorage.setItem(key, value);
+async function secureSet(key: string, value: string): Promise<void> {
+  return SecureStore.setItemAsync(key, value);
 }
 
-async function storeDel(key: string): Promise<void> {
-  return AsyncStorage.removeItem(key);
+async function secureDel(key: string): Promise<void> {
+  return SecureStore.deleteItemAsync(key);
 }
 
-async function doLogin(email: string, password: string): Promise<{ accessToken: string; user: AuthUser }> {
+async function doLogin(
+  email: string,
+  password: string,
+): Promise<{ accessToken: string; refreshToken: string; user: AuthUser }> {
   const res = await fetch(`${BASE_URL}/api/auth/login`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -51,11 +53,38 @@ async function doLogin(email: string, password: string): Promise<{ accessToken: 
     const err = (await res.json().catch(() => ({ error: "Login failed" }))) as { error?: string };
     throw new Error(err.error ?? "Login failed");
   }
-  const data = await res.json() as { accessToken?: string; user?: AuthUser; mfaRequired?: boolean };
-  if (data.mfaRequired || !data.accessToken || !data.user) {
+  const data = (await res.json()) as {
+    accessToken?: string;
+    refreshToken?: string;
+    user?: AuthUser;
+    mfaRequired?: boolean;
+  };
+  if (data.mfaRequired || !data.accessToken || !data.refreshToken || !data.user) {
     throw new Error("Login requires additional verification. Please use the web portal.");
   }
-  return data as { accessToken: string; user: AuthUser };
+  return data as { accessToken: string; refreshToken: string; user: AuthUser };
+}
+
+async function doRefresh(
+  refreshToken: string,
+): Promise<{ accessToken: string; refreshToken: string; user: AuthUser }> {
+  const res = await fetch(`${BASE_URL}/api/auth/refresh`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ refreshToken }),
+  });
+  if (!res.ok) {
+    throw new Error("Refresh failed");
+  }
+  const data = (await res.json()) as {
+    accessToken?: string;
+    refreshToken?: string;
+    user?: AuthUser;
+  };
+  if (!data.accessToken || !data.refreshToken || !data.user) {
+    throw new Error("Invalid refresh response");
+  }
+  return data as { accessToken: string; refreshToken: string; user: AuthUser };
 }
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
@@ -66,26 +95,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     sessionExpired: false,
   });
   const tokenRef = useRef<string | null>(null);
-  const credRef = useRef<{ email: string; password: string } | null>(null);
-  const reloggingRef = useRef(false);
+  const refreshTokenRef = useRef<string | null>(null);
+  const refreshingRef = useRef(false);
   tokenRef.current = state.accessToken;
 
   useEffect(() => {
     (async () => {
       try {
-        const email = await storeGet(KEY_EMAIL);
-        const password = await storeGet(KEY_PASSWORD);
-        if (email && password) {
-          credRef.current = { email, password };
-          const data = await doLogin(email, password);
+        const storedRefresh = await secureGet(KEY_REFRESH_TOKEN);
+        if (storedRefresh) {
+          const data = await doRefresh(storedRefresh);
           if (data.user.role !== "admin") throw new Error("Not an admin");
           tokenRef.current = data.accessToken;
-          await storeSet(KEY_TOKEN, data.accessToken);
+          refreshTokenRef.current = data.refreshToken;
+          await secureSet(KEY_REFRESH_TOKEN, data.refreshToken);
+          await secureSet(KEY_USER, JSON.stringify(data.user));
           setState({ user: data.user, accessToken: data.accessToken, isLoading: false, sessionExpired: false });
         } else {
           setState({ user: null, accessToken: null, isLoading: false, sessionExpired: false });
         }
       } catch {
+        await secureDel(KEY_REFRESH_TOKEN).catch(() => null);
+        await secureDel(KEY_USER).catch(() => null);
         setState({ user: null, accessToken: null, isLoading: false, sessionExpired: false });
       }
     })();
@@ -94,22 +125,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const login = useCallback(async (email: string, password: string) => {
     const data = await doLogin(email, password);
     if (data.user.role !== "admin") throw new Error("Admin credentials required");
-    credRef.current = { email, password };
     tokenRef.current = data.accessToken;
-    await storeSet(KEY_EMAIL, email);
-    await storeSet(KEY_PASSWORD, password);
-    await storeSet(KEY_TOKEN, data.accessToken);
+    refreshTokenRef.current = data.refreshToken;
+    await secureSet(KEY_REFRESH_TOKEN, data.refreshToken);
+    await secureSet(KEY_USER, JSON.stringify(data.user));
     setState({ user: data.user, accessToken: data.accessToken, isLoading: false, sessionExpired: false });
   }, []);
 
   const logout = useCallback(async () => {
-    credRef.current = null;
     tokenRef.current = null;
-    reloggingRef.current = false;
+    refreshTokenRef.current = null;
+    refreshingRef.current = false;
     await Promise.allSettled([
-      storeDel(KEY_EMAIL),
-      storeDel(KEY_PASSWORD),
-      storeDel(KEY_TOKEN),
+      secureDel(KEY_REFRESH_TOKEN),
+      secureDel(KEY_USER),
     ]);
     setState({ user: null, accessToken: null, isLoading: false, sessionExpired: false });
   }, []);
@@ -125,13 +154,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     let res = await fetch(`${BASE_URL}${path}`, { ...init, headers });
 
-    if (res.status === 401 && credRef.current && !reloggingRef.current) {
-      reloggingRef.current = true;
+    if (res.status === 401 && refreshTokenRef.current && !refreshingRef.current) {
+      refreshingRef.current = true;
       try {
-        const data = await doLogin(credRef.current.email, credRef.current.password);
+        const data = await doRefresh(refreshTokenRef.current);
         tokenRef.current = data.accessToken;
-        await storeSet(KEY_TOKEN, data.accessToken);
+        refreshTokenRef.current = data.refreshToken;
+        await secureSet(KEY_REFRESH_TOKEN, data.refreshToken);
+        await secureSet(KEY_USER, JSON.stringify(data.user));
         setState((s) => ({ ...s, accessToken: data.accessToken, user: data.user, sessionExpired: false }));
+
         const retryHeaders = new Headers(init?.headers);
         retryHeaders.set("Authorization", `Bearer ${data.accessToken}`);
         if (typeof init?.body === "string" && !retryHeaders.has("Content-Type")) {
@@ -139,10 +171,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
         res = await fetch(`${BASE_URL}${path}`, { ...init, headers: retryHeaders });
       } catch {
-        credRef.current = null;
+        tokenRef.current = null;
+        refreshTokenRef.current = null;
+        await Promise.allSettled([secureDel(KEY_REFRESH_TOKEN), secureDel(KEY_USER)]);
         setState({ user: null, accessToken: null, isLoading: false, sessionExpired: true });
       } finally {
-        reloggingRef.current = false;
+        refreshingRef.current = false;
       }
     }
 

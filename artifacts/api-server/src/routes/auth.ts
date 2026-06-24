@@ -122,11 +122,15 @@ router.post("/auth/login", loginLimiter, async (req: Request, res: Response) => 
   const refreshToken = jwt.sign({ id: user.id }, secret, { expiresIn: `${REFRESH_TOKEN_TTL_DAYS}d` });
 
   res.cookie("refreshToken", refreshToken, cookieOpts());
-  res.json({ accessToken, user: payload });
+  // Also include refreshToken in body so mobile clients (which can't use cookies) can store it
+  res.json({ accessToken, refreshToken, user: payload });
 });
 
 router.post("/auth/refresh", async (req: Request, res: Response) => {
-  const token = req.cookies?.refreshToken as string | undefined;
+  // Accept refresh token from cookie (web clients) or request body (mobile clients)
+  const token = (req.cookies?.refreshToken as string | undefined)
+    ?? (req.body as { refreshToken?: string })?.refreshToken;
+
   if (!token) {
     res.status(401).json({ error: "No refresh token" });
     return;
@@ -156,8 +160,9 @@ router.post("/auth/refresh", async (req: Request, res: Response) => {
   const accessToken = jwt.sign(payload, secret, { expiresIn: ACCESS_TOKEN_TTL });
   const newRefreshToken = jwt.sign({ id: user.id }, secret, { expiresIn: `${REFRESH_TOKEN_TTL_DAYS}d` });
 
+  // Set cookie for web clients; also return token in body for mobile clients
   res.cookie("refreshToken", newRefreshToken, cookieOpts());
-  res.json({ accessToken, user: payload });
+  res.json({ accessToken, refreshToken: newRefreshToken, user: payload });
 });
 
 // ─── Registration disabled — accounts are created by purchases only ───────────
