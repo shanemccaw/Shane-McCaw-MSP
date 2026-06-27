@@ -6164,11 +6164,20 @@ function CampaignBuilderWizard({ fetchWithAuth }: { fetchWithAuth: (url: string,
       const campaign = await cr.json() as Campaign;
       setSavedCampaignId(campaign.id);
 
-      await fetchWithAuth(`${API}/admin/marketing/campaigns/save-assets`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ campaignId: campaign.id, assets: previewAssets }),
-      });
+      await Promise.all([
+        fetchWithAuth(`${API}/admin/marketing/campaigns/save-assets`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ campaignId: campaign.id, assets: previewAssets }),
+        }),
+        offer.trim()
+          ? fetchWithAuth(`${API}/admin/marketing/offers`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ name: offer.trim(), goal, audience, campaignId: campaign.id }),
+            })
+          : Promise.resolve(),
+      ]);
 
       setCampaigns(prev => [campaign, ...prev]);
       setStep(5);
