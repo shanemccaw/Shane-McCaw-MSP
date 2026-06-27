@@ -2148,7 +2148,7 @@ Generate a landing page in JSON:
   ],
   "cta": { "buttonText": "button label", "href": "/contact", "subtext": "optional subtext under button" }
 }`;
-    const msg = await anthropic.messages.create({ model: "claude-haiku-4-5", max_tokens: 900, messages: [{ role: "user", content: prompt }] });
+    const msg = await anthropic.messages.create({ model: "claude-haiku-4-5", max_tokens: 2000, messages: [{ role: "user", content: prompt }] });
     const raw = msg.content[0]?.type === "text" ? msg.content[0].text : "{}";
     const schema = z.object({
       title: z.string(), headline: z.string(), subheadline: z.string(),

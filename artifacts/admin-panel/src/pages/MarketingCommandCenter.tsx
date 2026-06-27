@@ -5514,7 +5514,10 @@ function LandingCopyPanel({
         title?: string; headline?: string; subheadline?: string;
         valuePropBlocks?: unknown[]; socialProof?: unknown[];
         cta?: { buttonText: string; href: string; subtext?: string };
-      };
+      } | AiErrorShape;
+      if (isAiError(lpData)) throw new Error(lpData.message || "AI generation failed — please try again");
+      const hasContent = lpData.headline?.trim() || (lpData.valuePropBlocks?.length ?? 0) > 0;
+      if (!hasContent) throw new Error("AI returned empty content — please try again");
       const lpTitle = lpData.title?.trim()
         || lpData.headline?.trim()
         || campaign.name
