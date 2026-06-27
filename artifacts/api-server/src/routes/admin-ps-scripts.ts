@@ -11,15 +11,40 @@ const router = Router();
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function extractJson(text: string): unknown {
-  const fenceMatch = text.match(/```(?:json)?\s*([\s\S]*?)```/);
-  if (fenceMatch) {
-    try { return JSON.parse(fenceMatch[1].trim()); } catch { /* fall through */ }
+  // 1. Require the explicit ```json fence — most reliable since the prompt mandates it.
+  const jsonFence = text.match(/```json\s*([\s\S]*?)```/i);
+  if (jsonFence) {
+    try { return JSON.parse(jsonFence[1].trim()); } catch { /* fall through */ }
   }
-  const braceStart = text.indexOf("{");
-  const braceEnd = text.lastIndexOf("}");
-  if (braceStart !== -1 && braceEnd > braceStart) {
-    try { return JSON.parse(text.slice(braceStart, braceEnd + 1)); } catch { /* fall through */ }
+
+  // 2. Try every fenced block in document order; pick the first that parses as a
+  //    plain JSON object (not an array or primitive). This handles the case where
+  //    the model omits the "json" language tag.
+  const anyFenceRe = /```[^\n`]*\n?([\s\S]*?)```/g;
+  let m: RegExpExecArray | null;
+  while ((m = anyFenceRe.exec(text)) !== null) {
+    try {
+      const v = JSON.parse(m[1].trim());
+      if (v !== null && typeof v === "object" && !Array.isArray(v)) return v;
+    } catch { /* continue */ }
   }
+
+  // 3. Last-resort backward scan: find the last '}' and walk left looking for the
+  //    matching opening '{'. Scanning from the END increases the chance of finding
+  //    the permissions JSON (which appears after the script in Claude's output)
+  //    rather than a PowerShell block.
+  let end = text.lastIndexOf("}");
+  while (end !== -1) {
+    const start = text.lastIndexOf("{", end);
+    if (start === -1) break;
+    const slice = text.slice(start, end + 1);
+    try {
+      const v = JSON.parse(slice);
+      if (v !== null && typeof v === "object" && !Array.isArray(v)) return v;
+    } catch { /* keep scanning */ }
+    end = text.lastIndexOf("}", start - 1);
+  }
+
   return null;
 }
 
