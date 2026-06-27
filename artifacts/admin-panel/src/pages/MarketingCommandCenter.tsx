@@ -4756,6 +4756,258 @@ interface CampaignDetailData {
   emailEvents: Array<{ id: number; subject: string | null; recipient: string | null; eventType: string; occurredAt: string }>;
 }
 
+// ─── Asset Preview Components ─────────────────────────────────────────────────
+
+function RawToggle({ content }: { content: string }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="mt-3">
+      <button onClick={() => setOpen(o => !o)} className="text-[10px] text-[#484F58] hover:text-[#7D8590] transition-colors">
+        {open ? "Hide raw ▲" : "View raw ▼"}
+      </button>
+      {open && (
+        <div className="mt-2 space-y-1">
+          <div className="flex justify-end"><CopyButton text={content} /></div>
+          <pre className="text-[10px] text-[#7D8590] whitespace-pre-wrap font-mono bg-[#0D1117] border border-[#30363D] rounded-lg p-3">{content}</pre>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function GoogleAdPreview({ asset }: { asset: CampaignAsset }) {
+  const variations = asset.metadata?.variations ?? [];
+  if (variations.length === 0) return <GenericAssetPreview asset={asset} />;
+  return (
+    <div className="space-y-4">
+      {variations.map((v, i) => (
+        <div key={i} className="bg-[#0D1117] border border-[#30363D] rounded-xl p-4">
+          <div className="flex items-center gap-1.5 mb-2">
+            <span className="text-[9px] border border-[#484F58] text-[#7D8590] px-1 py-px rounded">Ad</span>
+            <span className="text-[10px] text-emerald-500 font-mono">shanemccaw.com</span>
+          </div>
+          <p className="text-sm font-semibold text-[#58A6FF] leading-tight">{v.headline}</p>
+          <p className="text-xs text-[#8B949E] mt-1 leading-relaxed">{v.description}</p>
+          {v.cta && <p className="mt-2 text-[10px] text-[#58A6FF] font-medium">{v.cta} →</p>}
+          {v.url && <p className="mt-1 text-[9px] text-emerald-600 font-mono truncate">{v.url}</p>}
+          <div className="mt-3 flex justify-end">
+            <CopyButton text={`${v.headline}\n${v.description}${v.cta ? `\nCTA: ${v.cta}` : ""}${v.url ? `\nURL: ${v.url}` : ""}`} />
+          </div>
+        </div>
+      ))}
+      <RawToggle content={asset.content} />
+    </div>
+  );
+}
+
+function LinkedInAdPreview({ asset }: { asset: CampaignAsset }) {
+  const variations = asset.metadata?.variations ?? [];
+  if (variations.length === 0) return <GenericAssetPreview asset={asset} />;
+  return (
+    <div className="space-y-4">
+      {variations.map((v, i) => (
+        <div key={i} className="bg-[#161B22] border border-[#30363D] rounded-xl overflow-hidden">
+          <div className="p-3 flex items-center gap-2 border-b border-[#30363D]">
+            <div className="w-9 h-9 rounded-full bg-[#0078D4] flex items-center justify-center text-white text-xs font-bold flex-shrink-0">SM</div>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-1.5">
+                <span className="text-xs font-semibold text-[#E6EDF3]">Shane McCaw</span>
+                <span className="text-[9px] text-[#484F58] border border-[#30363D] px-1 py-px rounded">Sponsored</span>
+              </div>
+              <p className="text-[10px] text-[#7D8590]">Shane McCaw Consulting</p>
+            </div>
+          </div>
+          <div className="h-20 bg-[#1C2128] flex items-center justify-center text-[#484F58] text-xs border-b border-[#30363D]">
+            [Ad Creative — 1200×627]
+          </div>
+          <div className="p-3 space-y-1.5">
+            <p className="text-sm font-semibold text-[#E6EDF3] leading-tight">{v.headline}</p>
+            <p className="text-xs text-[#7D8590] leading-relaxed">{v.description}</p>
+            {v.cta && (
+              <div className="mt-2">
+                <span className="text-[10px] px-3 py-1 rounded border border-[#484F58] text-[#C9D1D9] font-semibold">{v.cta}</span>
+              </div>
+            )}
+          </div>
+          {v.url && <div className="px-3 pb-1"><p className="text-[9px] text-emerald-600 font-mono truncate">{v.url}</p></div>}
+          <div className="px-3 pb-3 flex justify-end">
+            <CopyButton text={`${v.headline}\n${v.description}${v.cta ? `\nCTA: ${v.cta}` : ""}${v.url ? `\nURL: ${v.url}` : ""}`} />
+          </div>
+        </div>
+      ))}
+      <RawToggle content={asset.content} />
+    </div>
+  );
+}
+
+function AdVariationPreview({ asset, label }: { asset: CampaignAsset; label: string }) {
+  const variations = asset.metadata?.variations ?? [];
+  if (variations.length === 0) return <GenericAssetPreview asset={asset} />;
+  return (
+    <div className="space-y-3">
+      {variations.map((v, i) => (
+        <div key={i} className="bg-[#0D1117] border border-[#30363D] rounded-xl p-4 space-y-2">
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] text-[#484F58] uppercase tracking-wide font-semibold">{label} · Variation {i + 1}</span>
+            <CopyButton text={`${v.headline}\n${v.description}${v.cta ? `\nCTA: ${v.cta}` : ""}${v.url ? `\nURL: ${v.url}` : ""}`} />
+          </div>
+          <p className="text-sm font-semibold text-[#E6EDF3] leading-tight">{v.headline}</p>
+          <p className="text-xs text-[#8B949E] leading-relaxed">{v.description}</p>
+          {v.cta && <p className="text-[10px] text-[#58A6FF] font-semibold">{v.cta} →</p>}
+          {v.url && <p className="text-[9px] text-emerald-500 font-mono truncate">{v.url}</p>}
+        </div>
+      ))}
+      <RawToggle content={asset.content} />
+    </div>
+  );
+}
+
+function EmailPreview({ asset }: { asset: CampaignAsset }) {
+  const subject = parseSubjectFromContent(asset.content);
+  const body = subject ? asset.content.replace(/^SUBJECT:\s*.+\r?\n?/im, "").trim() : asset.content;
+  return (
+    <div className="bg-[#0D1117] border border-[#30363D] rounded-xl overflow-hidden">
+      <div className="bg-[#1C2128] px-4 py-2 border-b border-[#30363D] space-y-1">
+        <div className="flex items-start gap-2 text-[10px]">
+          <span className="text-[#484F58] uppercase tracking-wide w-14 flex-shrink-0 mt-px">From</span>
+          <span className="text-[#C9D1D9]">Shane McCaw &lt;shane@shanemccaw.com&gt;</span>
+        </div>
+        <div className="flex items-start gap-2 text-[10px]">
+          <span className="text-[#484F58] uppercase tracking-wide w-14 flex-shrink-0 mt-px">Subject</span>
+          <span className="text-[#E6EDF3] font-semibold">{subject || asset.title}</span>
+        </div>
+      </div>
+      <div className="p-4">
+        <pre className="text-xs text-[#C9D1D9] whitespace-pre-wrap font-sans leading-relaxed">{body}</pre>
+      </div>
+      <div className="px-4 py-2 border-t border-[#30363D] flex items-center justify-between">
+        <p className="text-[9px] text-[#484F58]">Unsubscribe · View in browser</p>
+        <CopyButton text={asset.content} />
+      </div>
+    </div>
+  );
+}
+
+function SocialPostPreview({ asset, handle = "@shanemccaw" }: { asset: CampaignAsset; handle?: string }) {
+  return (
+    <div className="bg-[#0D1117] border border-[#30363D] rounded-xl p-4 space-y-3">
+      <div className="flex items-center gap-2">
+        <div className="w-9 h-9 rounded-full bg-[#0078D4] flex items-center justify-center text-white text-xs font-bold flex-shrink-0">SM</div>
+        <div>
+          <p className="text-xs font-semibold text-[#E6EDF3]">Shane McCaw</p>
+          <p className="text-[10px] text-[#484F58]">{handle}</p>
+        </div>
+      </div>
+      <p className="text-xs text-[#C9D1D9] leading-relaxed whitespace-pre-wrap">{asset.content}</p>
+      <div className="flex items-center gap-4 pt-2 border-t border-[#30363D] text-[10px] text-[#484F58]">
+        <span>👍 Like</span>
+        <span>💬 Comment</span>
+        <span>↗ Share</span>
+      </div>
+      <div className="flex justify-end"><CopyButton text={asset.content} /></div>
+    </div>
+  );
+}
+
+function BlogPostPreview({ asset }: { asset: CampaignAsset }) {
+  const lines = asset.content.split("\n").filter(Boolean);
+  const title = lines[0]?.replace(/^#+\s*/, "") ?? asset.title;
+  const excerpt = lines.slice(1, 5).join(" ").slice(0, 320);
+  return (
+    <div className="bg-[#0D1117] border border-[#30363D] rounded-xl p-5 space-y-3">
+      <div className="space-y-1">
+        <p className="text-[10px] text-[#58A6FF] uppercase tracking-wide font-semibold">Blog Post</p>
+        <h3 className="text-base font-bold text-[#E6EDF3] leading-snug">{title}</h3>
+      </div>
+      <p className="text-xs text-[#8B949E] leading-relaxed">{excerpt}{excerpt.length >= 320 ? "…" : ""}</p>
+      <div className="flex items-center justify-between pt-2 border-t border-[#30363D]">
+        <p className="text-[10px] text-[#484F58]">Shane McCaw · shanemccaw.com</p>
+        <CopyButton text={asset.content} />
+      </div>
+    </div>
+  );
+}
+
+function GenericAssetPreview({ asset }: { asset: CampaignAsset }) {
+  return (
+    <div className="bg-[#0D1117] border border-[#30363D] rounded-xl p-4">
+      <div className="flex items-center justify-between mb-3">
+        <p className="text-[10px] text-[#484F58] uppercase tracking-wide font-semibold">{ASSET_TYPE_LABELS[asset.assetType] ?? asset.assetType}</p>
+        <CopyButton text={asset.content} />
+      </div>
+      <pre className="text-xs text-[#8B949E] whitespace-pre-wrap font-sans leading-relaxed">{asset.content}</pre>
+    </div>
+  );
+}
+
+const TAB_ICONS: Record<string, string> = {
+  ad_google: "🔍", ad_linkedin: "💼", ad_retargeting: "🎯", ad_creative: "🎨", landing_page: "📄",
+  email_sequence: "✉️", cold_email: "📧", followup: "🔁", newsletter: "📰",
+  social_post: "📲", linkedin_post: "💬", blog_post: "📝", follow_up_task: "✅",
+  lead_magnet: "🧲", seo_keywords: "🔑",
+};
+
+function CampaignAssetTabPanel({ asset }: { asset: CampaignAsset }) {
+  switch (asset.assetType) {
+    case "ad_google": return <GoogleAdPreview asset={asset} />;
+    case "ad_linkedin": return <LinkedInAdPreview asset={asset} />;
+    case "ad_retargeting": return <AdVariationPreview asset={asset} label="Retargeting" />;
+    case "ad_creative": return <AdVariationPreview asset={asset} label="Creative" />;
+    case "landing_page": return <AdVariationPreview asset={asset} label="Landing Page" />;
+    case "email_sequence":
+    case "cold_email":
+    case "followup":
+    case "newsletter": return <EmailPreview asset={asset} />;
+    case "social_post": return <SocialPostPreview asset={asset} />;
+    case "linkedin_post": return <SocialPostPreview asset={asset} handle="Shane McCaw on LinkedIn" />;
+    case "blog_post": return <BlogPostPreview asset={asset} />;
+    default: return <GenericAssetPreview asset={asset} />;
+  }
+}
+
+function CampaignAssetTabs({ assets }: { assets: CampaignAsset[] }) {
+  const presentTypes = Array.from(new Set(assets.map(a => a.assetType)));
+  const [activeTab, setActiveTab] = useState(presentTypes[0] ?? "");
+
+  if (assets.length === 0) {
+    return <p className="text-xs text-[#7D8590] bg-[#161B22] border border-[#30363D] rounded-xl px-4 py-3">No assets saved yet.</p>;
+  }
+
+  const tabAssets = assets.filter(a => a.assetType === activeTab);
+
+  return (
+    <div className="space-y-4">
+      <div className="flex gap-1.5 overflow-x-auto pb-1">
+        {presentTypes.map(type => {
+          const count = assets.filter(a => a.assetType === type).length;
+          const icon = TAB_ICONS[type] ?? "📄";
+          return (
+            <button
+              key={type}
+              onClick={() => setActiveTab(type)}
+              className={`flex-shrink-0 text-xs px-3 py-1.5 rounded-lg font-medium transition-colors flex items-center gap-1.5 ${activeTab === type ? "bg-[#0078D4]/20 text-[#58A6FF]" : "text-[#7D8590] hover:text-[#E6EDF3] border border-[#30363D] hover:border-[#484F58]"}`}
+            >
+              <span>{icon}</span>
+              <span>{ASSET_TYPE_LABELS[type] ?? type}</span>
+              {count > 1 && <span className="opacity-60 text-[9px]">×{count}</span>}
+            </button>
+          );
+        })}
+      </div>
+      <div className="space-y-5">
+        {tabAssets.map(asset => (
+          <div key={asset.id}>
+            {tabAssets.length > 1 && (
+              <p className="text-[10px] text-[#484F58] font-semibold mb-2">{asset.title}</p>
+            )}
+            <CampaignAssetTabPanel asset={asset} />
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 const ASSET_TYPE_LABELS: Record<string, string> = {
   landing_copy: "Landing Page Copy",
   email_sequence: "Email Sequence",
@@ -4792,12 +5044,14 @@ function CampaignDetailView({
   onBack,
   onCampaignUpdated,
   onGenerateMoreAssets,
+  onDelete,
 }: {
   campaignId: number;
   fetchWithAuth: (url: string, opts?: RequestInit) => Promise<Response>;
   onBack: () => void;
   onCampaignUpdated: (campaign: Campaign) => void;
   onGenerateMoreAssets: (campaign: Campaign) => void;
+  onDelete?: () => void;
 }) {
   const [data, setData] = useState<CampaignDetailData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -4813,11 +5067,9 @@ function CampaignDetailView({
   // Status edit
   const [statusSaving, setStatusSaving] = useState(false);
 
-  // Asset expand map
-  const [expandedAssets, setExpandedAssets] = useState<Record<number, boolean>>({});
-
-  // Asset filter: "all" | "ads" | specific assetType
-  const [assetFilter, setAssetFilter] = useState<string>("all");
+  // Delete
+  const [deleteConfirm, setDeleteConfirm] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   // Brief expand
   const [briefOpen, setBriefOpen] = useState(false);
@@ -4875,6 +5127,15 @@ function CampaignDetailView({
     } finally { setStatusSaving(false); }
   };
 
+  const handleDelete = async () => {
+    setDeleting(true);
+    try {
+      await fetchWithAuth(`${API}/admin/marketing/campaigns/${campaignId}`, { method: "DELETE" });
+      onDelete?.();
+      onBack();
+    } finally { setDeleting(false); }
+  };
+
   if (loading) {
     return (
       <div className="space-y-4">
@@ -4911,25 +5172,6 @@ function CampaignDetailView({
     completed: "bg-[#0078D4]/20 text-[#58A6FF]",
   };
 
-  // Build filter options from what's actually present
-  const presentTypes = Array.from(new Set(assets.map(a => a.assetType)));
-  const hasAds = presentTypes.some(t => AD_ASSET_TYPES.has(t));
-  const hasContent = presentTypes.some(t => !AD_ASSET_TYPES.has(t));
-
-  const filteredAssets = assets.filter(a => {
-    if (assetFilter === "all") return true;
-    if (assetFilter === "ads") return AD_ASSET_TYPES.has(a.assetType);
-    if (assetFilter === "content") return !AD_ASSET_TYPES.has(a.assetType);
-    return a.assetType === assetFilter;
-  });
-
-  // Group filtered assets by type
-  const assetsByType = filteredAssets.reduce<Record<string, CampaignAsset[]>>((acc, a) => {
-    const key = a.assetType;
-    if (!acc[key]) acc[key] = [];
-    acc[key].push(a);
-    return acc;
-  }, {});
 
   return (
     <div className="space-y-5">
@@ -4963,6 +5205,32 @@ function CampaignDetailView({
           >
             + Generate Assets
           </button>
+          {!deleteConfirm ? (
+            <button
+              onClick={() => setDeleteConfirm(true)}
+              className="text-[10px] px-2.5 py-1.5 rounded-lg border border-red-500/30 text-red-400 hover:bg-red-500/10 transition-colors"
+              title="Delete campaign"
+            >
+              🗑
+            </button>
+          ) : (
+            <div className="flex items-center gap-1.5 bg-red-500/10 border border-red-500/30 rounded-lg px-2 py-1">
+              <span className="text-[10px] text-red-400 font-semibold">Delete?</span>
+              <button
+                onClick={() => { void handleDelete(); }}
+                disabled={deleting}
+                className="text-[10px] px-2 py-0.5 rounded bg-red-500 text-white font-semibold hover:bg-red-600 transition-colors disabled:opacity-40"
+              >
+                {deleting ? "…" : "Yes"}
+              </button>
+              <button
+                onClick={() => setDeleteConfirm(false)}
+                className="text-[10px] px-2 py-0.5 rounded border border-[#30363D] text-[#7D8590] hover:text-[#E6EDF3] transition-colors"
+              >
+                No
+              </button>
+            </div>
+          )}
         </div>
       </div>
 
@@ -5041,100 +5309,13 @@ function CampaignDetailView({
         )}
       </div>
 
-      {/* Assets by Type */}
+      {/* Campaign Assets — Tabbed Previews */}
       <div className="space-y-3">
-        <div className="flex items-center justify-between gap-2 flex-wrap">
-          <p className="text-xs font-semibold text-[#E6EDF3]">
-            📦 Campaign Assets
-            <span className="ml-2 text-[#7D8590] font-normal">{assets.length} total</span>
-          </p>
-          {assets.length > 0 && (
-            <div className="flex flex-wrap gap-1">
-              {[
-                { id: "all", label: `All (${assets.length})` },
-                ...(hasAds ? [{ id: "ads", label: `Ads (${assets.filter(a => AD_ASSET_TYPES.has(a.assetType)).length})` }] : []),
-                ...(hasContent ? [{ id: "content", label: `Content (${assets.filter(a => !AD_ASSET_TYPES.has(a.assetType)).length})` }] : []),
-                ...presentTypes.map(t => ({ id: t, label: `${ASSET_TYPE_LABELS[t] ?? t} (${assets.filter(a => a.assetType === t).length})` })),
-              ].map(f => (
-                <button key={f.id} onClick={() => setAssetFilter(f.id)}
-                  className={`text-[10px] px-2 py-1 rounded-lg border transition-colors ${assetFilter === f.id ? "bg-[#0078D4]/20 border-[#0078D4]/40 text-[#58A6FF]" : "border-[#30363D] text-[#7D8590] hover:text-[#E6EDF3] hover:border-[#484F58]"}`}>
-                  {f.label}
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-        {assets.length === 0 ? (
-          <p className="text-xs text-[#7D8590] bg-[#161B22] border border-[#30363D] rounded-xl px-4 py-3">No assets saved yet.</p>
-        ) : filteredAssets.length === 0 ? (
-          <p className="text-xs text-[#7D8590] bg-[#161B22] border border-[#30363D] rounded-xl px-4 py-3">No assets match this filter.</p>
-        ) : (
-          Object.entries(assetsByType).map(([type, typeAssets]) => (
-            <div key={type} className="bg-[#161B22] border border-[#30363D] rounded-xl overflow-hidden">
-              <div className="px-4 py-2 border-b border-[#30363D] flex items-center justify-between">
-                <span className="text-[10px] font-semibold text-[#7D8590] uppercase tracking-wide">
-                  {ASSET_TYPE_LABELS[type] ?? type} <span className="text-[#484F58]">({typeAssets.length})</span>
-                </span>
-                {AD_ASSET_TYPES.has(type) && (
-                  <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-[#0078D4]/10 text-[#58A6FF] border border-[#0078D4]/20">Ad Asset</span>
-                )}
-              </div>
-              <div className="divide-y divide-[#30363D]">
-                {typeAssets.map(asset => {
-                  const isExpanded = expandedAssets[asset.id] ?? false;
-                  const savedVariations = asset.metadata?.variations ?? [];
-                  const isAdType = savedVariations.length > 0;
-                  return (
-                    <div key={asset.id} className="px-4 py-3">
-                      <div className="flex items-start justify-between gap-2">
-                        <p className="text-xs font-semibold text-[#E6EDF3] flex-1">{asset.title}</p>
-                        <div className="flex items-center gap-2 flex-shrink-0">
-                          <CopyButton text={asset.content} />
-                          <button onClick={() => setExpandedAssets(prev => ({ ...prev, [asset.id]: !prev[asset.id] }))}
-                            className="text-[10px] text-[#7D8590] hover:text-[#E6EDF3] transition-colors px-1">
-                            {isExpanded ? "Collapse ▲" : "Expand ▼"}
-                          </button>
-                        </div>
-                      </div>
-                      {isExpanded ? (
-                        isAdType ? (
-                          <div className="mt-2 space-y-2">
-                            {savedVariations.map((v, idx) => (
-                              <div key={idx} className="bg-[#0D1117] rounded-lg p-3 space-y-1.5">
-                                <div className="flex items-center justify-between mb-1">
-                                  <p className="text-[10px] font-semibold text-[#58A6FF]">Variation {idx + 1}</p>
-                                  <CopyButton text={[v.headline && `Headline: ${v.headline}`, v.description && `Description: ${v.description}`, v.cta && `CTA: ${v.cta}`].filter(Boolean).join("\n")} />
-                                </div>
-                                <p className="text-[10px] text-[#E6EDF3]"><span className="text-[#7D8590]">Headline: </span>{v.headline}</p>
-                                <p className="text-[10px] text-[#E6EDF3]"><span className="text-[#7D8590]">Description: </span>{v.description}</p>
-                                {v.cta && <p className="text-[10px] text-[#E6EDF3]"><span className="text-[#7D8590]">CTA: </span>{v.cta}</p>}
-                                {v.url && (
-                                  <div className="flex items-center gap-2 pt-0.5">
-                                    <span className="text-[9px] text-[#7D8590] uppercase tracking-wide shrink-0">UTM URL</span>
-                                    <span className="text-[10px] text-emerald-400 font-mono truncate flex-1">{v.url}</span>
-                                    <CopyButton text={v.url} />
-                                  </div>
-                                )}
-                              </div>
-                            ))}
-                          </div>
-                        ) : (
-                          <pre className="mt-2 text-[10px] text-[#8B949E] whitespace-pre-wrap font-sans leading-relaxed">{asset.content}</pre>
-                        )
-                      ) : (
-                        isAdType ? (
-                          <p className="mt-1 text-[10px] text-[#7D8590] font-sans">{savedVariations.length} variation{savedVariations.length !== 1 ? "s" : ""} · click to expand</p>
-                        ) : (
-                          <p className="mt-1 text-[10px] text-[#7D8590] line-clamp-2 font-sans">{asset.content}</p>
-                        )
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          ))
-        )}
+        <p className="text-xs font-semibold text-[#E6EDF3]">
+          📦 Campaign Assets
+          <span className="ml-2 text-[#7D8590] font-normal">{assets.length} total</span>
+        </p>
+        <CampaignAssetTabs assets={assets} />
       </div>
 
       {/* Landing Pages */}
@@ -5226,6 +5407,8 @@ function CampaignBuilderWizard({ fetchWithAuth }: { fetchWithAuth: (url: string,
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [loadingCampaigns, setLoadingCampaigns] = useState(true);
   const [detailCampaignId, setDetailCampaignId] = useState<number | null>(null);
+  const [deletingCampaignId, setDeletingCampaignId] = useState<number | null>(null);
+  const [deletingInProgress, setDeletingInProgress] = useState(false);
 
   useEffect(() => {
     fetchWithAuth(`${API}/admin/marketing/campaigns`).then(r => r.json()).then(d => setCampaigns(d as Campaign[])).catch(() => null).finally(() => setLoadingCampaigns(false));
@@ -5300,6 +5483,21 @@ function CampaignBuilderWizard({ fetchWithAuth }: { fetchWithAuth: (url: string,
     setCampaigns(prev => prev.map(c => c.id === updated.id ? updated : c));
   };
 
+  const handleCampaignDeleted = (id: number) => {
+    setCampaigns(prev => prev.filter(c => c.id !== id));
+  };
+
+  const handleListDelete = async (id: number) => {
+    setDeletingInProgress(true);
+    try {
+      await fetchWithAuth(`${API}/admin/marketing/campaigns/${id}`, { method: "DELETE" });
+      setCampaigns(prev => prev.filter(c => c.id !== id));
+    } finally {
+      setDeletingCampaignId(null);
+      setDeletingInProgress(false);
+    }
+  };
+
   const handleGenerateMoreAssets = (campaign: Campaign) => {
     setGoal(campaign.goal);
     setAudience(campaign.audience);
@@ -5322,6 +5520,7 @@ function CampaignBuilderWizard({ fetchWithAuth }: { fetchWithAuth: (url: string,
         onBack={() => setDetailCampaignId(null)}
         onCampaignUpdated={handleCampaignUpdated}
         onGenerateMoreAssets={handleGenerateMoreAssets}
+        onDelete={() => handleCampaignDeleted(detailCampaignId)}
       />
     );
   }
@@ -5512,19 +5711,48 @@ function CampaignBuilderWizard({ fetchWithAuth }: { fetchWithAuth: (url: string,
               <div className="space-y-2 max-h-[32rem] overflow-y-auto">
                 {campaigns.map(c => (
                   <div key={c.id} className="bg-[#0D1117] rounded-lg border border-transparent hover:border-[#0078D4]/30 transition-colors">
-                    <button onClick={() => setDetailCampaignId(c.id)}
-                      className="w-full text-left px-2 pt-2 pb-1.5 text-xs space-y-1.5">
-                      <div className="flex items-center justify-between gap-1">
-                        <span className="font-semibold text-[#E6EDF3] truncate">{c.name}</span>
-                        <Badge text={c.status} color={c.status === "active" ? "green" : c.status === "completed" ? "gray" : "yellow"} />
+                    <div className="flex items-start gap-1">
+                      <button onClick={() => setDetailCampaignId(c.id)}
+                        className="flex-1 text-left px-2 pt-2 pb-1.5 text-xs space-y-1.5 min-w-0">
+                        <div className="flex items-center justify-between gap-1">
+                          <span className="font-semibold text-[#E6EDF3] truncate">{c.name}</span>
+                          <Badge text={c.status} color={c.status === "active" ? "green" : c.status === "completed" ? "gray" : "yellow"} />
+                        </div>
+                        <p className="text-[#7D8590] line-clamp-1">{c.goal}</p>
+                        <div className="flex items-center gap-3 pt-0.5 border-t border-[#30363D]">
+                          <span className="text-emerald-400 font-semibold">{c.leadsGenerated ?? 0} leads</span>
+                          <span className="text-[#58A6FF]">{c.emailsSent ?? 0} emails</span>
+                          <span className="text-amber-400">${Number(c.revenueAttributed ?? 0).toLocaleString()}</span>
+                        </div>
+                      </button>
+                      <div className="flex-shrink-0 pt-2 pr-1">
+                        {deletingCampaignId === c.id ? (
+                          <div className="flex items-center gap-1">
+                            <button
+                              onClick={() => { void handleListDelete(c.id); }}
+                              disabled={deletingInProgress}
+                              className="text-[9px] px-1.5 py-0.5 rounded bg-red-500 text-white font-semibold hover:bg-red-600 transition-colors disabled:opacity-40"
+                            >
+                              {deletingInProgress ? "…" : "Yes"}
+                            </button>
+                            <button
+                              onClick={() => setDeletingCampaignId(null)}
+                              className="text-[9px] px-1.5 py-0.5 rounded border border-[#30363D] text-[#7D8590] hover:text-[#E6EDF3] transition-colors"
+                            >
+                              No
+                            </button>
+                          </div>
+                        ) : (
+                          <button
+                            onClick={e => { e.stopPropagation(); setDeletingCampaignId(c.id); }}
+                            className="text-[11px] text-[#484F58] hover:text-red-400 transition-colors p-0.5"
+                            title="Delete campaign"
+                          >
+                            🗑
+                          </button>
+                        )}
                       </div>
-                      <p className="text-[#7D8590] line-clamp-1">{c.goal}</p>
-                      <div className="flex items-center gap-3 pt-0.5 border-t border-[#30363D]">
-                        <span className="text-emerald-400 font-semibold">{c.leadsGenerated ?? 0} leads</span>
-                        <span className="text-[#58A6FF]">{c.emailsSent ?? 0} emails</span>
-                        <span className="text-amber-400">${Number(c.revenueAttributed ?? 0).toLocaleString()}</span>
-                      </div>
-                    </button>
+                    </div>
                     <CampaignWorkspace campaign={c} fetchWithAuth={fetchWithAuth} />
                   </div>
                 ))}
