@@ -185,17 +185,32 @@ function ScriptFormModal({
         if (res.status === 503) {
           const body = await res.json() as { configured: boolean };
           if (!body.configured) {
-            setAzureConfigured(false);
+            if (isRefresh) {
+              toast({ title: "Could not refresh runbooks — please try again", variant: "destructive" });
+            } else {
+              setAzureConfigured(false);
+            }
             return;
           }
         }
-        if (!res.ok) return;
+        if (!res.ok) {
+          if (isRefresh) {
+            toast({ title: "Could not refresh runbooks — please try again", variant: "destructive" });
+          }
+          return;
+        }
         const body = await res.json() as { configured: boolean; runbooks: RunbookSummary[] };
         setRunbooks(body.runbooks ?? []);
         setAzureConfigured(true);
       })
       .catch(() => {
-        if (!cancelled) setAzureConfigured(false);
+        if (!cancelled) {
+          if (isRefresh) {
+            toast({ title: "Could not refresh runbooks — please try again", variant: "destructive" });
+          } else {
+            setAzureConfigured(false);
+          }
+        }
       })
       .finally(() => {
         if (!cancelled) {
