@@ -22,6 +22,22 @@ function stripFences(text: string): string {
   return text.replace(/^```(?:json)?\s*/i, "").replace(/\s*```\s*$/, "").trim();
 }
 
+class AiResponseError extends Error {}
+
+function parseAiJson<T>(text: string, schema: z.ZodType<T>): T {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(stripFences(text));
+  } catch {
+    throw new AiResponseError("AI returned an unreadable response — please try again");
+  }
+  const result = schema.safeParse(parsed);
+  if (!result.success) {
+    throw new AiResponseError("AI returned unexpected format — please try again");
+  }
+  return result.data;
+}
+
 // ─── ICP context helper — sources from DB ─────────────────────────────────────
 
 async function buildICPContext(): Promise<string> {
@@ -212,11 +228,7 @@ Respond with a JSON array (no markdown):
     const content = message.content[0];
     if (content?.type !== "text") throw new Error("Unexpected response type");
 
-    let leads: Array<Record<string, unknown>>;
-    try {
-      leads = JSON.parse(stripFences(content.text)) as Array<Record<string, unknown>>;
-    }
-    catch { throw new Error("Failed to parse AI response as JSON"); }
+    const leads = parseAiJson(content.text, z.array(z.record(z.unknown())));
 
     const inserted = await db.insert(recommendedLeadsTable).values(
       leads.map(l => ({
@@ -236,7 +248,8 @@ Respond with a JSON array (no markdown):
 
     res.json(inserted);
   } catch (e) {
-    res.status(500).json({ error: String(e) });
+    const status = e instanceof AiResponseError ? 422 : 500;
+    res.status(status).json({ error: e instanceof Error ? e.message : String(e) });
   }
 });
 
@@ -466,9 +479,7 @@ Generate complete campaign assets. Respond with JSON only (no markdown):
     const textContent = message.content[0];
     if (textContent?.type !== "text") throw new Error("Unexpected response type");
 
-    let assets: Record<string, { title: string; content: string }>;
-    try { assets = JSON.parse(stripFences(textContent.text)) as Record<string, { title: string; content: string }>; }
-    catch { throw new Error("Failed to parse AI campaign assets"); }
+    const assets = parseAiJson(textContent.text, z.record(z.object({ title: z.string(), content: z.string() })));
 
     type AssetType = "landing_copy" | "email_sequence" | "social_post" | "follow_up_task";
     const assetTypeMap: Record<string, AssetType> = {
@@ -486,7 +497,8 @@ Generate complete campaign assets. Respond with JSON only (no markdown):
 
     res.json(preview);
   } catch (e) {
-    res.status(500).json({ error: String(e) });
+    const status = e instanceof AiResponseError ? 422 : 500;
+    res.status(status).json({ error: e instanceof Error ? e.message : String(e) });
   }
 });
 
@@ -514,10 +526,11 @@ Respond with JSON only (no markdown):
 
     const content = message.content[0];
     if (content?.type !== "text") throw new Error("Unexpected response type");
-    const prospect = JSON.parse(stripFences(content.text)) as { name: string; company: string; role: string; industry: string };
+    const prospect = parseAiJson(content.text, z.object({ name: z.string(), company: z.string(), role: z.string(), industry: z.string() }));
     res.json(prospect);
   } catch (e) {
-    res.status(500).json({ error: String(e) });
+    const status = e instanceof AiResponseError ? 422 : 500;
+    res.status(status).json({ error: e instanceof Error ? e.message : String(e) });
   }
 });
 
@@ -545,10 +558,11 @@ Respond with JSON only (no markdown):
 
     const content = message.content[0];
     if (content?.type !== "text") throw new Error("Unexpected response type");
-    const idea = JSON.parse(stripFences(content.text)) as { topic: string; tone: string; keywords: string };
+    const idea = parseAiJson(content.text, z.object({ topic: z.string(), tone: z.string(), keywords: z.string() }));
     res.json(idea);
   } catch (e) {
-    res.status(500).json({ error: String(e) });
+    const status = e instanceof AiResponseError ? 422 : 500;
+    res.status(status).json({ error: e instanceof Error ? e.message : String(e) });
   }
 });
 
@@ -575,11 +589,12 @@ Respond with a JSON array only (no markdown):
 
     const content = message.content[0];
     if (content?.type !== "text") throw new Error("Unexpected response type");
-    const suggestions = JSON.parse(stripFences(content.text)) as Array<{ title: string; description: string }>;
+    const suggestions = parseAiJson(content.text, z.array(z.object({ title: z.string(), description: z.string() })));
 
     res.json(suggestions);
   } catch (e) {
-    res.status(500).json({ error: String(e) });
+    const status = e instanceof AiResponseError ? 422 : 500;
+    res.status(status).json({ error: e instanceof Error ? e.message : String(e) });
   }
 });
 
@@ -615,10 +630,11 @@ router.post("/admin/marketing/generate/campaign-suggest", requireAdmin, async (r
 
     const content = message.content[0];
     if (content?.type !== "text") throw new Error("Unexpected response type");
-    const result = JSON.parse(stripFences(content.text)) as { value: string };
+    const result = parseAiJson(content.text, z.object({ value: z.string() }));
     res.json(result);
   } catch (e) {
-    res.status(500).json({ error: String(e) });
+    const status = e instanceof AiResponseError ? 422 : 500;
+    res.status(status).json({ error: e instanceof Error ? e.message : String(e) });
   }
 });
 
