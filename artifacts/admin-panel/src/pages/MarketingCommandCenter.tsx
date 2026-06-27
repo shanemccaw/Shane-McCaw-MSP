@@ -5528,6 +5528,215 @@ function CampaignBuilderWizard({ fetchWithAuth }: { fetchWithAuth: (url: string,
   );
 }
 
+// ─── Ad Library ───────────────────────────────────────────────────────────────
+
+const AD_LIBRARY_TYPES: { type: string; label: string; icon: string }[] = [
+  { type: "ad_google",      label: "Google Search", icon: "🔍" },
+  { type: "ad_linkedin",    label: "LinkedIn",       icon: "💼" },
+  { type: "ad_retargeting", label: "Retargeting",    icon: "🎯" },
+  { type: "ad_creative",    label: "Creative",       icon: "🎨" },
+  { type: "landing_page",   label: "Landing Page",   icon: "📄" },
+];
+
+function AdLibrarySection({
+  fetchWithAuth,
+  onNavigate,
+}: {
+  fetchWithAuth: (url: string, opts?: RequestInit) => Promise<Response>;
+  onNavigate: (section: string) => void;
+}) {
+  const [assets, setAssets] = useState<CampaignAsset[]>([]);
+  const [campaignNames, setCampaignNames] = useState<Record<number, string>>({});
+  const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState("");
+  const [typeFilter, setTypeFilter] = useState<string>("all");
+  const [expandedId, setExpandedId] = useState<number | null>(null);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const [campaignsRes, ...assetResponses] = await Promise.all([
+        fetchWithAuth(`${API}/admin/marketing/campaigns`),
+        ...AD_LIBRARY_TYPES.map(at =>
+          fetchWithAuth(`${API}/admin/marketing/campaign-assets?assetType=${encodeURIComponent(at.type)}`)
+        ),
+      ]);
+
+      const campaignList = await campaignsRes.json() as Campaign[];
+      const nameMap: Record<number, string> = {};
+      if (Array.isArray(campaignList)) {
+        for (const c of campaignList) nameMap[c.id] = c.name;
+      }
+      setCampaignNames(nameMap);
+
+      const allAssets: CampaignAsset[] = [];
+      for (const r of assetResponses) {
+        const data = await r.json() as CampaignAsset[];
+        if (Array.isArray(data)) allAssets.push(...data);
+      }
+
+      const seen = new Set<number>();
+      const deduped = allAssets.filter(a => {
+        if (seen.has(a.id)) return false;
+        seen.add(a.id);
+        return true;
+      });
+      deduped.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      setAssets(deduped);
+    } catch {
+      setAssets([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [fetchWithAuth]);
+
+  useEffect(() => { void load(); }, [load]);
+
+  const filtered = assets.filter(a => {
+    if (typeFilter !== "all" && a.assetType !== typeFilter) return false;
+    if (search.trim()) {
+      const q = search.toLowerCase();
+      const variations = a.metadata?.variations ?? [];
+      const inVariations = variations.some(
+        v => v.headline.toLowerCase().includes(q) || v.description.toLowerCase().includes(q)
+      );
+      return a.title.toLowerCase().includes(q) || a.content.toLowerCase().includes(q) || inVariations;
+    }
+    return true;
+  });
+
+  return (
+    <div className="space-y-5">
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h2 className="text-lg font-bold text-[#E6EDF3]">Ad Library</h2>
+          <p className="text-xs text-[#7D8590] mt-0.5">All saved ad variations across every campaign</p>
+        </div>
+        <button
+          onClick={() => { void load(); }}
+          className="flex-shrink-0 text-xs px-3 py-1.5 rounded-lg border border-[#30363D] text-[#7D8590] hover:text-[#E6EDF3] transition-colors"
+        >↻ Refresh</button>
+      </div>
+
+      <div className="flex flex-col sm:flex-row gap-3">
+        <input
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          placeholder="Search by title, headline, or description…"
+          className="flex-1 bg-[#161B22] border border-[#30363D] rounded-lg px-3 py-2 text-xs text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60"
+        />
+        <div className="flex gap-1 flex-wrap">
+          <button
+            onClick={() => setTypeFilter("all")}
+            className={`text-xs px-3 py-1.5 rounded-lg font-medium transition-colors ${typeFilter === "all" ? "bg-[#0078D4]/20 text-[#58A6FF]" : "text-[#7D8590] hover:text-[#E6EDF3] border border-[#30363D]"}`}
+          >All</button>
+          {AD_LIBRARY_TYPES.map(at => (
+            <button
+              key={at.type}
+              onClick={() => setTypeFilter(at.type)}
+              className={`text-xs px-3 py-1.5 rounded-lg font-medium transition-colors ${typeFilter === at.type ? "bg-[#0078D4]/20 text-[#58A6FF]" : "text-[#7D8590] hover:text-[#E6EDF3] border border-[#30363D]"}`}
+            >{at.icon} {at.label}</button>
+          ))}
+        </div>
+      </div>
+
+      {loading && (
+        <div className="flex items-center gap-2 text-sm text-[#7D8590]">
+          <div className="w-4 h-4 border-2 border-[#0078D4] border-t-transparent rounded-full animate-spin" />
+          Loading ad library…
+        </div>
+      )}
+
+      {!loading && filtered.length === 0 && (
+        <div className="text-center py-12 text-[#484F58]">
+          <p className="text-3xl mb-3">📭</p>
+          <p className="text-sm">
+            {search || typeFilter !== "all"
+              ? "No ads match your search or filter."
+              : "No ads saved yet — generate and save ad variations from a campaign to see them here."}
+          </p>
+        </div>
+      )}
+
+      {!loading && filtered.length > 0 && (
+        <div className="space-y-3">
+          <p className="text-[10px] text-[#484F58] uppercase tracking-wide font-semibold">
+            {filtered.length} asset{filtered.length !== 1 ? "s" : ""}
+          </p>
+          {filtered.map(asset => {
+            const typeInfo = AD_LIBRARY_TYPES.find(at => at.type === asset.assetType);
+            const campaignName = asset.campaignId != null ? campaignNames[asset.campaignId] : undefined;
+            const isExpanded = expandedId === asset.id;
+            const variations = asset.metadata?.variations ?? [];
+
+            return (
+              <div key={asset.id} className="bg-[#161B22] border border-[#30363D] rounded-xl overflow-hidden">
+                <button
+                  onClick={() => setExpandedId(isExpanded ? null : asset.id)}
+                  className="w-full flex items-start justify-between px-4 py-3 hover:bg-[#1C2128] transition-colors text-left gap-3"
+                >
+                  <div className="space-y-1.5 flex-1 min-w-0">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      {typeInfo && (
+                        <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-[#0078D4]/20 text-[#58A6FF] font-semibold whitespace-nowrap">
+                          {typeInfo.icon} {typeInfo.label}
+                        </span>
+                      )}
+                      {campaignName && (
+                        <button
+                          onClick={e => { e.stopPropagation(); onNavigate("campaigns"); }}
+                          className="text-[10px] px-1.5 py-0.5 rounded-full bg-violet-500/20 text-violet-400 hover:bg-violet-500/30 transition-colors font-semibold whitespace-nowrap"
+                          title="Go to Campaigns"
+                        >
+                          📣 {campaignName}
+                        </button>
+                      )}
+                    </div>
+                    <p className="text-sm font-semibold text-[#E6EDF3] truncate">{asset.title}</p>
+                    <p className="text-[10px] text-[#484F58]">
+                      {variations.length > 0 && `${variations.length} variation${variations.length !== 1 ? "s" : ""} · `}
+                      {new Date(asset.createdAt).toLocaleDateString()}
+                    </p>
+                  </div>
+                  <span className="text-[#7D8590] text-xs flex-shrink-0 mt-1">{isExpanded ? "▲" : "▼"}</span>
+                </button>
+
+                {isExpanded && (
+                  <div className="border-t border-[#30363D] p-4 space-y-3">
+                    {variations.length > 0 ? (
+                      variations.map((v, i) => (
+                        <div key={i} className="bg-[#0D1117] border border-[#30363D] rounded-lg p-3 space-y-1.5">
+                          <div className="flex items-center justify-between">
+                            <span className="text-[10px] text-[#484F58] font-semibold uppercase tracking-wide">Variation {i + 1}</span>
+                            <CopyButton text={`${v.headline}\n${v.description}${v.cta ? `\nCTA: ${v.cta}` : ""}${v.url ? `\nURL: ${v.url}` : ""}`} />
+                          </div>
+                          <p className="text-xs font-semibold text-[#E6EDF3]">{v.headline}</p>
+                          <p className="text-xs text-[#7D8590]">{v.description}</p>
+                          {v.cta && <p className="text-[10px] text-[#58A6FF]">CTA: {v.cta}</p>}
+                          {v.url && (
+                            <a
+                              href={v.url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-[10px] text-[#484F58] hover:text-[#58A6FF] transition-colors break-all block"
+                            >{v.url}</a>
+                          )}
+                        </div>
+                      ))
+                    ) : (
+                      <pre className="text-xs text-[#7D8590] whitespace-pre-wrap break-words">{asset.content}</pre>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 const SECTIONS = [
@@ -5541,6 +5750,7 @@ const SECTIONS = [
   { id: "analytics", label: "Analytics" },
   { id: "tasks", label: "Tasks" },
   { id: "campaigns", label: "Campaigns" },
+  { id: "ad-library", label: "Ad Library" },
 ];
 
 export default function MarketingCommandCenter() {
@@ -5571,6 +5781,7 @@ export default function MarketingCommandCenter() {
         {activeSection === "analytics" && <TrafficAnalyticsSection fetchWithAuth={fetchWithAuth} />}
         {activeSection === "tasks" && <MarketingTasksKanban fetchWithAuth={fetchWithAuth} />}
         {activeSection === "campaigns" && <CampaignsHubSection fetchWithAuth={fetchWithAuth} />}
+        {activeSection === "ad-library" && <AdLibrarySection fetchWithAuth={fetchWithAuth} onNavigate={setActiveSection} />}
       </div>
     </div>
   );
