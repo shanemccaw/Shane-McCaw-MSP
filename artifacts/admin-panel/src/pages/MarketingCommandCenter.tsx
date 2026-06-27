@@ -3485,6 +3485,7 @@ interface ActionDescriptor {
   /** For navigate: absolute path starting with "/" or a section id (no slash).
    *  For status: the target TaskStatus string. */
   target: string;
+  disabled?: boolean;
 }
 
 const STATUS_PROGRESSION: TaskStatus[] = ["ideas", "in_progress", "scheduled", "published", "completed"];
@@ -3513,7 +3514,7 @@ function getIntelligentActions(task: MarketingTask): ActionDescriptor[] {
     actions.push({ label: "Open Inbox", icon: "📬", type: "navigate", target: "/inbox" });
 
   if (/analytics|seo|ranking|traffic|report|metrics/.test(text))
-    actions.push({ label: "Open Analytics", icon: "📊", type: "navigate", target: "analytics" });
+    actions.push({ label: "Open Analytics", icon: "📊", type: "navigate", target: "/analytics" });
 
   if (/social|linkedin|twitter|\bpost\b|\bshare\b/.test(text))
     actions.push({ label: "View Content & SEO", icon: "📲", type: "navigate", target: "content" });
@@ -3521,13 +3522,20 @@ function getIntelligentActions(task: MarketingTask): ActionDescriptor[] {
   if (/invoice|payment|billing|finance/.test(text))
     actions.push({ label: "Open Invoices", icon: "💳", type: "navigate", target: "/crm/invoices" });
 
-  // Status-change actions — always present
+  // Status-change actions — always present on every card
+  const isCompleted = task.status === "completed";
   const idx = STATUS_PROGRESSION.indexOf(task.status as typeof STATUS_PROGRESSION[number]);
   const nextStatus = idx >= 0 && idx < STATUS_PROGRESSION.length - 1 ? STATUS_PROGRESSION[idx + 1] : null;
-  if (nextStatus)
-    actions.push({ label: NEXT_STATUS_LABELS[nextStatus] ?? `→ ${nextStatus}`, icon: "➡️", type: "status", target: nextStatus });
 
-  if (task.status !== "completed")
+  // "Move to Next Stage" always shown; disabled (not removed) when already Completed
+  if (nextStatus) {
+    actions.push({ label: NEXT_STATUS_LABELS[nextStatus] ?? `→ ${nextStatus}`, icon: "➡️", type: "status", target: nextStatus });
+  } else {
+    actions.push({ label: "Already at final stage", icon: "➡️", type: "status", target: "completed", disabled: true });
+  }
+
+  // "Mark Complete" always shown for non-completed tasks
+  if (!isCompleted)
     actions.push({ label: "Mark Complete", icon: "✅", type: "status", target: "completed" });
 
   return actions;
@@ -3611,13 +3619,17 @@ function TaskDetailModal({
               <div className="flex flex-wrap gap-2">
                 {actions.map((action, i) => {
                   const isStatus = action.type === "status";
-                  const isComplete = action.target === "completed";
+                  const isComplete = action.target === "completed" && !action.disabled;
+                  const isDisabled = action.disabled === true;
                   return (
                     <button
                       key={i}
-                      onClick={() => handleAction(action)}
+                      onClick={() => { if (!isDisabled) handleAction(action); }}
+                      disabled={isDisabled}
                       className={`flex items-center gap-1.5 text-[11px] font-medium px-3 py-1.5 rounded-lg border transition-colors ${
-                        isComplete
+                        isDisabled
+                          ? "border-[#30363D] text-[#484F58] cursor-not-allowed opacity-50"
+                          : isComplete
                           ? "border-emerald-500/40 text-emerald-400 hover:bg-emerald-500/10"
                           : isStatus
                           ? "border-[#0078D4]/40 text-[#58A6FF] hover:bg-[#0078D4]/10"
