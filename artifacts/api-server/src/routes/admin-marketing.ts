@@ -812,6 +812,7 @@ router.post("/admin/marketing/send-outreach", requireAdmin, async (req: Request,
       recipient: parsed.to,
       subject: parsed.subject,
       campaignId: parsed.campaignId ?? null,
+      leadId: parsed.leadId ?? null,
       metadata: { source: "outreach" },
     }).catch((err: unknown) => req.log.warn({ err }, "Failed to record email_event for outreach send"));
 
@@ -834,6 +835,31 @@ router.post("/admin/marketing/send-outreach", requireAdmin, async (req: Request,
       res.status(400).json({ error: e.errors[0]?.message ?? "Validation error" });
       return;
     }
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+// ─── Per-lead outreach email history ──────────────────────────────────────────
+
+router.get("/admin/marketing/leads/:id/emails", requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const id = parseId(req.params, "id");
+    if (isNaN(id)) { res.status(400).json({ error: "Invalid lead id" }); return; }
+
+    const rows = await db
+      .select({
+        id: emailEventsTable.id,
+        subject: emailEventsTable.subject,
+        recipient: emailEventsTable.recipient,
+        sentAt: emailEventsTable.occurredAt,
+        campaignId: emailEventsTable.campaignId,
+      })
+      .from(emailEventsTable)
+      .where(and(eq(emailEventsTable.leadId, id), eq(emailEventsTable.eventType, "sent")))
+      .orderBy(desc(emailEventsTable.occurredAt));
+
+    res.json(rows);
+  } catch (e) {
     res.status(500).json({ error: String(e) });
   }
 });

@@ -69,6 +69,14 @@ interface LinkedEmail {
   bodyPreview?: string | null;
 }
 
+interface OutreachEmail {
+  id: number;
+  subject: string | null;
+  recipient: string | null;
+  sentAt: string;
+  campaignId: number | null;
+}
+
 interface LeadQualification {
   id: number;
   leadId: number;
@@ -511,6 +519,7 @@ export default function LeadDetailPage({ params }: { params: { id: string } }) {
   const [lead, setLead] = useState<Lead | null>(null);
   const [quizMatches, setQuizMatches] = useState<QuizMatch[]>([]);
   const [emails, setEmails] = useState<LinkedEmail[]>([]);
+  const [outreachEmails, setOutreachEmails] = useState<OutreachEmail[]>([]);
   const [qualHistory, setQualHistory] = useState<LeadQualification[]>([]);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
@@ -581,6 +590,10 @@ export default function LeadDetailPage({ params }: { params: { id: string } }) {
         .then(r => r.ok ? r.json() as Promise<LinkedEmail[]> : [])
         .then(data => setEmails(data))
         .catch(() => setEmails([])),
+      fetchWithAuth(`/api/admin/marketing/leads/${leadId}/emails`)
+        .then(r => r.ok ? r.json() as Promise<OutreachEmail[]> : [])
+        .then(data => setOutreachEmails(data))
+        .catch(() => setOutreachEmails([])),
       fetchWithAuth(`/api/leads/${leadId}/qualifications`)
         .then(r => r.ok ? r.json() as Promise<LeadQualification[]> : [])
         .then(data => setQualHistory(data))
@@ -1122,6 +1135,47 @@ export default function LeadDetailPage({ params }: { params: { id: string } }) {
           ) : (
             <div className="space-y-4">
               {quizMatches.map(q => <QuizCard key={q.id} quiz={q} />)}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Outreach Sent */}
+      <div className="bg-[#161B22] border border-border rounded-xl overflow-hidden">
+        <div className="px-5 py-3.5 border-b border-border bg-[#1C2128] flex items-center justify-between">
+          <h2 className="text-sm font-bold text-[#E6EDF3]">Outreach Sent</h2>
+          <span className="text-xs text-muted-foreground">{outreachEmails.length} email{outreachEmails.length !== 1 ? "s" : ""}</span>
+        </div>
+        <div className="px-5 py-5">
+          {outreachEmails.length === 0 ? (
+            <EmptyState
+              icon={<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} className="w-10 h-10"><path strokeLinecap="round" strokeLinejoin="round" d="M6 12 3.269 3.125A59.769 59.769 0 0 1 21.485 12 59.768 59.768 0 0 1 3.27 20.875L5.999 12Zm0 0h7.5" /></svg>}
+              title="No outreach emails yet"
+              subtitle="Emails sent via the Marketing tab will appear here."
+            />
+          ) : (
+            <div className="space-y-0">
+              {outreachEmails.map((email, i) => (
+                <div key={email.id} className="relative pl-7">
+                  {i < outreachEmails.length - 1 && (
+                    <div className="absolute left-3 top-8 bottom-0 w-px bg-border" />
+                  )}
+                  <div className="absolute left-1.5 top-3 w-3 h-3 rounded-full border-2 border-[#00B4D8] bg-[#161B22]" />
+                  <div className="pb-4">
+                    <div className="bg-[#1C2128] border border-border rounded-xl px-4 py-3">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-semibold text-[#E6EDF3] truncate">{email.subject ?? "(no subject)"}</p>
+                          <p className="text-xs text-muted-foreground mt-0.5 truncate">To: {email.recipient ?? "—"}</p>
+                        </div>
+                        <p className="text-xs text-muted-foreground/70 flex-shrink-0 whitespace-nowrap">
+                          {new Date(email.sentAt).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ))}
             </div>
           )}
         </div>

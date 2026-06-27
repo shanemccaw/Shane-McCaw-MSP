@@ -470,6 +470,13 @@
       "when": 1751299200000,
       "tag": "0064_add_campaign_id_to_email_events",
       "breakpoints": true
+    },
+    {
+      "idx": 65,
+      "version": "7",
+      "when": 1751385600000,
+      "tag": "0065_add_lead_id_to_email_events",
+      "breakpoints": true
     }
   ]
 }
