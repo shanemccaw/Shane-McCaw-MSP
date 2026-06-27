@@ -699,8 +699,9 @@ export async function createCalendarEvent(
           type: "required",
         },
       ],
-      location: { displayName: payload.location ?? "Microsoft Teams / Phone call" },
-      isOnlineMeeting: false,
+      location: { displayName: "Microsoft Teams" },
+      isOnlineMeeting: true,
+      onlineMeetingProvider: "teamsForBusiness",
     };
     const res = await graphFetch(`/users/${encodeURIComponent(userId)}/events`, {
       method: "POST",
