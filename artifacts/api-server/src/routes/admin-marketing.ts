@@ -839,7 +839,7 @@ router.post("/admin/marketing/send-outreach", requireAdmin, async (req: Request,
   }
 });
 
-// ─── Per-lead outreach email history ──────────────────────────────────────────
+// ─── Lead email delivery history ─────────────────────────────────────────────
 
 router.get("/admin/marketing/leads/:id/emails", requireAdmin, async (req: Request, res: Response) => {
   try {
@@ -849,13 +849,14 @@ router.get("/admin/marketing/leads/:id/emails", requireAdmin, async (req: Reques
     const rows = await db
       .select({
         id: emailEventsTable.id,
-        subject: emailEventsTable.subject,
         recipient: emailEventsTable.recipient,
+        subject: emailEventsTable.subject,
+        eventType: emailEventsTable.eventType,
         sentAt: emailEventsTable.occurredAt,
         campaignId: emailEventsTable.campaignId,
       })
       .from(emailEventsTable)
-      .where(and(eq(emailEventsTable.leadId, id), eq(emailEventsTable.eventType, "sent")))
+      .where(eq(emailEventsTable.leadId, id))
       .orderBy(desc(emailEventsTable.occurredAt));
 
     res.json(rows);

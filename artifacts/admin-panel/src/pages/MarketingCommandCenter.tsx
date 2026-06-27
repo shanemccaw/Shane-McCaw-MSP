@@ -468,6 +468,90 @@ function AddToCampaignModal({ lead, campaigns, onClose, fetchWithAuth }: {
   );
 }
 
+// ─── Lead Email History Modal ─────────────────────────────────────────────────
+
+interface OutreachEmailRecord {
+  id: number;
+  recipient: string | null;
+  subject: string | null;
+  eventType: string;
+  sentAt: string;
+  campaignId: number | null;
+}
+
+function LeadEmailHistoryModal({ lead, onClose, fetchWithAuth }: {
+  lead: { id: number; name: string; email: string };
+  onClose: () => void;
+  fetchWithAuth: (url: string, opts?: RequestInit) => Promise<Response>;
+}) {
+  const [emails, setEmails] = useState<OutreachEmailRecord[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    fetchWithAuth(`${API}/admin/marketing/leads/${lead.id}/emails`)
+      .then(r => r.json())
+      .then(d => {
+        if (Array.isArray(d)) setEmails(d as OutreachEmailRecord[]);
+        else setError((d as { error?: string }).error ?? "Failed to load history");
+      })
+      .catch(e => setError(String(e)))
+      .finally(() => setLoading(false));
+  }, [lead.id, fetchWithAuth]);
+
+  const fmt = (iso: string) => {
+    try {
+      return new Date(iso).toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" });
+    } catch { return iso; }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
+      <div className="bg-[#161B22] border border-[#30363D] rounded-xl w-full max-w-2xl max-h-[80vh] flex flex-col">
+        <div className="flex items-center justify-between p-4 border-b border-[#30363D]">
+          <div>
+            <h3 className="text-[#E6EDF3] font-semibold">Email History — {lead.name}</h3>
+            <p className="text-[10px] text-[#7D8590] mt-0.5">{lead.email}</p>
+          </div>
+          <button onClick={onClose} className="text-[#7D8590] hover:text-[#E6EDF3]">✕</button>
+        </div>
+        <div className="flex-1 overflow-y-auto p-4">
+          {loading ? (
+            <div className="flex items-center justify-center h-24 text-[#7D8590] text-sm">
+              <div className="w-4 h-4 border-2 border-[#0078D4] border-t-transparent rounded-full animate-spin mr-2" />Loading…
+            </div>
+          ) : error ? (
+            <p className="text-red-400 text-sm text-center py-8">{error}</p>
+          ) : emails.length === 0 ? (
+            <div className="flex flex-col items-center justify-center h-24 text-[#7D8590] text-sm gap-1">
+              <span className="text-2xl">✉</span>
+              <p>No emails sent to this lead yet</p>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {emails.map(e => (
+                <div key={e.id} className="bg-[#0D1117] border border-[#30363D] rounded-lg px-4 py-3 flex items-start justify-between gap-4">
+                  <div className="min-w-0 flex-1">
+                    <p className="text-[#E6EDF3] text-sm font-medium truncate">{e.subject ?? "(no subject)"}</p>
+                    <p className="text-[10px] text-[#7D8590] mt-0.5">To: {e.recipient ?? "—"}</p>
+                  </div>
+                  <div className="shrink-0 text-right">
+                    <Badge text={e.eventType} color={e.eventType === "sent" ? "blue" : e.eventType === "delivered" ? "green" : e.eventType === "bounced" ? "red" : "gray"} />
+                    <p className="text-[10px] text-[#484F58] mt-1">{fmt(e.sentAt)}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+        <div className="p-4 border-t border-[#30363D] text-[10px] text-[#484F58]">
+          {!loading && !error && `${emails.length} email${emails.length === 1 ? "" : "s"} in history`}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Section 0: Recommended Leads ─────────────────────────────────────────────
 
 function RecommendedLeadsSection({ fetchWithAuth }: { fetchWithAuth: (url: string, opts?: RequestInit) => Promise<Response> }) {
@@ -675,6 +759,7 @@ function LeadFinderSection({ fetchWithAuth }: { fetchWithAuth: (url: string, opt
   const [filterCompanySize, setFilterCompanySize] = useState("all");
   const [filterLocation, setFilterLocation] = useState("all");
   const [outreachModal, setOutreachModal] = useState<{ leadId: number; leadName: string; leadEmail: string; type: string } | null>(null);
+  const [emailHistoryLead, setEmailHistoryLead] = useState<{ id: number; name: string; email: string } | null>(null);
 
   useEffect(() => {
     fetchWithAuth(`${API}/leads?limit=100`).then(r => r.json()).then(d => {
@@ -770,6 +855,7 @@ function LeadFinderSection({ fetchWithAuth }: { fetchWithAuth: (url: string, opt
                         <button onClick={() => setOutreachModal({ leadId: lead.id, leadName: lead.name, leadEmail: lead.email, type: "linkedin" })} className="text-[10px] px-1.5 py-0.5 rounded bg-[#0078D4]/20 text-[#58A6FF] hover:bg-[#0078D4]/30 transition-colors">LinkedIn</button>
                         <button onClick={() => setOutreachModal({ leadId: lead.id, leadName: lead.name, leadEmail: lead.email, type: "followup" })} className="text-[10px] px-1.5 py-0.5 rounded bg-[#0078D4]/20 text-[#58A6FF] hover:bg-[#0078D4]/30 transition-colors">Follow-Up</button>
                         <button onClick={() => setOutreachModal({ leadId: lead.id, leadName: lead.name, leadEmail: lead.email, type: "cold_call" })} className="text-[10px] px-1.5 py-0.5 rounded bg-[#0078D4]/20 text-[#58A6FF] hover:bg-[#0078D4]/30 transition-colors">Call Script</button>
+                        <button onClick={() => setEmailHistoryLead({ id: lead.id, name: lead.name, email: lead.email })} className="text-[10px] px-1.5 py-0.5 rounded bg-[#30363D] text-[#7D8590] hover:text-[#E6EDF3] transition-colors">History</button>
                       </div>
                     </td>
                   </tr>
@@ -791,6 +877,9 @@ function LeadFinderSection({ fetchWithAuth }: { fetchWithAuth: (url: string, opt
       {outreachModal && (
         <OutreachModal leadId={outreachModal.leadId} leadName={outreachModal.leadName} leadEmail={outreachModal.leadEmail}
           templateType={outreachModal.type} onClose={() => setOutreachModal(null)} fetchWithAuth={fetchWithAuth} />
+      )}
+      {emailHistoryLead && (
+        <LeadEmailHistoryModal lead={emailHistoryLead} onClose={() => setEmailHistoryLead(null)} fetchWithAuth={fetchWithAuth} />
       )}
     </div>
   );

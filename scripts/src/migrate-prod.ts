@@ -184,6 +184,10 @@ const legacyMigrations = [
     name: "0007_email_events_campaign_id",
     sql: `ALTER TABLE "email_events" ADD COLUMN IF NOT EXISTS "campaign_id" integer REFERENCES "campaigns"("id") ON DELETE SET NULL;`,
   },
+  {
+    name: "0008_email_events_lead_id",
+    sql: `ALTER TABLE "email_events" ADD COLUMN IF NOT EXISTS "lead_id" integer REFERENCES "leads"("id") ON DELETE SET NULL;`,
+  },
 ];
 
 // ---------------------------------------------------------------------------
