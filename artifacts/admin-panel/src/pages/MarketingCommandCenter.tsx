@@ -5322,9 +5322,47 @@ function LandingCopyPanel({
   fetchWithAuth: (url: string, opts?: RequestInit) => Promise<Response>;
   onLandingPageCreated: () => void;
 }) {
+  // Edit state
+  const [editing, setEditing] = useState(false);
+  const [editText, setEditText] = useState(asset.content);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  // Live copy content (updated optimistically after save)
+  const [liveContent, setLiveContent] = useState(asset.content);
+
+  // Generate state
   const [generating, setGenerating] = useState(false);
   const [genError, setGenError] = useState<string | null>(null);
   const [genSuccess, setGenSuccess] = useState(false);
+
+  const handleSaveEdit = async () => {
+    setSaving(true);
+    setSaveError(null);
+    try {
+      const r = await fetchWithAuth(`${API}/admin/marketing/campaign-assets/${asset.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content: editText }),
+      });
+      if (!r.ok) {
+        const err = await r.json() as { error?: string };
+        throw new Error(err.error ?? "Failed to save");
+      }
+      setLiveContent(editText);
+      setEditing(false);
+      setGenSuccess(false); // copy changed — allow re-generate
+    } catch (e) {
+      setSaveError(e instanceof Error ? e.message : "Save failed");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleCancelEdit = () => {
+    setEditText(liveContent);
+    setSaveError(null);
+    setEditing(false);
+  };
 
   const handleGenerate = async () => {
     setGenerating(true);
@@ -5335,7 +5373,7 @@ function LandingCopyPanel({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          topic: `${campaign.name}\n\nLanding Page Copy:\n${asset.content}`,
+          topic: `${campaign.name}\n\nLanding Page Copy:\n${liveContent}`,
           audience: campaign.audience,
           cta: campaign.offer,
         }),
@@ -5369,19 +5407,58 @@ function LandingCopyPanel({
       <div className="bg-[#0D1117] border border-[#30363D] rounded-xl p-4">
         <div className="flex items-center justify-between mb-3">
           <p className="text-[10px] text-[#484F58] uppercase tracking-wide font-semibold">Landing Page Copy</p>
-          <CopyButton text={asset.content} />
+          <div className="flex items-center gap-2">
+            {!editing && <CopyButton text={liveContent} />}
+            {!editing ? (
+              <button
+                onClick={() => { setEditText(liveContent); setEditing(true); setSaveError(null); }}
+                className="text-[10px] px-2 py-0.5 rounded border border-[#30363D] text-[#7D8590] hover:text-[#E6EDF3] hover:border-[#484F58] transition-colors"
+              >
+                ✏️ Edit
+              </button>
+            ) : (
+              <div className="flex items-center gap-1.5">
+                <button
+                  onClick={() => { void handleSaveEdit(); }}
+                  disabled={saving}
+                  className="text-[10px] px-2.5 py-0.5 rounded border border-emerald-500/40 text-emerald-400 hover:bg-emerald-500/10 transition-colors disabled:opacity-50"
+                >
+                  {saving ? "Saving…" : "Save"}
+                </button>
+                <button
+                  onClick={handleCancelEdit}
+                  disabled={saving}
+                  className="text-[10px] px-2.5 py-0.5 rounded border border-[#30363D] text-[#7D8590] hover:text-[#E6EDF3] transition-colors disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+              </div>
+            )}
+          </div>
         </div>
-        <pre className="text-xs text-[#8B949E] whitespace-pre-wrap font-sans leading-relaxed">{asset.content}</pre>
+        {editing ? (
+          <textarea
+            value={editText}
+            onChange={e => setEditText(e.target.value)}
+            rows={Math.max(10, editText.split("\n").length + 2)}
+            className="w-full text-xs text-[#E6EDF3] bg-[#161B22] border border-[#30363D] rounded-lg px-3 py-2.5 font-sans leading-relaxed resize-y focus:outline-none focus:border-[#0078D4]/60"
+          />
+        ) : (
+          <pre className="text-xs text-[#8B949E] whitespace-pre-wrap font-sans leading-relaxed">{liveContent}</pre>
+        )}
+        {saveError && (
+          <p className="mt-2 text-[11px] text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-1.5">{saveError}</p>
+        )}
       </div>
-      <RawToggle content={asset.content} />
+      {!editing && <RawToggle content={liveContent} />}
       <div className="flex items-center gap-3 flex-wrap">
         <button
           onClick={() => { void handleGenerate(); }}
-          disabled={generating || genSuccess}
+          disabled={generating || genSuccess || editing}
           className={`flex items-center gap-2 text-xs font-semibold px-4 py-2 rounded-lg border transition-colors ${
             genSuccess
               ? "border-emerald-500/40 text-emerald-400 bg-emerald-500/10 cursor-default"
-              : generating
+              : generating || editing
               ? "border-[#30363D] text-[#484F58] cursor-wait opacity-60"
               : "border-[#0078D4]/40 text-[#58A6FF] hover:bg-[#0078D4]/10"
           }`}
