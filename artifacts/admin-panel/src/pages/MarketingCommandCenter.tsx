@@ -923,6 +923,15 @@ function OutreachAutomationSection({ fetchWithAuth }: { fetchWithAuth: (url: str
 
 // ─── Section 4: Content Hub ────────────────────────────────────────────────────
 
+interface CampaignAsset {
+  id: number;
+  assetType: string;
+  title: string;
+  content: string;
+  createdAt: string;
+  campaignId?: number | null;
+}
+
 function ContentHubSection({ fetchWithAuth }: { fetchWithAuth: (url: string, opts?: RequestInit) => Promise<Response> }) {
   const [activeTab, setActiveTab] = useState<"blog_post" | "linkedin_post" | "newsletter" | "social_post" | "seo_keywords">("blog_post");
   const [topic, setTopic] = useState("");
@@ -931,6 +940,22 @@ function ContentHubSection({ fetchWithAuth }: { fetchWithAuth: (url: string, opt
   const [content, setContent] = useState("");
   const [generating, setGenerating] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [saveSuccess, setSaveSuccess] = useState(false);
+  const [savedAssets, setSavedAssets] = useState<CampaignAsset[]>([]);
+  const [loadingAssets, setLoadingAssets] = useState(false);
+  const [expandedId, setExpandedId] = useState<number | null>(null);
+
+  const loadAssets = useCallback(async (tab: string) => {
+    setLoadingAssets(true);
+    try {
+      const r = await fetchWithAuth(`${API}/admin/marketing/campaign-assets?assetType=${encodeURIComponent(tab)}`);
+      const data = await r.json() as CampaignAsset[];
+      setSavedAssets(Array.isArray(data) ? data : []);
+    } catch { setSavedAssets([]); }
+    finally { setLoadingAssets(false); }
+  }, [fetchWithAuth]);
+
+  useEffect(() => { void loadAssets(activeTab); }, [activeTab, loadAssets]);
 
   const generate = async () => {
     if (!topic.trim()) return;
@@ -955,6 +980,9 @@ function ContentHubSection({ fetchWithAuth }: { fetchWithAuth: (url: string, opt
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ assetType: activeTab, title: topic || activeTab, content }),
       });
+      setSaveSuccess(true);
+      setTimeout(() => setSaveSuccess(false), 2000);
+      void loadAssets(activeTab);
     } finally { setSaving(false); }
   };
 
@@ -966,13 +994,18 @@ function ContentHubSection({ fetchWithAuth }: { fetchWithAuth: (url: string, opt
     { id: "seo_keywords" as const, label: "SEO Keywords" },
   ];
 
+  const TAB_LABEL: Record<string, string> = {
+    blog_post: "Blog Post", linkedin_post: "LinkedIn", newsletter: "Newsletter",
+    social_post: "Social Post", seo_keywords: "SEO Keywords",
+  };
+
   return (
     <div className="space-y-4">
       <h2 className="text-lg font-semibold text-[#E6EDF3]">Content Hub</h2>
       <div className="bg-[#161B22] border border-[#30363D] rounded-xl p-4 space-y-4">
         <div className="flex flex-wrap gap-1">
           {tabs.map(t => (
-            <button key={t.id} onClick={() => { setActiveTab(t.id); setContent(""); }}
+            <button key={t.id} onClick={() => { setActiveTab(t.id); setContent(""); setExpandedId(null); }}
               className={`text-xs px-3 py-1.5 rounded-lg border transition-colors ${activeTab === t.id ? "bg-[#0078D4]/20 border-[#0078D4]/40 text-[#58A6FF]" : "border-[#30363D] text-[#7D8590] hover:text-[#E6EDF3]"}`}>
               {t.label}
             </button>
@@ -1011,8 +1044,9 @@ function ContentHubSection({ fetchWithAuth }: { fetchWithAuth: (url: string, opt
                   <span className="text-xs text-[#7D8590]">Generated content</span>
                   <div className="flex gap-2">
                     <CopyButton text={content} />
-                    <button onClick={() => { void save(); }} disabled={saving} className="text-xs px-2 py-1 rounded bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30 disabled:opacity-40 transition-colors">
-                      {saving ? "Saving…" : "Save Asset"}
+                    <button onClick={() => { void save(); }} disabled={saving || saveSuccess}
+                      className={`text-xs px-2 py-1 rounded transition-colors ${saveSuccess ? "bg-emerald-500/30 text-emerald-300" : "bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30 disabled:opacity-40"}`}>
+                      {saving ? "Saving…" : saveSuccess ? "Saved!" : "Save Asset"}
                     </button>
                   </div>
                 </div>
@@ -1023,6 +1057,45 @@ function ContentHubSection({ fetchWithAuth }: { fetchWithAuth: (url: string, opt
             )}
           </div>
         </div>
+      </div>
+
+      {/* Saved Assets */}
+      <div className="bg-[#161B22] border border-[#30363D] rounded-xl p-4 space-y-3">
+        <h3 className="text-sm font-semibold text-[#E6EDF3]">Saved {TAB_LABEL[activeTab] ?? activeTab} Assets</h3>
+        {loadingAssets ? (
+          <SkeletonCard count={2} />
+        ) : savedAssets.length === 0 ? (
+          <p className="text-xs text-[#7D8590] py-2">No {TAB_LABEL[activeTab]?.toLowerCase() ?? activeTab} assets saved yet — generate one above and click Save Asset.</p>
+        ) : (
+          <div className="space-y-2">
+            {savedAssets.map(asset => (
+              <div key={asset.id} className="bg-[#0D1117] rounded-lg overflow-hidden border border-[#30363D] hover:border-[#0078D4]/30 transition-colors">
+                <button
+                  onClick={() => setExpandedId(prev => prev === asset.id ? null : asset.id)}
+                  className="w-full flex items-center gap-3 px-3 py-2 text-left"
+                >
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-[#E6EDF3] truncate">{asset.title}</p>
+                    <p className="text-[11px] text-[#7D8590] mt-0.5 line-clamp-1">{asset.content.slice(0, 120)}{asset.content.length > 120 ? "…" : ""}</p>
+                  </div>
+                  <div className="flex items-center gap-2 flex-shrink-0">
+                    <Badge text={TAB_LABEL[asset.assetType] ?? asset.assetType} color="blue" />
+                    <span className="text-[10px] text-[#484F58]">{new Date(asset.createdAt).toLocaleDateString()}</span>
+                    <span className="text-[#484F58] text-xs">{expandedId === asset.id ? "▲" : "▼"}</span>
+                  </div>
+                </button>
+                {expandedId === asset.id && (
+                  <div className="border-t border-[#30363D] px-3 pb-3 pt-2 space-y-2">
+                    <div className="flex justify-end">
+                      <CopyButton text={asset.content} />
+                    </div>
+                    <pre className="text-[#E6EDF3] text-sm whitespace-pre-wrap font-sans max-h-64 overflow-y-auto">{asset.content}</pre>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );

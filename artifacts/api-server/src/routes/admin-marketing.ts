@@ -642,9 +642,16 @@ router.delete("/admin/marketing/campaigns/:id", requireAdmin, async (req: Reques
 router.get("/admin/marketing/campaign-assets", requireAdmin, async (req: Request, res: Response) => {
   try {
     const campaignId = req.query["campaignId"] ? parseInt(String(req.query["campaignId"]), 10) : null;
-    const rows = campaignId
-      ? await db.select().from(campaignAssetsTable).where(eq(campaignAssetsTable.campaignId, campaignId)).orderBy(campaignAssetsTable.assetType)
-      : await db.select().from(campaignAssetsTable).orderBy(desc(campaignAssetsTable.createdAt)).limit(50);
+    const assetType = req.query["assetType"] ? String(req.query["assetType"]) : null;
+
+    const conditions = [];
+    if (campaignId) conditions.push(eq(campaignAssetsTable.campaignId, campaignId));
+    if (assetType) conditions.push(eq(campaignAssetsTable.assetType, assetType as typeof campaignAssetsTable.$inferSelect["assetType"]));
+
+    const rows = await db.select().from(campaignAssetsTable)
+      .where(conditions.length > 0 ? and(...conditions) : undefined)
+      .orderBy(desc(campaignAssetsTable.createdAt))
+      .limit(50);
     res.json(rows);
   } catch (e) {
     res.status(500).json({ error: String(e) });
