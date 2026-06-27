@@ -221,7 +221,7 @@ router.get("/admin/clients/:id/command-center", requireAdmin, async (req: Reques
       return;
     }
 
-    const [projects, recentTasks, recentEmails, quizRows, m365Rows] = await Promise.all([
+    const [projects, recentTasks, recentEmails, quizRows, m365Rows, appRegRows] = await Promise.all([
       db
         .select({
           id: projectsTable.id,
@@ -282,6 +282,14 @@ router.get("/admin/clients/:id/command-center", requireAdmin, async (req: Reques
         .from(clientM365ProfilesTable)
         .where(eq(clientM365ProfilesTable.clientId, id))
         .limit(1),
+
+      db
+        .select({
+          status: clientAppRegistrationsTable.status,
+        })
+        .from(clientAppRegistrationsTable)
+        .where(eq(clientAppRegistrationsTable.clientUserId, id))
+        .limit(1),
     ]);
 
     const projectIds = projects.map(p => p.id);
@@ -309,8 +317,11 @@ router.get("/admin/clients/:id/command-center", requireAdmin, async (req: Reques
       }
     }
 
+    const appRegStatus = (appRegRows[0]?.status ?? null) as "pending" | "submitted" | "verified" | null;
+    const hasM365Profile = m365Rows.length > 0;
+
     res.json({
-      client: { ...client, passwordHash: undefined },
+      client: { ...client, passwordHash: undefined, appRegStatus, hasM365Profile },
       projects: projects.map(p => ({
         ...p,
         taskCounts: taskCountsPerProject[p.id] ?? { total: 0, open: 0 },
@@ -320,6 +331,8 @@ router.get("/admin/clients/:id/command-center", requireAdmin, async (req: Reques
       quiz: quizRows[0] ?? null,
       quizzes: quizRows,
       m365Profile: m365Rows[0]?.profile ?? null,
+      appRegStatus,
+      hasM365Profile,
     });
   } catch (err) {
     logger.error({ err }, "Failed to fetch client command center");

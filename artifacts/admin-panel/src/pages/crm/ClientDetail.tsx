@@ -19,6 +19,8 @@ interface Client {
   addressState: string | null;
   createdAt: string;
   onboardingWizardCompletedAt: string | null;
+  appRegStatus: "pending" | "submitted" | "verified" | null;
+  hasM365Profile: boolean;
 }
 
 interface Project {
@@ -807,17 +809,17 @@ export default function ClientDetailPage() {
 
             {/* Stat chips */}
             <div className="flex items-center gap-2 flex-wrap">
-              {/* Onboarding wizard status badge */}
-              {client.onboardingWizardCompletedAt !== null ? (
-                <div
-                  className="flex flex-col items-center px-3 py-1.5 bg-emerald-500/10 rounded-lg border border-emerald-500/20 min-w-[60px]"
-                  title={`Setup completed ${new Date(client.onboardingWizardCompletedAt).toLocaleString()}`}
-                >
+              {/* Setup status badge */}
+              {client.appRegStatus === "verified" && client.hasM365Profile ? (
+                <div className="flex flex-col items-center px-3 py-1.5 bg-emerald-500/10 rounded-lg border border-emerald-500/20 min-w-[60px]">
                   <span className="text-sm font-bold leading-none text-emerald-400">✓</span>
                   <span className="text-[10px] text-emerald-400/70 mt-0.5 whitespace-nowrap">Setup Done</span>
                 </div>
               ) : (
-                <div className="flex flex-col items-center px-3 py-1.5 bg-amber-500/10 rounded-lg border border-amber-500/20 min-w-[60px]">
+                <div
+                  className="flex flex-col items-center px-3 py-1.5 bg-amber-500/10 rounded-lg border border-amber-500/20 min-w-[60px]"
+                  title={!client.appRegStatus || client.appRegStatus !== "verified" ? "App Registration not verified" : "M365 profile not filled"}
+                >
                   <span className="text-sm font-bold leading-none text-amber-400">!</span>
                   <span className="text-[10px] text-amber-400/70 mt-0.5 whitespace-nowrap">Pending</span>
                 </div>
@@ -975,24 +977,24 @@ export default function ClientDetailPage() {
                     <p className="text-sm text-[#E6EDF3] break-all">{value}</p>
                   </div>
                 ) : null)}
-                {/* Onboarding wizard status */}
+                {/* Setup status */}
                 <div>
-                  <p className={labelCls}>Setup Wizard</p>
-                  {client.onboardingWizardCompletedAt !== null ? (
-                    <div className="flex items-center gap-1.5">
-                      <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full border bg-emerald-500/10 text-emerald-400 border-emerald-500/20">
-                        <svg className="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
-                        Onboarding complete
+                  <p className={labelCls}>Setup Status</p>
+                  {client.appRegStatus === "verified" && client.hasM365Profile ? (
+                    <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full border bg-emerald-500/10 text-emerald-400 border-emerald-500/20">
+                      <svg className="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
+                      Setup complete
+                    </span>
+                  ) : (
+                    <div className="flex flex-col gap-1">
+                      <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full border bg-amber-500/10 text-amber-400 border-amber-500/20 w-fit">
+                        <svg className="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                        Pending setup
                       </span>
                       <span className="text-[10px] text-muted-foreground">
-                        {new Date(client.onboardingWizardCompletedAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                        {client.appRegStatus !== "verified" ? "App Reg not verified" : "M365 profile missing"}
                       </span>
                     </div>
-                  ) : (
-                    <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full border bg-amber-500/10 text-amber-400 border-amber-500/20">
-                      <svg className="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-                      Pending setup
-                    </span>
                   )}
                 </div>
                 {client.sharepointSiteUrl && (
