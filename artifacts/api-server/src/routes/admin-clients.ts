@@ -9,6 +9,7 @@ import {
   clientAppRegistrationsTable,
   quizLeadsTable,
   clientHealthHistoryTable,
+  azureTenantCredentialsTable,
 } from "@workspace/db";
 import { eq, and, desc, count, inArray, sql, isNotNull, asc } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/requireAuth";
@@ -197,6 +198,54 @@ router.get("/admin/clients/enriched", requireAdmin, async (_req: Request, res: R
     res.json(enriched);
   } catch (err) {
     logger.error({ err }, "Failed to fetch enriched clients");
+    res.status(500).json({ error: "Failed to fetch clients" });
+  }
+});
+
+// ─── GET /admin/clients/with-azure-credentials ───────────────────────────────
+// Returns ALL clients (role=client), each with their linked Azure credential
+// (or null if none). Used by Script Runner to show all customers with status.
+router.get("/admin/clients/with-azure-credentials", requireAdmin, async (_req: Request, res: Response) => {
+  try {
+    const rows = await db
+      .select({
+        id: usersTable.id,
+        name: usersTable.name,
+        email: usersTable.email,
+        credentialId: azureTenantCredentialsTable.id,
+        credentialDisplayName: azureTenantCredentialsTable.displayName,
+        credentialTenantId: azureTenantCredentialsTable.tenantId,
+        credentialClientId: azureTenantCredentialsTable.clientId,
+        credentialType: azureTenantCredentialsTable.credentialType,
+        credentialKeyVaultSecretName: azureTenantCredentialsTable.keyVaultSecretName,
+      })
+      .from(usersTable)
+      .leftJoin(
+        azureTenantCredentialsTable,
+        eq(azureTenantCredentialsTable.clientUserId, usersTable.id),
+      )
+      .where(eq(usersTable.role, "client"))
+      .orderBy(asc(usersTable.name));
+
+    const result = rows.map(r => ({
+      id: r.id,
+      name: r.name,
+      email: r.email,
+      credential: r.credentialId != null
+        ? {
+            id: r.credentialId,
+            displayName: r.credentialDisplayName,
+            tenantId: r.credentialTenantId,
+            clientId: r.credentialClientId,
+            credentialType: r.credentialType,
+            keyVaultSecretName: r.credentialKeyVaultSecretName,
+          }
+        : null,
+    }));
+
+    res.json(result);
+  } catch (err) {
+    logger.error({ err }, "Failed to fetch clients with azure credentials");
     res.status(500).json({ error: "Failed to fetch clients" });
   }
 });

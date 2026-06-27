@@ -6,14 +6,18 @@ import { GovernanceAreasPicker } from "@/components/kanban/TypedCardContent";
 
 interface AzureCredential {
   id: number;
-  displayName: string;
-  tenantId: string;
-  clientId: string;
-  credentialType: "secret" | "certificate";
-  keyVaultSecretName: string;
-  clientUserId: number | null;
-  createdAt: string;
-  updatedAt: string;
+  displayName: string | null;
+  tenantId: string | null;
+  clientId: string | null;
+  credentialType: "secret" | "certificate" | null;
+  keyVaultSecretName: string | null;
+}
+
+interface ClientWithCredential {
+  id: number;
+  name: string;
+  email: string;
+  credential: AzureCredential | null;
 }
 
 interface RunbookSummary {
@@ -90,12 +94,13 @@ export default function ScriptRunnerPage() {
   const { fetchWithAuth } = useAuth();
   const { toast } = useToast();
 
-  const [credentials, setCredentials] = useState<AzureCredential[]>([]);
+  const [clients, setClients] = useState<ClientWithCredential[]>([]);
   const [runbooks, setRunbooks] = useState<RunbookSummary[]>([]);
-  const [loadingCredentials, setLoadingCredentials] = useState(true);
+  const [loadingClients, setLoadingClients] = useState(true);
   const [loadingRunbooks, setLoadingRunbooks] = useState(false);
   const [azureConfigured, setAzureConfigured] = useState<boolean | null>(null);
 
+  const [selectedClientId, setSelectedClientId] = useState<number | "">("");
   const [selectedCredId, setSelectedCredId] = useState<number | "">("");
   const [selectedRunbook, setSelectedRunbook] = useState("");
 
@@ -138,7 +143,7 @@ export default function ScriptRunnerPage() {
   }, [fetchWithAuth]);
 
   useEffect(() => {
-    void loadCredentials();
+    void loadClients();
     void checkAzureConfig();
     void loadHistory();
   }, []);
@@ -171,16 +176,16 @@ export default function ScriptRunnerPage() {
     }
   };
 
-  const loadCredentials = async () => {
-    setLoadingCredentials(true);
+  const loadClients = async () => {
+    setLoadingClients(true);
     try {
-      const res = await fetchWithAuth("/api/admin/azure-credentials");
+      const res = await fetchWithAuth("/api/admin/clients/with-azure-credentials");
       if (res.ok) {
-        const data = await res.json() as AzureCredential[];
-        setCredentials(data);
+        const data = await res.json() as ClientWithCredential[];
+        setClients(data);
       }
     } finally {
-      setLoadingCredentials(false);
+      setLoadingClients(false);
     }
   };
 
@@ -295,7 +300,7 @@ export default function ScriptRunnerPage() {
     setAiAnalysis(null);
     setAiError(null);
     setAiTab("summary");
-    const selectedCred = credentials.find(c => c.id === selectedCredId);
+    const selectedClient = clients.find(c => c.id === selectedClientId);
     try {
       const res = await fetchWithAuth("/api/admin/scripts/analyze", {
         method: "POST",
@@ -307,7 +312,7 @@ export default function ScriptRunnerPage() {
             : selectedRunbook || undefined,
           customerName: logLabel
             ? logLabel.split(" — ")[1]?.trim()
-            : selectedCred?.displayName,
+            : selectedClient?.name,
         }),
       });
       const data = await res.json() as AIAnalysis & { error?: string };
@@ -454,19 +459,35 @@ export default function ScriptRunnerPage() {
 
             <div>
               <label className={labelCls}>Customer</label>
-              {loadingCredentials ? (
+              {loadingClients ? (
                 <div className="h-9 bg-[#1C2128] rounded-lg animate-pulse" />
               ) : (
                 <select
                   className={inputCls}
-                  value={selectedCredId}
-                  onChange={e => setSelectedCredId(e.target.value ? Number(e.target.value) : "")}
+                  value={selectedClientId}
+                  onChange={e => {
+                    const clientId = e.target.value ? Number(e.target.value) : "";
+                    setSelectedClientId(clientId);
+                    if (clientId) {
+                      const client = clients.find(c => c.id === clientId);
+                      setSelectedCredId(client?.credential?.id ?? "");
+                    } else {
+                      setSelectedCredId("");
+                    }
+                  }}
                 >
                   <option value="">Select a customer…</option>
-                  {credentials.map(c => (
-                    <option key={c.id} value={c.id}>{c.displayName}</option>
+                  {clients.map(c => (
+                    <option key={c.id} value={c.id} disabled={!c.credential}>
+                      {c.name}{!c.credential ? " (no Azure credential)" : ""}
+                    </option>
                   ))}
                 </select>
+              )}
+              {selectedClientId !== "" && !clients.find(c => c.id === selectedClientId)?.credential && (
+                <p className="text-[10px] text-amber-400 mt-1.5">
+                  No Azure credential set up for this client — add one in the CRM first.
+                </p>
               )}
             </div>
 
@@ -519,7 +540,7 @@ export default function ScriptRunnerPage() {
           </div>
 
           {/* Customers list — managed from CRM */}
-          {credentials.length > 0 && (
+          {clients.length > 0 && (
             <div className="bg-[#161B22] border border-border rounded-xl p-4 space-y-1">
               <div className="flex items-center justify-between mb-2">
                 <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Customers</p>
@@ -530,25 +551,29 @@ export default function ScriptRunnerPage() {
                   Manage in CRM →
                 </button>
               </div>
-              {credentials.map(c => (
+              {clients.map(c => (
                 <div key={c.id} className="flex items-center gap-2 py-1.5">
+                  <div
+                    className={`w-2 h-2 rounded-full flex-shrink-0 ${c.credential ? "bg-green-500" : "bg-[#30363D]"}`}
+                    title={c.credential ? "Azure credential configured" : "No Azure credential"}
+                  />
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-[#E6EDF3] truncate">{c.displayName}</p>
+                    <p className="text-sm font-medium text-[#E6EDF3] truncate">{c.name}</p>
                     <p className="text-[10px] text-muted-foreground truncate">
-                      {c.credentialType === "certificate" ? "Certificate" : "Client Secret"}
+                      {c.credential
+                        ? (c.credential.credentialType === "certificate" ? "Certificate" : "Client Secret")
+                        : "No credential"}
                     </p>
                   </div>
-                  {c.clientUserId && (
-                    <button
-                      onClick={() => navigate(`/crm/clients/${c.clientUserId}`)}
-                      className="flex-shrink-0 p-1 text-muted-foreground hover:text-[#0078D4] rounded transition-colors"
-                      title="View client profile"
-                    >
-                      <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M10 6H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V8a2 2 0 00-2-2h-5m-4 0V5a2 2 0 114 0v1m-4 0a2 2 0 104 0" />
-                      </svg>
-                    </button>
-                  )}
+                  <button
+                    onClick={() => navigate(`/crm/clients/${c.id}`)}
+                    className="flex-shrink-0 p-1 text-muted-foreground hover:text-[#0078D4] rounded transition-colors"
+                    title="View client profile"
+                  >
+                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M10 6H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V8a2 2 0 00-2-2h-5m-4 0V5a2 2 0 114 0v1m-4 0a2 2 0 104 0" />
+                    </svg>
+                  </button>
                 </div>
               ))}
             </div>
