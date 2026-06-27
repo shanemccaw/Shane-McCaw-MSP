@@ -157,6 +157,7 @@ interface PreviewAsset {
 interface CampaignAsset extends PreviewAsset {
   id: number;
   campaignId?: number | null;
+  metadata?: { variations?: AdVariation[] };
 }
 
 interface KPI {
@@ -1844,6 +1845,7 @@ interface CampaignAsset {
   content: string;
   createdAt: string;
   campaignId?: number | null;
+  metadata?: { variations?: AdVariation[] };
 }
 
 function ContentHubSection({ fetchWithAuth }: { fetchWithAuth: (url: string, opts?: RequestInit) => Promise<Response> }) {
@@ -4625,6 +4627,8 @@ function CampaignDetailView({
               <div className="divide-y divide-[#30363D]">
                 {typeAssets.map(asset => {
                   const isExpanded = expandedAssets[asset.id] ?? false;
+                  const savedVariations = asset.metadata?.variations ?? [];
+                  const isAdType = savedVariations.length > 0;
                   return (
                     <div key={asset.id} className="px-4 py-3">
                       <div className="flex items-start justify-between gap-2">
@@ -4638,7 +4642,27 @@ function CampaignDetailView({
                         </div>
                       </div>
                       {isExpanded ? (
-                        <pre className="mt-2 text-[10px] text-[#8B949E] whitespace-pre-wrap font-sans leading-relaxed">{asset.content}</pre>
+                        isAdType ? (
+                          <div className="mt-2 space-y-2">
+                            {savedVariations.map((v, idx) => (
+                              <div key={idx} className="bg-[#0D1117] rounded-lg p-3 space-y-1.5">
+                                <p className="text-[10px] font-semibold text-[#58A6FF]">Variation {idx + 1}</p>
+                                <p className="text-[10px] text-[#E6EDF3]"><span className="text-[#7D8590]">Headline: </span>{v.headline}</p>
+                                <p className="text-[10px] text-[#E6EDF3]"><span className="text-[#7D8590]">Description: </span>{v.description}</p>
+                                {v.cta && <p className="text-[10px] text-[#E6EDF3]"><span className="text-[#7D8590]">CTA: </span>{v.cta}</p>}
+                                {v.url && (
+                                  <div className="flex items-center gap-2 pt-0.5">
+                                    <span className="text-[9px] text-[#7D8590] uppercase tracking-wide shrink-0">UTM URL</span>
+                                    <span className="text-[10px] text-emerald-400 font-mono truncate flex-1">{v.url}</span>
+                                    <CopyButton text={v.url} />
+                                  </div>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <pre className="mt-2 text-[10px] text-[#8B949E] whitespace-pre-wrap font-sans leading-relaxed">{asset.content}</pre>
+                        )
                       ) : (
                         <p className="mt-1 text-[10px] text-[#7D8590] line-clamp-2 font-sans">{asset.content}</p>
                       )}

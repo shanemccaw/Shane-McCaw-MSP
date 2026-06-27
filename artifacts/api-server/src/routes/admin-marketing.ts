@@ -1279,7 +1279,7 @@ router.post("/admin/marketing/campaigns/save-ads", requireAdmin, async (req: Req
     const body = saveAdsSchema.parse(req.body);
     type AssetType = typeof campaignAssetsTable.$inferInsert["assetType"];
     const primaryContent = body.variations
-      .map((v, i) => `Variation ${i + 1}:\nHeadline: ${v.headline}\nDescription: ${v.description}${v.cta ? `\nCTA: ${v.cta}` : ""}`)
+      .map((v, i) => `Variation ${i + 1}:\nHeadline: ${v.headline}\nDescription: ${v.description}${v.cta ? `\nCTA: ${v.cta}` : ""}${v.url ? `\nURL: ${v.url}` : ""}`)
       .join("\n\n");
     const [saved] = await db.insert(campaignAssetsTable).values({
       campaignId: body.campaignId,
