@@ -2956,6 +2956,7 @@ function OfferBuilderPanel({ fetchWithAuth }: { fetchWithAuth: (url: string, opt
 interface LandingPageSuggestion { topic: string; audience: string; cta: string }
 
 function LandingPagesPanel({ fetchWithAuth }: { fetchWithAuth: (url: string, opts?: RequestInit) => Promise<Response> }) {
+  const { accessToken } = useAuth();
   const [pages, setPages] = useState<LandingPage[]>([]);
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
@@ -3173,6 +3174,15 @@ function LandingPagesPanel({ fetchWithAuth }: { fetchWithAuth: (url: string, opt
                     className={`text-[10px] px-2 py-0.5 rounded-full font-semibold transition-colors ${page.published ? "bg-emerald-500/20 text-emerald-400 hover:bg-red-500/20 hover:text-red-400" : "bg-[#30363D] text-[#7D8590] hover:bg-emerald-500/20 hover:text-emerald-400"}`}>
                     {page.published ? "Live" : "Publish"}
                   </button>
+                  {!page.published && accessToken && (
+                    <a
+                      href={`${getPublicUrl(page.slug)}?preview=${encodeURIComponent(accessToken)}`}
+                      target="_blank" rel="noopener noreferrer"
+                      className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-400 hover:bg-amber-500/30 transition-colors"
+                      title="Preview draft page">
+                      🔍 Preview
+                    </a>
+                  )}
                   {page.published && (
                     <>
                       <a href={getPublicUrl(page.slug)} target="_blank" rel="noopener noreferrer"

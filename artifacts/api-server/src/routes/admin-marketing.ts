@@ -2125,14 +2125,32 @@ router.delete("/admin/marketing/landing-pages/:id", requireAdmin, async (req: Re
   }
 });
 
-// Public landing page route (no auth)
+// Public landing page route (no auth required for published; ?preview=<jwt> allows draft access)
 router.get("/landing-pages/:slug", async (req: Request, res: Response) => {
   try {
     const slug = String(req.params.slug);
+    const previewToken = typeof req.query.preview === "string" ? req.query.preview : null;
+
+    let isAdminPreview = false;
+    if (previewToken) {
+      const secret = process.env.JWT_SECRET;
+      if (secret) {
+        try {
+          const payload = (await import("jsonwebtoken")).default.verify(previewToken, secret) as { role?: string };
+          if (payload.role === "admin") isAdminPreview = true;
+        } catch { /* invalid token — treat as unauthenticated */ }
+      }
+    }
+
     const [page] = await db.select().from(landingPagesTable)
-      .where(and(eq(landingPagesTable.slug, slug), eq(landingPagesTable.published, true))).limit(1);
+      .where(
+        isAdminPreview
+          ? eq(landingPagesTable.slug, slug)
+          : and(eq(landingPagesTable.slug, slug), eq(landingPagesTable.published, true))
+      ).limit(1);
+
     if (!page) { res.status(404).json({ error: "Not found" }); return; }
-    res.json(page);
+    res.json({ ...page, _preview: isAdminPreview && !page.published });
   } catch (e) {
     res.status(500).json({ error: String(e) });
   }

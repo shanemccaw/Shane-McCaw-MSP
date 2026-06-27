@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useParams } from "wouter";
+import { useParams, useSearch } from "wouter";
 import { Layout } from "@/components/Layout";
 import { CTAButton } from "@/components/CTAButton";
 
@@ -13,17 +13,24 @@ interface LandingPageData {
   socialProof: Array<{ quote: string; author: string; role?: string }>;
   cta: { buttonText: string; href: string; subtext?: string } | null;
   published: boolean;
+  _preview?: boolean;
 }
 
 export default function LandingPage() {
   const { slug } = useParams<{ slug: string }>();
+  const search = useSearch();
   const [page, setPage] = useState<LandingPageData | null>(null);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
 
   useEffect(() => {
     if (!slug) return;
-    fetch(`/api/landing-pages/${encodeURIComponent(slug)}`)
+    const params = new URLSearchParams(search);
+    const previewToken = params.get("preview");
+    const url = previewToken
+      ? `/api/landing-pages/${encodeURIComponent(slug)}?preview=${encodeURIComponent(previewToken)}`
+      : `/api/landing-pages/${encodeURIComponent(slug)}`;
+    fetch(url)
       .then(r => {
         if (!r.ok) { setNotFound(true); return null; }
         return r.json() as Promise<LandingPageData>;
@@ -31,7 +38,7 @@ export default function LandingPage() {
       .then(d => { if (d) setPage(d); })
       .catch(() => setNotFound(true))
       .finally(() => setLoading(false));
-  }, [slug]);
+  }, [slug, search]);
 
   if (loading) {
     return (
@@ -60,6 +67,13 @@ export default function LandingPage() {
 
   return (
     <Layout>
+      {page._preview && (
+        <div className="sticky top-0 z-50 bg-amber-500 text-amber-950 text-sm font-semibold text-center py-2 px-4 flex items-center justify-center gap-2 shadow-md">
+          <span>🔍 Preview Mode</span>
+          <span className="font-normal opacity-75">— this page is a draft and not visible to the public</span>
+        </div>
+      )}
+
       <div className="bg-[#0A2540] text-white pt-32 pb-20 px-4">
         <div className="max-w-3xl mx-auto text-center">
           {page.headline && (
