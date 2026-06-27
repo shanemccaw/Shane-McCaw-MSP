@@ -45,6 +45,7 @@ interface Lead {
   status: string;
   stage: string;
   score: number;
+  source: string;
   createdAt: string;
 }
 
@@ -613,6 +614,7 @@ function LeadFinderSection({ fetchWithAuth }: { fetchWithAuth: (url: string, opt
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [filterStatus, setFilterStatus] = useState("all");
+  const [filterSource, setFilterSource] = useState("all");
   const [filterIndustry, setFilterIndustry] = useState("all");
   const [filterCompanySize, setFilterCompanySize] = useState("all");
   const [filterLocation, setFilterLocation] = useState("all");
@@ -633,6 +635,7 @@ function LeadFinderSection({ fetchWithAuth }: { fetchWithAuth: (url: string, opt
     const matchSearch = !q || l.name.toLowerCase().includes(q) || (l.company ?? "").toLowerCase().includes(q) || (l.email ?? "").toLowerCase().includes(q) || (l.industry ?? "").toLowerCase().includes(q);
     return matchSearch
       && (filterStatus === "all" || l.status === filterStatus)
+      && (filterSource === "all" || l.source === filterSource)
       && (filterIndustry === "all" || l.industry === filterIndustry)
       && (filterCompanySize === "all" || l.companySize === filterCompanySize)
       && (filterLocation === "all" || l.location === filterLocation);
@@ -649,6 +652,12 @@ function LeadFinderSection({ fetchWithAuth }: { fetchWithAuth: (url: string, opt
         <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)} className={select}>
           <option value="all">All Statuses</option>
           {["new", "contacted", "qualified", "converted", "archived"].map(s => <option key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1)}</option>)}
+        </select>
+        <select value={filterSource} onChange={e => setFilterSource(e.target.value)} className={select}>
+          <option value="all">All Sources</option>
+          <option value="ai_recommended">AI Recommended</option>
+          <option value="contact_form">Contact Form</option>
+          <option value="lead_magnet">Lead Magnet</option>
         </select>
         <select value={filterIndustry} onChange={e => setFilterIndustry(e.target.value)} className={select}>
           <option value="all">All Industries</option>

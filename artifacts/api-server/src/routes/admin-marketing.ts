@@ -243,6 +243,11 @@ router.post("/admin/marketing/recommended-leads/:id/convert", requireAdmin, asyn
     }
 
     const emailFallback = `${rec.name.toLowerCase().replace(/\s+/g, ".")}@${(rec.company ?? "company").toLowerCase().replace(/\s+/g, "")}.com`;
+    const noteParts: string[] = [`[${new Date().toISOString()}] Converted from AI-recommended lead.`];
+    if (rec.whyFit) noteParts.push(`Why fit: ${rec.whyFit}`);
+    if (rec.recommendedService) noteParts.push(`Recommended service: ${rec.recommendedService}`);
+    if (rec.confidence) noteParts.push(`Confidence: ${rec.confidence}%`);
+
     const [newLead] = await db.insert(leadsTable).values({
       name: rec.name,
       email: rec.email ?? emailFallback,
@@ -253,8 +258,10 @@ router.post("/admin/marketing/recommended-leads/:id/convert", requireAdmin, asyn
       phone: rec.phone ?? null,
       location: rec.location ?? null,
       painPoints: rec.painPoints,
-      source: "contact_form",
+      source: "ai_recommended",
       status: "contacted",
+      stage: "AQL",
+      notes: noteParts.join(" | "),
     }).returning();
 
     await db.update(recommendedLeadsTable)
