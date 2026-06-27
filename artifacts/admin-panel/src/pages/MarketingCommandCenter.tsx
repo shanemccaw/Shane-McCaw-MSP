@@ -2772,6 +2772,9 @@ function OfferBuilderPanel({ fetchWithAuth }: { fetchWithAuth: (url: string, opt
   const [pricePoint, setPricePoint] = useState("");
   const [draft, setDraft] = useState<Omit<Offer, "id" | "createdAt"> | null>(null);
   const [expandedId, setExpandedId] = useState<number | null>(null);
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [editForm, setEditForm] = useState<{ name: string; goal: string; audience: string; pricing: string; deliverables: string; outcomes: string; cta: string } | null>(null);
+  const [editSaving, setEditSaving] = useState(false);
   const [suggestions, setSuggestions] = useState<OfferSuggestion[]>([]);
   const [suggestionIdx, setSuggestionIdx] = useState(0);
   const [loadingSuggestions, setLoadingSuggestions] = useState(false);
@@ -2838,6 +2841,48 @@ function OfferBuilderPanel({ fetchWithAuth }: { fetchWithAuth: (url: string, opt
   const deleteOffer = async (id: number) => {
     await fetchWithAuth(`${API}/admin/marketing/offers/${id}`, { method: "DELETE" });
     setOffers(prev => prev.filter(o => o.id !== id));
+  };
+
+  const startEdit = (o: Offer) => {
+    setEditingId(o.id);
+    setEditForm({
+      name: o.name,
+      goal: o.goal,
+      audience: o.audience,
+      pricing: o.pricing ?? "",
+      deliverables: o.deliverables.join("\n"),
+      outcomes: o.outcomes.join("\n"),
+      cta: o.cta ?? "",
+    });
+  };
+
+  const cancelEdit = () => { setEditingId(null); setEditForm(null); };
+
+  const saveEdit = async () => {
+    if (!editingId || !editForm) return;
+    setEditSaving(true);
+    try {
+      const body = {
+        name: editForm.name,
+        goal: editForm.goal,
+        audience: editForm.audience,
+        pricing: editForm.pricing || null,
+        deliverables: editForm.deliverables.split("\n").map(s => s.trim()).filter(Boolean),
+        outcomes: editForm.outcomes.split("\n").map(s => s.trim()).filter(Boolean),
+        cta: editForm.cta || null,
+      };
+      const r = await fetchWithAuth(`${API}/admin/marketing/offers/${editingId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const updated = await r.json() as Offer;
+      setOffers(prev => prev.map(o => o.id === editingId ? updated : o));
+      setEditingId(null);
+      setEditForm(null);
+    } finally {
+      setEditSaving(false);
+    }
   };
 
   return (
@@ -2938,24 +2983,94 @@ function OfferBuilderPanel({ fetchWithAuth }: { fetchWithAuth: (url: string, opt
               </button>
               {expandedId === o.id && (
                 <div className="border-t border-[#30363D] px-4 pb-4 pt-3 space-y-3">
-                  <p className="text-xs text-[#7D8590]">{o.goal}</p>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div><p className="text-[10px] text-[#58A6FF] font-semibold mb-1">Deliverables</p><ul>{o.deliverables.map((d, i) => <li key={i} className="text-xs text-[#E6EDF3] break-words">✓ {d}</li>)}</ul></div>
-                    <div><p className="text-[10px] text-emerald-400 font-semibold mb-1">Outcomes</p><ul>{o.outcomes.map((out, i) => <li key={i} className="text-xs text-[#E6EDF3] break-words">→ {out}</li>)}</ul></div>
-                  </div>
-                  {o.cta && <p className="text-xs text-amber-400">CTA: {o.cta}</p>}
-                  <div className="flex justify-end pt-1">
-                    <button
-                      onClick={() => {
-                        if (window.confirm(`Delete offer "${o.name}"? This cannot be undone.`)) {
-                          void deleteOffer(o.id);
-                        }
-                      }}
-                      className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-red-400 border border-red-400/30 rounded-lg hover:bg-red-400/10 transition-colors"
-                    >
-                      🗑 Delete
-                    </button>
-                  </div>
+                  {editingId === o.id && editForm ? (
+                    /* ── Edit form ── */
+                    <div className="space-y-3">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        <div>
+                          <label className="text-[10px] text-[#7D8590] uppercase tracking-wide">Name</label>
+                          <input value={editForm.name} onChange={e => setEditForm(f => f ? { ...f, name: e.target.value } : f)}
+                            className="mt-1 w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-sm text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60" />
+                        </div>
+                        <div>
+                          <label className="text-[10px] text-[#7D8590] uppercase tracking-wide">Audience</label>
+                          <input value={editForm.audience} onChange={e => setEditForm(f => f ? { ...f, audience: e.target.value } : f)}
+                            className="mt-1 w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-sm text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60" />
+                        </div>
+                      </div>
+                      <div>
+                        <label className="text-[10px] text-[#7D8590] uppercase tracking-wide">Goal</label>
+                        <input value={editForm.goal} onChange={e => setEditForm(f => f ? { ...f, goal: e.target.value } : f)}
+                          className="mt-1 w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-sm text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60" />
+                      </div>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        <div>
+                          <label className="text-[10px] text-[#7D8590] uppercase tracking-wide">Pricing</label>
+                          <input value={editForm.pricing} onChange={e => setEditForm(f => f ? { ...f, pricing: e.target.value } : f)}
+                            placeholder="e.g. $5,000 fixed"
+                            className="mt-1 w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-sm text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60" />
+                        </div>
+                        <div>
+                          <label className="text-[10px] text-[#7D8590] uppercase tracking-wide">CTA</label>
+                          <input value={editForm.cta} onChange={e => setEditForm(f => f ? { ...f, cta: e.target.value } : f)}
+                            placeholder="e.g. Book a call"
+                            className="mt-1 w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-sm text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60" />
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        <div>
+                          <label className="text-[10px] text-[#58A6FF] uppercase tracking-wide font-semibold">Deliverables <span className="normal-case text-[#484F58] font-normal">(one per line)</span></label>
+                          <textarea value={editForm.deliverables} onChange={e => setEditForm(f => f ? { ...f, deliverables: e.target.value } : f)}
+                            rows={4}
+                            className="mt-1 w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-sm text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60 resize-none" />
+                        </div>
+                        <div>
+                          <label className="text-[10px] text-emerald-400 uppercase tracking-wide font-semibold">Outcomes <span className="normal-case text-[#484F58] font-normal">(one per line)</span></label>
+                          <textarea value={editForm.outcomes} onChange={e => setEditForm(f => f ? { ...f, outcomes: e.target.value } : f)}
+                            rows={4}
+                            className="mt-1 w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-sm text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60 resize-none" />
+                        </div>
+                      </div>
+                      <div className="flex justify-end gap-2 pt-1">
+                        <button onClick={cancelEdit}
+                          className="px-3 py-1.5 text-xs font-medium text-[#7D8590] border border-[#30363D] rounded-lg hover:bg-[#30363D]/40 transition-colors">
+                          Cancel
+                        </button>
+                        <button onClick={() => { void saveEdit(); }} disabled={editSaving}
+                          className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-emerald-400 border border-emerald-400/30 rounded-lg hover:bg-emerald-400/10 disabled:opacity-40 transition-colors">
+                          {editSaving ? "Saving…" : "✓ Save Changes"}
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    /* ── Read-only detail ── */
+                    <>
+                      <p className="text-xs text-[#7D8590]">{o.goal}</p>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div><p className="text-[10px] text-[#58A6FF] font-semibold mb-1">Deliverables</p><ul>{o.deliverables.map((d, i) => <li key={i} className="text-xs text-[#E6EDF3] break-words">✓ {d}</li>)}</ul></div>
+                        <div><p className="text-[10px] text-emerald-400 font-semibold mb-1">Outcomes</p><ul>{o.outcomes.map((out, i) => <li key={i} className="text-xs text-[#E6EDF3] break-words">→ {out}</li>)}</ul></div>
+                      </div>
+                      {o.cta && <p className="text-xs text-amber-400">CTA: {o.cta}</p>}
+                      <div className="flex justify-end gap-2 pt-1">
+                        <button
+                          onClick={() => startEdit(o)}
+                          className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-[#58A6FF] border border-[#58A6FF]/30 rounded-lg hover:bg-[#58A6FF]/10 transition-colors"
+                        >
+                          ✏ Edit
+                        </button>
+                        <button
+                          onClick={() => {
+                            if (window.confirm(`Delete offer "${o.name}"? This cannot be undone.`)) {
+                              void deleteOffer(o.id);
+                            }
+                          }}
+                          className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-red-400 border border-red-400/30 rounded-lg hover:bg-red-400/10 transition-colors"
+                        >
+                          🗑 Delete
+                        </button>
+                      </div>
+                    </>
+                  )}
                 </div>
               )}
             </div>
