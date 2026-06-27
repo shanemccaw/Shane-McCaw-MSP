@@ -52,6 +52,7 @@ import adminM365RunRouter from "./admin-m365-run";
 import adminM365CategoriesRouter from "./admin-m365-categories";
 import adminManualScriptsRouter from "./admin-manual-scripts";
 import adminPsScriptsRouter from "./admin-ps-scripts";
+import adminKanbanEscalationRouter from "./admin-kanban-escalation";
 
 const router: IRouter = Router();
 
@@ -108,5 +109,6 @@ router.use(adminM365RunRouter);
 router.use(adminM365CategoriesRouter);
 router.use(adminManualScriptsRouter);
 router.use(adminPsScriptsRouter);
+router.use(adminKanbanEscalationRouter);
 
 export default router;

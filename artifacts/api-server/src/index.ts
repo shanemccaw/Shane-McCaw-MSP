@@ -3,6 +3,7 @@ import { logger } from "./lib/logger";
 import { validateStripeKeyOnStartup, checkWebhookHealthOnStartup } from "./lib/stripe";
 import { initGraphSubscription } from "./lib/graph-subscription";
 import { graphCredentialsPresent } from "./lib/graph";
+import { checkManualScriptEscalations } from "./lib/manual-script-escalation";
 import { pool } from "@workspace/db";
 
 const rawPort = process.env["PORT"];
@@ -54,6 +55,32 @@ app.listen(port, (err) => {
   initGraphSubscription().catch((err) => {
     logger.warn({ err }, "Graph subscription init failed (non-fatal)");
   });
+
+  // ── Daily escalation check: manual script cards stalled in Waiting on Customer ──
+  // Runs once at startup (to catch any overnight stalls) then every 24 h.
+  // The check is idempotent — each card can only trigger one alert per 24 h.
+  //
+  // To trigger manually or from an external scheduler (GitHub Actions, Azure
+  // Logic Apps, etc.):
+  //   POST /api/admin/kanban/check-escalations
+  //   Authorization: Bearer <ADMIN_PASSWORD>
+  const ESCALATION_INTERVAL_MS = 24 * 60 * 60 * 1000; // 24 hours
+  const runEscalationCheck = () => {
+    checkManualScriptEscalations().then((result) => {
+      if (result.alerted > 0) {
+        logger.info(
+          { alerted: result.alerted, cardIds: result.cardIds },
+          "escalation: daily check complete — alert sent",
+        );
+      } else {
+        logger.info("escalation: daily check complete — no overdue cards");
+      }
+    }).catch((err: unknown) => {
+      logger.warn({ err }, "escalation: daily check failed (non-fatal)");
+    });
+  };
+  runEscalationCheck();
+  setInterval(runEscalationCheck, ESCALATION_INTERVAL_MS);
 
   // ── DDL migrations (schema-only, no data inserts) ─────────────────────────
   pool.query(`
