@@ -275,7 +275,7 @@ export default function ClientDetailPage() {
   const [savingDoc, setSavingDoc] = useState(false);
 
   // M365 Health
-  const [showM365Health, setShowM365Health] = useState(false);
+  const [showM365Health, setShowM365Health] = useState(true);
 
   // AI Recommendations
   const [showAiRecs, setShowAiRecs] = useState(false);
@@ -918,6 +918,34 @@ export default function ClientDetailPage() {
             View as Client
           </button>
         </div>
+      </div>
+
+      {/* ── M365 Health — front and center ──────────────────────────────────── */}
+      <div className="bg-[#161B22] border border-[#0078D4]/40 rounded-xl overflow-hidden shadow-[0_0_0_1px_rgba(0,120,212,0.12)]">
+        <button
+          onClick={() => setShowM365Health(o => !o)}
+          className="w-full flex items-center justify-between px-5 py-3.5 bg-[#0078D4]/8 hover:bg-[#0078D4]/12 transition-colors"
+        >
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-lg bg-[#0078D4]/20 flex items-center justify-center flex-shrink-0">
+              <svg className="w-4 h-4 text-[#0078D4]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+              </svg>
+            </div>
+            <div className="text-left">
+              <p className="text-sm font-bold text-[#E6EDF3]">M365 Environment Health</p>
+              <p className="text-[11px] text-[#7D8590]">Score ring · category breakdown · 30-day alerts · trend chart</p>
+            </div>
+          </div>
+          <svg className={`w-4 h-4 text-[#7D8590] transition-transform ${showM365Health ? "rotate-180" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+          </svg>
+        </button>
+        {showM365Health && (
+          <div className="border-t border-[#0078D4]/20 bg-[#0D1117]">
+            <ClientM365HealthTab clientId={clientId} fetchWithAuth={fetchWithAuth} onOpenWizard={() => void openM365Dialog()} />
+          </div>
+        )}
       </div>
 
       {/* ── Three-Column Command Center ──────────────────────────────────────── */}
@@ -2263,34 +2291,6 @@ export default function ClientDetailPage() {
             </div>
           </div>
         )}
-
-        {/* ── M365 Health ── */}
-        <div className="border border-[#30363D] rounded-xl overflow-hidden">
-          <button
-            onClick={() => setShowM365Health(o => !o)}
-            className="w-full flex items-center justify-between px-5 py-4 bg-[#161B22] hover:bg-[#1C2128] transition-colors"
-          >
-            <div className="flex items-center gap-2.5">
-              <div className="w-7 h-7 rounded-lg bg-[#0078D4]/15 flex items-center justify-center flex-shrink-0">
-                <svg className="w-3.5 h-3.5 text-[#0078D4]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
-                </svg>
-              </div>
-              <div className="text-left">
-                <p className="text-sm font-bold text-[#E6EDF3]">M365 Health</p>
-                <p className="text-[10px] text-[#7D8590]">Score ring, category breakdown, 30-day alerts &amp; trend chart</p>
-              </div>
-            </div>
-            <svg className={`w-4 h-4 text-[#7D8590] transition-transform ${showM365Health ? "rotate-180" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
-            </svg>
-          </button>
-          {showM365Health && (
-            <div className="border-t border-[#30363D] bg-[#0D1117]">
-              <ClientM365HealthTab clientId={clientId} fetchWithAuth={fetchWithAuth} onOpenWizard={() => void openM365Dialog()} />
-            </div>
-          )}
-        </div>
 
         {/* ── AI Recommendations ── */}
         <div className="border border-[#30363D] rounded-xl overflow-hidden">
