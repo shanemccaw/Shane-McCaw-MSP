@@ -533,6 +533,18 @@ export default function ServicesPage() {
   const [deleting, setDeleting] = useState(false);
 
   const [showWorkflow, setShowWorkflow] = useState(false);
+
+  function exportServiceJson() {
+    if (!selected) return;
+    const json = JSON.stringify(selected, null, 2);
+    const blob = new Blob([json], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `service-${selected.slug ?? selected.id}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
   const [showAssign, setShowAssign] = useState(false);
   const [assignForm, setAssignForm] = useState<AssignForm>({
     clientUserId: "", serviceId: "", startDate: "", nextMilestone: "", nextMilestoneDate: "",
@@ -922,6 +934,17 @@ export default function ServicesPage() {
                   {selected.orderWorkflow && selected.orderWorkflow.length > 0
                     ? `Workflow (${selected.orderWorkflow.length} step${selected.orderWorkflow.length !== 1 ? "s" : ""})`
                     : "Workflow"}
+                </button>
+                <button
+                  type="button"
+                  onClick={exportServiceJson}
+                  title="Download full service data as JSON"
+                  className="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg border border-[#30363D] text-[#7D8590] hover:border-[#0078D4] hover:text-[#0078D4] transition-colors"
+                >
+                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                  </svg>
+                  Export JSON
                 </button>
                 <button
                   onClick={e => { e.preventDefault(); void handleSave(e as unknown as React.FormEvent); }}
