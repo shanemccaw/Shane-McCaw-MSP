@@ -1280,12 +1280,15 @@ router.post("/admin/marketing/campaigns/save-assets", requireAdmin, async (req: 
   try {
     const body = campaignSaveAssetsSchema.parse(req.body);
     type AssetType = "landing_copy" | "email_sequence" | "social_post" | "follow_up_task" | "blog_post" | "linkedin_post" | "newsletter" | "seo_keywords";
+    const currentOffers = await db.select({ id: offersTable.id }).from(offersTable).where(eq(offersTable.campaignId, body.campaignId));
+    const generatedWithOfferIds = currentOffers.map(o => o.id);
     const inserted = await db.insert(campaignAssetsTable)
       .values(body.assets.map(a => ({
         campaignId: body.campaignId,
         assetType: a.assetType as AssetType,
         title: a.title,
         content: a.content,
+        generatedWithOfferIds,
       })))
       .returning();
     res.json(inserted);
@@ -1526,12 +1529,15 @@ router.post("/admin/marketing/campaigns/save-ads", requireAdmin, async (req: Req
     const primaryContent = body.variations
       .map((v, i) => `Variation ${i + 1}:\nHeadline: ${v.headline}\nDescription: ${v.description}${v.cta ? `\nCTA: ${v.cta}` : ""}${v.url ? `\nURL: ${v.url}` : ""}`)
       .join("\n\n");
+    const currentOffers = await db.select({ id: offersTable.id }).from(offersTable).where(eq(offersTable.campaignId, body.campaignId));
+    const generatedWithOfferIds = currentOffers.map(o => o.id);
     const [saved] = await db.insert(campaignAssetsTable).values({
       campaignId: body.campaignId,
       assetType: body.adType as AssetType,
       title: body.title,
       content: primaryContent,
       metadata: { variations: body.variations },
+      generatedWithOfferIds,
     }).returning();
     res.json(saved);
   } catch (e) {
@@ -2569,12 +2575,16 @@ Generate a lead magnet in JSON:
     const generated = parseAiJson(raw, schema);
 
     // Persist to campaign_assets so it's tracked in the content pipeline
+    const generatedWithOfferIds = body.campaignId
+      ? (await db.select({ id: offersTable.id }).from(offersTable).where(eq(offersTable.campaignId, body.campaignId))).map(o => o.id)
+      : [];
     const [saved] = await db.insert(campaignAssetsTable).values({
       campaignId: body.campaignId ?? null,
       assetType: "lead_magnet",
       title: generated.title,
       content: generated.outlineMarkdown,
       metadata: { subtitle: generated.subtitle, format: generated.format, items: generated.items, cta: generated.cta },
+      generatedWithOfferIds,
     }).returning();
 
     res.json({ ...generated, assetId: saved?.id ?? null });

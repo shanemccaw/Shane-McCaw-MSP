@@ -1139,6 +1139,7 @@ export const campaignAssetsTable = pgTable("campaign_assets", {
   title: text("title").notNull(),
   content: text("content").notNull(),
   metadata: jsonb("metadata").$type<Record<string, unknown>>().default({}),
+  generatedWithOfferIds: jsonb("generated_with_offer_ids").$type<number[] | null>(),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 

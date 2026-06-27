@@ -168,6 +168,7 @@ interface CampaignAsset extends PreviewAsset {
   id: number;
   campaignId?: number | null;
   metadata?: { variations?: AdVariation[] };
+  generatedWithOfferIds?: number[] | null;
 }
 
 interface KPI {
@@ -1895,6 +1896,7 @@ interface CampaignAsset {
   createdAt: string;
   campaignId?: number | null;
   metadata?: { variations?: AdVariation[] };
+  generatedWithOfferIds?: number[] | null;
 }
 
 function ContentHubSection({ fetchWithAuth }: { fetchWithAuth: (url: string, opts?: RequestInit) => Promise<Response> }) {
@@ -5858,11 +5860,16 @@ function LandingCopyPanel({
   );
 }
 
-function OfferIndicator({ offers }: { offers: Array<{ name: string }> }) {
+function OfferIndicator({ offers, isSnapshot }: { offers: Array<{ name: string }>; isSnapshot?: boolean }) {
   return (
     <p className="text-[10px] text-[#484F58]">
       {offers.length > 0
-        ? `Using ${offers.length} offer${offers.length === 1 ? "" : "s"}: ${offers.map(o => o.name).join(", ")}`
+        ? <>
+            {isSnapshot
+              ? <span className="text-[#58A6FF] mr-1" title="Snapshot of offers active at generation time">📸</span>
+              : null}
+            {`${isSnapshot ? "Generated with" : "Using"} ${offers.length} offer${offers.length === 1 ? "" : "s"}: ${offers.map(o => o.name).join(", ")}`}
+          </>
         : "No linked offers — using campaign description only"}
     </p>
   );
@@ -5872,77 +5879,91 @@ function CampaignAssetTabPanel({
   asset,
   campaign,
   offers,
+  allOffersById,
   fetchWithAuth,
   onLandingPageCreated,
 }: {
   asset: CampaignAsset;
   campaign: Campaign;
   offers: Array<{ id: number; name: string; pricing: string | null; deliverables: string[]; outcomes: string[] }>;
+  allOffersById: Record<number, { name: string }>;
   fetchWithAuth: (url: string, opts?: RequestInit) => Promise<Response>;
   onLandingPageCreated: () => void;
 }) {
+  const snapshotIds = asset.generatedWithOfferIds;
+  const hasSnapshot = snapshotIds !== null && snapshotIds !== undefined;
+  const displayOffers: Array<{ id: number; name: string; pricing: string | null; deliverables: string[]; outcomes: string[] }> = hasSnapshot
+    ? (snapshotIds as number[]).map(id => {
+        const fromGlobal = allOffersById[id];
+        const fromCampaign = offers.find(o => o.id === id);
+        if (fromCampaign) return fromCampaign;
+        if (fromGlobal) return { id, name: fromGlobal.name, pricing: null, deliverables: [], outcomes: [] };
+        return null;
+      }).filter((o): o is NonNullable<typeof o> => o !== null)
+    : offers;
+
   switch (asset.assetType) {
     case "ad_google": return (
       <div className="space-y-3">
-        <OfferIndicator offers={offers} />
+        <OfferIndicator offers={displayOffers} isSnapshot={hasSnapshot} />
         <GoogleAdPreview asset={asset} />
       </div>
     );
     case "ad_linkedin": return (
       <div className="space-y-3">
-        <OfferIndicator offers={offers} />
+        <OfferIndicator offers={displayOffers} isSnapshot={hasSnapshot} />
         <LinkedInAdPreview asset={asset} />
       </div>
     );
     case "ad_retargeting": return (
       <div className="space-y-3">
-        <OfferIndicator offers={offers} />
+        <OfferIndicator offers={displayOffers} isSnapshot={hasSnapshot} />
         <AdVariationPreview asset={asset} label="Retargeting" />
       </div>
     );
     case "ad_creative": return (
       <div className="space-y-3">
-        <OfferIndicator offers={offers} />
+        <OfferIndicator offers={displayOffers} isSnapshot={hasSnapshot} />
         <AdVariationPreview asset={asset} label="Creative" />
       </div>
     );
     case "landing_page": return (
       <div className="space-y-3">
-        <OfferIndicator offers={offers} />
+        <OfferIndicator offers={displayOffers} isSnapshot={hasSnapshot} />
         <LandingPagePreview asset={asset} />
       </div>
     );
     case "email_sequence":
     case "cold_email":
     case "followup":
-    case "newsletter": return <EmailSequencePanel asset={asset} campaign={campaign} offers={offers} fetchWithAuth={fetchWithAuth} />;
+    case "newsletter": return <EmailSequencePanel asset={asset} campaign={campaign} offers={displayOffers} fetchWithAuth={fetchWithAuth} />;
     case "social_post": return (
       <div className="space-y-3">
-        <OfferIndicator offers={offers} />
+        <OfferIndicator offers={displayOffers} isSnapshot={hasSnapshot} />
         <SocialPostPreview asset={asset} />
       </div>
     );
     case "linkedin_post": return (
       <div className="space-y-3">
-        <OfferIndicator offers={offers} />
+        <OfferIndicator offers={displayOffers} isSnapshot={hasSnapshot} />
         <SocialPostPreview asset={asset} handle="Shane McCaw on LinkedIn" />
       </div>
     );
     case "blog_post": return (
       <div className="space-y-3">
-        <OfferIndicator offers={offers} />
+        <OfferIndicator offers={displayOffers} isSnapshot={hasSnapshot} />
         <BlogPostPreview asset={asset} />
       </div>
     );
     case "follow_up_task": return (
       <div className="space-y-3">
-        <OfferIndicator offers={offers} />
+        <OfferIndicator offers={displayOffers} isSnapshot={hasSnapshot} />
         <TaskCardPreview asset={asset} />
       </div>
     );
     case "lead_magnet": return (
       <div className="space-y-3">
-        <OfferIndicator offers={offers} />
+        <OfferIndicator offers={displayOffers} isSnapshot={hasSnapshot} />
         <GenericAssetPreview asset={asset} />
       </div>
     );
@@ -5950,14 +5971,14 @@ function CampaignAssetTabPanel({
       <LandingCopyPanel
         asset={asset}
         campaign={campaign}
-        offers={offers}
+        offers={displayOffers}
         fetchWithAuth={fetchWithAuth}
         onLandingPageCreated={onLandingPageCreated}
       />
     );
     default: return (
       <div className="space-y-3">
-        <OfferIndicator offers={offers} />
+        <OfferIndicator offers={displayOffers} isSnapshot={hasSnapshot} />
         <GenericAssetPreview asset={asset} />
       </div>
     );
@@ -6019,12 +6040,14 @@ function CampaignAssetTabs({
   assets,
   campaign,
   offers,
+  allOffersById,
   fetchWithAuth,
   onLandingPageCreated,
 }: {
   assets: CampaignAsset[];
   campaign: Campaign;
   offers: Array<{ id: number; name: string; pricing: string | null; deliverables: string[]; outcomes: string[] }>;
+  allOffersById: Record<number, { name: string }>;
   fetchWithAuth: (url: string, opts?: RequestInit) => Promise<Response>;
   onLandingPageCreated: () => void;
 }) {
@@ -6066,6 +6089,7 @@ function CampaignAssetTabs({
               asset={asset}
               campaign={campaign}
               offers={offers}
+              allOffersById={allOffersById}
               fetchWithAuth={fetchWithAuth}
               onLandingPageCreated={onLandingPageCreated}
             />
@@ -6126,6 +6150,7 @@ function CampaignDetailView({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
+  const [allOffersById, setAllOffersById] = useState<Record<number, { name: string }>>({});
 
   // Inline metrics edit
   const [leads, setLeads] = useState("");
@@ -6147,13 +6172,20 @@ function CampaignDetailView({
   useEffect(() => {
     setLoading(true);
     setError(null);
-    fetchWithAuth(`${API}/admin/marketing/campaigns/${campaignId}`)
-      .then(r => r.json())
-      .then((d: CampaignDetailData) => {
+    Promise.all([
+      fetchWithAuth(`${API}/admin/marketing/campaigns/${campaignId}`).then(r => r.json() as Promise<CampaignDetailData>),
+      fetchWithAuth(`${API}/admin/marketing/offers`).then(r => r.json() as Promise<Array<{ id: number; name: string }>>).catch(() => [] as Array<{ id: number; name: string }>),
+    ])
+      .then(([d, allOffers]) => {
         setData(d);
         setLeads(String(d.campaign.leadsGenerated ?? 0));
         setEmails(String(d.campaign.emailsSent ?? 0));
         setRevenue(String(Number(d.campaign.revenueAttributed ?? 0).toFixed(2)));
+        if (Array.isArray(allOffers)) {
+          const byId: Record<number, { name: string }> = {};
+          for (const o of allOffers) byId[o.id] = { name: o.name };
+          setAllOffersById(byId);
+        }
       })
       .catch(() => setError("Failed to load campaign details"))
       .finally(() => setLoading(false));
@@ -6354,6 +6386,7 @@ function CampaignDetailView({
           assets={assets}
           campaign={campaign}
           offers={offers}
+          allOffersById={allOffersById}
           fetchWithAuth={fetchWithAuth}
           onLandingPageCreated={() => setRefreshKey(k => k + 1)}
         />
@@ -6649,20 +6682,19 @@ function CampaignBuilderWizard({ fetchWithAuth }: { fetchWithAuth: (url: string,
       const campaign = await cr.json() as Campaign;
       setSavedCampaignId(campaign.id);
 
-      await Promise.all([
-        fetchWithAuth(`${API}/admin/marketing/campaigns/save-assets`, {
+      if (offer.trim()) {
+        await fetchWithAuth(`${API}/admin/marketing/offers`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ campaignId: campaign.id, assets: previewAssets }),
-        }),
-        offer.trim()
-          ? fetchWithAuth(`${API}/admin/marketing/offers`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ name: offer.trim(), goal, audience, campaignId: campaign.id }),
-            })
-          : Promise.resolve(),
-      ]);
+          body: JSON.stringify({ name: offer.trim(), goal, audience, campaignId: campaign.id }),
+        });
+      }
+
+      await fetchWithAuth(`${API}/admin/marketing/campaigns/save-assets`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ campaignId: campaign.id, assets: previewAssets }),
+      });
 
       setCampaigns(prev => [campaign, ...prev]);
       setStep(5);
@@ -7258,6 +7290,7 @@ function AdLibrarySection({
   const [assets, setAssets] = useState<CampaignAsset[]>([]);
   const [campaignNames, setCampaignNames] = useState<Record<number, string>>({});
   const [campaignOffers, setCampaignOffers] = useState<Record<number, Array<{ name: string }>>>({});
+  const [allOffersById, setAllOffersById] = useState<Record<number, { name: string }>>({});
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState<string>("all");
@@ -7266,8 +7299,9 @@ function AdLibrarySection({
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [campaignsRes, ...assetResponses] = await Promise.all([
+      const [campaignsRes, allOffersRes, ...assetResponses] = await Promise.all([
         fetchWithAuth(`${API}/admin/marketing/campaigns`),
+        fetchWithAuth(`${API}/admin/marketing/offers`),
         ...AD_LIBRARY_TYPES.map(at =>
           fetchWithAuth(`${API}/admin/marketing/campaign-assets?assetType=${encodeURIComponent(at.type)}`)
         ),
@@ -7279,6 +7313,15 @@ function AdLibrarySection({
         for (const c of campaignList) nameMap[c.id] = c.name;
       }
       setCampaignNames(nameMap);
+
+      try {
+        const allOffersData = await allOffersRes.json() as Array<{ id: number; name: string }>;
+        if (Array.isArray(allOffersData)) {
+          const byId: Record<number, { name: string }> = {};
+          for (const o of allOffersData) byId[o.id] = { name: o.name };
+          setAllOffersById(byId);
+        }
+      } catch { setAllOffersById({}); }
 
       const allAssets: CampaignAsset[] = [];
       for (const r of assetResponses) {
@@ -7396,7 +7439,11 @@ function AdLibrarySection({
             const campaignName = asset.campaignId != null ? campaignNames[asset.campaignId] : undefined;
             const isExpanded = expandedId === asset.id;
             const variations = asset.metadata?.variations ?? [];
-            const assetOffers = asset.campaignId != null ? (campaignOffers[asset.campaignId] ?? []) : [];
+            const snapshotIds = asset.generatedWithOfferIds;
+            const hasSnapshot = snapshotIds !== null && snapshotIds !== undefined;
+            const assetOffers = hasSnapshot
+              ? (snapshotIds as number[]).map(id => allOffersById[id]).filter(Boolean) as Array<{ name: string }>
+              : (asset.campaignId != null ? (campaignOffers[asset.campaignId] ?? []) : []);
 
             return (
               <div key={asset.id} className="bg-[#161B22] border border-[#30363D] rounded-xl overflow-hidden">
@@ -7422,7 +7469,7 @@ function AdLibrarySection({
                       )}
                     </div>
                     <p className="text-sm font-semibold text-[#E6EDF3] truncate">{asset.title}</p>
-                    <OfferIndicator offers={assetOffers} />
+                    <OfferIndicator offers={assetOffers} isSnapshot={hasSnapshot} />
                     <p className="text-[10px] text-[#484F58]">
                       {variations.length > 0 && `${variations.length} variation${variations.length !== 1 ? "s" : ""} · `}
                       {new Date(asset.createdAt).toLocaleDateString()}
