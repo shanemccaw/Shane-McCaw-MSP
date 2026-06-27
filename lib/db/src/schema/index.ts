@@ -1096,7 +1096,7 @@ export const marketingTasksTable = pgTable("marketing_tasks", {
   id: serial("id").primaryKey(),
   title: text("title").notNull(),
   description: text("description"),
-  status: text("status", { enum: ["ideas", "in_progress", "scheduled", "published", "completed"] }).notNull().default("ideas"),
+  status: text("status", { enum: ["ideas", "in_progress", "scheduled", "published", "completed", "money_task"] }).notNull().default("ideas"),
   order: integer("order").notNull().default(0),
   dueDate: timestamp("due_date"),
   relatedLeadId: integer("related_lead_id").references(() => leadsTable.id, { onDelete: "set null" }),
@@ -1117,6 +1117,8 @@ export const campaignsTable = pgTable("campaigns", {
   status: text("status", { enum: ["draft", "active", "paused", "completed"] }).notNull().default("draft"),
   startDate: timestamp("start_date"),
   endDate: timestamp("end_date"),
+  // Linked offer (optional — FK enforced at DB level, see migration 0070)
+  offerId: integer("offer_id"),
   // Performance metrics — manually updated by Shane
   leadsGenerated: integer("leads_generated").notNull().default(0),
   emailsSent: integer("emails_sent").notNull().default(0),
@@ -1131,7 +1133,7 @@ export type Campaign = typeof campaignsTable.$inferSelect;
 export const campaignAssetsTable = pgTable("campaign_assets", {
   id: serial("id").primaryKey(),
   campaignId: integer("campaign_id").references(() => campaignsTable.id, { onDelete: "cascade" }),
-  assetType: text("asset_type", { enum: ["landing_copy", "email_sequence", "social_post", "follow_up_task", "blog_post", "linkedin_post", "newsletter", "seo_keywords"] }).notNull(),
+  assetType: text("asset_type", { enum: ["landing_copy", "email_sequence", "social_post", "follow_up_task", "blog_post", "linkedin_post", "newsletter", "seo_keywords", "lead_magnet"] }).notNull(),
   title: text("title").notNull(),
   content: text("content").notNull(),
   metadata: jsonb("metadata").$type<Record<string, unknown>>().default({}),
@@ -1202,3 +1204,76 @@ export const seoRankingsTable = pgTable("seo_rankings", {
 
 export type InsertSeoRanking = typeof seoRankingsTable.$inferInsert;
 export type SeoRanking = typeof seoRankingsTable.$inferSelect;
+
+// ── Lead Intent Events (hot-score signal stream) ─────────────────────────────
+
+export const leadIntentEventsTable = pgTable("lead_intent_events", {
+  id: serial("id").primaryKey(),
+  leadId: integer("lead_id").notNull().references(() => leadsTable.id, { onDelete: "cascade" }),
+  eventType: text("event_type", { enum: ["email_open", "link_click", "cta_click", "site_visit", "form_submit", "reply"] }).notNull(),
+  metadata: jsonb("metadata").$type<Record<string, unknown>>().default({}),
+  occurredAt: timestamp("occurred_at").notNull().defaultNow(),
+});
+
+export type InsertLeadIntentEvent = typeof leadIntentEventsTable.$inferInsert;
+export type LeadIntentEvent = typeof leadIntentEventsTable.$inferSelect;
+
+// ── Follow-Up Events ──────────────────────────────────────────────────────────
+
+export const followUpEventsTable = pgTable("follow_up_events", {
+  id: serial("id").primaryKey(),
+  leadId: integer("lead_id").references(() => leadsTable.id, { onDelete: "set null" }),
+  campaignId: integer("campaign_id").references(() => campaignsTable.id, { onDelete: "set null" }),
+  scheduledAt: timestamp("scheduled_at").notNull(),
+  completedAt: timestamp("completed_at"),
+  channel: text("channel", { enum: ["email", "linkedin", "phone", "other"] }).notNull().default("email"),
+  subject: text("subject"),
+  aiDraftContent: text("ai_draft_content"),
+  status: text("status", { enum: ["pending", "completed", "overdue", "skipped"] }).notNull().default("pending"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export type InsertFollowUpEvent = typeof followUpEventsTable.$inferInsert;
+export type FollowUpEvent = typeof followUpEventsTable.$inferSelect;
+
+// ── Offers ────────────────────────────────────────────────────────────────────
+
+export const offersTable = pgTable("offers", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  goal: text("goal").notNull(),
+  audience: text("audience").notNull(),
+  pricing: text("pricing"),
+  deliverables: jsonb("deliverables").$type<string[]>().notNull().default([]),
+  outcomes: jsonb("outcomes").$type<string[]>().notNull().default([]),
+  cta: text("cta"),
+  campaignId: integer("campaign_id").references(() => campaignsTable.id, { onDelete: "set null" }),
+  metadata: jsonb("metadata").$type<Record<string, unknown>>().default({}),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export type InsertOffer = typeof offersTable.$inferInsert;
+export type Offer = typeof offersTable.$inferSelect;
+
+// ── Landing Pages ─────────────────────────────────────────────────────────────
+
+export const landingPagesTable = pgTable("landing_pages", {
+  id: serial("id").primaryKey(),
+  slug: text("slug").notNull().unique(),
+  title: text("title").notNull(),
+  campaignId: integer("campaign_id").references(() => campaignsTable.id, { onDelete: "set null" }),
+  headline: text("headline"),
+  subheadline: text("subheadline"),
+  valuePropBlocks: jsonb("value_prop_blocks").$type<Array<{ icon?: string; heading: string; body: string }>>().notNull().default([]),
+  socialProof: jsonb("social_proof").$type<Array<{ quote: string; author: string; role?: string }>>().notNull().default([]),
+  cta: jsonb("cta").$type<{ buttonText: string; href: string; subtext?: string }>().default({ buttonText: "Get Started", href: "/contact" }),
+  layoutBlocks: jsonb("layout_blocks").$type<Array<{ blockType: string; content: unknown }>>().notNull().default([]),
+  published: boolean("published").notNull().default(false),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export type InsertLandingPage = typeof landingPagesTable.$inferInsert;
+export type LandingPage = typeof landingPagesTable.$inferSelect;

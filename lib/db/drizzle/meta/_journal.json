@@ -491,6 +491,27 @@
       "when": 1782532789202,
       "tag": "0067_add_ai_suggested_source",
       "breakpoints": true
+    },
+    {
+      "idx": 68,
+      "version": "7",
+      "when": 1782535663594,
+      "tag": "0068_add_revenue_engine_tables",
+      "breakpoints": true
+    },
+    {
+      "idx": 69,
+      "version": "7",
+      "when": 1782538000000,
+      "tag": "0069_campaigns_offer_id",
+      "breakpoints": true
+    },
+    {
+      "idx": 70,
+      "version": "7",
+      "when": 1782540000000,
+      "tag": "0070_campaigns_offer_fk_and_lead_magnet_asset",
+      "breakpoints": true
     }
   ]
 }

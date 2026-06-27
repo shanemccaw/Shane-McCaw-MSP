@@ -54,11 +54,84 @@ interface MarketingTask {
   id: number;
   title: string;
   description?: string;
-  status: "ideas" | "in_progress" | "scheduled" | "published" | "completed";
+  status: "ideas" | "in_progress" | "scheduled" | "published" | "completed" | "money_task";
   order: number;
   dueDate?: string;
   relatedLeadId?: number | null;
   relatedCampaignId?: number | null;
+}
+
+interface Offer {
+  id: number;
+  name: string;
+  goal: string;
+  audience: string;
+  pricing?: string | null;
+  deliverables: string[];
+  outcomes: string[];
+  cta?: string | null;
+  campaignId?: number | null;
+  createdAt: string;
+}
+
+interface LandingPage {
+  id: number;
+  slug: string;
+  title: string;
+  headline?: string | null;
+  subheadline?: string | null;
+  valuePropBlocks: Array<{ icon?: string; heading: string; body: string }>;
+  socialProof: Array<{ quote: string; author: string; role?: string }>;
+  cta: { buttonText: string; href: string; subtext?: string } | null;
+  campaignId?: number | null;
+  published: boolean;
+  createdAt: string;
+}
+
+interface FollowUp {
+  id: number;
+  leadId?: number | null;
+  campaignId?: number | null;
+  scheduledAt: string;
+  completedAt?: string | null;
+  channel: string;
+  subject?: string | null;
+  aiDraftContent?: string | null;
+  status: string;
+  leadName?: string | null;
+  leadEmail?: string | null;
+  createdAt: string;
+}
+
+interface HotLead {
+  id: number;
+  name: string;
+  email: string;
+  company?: string | null;
+  industry?: string | null;
+  score: number;
+  status: string;
+  stage: string;
+  recentEvents: number;
+}
+
+interface DailyCommand {
+  leadsToContact: Array<{ id: number; name: string; company?: string | null; score: number; stage: string; email: string; industry?: string | null }>;
+  followUpsTodo: Array<{ id: number; leadId?: number | null; channel: string; subject?: string | null; aiDraftContent?: string | null; scheduledAt: string; status: string; leadName?: string | null; leadEmail?: string | null }>;
+  offerToPush: { id: number; name: string; goal: string; pricing?: string | null; cta?: string | null } | null;
+  campaignAction: { id: number; name: string; status: string; leadsGenerated: number; revenueAttributed: string } | null;
+  contentSuggestion: { id: number; title: string; assetType: string } | null;
+  revenueThisMonth: number;
+  publishedLandingPages: number;
+  aiInsight: {
+    topPriority: string;
+    quickWins: string[];
+    revenueInsight: string;
+    revenueOpportunities: string[];
+    closestToBuying: string;
+    nextBestActions: string[];
+  };
+  generatedAt: string;
 }
 
 interface Campaign {
@@ -91,6 +164,13 @@ interface KPI {
   leadsThisWeek: number;
   conversionRate: string;
   activeCampaigns: number;
+  hotLeadsCount: number;
+  intentSignalsToday: number;
+  followUpsDue: number;
+  activeOffers: number;
+  revenueThisMonth: number;
+  revenueOpportunity: number;
+  offerConversionRate: string;
 }
 
 interface FunnelEntry { stage: string; value: number }
@@ -957,13 +1037,195 @@ function RecommendedLeadsSection({ fetchWithAuth }: { fetchWithAuth: (url: strin
   );
 }
 
+// ─── Daily Revenue Command Panel ─────────────────────────────────────────────
+
+function DailyCommandPanel({ fetchWithAuth, onNavigate }: { fetchWithAuth: (url: string, opts?: RequestInit) => Promise<Response>; onNavigate?: (section: string) => void }) {
+  const [cmd, setCmd] = useState<DailyCommand | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+
+  const load = (bust = false) => {
+    const url = `${API}/admin/marketing/daily-command${bust ? "?refresh=1" : ""}`;
+    if (bust) setRefreshing(true); else setLoading(true);
+    fetchWithAuth(url).then(r => r.json()).then(d => setCmd(d as DailyCommand)).catch(() => null)
+      .finally(() => { setLoading(false); setRefreshing(false); });
+  };
+
+  useEffect(() => { load(); }, [fetchWithAuth]);
+
+  if (loading) return (
+    <div className="bg-gradient-to-r from-[#0A2540] to-[#0D1B35] border border-[#0078D4]/30 rounded-xl p-5">
+      <div className="animate-pulse space-y-3">
+        <div className="h-5 w-48 bg-[#1C2128] rounded" />
+        <div className="h-20 bg-[#1C2128] rounded" />
+      </div>
+    </div>
+  );
+
+  if (!cmd) return null;
+
+  const followUpsTodo = cmd.followUpsTodo ?? [];
+  const leadsToContact = cmd.leadsToContact ?? [];
+  const overdueCount = followUpsTodo.filter(f => f.status === "overdue").length;
+
+  return (
+    <div className="bg-gradient-to-r from-[#0A2540] to-[#0D1B35] border border-[#0078D4]/30 rounded-xl p-5 space-y-4">
+      <div className="flex items-center justify-between flex-wrap gap-2">
+        <div>
+          <h2 className="text-sm font-semibold text-[#58A6FF] uppercase tracking-wide">Revenue Command Center</h2>
+          <p className="text-xs text-[#7D8590] mt-0.5">Updated {new Date(cmd.generatedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</p>
+        </div>
+        <div className="flex items-center gap-3">
+          {[
+            { label: "Contacts Today", value: leadsToContact.length, urgent: false, icon: "🎯" },
+            { label: "Follow-Ups", value: followUpsTodo.length, urgent: false, icon: "📅" },
+            { label: "Overdue", value: overdueCount, urgent: overdueCount > 0, icon: "⚠" },
+            { label: "Live Pages", value: cmd.publishedLandingPages, urgent: false, icon: "🌐" },
+          ].map(s => (
+            <div key={s.label} className={`text-center px-3 py-1.5 rounded-lg border ${s.urgent ? "border-red-500/40 bg-red-500/10" : "border-[#30363D] bg-[#161B22]/50"}`}>
+              <p className={`text-lg font-bold ${s.urgent ? "text-red-400" : "text-[#E6EDF3]"}`}>{s.icon} {s.value}</p>
+              <p className="text-[10px] text-[#7D8590]">{s.label}</p>
+            </div>
+          ))}
+          <button onClick={() => load(true)} disabled={refreshing}
+            className="text-xs text-[#58A6FF] border border-[#30363D] rounded-lg px-3 py-1.5 hover:bg-[#161B22] disabled:opacity-50 transition-colors">
+            {refreshing ? "…" : "↻ Refresh"}
+          </button>
+        </div>
+      </div>
+
+      <div className="bg-[#0078D4]/10 border border-[#0078D4]/20 rounded-lg p-3">
+        <p className="text-xs font-semibold text-[#58A6FF] mb-1">✦ Today's #1 Priority</p>
+        <p className="text-sm text-[#E6EDF3]">{cmd.aiInsight.topPriority}</p>
+        {cmd.aiInsight.closestToBuying && (
+          <p className="text-xs text-amber-300 mt-1.5">🏆 Closest to buying: {cmd.aiInsight.closestToBuying}</p>
+        )}
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+        {leadsToContact.length > 0 && (
+          <div>
+            <p className="text-[10px] font-semibold text-[#7D8590] uppercase tracking-wide mb-2">🔥 Leads to Contact</p>
+            <div className="space-y-1.5">
+              {leadsToContact.map(l => (
+                <button key={l.id} onClick={() => onNavigate?.("lead-finder")}
+                  className="w-full flex items-center justify-between bg-[#161B22]/70 hover:bg-[#161B22] rounded-lg px-3 py-1.5 transition-colors text-left group">
+                  <div>
+                    <p className="text-xs font-medium text-[#E6EDF3]">{l.name}</p>
+                    <p className="text-[10px] text-[#7D8590]">{l.company ?? "—"} · {l.stage}</p>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <span className={`text-xs font-bold ${l.score >= 70 ? "text-red-400" : "text-amber-400"}`}>{l.score}</span>
+                    <span className="text-[10px] text-[#30363D] group-hover:text-[#7D8590] transition-colors">→</span>
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {followUpsTodo.length > 0 && (
+          <div>
+            <p className="text-[10px] font-semibold text-[#7D8590] uppercase tracking-wide mb-2">📅 Follow-Ups Due Today</p>
+            <div className="space-y-1.5">
+              {followUpsTodo.map(f => (
+                <button key={f.id} onClick={() => onNavigate?.("follow-ups")}
+                  className={`w-full flex items-center justify-between rounded-lg px-3 py-1.5 transition-colors text-left group ${f.status === "overdue" ? "bg-red-500/10 border border-red-500/20 hover:bg-red-500/15" : "bg-[#161B22]/70 hover:bg-[#161B22]"}`}>
+                  <div>
+                    <p className="text-xs font-medium text-[#E6EDF3]">{f.leadName ?? "Unknown"}</p>
+                    <p className="text-[10px] text-[#7D8590]">{f.channel} · {f.subject ?? "No subject"}</p>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    {f.status === "overdue" && <span className="text-[10px] text-red-400 font-semibold">OVERDUE</span>}
+                    <span className="text-[10px] text-[#30363D] group-hover:text-[#7D8590] transition-colors">→</span>
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        <div className="space-y-2">
+          {cmd.offerToPush && (
+            <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-lg px-3 py-2">
+              <p className="text-[10px] font-semibold text-emerald-400 mb-0.5">🎁 Offer to Push</p>
+              <p className="text-xs text-[#E6EDF3] font-medium">{cmd.offerToPush.name}</p>
+              <p className="text-[10px] text-[#7D8590]">{cmd.offerToPush.goal}</p>
+            </div>
+          )}
+          {cmd.campaignAction && (
+            <button onClick={() => onNavigate?.("campaigns")}
+              className="w-full bg-purple-500/10 border border-purple-500/20 hover:bg-purple-500/15 rounded-lg px-3 py-2 text-left transition-colors">
+              <p className="text-[10px] font-semibold text-purple-400 mb-0.5">🚀 Campaign Needs Attention →</p>
+              <p className="text-xs text-[#E6EDF3] font-medium">{cmd.campaignAction.name}</p>
+              <p className="text-[10px] text-[#7D8590]">{cmd.campaignAction.leadsGenerated} leads · ${parseFloat(cmd.campaignAction.revenueAttributed).toLocaleString()} rev</p>
+            </button>
+          )}
+          {cmd.contentSuggestion && (
+            <button onClick={() => onNavigate?.("content")}
+              className="w-full bg-teal-500/10 border border-teal-500/20 hover:bg-teal-500/15 rounded-lg px-3 py-2 text-left transition-colors">
+              <p className="text-[10px] font-semibold text-teal-400 mb-0.5">📝 1 Content to Publish →</p>
+              <p className="text-xs text-[#E6EDF3] font-medium">{cmd.contentSuggestion.title}</p>
+              <p className="text-[10px] text-[#7D8590]">{cmd.contentSuggestion.assetType}</p>
+            </button>
+          )}
+          {cmd.aiInsight.revenueOpportunities.length > 0 && (
+            <div className="bg-amber-500/10 border border-amber-500/20 rounded-lg px-3 py-2">
+              <p className="text-[10px] font-semibold text-amber-400 mb-1">💰 Revenue Opportunities</p>
+              <ul className="space-y-0.5">
+                {cmd.aiInsight.revenueOpportunities.map((o, i) => (
+                  <li key={i} className="text-[10px] text-[#E6EDF3] flex items-start gap-1"><span className="text-amber-400">•</span>{o}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div>
+          <p className="text-[10px] font-semibold text-[#7D8590] uppercase tracking-wide mb-2">⚡ Quick Wins</p>
+          <ul className="space-y-1.5">
+            {cmd.aiInsight.quickWins.map((w, i) => (
+              <li key={i} className="flex items-start gap-2 text-xs text-[#E6EDF3]">
+                <span className="text-emerald-400 font-bold mt-0.5 flex-shrink-0">{i + 1}.</span>
+                <span>{w}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+        {cmd.aiInsight.nextBestActions.length > 0 && (
+          <div>
+            <p className="text-[10px] font-semibold text-[#7D8590] uppercase tracking-wide mb-2">🎯 Next Best Actions</p>
+            <ul className="space-y-1.5">
+              {cmd.aiInsight.nextBestActions.map((a, i) => (
+                <li key={i} className="flex items-start gap-2 text-xs text-[#E6EDF3]">
+                  <span className="text-[#58A6FF] font-bold mt-0.5 flex-shrink-0">→</span>
+                  <span>{a}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </div>
+
+      <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-lg px-3 py-2">
+        <p className="text-[10px] font-semibold text-emerald-400 mb-0.5">Revenue Insight</p>
+        <p className="text-xs text-[#E6EDF3]">{cmd.aiInsight.revenueInsight}</p>
+      </div>
+    </div>
+  );
+}
+
 // ─── Section 1: KPI Strip ──────────────────────────────────────────────────────
 
 function KPIStrip({ fetchWithAuth }: { fetchWithAuth: (url: string, opts?: RequestInit) => Promise<Response> }) {
   const [kpi, setKpi] = useState<KPI | null>(null);
+  const [hotLeads, setHotLeads] = useState<HotLead[]>([]);
 
   useEffect(() => {
     fetchWithAuth(`${API}/admin/marketing/kpi`).then(r => r.json()).then(d => setKpi(d as KPI)).catch(() => null);
+    fetchWithAuth(`${API}/admin/marketing/hot-leads`).then(r => r.json()).then(d => setHotLeads(Array.isArray(d) ? d as HotLead[] : [])).catch(() => null);
   }, [fetchWithAuth]);
 
   const cards = [
@@ -971,12 +1233,19 @@ function KPIStrip({ fetchWithAuth }: { fetchWithAuth: (url: string, opts?: Reque
     { label: "Leads This Week", value: kpi?.leadsThisWeek ?? "—", icon: "🎯", color: "green" },
     { label: "Conversion Rate", value: kpi ? `${kpi.conversionRate}%` : "—", icon: "📈", color: "yellow" },
     { label: "Active Campaigns", value: kpi?.activeCampaigns ?? "—", icon: "🚀", color: "purple" },
+    { label: "Hot Leads 🔥", value: kpi?.hotLeadsCount ?? hotLeads.length, icon: "🔥", color: "red" },
+    { label: "Intent Signals Today", value: kpi?.intentSignalsToday ?? "—", icon: "⚡", color: "orange" },
+    { label: "Follow-Ups Due", value: kpi?.followUpsDue ?? "—", icon: "📅", color: "yellow" },
+    { label: "Active Offers", value: kpi?.activeOffers ?? "—", icon: "🎁", color: "purple" },
+    { label: "Revenue (Active)", value: kpi ? `$${kpi.revenueThisMonth.toLocaleString()}` : "—", icon: "💰", color: "green" },
+    { label: "Revenue Opportunity", value: kpi ? `$${kpi.revenueOpportunity.toLocaleString()}` : "—", icon: "🏆", color: "green" },
+    { label: "Offer Conversion", value: kpi ? `${kpi.offerConversionRate}%` : "—", icon: "🎯", color: "blue" },
   ];
 
   return (
     <div className="space-y-4">
       <h2 className="text-lg font-semibold text-[#E6EDF3]">KPI Overview</h2>
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
         {cards.map(c => (
           <div key={c.label} className="bg-[#161B22] border border-[#30363D] rounded-xl p-4">
             {!kpi ? <div className="animate-pulse h-10 bg-[#30363D] rounded" /> : (
@@ -991,6 +1260,45 @@ function KPIStrip({ fetchWithAuth }: { fetchWithAuth: (url: string, opts?: Reque
           </div>
         ))}
       </div>
+
+      {hotLeads.length > 0 && (
+        <div className="bg-[#161B22] border border-[#30363D] rounded-xl p-4">
+          <div className="flex items-center gap-2 mb-3">
+            <span className="text-sm font-semibold text-[#E6EDF3]">🔥 Hot Lead Scoring</span>
+            <span className="text-[10px] bg-red-500/20 text-red-400 px-2 py-0.5 rounded-full">{hotLeads.length} hot</span>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead><tr className="border-b border-[#30363D]">
+                {["Lead", "Company", "Stage", "Score", "Recent Events"].map(h => (
+                  <th key={h} className="px-3 py-1.5 text-left text-[10px] font-semibold text-[#7D8590]">{h}</th>
+                ))}
+              </tr></thead>
+              <tbody className="divide-y divide-[#30363D]">
+                {hotLeads.slice(0, 10).map(l => (
+                  <tr key={l.id} className="hover:bg-[#1C2128] transition-colors">
+                    <td className="px-3 py-2">
+                      <p className="text-xs font-medium text-[#E6EDF3]">{l.name}</p>
+                      <p className="text-[10px] text-[#7D8590]">{l.email}</p>
+                    </td>
+                    <td className="px-3 py-2 text-xs text-[#7D8590]">{l.company ?? "—"}</td>
+                    <td className="px-3 py-2"><Badge text={l.stage} color={l.stage === "SQL" ? "green" : "yellow"} /></td>
+                    <td className="px-3 py-2">
+                      <div className="flex items-center gap-1">
+                        <div className="h-1.5 w-16 rounded-full bg-[#21262D] overflow-hidden">
+                          <div className="h-full rounded-full bg-red-500 transition-all" style={{ width: `${l.score}%` }} />
+                        </div>
+                        <span className={`text-xs font-bold font-mono ${l.score >= 70 ? "text-red-400" : l.score >= 50 ? "text-amber-400" : "text-[#E6EDF3]"}`}>{l.score}</span>
+                      </div>
+                    </td>
+                    <td className="px-3 py-2 text-xs text-[#58A6FF]">{l.recentEvents} events</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -1008,6 +1316,7 @@ function LeadFinderSection({ fetchWithAuth }: { fetchWithAuth: (url: string, opt
   const [filterLocation, setFilterLocation] = useState("all");
   const [outreachModal, setOutreachModal] = useState<{ leadId: number; leadName: string; leadEmail: string; type: string } | null>(null);
   const [emailHistoryLead, setEmailHistoryLead] = useState<{ id: number; name: string; email: string } | null>(null);
+  const [intentLeadId, setIntentLeadId] = useState<number | null>(null);
 
   useEffect(() => {
     fetchWithAuth(`${API}/leads?limit=100`).then(r => r.json()).then(d => {
@@ -1110,7 +1419,17 @@ function LeadFinderSection({ fetchWithAuth }: { fetchWithAuth: (url: string, opt
                     <td className="px-4 py-2">
                       <Badge text={lead.stage} color={lead.stage === "SQL" ? "green" : lead.stage === "AQL" ? "yellow" : "gray"} />
                     </td>
-                    <td className="px-4 py-2 text-[#E6EDF3] text-xs font-mono">{lead.score}</td>
+                    <td className="px-4 py-2">
+                      {lead.score >= 70 ? (
+                        <button onClick={() => setIntentLeadId(lead.id)} title="View intent timeline"
+                          className="inline-flex items-center gap-0.5 text-[10px] font-bold px-2 py-0.5 rounded-full bg-red-500/20 text-red-400 hover:bg-red-500/30 transition-colors cursor-pointer">🔥 {lead.score}</button>
+                      ) : lead.score >= 50 ? (
+                        <button onClick={() => setIntentLeadId(lead.id)} title="View intent timeline"
+                          className="inline-flex items-center gap-0.5 text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-400 hover:bg-amber-500/30 transition-colors cursor-pointer">⚡ {lead.score}</button>
+                      ) : (
+                        <span className="text-xs font-mono text-[#7D8590]">{lead.score}</span>
+                      )}
+                    </td>
                     <td className="px-4 py-2">
                       <div className="flex flex-wrap gap-1">
                         <button onClick={() => setOutreachModal({ leadId: lead.id, leadName: lead.name, leadEmail: lead.email, type: "cold_email" })} className="text-[10px] px-1.5 py-0.5 rounded bg-[#0078D4]/20 text-[#58A6FF] hover:bg-[#0078D4]/30 transition-colors">Email</button>
@@ -1118,6 +1437,7 @@ function LeadFinderSection({ fetchWithAuth }: { fetchWithAuth: (url: string, opt
                         <button onClick={() => setOutreachModal({ leadId: lead.id, leadName: lead.name, leadEmail: lead.email, type: "followup" })} className="text-[10px] px-1.5 py-0.5 rounded bg-[#0078D4]/20 text-[#58A6FF] hover:bg-[#0078D4]/30 transition-colors">Follow-Up</button>
                         <button onClick={() => setOutreachModal({ leadId: lead.id, leadName: lead.name, leadEmail: lead.email, type: "cold_call" })} className="text-[10px] px-1.5 py-0.5 rounded bg-[#0078D4]/20 text-[#58A6FF] hover:bg-[#0078D4]/30 transition-colors">Call Script</button>
                         <button onClick={() => setEmailHistoryLead({ id: lead.id, name: lead.name, email: lead.email })} className="text-[10px] px-1.5 py-0.5 rounded bg-[#30363D] text-[#7D8590] hover:text-[#E6EDF3] transition-colors">History</button>
+                        <button onClick={() => setIntentLeadId(lead.id)} className="text-[10px] px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-400 hover:bg-purple-500/30 transition-colors">Intent ↗</button>
                       </div>
                     </td>
                   </tr>
@@ -1143,6 +1463,137 @@ function LeadFinderSection({ fetchWithAuth }: { fetchWithAuth: (url: string, opt
       {emailHistoryLead && (
         <LeadEmailHistoryModal lead={emailHistoryLead} onClose={() => setEmailHistoryLead(null)} fetchWithAuth={fetchWithAuth} />
       )}
+      {intentLeadId !== null && (
+        <IntentTimelineDrawer leadId={intentLeadId} onClose={() => setIntentLeadId(null)} fetchWithAuth={fetchWithAuth} />
+      )}
+    </div>
+  );
+}
+
+// ─── Intent Timeline Drawer ───────────────────────────────────────────────────
+
+const EVENT_LABELS: Record<string, string> = {
+  email_open: "Email Opened",
+  link_click: "Link Clicked",
+  cta_click: "CTA Clicked",
+  site_visit: "Site Visit",
+  form_submit: "Form Submit",
+  reply: "Replied",
+};
+const EVENT_WEIGHTS: Record<string, number> = {
+  email_open: 1, link_click: 3, cta_click: 5, site_visit: 2, form_submit: 10, reply: 15,
+};
+
+function IntentTimelineDrawer({ leadId, onClose, fetchWithAuth }: { leadId: number; onClose: () => void; fetchWithAuth: (url: string, opts?: RequestInit) => Promise<Response> }) {
+  type IntentEvent = { id: number; eventType: string; metadata?: Record<string, unknown> | null; occurredAt: string; score: number };
+  const [events, setEvents] = useState<IntentEvent[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [nba, setNba] = useState<{ outreachMethod: string; messageType: string; bestOffer: string; followUpTiming: string; rationale: string } | null>(null);
+  const [nbaLoading, setNbaLoading] = useState(false);
+  const [showLogForm, setShowLogForm] = useState(false);
+  const [logEventType, setLogEventType] = useState("site_visit");
+  const [logSource, setLogSource] = useState("");
+  const [logging, setLogging] = useState(false);
+
+  const loadEvents = () => {
+    fetchWithAuth(`${API}/admin/marketing/leads/${leadId}/intent-events`).then(r => r.json())
+      .then(d => setEvents(Array.isArray(d) ? d as IntentEvent[] : [])).catch(() => null).finally(() => setLoading(false));
+  };
+
+  useEffect(() => { loadEvents(); }, [leadId, fetchWithAuth]);
+
+  const generateNba = async () => {
+    setNbaLoading(true);
+    try {
+      const r = await fetchWithAuth(`${API}/admin/marketing/leads/${leadId}/next-best-action`, { method: "POST" });
+      setNba(await r.json() as typeof nba);
+    } finally { setNbaLoading(false); }
+  };
+
+  const logEvent = async () => {
+    setLogging(true);
+    try {
+      await fetchWithAuth(`${API}/admin/marketing/intent-events`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ leadId, eventType: logEventType, metadata: logSource ? { source: logSource } : undefined }),
+      });
+      setLogSource("");
+      setShowLogForm(false);
+      setLoading(true);
+      loadEvents();
+    } finally { setLogging(false); }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex justify-end" onClick={onClose}>
+      <div className="w-full max-w-md bg-[#0D1117] border-l border-[#30363D] h-full overflow-y-auto p-5 space-y-4 shadow-2xl"
+        onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between">
+          <h3 className="text-sm font-semibold text-[#E6EDF3]">Intent Timeline</h3>
+          <div className="flex items-center gap-2">
+            <button onClick={() => setShowLogForm(f => !f)}
+              className="text-xs px-2 py-1 rounded-lg border border-purple-500/40 text-purple-400 hover:bg-purple-500/10 transition-colors">
+              + Log Event
+            </button>
+            <button onClick={onClose} className="text-[#7D8590] hover:text-[#E6EDF3] text-lg">✕</button>
+          </div>
+        </div>
+
+        {showLogForm && (
+          <div className="bg-[#161B22] border border-[#30363D] rounded-lg p-3 space-y-2">
+            <p className="text-[10px] font-semibold text-purple-400 uppercase tracking-wide">Log Intent Event</p>
+            <select value={logEventType} onChange={e => setLogEventType(e.target.value)}
+              className="w-full bg-[#0D1117] border border-[#30363D] rounded-md px-2 py-1.5 text-xs text-[#E6EDF3] outline-none focus:border-[#0078D4]">
+              {Object.entries(EVENT_LABELS).map(([k, v]) => <option key={k} value={k}>{v} (+{EVENT_WEIGHTS[k] ?? 1} pts)</option>)}
+            </select>
+            <input value={logSource} onChange={e => setLogSource(e.target.value)} placeholder="Source (e.g. LinkedIn, Email)" type="text"
+              className="w-full bg-[#0D1117] border border-[#30363D] rounded-md px-2 py-1.5 text-xs text-[#E6EDF3] outline-none focus:border-[#0078D4] placeholder-[#484F58]" />
+            <div className="flex gap-2 justify-end">
+              <button onClick={() => setShowLogForm(false)} className="text-xs text-[#7D8590] hover:text-[#E6EDF3] px-3 py-1.5 rounded border border-[#30363D] transition-colors">Cancel</button>
+              <button onClick={() => { void logEvent(); }} disabled={logging}
+                className="text-xs text-white bg-purple-600 hover:bg-purple-500 disabled:opacity-50 px-3 py-1.5 rounded transition-colors font-medium">
+                {logging ? "Saving…" : "Log Event"}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {loading ? <div className="animate-pulse space-y-2"><div className="h-12 bg-[#161B22] rounded" /><div className="h-12 bg-[#161B22] rounded" /></div> : (
+          events.length === 0 ? (
+            <p className="text-sm text-[#7D8590]">No intent events recorded yet. Use "+ Log Event" to add one manually.</p>
+          ) : (
+            <div className="space-y-2">
+              {events.map(e => (
+                <div key={e.id} className="flex items-start gap-3 bg-[#161B22] border border-[#30363D] rounded-lg px-3 py-2">
+                  <div className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-purple-500/20 text-purple-400 flex-shrink-0 mt-0.5">+{EVENT_WEIGHTS[e.eventType] ?? 1}</div>
+                  <div>
+                    <p className="text-xs font-medium text-[#E6EDF3]">{EVENT_LABELS[e.eventType] ?? e.eventType}</p>
+                    {!!e.metadata?.source && <p className="text-[10px] text-[#7D8590]">{String(e.metadata.source)}</p>}
+                    <p className="text-[10px] text-[#484F58]">{new Date(e.occurredAt).toLocaleString()}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )
+        )}
+        <div className="border-t border-[#30363D] pt-3">
+          <button onClick={() => { void generateNba(); }} disabled={nbaLoading}
+            className="w-full text-xs px-3 py-2 rounded-lg border border-[#0078D4]/40 text-[#58A6FF] hover:bg-[#0078D4]/10 disabled:opacity-40 transition-colors flex items-center justify-center gap-1">
+            {nbaLoading ? <><div className="w-3 h-3 border border-[#58A6FF] border-t-transparent rounded-full animate-spin" />Generating…</> : "✦ Next Best Action"}
+          </button>
+          {nba && (
+            <div className="mt-3 bg-[#0078D4]/10 border border-[#0078D4]/20 rounded-lg p-3 space-y-1.5">
+              <p className="text-[10px] font-semibold text-[#58A6FF]">Recommended Action</p>
+              <p className="text-xs text-[#E6EDF3]"><span className="text-[#7D8590]">Method:</span> {nba.outreachMethod}</p>
+              <p className="text-xs text-[#E6EDF3]"><span className="text-[#7D8590]">Message:</span> {nba.messageType}</p>
+              <p className="text-xs text-[#E6EDF3]"><span className="text-[#7D8590]">Best Offer:</span> {nba.bestOffer}</p>
+              <p className="text-xs text-[#E6EDF3]"><span className="text-[#7D8590]">Timing:</span> {nba.followUpTiming}</p>
+              <p className="text-xs text-[#7D8590] italic mt-1">{nba.rationale}</p>
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
@@ -1396,7 +1847,7 @@ interface CampaignAsset {
 }
 
 function ContentHubSection({ fetchWithAuth }: { fetchWithAuth: (url: string, opts?: RequestInit) => Promise<Response> }) {
-  const [activeTab, setActiveTab] = useState<"blog_post" | "linkedin_post" | "newsletter" | "social_post" | "seo_keywords">("blog_post");
+  const [activeTab, setActiveTab] = useState<"blog_post" | "linkedin_post" | "newsletter" | "social_post" | "seo_keywords" | "lead_magnet">("blog_post");
   const [topic, setTopic] = useState("");
   const [tone, setTone] = useState("");
   const [keywords, setKeywords] = useState("");
@@ -1445,13 +1896,24 @@ function ContentHubSection({ fetchWithAuth }: { fetchWithAuth: (url: string, opt
     if (!topic.trim()) return;
     setGenerating(true); setContent("");
     try {
-      const r = await fetchWithAuth(`${API}/admin/marketing/generate/content`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ contentType: activeTab, topic, tone, keywords }),
-      });
-      const data = await r.json() as { content: string };
-      setContent(data.content ?? "");
+      if (activeTab === "lead_magnet") {
+        const r = await fetchWithAuth(`${API}/admin/marketing/generate/lead-magnet`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ topic, format: tone || "checklist", audience: keywords || undefined }),
+        });
+        const data = await r.json() as { title: string; subtitle: string; format: string; items: string[]; cta: string; outlineMarkdown: string };
+        const formatted = `# ${data.title}\n${data.subtitle}\n\n**Format:** ${data.format}\n\n## Checklist Items\n${data.items.map(i => `- ${i}`).join("\n")}\n\n**CTA:** ${data.cta}\n\n---\n${data.outlineMarkdown}`;
+        setContent(formatted);
+      } else {
+        const r = await fetchWithAuth(`${API}/admin/marketing/generate/content`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ contentType: activeTab, topic, tone, keywords }),
+        });
+        const data = await r.json() as { content: string };
+        setContent(data.content ?? "");
+      }
     } finally { setGenerating(false); }
   };
 
@@ -1476,11 +1938,12 @@ function ContentHubSection({ fetchWithAuth }: { fetchWithAuth: (url: string, opt
     { id: "newsletter" as const, label: "Newsletter" },
     { id: "social_post" as const, label: "Social Posts" },
     { id: "seo_keywords" as const, label: "SEO Keywords" },
+    { id: "lead_magnet" as const, label: "🧲 Lead Magnet" },
   ];
 
   const TAB_LABEL: Record<string, string> = {
     blog_post: "Blog Post", linkedin_post: "LinkedIn", newsletter: "Newsletter",
-    social_post: "Social Post", seo_keywords: "SEO Keywords",
+    social_post: "Social Post", seo_keywords: "SEO Keywords", lead_magnet: "Lead Magnet",
   };
 
   return (
@@ -2085,14 +2548,713 @@ function TrafficAnalyticsSection({ fetchWithAuth }: { fetchWithAuth: (url: strin
 
         <EmailStatsCard fetchWithAuth={fetchWithAuth} />
         <SeoRankingsCard fetchWithAuth={fetchWithAuth} />
+
+        <OfferPerformanceCard fetchWithAuth={fetchWithAuth} />
+        <LeadSourceRoiCard analytics={analytics} />
+
+        <AiInsightsCard fetchWithAuth={fetchWithAuth} />
       </div>
     </div>
+  );
+}
+
+function OfferPerformanceCard({ fetchWithAuth }: { fetchWithAuth: (url: string, opts?: RequestInit) => Promise<Response> }) {
+  const [offers, setOffers] = useState<Offer[]>([]);
+  const [campaigns, setCampaigns] = useState<CampaignPerf[]>([]);
+  const [loading, setLoading] = useState(true);
+  useEffect(() => {
+    Promise.all([
+      fetchWithAuth(`${API}/admin/marketing/offers`).then(r => r.json()).then(d => Array.isArray(d) ? d as Offer[] : []),
+      fetchWithAuth(`${API}/admin/marketing/analytics`).then(r => r.json()).then((d: AnalyticsData) => d.campaignPerformance ?? []),
+    ]).then(([o, c]) => { setOffers(o); setCampaigns(c); }).catch(() => null).finally(() => setLoading(false));
+  }, [fetchWithAuth]);
+
+  if (loading) return <div className="bg-[#161B22] border border-[#30363D] rounded-xl p-4"><div className="animate-pulse h-40 bg-[#30363D] rounded" /></div>;
+  if (offers.length === 0) return (
+    <div className="bg-[#161B22] border border-[#30363D] rounded-xl p-4">
+      <h3 className="text-sm font-semibold text-[#E6EDF3] mb-2">🎁 Offer Performance</h3>
+      <p className="text-sm text-[#7D8590] text-center py-4">No offers created yet. Add offers in Campaigns → Offers.</p>
+    </div>
+  );
+
+  // Build chart data: correlate offers to their linked campaign revenue
+  const campaignMap = new Map(campaigns.map(c => [c.id, c]));
+  const chartData = offers.map(o => {
+    const camp = o.campaignId ? campaignMap.get(o.campaignId) : undefined;
+    const revenue = camp ? camp.revenueAttributed : 0;
+    const leads = camp ? camp.leadsGenerated : 0;
+    return { name: o.name.length > 20 ? o.name.slice(0, 20) + "…" : o.name, revenue, leads, pricing: o.pricing ?? null };
+  });
+  return (
+    <div className="bg-[#161B22] border border-[#30363D] rounded-xl p-4">
+      <h3 className="text-sm font-semibold text-[#E6EDF3] mb-1">🎁 Offer Performance</h3>
+      <p className="text-xs text-[#7D8590] mb-4">Revenue & leads attributed via linked campaigns. Offers without a linked campaign show $0.</p>
+      <ResponsiveContainer width="100%" height={Math.max(120, chartData.length * 36)}>
+        <BarChart data={chartData} layout="vertical" margin={{ left: 8, right: 60, top: 0, bottom: 0 }}>
+          <CartesianGrid strokeDasharray="3 3" stroke="#30363D" horizontal={false} />
+          <XAxis type="number" tick={{ fill: "#7D8590", fontSize: 10 }} tickFormatter={v => `$${Number(v).toLocaleString("en-US", { notation: "compact" })}`} />
+          <YAxis type="category" dataKey="name" tick={{ fill: "#7D8590", fontSize: 10 }} width={120} />
+          <Tooltip contentStyle={{ background: "#161B22", border: "1px solid #30363D", borderRadius: 8 }} labelStyle={{ color: "#E6EDF3" }}
+            formatter={(value: number, name: string) => [name === "revenue" ? `$${value.toLocaleString()}` : value, name === "revenue" ? "Revenue" : "Leads"]} />
+          <Bar dataKey="revenue" fill="#0078D4" radius={[0, 4, 4, 0]}
+            label={{ position: "right", fill: "#7D8590", fontSize: 9, formatter: (v: number) => v > 0 ? `$${v.toLocaleString("en-US", { notation: "compact" })}` : "" }} />
+        </BarChart>
+      </ResponsiveContainer>
+      {chartData.some(d => d.pricing) && (
+        <div className="mt-3 border-t border-[#30363D] pt-3 grid grid-cols-2 gap-1.5">
+          {offers.filter(o => o.pricing).map(o => (
+            <div key={o.id} className="flex items-center justify-between bg-[#0D1117] rounded-lg px-2 py-1">
+              <span className="text-[10px] text-[#7D8590] truncate">{o.name}</span>
+              <span className="text-[10px] font-bold text-emerald-400 flex-shrink-0 ml-1">{o.pricing}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function LeadSourceRoiCard({ analytics }: { analytics: AnalyticsData | null }) {
+  if (!analytics) return null;
+  const sources = analytics.trafficSources ?? [];
+  const campaigns = analytics.campaignPerformance ?? [];
+  const totalRevenue = campaigns.reduce((s, c) => s + (c.revenueAttributed ?? 0), 0);
+  const totalSessions = sources.reduce((s, c) => s + c.sessions, 0);
+  if (sources.length === 0) return null;
+  return (
+    <div className="bg-[#161B22] border border-[#30363D] rounded-xl p-4">
+      <h3 className="text-sm font-semibold text-[#E6EDF3] mb-1">📊 Lead Source ROI</h3>
+      <p className="text-xs text-[#7D8590] mb-4">Traffic source share vs revenue attribution from linked campaigns.</p>
+      <div className="space-y-2">
+        {sources.map((s, i) => {
+          const sharePct = totalSessions > 0 ? (s.sessions / totalSessions) * 100 : 0;
+          const attributedRevenue = totalRevenue > 0 ? totalRevenue * (sharePct / 100) : 0;
+          return (
+            <div key={i} className="rounded-lg bg-[#0D1117] px-3 py-2">
+              <div className="flex items-center justify-between mb-1">
+                <span className="text-xs font-medium text-[#E6EDF3]">{s.source}</span>
+                <div className="flex items-center gap-3 flex-shrink-0 ml-2">
+                  <span className="text-[10px] text-[#7D8590]">{s.sessions} sessions</span>
+                  <span className="text-xs font-bold text-emerald-400">${attributedRevenue.toLocaleString("en-US", { maximumFractionDigits: 0 })}</span>
+                </div>
+              </div>
+              <div className="h-1.5 rounded-full bg-[#21262D] overflow-hidden">
+                <div className="h-full rounded-full bg-[#0078D4]" style={{ width: `${sharePct}%` }} />
+              </div>
+              <p className="text-[10px] text-[#484F58] mt-0.5">{sharePct.toFixed(1)}% of traffic</p>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ─── AI Analytics Insights Card ───────────────────────────────────────────────
+
+function AiInsightsCard({ fetchWithAuth }: { fetchWithAuth: (url: string, opts?: RequestInit) => Promise<Response> }) {
+  const [insights, setInsights] = useState<{ summary: string; wins: string[]; gaps: string[]; recommendations: Array<{ action: string; impact: string }>; revenueAlert: string } | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [loaded, setLoaded] = useState(false);
+
+  const load = async () => {
+    setLoading(true);
+    try {
+      const r = await fetchWithAuth(`${API}/admin/marketing/analytics/insights`);
+      setInsights(await r.json() as typeof insights);
+      setLoaded(true);
+    } finally { setLoading(false); }
+  };
+
+  return (
+    <div className="lg:col-span-2 bg-[#161B22] border border-[#30363D] rounded-xl p-4 space-y-3">
+      <div className="flex items-center justify-between">
+        <h3 className="text-sm font-semibold text-[#E6EDF3]">✦ AI Analytics Insights</h3>
+        {!loaded && (
+          <button onClick={() => { void load(); }} disabled={loading}
+            className="text-xs px-3 py-1.5 rounded-lg border border-[#0078D4]/40 text-[#58A6FF] hover:bg-[#0078D4]/10 disabled:opacity-40 transition-colors flex items-center gap-1">
+            {loading ? <><div className="w-3 h-3 border border-[#58A6FF] border-t-transparent rounded-full animate-spin" />Analyzing…</> : "Generate Insights"}
+          </button>
+        )}
+      </div>
+      {loading && <div className="animate-pulse space-y-2"><div className="h-4 bg-[#30363D] rounded w-3/4" /><div className="h-4 bg-[#30363D] rounded w-1/2" /></div>}
+      {insights && (
+        <div className="space-y-3">
+          <div className="bg-[#0078D4]/10 border border-[#0078D4]/20 rounded-lg p-3">
+            <p className="text-xs text-[#E6EDF3]">{insights.summary}</p>
+          </div>
+          {insights.revenueAlert && (
+            <div className="bg-amber-500/10 border border-amber-500/20 rounded-lg px-3 py-2">
+              <p className="text-[10px] font-semibold text-amber-400 mb-0.5">⚠ Revenue Alert</p>
+              <p className="text-xs text-[#E6EDF3]">{insights.revenueAlert}</p>
+            </div>
+          )}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div>
+              <p className="text-[10px] font-semibold text-emerald-400 mb-1">✓ What's Working</p>
+              <ul className="space-y-1">{insights.wins.map((w, i) => <li key={i} className="text-xs text-[#E6EDF3] flex gap-1.5"><span className="text-emerald-400 flex-shrink-0">·</span>{w}</li>)}</ul>
+            </div>
+            <div>
+              <p className="text-[10px] font-semibold text-red-400 mb-1">✗ Gaps to Close</p>
+              <ul className="space-y-1">{insights.gaps.map((g, i) => <li key={i} className="text-xs text-[#E6EDF3] flex gap-1.5"><span className="text-red-400 flex-shrink-0">·</span>{g}</li>)}</ul>
+            </div>
+          </div>
+          {insights.recommendations.length > 0 && (
+            <div>
+              <p className="text-[10px] font-semibold text-[#58A6FF] mb-2">Recommendations</p>
+              <div className="space-y-1.5">
+                {insights.recommendations.map((r, i) => (
+                  <div key={i} className="bg-[#0D1117] rounded-lg px-3 py-2 flex items-start gap-2">
+                    <span className="text-[#0078D4] font-bold text-xs flex-shrink-0">{i + 1}.</span>
+                    <div>
+                      <p className="text-xs font-medium text-[#E6EDF3]">{r.action}</p>
+                      <p className="text-[10px] text-[#7D8590]">{r.impact}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+      {!loading && !loaded && (
+        <p className="text-xs text-[#7D8590] text-center py-4">Click "Generate Insights" for an AI analysis of your marketing performance</p>
+      )}
+    </div>
+  );
+}
+
+// ─── Offer Builder Panel ──────────────────────────────────────────────────────
+
+function OfferBuilderPanel({ fetchWithAuth }: { fetchWithAuth: (url: string, opts?: RequestInit) => Promise<Response> }) {
+  const [offers, setOffers] = useState<Offer[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [generating, setGenerating] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [goal, setGoal] = useState("");
+  const [audience, setAudience] = useState("");
+  const [pricePoint, setPricePoint] = useState("");
+  const [draft, setDraft] = useState<Omit<Offer, "id" | "createdAt"> | null>(null);
+  const [expandedId, setExpandedId] = useState<number | null>(null);
+
+  useEffect(() => {
+    fetchWithAuth(`${API}/admin/marketing/offers`).then(r => r.json()).then(d => setOffers(Array.isArray(d) ? d as Offer[] : [])).catch(() => null).finally(() => setLoading(false));
+  }, [fetchWithAuth]);
+
+  const generate = async () => {
+    setGenerating(true); setDraft(null);
+    try {
+      const r = await fetchWithAuth(`${API}/admin/marketing/generate/offer`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ goal, audience, pricePoint }) });
+      setDraft(await r.json() as Omit<Offer, "id" | "createdAt">);
+    } finally { setGenerating(false); }
+  };
+
+  const saveOffer = async () => {
+    if (!draft) return;
+    setSaving(true);
+    try {
+      const r = await fetchWithAuth(`${API}/admin/marketing/offers`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(draft) });
+      const saved = await r.json() as Offer;
+      setOffers(prev => [saved, ...prev]);
+      setDraft(null); setGoal(""); setAudience(""); setPricePoint("");
+    } finally { setSaving(false); }
+  };
+
+  const deleteOffer = async (id: number) => {
+    await fetchWithAuth(`${API}/admin/marketing/offers/${id}`, { method: "DELETE" });
+    setOffers(prev => prev.filter(o => o.id !== id));
+  };
+
+  return (
+    <div className="space-y-4">
+      <h3 className="text-sm font-semibold text-[#E6EDF3]">💡 Offer Builder</h3>
+      <div className="bg-[#161B22] border border-[#30363D] rounded-xl p-4 space-y-4">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          <div>
+            <label className="text-[10px] text-[#7D8590] uppercase tracking-wide">Goal</label>
+            <input value={goal} onChange={e => setGoal(e.target.value)} placeholder="e.g. Copilot adoption"
+              className="mt-1 w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-sm text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60" />
+          </div>
+          <div>
+            <label className="text-[10px] text-[#7D8590] uppercase tracking-wide">Audience</label>
+            <input value={audience} onChange={e => setAudience(e.target.value)} placeholder="e.g. IT directors"
+              className="mt-1 w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-sm text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60" />
+          </div>
+          <div>
+            <label className="text-[10px] text-[#7D8590] uppercase tracking-wide">Price Point</label>
+            <input value={pricePoint} onChange={e => setPricePoint(e.target.value)} placeholder="e.g. $5,000 fixed"
+              className="mt-1 w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-sm text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60" />
+          </div>
+        </div>
+        <button onClick={() => { void generate(); }} disabled={generating}
+          className="w-full py-2 rounded-lg bg-[#0078D4] text-white text-sm font-semibold hover:bg-[#0078D4]/80 disabled:opacity-40 transition-colors flex items-center justify-center gap-2">
+          {generating ? <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />Generating Offer…</> : "✦ Generate Offer"}
+        </button>
+
+        {draft && (
+          <div className="bg-[#0D1117] rounded-xl p-4 space-y-3 border border-[#0078D4]/20">
+            <div className="flex items-start justify-between gap-2">
+              <div>
+                <h4 className="font-semibold text-[#E6EDF3]">{draft.name}</h4>
+                <p className="text-xs text-[#7D8590] mt-0.5">{draft.goal}</p>
+              </div>
+              {draft.pricing && <span className="text-sm font-bold text-emerald-400 flex-shrink-0">{draft.pricing}</span>}
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div>
+                <p className="text-[10px] font-semibold text-[#58A6FF] mb-1">Deliverables</p>
+                <ul className="space-y-1">{draft.deliverables.map((d, i) => <li key={i} className="text-xs text-[#E6EDF3] flex gap-1.5"><span className="text-[#0078D4]">✓</span>{d}</li>)}</ul>
+              </div>
+              <div>
+                <p className="text-[10px] font-semibold text-emerald-400 mb-1">Outcomes</p>
+                <ul className="space-y-1">{draft.outcomes.map((o, i) => <li key={i} className="text-xs text-[#E6EDF3] flex gap-1.5"><span className="text-emerald-400">→</span>{o}</li>)}</ul>
+              </div>
+            </div>
+            {draft.cta && <p className="text-xs text-amber-400 font-medium">CTA: {draft.cta}</p>}
+            <button onClick={() => { void saveOffer(); }} disabled={saving}
+              className="w-full py-1.5 rounded-lg bg-emerald-500/20 text-emerald-400 text-sm font-semibold hover:bg-emerald-500/30 disabled:opacity-40 transition-colors">
+              {saving ? "Saving…" : "Save Offer"}
+            </button>
+          </div>
+        )}
+      </div>
+
+      {loading ? <SkeletonCard /> : offers.length === 0 ? (
+        <p className="text-xs text-[#7D8590]">No offers yet — generate your first one above</p>
+      ) : (
+        <div className="space-y-2">
+          {offers.map(o => (
+            <div key={o.id} className="bg-[#161B22] border border-[#30363D] rounded-xl overflow-hidden">
+              <button onClick={() => setExpandedId(prev => prev === o.id ? null : o.id)} className="w-full flex items-center gap-3 px-4 py-3 text-left">
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-[#E6EDF3] truncate">{o.name}</p>
+                  <p className="text-xs text-[#7D8590]">{o.audience}</p>
+                </div>
+                <div className="flex items-center gap-2 flex-shrink-0">
+                  {o.pricing && <span className="text-xs text-emerald-400 font-semibold">{o.pricing}</span>}
+                  <span className="text-[#484F58] text-xs">{expandedId === o.id ? "▲" : "▼"}</span>
+                  <button onClick={e => { e.stopPropagation(); void deleteOffer(o.id); }} className="text-[#484F58] hover:text-red-400 text-xs">✕</button>
+                </div>
+              </button>
+              {expandedId === o.id && (
+                <div className="border-t border-[#30363D] px-4 pb-4 pt-3 space-y-3">
+                  <p className="text-xs text-[#7D8590]">{o.goal}</p>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div><p className="text-[10px] text-[#58A6FF] font-semibold mb-1">Deliverables</p><ul>{o.deliverables.map((d, i) => <li key={i} className="text-xs text-[#E6EDF3]">✓ {d}</li>)}</ul></div>
+                    <div><p className="text-[10px] text-emerald-400 font-semibold mb-1">Outcomes</p><ul>{o.outcomes.map((out, i) => <li key={i} className="text-xs text-[#E6EDF3]">→ {out}</li>)}</ul></div>
+                  </div>
+                  {o.cta && <p className="text-xs text-amber-400">CTA: {o.cta}</p>}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Landing Pages Panel ──────────────────────────────────────────────────────
+
+function LandingPagesPanel({ fetchWithAuth }: { fetchWithAuth: (url: string, opts?: RequestInit) => Promise<Response> }) {
+  const [pages, setPages] = useState<LandingPage[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [generating, setGenerating] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [topic, setTopic] = useState("");
+  const [audience, setAudience] = useState("");
+  const [cta, setCta] = useState("");
+  const [draft, setDraft] = useState<Partial<LandingPage> | null>(null);
+  const [slugInput, setSlugInput] = useState("");
+  const [expandedId, setExpandedId] = useState<number | null>(null);
+  const [slugError, setSlugError] = useState<string | null>(null);
+
+  useEffect(() => {
+    fetchWithAuth(`${API}/admin/marketing/landing-pages`).then(r => r.json()).then(d => setPages(Array.isArray(d) ? d as LandingPage[] : [])).catch(() => null).finally(() => setLoading(false));
+  }, [fetchWithAuth]);
+
+  const generate = async () => {
+    setGenerating(true); setDraft(null);
+    try {
+      const r = await fetchWithAuth(`${API}/admin/marketing/generate/landing-page`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ topic, audience, cta }) });
+      const data = await r.json() as Partial<LandingPage>;
+      setDraft(data);
+      if (data.title) setSlugInput(data.title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 50));
+    } finally { setGenerating(false); }
+  };
+
+  const savePage = async () => {
+    if (!draft || !slugInput.trim()) return;
+    setSlugError(null);
+    setSaving(true);
+    try {
+      const r = await fetchWithAuth(`${API}/admin/marketing/landing-pages`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...draft, slug: slugInput.trim(), published: false }),
+      });
+      if (!r.ok) {
+        const err = await r.json() as { error?: string };
+        setSlugError(err.error ?? "Failed to save");
+        return;
+      }
+      const saved = await r.json() as LandingPage;
+      setPages(prev => [saved, ...prev]);
+      setDraft(null); setTopic(""); setAudience(""); setCta(""); setSlugInput("");
+    } finally { setSaving(false); }
+  };
+
+  const togglePublish = async (page: LandingPage) => {
+    const r = await fetchWithAuth(`${API}/admin/marketing/landing-pages/${page.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ published: !page.published }) });
+    const updated = await r.json() as LandingPage;
+    setPages(prev => prev.map(p => p.id === page.id ? updated : p));
+  };
+
+  const deletePage = async (id: number) => {
+    await fetchWithAuth(`${API}/admin/marketing/landing-pages/${id}`, { method: "DELETE" });
+    setPages(prev => prev.filter(p => p.id !== id));
+  };
+
+  return (
+    <div className="space-y-4">
+      <h3 className="text-sm font-semibold text-[#E6EDF3]">🌐 Landing Pages</h3>
+      <div className="bg-[#161B22] border border-[#30363D] rounded-xl p-4 space-y-4">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          <div>
+            <label className="text-[10px] text-[#7D8590] uppercase tracking-wide">Topic / Offer</label>
+            <input value={topic} onChange={e => setTopic(e.target.value)} placeholder="e.g. Microsoft Copilot adoption"
+              className="mt-1 w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-sm text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60" />
+          </div>
+          <div>
+            <label className="text-[10px] text-[#7D8590] uppercase tracking-wide">Audience</label>
+            <input value={audience} onChange={e => setAudience(e.target.value)} placeholder="e.g. Healthcare IT teams"
+              className="mt-1 w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-sm text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60" />
+          </div>
+          <div>
+            <label className="text-[10px] text-[#7D8590] uppercase tracking-wide">CTA</label>
+            <input value={cta} onChange={e => setCta(e.target.value)} placeholder="e.g. Book a discovery call"
+              className="mt-1 w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-sm text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60" />
+          </div>
+        </div>
+        <button onClick={() => { void generate(); }} disabled={generating || !topic.trim()}
+          className="w-full py-2 rounded-lg bg-[#0078D4] text-white text-sm font-semibold hover:bg-[#0078D4]/80 disabled:opacity-40 transition-colors flex items-center justify-center gap-2">
+          {generating ? <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />Generating…</> : "✦ Generate Landing Page"}
+        </button>
+
+        {draft && (
+          <div className="bg-[#0D1117] rounded-xl p-4 space-y-3 border border-[#0078D4]/20">
+            <h4 className="font-semibold text-[#E6EDF3]">{draft.headline ?? draft.title}</h4>
+            {draft.subheadline && <p className="text-xs text-[#7D8590]">{draft.subheadline}</p>}
+            {draft.valuePropBlocks && draft.valuePropBlocks.length > 0 && (
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+                {draft.valuePropBlocks.map((b, i) => (
+                  <div key={i} className="bg-[#161B22] rounded-lg p-2">
+                    {b.icon && <span className="text-lg">{b.icon}</span>}
+                    <p className="text-xs font-semibold text-[#E6EDF3] mt-1">{b.heading}</p>
+                    <p className="text-[10px] text-[#7D8590]">{b.body}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+            <div className="space-y-2">
+              <div>
+                <label className="text-[10px] text-[#7D8590] uppercase tracking-wide">URL Slug</label>
+                <div className="flex items-center gap-2 mt-1">
+                  <span className="text-xs text-[#7D8590] flex-shrink-0">/lp/</span>
+                  <input value={slugInput} onChange={e => setSlugInput(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ""))} placeholder="my-page-slug"
+                    className="flex-1 bg-[#161B22] border border-[#30363D] rounded-lg px-3 py-1.5 text-sm text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60" />
+                </div>
+                {slugError && <p className="text-xs text-red-400 mt-1">{slugError}</p>}
+              </div>
+              <button onClick={() => { void savePage(); }} disabled={saving || !slugInput.trim()}
+                className="w-full py-1.5 rounded-lg bg-emerald-500/20 text-emerald-400 text-sm font-semibold hover:bg-emerald-500/30 disabled:opacity-40 transition-colors">
+                {saving ? "Saving…" : "Save as Draft"}
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {loading ? <SkeletonCard /> : pages.length === 0 ? (
+        <p className="text-xs text-[#7D8590]">No landing pages yet — generate your first one above</p>
+      ) : (
+        <div className="space-y-2">
+          {pages.map(page => (
+            <div key={page.id} className="bg-[#161B22] border border-[#30363D] rounded-xl overflow-hidden">
+              <div className="flex items-center gap-3 px-4 py-3">
+                <button onClick={() => setExpandedId(prev => prev === page.id ? null : page.id)} className="flex-1 text-left">
+                  <p className="text-sm font-medium text-[#E6EDF3] truncate">{page.title}</p>
+                  <p className="text-xs text-[#7D8590]">/lp/{page.slug}</p>
+                </button>
+                <div className="flex items-center gap-2 flex-shrink-0">
+                  <button onClick={() => { void togglePublish(page); }}
+                    className={`text-[10px] px-2 py-0.5 rounded-full font-semibold transition-colors ${page.published ? "bg-emerald-500/20 text-emerald-400 hover:bg-red-500/20 hover:text-red-400" : "bg-[#30363D] text-[#7D8590] hover:bg-emerald-500/20 hover:text-emerald-400"}`}>
+                    {page.published ? "Published" : "Draft"}
+                  </button>
+                  {page.published && (
+                    <>
+                      <a href={`/lp/${page.slug}`} target="_blank" rel="noopener noreferrer" className="text-[10px] text-[#58A6FF] hover:underline">View →</a>
+                      <button onClick={() => { void navigator.clipboard.writeText(`${window.location.origin}/lp/${page.slug}`); }}
+                        className="text-[10px] px-1.5 py-0.5 rounded bg-[#30363D] text-[#7D8590] hover:text-[#E6EDF3] transition-colors" title="Copy link">🔗 Copy</button>
+                    </>
+                  )}
+                  <button onClick={e => { e.stopPropagation(); void deletePage(page.id); }} className="text-[#484F58] hover:text-red-400 text-xs">✕</button>
+                </div>
+              </div>
+              {expandedId === page.id && page.valuePropBlocks.length > 0 && (
+                <div className="border-t border-[#30363D] px-4 pb-4 pt-3 space-y-2">
+                  <p className="text-xs text-[#7D8590]">{page.headline}</p>
+                  <div className="grid grid-cols-3 gap-2">
+                    {page.valuePropBlocks.slice(0, 3).map((b, i) => (
+                      <div key={i} className="bg-[#0D1117] rounded-lg p-2">
+                        {b.icon && <span>{b.icon}</span>}
+                        <p className="text-[10px] font-semibold text-[#E6EDF3]">{b.heading}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Follow-Ups Section ───────────────────────────────────────────────────────
+
+function FollowUpsSection({ fetchWithAuth }: { fetchWithAuth: (url: string, opts?: RequestInit) => Promise<Response> }) {
+  const [followUps, setFollowUps] = useState<FollowUp[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [showForm, setShowForm] = useState(false);
+  const [channel, setChannel] = useState("email");
+  const [scheduledAt, setScheduledAt] = useState("");
+  const [subject, setSubject] = useState("");
+  const [leadQuery, setLeadQuery] = useState("");
+  const [generatingDraft, setGeneratingDraft] = useState(false);
+  const [draftContent, setDraftContent] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [filterStatus, setFilterStatus] = useState("pending");
+  const [expandedId, setExpandedId] = useState<number | null>(null);
+  const [generatingCopyId, setGeneratingCopyId] = useState<number | null>(null);
+
+  const load = useCallback(async (status?: string) => {
+    setLoading(true);
+    try {
+      const url = status && status !== "all" ? `${API}/admin/marketing/follow-ups?status=${status}` : `${API}/admin/marketing/follow-ups`;
+      const r = await fetchWithAuth(url);
+      const data = await r.json() as unknown;
+      setFollowUps(Array.isArray(data) ? data as FollowUp[] : []);
+    } catch { setFollowUps([]); }
+    finally { setLoading(false); }
+  }, [fetchWithAuth]);
+
+  useEffect(() => { void load(filterStatus); }, [load, filterStatus]);
+
+  const generateDraft = async () => {
+    setGeneratingDraft(true); setDraftContent("");
+    try {
+      const r = await fetchWithAuth(`${API}/admin/marketing/generate/follow-up-draft`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ channel, context: leadQuery }),
+      });
+      const data = await r.json() as { subject: string; content: string };
+      if (data.subject) setSubject(data.subject);
+      setDraftContent(data.content ?? "");
+    } finally { setGeneratingDraft(false); }
+  };
+
+  const saveFollowUp = async () => {
+    if (!scheduledAt) return;
+    setSaving(true);
+    try {
+      const r = await fetchWithAuth(`${API}/admin/marketing/follow-ups`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ scheduledAt, channel, subject: subject || null, aiDraftContent: draftContent || null }),
+      });
+      const saved = await r.json() as FollowUp;
+      setFollowUps(prev => [saved, ...prev]);
+      setShowForm(false); setChannel("email"); setScheduledAt(""); setSubject(""); setDraftContent("");
+    } finally { setSaving(false); }
+  };
+
+  const completeFollowUp = async (id: number) => {
+    const r = await fetchWithAuth(`${API}/admin/marketing/follow-ups/${id}/complete`, { method: "POST" });
+    const updated = await r.json() as FollowUp;
+    setFollowUps(prev => prev.map(f => f.id === id ? updated : f));
+  };
+
+  const rescheduleFollowUp = async (id: number) => {
+    const fu = followUps.find(f => f.id === id);
+    if (!fu) return;
+    const next = new Date(new Date(fu.scheduledAt).getTime() + 86400000).toISOString();
+    const r = await fetchWithAuth(`${API}/admin/marketing/follow-ups/${id}`, {
+      method: "PATCH", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ scheduledAt: next, status: "pending" }),
+    });
+    if (r.ok) { const updated = await r.json() as FollowUp; setFollowUps(prev => prev.map(f => f.id === id ? updated : f)); }
+  };
+
+  const generateCopyForFollowUp = async (id: number) => {
+    setGeneratingCopyId(id);
+    setExpandedId(id);
+    try {
+      const r = await fetchWithAuth(`${API}/admin/marketing/follow-ups/${id}/generate-copy`, { method: "POST" });
+      if (r.ok) { const data = await r.json() as { followUp: FollowUp }; setFollowUps(prev => prev.map(f => f.id === id ? data.followUp : f)); }
+    } finally { setGeneratingCopyId(null); }
+  };
+
+  const deleteFollowUp = async (id: number) => {
+    await fetchWithAuth(`${API}/admin/marketing/follow-ups/${id}`, { method: "DELETE" });
+    setFollowUps(prev => prev.filter(f => f.id !== id));
+  };
+
+  const statusColor = (s: string) => s === "completed" ? "green" : s === "overdue" ? "red" : s === "pending" ? "blue" : "gray";
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between gap-2">
+        <h2 className="text-lg font-semibold text-[#E6EDF3]">Follow-Up Automation</h2>
+        <button onClick={() => setShowForm(f => !f)} className="text-xs px-3 py-1.5 rounded-lg bg-[#0078D4] text-white hover:bg-[#0078D4]/80 transition-colors">+ Schedule</button>
+      </div>
+
+      <div className="flex gap-1">
+        {(["all", "pending", "overdue", "completed", "skipped"] as const).map(s => (
+          <button key={s} onClick={() => setFilterStatus(s)}
+            className={`text-xs px-3 py-1.5 rounded-lg border transition-colors ${filterStatus === s ? "bg-[#0078D4]/20 border-[#0078D4]/40 text-[#58A6FF]" : "border-[#30363D] text-[#7D8590] hover:text-[#E6EDF3]"}`}>
+            {s.charAt(0).toUpperCase() + s.slice(1)}
+          </button>
+        ))}
+      </div>
+
+      {showForm && (
+        <div className="bg-[#161B22] border border-[#30363D] rounded-xl p-4 space-y-3">
+          <h3 className="text-sm font-semibold text-[#E6EDF3]">Schedule Follow-Up</h3>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <div>
+              <label className="text-[10px] text-[#7D8590] uppercase tracking-wide">Channel</label>
+              <select value={channel} onChange={e => setChannel(e.target.value)} className="mt-1 w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-sm text-[#E6EDF3] outline-none focus:border-[#0078D4]/60">
+                {["email", "linkedin", "phone", "other"].map(c => <option key={c} value={c}>{c.charAt(0).toUpperCase() + c.slice(1)}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="text-[10px] text-[#7D8590] uppercase tracking-wide">Scheduled Date</label>
+              <input type="datetime-local" value={scheduledAt} onChange={e => setScheduledAt(e.target.value)}
+                className="mt-1 w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-sm text-[#E6EDF3] outline-none focus:border-[#0078D4]/60" />
+            </div>
+            <div>
+              <label className="text-[10px] text-[#7D8590] uppercase tracking-wide">Subject / Topic</label>
+              <input value={subject} onChange={e => setSubject(e.target.value)} placeholder="Subject or topic…"
+                className="mt-1 w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-sm text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60" />
+            </div>
+          </div>
+          <div>
+            <label className="text-[10px] text-[#7D8590] uppercase tracking-wide">Context (for AI draft)</label>
+            <input value={leadQuery} onChange={e => setLeadQuery(e.target.value)} placeholder="e.g. following up on SharePoint proposal sent last week"
+              className="mt-1 w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-sm text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60" />
+          </div>
+          <div className="flex gap-2">
+            <button onClick={() => { void generateDraft(); }} disabled={generatingDraft}
+              className="text-xs px-3 py-1.5 rounded-lg border border-[#0078D4]/40 text-[#58A6FF] hover:bg-[#0078D4]/10 disabled:opacity-40 transition-colors flex items-center gap-1">
+              {generatingDraft ? <><div className="w-3 h-3 border border-[#58A6FF] border-t-transparent rounded-full animate-spin" />Drafting…</> : "✦ Draft Content"}
+            </button>
+          </div>
+          {draftContent && (
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] text-[#7D8590]">AI Draft</span>
+                <CopyButton text={draftContent} />
+              </div>
+              <pre className="text-xs text-[#E6EDF3] whitespace-pre-wrap font-sans bg-[#0D1117] rounded-lg p-3 max-h-40 overflow-y-auto">{draftContent}</pre>
+            </div>
+          )}
+          <div className="flex gap-2">
+            <button onClick={() => { void saveFollowUp(); }} disabled={saving || !scheduledAt}
+              className="px-4 py-2 rounded-lg bg-[#0078D4] text-white text-sm font-semibold hover:bg-[#0078D4]/80 disabled:opacity-40 transition-colors">
+              {saving ? "Saving…" : "Schedule"}
+            </button>
+            <button onClick={() => setShowForm(false)} className="px-4 py-2 rounded-lg border border-[#30363D] text-[#7D8590] text-sm hover:text-[#E6EDF3] transition-colors">Cancel</button>
+          </div>
+        </div>
+      )}
+
+      {loading ? <SkeletonCard count={3} /> : followUps.length === 0 ? (
+        <div className="bg-[#161B22] border border-[#30363D] rounded-xl p-8 text-center">
+          <p className="text-[#7D8590] text-sm">No follow-ups {filterStatus !== "all" ? `with status "${filterStatus}"` : "yet"}</p>
+          <p className="text-xs text-[#484F58] mt-1">Schedule a follow-up and optionally draft the content with AI</p>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {followUps.map(fu => (
+            <div key={fu.id} className={`bg-[#161B22] border rounded-xl overflow-hidden ${fu.status === "overdue" ? "border-red-500/30" : "border-[#30363D]"}`}>
+              <div className="flex items-center gap-3 px-4 py-3">
+                <button onClick={() => setExpandedId(prev => prev === fu.id ? null : fu.id)} className="flex-1 text-left">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-medium text-[#E6EDF3]">{fu.subject ?? `${fu.channel} follow-up`}</span>
+                    <Badge text={fu.status} color={statusColor(fu.status)} />
+                    <Badge text={fu.channel} color="blue" />
+                  </div>
+                  <div className="flex items-center gap-3 mt-0.5">
+                    <p className="text-xs text-[#7D8590]">{new Date(fu.scheduledAt).toLocaleString()}</p>
+                    {fu.leadName && <p className="text-xs text-[#58A6FF]">→ {fu.leadName}</p>}
+                  </div>
+                </button>
+                <div className="flex items-center gap-1 flex-shrink-0">
+                  {(fu.status === "pending" || fu.status === "overdue") && (
+                    <button onClick={() => { void completeFollowUp(fu.id); }} className="text-[10px] px-2 py-1 rounded bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30 transition-colors">Done</button>
+                  )}
+                  <button onClick={() => { void rescheduleFollowUp(fu.id); }} className="text-[10px] px-2 py-1 rounded bg-amber-500/20 text-amber-400 hover:bg-amber-500/30 transition-colors" title="Reschedule +1 day">+1d</button>
+                  <button onClick={() => { void generateCopyForFollowUp(fu.id); }} className="text-[10px] px-2 py-1 rounded bg-purple-500/20 text-purple-400 hover:bg-purple-500/30 transition-colors" title="Generate AI copy">✦ Copy</button>
+                  <button onClick={() => { void deleteFollowUp(fu.id); }} className="text-[#484F58] hover:text-red-400 text-xs ml-1">✕</button>
+                </div>
+              </div>
+              {expandedId === fu.id && (fu.aiDraftContent || generatingCopyId === fu.id) && (
+                <div className="border-t border-[#30363D] px-4 pb-3 pt-2 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] text-[#7D8590]">AI Draft</span>
+                    {fu.aiDraftContent && <CopyButton text={fu.aiDraftContent} />}
+                  </div>
+                  {generatingCopyId === fu.id ? (
+                    <div className="flex items-center gap-2 text-xs text-[#58A6FF]"><div className="w-3 h-3 border border-[#58A6FF] border-t-transparent rounded-full animate-spin" />Generating copy…</div>
+                  ) : fu.aiDraftContent ? (
+                    <pre className="text-xs text-[#E6EDF3] whitespace-pre-wrap font-sans bg-[#0D1117] rounded-lg p-3 max-h-40 overflow-y-auto">{fu.aiDraftContent}</pre>
+                  ) : null}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── AI Money Tasks Button ────────────────────────────────────────────────────
+
+function AiMoneyTasksButton({ fetchWithAuth, onAdded }: { fetchWithAuth: (url: string, opts?: RequestInit) => Promise<Response>; onAdded: (tasks: MarketingTask[]) => void }) {
+  const [loading, setLoading] = useState(false);
+
+  const generate = async () => {
+    setLoading(true);
+    try {
+      const r = await fetchWithAuth(`${API}/admin/marketing/generate/money-tasks`, { method: "POST" });
+      const data = await r.json() as MarketingTask[];
+      if (Array.isArray(data)) onAdded(data);
+    } finally { setLoading(false); }
+  };
+
+  return (
+    <button onClick={() => { void generate(); }} disabled={loading}
+      className="text-xs px-3 py-1.5 rounded-lg border border-amber-500/40 text-amber-300 hover:bg-amber-500/10 disabled:opacity-40 transition-colors flex items-center gap-1">
+      {loading ? <><div className="w-3 h-3 border border-amber-300 border-t-transparent rounded-full animate-spin" />Generating…</> : "💰 AI Money Tasks"}
+    </button>
   );
 }
 
 // ─── Section 6: Marketing Tasks Kanban ────────────────────────────────────────
 
 const KANBAN_COLUMNS: { id: MarketingTask["status"]; label: string; color: string }[] = [
+  { id: "money_task", label: "💰 Money Tasks", color: "text-amber-300" },
   { id: "ideas", label: "Ideas", color: "text-[#7D8590]" },
   { id: "in_progress", label: "In Progress", color: "text-amber-400" },
   { id: "scheduled", label: "Scheduled", color: "text-blue-400" },
@@ -2356,6 +3518,7 @@ function MarketingTasksKanban({ fetchWithAuth }: { fetchWithAuth: (url: string, 
             className="text-xs px-3 py-1.5 rounded-lg border border-[#0078D4]/40 text-[#58A6FF] hover:bg-[#0078D4]/10 disabled:opacity-40 transition-colors flex items-center gap-1">
             {aiSuggesting ? <><div className="w-3 h-3 border border-[#58A6FF] border-t-transparent rounded-full animate-spin" />Generating…</> : "✦ AI Suggest Tasks"}
           </button>
+          <AiMoneyTasksButton fetchWithAuth={fetchWithAuth} onAdded={(newTasks: MarketingTask[]) => setTasks(prev => [...newTasks, ...prev])} />
           <button onClick={() => setShowForm(f => !f)} className="text-xs px-3 py-1.5 rounded-lg bg-[#0078D4] text-white hover:bg-[#0078D4]/80 transition-colors">+ Add Task</button>
         </div>
       </div>
@@ -2376,9 +3539,9 @@ function MarketingTasksKanban({ fetchWithAuth }: { fetchWithAuth: (url: string, 
         </div>
       )}
 
-      {loading ? <div className="grid grid-cols-5 gap-3"><SkeletonCard count={5} /></div> : (
+      {loading ? <div className="grid grid-cols-6 gap-3"><SkeletonCard count={6} /></div> : (
         <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={e => { void handleDragEnd(e); }}>
-          <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-3">
+          <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-3">
             {KANBAN_COLUMNS.map(col => (
               <DroppableColumn
                 key={col.id}
@@ -2489,6 +3652,32 @@ function CampaignMetricsPanel({ campaign, fetchWithAuth, onUpdated }: {
           {saving ? "Saving…" : saved ? "✓ Saved" : "Save Metrics"}
         </button>
       </div>
+    </div>
+  );
+}
+
+// ─── Campaigns Hub (Campaigns + Offers + Landing Pages) ──────────────────────
+
+function CampaignsHubSection({ fetchWithAuth }: { fetchWithAuth: (url: string, opts?: RequestInit) => Promise<Response> }) {
+  const [activeTab, setActiveTab] = useState<"campaigns" | "offers" | "pages">("campaigns");
+  const TABS = [
+    { id: "campaigns" as const, label: "🚀 Campaigns" },
+    { id: "offers" as const, label: "🎁 Offers" },
+    { id: "pages" as const, label: "🌐 Landing Pages" },
+  ];
+  return (
+    <div className="space-y-4">
+      <div className="flex gap-1 border-b border-[#30363D] pb-2">
+        {TABS.map(t => (
+          <button key={t.id} onClick={() => setActiveTab(t.id)}
+            className={`text-xs px-4 py-1.5 rounded-lg font-medium transition-colors ${activeTab === t.id ? "bg-[#0078D4]/20 text-[#58A6FF] border border-[#0078D4]/40" : "text-[#7D8590] hover:text-[#E6EDF3] hover:bg-[#1C2128] border border-transparent"}`}>
+            {t.label}
+          </button>
+        ))}
+      </div>
+      {activeTab === "campaigns" && <CampaignBuilderWizard fetchWithAuth={fetchWithAuth} />}
+      {activeTab === "offers" && <OfferBuilderPanel fetchWithAuth={fetchWithAuth} />}
+      {activeTab === "pages" && <LandingPagesPanel fetchWithAuth={fetchWithAuth} />}
     </div>
   );
 }
@@ -2768,11 +3957,13 @@ function CampaignBuilderWizard({ fetchWithAuth }: { fetchWithAuth: (url: string,
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 const SECTIONS = [
+  { id: "command", label: "🚀 Command" },
   { id: "recommendations", label: "AI Leads" },
   { id: "kpi", label: "KPIs" },
   { id: "lead-finder", label: "Lead Finder" },
   { id: "outreach", label: "Outreach" },
   { id: "content", label: "Content" },
+  { id: "follow-ups", label: "Follow-Ups" },
   { id: "analytics", label: "Analytics" },
   { id: "tasks", label: "Tasks" },
   { id: "campaigns", label: "Campaigns" },
@@ -2795,14 +3986,17 @@ export default function MarketingCommandCenter() {
         </div>
       </div>
       <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-8">
+        <DailyCommandPanel fetchWithAuth={fetchWithAuth} onNavigate={setActiveSection} />
+        {activeSection === "command" && null}
         {activeSection === "recommendations" && <RecommendedLeadsSection fetchWithAuth={fetchWithAuth} />}
         {activeSection === "kpi" && <KPIStrip fetchWithAuth={fetchWithAuth} />}
         {activeSection === "lead-finder" && <LeadFinderSection fetchWithAuth={fetchWithAuth} />}
         {activeSection === "outreach" && <OutreachAutomationSection fetchWithAuth={fetchWithAuth} />}
         {activeSection === "content" && <ContentHubSection fetchWithAuth={fetchWithAuth} />}
+        {activeSection === "follow-ups" && <FollowUpsSection fetchWithAuth={fetchWithAuth} />}
         {activeSection === "analytics" && <TrafficAnalyticsSection fetchWithAuth={fetchWithAuth} />}
         {activeSection === "tasks" && <MarketingTasksKanban fetchWithAuth={fetchWithAuth} />}
-        {activeSection === "campaigns" && <CampaignBuilderWizard fetchWithAuth={fetchWithAuth} />}
+        {activeSection === "campaigns" && <CampaignsHubSection fetchWithAuth={fetchWithAuth} />}
       </div>
     </div>
   );

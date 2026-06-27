@@ -4,8 +4,9 @@ import {
   marketingTasksTable, campaignsTable, campaignAssetsTable,
   analyticsSessionsTable, analyticsSiteEventsTable, servicesTable,
   settingsTable, quizPainSignalConfigTable, emailEventsTable, seoRankingsTable,
+  leadIntentEventsTable, followUpEventsTable, offersTable, landingPagesTable,
 } from "@workspace/db";
-import { eq, desc, count, and, gte, sql, inArray } from "drizzle-orm";
+import { eq, desc, count, and, gte, lte, sql, inArray, lt, isNull, or, ne } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/requireAuth";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
 import { sendMessage, GraphMailConfigError } from "../lib/graphEmail";
@@ -140,7 +141,38 @@ router.get("/admin/marketing/kpi", requireAdmin, async (_req: Request, res: Resp
     const conversions = Number(conversionEvents[0]?.cnt ?? 0);
     const conversionRate = visitors > 0 ? ((conversions / visitors) * 100).toFixed(1) : "0.0";
 
-    res.json({ visitorsToday: visitors, leadsThisWeek: leads, conversionRate, activeCampaigns: campaigns });
+    const [hotLeadsCount, intentEventsToday, followUpsDue, offersCount, revenueThisMonth, convertedLeadsThisWeek, avgServicePrice] = await Promise.all([
+      db.select({ cnt: count() }).from(leadsTable).where(gte(leadsTable.score, 70)),
+      db.select({ cnt: count() }).from(leadIntentEventsTable).where(gte(leadIntentEventsTable.occurredAt, todayStart)),
+      db.select({ cnt: count() }).from(followUpEventsTable)
+        .where(and(eq(followUpEventsTable.status, "pending"), lte(followUpEventsTable.scheduledAt, now))),
+      db.select({ cnt: count() }).from(offersTable),
+      db.select({ total: sql<string>`COALESCE(SUM(revenue_attributed::numeric), 0)` }).from(campaignsTable).where(eq(campaignsTable.status, "active")),
+      db.select({ cnt: count() }).from(leadsTable).where(and(eq(leadsTable.status, "converted"), gte(leadsTable.createdAt, weekAgo))),
+      // Avg deal size derived from actual service pricing (base_price fallback to price)
+      db.select({ avg: sql<string>`COALESCE(AVG(COALESCE(base_price::numeric, price::numeric)), 5000)` }).from(servicesTable).where(eq(servicesTable.isPublic, true)),
+    ]);
+
+    const totalLeadsThisWeek = leads;
+    const converted = Number(convertedLeadsThisWeek[0]?.cnt ?? 0);
+    const offerConversionRate = totalLeadsThisWeek > 0 ? ((converted / totalLeadsThisWeek) * 100).toFixed(1) : "0.0";
+    // Revenue opportunity = hot leads × avg deal value derived from service pricing (min $1,000 fallback)
+    const avgDeal = Math.max(1000, parseFloat(String(avgServicePrice[0]?.avg ?? "5000")));
+    const revenueOpportunity = Math.round(Number(hotLeadsCount[0]?.cnt ?? 0) * avgDeal);
+
+    res.json({
+      visitorsToday: visitors,
+      leadsThisWeek: leads,
+      conversionRate,
+      activeCampaigns: campaigns,
+      hotLeadsCount: Number(hotLeadsCount[0]?.cnt ?? 0),
+      intentSignalsToday: Number(intentEventsToday[0]?.cnt ?? 0),
+      followUpsDue: Number(followUpsDue[0]?.cnt ?? 0),
+      activeOffers: Number(offersCount[0]?.cnt ?? 0),
+      revenueThisMonth: parseFloat(String(revenueThisMonth[0]?.total ?? "0")),
+      revenueOpportunity,
+      offerConversionRate,
+    });
   } catch (e) {
     res.status(500).json({ error: String(e) });
   }
@@ -1341,6 +1373,867 @@ router.post("/admin/marketing/seo-rankings/sync-search-console", requireAdmin, a
     }
 
     res.json({ synced: entries.length, inserted, updated });
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+// ─── Revenue Engine — module-level cache ──────────────────────────────────────
+
+let dailyCommandCache: { data: unknown; expiresAt: number } | null = null;
+
+// ─── Intent Events — ingest & hot-score recomputation ─────────────────────────
+
+// Spec-compliant weighted scoring: email_open=1, link_click=3, cta_click=5, site_visit=2, form_submit=10, reply=15
+const INTENT_SCORE_MAP: Record<string, number> = {
+  email_open: 1, link_click: 3, cta_click: 5, site_visit: 2, form_submit: 10, reply: 15,
+};
+
+async function recomputeAndPersistHotScore(leadId: number): Promise<number> {
+  const [lead] = await db.select().from(leadsTable).where(eq(leadsTable.id, leadId)).limit(1);
+  if (!lead) return 0;
+
+  const cutoff = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000);
+  const events = await db.select().from(leadIntentEventsTable)
+    .where(and(eq(leadIntentEventsTable.leadId, leadId), gte(leadIntentEventsTable.occurredAt, cutoff)));
+
+  // Base intent score from events
+  const intentScore = events.reduce((sum, e) => sum + (INTENT_SCORE_MAP[e.eventType] ?? 1), 0);
+
+  // ICP/pain-signal bonus: +2 per pain point, +5 if qualified stage, +3 per engagement signal
+  const icpBonus =
+    (lead.painPoints?.length ?? 0) * 2 +
+    (lead.stage === "SQL" ? 15 : lead.stage === "AQL" ? 8 : 0) +
+    (lead.engagementSignals?.length ?? 0) * 3 +
+    (lead.urgencySignals?.length ?? 0) * 4;
+
+  const newScore = Math.min(100, intentScore + icpBonus);
+  const prevScore = lead.score;
+
+  // Transactional update of both score and previousScore
+  await db.update(leadsTable)
+    .set({ score: newScore, previousScore: prevScore, updatedAt: new Date() })
+    .where(eq(leadsTable.id, leadId));
+
+  return newScore;
+}
+
+// ── Spec-compliant paths: POST /leads/:id/intent-event & GET /leads/:id/intent-events ──
+
+async function ingestIntentEvent(leadId: number, eventType: string, metadata: Record<string, unknown>): Promise<{ event: unknown; hotScore: number }> {
+  const [ev] = await db.insert(leadIntentEventsTable).values({
+    leadId,
+    eventType: eventType as "email_open" | "link_click" | "cta_click" | "site_visit" | "form_submit" | "reply",
+    metadata: metadata ?? {},
+    occurredAt: new Date(),
+  }).returning();
+  const hotScore = await recomputeAndPersistHotScore(leadId);
+  return { event: ev, hotScore };
+}
+
+router.post("/admin/marketing/leads/:id/intent-event", requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const leadId = parseId(req.params, "id");
+    const body = req.body as { eventType?: string; metadata?: Record<string, unknown> };
+    if (!body.eventType) { res.status(400).json({ error: "eventType is required" }); return; }
+    res.json(await ingestIntentEvent(leadId, body.eventType, body.metadata ?? {}));
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+router.post("/admin/marketing/intent-events", requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const body = req.body as { leadId?: number; eventType?: string; metadata?: Record<string, unknown> };
+    if (!body.leadId || !body.eventType) { res.status(400).json({ error: "leadId and eventType are required" }); return; }
+    res.json(await ingestIntentEvent(body.leadId, body.eventType, body.metadata ?? {}));
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+router.get("/admin/marketing/leads/:id/intent-events", requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const id = parseId(req.params, "id");
+    const events = await db.select().from(leadIntentEventsTable)
+      .where(eq(leadIntentEventsTable.leadId, id)).orderBy(desc(leadIntentEventsTable.occurredAt)).limit(50);
+    res.json(events);
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+router.get("/admin/marketing/hot-leads", requireAdmin, async (_req: Request, res: Response) => {
+  try {
+    const cutoff = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000);
+    const hotLeads = await db.select({
+      id: leadsTable.id,
+      name: leadsTable.name,
+      email: leadsTable.email,
+      company: leadsTable.company,
+      industry: leadsTable.industry,
+      score: leadsTable.score,
+      status: leadsTable.status,
+      stage: leadsTable.stage,
+    }).from(leadsTable).where(gte(leadsTable.score, 30)).orderBy(desc(leadsTable.score)).limit(20);
+
+    const intentCounts = await db.select({
+      leadId: leadIntentEventsTable.leadId,
+      cnt: count(),
+    }).from(leadIntentEventsTable).where(gte(leadIntentEventsTable.occurredAt, cutoff))
+      .groupBy(leadIntentEventsTable.leadId);
+
+    const cntMap = Object.fromEntries(intentCounts.map(r => [r.leadId, r.cnt]));
+    const result = hotLeads.map(l => ({ ...l, recentEvents: cntMap[l.id] ?? 0 }));
+    res.json(result);
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+router.get("/admin/marketing/hot-leads/:leadId/intent-timeline", requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const id = parseId(req.params, "leadId");
+    const events = await db.select().from(leadIntentEventsTable)
+      .where(eq(leadIntentEventsTable.leadId, id)).orderBy(desc(leadIntentEventsTable.occurredAt)).limit(50);
+    res.json(events);
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+// ─── Next Best Action ─────────────────────────────────────────────────────────
+
+async function computeNextBestAction(leadId: number): Promise<{
+  outreachMethod: string; messageType: string; bestOffer: string;
+  followUpTiming: string; rationale: string; urgency: string;
+}> {
+  const [lead] = await db.select().from(leadsTable).where(eq(leadsTable.id, leadId)).limit(1);
+  if (!lead) throw new Error("Lead not found");
+
+  const [recentEvents, lastFollowUp, topOffer] = await Promise.all([
+    db.select().from(leadIntentEventsTable)
+      .where(and(eq(leadIntentEventsTable.leadId, leadId), gte(leadIntentEventsTable.occurredAt, new Date(Date.now() - 7 * 86400000))))
+      .orderBy(desc(leadIntentEventsTable.occurredAt)).limit(5),
+    db.select().from(followUpEventsTable)
+      .where(eq(followUpEventsTable.leadId, leadId)).orderBy(desc(followUpEventsTable.scheduledAt)).limit(1),
+    db.select().from(offersTable).limit(1),
+  ]);
+
+  const icpCtx = await buildICPContext();
+  const prompt = `You are a revenue consultant for a Microsoft 365 architect consultant.
+${icpCtx}
+
+Lead: ${lead.name}, ${lead.company ?? "unknown company"}, industry=${lead.industry ?? "unknown"}, stage=${lead.stage}, score=${lead.score}.
+Pain points: ${lead.painPoints?.join(", ") || "none recorded"}.
+Recent intent signals (last 7 days): ${recentEvents.map(e => e.eventType).join(", ") || "none"}.
+Last follow-up: ${lastFollowUp[0] ? `${lastFollowUp[0].channel} on ${lastFollowUp[0].scheduledAt.toDateString()}, status=${lastFollowUp[0].status}` : "none yet"}.
+Available offer: ${topOffer[0]?.name ?? "none configured yet"}.
+
+Return JSON with EXACTLY these fields:
+{
+  "outreachMethod": "email|linkedin|phone|none",
+  "messageType": "cold_outreach|warm_follow_up|value_add|close_ask|re_engagement",
+  "bestOffer": "name of the best service/offer to propose to this lead",
+  "followUpTiming": "today|tomorrow|this_week|next_week",
+  "rationale": "2-sentence explanation of why this is the right move now",
+  "urgency": "high|medium|low"
+}`;
+
+  const msg = await anthropic.messages.create({ model: "claude-haiku-4-5", max_tokens: 400, messages: [{ role: "user", content: prompt }] });
+  const raw = msg.content[0]?.type === "text" ? msg.content[0].text : "{}";
+  return parseAiJson(raw, z.object({
+    outreachMethod: z.string(), messageType: z.string(), bestOffer: z.string(),
+    followUpTiming: z.string(), rationale: z.string(), urgency: z.string(),
+  }));
+}
+
+// Spec-compliant POST endpoint
+router.post("/admin/marketing/leads/:id/next-best-action", requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const id = parseId(req.params, "id");
+    res.json(await computeNextBestAction(id));
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    if (msg === "Lead not found") { res.status(404).json({ error: msg }); return; }
+    res.status(500).json({ error: msg });
+  }
+});
+
+// Legacy GET alias for backwards-compat
+router.get("/admin/marketing/next-best-action/:leadId", requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const id = parseId(req.params, "leadId");
+    res.json(await computeNextBestAction(id));
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    if (msg === "Lead not found") { res.status(404).json({ error: msg }); return; }
+    res.status(500).json({ error: msg });
+  }
+});
+
+// ─── Offer Builder ────────────────────────────────────────────────────────────
+
+router.post("/admin/marketing/generate/offer", requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const body = req.body as { goal?: string; audience?: string; pricePoint?: string };
+    const icpCtx = await buildICPContext();
+    const prompt = `You are a B2B offer strategist for a Microsoft 365 consulting firm.
+${icpCtx}
+Goal: ${body.goal ?? "Help clients adopt Microsoft 365"}
+Target audience: ${body.audience ?? "IT directors at mid-market companies"}
+Price point: ${body.pricePoint ?? "value-based"}
+
+Return JSON:
+{
+  "name": "offer name",
+  "goal": "specific outcome",
+  "audience": "specific audience description",
+  "pricing": "pricing description",
+  "deliverables": ["deliverable 1", "deliverable 2", "deliverable 3"],
+  "outcomes": ["outcome 1", "outcome 2"],
+  "cta": "call-to-action phrase"
+}`;
+    const msg = await anthropic.messages.create({ model: "claude-haiku-4-5", max_tokens: 600, messages: [{ role: "user", content: prompt }] });
+    const raw = msg.content[0]?.type === "text" ? msg.content[0].text : "{}";
+    const schema = z.object({ name: z.string(), goal: z.string(), audience: z.string(), pricing: z.string().optional(), deliverables: z.array(z.string()), outcomes: z.array(z.string()), cta: z.string().optional() });
+    res.json(parseAiJson(raw, schema));
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+router.get("/admin/marketing/offers", requireAdmin, async (_req: Request, res: Response) => {
+  try {
+    const rows = await db.select().from(offersTable).orderBy(desc(offersTable.createdAt));
+    res.json(rows);
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+router.post("/admin/marketing/offers", requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const body = req.body as { name?: string; goal?: string; audience?: string; pricing?: string; deliverables?: string[]; outcomes?: string[]; cta?: string; campaignId?: number };
+    if (!body.name || !body.goal || !body.audience) { res.status(400).json({ error: "name, goal, audience required" }); return; }
+    const [row] = await db.insert(offersTable).values({
+      name: body.name, goal: body.goal, audience: body.audience,
+      pricing: body.pricing ?? null, deliverables: body.deliverables ?? [], outcomes: body.outcomes ?? [],
+      cta: body.cta ?? null, campaignId: body.campaignId ?? null,
+    }).returning();
+    res.status(201).json(row);
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+router.patch("/admin/marketing/offers/:id", requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const id = parseId(req.params, "id");
+    const body = req.body as Partial<{ name: string; goal: string; audience: string; pricing: string; deliverables: string[]; outcomes: string[]; cta: string; campaignId: number }>;
+    const [row] = await db.update(offersTable).set({ ...body, updatedAt: new Date() }).where(eq(offersTable.id, id)).returning();
+    res.json(row);
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+router.delete("/admin/marketing/offers/:id", requireAdmin, async (req: Request, res: Response) => {
+  try {
+    await db.delete(offersTable).where(eq(offersTable.id, parseId(req.params, "id")));
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+// Canonical alias: POST /admin/marketing/offers/generate
+router.post("/admin/marketing/offers/generate", requireAdmin, (req: Request, res: Response) => {
+  req.url = "/admin/marketing/generate/offer";
+  (router as unknown as { handle(req: Request, res: Response, cb: () => void): void }).handle(req, res, () => res.status(404).json({ error: "Not found" }));
+});
+
+// ─── Landing Page Generator ───────────────────────────────────────────────────
+
+router.post("/admin/marketing/generate/landing-page", requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const body = req.body as { offerId?: number; topic?: string; audience?: string; cta?: string };
+    let offerCtx = "";
+    if (body.offerId) {
+      const [offer] = await db.select().from(offersTable).where(eq(offersTable.id, body.offerId)).limit(1);
+      if (offer) offerCtx = `Offer: ${offer.name} — ${offer.goal}. Deliverables: ${offer.deliverables.join(", ")}. Outcomes: ${offer.outcomes.join(", ")}.`;
+    }
+    const icpCtx = await buildICPContext();
+    const prompt = `You are a conversion copywriter for a Microsoft 365 consulting firm.
+${icpCtx}
+${offerCtx}
+Topic: ${body.topic ?? "Microsoft 365 Copilot adoption"}
+Target audience: ${body.audience ?? "IT decision-makers"}
+CTA: ${body.cta ?? "Book a discovery call"}
+
+Generate a landing page in JSON:
+{
+  "title": "page title",
+  "headline": "main headline (<10 words, benefit-driven)",
+  "subheadline": "supporting sentence expanding on headline",
+  "valuePropBlocks": [
+    { "icon": "🚀", "heading": "heading", "body": "2-sentence body" }
+  ],
+  "socialProof": [
+    { "quote": "testimonial quote", "author": "First Last", "role": "Title at Company" }
+  ],
+  "cta": { "buttonText": "button label", "href": "/contact", "subtext": "optional subtext under button" }
+}`;
+    const msg = await anthropic.messages.create({ model: "claude-haiku-4-5", max_tokens: 900, messages: [{ role: "user", content: prompt }] });
+    const raw = msg.content[0]?.type === "text" ? msg.content[0].text : "{}";
+    const schema = z.object({
+      title: z.string(), headline: z.string(), subheadline: z.string(),
+      valuePropBlocks: z.array(z.object({ icon: z.string().optional(), heading: z.string(), body: z.string() })),
+      socialProof: z.array(z.object({ quote: z.string(), author: z.string(), role: z.string().optional() })),
+      cta: z.object({ buttonText: z.string(), href: z.string(), subtext: z.string().optional() }),
+    });
+    res.json(parseAiJson(raw, schema));
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+router.get("/admin/marketing/landing-pages", requireAdmin, async (_req: Request, res: Response) => {
+  try {
+    const rows = await db.select().from(landingPagesTable).orderBy(desc(landingPagesTable.createdAt));
+    res.json(rows);
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+router.post("/admin/marketing/landing-pages", requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const body = req.body as { slug?: string; title?: string; headline?: string; subheadline?: string; valuePropBlocks?: unknown[]; socialProof?: unknown[]; cta?: unknown; campaignId?: number; published?: boolean };
+    if (!body.title) { res.status(400).json({ error: "title required" }); return; }
+    // Auto-generate slug from title if not provided
+    const autoSlug = body.slug ?? body.title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 60);
+    const [row] = await db.insert(landingPagesTable).values({
+      slug: autoSlug, title: body.title, headline: body.headline ?? null,
+      subheadline: body.subheadline ?? null,
+      valuePropBlocks: (body.valuePropBlocks ?? []) as Array<{ icon?: string; heading: string; body: string }>,
+      socialProof: (body.socialProof ?? []) as Array<{ quote: string; author: string; role?: string }>,
+      cta: body.cta as { buttonText: string; href: string; subtext?: string } ?? { buttonText: "Get Started", href: "/contact" },
+      layoutBlocks: [],
+      campaignId: body.campaignId ?? null,
+      published: body.published ?? false,
+    }).returning();
+    res.status(201).json(row);
+  } catch (e) {
+    if (String(e).includes("unique")) { res.status(409).json({ error: "Slug already exists — choose a different URL slug" }); return; }
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+router.patch("/admin/marketing/landing-pages/:id", requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const id = parseId(req.params, "id");
+    const body = req.body as Partial<{ slug: string; title: string; headline: string; subheadline: string; valuePropBlocks: unknown[]; socialProof: unknown[]; cta: unknown; campaignId: number; published: boolean }>;
+    const [row] = await db.update(landingPagesTable).set({ ...body as Record<string, unknown>, updatedAt: new Date() }).where(eq(landingPagesTable.id, id)).returning();
+    res.json(row);
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+router.delete("/admin/marketing/landing-pages/:id", requireAdmin, async (req: Request, res: Response) => {
+  try {
+    await db.delete(landingPagesTable).where(eq(landingPagesTable.id, parseId(req.params, "id")));
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+// Public landing page route (no auth)
+router.get("/landing-pages/:slug", async (req: Request, res: Response) => {
+  try {
+    const slug = String(req.params.slug);
+    const [page] = await db.select().from(landingPagesTable)
+      .where(and(eq(landingPagesTable.slug, slug), eq(landingPagesTable.published, true))).limit(1);
+    if (!page) { res.status(404).json({ error: "Not found" }); return; }
+    res.json(page);
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+// Canonical alias: POST /admin/marketing/landing-pages/generate
+router.post("/admin/marketing/landing-pages/generate", requireAdmin, (req: Request, res: Response) => {
+  req.url = "/admin/marketing/generate/landing-page";
+  (router as unknown as { handle(req: Request, res: Response, cb: () => void): void }).handle(req, res, () => res.status(404).json({ error: "Not found" }));
+});
+
+// ─── Lead Magnet Generator ────────────────────────────────────────────────────
+
+router.post("/admin/marketing/generate/lead-magnet", requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const body = req.body as { topic?: string; format?: string; audience?: string; campaignId?: number };
+    const icpCtx = await buildICPContext();
+    const prompt = `You are a content strategist for a Microsoft 365 consulting firm.
+${icpCtx}
+Topic: ${body.topic ?? "Microsoft 365 adoption"}
+Format: ${body.format ?? "checklist"}
+Audience: ${body.audience ?? "IT managers"}
+
+Generate a lead magnet in JSON:
+{
+  "title": "lead magnet title (compelling, specific)",
+  "subtitle": "one-line description of the value",
+  "format": "checklist|ebook|template|guide|report",
+  "items": ["item/point 1", "item/point 2", "item/point 3", "item 4", "item 5", "item 6", "item 7"],
+  "cta": "what to promise readers when they fill out the form",
+  "outlineMarkdown": "## Title\n\nFull content outline in markdown with 3-5 sections..."
+}`;
+    const msg = await anthropic.messages.create({ model: "claude-haiku-4-5", max_tokens: 1200, messages: [{ role: "user", content: prompt }] });
+    const raw = msg.content[0]?.type === "text" ? msg.content[0].text : "{}";
+    const schema = z.object({ title: z.string(), subtitle: z.string(), format: z.string(), items: z.array(z.string()), cta: z.string(), outlineMarkdown: z.string() });
+    const generated = parseAiJson(raw, schema);
+
+    // Persist to campaign_assets so it's tracked in the content pipeline
+    const [saved] = await db.insert(campaignAssetsTable).values({
+      campaignId: body.campaignId ?? null,
+      assetType: "lead_magnet",
+      title: generated.title,
+      content: generated.outlineMarkdown,
+      metadata: { subtitle: generated.subtitle, format: generated.format, items: generated.items, cta: generated.cta },
+    }).returning();
+
+    res.json({ ...generated, assetId: saved?.id ?? null });
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+// ─── Follow-Up Automation ─────────────────────────────────────────────────────
+
+router.get("/admin/marketing/follow-ups", requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const now = new Date();
+    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const todayEnd = new Date(todayStart.getTime() + 24 * 60 * 60 * 1000);
+    const statusParam = req.query.status as string | undefined;
+
+    // Auto-mark overdue before filtering (so due_today filter sees correct statuses)
+    await db.update(followUpEventsTable)
+      .set({ status: "overdue", updatedAt: now })
+      .where(and(eq(followUpEventsTable.status, "pending"), lt(followUpEventsTable.scheduledAt, todayStart)));
+
+    // Build where clause — supports: pending, completed, overdue, skipped, due_today
+    const whereClause =
+      statusParam === "due_today"
+        ? and(
+            or(eq(followUpEventsTable.status, "pending"), eq(followUpEventsTable.status, "overdue")),
+            gte(followUpEventsTable.scheduledAt, todayStart),
+            lte(followUpEventsTable.scheduledAt, todayEnd),
+          )
+        : statusParam
+          ? eq(followUpEventsTable.status, statusParam as "pending" | "completed" | "overdue" | "skipped")
+          : undefined;
+
+    const rows = await db.select({
+      fu: followUpEventsTable,
+      leadName: leadsTable.name,
+      leadEmail: leadsTable.email,
+    }).from(followUpEventsTable).leftJoin(leadsTable, eq(followUpEventsTable.leadId, leadsTable.id))
+      .where(whereClause ?? undefined).orderBy(followUpEventsTable.scheduledAt).limit(100);
+
+    res.json(rows.map(r => ({ ...r.fu, leadName: r.leadName, leadEmail: r.leadEmail })));
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+// Canonical alias: POST /admin/marketing/lead-magnets/generate
+router.post("/admin/marketing/lead-magnets/generate", requireAdmin, (req: Request, res: Response) => {
+  req.url = "/admin/marketing/generate/lead-magnet";
+  (router as unknown as { handle(req: Request, res: Response, cb: () => void): void }).handle(req, res, () => res.status(404).json({ error: "Not found" }));
+});
+
+router.post("/admin/marketing/follow-ups", requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const body = req.body as { leadId?: number; campaignId?: number; scheduledAt?: string; channel?: string; subject?: string; aiDraftContent?: string };
+    if (!body.scheduledAt) { res.status(400).json({ error: "scheduledAt required" }); return; }
+    const [row] = await db.insert(followUpEventsTable).values({
+      leadId: body.leadId ?? null,
+      campaignId: body.campaignId ?? null,
+      scheduledAt: new Date(body.scheduledAt),
+      channel: (body.channel ?? "email") as "email" | "linkedin" | "phone" | "other",
+      subject: body.subject ?? null,
+      aiDraftContent: body.aiDraftContent ?? null,
+      status: "pending",
+    }).returning();
+    res.status(201).json(row);
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+// Generate draft copy for a SPECIFIC follow-up event and persist aiDraftContent to the record
+router.post("/admin/marketing/follow-ups/:id/generate-copy", requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const id = parseId(req.params, "id");
+    const [fu] = await db.select().from(followUpEventsTable).where(eq(followUpEventsTable.id, id)).limit(1);
+    if (!fu) { res.status(404).json({ error: "Follow-up not found" }); return; }
+
+    let leadCtx = "";
+    if (fu.leadId) {
+      const [lead] = await db.select().from(leadsTable).where(eq(leadsTable.id, fu.leadId)).limit(1);
+      if (lead) leadCtx = `Lead: ${lead.name}, ${lead.company ?? ""}, ${lead.industry ?? ""}, stage=${lead.stage}, pain points: ${lead.painPoints?.join(", ") || "none"}.`;
+    }
+
+    const icpCtx = await buildICPContext();
+    const prompt = `You are writing a follow-up ${fu.channel} for a Microsoft 365 consultant.
+${icpCtx}
+${leadCtx}
+Subject hint: ${fu.subject ?? "none"}.
+Context: following up after initial outreach
+
+Write a concise, value-driven follow-up message (3-5 sentences). Return JSON:
+{ "subject": "email subject line", "content": "the full message body" }`;
+
+    const msg = await anthropic.messages.create({ model: "claude-haiku-4-5", max_tokens: 500, messages: [{ role: "user", content: prompt }] });
+    const raw = msg.content[0]?.type === "text" ? msg.content[0].text : "{}";
+    const draft = parseAiJson(raw, z.object({ subject: z.string(), content: z.string() }));
+
+    // Persist aiDraftContent back to the specific follow-up record
+    const [updated] = await db.update(followUpEventsTable)
+      .set({ aiDraftContent: `Subject: ${draft.subject}\n\n${draft.content}`, subject: fu.subject ?? draft.subject, updatedAt: new Date() })
+      .where(eq(followUpEventsTable.id, id)).returning();
+
+    res.json({ ...draft, followUp: updated });
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+// Generic draft generation (no persistence — general-purpose)
+router.post("/admin/marketing/generate/follow-up-draft", requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const body = req.body as { leadId?: number; channel?: string; context?: string };
+    let leadCtx = "";
+    if (body.leadId) {
+      const [lead] = await db.select().from(leadsTable).where(eq(leadsTable.id, body.leadId)).limit(1);
+      if (lead) leadCtx = `Lead: ${lead.name}, ${lead.company ?? ""}, ${lead.industry ?? ""}, stage=${lead.stage}.`;
+    }
+    const icpCtx = await buildICPContext();
+    const prompt = `You are writing a follow-up ${body.channel ?? "email"} for a Microsoft 365 consultant.
+${icpCtx}
+${leadCtx}
+Context: ${body.context ?? "following up after initial outreach"}
+
+Write a concise, value-driven follow-up message (3-5 sentences). Return JSON:
+{ "subject": "email subject line", "content": "the full message body" }`;
+    const msg = await anthropic.messages.create({ model: "claude-haiku-4-5", max_tokens: 500, messages: [{ role: "user", content: prompt }] });
+    const raw = msg.content[0]?.type === "text" ? msg.content[0].text : "{}";
+    res.json(parseAiJson(raw, z.object({ subject: z.string(), content: z.string() })));
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+router.patch("/admin/marketing/follow-ups/:id", requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const id = parseId(req.params, "id");
+    const body = req.body as Partial<{ scheduledAt: string; channel: string; subject: string; aiDraftContent: string; status: string }>;
+    const update: Record<string, unknown> = { ...body, updatedAt: new Date() };
+    if (body.scheduledAt) update.scheduledAt = new Date(body.scheduledAt);
+    const [row] = await db.update(followUpEventsTable).set(update).where(eq(followUpEventsTable.id, id)).returning();
+    res.json(row);
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+router.post("/admin/marketing/follow-ups/:id/complete", requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const id = parseId(req.params, "id");
+    const [row] = await db.update(followUpEventsTable).set({ status: "completed", completedAt: new Date(), updatedAt: new Date() }).where(eq(followUpEventsTable.id, id)).returning();
+    res.json(row);
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+router.delete("/admin/marketing/follow-ups/:id", requireAdmin, async (req: Request, res: Response) => {
+  try {
+    await db.delete(followUpEventsTable).where(eq(followUpEventsTable.id, parseId(req.params, "id")));
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+// ─── Daily Revenue Command Panel ──────────────────────────────────────────────
+
+router.get("/admin/marketing/daily-command", requireAdmin, async (req: Request, res: Response) => {
+  try {
+    // Allow ?refresh=1 to bust the cache
+    const forceRefresh = req.query.refresh === "1";
+    if (!forceRefresh && dailyCommandCache && dailyCommandCache.expiresAt > Date.now()) {
+      res.json(dailyCommandCache.data);
+      return;
+    }
+
+    const now = new Date();
+    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const todayEnd = new Date(todayStart.getTime() + 24 * 60 * 60 * 1000);
+    const weekAgo = new Date(now.getTime() - 7 * 86400000);
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+
+    // Auto-mark overdue follow-ups before building action panel
+    await db.update(followUpEventsTable)
+      .set({ status: "overdue", updatedAt: now })
+      .where(and(eq(followUpEventsTable.status, "pending"), lt(followUpEventsTable.scheduledAt, todayStart)));
+
+    const [
+      leadsToContact,
+      followUpsTodayRaw,
+      bestOffer,
+      campaignAction,
+      contentSuggestion,
+      revenueThisMonth,
+      landingPagesCount,
+    ] = await Promise.all([
+      // Top 3 hot leads not contacted in the last 7 days, ordered by score desc
+      db.select({
+        id: leadsTable.id, name: leadsTable.name, company: leadsTable.company,
+        score: leadsTable.score, stage: leadsTable.stage, email: leadsTable.email,
+        industry: leadsTable.industry, painPoints: leadsTable.painPoints,
+      }).from(leadsTable)
+        .where(and(
+          gte(leadsTable.score, 30),
+          or(ne(leadsTable.status, "contacted"), lte(leadsTable.updatedAt, weekAgo)),
+        ))
+        .orderBy(desc(leadsTable.score)).limit(3),
+
+      // Top 2 follow-ups due today, ordered by linked lead score desc so highest-value contacts surface first
+      db.select({
+        fu: followUpEventsTable,
+        leadName: leadsTable.name,
+        leadEmail: leadsTable.email,
+        leadScore: leadsTable.score,
+      }).from(followUpEventsTable)
+        .leftJoin(leadsTable, eq(followUpEventsTable.leadId, leadsTable.id))
+        .where(and(
+          or(eq(followUpEventsTable.status, "pending"), eq(followUpEventsTable.status, "overdue")),
+          lte(followUpEventsTable.scheduledAt, todayEnd),
+        ))
+        .orderBy(desc(leadsTable.score), followUpEventsTable.scheduledAt).limit(2),
+
+      // Offer to push: offer not touched in the last 5 days (oldest updatedAt first = needs promotion)
+      db.select().from(offersTable)
+        .where(lte(offersTable.updatedAt, new Date(now.getTime() - 5 * 86400000)))
+        .orderBy(offersTable.updatedAt).limit(1),
+
+      // Campaign that needs attention (lowest leads generated among active)
+      db.select({
+        id: campaignsTable.id, name: campaignsTable.name, status: campaignsTable.status,
+        leadsGenerated: campaignsTable.leadsGenerated, revenueAttributed: campaignsTable.revenueAttributed,
+      }).from(campaignsTable).where(eq(campaignsTable.status, "active"))
+        .orderBy(campaignsTable.leadsGenerated).limit(1),
+
+      // Content to create — latest campaign asset not published in last 7 days
+      db.select({ id: campaignAssetsTable.id, title: campaignAssetsTable.title, assetType: campaignAssetsTable.assetType })
+        .from(campaignAssetsTable).where(lt(campaignAssetsTable.createdAt, weekAgo))
+        .orderBy(desc(campaignAssetsTable.createdAt)).limit(1),
+
+      // Revenue attributed from active campaigns this month
+      db.select({ total: sql<string>`COALESCE(SUM(revenue_attributed::numeric), 0)` })
+        .from(campaignsTable).where(and(eq(campaignsTable.status, "active"), gte(campaignsTable.createdAt, monthStart))),
+
+      db.select({ count: count() }).from(landingPagesTable).where(eq(landingPagesTable.published, true)),
+    ]);
+
+    const followUpsTodo = followUpsTodayRaw.map(r => ({ ...r.fu, leadName: r.leadName, leadEmail: r.leadEmail }));
+
+    const icpCtx = await buildICPContext();
+    const aiPrompt = `You are a revenue coach for a Microsoft 365 consulting business.
+${icpCtx}
+Today's snapshot:
+- Leads to contact: ${leadsToContact.map(l => `${l.name} (${l.company ?? "?"}, score ${l.score}, ${l.industry ?? "unknown industry"})`).join("; ") || "none yet"}
+- Follow-ups due: ${followUpsTodo.map(f => `${f.leadName ?? "unknown"} via ${f.channel}`).join("; ") || "none"}
+- Best offer to push: ${bestOffer[0]?.name ?? "none configured"}
+- Campaign needing attention: ${campaignAction[0]?.name ?? "none"} (${campaignAction[0]?.leadsGenerated ?? 0} leads)
+- Revenue attributed this month: $${parseFloat(String(revenueThisMonth[0]?.total ?? "0")).toLocaleString()}
+
+Return JSON:
+{
+  "topPriority": "single most important action today (one sentence)",
+  "quickWins": ["win 1", "win 2", "win 3"],
+  "revenueInsight": "one insight about revenue potential today",
+  "revenueOpportunities": ["specific opportunity 1", "specific opportunity 2"],
+  "closestToBuying": "name of the lead closest to buying and why (one sentence)",
+  "nextBestActions": ["action 1 for lead 1", "action 2 for lead 2", "action 3"]
+}`;
+
+    let aiInsight = {
+      topPriority: "Focus on your hottest leads today",
+      quickWins: ["Send a LinkedIn message to your #1 hot lead", "Follow up on any overdue outreach", "Post one piece of value content"],
+      revenueInsight: "Build pipeline momentum daily",
+      revenueOpportunities: [],
+      closestToBuying: "Review your hottest lead's pain points and match to your best offer",
+      nextBestActions: [],
+    } as {
+      topPriority: string; quickWins: string[]; revenueInsight: string;
+      revenueOpportunities: string[]; closestToBuying: string; nextBestActions: string[];
+    };
+    try {
+      const msg = await anthropic.messages.create({ model: "claude-haiku-4-5", max_tokens: 600, messages: [{ role: "user", content: aiPrompt }] });
+      const raw = msg.content[0]?.type === "text" ? msg.content[0].text : "{}";
+      const parsed = parseAiJson(raw, z.object({
+        topPriority: z.string(), quickWins: z.array(z.string()), revenueInsight: z.string(),
+        revenueOpportunities: z.array(z.string()).optional(),
+        closestToBuying: z.string().optional(),
+        nextBestActions: z.array(z.string()).optional(),
+      }));
+      aiInsight = {
+        topPriority: parsed.topPriority,
+        quickWins: parsed.quickWins,
+        revenueInsight: parsed.revenueInsight,
+        revenueOpportunities: parsed.revenueOpportunities ?? [],
+        closestToBuying: parsed.closestToBuying ?? "",
+        nextBestActions: parsed.nextBestActions ?? [],
+      };
+    } catch { /* use defaults */ }
+
+    const data = {
+      // 3 leads to contact
+      leadsToContact,
+      // 2 follow-ups to complete today
+      followUpsTodo,
+      // Offer to push
+      offerToPush: bestOffer[0] ?? null,
+      // Campaign needing attention
+      campaignAction: campaignAction[0] ?? null,
+      // Content suggestion
+      contentSuggestion: contentSuggestion[0] ?? null,
+      // Aggregate stats
+      revenueThisMonth: parseFloat(String(revenueThisMonth[0]?.total ?? "0")),
+      publishedLandingPages: Number(landingPagesCount[0]?.count ?? 0),
+      // AI action panel
+      aiInsight,
+      generatedAt: now.toISOString(),
+    };
+
+    dailyCommandCache = { data, expiresAt: Date.now() + 60 * 60 * 1000 };
+    res.json(data);
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+// ─── AI Money Tasks (revenue-focused task generation) ─────────────────────────
+
+router.post("/admin/marketing/generate/money-tasks", requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const icpCtx = await buildICPContext();
+    const hotLeads = await db.select({ name: leadsTable.name, company: leadsTable.company, score: leadsTable.score })
+      .from(leadsTable).where(gte(leadsTable.score, 40)).orderBy(desc(leadsTable.score)).limit(5);
+
+    const prompt = `You are a revenue-focused advisor for a Microsoft 365 consulting firm.
+${icpCtx}
+Hot leads right now: ${hotLeads.map(l => `${l.name} (${l.company ?? "?"}, score ${l.score})`).join("; ") || "none yet"}
+
+Generate 5-7 revenue-generating tasks (tasks that directly lead to income). Each task should be specific, actionable, and completable today or this week.
+Return JSON array: [{ "title": "task title", "description": "why this makes money and exactly how to do it" }]`;
+
+    const msg = await anthropic.messages.create({ model: "claude-haiku-4-5", max_tokens: 800, messages: [{ role: "user", content: prompt }] });
+    const raw = msg.content[0]?.type === "text" ? msg.content[0].text : "[]";
+    const aiTasks = parseAiJson(raw, z.array(z.object({ title: z.string(), description: z.string() })));
+
+    // Get current max order for money_task column
+    const [maxOrderRow] = await db.select({ maxOrder: sql<number>`COALESCE(MAX(${marketingTasksTable.order}), 0)` })
+      .from(marketingTasksTable).where(eq(marketingTasksTable.status, "money_task"));
+    let nextOrder = Number(maxOrderRow?.maxOrder ?? 0) + 1;
+
+    // Insert each task into the DB with status='money_task' and return persisted rows
+    const insertedTasks: (typeof marketingTasksTable.$inferSelect)[] = [];
+    for (const t of aiTasks) {
+      const [inserted] = await db.insert(marketingTasksTable).values({
+        title: t.title,
+        description: t.description,
+        status: "money_task",
+        order: nextOrder++,
+      }).returning();
+      if (inserted) insertedTasks.push(inserted);
+    }
+
+    res.json(insertedTasks);
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+// ─── AI Analytics Insights ────────────────────────────────────────────────────
+
+// Legacy alias — kept so any cached clients that hit the old path still work
+router.get("/admin/marketing/ai-insights", requireAdmin, (_req, res) => res.redirect(307, "/api/admin/marketing/analytics/insights"));
+
+router.get("/admin/marketing/analytics/insights", requireAdmin, async (_req: Request, res: Response) => {
+  try {
+    const now = new Date();
+    const monthAgo = new Date(now.getTime() - 30 * 86400000);
+    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const yesterday = new Date(todayStart.getTime() - 86400000);
+    const sevenDaysAgo = new Date(now.getTime() - 7 * 86400000);
+
+    const [campaignPerf, leadStats, taskStats, topLPs, todaySessions, avgDailySessions, hotLeads] = await Promise.all([
+      db.select({ name: campaignsTable.name, leads: campaignsTable.leadsGenerated, revenue: campaignsTable.revenueAttributed }).from(campaignsTable).where(eq(campaignsTable.status, "active")).limit(5),
+      db.select({ count: count() }).from(leadsTable).where(gte(leadsTable.createdAt, monthAgo)),
+      db.select({ status: marketingTasksTable.status, count: count() }).from(marketingTasksTable).groupBy(marketingTasksTable.status),
+      db.select({ slug: landingPagesTable.slug, title: landingPagesTable.title }).from(landingPagesTable).where(eq(landingPagesTable.published, true)).limit(5),
+      // Today's sessions for hot-traffic spike detection
+      db.select({ cnt: count() }).from(analyticsSessionsTable).where(gte(analyticsSessionsTable.startedAt, todayStart)),
+      // 7-day average daily sessions (yesterday and earlier to compare)
+      db.select({ cnt: count() }).from(analyticsSessionsTable).where(and(gte(analyticsSessionsTable.startedAt, sevenDaysAgo), lt(analyticsSessionsTable.startedAt, todayStart))),
+      db.select({ cnt: count() }).from(leadsTable).where(gte(leadsTable.score, 70)),
+    ]);
+
+    // Hot-traffic spike: today vs 7-day average
+    const todayCount = Number(todaySessions[0]?.cnt ?? 0);
+    const avgDaily = Number(avgDailySessions[0]?.cnt ?? 0) / 7;
+    const trafficSpike = avgDaily > 0 && todayCount > avgDaily * 2;
+    const trafficSpikeNote = trafficSpike
+      ? `⚠ Hot traffic spike: ${todayCount} sessions today vs ${avgDaily.toFixed(0)} daily avg — high-intent visitors likely. Push your best offer now.`
+      : null;
+
+    const icpCtx = await buildICPContext();
+    const prompt = `You are analyzing marketing performance for a Microsoft 365 consulting business.
+${icpCtx}
+Last 30 days:
+- New leads: ${leadStats[0]?.count ?? 0}
+- Hot leads (score ≥70): ${hotLeads[0]?.cnt ?? 0}
+- Active campaigns: ${campaignPerf.map(c => `${c.name} (${String(c.leads ?? 0)} leads, $${String(c.revenue ?? 0)} revenue)`).join("; ") || "none"}
+- Task pipeline: ${taskStats.map(t => `${t.status}=${t.count}`).join(", ")}
+- Published landing pages: ${topLPs.map(p => p.title).join(", ") || "none"}
+${trafficSpikeNote ? `- ${trafficSpikeNote}` : ""}
+
+Return JSON:
+{
+  "summary": "2-sentence overall performance summary",
+  "wins": ["win 1", "win 2"],
+  "gaps": ["gap 1", "gap 2"],
+  "recommendations": [{"action": "specific action", "impact": "expected impact"}, {"action": "action 2", "impact": "impact 2"}],
+  "revenueAlert": "one critical observation about revenue risk or opportunity",
+  "hotTrafficAlert": "traffic spike observation or empty string if no spike"
+}`;
+
+    const msg = await anthropic.messages.create({ model: "claude-haiku-4-5", max_tokens: 800, messages: [{ role: "user", content: prompt }] });
+    const raw = msg.content[0]?.type === "text" ? msg.content[0].text : "{}";
+    const schema = z.object({
+      summary: z.string(), wins: z.array(z.string()), gaps: z.array(z.string()),
+      recommendations: z.array(z.object({ action: z.string(), impact: z.string() })),
+      revenueAlert: z.string(),
+      hotTrafficAlert: z.string().optional(),
+    });
+    const parsed = parseAiJson(raw, schema);
+    res.json({ ...parsed, trafficSpikeDetected: trafficSpike, trafficSpikeNote });
   } catch (e) {
     res.status(500).json({ error: String(e) });
   }
