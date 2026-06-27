@@ -663,6 +663,14 @@ function GeneratorTab({
           customInstructions: baseInstructions.trim() || undefined,
         }),
       }) as { fixedScript: string; fixSummary: string; permissions: PsScriptPermissions };
+      if (!result.fixedScript || result.fixedScript.trim().length < 20) {
+        toast({
+          title: "Fix could not be applied",
+          description: "The AI returned an unreadable response. Your original script has not been changed.",
+          variant: "destructive",
+        });
+        return;
+      }
       setScriptBody(result.fixedScript);
       setPermissions(result.permissions);
       setFixSummary(result.fixSummary);

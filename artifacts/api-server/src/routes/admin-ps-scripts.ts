@@ -565,10 +565,25 @@ Provide the corrected script in a \`\`\`powershell fence. Then include a <fix-su
       jsonStart > 0 ? jsonStart : fullText.length,
     );
     const rawScript = fullText.slice(0, stopAt);
-    const fixedScript = rawScript
+    let fixedScript = rawScript
       .replace(/```powershell\s*/gi, "")
       .replace(/```\s*$/gm, "")
       .trim();
+
+    if (fixedScript.length < 20) {
+      logger.warn(
+        { rawResponsePrefix: fullText.slice(0, 500) },
+        "fix endpoint: fixedScript extraction yielded empty/short result; applying safe fallback",
+      );
+      // Safe fallback: return the full text stripped of the JSON block and fences
+      const jsonBlockRe = /```json[\s\S]*?```/gi;
+      fixedScript = fullText
+        .replace(jsonBlockRe, "")
+        .replace(/<fix-summary>[\s\S]*?<\/fix-summary>/gi, "")
+        .replace(/```powershell\s*/gi, "")
+        .replace(/```\s*$/gm, "")
+        .trim();
+    }
 
     const rawPermissions = extractJson(fullText);
     let permissions: PsScriptPermissions = { appPermissions: [], delegatedPermissions: [], notes: "" };
