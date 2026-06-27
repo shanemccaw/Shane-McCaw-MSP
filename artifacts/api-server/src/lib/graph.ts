@@ -678,15 +678,20 @@ export interface CreateEventPayload {
   location?: string;
 }
 
+export interface CreateEventResult {
+  eventId: string;
+  joinUrl: string | null;
+}
+
 /**
  * Create a calendar event on behalf of a user.
  * Requires Calendars.ReadWrite application permission.
- * Returns the created event ID, or null on failure.
+ * Returns the created event ID and Teams join URL, or null on failure.
  */
 export async function createCalendarEvent(
   userId: string,
   payload: CreateEventPayload,
-): Promise<string | null> {
+): Promise<CreateEventResult | null> {
   try {
     const body = {
       subject: payload.subject,
@@ -712,8 +717,12 @@ export async function createCalendarEvent(
       logger.warn({ status: res.status, body: text }, "Graph createCalendarEvent failed");
       return null;
     }
-    const data = await res.json() as { id?: string };
-    return data.id ?? null;
+    const data = await res.json() as { id?: string; onlineMeeting?: { joinUrl?: string } };
+    if (!data.id) return null;
+    return {
+      eventId: data.id,
+      joinUrl: data.onlineMeeting?.joinUrl ?? null,
+    };
   } catch (err) {
     logger.error({ err }, "Graph createCalendarEvent error");
     return null;

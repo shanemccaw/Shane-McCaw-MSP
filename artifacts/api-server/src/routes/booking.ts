@@ -213,8 +213,9 @@ router.post("/booking", bookingLimiter, async (req: Request, res: Response) => {
   const userId = process.env.GRAPH_MAIL_USER_ID;
   const hasGraph = graphCredentialsPresent() && !!userId;
 
+  let joinUrl: string | null = null;
   if (hasGraph) {
-    const eventId = await createCalendarEvent(userId!, {
+    const eventResult = await createCalendarEvent(userId!, {
       subject: `Discovery Call — ${name}`,
       bodyHtml: `
         <p><strong>Topic / Agenda:</strong><br/>${topic.replace(/\n/g, "<br/>")}</p>
@@ -226,28 +227,33 @@ router.post("/booking", bookingLimiter, async (req: Request, res: Response) => {
       endIso,
       attendeeEmail: email,
       attendeeName: name,
-      location: "Microsoft Teams / Phone call",
+      location: "Microsoft Teams",
     });
-    if (!eventId) {
+    if (!eventResult) {
       logger.warn({ name, email, startIso }, "createCalendarEvent returned null — slot may be unavailable");
       res.status(409).json({ error: "That time slot is no longer available. Please choose another." });
       return;
     }
-    logger.info({ name, email, slotLabel, eventId }, "Booking created on calendar");
+    joinUrl = eventResult.joinUrl;
+    logger.info({ name, email, slotLabel, eventId: eventResult.eventId, joinUrl }, "Booking created on calendar");
   } else {
     logger.warn({ name, email, slotLabel }, "Graph not configured — booking stored without calendar event");
   }
 
   // Confirmation email to the customer
+  const joinButton = joinUrl
+    ? `<p style="margin:20px 0;"><a href="${joinUrl}" style="display:inline-block;background:#0078D4;color:#ffffff;text-decoration:none;font-weight:600;font-size:15px;padding:12px 24px;border-radius:6px;">Join Microsoft Teams Meeting</a></p>`
+    : "";
   const customerHtml = `
     <p>Hi ${name.split(" ")[0]},</p>
     <p>Your discovery call with Shane McCaw is confirmed. Here are the details:</p>
     <table cellpadding="0" cellspacing="0" style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:16px 20px;margin:16px 0;width:100%;">
       <tr><td style="padding:4px 0;color:#64748b;font-size:13px;width:140px;">Date &amp; time</td><td style="padding:4px 0;font-weight:600;">${slotLabel}</td></tr>
       <tr><td style="padding:4px 0;color:#64748b;font-size:13px;">Duration</td><td style="padding:4px 0;">30 minutes</td></tr>
-      <tr><td style="padding:4px 0;color:#64748b;font-size:13px;">Format</td><td style="padding:4px 0;">Microsoft Teams / Phone call</td></tr>
+      <tr><td style="padding:4px 0;color:#64748b;font-size:13px;">Format</td><td style="padding:4px 0;">Microsoft Teams</td></tr>
       ${company ? `<tr><td style="padding:4px 0;color:#64748b;font-size:13px;">Company</td><td style="padding:4px 0;">${company}</td></tr>` : ""}
     </table>
+    ${joinButton}
     ${hasGraph ? "<p>You should receive a calendar invite shortly. If you don't see it, check your spam folder.</p>" : ""}
     <p>Please come prepared with your most pressing Microsoft 365 questions. Shane will be ready to dig in.</p>
     <p style="margin-top:24px;">— Shane McCaw</p>
