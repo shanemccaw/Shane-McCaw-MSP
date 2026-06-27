@@ -485,12 +485,17 @@ export default function ClientsPage() {
   const [hoverRowId, setHoverRowId] = useState<number | null>(null);
   const [menuOpenId, setMenuOpenId] = useState<number | null>(null);
   const [menuPos, setMenuPos] = useState<{ top: number; right: number } | null>(null);
+  const menuRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     if (menuOpenId === null) return;
-    const close = () => { setMenuOpenId(null); setMenuPos(null); };
-    document.addEventListener("click", close, { capture: true });
-    return () => document.removeEventListener("click", close, { capture: true });
+    const close = (e: MouseEvent) => {
+      if (menuRef.current && menuRef.current.contains(e.target as Node)) return;
+      setMenuOpenId(null);
+      setMenuPos(null);
+    };
+    document.addEventListener("mousedown", close);
+    return () => document.removeEventListener("mousedown", close);
   }, [menuOpenId]);
 
   // Bulk selection
@@ -955,7 +960,7 @@ export default function ClientsPage() {
           </div>
 
           {/* Table */}
-          <div className="flex-1 min-w-0 bg-[#161B22] border border-border rounded-xl overflow-hidden overflow-x-auto">
+          <div className="flex-1 min-w-0 bg-[#161B22] border border-border rounded-xl overflow-hidden">
             <table className="w-full text-sm">
               <thead className="bg-[#1C2128] border-b border-border">
                 <tr>
@@ -999,31 +1004,13 @@ export default function ClientsPage() {
                       Gov.<SortIcon col="governance" />
                     </button>
                   </th>
-                  <th className="text-center px-3 py-3 hidden xl:table-cell">
-                    <button onClick={() => toggleSort("score")} className="flex items-center gap-0 mx-auto text-xs font-semibold uppercase tracking-wider text-muted-foreground hover:text-[#E6EDF3] transition-colors">
-                      M365<SortIcon col="score" />
-                    </button>
-                  </th>
-                  <th className="text-center px-3 py-3 hidden xl:table-cell">
-                    <button onClick={() => toggleSort("aiRisk")} className="flex items-center gap-0 mx-auto text-xs font-semibold uppercase tracking-wider text-muted-foreground hover:text-[#E6EDF3] transition-colors">
-                      AI Risk<SortIcon col="aiRisk" />
-                    </button>
-                  </th>
-                  <th className="text-center px-3 py-3 hidden xl:table-cell">
-                    <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">AI Opp</span>
-                  </th>
-                  <th className="text-center px-3 py-3 hidden 2xl:table-cell">
-                    <button onClick={() => toggleSort("lastActivity")} className="flex items-center gap-0 mx-auto text-xs font-semibold uppercase tracking-wider text-muted-foreground hover:text-[#E6EDF3] transition-colors">
-                      Activity<SortIcon col="lastActivity" />
-                    </button>
-                  </th>
                   <th className="text-center px-3 py-3 hidden lg:table-cell">
                     <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">App Reg</span>
                   </th>
                   <th className="text-center px-3 py-3 hidden lg:table-cell">
                     <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">M365</span>
                   </th>
-                  <th className="px-4 py-3" />
+                  <th className="px-4 py-3 w-px" />
                 </tr>
               </thead>
               <tbody>
@@ -1107,43 +1094,6 @@ export default function ClientsPage() {
                           ) : <span className="text-xs text-[#484F58]">—</span>}
                         </td>
 
-                        {/* M365 Maturity Score */}
-                        <td className="px-3 py-3.5 text-center hidden xl:table-cell">
-                          <div className="flex flex-col items-center gap-0.5">
-                            <ScoreBadge score={c.quizScore} />
-                            <TierBadge tier={c.quizTier} />
-                          </div>
-                        </td>
-
-                        {/* AI Risk */}
-                        <td className="px-3 py-3.5 text-center hidden xl:table-cell">
-                          {c.aiRiskLevel ? (
-                            <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full border ${
-                              c.aiRiskLevel === "high" ? "bg-red-500/10 text-red-400 border-red-500/20" :
-                              c.aiRiskLevel === "medium" ? "bg-amber-500/10 text-amber-400 border-amber-500/20" :
-                              "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
-                            }`}>{c.aiRiskLevel}</span>
-                          ) : <span className="text-xs text-[#484F58]">—</span>}
-                        </td>
-
-                        {/* AI Opportunity */}
-                        <td className="px-3 py-3.5 text-center hidden xl:table-cell">
-                          {c.aiOpportunityLevel ? (
-                            <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full border ${
-                              c.aiOpportunityLevel === "high" ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20" :
-                              c.aiOpportunityLevel === "medium" ? "bg-[#0078D4]/10 text-[#0078D4] border-[#0078D4]/20" :
-                              "bg-[#30363D] text-muted-foreground border-border"
-                            }`}>{c.aiOpportunityLevel}</span>
-                          ) : <span className="text-xs text-[#484F58]">—</span>}
-                        </td>
-
-                        {/* Last Activity */}
-                        <td className="px-3 py-3.5 text-center hidden 2xl:table-cell">
-                          {c.lastActivityAt ? (
-                            <span className="text-xs text-muted-foreground whitespace-nowrap">{timeAgo(c.lastActivityAt)}</span>
-                          ) : <span className="text-xs text-[#484F58]">—</span>}
-                        </td>
-
                         {/* App Registration status */}
                         <td className="px-3 py-3.5 text-center hidden lg:table-cell">
                           {c.appRegStatus === "verified" ? (
@@ -1181,60 +1131,30 @@ export default function ClientsPage() {
                           )}
                         </td>
 
-                        {/* Actions — always-visible core + hover dropdown menu */}
-                        <td className="px-3 py-3.5">
-                          <div className="flex items-center gap-2 justify-end">
-                            {/* Core always-visible actions */}
+                        {/* Actions */}
+                        <td className="px-3 py-3.5 w-px whitespace-nowrap">
+                          <div className="flex items-center gap-1.5 justify-end">
                             <button
                               onClick={() => navigate(`/crm/clients/${c.id}`)}
                               className="text-xs font-semibold text-[#0078D4] hover:underline"
                             >
                               Open
                             </button>
-
-                            {/* Hover-revealed actions */}
-                            <div className={`flex items-center gap-2 transition-opacity ${hoverRowId === c.id ? "opacity-100" : "opacity-0 pointer-events-none"}`}>
-                              <button
-                                onClick={() => navigate("/crm/projects")}
-                                className="text-xs font-semibold text-[#7D8590] hover:text-[#E6EDF3] transition-colors"
-                                title="Add project"
-                              >
-                                + Project
-                              </button>
-                              <button
-                                onClick={() => navigate("/crm/projects")}
-                                className="text-xs font-semibold text-[#7D8590] hover:text-[#E6EDF3] transition-colors"
-                                title="Add task"
-                              >
-                                + Task
-                              </button>
-                              <button
-                                onClick={() => navigate("/email-activity")}
-                                className="text-xs font-semibold text-[#7D8590] hover:text-[#E6EDF3] transition-colors"
-                                title="Email client"
-                              >
-                                Email
-                              </button>
-                            </div>
-
-                            {/* ⋯ menu button for more actions */}
-                            <div className="relative">
-                              <button
-                                onClick={e => {
-                                  e.stopPropagation();
-                                  if (menuOpenId === c.id) { setMenuOpenId(null); setMenuPos(null); return; }
-                                  const rect = e.currentTarget.getBoundingClientRect();
-                                  setMenuPos({ top: rect.bottom + 4, right: window.innerWidth - rect.right });
-                                  setMenuOpenId(c.id);
-                                }}
-                                className={`text-muted-foreground hover:text-[#E6EDF3] transition-colors ${hoverRowId === c.id || menuOpenId === c.id ? "opacity-100" : "opacity-0 pointer-events-none"}`}
-                                title="More actions"
-                              >
-                                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                                  <path strokeLinecap="round" strokeLinejoin="round" d="M5 12h.01M12 12h.01M19 12h.01M6 12a1 1 0 11-2 0 1 1 0 012 0zm7 0a1 1 0 11-2 0 1 1 0 012 0zm7 0a1 1 0 11-2 0 1 1 0 012 0z" />
-                                </svg>
-                              </button>
-                            </div>
+                            <button
+                              onClick={e => {
+                                e.stopPropagation();
+                                if (menuOpenId === c.id) { setMenuOpenId(null); setMenuPos(null); return; }
+                                const rect = e.currentTarget.getBoundingClientRect();
+                                setMenuPos({ top: rect.bottom + 4, right: window.innerWidth - rect.right });
+                                setMenuOpenId(c.id);
+                              }}
+                              className="p-1 text-muted-foreground hover:text-[#E6EDF3] hover:bg-[#30363D] rounded transition-colors"
+                              title="More actions"
+                            >
+                              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M5 12h.01M12 12h.01M19 12h.01M6 12a1 1 0 11-2 0 1 1 0 012 0zm7 0a1 1 0 11-2 0 1 1 0 012 0zm7 0a1 1 0 11-2 0 1 1 0 012 0z" />
+                              </svg>
+                            </button>
                           </div>
                         </td>
                       </tr>
@@ -1306,9 +1226,9 @@ export default function ClientsPage() {
         const c = client;
         return createPortal(
           <div
-            className="fixed z-[9999] w-44 bg-[#1C2128] border border-border rounded-xl shadow-xl overflow-hidden"
+            ref={menuRef}
+            className="fixed z-[9999] w-48 bg-[#1C2128] border border-border rounded-xl shadow-xl overflow-hidden"
             style={{ top: menuPos.top, right: menuPos.right }}
-            onClick={e => e.stopPropagation()}
           >
             {[
               { label: "View Client", action: () => { navigate(`/crm/clients/${c.id}`); setMenuOpenId(null); } },
