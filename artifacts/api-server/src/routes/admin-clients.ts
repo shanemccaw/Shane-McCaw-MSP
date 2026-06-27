@@ -243,14 +243,23 @@ router.get("/admin/clients/with-azure-credentials", requireAdmin, async (_req: R
         : null,
     }));
 
-    // For clients that have no directly-linked credential, fall back to
-    // credentials stored without a clientUserId (added via the global
-    // credentials manager before being linked to a specific client).
-    // Fetch all unlinked credentials once; assign the first (alphabetical)
-    // to every client that still has no credential. Clients with no credential
-    // AND no unlinked credentials in the system remain null (grey dot).
-    const hasUnlinkedClients = result.some(r => r.credential === null);
-    if (hasUnlinkedClients) {
+    // For clients that have no directly-linked credential, attempt to match
+    // unlinked credentials (clientUserId IS NULL) that were added via the
+    // global credentials manager without being associated to a specific client.
+    //
+    // Two matching strategies are tried in order:
+    //
+    // 1. Deterministic name match — if a credential's displayName exactly
+    //    matches (case-insensitive) the client's name or email-prefix, it is
+    //    confidently attributed to that client.
+    //
+    // 2. Unambiguous 1-to-1 fallback — if there is exactly one uncredentialed
+    //    client AND exactly one unlinked credential, the relationship is
+    //    unambiguous and the credential is assigned.
+    //
+    // Any other situation leaves credential as null (grey dot remains correct).
+    const uncredentialedClients = result.filter(r => r.credential === null);
+    if (uncredentialedClients.length > 0) {
       const unlinked = await db
         .select({
           id: azureTenantCredentialsTable.id,
@@ -265,11 +274,25 @@ router.get("/admin/clients/with-azure-credentials", requireAdmin, async (_req: R
         .orderBy(asc(azureTenantCredentialsTable.displayName));
 
       if (unlinked.length > 0) {
-        const fallback = unlinked[0];
-        for (const client of result) {
-          if (client.credential === null) {
-            client.credential = fallback;
+        for (const client of uncredentialedClients) {
+          // Strategy 1: exact case-insensitive displayName match
+          const clientName = (client.name ?? "").toLowerCase();
+          const clientEmailPrefix = client.email.split("@")[0].toLowerCase();
+          const nameMatch = unlinked.find(
+            u =>
+              (clientName && u.displayName.toLowerCase() === clientName) ||
+              u.displayName.toLowerCase() === clientEmailPrefix,
+          );
+          if (nameMatch) {
+            client.credential = nameMatch;
+            continue;
           }
+        }
+
+        // Strategy 2: unambiguous 1-to-1 — still uncredentialed after name pass
+        const stillUncredentialed = uncredentialedClients.filter(c => c.credential === null);
+        if (stillUncredentialed.length === 1 && unlinked.length === 1) {
+          stillUncredentialed[0].credential = unlinked[0];
         }
       }
     }
