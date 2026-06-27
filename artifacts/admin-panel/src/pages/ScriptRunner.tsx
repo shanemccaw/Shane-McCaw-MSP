@@ -794,6 +794,57 @@ export default function ScriptRunnerPage() {
 
       {/* ── Stripe Session Replay ── */}
       <StripeReplayCard />
+
+      {/* ── Test SMS ──────────────────────────────────────────────────── */}
+      <div className="rounded-xl border border-border bg-[#161B22] p-5">
+        <div className="flex items-center gap-2 mb-1">
+          <svg className="w-4 h-4 text-[#0078D4] shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+          </svg>
+          <h3 className="text-sm font-semibold text-[#E6EDF3]">Test SMS Alert</h3>
+        </div>
+        <p className="text-xs text-muted-foreground mb-4">
+          Send a test text message to your phone to verify Twilio is configured correctly.
+        </p>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => void sendTestSms()}
+            disabled={smsSending}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold bg-[#0078D4] text-white hover:bg-[#0078D4]/80 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          >
+            {smsSending ? (
+              <>
+                <svg className="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+                </svg>
+                Sending…
+              </>
+            ) : (
+              <>
+                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+                </svg>
+                Send Test SMS
+              </>
+            )}
+          </button>
+          {smsResult && (
+            <div className={`flex items-center gap-1.5 text-xs font-medium ${smsResult.ok ? "text-green-400" : "text-red-400"}`}>
+              {smsResult.ok ? (
+                <svg className="w-3.5 h-3.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                </svg>
+              ) : (
+                <svg className="w-3.5 h-3.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              )}
+              {smsResult.message}
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
@@ -901,57 +952,6 @@ function StripeReplayCard() {
           {error}
         </div>
       )}
-
-      {/* ── Test SMS ──────────────────────────────────────────────────── */}
-      <div className="rounded-xl border border-border bg-[#161B22] p-5">
-        <div className="flex items-center gap-2 mb-1">
-          <svg className="w-4 h-4 text-[#0078D4] shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-          </svg>
-          <h3 className="text-sm font-semibold text-[#E6EDF3]">Test SMS Alert</h3>
-        </div>
-        <p className="text-xs text-muted-foreground mb-4">
-          Send a test text message to your phone to verify Twilio is configured correctly.
-        </p>
-        <div className="flex items-center gap-3">
-          <button
-            onClick={() => void sendTestSms()}
-            disabled={smsSending}
-            className="flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold bg-[#0078D4] text-white hover:bg-[#0078D4]/80 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-          >
-            {smsSending ? (
-              <>
-                <svg className="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
-                </svg>
-                Sending…
-              </>
-            ) : (
-              <>
-                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
-                </svg>
-                Send Test SMS
-              </>
-            )}
-          </button>
-          {smsResult && (
-            <div className={`flex items-center gap-1.5 text-xs font-medium ${smsResult.ok ? "text-green-400" : "text-red-400"}`}>
-              {smsResult.ok ? (
-                <svg className="w-3.5 h-3.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                </svg>
-              ) : (
-                <svg className="w-3.5 h-3.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-              )}
-              {smsResult.message}
-            </div>
-          )}
-        </div>
-      </div>
     </div>
   );
 }
