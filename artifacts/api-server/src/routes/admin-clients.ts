@@ -8,8 +8,9 @@ import {
   clientM365ProfilesTable,
   clientAppRegistrationsTable,
   quizLeadsTable,
+  clientHealthHistoryTable,
 } from "@workspace/db";
-import { eq, and, desc, count, inArray, sql, isNotNull } from "drizzle-orm";
+import { eq, and, desc, count, inArray, sql, isNotNull, asc } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/requireAuth";
 import { logger } from "../lib/logger";
 
@@ -372,6 +373,92 @@ router.get("/admin/clients/:id/quiz-results", requireAdmin, async (req: Request,
   } catch (err) {
     logger.error({ err }, "Failed to fetch client quiz results");
     res.status(500).json({ error: "Failed to fetch quiz results" });
+  }
+});
+
+// ─── GET /admin/clients/:id/health/summary ────────────────────────────────────
+// Returns the same health summary shape as /portal/health/summary but for any
+// client (admin-scoped, Bearer password auth).
+router.get("/admin/clients/:id/health/summary", requireAdmin, async (req: Request, res: Response) => {
+  const id = parseInt(String(req.params["id"] ?? ""), 10);
+  if (isNaN(id)) { res.status(400).json({ error: "Invalid client id" }); return; }
+
+  const ALL_CATEGORY_LABELS: Record<string, string> = {
+    security: "Security Posture",
+    compliance: "Compliance Coverage",
+    copilot: "Copilot Readiness",
+    governance: "Governance Maturity",
+    productivity: "Adoption Score",
+    identity: "Identity Protection",
+    collaboration: "Collaboration Score",
+    data: "Data Governance",
+  };
+
+  try {
+    const rows = await db
+      .select({
+        category: clientHealthHistoryTable.category,
+        score: clientHealthHistoryTable.score,
+        recordedAt: clientHealthHistoryTable.recordedAt,
+      })
+      .from(clientHealthHistoryTable)
+      .where(eq(clientHealthHistoryTable.clientId, id))
+      .orderBy(asc(clientHealthHistoryTable.recordedAt));
+
+    if (rows.length === 0) {
+      res.json({ hasData: false });
+      return;
+    }
+
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+    const allCats = [...new Set(rows.map(r => r.category))].sort();
+
+    const categories = allCats.map(cat => {
+      const catRows = rows.filter(r => r.category === cat);
+      const first = catRows[0].score;
+      const latest = catRows[catRows.length - 1].score;
+      const recentRows = catRows.filter(r => r.recordedAt >= thirtyDaysAgo);
+      const hasAlert = recentRows.length >= 2 &&
+        Math.abs(recentRows[recentRows.length - 1].score - recentRows[0].score) >= 10;
+      return { key: cat, label: ALL_CATEGORY_LABELS[cat] ?? cat, firstScore: first, latestScore: latest, delta: latest - first, hasAlert };
+    });
+
+    const overallFirst = categories.length > 0
+      ? Math.round(categories.reduce((s, c) => s + c.firstScore, 0) / categories.length)
+      : 0;
+    const overallLatest = categories.length > 0
+      ? Math.round(categories.reduce((s, c) => s + c.latestScore, 0) / categories.length)
+      : 0;
+
+    const dayMap = new Map<string, number[]>();
+    for (const row of rows) {
+      const day = row.recordedAt.toISOString().slice(0, 10);
+      if (!dayMap.has(day)) dayMap.set(day, []);
+      dayMap.get(day)!.push(row.score);
+    }
+    const timeSeries = Array.from(dayMap.entries())
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([date, scores]) => ({
+        date,
+        score: Math.round(scores.reduce((a, b) => a + b, 0) / scores.length),
+      }));
+
+    const lastUpdated = rows[rows.length - 1].recordedAt.toISOString();
+
+    res.json({
+      hasData: true,
+      overallFirst,
+      overallLatest,
+      overallDelta: overallLatest - overallFirst,
+      lastUpdated,
+      timeSeries,
+      categories,
+    });
+  } catch (err) {
+    logger.error({ err }, "Failed to fetch client health summary");
+    res.status(500).json({ error: "Failed to fetch health summary" });
   }
 });
 
