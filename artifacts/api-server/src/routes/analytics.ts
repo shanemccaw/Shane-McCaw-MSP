@@ -4,7 +4,7 @@ import { z } from "zod";
 import { sql, eq } from "drizzle-orm";
 import { db, analyticsSessionsTable, analyticsPageviewsTable, analyticsSiteEventsTable } from "@workspace/db";
 import { requireAdmin } from "../middlewares/requireAuth";
-import { ingestIntentEvent, findLeadByEmail, HIGH_VALUE_PAGES } from "../lib/lead-intent";
+import { ingestIntentEvent, recomputeAndPersistHotScore, findLeadByEmail, HIGH_VALUE_PAGES } from "../lib/lead-intent";
 
 const router = Router();
 
@@ -184,6 +184,41 @@ async function maybeFireIntentEvent(sessionId: string, page: string): Promise<vo
   } catch { /* non-fatal — never block the pageview response */ }
 }
 
+// ─── Internal helper — fire cta_click / form_submit intent events for identified leads ──
+// Dedup is enforced at the DB layer via a partial unique index on
+// (lead_id, event_type, metadata->>'sessionId', metadata->>'page').
+// We use INSERT ... ON CONFLICT DO NOTHING so concurrent requests are safe — no
+// read-then-insert race. Only if a row was actually inserted do we recompute the score.
+async function maybeFireCtaFormIntentEvent(
+  sessionId: string,
+  page: string,
+  eventType: "cta_click" | "form_submit",
+  elementLabel?: string,
+): Promise<void> {
+  try {
+    const normalised = page.split("?")[0]?.replace(/\/$/, "") || "/";
+    const [session] = await execRows<{ identified_email: string | null }>(
+      sql`SELECT identified_email FROM analytics_sessions WHERE session_id = ${sessionId} LIMIT 1`
+    );
+    const email = session?.identified_email;
+    if (!email) return;
+    const lead = await findLeadByEmail(email);
+    if (!lead) return;
+    // Atomic insert — the unique index on (lead_id, event_type, sessionId, page)
+    // guarantees idempotency under concurrent requests; conflicting rows are silently dropped.
+    const metadataJson = JSON.stringify({ page: normalised, sessionId, elementLabel });
+    const [inserted] = await execRows<{ id: number }>(sql`
+      INSERT INTO lead_intent_events (lead_id, event_type, metadata, occurred_at)
+      VALUES (${lead.id}, ${eventType}, ${metadataJson}::jsonb, now())
+      ON CONFLICT DO NOTHING
+      RETURNING id
+    `);
+    // Only recompute score when a row was actually written (not a duplicate)
+    if (!inserted) return;
+    await recomputeAndPersistHotScore(lead.id);
+  } catch { /* non-fatal — never block the event response */ }
+}
+
 // ─── Public: pageview ─────────────────────────────────────────────────────────
 router.post("/analytics/pageview", publicLimiter, async (req, res) => {
   const parsed = pageviewSchema.safeParse(req.body);
@@ -213,6 +248,10 @@ router.post("/analytics/event", publicLimiter, async (req, res) => {
       elementLabel: d.elementLabel, elementHref: d.elementHref, metadata: d.metadata ?? {},
     });
   } catch { /* non-fatal */ }
+  // Fire deduplicated intent events for high-signal event types
+  if (d.eventType === "cta_click" || d.eventType === "form_submit") {
+    void maybeFireCtaFormIntentEvent(d.sessionId, d.page, d.eventType, d.elementLabel);
+  }
   return res.json({ ok: true });
 });
 
@@ -239,6 +278,9 @@ router.post("/analytics/batch", publicLimiter, async (req, res) => {
             sessionId: ev.data.sessionId, page: ev.data.page, eventType: ev.data.eventType,
             elementLabel: ev.data.elementLabel, elementHref: ev.data.elementHref, metadata: ev.data.metadata ?? {},
           });
+          if (ev.data.eventType === "cta_click" || ev.data.eventType === "form_submit") {
+            void maybeFireCtaFormIntentEvent(ev.data.sessionId, ev.data.page, ev.data.eventType, ev.data.elementLabel);
+          }
         }
       }
     } catch { /* skip failed items */ }

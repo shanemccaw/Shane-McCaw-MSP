@@ -533,6 +533,13 @@
       "when": 1782796800000,
       "tag": "0073_add_opportunity_state",
       "breakpoints": true
+    },
+    {
+      "idx": 74,
+      "version": "7",
+      "when": 1782883200000,
+      "tag": "0074_add_intent_event_session_dedup",
+      "breakpoints": true
     }
   ]
 }
