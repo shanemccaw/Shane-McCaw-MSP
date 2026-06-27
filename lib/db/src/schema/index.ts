@@ -1397,3 +1397,28 @@ export const powershellScriptsTable = pgTable("powershell_scripts", {
 
 export type InsertPowershellScript = typeof powershellScriptsTable.$inferInsert;
 export type PowershellScript = typeof powershellScriptsTable.$inferSelect;
+
+export const scriptPackagesTable = pgTable("script_packages", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  title: text("title").notNull(),
+  category: text("category").notNull().default("other"),
+  permissions: jsonb("permissions").$type<PsScriptPermissions>().notNull().default({ appPermissions: [], delegatedPermissions: [], notes: "" }),
+  tags: text("tags").array().notNull().default([]),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export type InsertScriptPackage = typeof scriptPackagesTable.$inferInsert;
+export type ScriptPackage = typeof scriptPackagesTable.$inferSelect;
+
+export const scriptModulesTable = pgTable("script_modules", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  packageId: uuid("package_id").notNull().references(() => scriptPackagesTable.id, { onDelete: "cascade" }),
+  filename: text("filename").notNull(),
+  description: text("description"),
+  content: text("content").notNull(),
+  sortOrder: integer("sort_order").notNull().default(0),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export type InsertScriptModule = typeof scriptModulesTable.$inferInsert;
+export type ScriptModule = typeof scriptModulesTable.$inferSelect;

@@ -589,6 +589,13 @@
       "when": 1782595557167,
       "tag": "0081_add_script_categories",
       "breakpoints": true
+    },
+    {
+      "idx": 82,
+      "version": "7",
+      "when": 1782700200000,
+      "tag": "0082_add_script_packages",
+      "breakpoints": true
     }
   ]
 }
