@@ -199,6 +199,19 @@ Write the complete PowerShell script followed by the permissions JSON block.`,
         .trim();
     }
 
+    // Heuristic guard: if the first 200 chars contain no recognisable PowerShell
+    // keyword, the AI likely returned only prose and the fence was absent entirely.
+    // Return a 500 so the editor is never overwritten with non-PS text.
+    const psKeywordRe = /Param|function|#requires|\$|Write-|Get-|Set-|New-|Remove-/i;
+    if (!psKeywordRe.test(scriptBody.slice(0, 200))) {
+      logger.error(
+        { scriptBodyPrefix: scriptBody.slice(0, 300) },
+        "generate endpoint: fallback result contains no PS keywords — AI returned prose only; refusing to send to client",
+      );
+      res.status(500).json({ error: "AI returned a summary instead of a script. Please try again." });
+      return;
+    }
+
     // Extract permissions JSON
     const rawPermissions = extractJson(fullText);
     let permissions: PsScriptPermissions = { appPermissions: [], delegatedPermissions: [], notes: "" };
@@ -597,6 +610,19 @@ Provide the corrected script in a \`\`\`powershell fence. Then include a <fix-su
         .replace(/```powershell\s*/gi, "")
         .replace(/```\s*$/gm, "")
         .trim();
+    }
+
+    // Heuristic guard: if the first 200 chars contain no recognisable PowerShell
+    // keyword, the AI likely returned only prose (a summary or explanation).
+    // Serving that to the client would replace the editor with non-PS text.
+    const psKeywordRe = /Param|function|#requires|\$|Write-|Get-|Set-|New-|Remove-/i;
+    if (!psKeywordRe.test(fixedScript.slice(0, 200))) {
+      logger.error(
+        { fixedScriptPrefix: fixedScript.slice(0, 300) },
+        "fix endpoint: fallback result contains no PS keywords — AI returned prose only; refusing to overwrite editor",
+      );
+      res.status(500).json({ error: "AI returned a summary instead of a script. Please try again." });
+      return;
     }
 
     const rawPermissions = extractJson(fullText);
