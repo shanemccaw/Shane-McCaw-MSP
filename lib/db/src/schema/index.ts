@@ -1116,6 +1116,10 @@ export const campaignsTable = pgTable("campaigns", {
   status: text("status", { enum: ["draft", "active", "paused", "completed"] }).notNull().default("draft"),
   startDate: timestamp("start_date"),
   endDate: timestamp("end_date"),
+  // Performance metrics — manually updated by Shane
+  leadsGenerated: integer("leads_generated").notNull().default(0),
+  emailsSent: integer("emails_sent").notNull().default(0),
+  revenueAttributed: numeric("revenue_attributed", { precision: 12, scale: 2 }).notNull().default("0"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });

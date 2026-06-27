@@ -610,9 +610,10 @@ router.post("/admin/marketing/campaigns", requireAdmin, async (req: Request, res
 router.patch("/admin/marketing/campaigns/:id", requireAdmin, async (req: Request, res: Response) => {
   try {
     const id = parseId(req.params, "id");
-    const { name, goal, audience, offer, status } = req.body as {
+    const { name, goal, audience, offer, status, leadsGenerated, emailsSent, revenueAttributed } = req.body as {
       name?: string; goal?: string; audience?: string; offer?: string;
       status?: "draft" | "active" | "paused" | "completed";
+      leadsGenerated?: number; emailsSent?: number; revenueAttributed?: number;
     };
     const updateData: Partial<typeof campaignsTable.$inferInsert> & { updatedAt: Date } = { updatedAt: new Date() };
     if (name !== undefined) updateData.name = name;
@@ -620,6 +621,9 @@ router.patch("/admin/marketing/campaigns/:id", requireAdmin, async (req: Request
     if (audience !== undefined) updateData.audience = audience;
     if (offer !== undefined) updateData.offer = offer;
     if (status !== undefined) updateData.status = status;
+    if (leadsGenerated !== undefined) updateData.leadsGenerated = leadsGenerated;
+    if (emailsSent !== undefined) updateData.emailsSent = emailsSent;
+    if (revenueAttributed !== undefined) updateData.revenueAttributed = String(revenueAttributed);
     const [row] = await db.update(campaignsTable).set(updateData).where(eq(campaignsTable.id, id)).returning();
     res.json(row);
   } catch (e) {

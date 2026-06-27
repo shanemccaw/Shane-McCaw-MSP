@@ -456,6 +456,13 @@
       "when": 1751126400000,
       "tag": "0062_add_email_seo_analytics",
       "breakpoints": true
+    },
+    {
+      "idx": 63,
+      "version": "7",
+      "when": 1751212800000,
+      "tag": "0063_add_campaign_performance_metrics",
+      "breakpoints": true
     }
   ]
 }

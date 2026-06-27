@@ -67,6 +67,9 @@ interface Campaign {
   audience: string;
   offer: string;
   status: "draft" | "active" | "paused" | "completed";
+  leadsGenerated: number;
+  emailsSent: number;
+  revenueAttributed: string;
   createdAt: string;
 }
 
@@ -1657,6 +1660,86 @@ function MarketingTasksKanban({ fetchWithAuth }: { fetchWithAuth: (url: string, 
   );
 }
 
+// ─── Campaign Metrics Panel ────────────────────────────────────────────────────
+
+function CampaignMetricsPanel({ campaign, fetchWithAuth, onUpdated }: {
+  campaign: Campaign;
+  fetchWithAuth: (url: string, opts?: RequestInit) => Promise<Response>;
+  onUpdated: (updated: Campaign) => void;
+}) {
+  const [leads, setLeads] = useState(String(campaign.leadsGenerated ?? 0));
+  const [emails, setEmails] = useState(String(campaign.emailsSent ?? 0));
+  const [revenue, setRevenue] = useState(String(Number(campaign.revenueAttributed ?? 0).toFixed(2)));
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      const r = await fetchWithAuth(`${API}/admin/marketing/campaigns/${campaign.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          leadsGenerated: parseInt(leads, 10) || 0,
+          emailsSent: parseInt(emails, 10) || 0,
+          revenueAttributed: parseFloat(revenue) || 0,
+        }),
+      });
+      const updated = await r.json() as Campaign;
+      onUpdated(updated);
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
+    } finally { setSaving(false); }
+  };
+
+  return (
+    <div className="bg-[#161B22] border border-[#30363D] rounded-xl p-4 space-y-4">
+      <div className="flex items-center justify-between">
+        <h3 className="text-sm font-semibold text-[#E6EDF3]">Performance Metrics</h3>
+        <span className="text-[10px] text-[#7D8590] bg-[#30363D] px-2 py-0.5 rounded-full truncate max-w-[120px]">{campaign.name}</span>
+      </div>
+      <div className="grid grid-cols-3 gap-3">
+        <div className="bg-[#0D1117] rounded-lg p-3 text-center">
+          <p className="text-[10px] text-[#7D8590] mb-1">Leads Generated</p>
+          <p className="text-lg font-bold text-emerald-400">{campaign.leadsGenerated ?? 0}</p>
+        </div>
+        <div className="bg-[#0D1117] rounded-lg p-3 text-center">
+          <p className="text-[10px] text-[#7D8590] mb-1">Emails Sent</p>
+          <p className="text-lg font-bold text-[#58A6FF]">{campaign.emailsSent ?? 0}</p>
+        </div>
+        <div className="bg-[#0D1117] rounded-lg p-3 text-center">
+          <p className="text-[10px] text-[#7D8590] mb-1">Revenue</p>
+          <p className="text-lg font-bold text-amber-400">${Number(campaign.revenueAttributed ?? 0).toLocaleString()}</p>
+        </div>
+      </div>
+      <div className="space-y-2 pt-1 border-t border-[#30363D]">
+        <p className="text-[10px] font-semibold text-[#7D8590] uppercase tracking-wide">Update Metrics</p>
+        <div className="grid grid-cols-3 gap-2">
+          <div>
+            <label className="text-[10px] text-[#7D8590]">Leads</label>
+            <input type="number" min="0" value={leads} onChange={e => setLeads(e.target.value)}
+              className="mt-0.5 w-full bg-[#0D1117] border border-[#30363D] rounded px-2 py-1 text-xs text-[#E6EDF3] outline-none focus:border-[#0078D4]/60" />
+          </div>
+          <div>
+            <label className="text-[10px] text-[#7D8590]">Emails Sent</label>
+            <input type="number" min="0" value={emails} onChange={e => setEmails(e.target.value)}
+              className="mt-0.5 w-full bg-[#0D1117] border border-[#30363D] rounded px-2 py-1 text-xs text-[#E6EDF3] outline-none focus:border-[#0078D4]/60" />
+          </div>
+          <div>
+            <label className="text-[10px] text-[#7D8590]">Revenue ($)</label>
+            <input type="number" min="0" step="0.01" value={revenue} onChange={e => setRevenue(e.target.value)}
+              className="mt-0.5 w-full bg-[#0D1117] border border-[#30363D] rounded px-2 py-1 text-xs text-[#E6EDF3] outline-none focus:border-[#0078D4]/60" />
+          </div>
+        </div>
+        <button onClick={() => { void handleSave(); }} disabled={saving}
+          className={`w-full py-1.5 rounded-lg text-xs font-semibold transition-colors ${saved ? "bg-emerald-500/20 text-emerald-400" : "bg-[#0078D4] text-white hover:bg-[#0078D4]/80"} disabled:opacity-40`}>
+          {saving ? "Saving…" : saved ? "✓ Saved" : "Save Metrics"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ─── Section 7: Campaign Builder Wizard ───────────────────────────────────────
 
 function CampaignBuilderWizard({ fetchWithAuth }: { fetchWithAuth: (url: string, opts?: RequestInit) => Promise<Response> }) {
@@ -1671,6 +1754,7 @@ function CampaignBuilderWizard({ fetchWithAuth }: { fetchWithAuth: (url: string,
   const [savedCampaignId, setSavedCampaignId] = useState<number | null>(null);
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [loadingCampaigns, setLoadingCampaigns] = useState(true);
+  const [selectedCampaign, setSelectedCampaign] = useState<Campaign | null>(null);
 
   useEffect(() => {
     fetchWithAuth(`${API}/admin/marketing/campaigns`).then(r => r.json()).then(d => setCampaigns(d as Campaign[])).catch(() => null).finally(() => setLoadingCampaigns(false));
@@ -1709,12 +1793,18 @@ function CampaignBuilderWizard({ fetchWithAuth }: { fetchWithAuth: (url: string,
       });
 
       setCampaigns(prev => [campaign, ...prev]);
+      setSelectedCampaign(campaign);
       setStep(5);
     } finally { setSaving(false); }
   };
 
   const reset = () => {
     setStep(1); setGoal(""); setAudience(""); setOffer(""); setName(""); setPreviewAssets([]); setSavedCampaignId(null);
+  };
+
+  const handleMetricsUpdated = (updated: Campaign) => {
+    setCampaigns(prev => prev.map(c => c.id === updated.id ? updated : c));
+    if (selectedCampaign?.id === updated.id) setSelectedCampaign(updated);
   };
 
   const steps = [
@@ -1825,7 +1915,7 @@ function CampaignBuilderWizard({ fetchWithAuth }: { fetchWithAuth: (url: string,
                 </div>
                 <div>
                   <p className="text-sm font-semibold text-emerald-400">Campaign saved!</p>
-                  {savedCampaignId && <p className="text-xs text-[#7D8590]">ID: {savedCampaignId}</p>}
+                  {savedCampaignId && <p className="text-xs text-[#7D8590]">ID: {savedCampaignId} — update its metrics in the panel →</p>}
                 </div>
               </div>
               <button onClick={reset} className="text-xs px-3 py-1.5 rounded-lg border border-[#30363D] text-[#7D8590] hover:text-[#E6EDF3] transition-colors">
@@ -1835,23 +1925,40 @@ function CampaignBuilderWizard({ fetchWithAuth }: { fetchWithAuth: (url: string,
           )}
         </div>
 
-        <div className="bg-[#161B22] border border-[#30363D] rounded-xl p-4 space-y-3">
-          <h3 className="text-sm font-semibold text-[#E6EDF3]">Saved Campaigns</h3>
-          {loadingCampaigns ? <SkeletonCard /> : campaigns.length === 0 ? (
-            <p className="text-xs text-[#7D8590]">No campaigns yet — build your first one!</p>
-          ) : (
-            <div className="space-y-2 max-h-96 overflow-y-auto">
-              {campaigns.map(c => (
-                <div key={c.id} className="bg-[#0D1117] rounded-lg p-2 text-xs space-y-1">
-                  <div className="flex items-center justify-between gap-1">
-                    <span className="font-semibold text-[#E6EDF3] truncate">{c.name}</span>
-                    <Badge text={c.status} color={c.status === "active" ? "green" : c.status === "completed" ? "gray" : "yellow"} />
-                  </div>
-                  <p className="text-[#7D8590] line-clamp-1">{c.goal}</p>
-                </div>
-              ))}
-            </div>
+        <div className="space-y-4">
+          {selectedCampaign && (
+            <CampaignMetricsPanel
+              key={selectedCampaign.id}
+              campaign={selectedCampaign}
+              fetchWithAuth={fetchWithAuth}
+              onUpdated={handleMetricsUpdated}
+            />
           )}
+          <div className="bg-[#161B22] border border-[#30363D] rounded-xl p-4 space-y-3">
+            <h3 className="text-sm font-semibold text-[#E6EDF3]">Saved Campaigns</h3>
+            {loadingCampaigns ? <SkeletonCard /> : campaigns.length === 0 ? (
+              <p className="text-xs text-[#7D8590]">No campaigns yet — build your first one!</p>
+            ) : (
+              <div className="space-y-2 max-h-80 overflow-y-auto">
+                {campaigns.map(c => (
+                  <button key={c.id} onClick={() => setSelectedCampaign(prev => prev?.id === c.id ? null : c)}
+                    className={`w-full text-left bg-[#0D1117] rounded-lg p-2 text-xs space-y-1.5 border transition-colors ${selectedCampaign?.id === c.id ? "border-[#0078D4]/60" : "border-transparent hover:border-[#30363D]"}`}>
+                    <div className="flex items-center justify-between gap-1">
+                      <span className="font-semibold text-[#E6EDF3] truncate">{c.name}</span>
+                      <Badge text={c.status} color={c.status === "active" ? "green" : c.status === "completed" ? "gray" : "yellow"} />
+                    </div>
+                    <p className="text-[#7D8590] line-clamp-1">{c.goal}</p>
+                    {/* Mini KPI strip */}
+                    <div className="flex items-center gap-3 pt-0.5 border-t border-[#30363D]">
+                      <span className="text-emerald-400 font-semibold">{c.leadsGenerated ?? 0} leads</span>
+                      <span className="text-[#58A6FF]">{c.emailsSent ?? 0} emails</span>
+                      <span className="text-amber-400">${Number(c.revenueAttributed ?? 0).toLocaleString()}</span>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </div>

@@ -172,6 +172,14 @@ const legacyMigrations = [
       END $$;
     `,
   },
+  {
+    name: "0006_campaigns_performance_metrics",
+    sql: `
+      ALTER TABLE "campaigns" ADD COLUMN IF NOT EXISTS "leads_generated" integer NOT NULL DEFAULT 0;
+      ALTER TABLE "campaigns" ADD COLUMN IF NOT EXISTS "emails_sent" integer NOT NULL DEFAULT 0;
+      ALTER TABLE "campaigns" ADD COLUMN IF NOT EXISTS "revenue_attributed" numeric(12, 2) NOT NULL DEFAULT 0;
+    `,
+  },
 ];
 
 // ---------------------------------------------------------------------------
