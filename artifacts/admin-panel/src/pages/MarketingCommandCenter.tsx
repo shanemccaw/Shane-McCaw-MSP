@@ -2924,27 +2924,38 @@ function OfferBuilderPanel({ fetchWithAuth }: { fetchWithAuth: (url: string, opt
               <button onClick={() => setExpandedId(prev => prev === o.id ? null : o.id)} className="w-full flex items-center gap-3 px-4 py-3 text-left">
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium text-[#E6EDF3] truncate">{o.name}</p>
-                  <div className="flex items-center gap-2 mt-0.5">
-                    <p className="text-xs text-[#7D8590]">{o.audience}</p>
+                  <div className="flex items-center gap-2 mt-0.5 min-w-0">
+                    <p className="text-xs text-[#7D8590] truncate">{o.audience}</p>
                     {o.campaignId && campaignNameMap.get(o.campaignId) && (
-                      <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-[#0078D4]/15 text-[#58A6FF] flex-shrink-0">📌 {campaignNameMap.get(o.campaignId)}</span>
+                      <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-[#0078D4]/15 text-[#58A6FF] flex-shrink-0 max-w-[120px] truncate">📌 {campaignNameMap.get(o.campaignId)}</span>
                     )}
                   </div>
                 </div>
                 <div className="flex items-center gap-2 flex-shrink-0">
                   {o.pricing && <span className="text-xs text-emerald-400 font-semibold">{o.pricing}</span>}
                   <span className="text-[#484F58] text-xs">{expandedId === o.id ? "▲" : "▼"}</span>
-                  <button onClick={e => { e.stopPropagation(); void deleteOffer(o.id); }} className="text-[#484F58] hover:text-red-400 text-xs">✕</button>
                 </div>
               </button>
               {expandedId === o.id && (
                 <div className="border-t border-[#30363D] px-4 pb-4 pt-3 space-y-3">
                   <p className="text-xs text-[#7D8590]">{o.goal}</p>
                   <div className="grid grid-cols-2 gap-3">
-                    <div><p className="text-[10px] text-[#58A6FF] font-semibold mb-1">Deliverables</p><ul>{o.deliverables.map((d, i) => <li key={i} className="text-xs text-[#E6EDF3]">✓ {d}</li>)}</ul></div>
-                    <div><p className="text-[10px] text-emerald-400 font-semibold mb-1">Outcomes</p><ul>{o.outcomes.map((out, i) => <li key={i} className="text-xs text-[#E6EDF3]">→ {out}</li>)}</ul></div>
+                    <div><p className="text-[10px] text-[#58A6FF] font-semibold mb-1">Deliverables</p><ul>{o.deliverables.map((d, i) => <li key={i} className="text-xs text-[#E6EDF3] break-words">✓ {d}</li>)}</ul></div>
+                    <div><p className="text-[10px] text-emerald-400 font-semibold mb-1">Outcomes</p><ul>{o.outcomes.map((out, i) => <li key={i} className="text-xs text-[#E6EDF3] break-words">→ {out}</li>)}</ul></div>
                   </div>
                   {o.cta && <p className="text-xs text-amber-400">CTA: {o.cta}</p>}
+                  <div className="flex justify-end pt-1">
+                    <button
+                      onClick={() => {
+                        if (window.confirm(`Delete offer "${o.name}"? This cannot be undone.`)) {
+                          void deleteOffer(o.id);
+                        }
+                      }}
+                      className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-red-400 border border-red-400/30 rounded-lg hover:bg-red-400/10 transition-colors"
+                    >
+                      🗑 Delete
+                    </button>
+                  </div>
                 </div>
               )}
             </div>
