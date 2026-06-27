@@ -1,6 +1,6 @@
 import { Router, type Request, type Response } from "express";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
-import { requireAdmin } from "../middlewares/requireAuth";
+import { requireAdmin } from "../middlewares/requireAuth.ts";
 import { db } from "@workspace/db";
 import {
   powershellScriptsTable,
@@ -10,7 +10,8 @@ import {
   type ScriptModule,
 } from "@workspace/db";
 import { eq, desc, asc, inArray } from "drizzle-orm";
-import { logger } from "../lib/logger";
+import { logger } from "../lib/logger.ts";
+import { hasPsKeywords } from "../lib/ps-guard.ts";
 
 const router = Router();
 
@@ -202,8 +203,7 @@ Write the complete PowerShell script followed by the permissions JSON block.`,
     // Heuristic guard: if the first 200 chars contain no recognisable PowerShell
     // keyword, the AI likely returned only prose and the fence was absent entirely.
     // Return a 500 so the editor is never overwritten with non-PS text.
-    const psKeywordRe = /Param|function|#requires|\$|Write-|Get-|Set-|New-|Remove-/i;
-    if (!psKeywordRe.test(scriptBody.slice(0, 200))) {
+    if (!hasPsKeywords(scriptBody)) {
       logger.error(
         { scriptBodyPrefix: scriptBody.slice(0, 300) },
         "generate endpoint: fallback result contains no PS keywords — AI returned prose only; refusing to send to client",
@@ -615,8 +615,7 @@ Provide the corrected script in a \`\`\`powershell fence. Then include a <fix-su
     // Heuristic guard: if the first 200 chars contain no recognisable PowerShell
     // keyword, the AI likely returned only prose (a summary or explanation).
     // Serving that to the client would replace the editor with non-PS text.
-    const psKeywordRe = /Param|function|#requires|\$|Write-|Get-|Set-|New-|Remove-/i;
-    if (!psKeywordRe.test(fixedScript.slice(0, 200))) {
+    if (!hasPsKeywords(fixedScript)) {
       logger.error(
         { fixedScriptPrefix: fixedScript.slice(0, 300) },
         "fix endpoint: fallback result contains no PS keywords — AI returned prose only; refusing to overwrite editor",

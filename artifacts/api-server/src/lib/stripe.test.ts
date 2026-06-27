@@ -9,7 +9,7 @@
  */
 import { describe, it, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
-import { getStripeKey } from "./stripe";
+import { getStripeKey } from "./stripe.ts";
 
 // Snapshot of the three env vars under test so they can be restored.
 type EnvSnapshot = {
