@@ -2295,6 +2295,70 @@ Keep the tone authoritative, specific, and outcome-focused. Avoid generic phrase
   }
 });
 
+router.post("/admin/marketing/generate/email-copy", requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const body = req.body as {
+      campaignName?: string;
+      goal?: string;
+      audience?: string;
+      offer?: string;
+      deliverables?: string[];
+      outcomes?: string[];
+    };
+
+    const icpCtx = await buildICPContext();
+
+    const deliverables = (body.deliverables ?? []).filter(Boolean);
+    const outcomes = (body.outcomes ?? []).filter(Boolean);
+
+    const offerSection = [
+      body.offer ? `Offer description: ${body.offer}` : "",
+      deliverables.length > 0 ? `Deliverables: ${deliverables.join(", ")}` : "",
+      outcomes.length > 0 ? `Outcomes / results: ${outcomes.join(", ")}` : "",
+    ].filter(Boolean).join("\n");
+
+    const prompt = `You are an email copywriter for a Microsoft 365 consulting firm.
+${icpCtx}
+Campaign: ${body.campaignName ?? "Microsoft 365 Consulting"}
+Goal: ${body.goal ?? "Generate qualified leads"}
+Target audience: ${body.audience ?? "IT decision-makers"}
+${offerSection}
+
+Write a plain-text 3-email nurture sequence. Use this exact format (no JSON, no markdown):
+
+SUBJECT: <subject line for email 1>
+EMAIL 1 — <short label, e.g. "The Problem">
+<2–3 sentences that open a loop around the audience's #1 pain point. End with a soft curiosity hook.>
+
+SUBJECT: <subject line for email 2>
+EMAIL 2 — <short label, e.g. "The Solution">
+<2–3 sentences that introduce the offer and tie one key deliverable to a concrete outcome. Reference a specific result or client win.>
+
+SUBJECT: <subject line for email 3>
+EMAIL 3 — <short label, e.g. "The Invitation">
+<2–3 sentences that create urgency and issue a direct CTA. Be specific — tell them exactly what to do next.>
+
+Keep the tone conversational and authoritative. Avoid generic openers like "I hope this finds you well". Each email should stand alone but build on the previous one.`;
+
+    const msg = await anthropic.messages.create({
+      model: "claude-haiku-4-5",
+      max_tokens: 1000,
+      messages: [{ role: "user", content: prompt }],
+    });
+
+    const raw = msg.content[0]?.type === "text" ? msg.content[0].text : "";
+    if (!raw.trim()) {
+      res.status(502).json({ error: "AI returned empty content — please try again" });
+      return;
+    }
+
+    res.json({ copy: raw.trim() });
+  } catch (e) {
+    req.log.error({ err: e }, "Failed to generate email copy");
+    res.status(500).json({ error: String(e) });
+  }
+});
+
 router.get("/admin/marketing/landing-pages", requireAdmin, async (_req: Request, res: Response) => {
   try {
     const rows = await db.select().from(landingPagesTable).orderBy(desc(landingPagesTable.createdAt));

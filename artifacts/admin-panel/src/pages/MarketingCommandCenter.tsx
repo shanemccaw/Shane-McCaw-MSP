@@ -5301,31 +5301,183 @@ function AdVariationPreview({ asset, label }: { asset: CampaignAsset; label: str
   );
 }
 
-function EmailPreview({ asset }: { asset: CampaignAsset }) {
-  const subject = parseSubjectFromContent(asset.content);
-  const body = subject ? asset.content.replace(/^SUBJECT:\s*.+\r?\n?/im, "").trim() : asset.content;
+function EmailSequencePanel({
+  asset,
+  campaign,
+  offers,
+  fetchWithAuth,
+}: {
+  asset: CampaignAsset;
+  campaign: Campaign;
+  offers: Array<{ id: number; name: string; pricing: string | null; deliverables: string[]; outcomes: string[] }>;
+  fetchWithAuth: (url: string, opts?: RequestInit) => Promise<Response>;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [editText, setEditText] = useState(asset.content);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [liveContent, setLiveContent] = useState(asset.content);
+  const [regenerating, setRegenerating] = useState(false);
+  const [regenError, setRegenError] = useState<string | null>(null);
+
+  const handleSaveEdit = async () => {
+    setSaving(true);
+    setSaveError(null);
+    try {
+      const r = await fetchWithAuth(`${API}/admin/marketing/campaign-assets/${asset.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content: editText }),
+      });
+      if (!r.ok) {
+        const err = await r.json() as { error?: string };
+        throw new Error(err.error ?? "Failed to save");
+      }
+      setLiveContent(editText);
+      setEditing(false);
+    } catch (e) {
+      setSaveError(e instanceof Error ? e.message : "Save failed");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleCancelEdit = () => {
+    setEditText(liveContent);
+    setSaveError(null);
+    setEditing(false);
+  };
+
+  const handleRegenerateCopy = async () => {
+    setRegenerating(true);
+    setRegenError(null);
+    try {
+      const allDeliverables = offers.flatMap(o => o.deliverables);
+      const allOutcomes = offers.flatMap(o => o.outcomes);
+      const r = await fetchWithAuth(`${API}/admin/marketing/generate/email-copy`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          campaignName: campaign.name,
+          goal: campaign.goal,
+          audience: campaign.audience,
+          offer: campaign.offer,
+          deliverables: allDeliverables,
+          outcomes: allOutcomes,
+        }),
+      });
+      if (!r.ok) {
+        const err = await r.json() as { error?: string };
+        throw new Error(err.error ?? "Regeneration failed");
+      }
+      const result = await r.json() as { copy: string };
+      setEditText(result.copy);
+      setEditing(true);
+      setSaveError(null);
+    } catch (e) {
+      setRegenError(e instanceof Error ? e.message : "Something went wrong");
+    } finally {
+      setRegenerating(false);
+    }
+  };
+
+  const subject = parseSubjectFromContent(liveContent);
+  const body = subject ? liveContent.replace(/^SUBJECT:\s*.+\r?\n?/im, "").trim() : liveContent;
+
   return (
     <div className="space-y-3">
       <div className="bg-[#0D1117] border border-[#30363D] rounded-xl overflow-hidden">
-        <div className="bg-[#1C2128] px-4 py-2 border-b border-[#30363D] space-y-1">
-          <div className="flex items-start gap-2 text-[10px]">
-            <span className="text-[#484F58] uppercase tracking-wide w-14 flex-shrink-0 mt-px">From</span>
-            <span className="text-[#C9D1D9]">Shane McCaw &lt;shane@shanemccaw.com&gt;</span>
+        <div className="bg-[#1C2128] px-4 py-2 border-b border-[#30363D]">
+          <div className="flex items-center justify-between mb-1.5">
+            <p className="text-[10px] text-[#484F58] uppercase tracking-wide font-semibold">Email Sequence</p>
+            <div className="flex items-center gap-2">
+              {!editing && <CopyButton text={liveContent} />}
+              <button
+                onClick={() => { void handleRegenerateCopy(); }}
+                disabled={regenerating || saving}
+                title="Regenerate email sequence from offer deliverables and outcomes"
+                className="text-[10px] px-2 py-0.5 rounded border border-violet-500/40 text-violet-400 hover:bg-violet-500/10 transition-colors disabled:opacity-50 disabled:cursor-wait flex items-center gap-1"
+              >
+                {regenerating ? (
+                  <>
+                    <svg className="w-2.5 h-2.5 animate-spin" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+                    </svg>
+                    Generating…
+                  </>
+                ) : "✨ Regenerate"}
+              </button>
+              {!editing ? (
+                <button
+                  onClick={() => { setEditText(liveContent); setEditing(true); setSaveError(null); }}
+                  className="text-[10px] px-2 py-0.5 rounded border border-[#30363D] text-[#7D8590] hover:text-[#E6EDF3] hover:border-[#484F58] transition-colors"
+                >
+                  ✏️ Edit
+                </button>
+              ) : (
+                <div className="flex items-center gap-1.5">
+                  <button
+                    onClick={() => { void handleSaveEdit(); }}
+                    disabled={saving}
+                    className="text-[10px] px-2.5 py-0.5 rounded border border-emerald-500/40 text-emerald-400 hover:bg-emerald-500/10 transition-colors disabled:opacity-50"
+                  >
+                    {saving ? "Saving…" : "Save"}
+                  </button>
+                  <button
+                    onClick={handleCancelEdit}
+                    disabled={saving}
+                    className="text-[10px] px-2.5 py-0.5 rounded border border-[#30363D] text-[#7D8590] hover:text-[#E6EDF3] transition-colors disabled:opacity-50"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
-          <div className="flex items-start gap-2 text-[10px]">
-            <span className="text-[#484F58] uppercase tracking-wide w-14 flex-shrink-0 mt-px">Subject</span>
-            <span className="text-[#E6EDF3] font-semibold">{subject || asset.title}</span>
-          </div>
+          {!editing && (
+            <>
+              <div className="flex items-start gap-2 text-[10px]">
+                <span className="text-[#484F58] uppercase tracking-wide w-14 flex-shrink-0 mt-px">From</span>
+                <span className="text-[#C9D1D9]">Shane McCaw &lt;shane@shanemccaw.com&gt;</span>
+              </div>
+              <div className="flex items-start gap-2 text-[10px]">
+                <span className="text-[#484F58] uppercase tracking-wide w-14 flex-shrink-0 mt-px">Subject</span>
+                <span className="text-[#E6EDF3] font-semibold">{subject || asset.title}</span>
+              </div>
+            </>
+          )}
         </div>
         <div className="p-4">
-          <pre className="text-xs text-[#C9D1D9] whitespace-pre-wrap font-sans leading-relaxed">{body}</pre>
+          <p className="text-[10px] text-[#484F58] mb-3">
+            {offers.length > 0
+              ? `Using ${offers.length} offer${offers.length === 1 ? "" : "s"}: ${offers.map(o => o.name).join(", ")}`
+              : "No linked offers — using campaign description only"}
+          </p>
+          {editing ? (
+            <textarea
+              value={editText}
+              onChange={e => setEditText(e.target.value)}
+              rows={Math.max(12, editText.split("\n").length + 2)}
+              className="w-full text-xs text-[#E6EDF3] bg-[#161B22] border border-[#30363D] rounded-lg px-3 py-2.5 font-sans leading-relaxed resize-y focus:outline-none focus:border-[#0078D4]/60"
+            />
+          ) : (
+            <pre className="text-xs text-[#C9D1D9] whitespace-pre-wrap font-sans leading-relaxed">{body}</pre>
+          )}
+          {saveError && (
+            <p className="mt-2 text-[11px] text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-1.5">{saveError}</p>
+          )}
+          {regenError && (
+            <p className="mt-2 text-[11px] text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-1.5">{regenError}</p>
+          )}
         </div>
-        <div className="px-4 py-2 border-t border-[#30363D] flex items-center justify-between">
-          <p className="text-[9px] text-[#484F58]">Unsubscribe · View in browser</p>
-          <CopyButton text={asset.content} />
-        </div>
+        {!editing && (
+          <div className="px-4 py-2 border-t border-[#30363D] flex items-center justify-between">
+            <p className="text-[9px] text-[#484F58]">Unsubscribe · View in browser</p>
+          </div>
+        )}
       </div>
-      <RawToggle content={asset.content} />
+      {!editing && <RawToggle content={liveContent} />}
     </div>
   );
 }
@@ -5728,7 +5880,7 @@ function CampaignAssetTabPanel({
     case "email_sequence":
     case "cold_email":
     case "followup":
-    case "newsletter": return <EmailPreview asset={asset} />;
+    case "newsletter": return <EmailSequencePanel asset={asset} campaign={campaign} offers={offers} fetchWithAuth={fetchWithAuth} />;
     case "social_post": return <SocialPostPreview asset={asset} />;
     case "linkedin_post": return <SocialPostPreview asset={asset} handle="Shane McCaw on LinkedIn" />;
     case "blog_post": return <BlogPostPreview asset={asset} />;
