@@ -170,7 +170,17 @@ async function maybeFireIntentEvent(sessionId: string, page: string): Promise<vo
     if (!email) return;
     const lead = await findLeadByEmail(email);
     if (!lead) return;
-    await ingestIntentEvent(lead.id, "site_visit", { page, sessionId });
+    // Dedup: only fire one site_visit per (leadId, page, sessionId) triplet
+    const [existing] = await execRows<{ id: number }>(sql`
+      SELECT id FROM lead_intent_events
+      WHERE lead_id = ${lead.id}
+        AND event_type = 'site_visit'
+        AND metadata->>'sessionId' = ${sessionId}
+        AND metadata->>'page' = ${normalised}
+      LIMIT 1
+    `);
+    if (existing) return;
+    await ingestIntentEvent(lead.id, "site_visit", { page: normalised, sessionId });
   } catch { /* non-fatal — never block the pageview response */ }
 }
 
