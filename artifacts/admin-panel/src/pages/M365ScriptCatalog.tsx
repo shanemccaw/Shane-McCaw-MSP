@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
 import {
@@ -1480,7 +1480,7 @@ function CategoryManagerPanel({
     const neighbour = sorted[next];
     setSaving(true);
     try {
-      await Promise.all([
+      const [r1, r2] = await Promise.all([
         fetchWithAuth(`/api/admin/script-categories/${cat.id}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
@@ -1492,7 +1492,13 @@ function CategoryManagerPanel({
           body: JSON.stringify({ displayOrder: cat.displayOrder }),
         }),
       ]);
+      if (!r1.ok || !r2.ok) {
+        toast({ title: "Failed to reorder categories", variant: "destructive" });
+        return;
+      }
       onChanged();
+    } catch {
+      toast({ title: "Failed to reorder categories", variant: "destructive" });
     } finally {
       setSaving(false);
     }
@@ -1739,36 +1745,61 @@ function ScriptCatalogTab({
 
   const SESSION_KEY = "m365-catalog-open-sections";
 
+  // Two-phase approach:
+  // Phase "before": waiting for first non-empty categories load from API.
+  // Phase "done": initial load complete; only auto-open truly new category IDs.
+  const initPhaseRef = useRef<"before" | "done">("before");
+  // Track IDs seen in the initial categories load — so later reloads don't re-open closed sections.
+  const initialCategoryIdsRef = useRef<Set<number>>(new Set<number>());
+
   const [openSections, setOpenSections] = useState<Set<number>>(() => {
     try {
       const saved = sessionStorage.getItem(SESSION_KEY);
-      if (saved) {
-        const ids = JSON.parse(saved) as number[];
-        return new Set<number>(ids);
-      }
+      if (saved) return new Set<number>(JSON.parse(saved) as number[]);
     } catch { /* ignore */ }
-    // First visit: open everything
-    return new Set<number>([...categories.map(c => c.id), UNCATEGORISED_KEY]);
+    // No session yet — start with just UNCATEGORISED open; initial load will add the rest.
+    return new Set<number>([UNCATEGORISED_KEY]);
   });
 
-  // Persist to sessionStorage whenever openSections changes
+  // Persist to sessionStorage immediately on every change
   useEffect(() => {
     try {
       sessionStorage.setItem(SESSION_KEY, JSON.stringify([...openSections]));
     } catch { /* ignore */ }
   }, [openSections]);
 
-  // When new categories are added, auto-open them (but respect previously closed ones)
+  // Manage which sections are open when categories change
   useEffect(() => {
-    setOpenSections(prev => {
-      let changed = false;
-      const next = new Set(prev);
-      for (const cat of categories) {
-        if (!next.has(cat.id)) { next.add(cat.id); changed = true; }
+    if (categories.length === 0) return; // Wait for API to load
+
+    if (initPhaseRef.current === "before") {
+      // First non-empty load from API
+      initPhaseRef.current = "done";
+      initialCategoryIdsRef.current = new Set(categories.map(c => c.id));
+
+      // Only auto-open if there's no saved session yet (true first visit)
+      let hasSaved = false;
+      try { hasSaved = !!sessionStorage.getItem(SESSION_KEY); } catch { /* ignore */ }
+      if (!hasSaved) {
+        setOpenSections(new Set([...categories.map(c => c.id), UNCATEGORISED_KEY]));
       }
-      if (!next.has(UNCATEGORISED_KEY)) { next.add(UNCATEGORISED_KEY); changed = true; }
-      return changed ? next : prev;
-    });
+      return;
+    }
+
+    // Normal phase: only auto-open IDs that weren't in the initial load (genuinely new)
+    const newIds = categories
+      .map(c => c.id)
+      .filter(id => !initialCategoryIdsRef.current.has(id));
+    // Track new IDs so they aren't considered "new" on the next reload
+    for (const id of newIds) initialCategoryIdsRef.current.add(id);
+
+    if (newIds.length > 0) {
+      setOpenSections(prev => {
+        const next = new Set(prev);
+        for (const id of newIds) next.add(id);
+        return next;
+      });
+    }
   }, [categories]);
 
   const toggleSection = (id: number) => {
