@@ -11,7 +11,7 @@ import {
   clientHealthHistoryTable,
   azureTenantCredentialsTable,
 } from "@workspace/db";
-import { eq, and, desc, count, inArray, sql, isNotNull, asc } from "drizzle-orm";
+import { eq, and, desc, count, inArray, sql, isNotNull, isNull, asc } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/requireAuth";
 import { logger } from "../lib/logger";
 
@@ -242,6 +242,35 @@ router.get("/admin/clients/with-azure-credentials", requireAdmin, async (_req: R
           }
         : null,
     }));
+
+    // For clients that have no directly-linked credential, fall back to
+    // credentials stored without a clientUserId (added via the global
+    // credentials manager before being linked). Fetch all unlinked credentials
+    // and assign the first one to each still-unmatched client.
+    const hasUnlinkedClients = result.some(r => r.credential === null);
+    if (hasUnlinkedClients) {
+      const unlinked = await db
+        .select({
+          id: azureTenantCredentialsTable.id,
+          displayName: azureTenantCredentialsTable.displayName,
+          tenantId: azureTenantCredentialsTable.tenantId,
+          clientId: azureTenantCredentialsTable.clientId,
+          credentialType: azureTenantCredentialsTable.credentialType,
+          keyVaultSecretName: azureTenantCredentialsTable.keyVaultSecretName,
+        })
+        .from(azureTenantCredentialsTable)
+        .where(isNull(azureTenantCredentialsTable.clientUserId))
+        .orderBy(asc(azureTenantCredentialsTable.displayName));
+
+      if (unlinked.length > 0) {
+        const fallback = unlinked[0];
+        for (const client of result) {
+          if (client.credential === null) {
+            client.credential = fallback;
+          }
+        }
+      }
+    }
 
     res.json(result);
   } catch (err) {
