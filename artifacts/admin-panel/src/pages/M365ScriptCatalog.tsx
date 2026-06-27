@@ -1736,17 +1736,38 @@ function ScriptCatalogTab({
   const [runTarget, setRunTarget] = useState<Script | null>(null);
 
   const sortedCategories = [...categories].sort((a, b) => a.displayOrder - b.displayOrder || a.id - b.id);
-  const [openSections, setOpenSections] = useState<Set<number>>(() =>
-    new Set<number>([...categories.map(c => c.id), UNCATEGORISED_KEY])
-  );
 
-  // When categories grow (new ones added), automatically open the new section
+  const SESSION_KEY = "m365-catalog-open-sections";
+
+  const [openSections, setOpenSections] = useState<Set<number>>(() => {
+    try {
+      const saved = sessionStorage.getItem(SESSION_KEY);
+      if (saved) {
+        const ids = JSON.parse(saved) as number[];
+        return new Set<number>(ids);
+      }
+    } catch { /* ignore */ }
+    // First visit: open everything
+    return new Set<number>([...categories.map(c => c.id), UNCATEGORISED_KEY]);
+  });
+
+  // Persist to sessionStorage whenever openSections changes
+  useEffect(() => {
+    try {
+      sessionStorage.setItem(SESSION_KEY, JSON.stringify([...openSections]));
+    } catch { /* ignore */ }
+  }, [openSections]);
+
+  // When new categories are added, auto-open them (but respect previously closed ones)
   useEffect(() => {
     setOpenSections(prev => {
+      let changed = false;
       const next = new Set(prev);
-      for (const cat of categories) next.add(cat.id);
-      next.add(UNCATEGORISED_KEY);
-      return next;
+      for (const cat of categories) {
+        if (!next.has(cat.id)) { next.add(cat.id); changed = true; }
+      }
+      if (!next.has(UNCATEGORISED_KEY)) { next.add(UNCATEGORISED_KEY); changed = true; }
+      return changed ? next : prev;
     });
   }, [categories]);
 
@@ -2019,7 +2040,7 @@ export default function M365ScriptCatalogPage() {
           categories={categories}
           onEdit={handleEdit}
           onDeleted={handleDeleted}
-          onCategoriesChanged={() => void loadCategories()}
+          onCategoriesChanged={() => { void loadCategories(); void loadScripts(); }}
         />
       )}
       {tab === "packages" && (
