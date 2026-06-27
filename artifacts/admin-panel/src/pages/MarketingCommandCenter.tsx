@@ -4701,7 +4701,15 @@ const ASSET_TYPE_LABELS: Record<string, string> = {
   ad_copy: "Ad Copy",
   subject_lines: "Subject Lines",
   cta_variants: "CTA Variants",
+  // Ad wizard types
+  ad_google: "Google Search Ads",
+  ad_linkedin: "LinkedIn Sponsored Ads",
+  ad_retargeting: "Retargeting Ads",
+  ad_creative: "Creative Prompts",
+  landing_page: "Landing Page",
 };
+
+const AD_ASSET_TYPES = new Set(["ad_google", "ad_linkedin", "ad_retargeting", "ad_creative", "landing_page"]);
 
 const EVENT_COLORS: Record<string, string> = {
   sent: "text-[#58A6FF]",
@@ -4742,6 +4750,9 @@ function CampaignDetailView({
 
   // Asset expand map
   const [expandedAssets, setExpandedAssets] = useState<Record<number, boolean>>({});
+
+  // Asset filter: "all" | "ads" | specific assetType
+  const [assetFilter, setAssetFilter] = useState<string>("all");
 
   // Brief expand
   const [briefOpen, setBriefOpen] = useState(false);
@@ -4835,8 +4846,20 @@ function CampaignDetailView({
     completed: "bg-[#0078D4]/20 text-[#58A6FF]",
   };
 
-  // Group assets by type
-  const assetsByType = assets.reduce<Record<string, CampaignAsset[]>>((acc, a) => {
+  // Build filter options from what's actually present
+  const presentTypes = Array.from(new Set(assets.map(a => a.assetType)));
+  const hasAds = presentTypes.some(t => AD_ASSET_TYPES.has(t));
+  const hasContent = presentTypes.some(t => !AD_ASSET_TYPES.has(t));
+
+  const filteredAssets = assets.filter(a => {
+    if (assetFilter === "all") return true;
+    if (assetFilter === "ads") return AD_ASSET_TYPES.has(a.assetType);
+    if (assetFilter === "content") return !AD_ASSET_TYPES.has(a.assetType);
+    return a.assetType === assetFilter;
+  });
+
+  // Group filtered assets by type
+  const assetsByType = filteredAssets.reduce<Record<string, CampaignAsset[]>>((acc, a) => {
     const key = a.assetType;
     if (!acc[key]) acc[key] = [];
     acc[key].push(a);
@@ -4955,12 +4978,31 @@ function CampaignDetailView({
 
       {/* Assets by Type */}
       <div className="space-y-3">
-        <p className="text-xs font-semibold text-[#E6EDF3]">
-          📦 Campaign Assets
-          <span className="ml-2 text-[#7D8590] font-normal">{assets.length} total</span>
-        </p>
+        <div className="flex items-center justify-between gap-2 flex-wrap">
+          <p className="text-xs font-semibold text-[#E6EDF3]">
+            📦 Campaign Assets
+            <span className="ml-2 text-[#7D8590] font-normal">{assets.length} total</span>
+          </p>
+          {assets.length > 0 && (
+            <div className="flex flex-wrap gap-1">
+              {[
+                { id: "all", label: `All (${assets.length})` },
+                ...(hasAds ? [{ id: "ads", label: `Ads (${assets.filter(a => AD_ASSET_TYPES.has(a.assetType)).length})` }] : []),
+                ...(hasContent ? [{ id: "content", label: `Content (${assets.filter(a => !AD_ASSET_TYPES.has(a.assetType)).length})` }] : []),
+                ...presentTypes.map(t => ({ id: t, label: `${ASSET_TYPE_LABELS[t] ?? t} (${assets.filter(a => a.assetType === t).length})` })),
+              ].map(f => (
+                <button key={f.id} onClick={() => setAssetFilter(f.id)}
+                  className={`text-[10px] px-2 py-1 rounded-lg border transition-colors ${assetFilter === f.id ? "bg-[#0078D4]/20 border-[#0078D4]/40 text-[#58A6FF]" : "border-[#30363D] text-[#7D8590] hover:text-[#E6EDF3] hover:border-[#484F58]"}`}>
+                  {f.label}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
         {assets.length === 0 ? (
           <p className="text-xs text-[#7D8590] bg-[#161B22] border border-[#30363D] rounded-xl px-4 py-3">No assets saved yet.</p>
+        ) : filteredAssets.length === 0 ? (
+          <p className="text-xs text-[#7D8590] bg-[#161B22] border border-[#30363D] rounded-xl px-4 py-3">No assets match this filter.</p>
         ) : (
           Object.entries(assetsByType).map(([type, typeAssets]) => (
             <div key={type} className="bg-[#161B22] border border-[#30363D] rounded-xl overflow-hidden">
@@ -4968,6 +5010,9 @@ function CampaignDetailView({
                 <span className="text-[10px] font-semibold text-[#7D8590] uppercase tracking-wide">
                   {ASSET_TYPE_LABELS[type] ?? type} <span className="text-[#484F58]">({typeAssets.length})</span>
                 </span>
+                {AD_ASSET_TYPES.has(type) && (
+                  <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-[#0078D4]/10 text-[#58A6FF] border border-[#0078D4]/20">Ad Asset</span>
+                )}
               </div>
               <div className="divide-y divide-[#30363D]">
                 {typeAssets.map(asset => {
@@ -4991,7 +5036,10 @@ function CampaignDetailView({
                           <div className="mt-2 space-y-2">
                             {savedVariations.map((v, idx) => (
                               <div key={idx} className="bg-[#0D1117] rounded-lg p-3 space-y-1.5">
-                                <p className="text-[10px] font-semibold text-[#58A6FF]">Variation {idx + 1}</p>
+                                <div className="flex items-center justify-between mb-1">
+                                  <p className="text-[10px] font-semibold text-[#58A6FF]">Variation {idx + 1}</p>
+                                  <CopyButton text={[v.headline && `Headline: ${v.headline}`, v.description && `Description: ${v.description}`, v.cta && `CTA: ${v.cta}`].filter(Boolean).join("\n")} />
+                                </div>
                                 <p className="text-[10px] text-[#E6EDF3]"><span className="text-[#7D8590]">Headline: </span>{v.headline}</p>
                                 <p className="text-[10px] text-[#E6EDF3]"><span className="text-[#7D8590]">Description: </span>{v.description}</p>
                                 {v.cta && <p className="text-[10px] text-[#E6EDF3]"><span className="text-[#7D8590]">CTA: </span>{v.cta}</p>}
@@ -5009,7 +5057,11 @@ function CampaignDetailView({
                           <pre className="mt-2 text-[10px] text-[#8B949E] whitespace-pre-wrap font-sans leading-relaxed">{asset.content}</pre>
                         )
                       ) : (
-                        <p className="mt-1 text-[10px] text-[#7D8590] line-clamp-2 font-sans">{asset.content}</p>
+                        isAdType ? (
+                          <p className="mt-1 text-[10px] text-[#7D8590] font-sans">{savedVariations.length} variation{savedVariations.length !== 1 ? "s" : ""} · click to expand</p>
+                        ) : (
+                          <p className="mt-1 text-[10px] text-[#7D8590] line-clamp-2 font-sans">{asset.content}</p>
+                        )
                       )}
                     </div>
                   );
