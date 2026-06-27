@@ -1,6 +1,6 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, Fragment } from "react";
 import { useAuth } from "@/contexts/AuthContext";
-import { ClipboardList, ChevronDown, ChevronUp, RefreshCw, Download, Upload, X } from "lucide-react";
+import { ClipboardList, ChevronDown, ChevronUp, RefreshCw, Download, Upload, X, CheckCircle, Eye, Clock, User } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -18,7 +18,9 @@ interface RunResult {
   profileUpdates: Record<string, unknown>;
   status: "running" | "completed" | "failed" | "awaiting_upload";
   executionSource: "automated" | "manual";
+  uploadedBy: string | null;
   uploadedAt: string | null;
+  reviewedAt: string | null;
   createdAt: string;
   scriptName: string | null;
   clientName: string | null;
@@ -291,6 +293,7 @@ function ExpandedRow({ result, onUploaded }: { result: RunResult; onUploaded: (i
           {result.uploadedAt && (
             <span className="text-[10px] text-[#484F58]">
               Uploaded {formatRelative(result.uploadedAt)}
+              {result.uploadedBy && ` by ${result.uploadedBy}`}
             </span>
           )}
         </div>
@@ -376,6 +379,141 @@ function ExpandedRow({ result, onUploaded }: { result: RunResult; onUploaded: (i
   );
 }
 
+// ── Client Upload expanded detail ─────────────────────────────────────────────
+
+function ClientUploadDetail({
+  result,
+  onMarkReviewed,
+}: {
+  result: RunResult;
+  onMarkReviewed: (id: number, reviewedAt: string) => void;
+}) {
+  const { fetchWithAuth } = useAuth();
+  const { toast } = useToast();
+  const [marking, setMarking] = useState(false);
+  const [subTab, setSubTab] = useState<"submitted" | "findings">("submitted");
+
+  const handleMarkReviewed = async () => {
+    setMarking(true);
+    try {
+      const res = await fetchWithAuth(`/api/admin/script-run-results/${result.id}/mark-reviewed`, {
+        method: "PATCH",
+      });
+      if (!res.ok) {
+        const err = await res.json() as { error?: string };
+        toast({ title: err.error ?? "Failed to mark as reviewed", variant: "destructive" });
+        return;
+      }
+      const data = await res.json() as { reviewedAt: string };
+      toast({ title: "Marked as reviewed" });
+      onMarkReviewed(result.id, data.reviewedAt);
+    } catch {
+      toast({ title: "Failed to mark as reviewed", variant: "destructive" });
+    } finally {
+      setMarking(false);
+    }
+  };
+
+  const rawJson = JSON.stringify(result.rawOutput, null, 2);
+
+  return (
+    <div className="px-4 pb-4 pt-3 bg-[#0D1117] border-t border-[#21262D] space-y-4">
+      {/* Upload metadata */}
+      <div className="flex flex-wrap items-center gap-3">
+        {result.uploadedBy && (
+          <div className="flex items-center gap-1.5 text-[10px] text-[#7D8590]">
+            <User className="w-3 h-3" />
+            <span>Submitted by <span className="text-[#C9D1D9] font-medium">{result.uploadedBy}</span></span>
+          </div>
+        )}
+        {result.uploadedAt && (
+          <div className="flex items-center gap-1.5 text-[10px] text-[#7D8590]">
+            <Clock className="w-3 h-3" />
+            <span>{formatDate(result.uploadedAt)}</span>
+          </div>
+        )}
+        {result.reviewedAt ? (
+          <div className="flex items-center gap-1.5 text-[10px] text-green-400">
+            <CheckCircle className="w-3 h-3" />
+            <span>Reviewed {formatRelative(result.reviewedAt)}</span>
+          </div>
+        ) : (
+          <button
+            onClick={() => void handleMarkReviewed()}
+            disabled={marking}
+            className="flex items-center gap-1.5 px-3 py-1 text-[10px] font-semibold text-green-400 border border-green-500/30 hover:border-green-500 hover:bg-green-500/10 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed ml-auto"
+          >
+            {marking ? <RefreshCw className="w-3 h-3 animate-spin" /> : <CheckCircle className="w-3 h-3" />}
+            {marking ? "Saving…" : "Mark as Reviewed"}
+          </button>
+        )}
+      </div>
+
+      {/* Sub-tabs */}
+      <div className="flex gap-1">
+        {(["submitted", "findings"] as const).map(t => (
+          <button
+            key={t}
+            onClick={() => setSubTab(t)}
+            className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${
+              subTab === t
+                ? "bg-[#0078D4]/15 text-[#0078D4] border border-[#0078D4]/30"
+                : "text-[#7D8590] hover:text-[#E6EDF3] border border-transparent"
+            }`}
+          >
+            {t === "submitted" ? "Submitted JSON" : "AI Findings"}
+          </button>
+        ))}
+      </div>
+
+      {subTab === "submitted" && (
+        <pre className="text-[11px] text-[#7D8590] font-mono whitespace-pre-wrap leading-relaxed bg-[#161B22] border border-[#30363D] rounded-lg p-4 max-h-96 overflow-y-auto">
+          {rawJson || "(No data submitted)"}
+        </pre>
+      )}
+
+      {subTab === "findings" && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <div>
+            <p className="text-[10px] font-bold uppercase tracking-wider text-[#7D8590] mb-2">Findings</p>
+            {result.parsedFindings.length === 0 ? (
+              <p className="text-xs text-[#484F58] italic">No findings recorded yet</p>
+            ) : (
+              <ul className="space-y-1.5">
+                {result.parsedFindings.map((f, i) => (
+                  <li key={i} className="flex items-start gap-2 text-xs text-[#C9D1D9]">
+                    <span className="mt-1.5 w-1.5 h-1.5 rounded-full bg-[#0078D4] flex-shrink-0" />
+                    {f}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+          <div>
+            <p className="text-[10px] font-bold uppercase tracking-wider text-[#7D8590] mb-2">Recommendations</p>
+            {result.recommendations.length === 0 ? (
+              <p className="text-xs text-[#484F58] italic">No recommendations yet</p>
+            ) : (
+              <ul className="space-y-1.5">
+                {result.recommendations.map((r, i) => (
+                  <li key={i} className="flex items-start gap-2 text-xs text-[#C9D1D9]">
+                    <span className="mt-1.5 w-1.5 h-1.5 rounded-full bg-green-400 flex-shrink-0" />
+                    {r}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+          <div>
+            <p className="text-[10px] font-bold uppercase tracking-wider text-[#7D8590] mb-2">Score Impact</p>
+            <ScoreImpactChart scoreImpact={result.scoreImpact} />
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Unique value sets for filters ─────────────────────────────────────────────
 
 function uniqueValues<T extends RunResult, K extends keyof T>(
@@ -394,7 +532,170 @@ function uniqueValues<T extends RunResult, K extends keyof T>(
   return Array.from(seen.entries()).map(([value, label]) => ({ value, label }));
 }
 
+// ── Client Uploads Tab ────────────────────────────────────────────────────────
+
+function ClientUploadsTab({
+  results,
+  onMarkReviewed,
+  onUploaded,
+  refreshing,
+  onRefresh,
+}: {
+  results: RunResult[];
+  onMarkReviewed: (id: number, reviewedAt: string) => void;
+  onUploaded: (id: number) => void;
+  refreshing: boolean;
+  onRefresh: () => void;
+}) {
+  const [expandedId, setExpandedId] = useState<number | null>(null);
+  const [showReviewed, setShowReviewed] = useState(false);
+
+  // Client uploads = manual execution source with an uploadedAt (client submitted) OR awaiting_upload
+  const clientUploads = results.filter(r =>
+    r.executionSource === "manual" && (r.uploadedAt !== null || r.status === "awaiting_upload")
+  );
+
+  const pending = clientUploads.filter(r => r.reviewedAt === null);
+  const reviewed = clientUploads.filter(r => r.reviewedAt !== null);
+  const displayed = showReviewed ? clientUploads : pending;
+
+  return (
+    <div className="space-y-4">
+      {/* Summary bar */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
+            <span className="text-sm text-[#E6EDF3] font-medium">{pending.length} pending review</span>
+          </div>
+          {reviewed.length > 0 && (
+            <button
+              onClick={() => setShowReviewed(v => !v)}
+              className="flex items-center gap-1.5 text-xs text-[#7D8590] hover:text-[#E6EDF3] transition-colors"
+            >
+              <Eye className="w-3.5 h-3.5" />
+              {showReviewed ? "Hide reviewed" : `Show ${reviewed.length} reviewed`}
+            </button>
+          )}
+        </div>
+        <button
+          onClick={onRefresh}
+          disabled={refreshing}
+          className="flex items-center gap-2 text-sm font-semibold text-[#0078D4] border border-[#0078D4]/30 hover:border-[#0078D4] hover:bg-[#0078D4]/10 rounded-lg px-3 py-1.5 transition-colors disabled:opacity-50"
+        >
+          <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? "animate-spin" : ""}`} />
+          Refresh
+        </button>
+      </div>
+
+      {displayed.length === 0 ? (
+        <div className="text-center py-16">
+          <CheckCircle className="w-10 h-10 text-green-500/40 mx-auto mb-3" />
+          <p className="text-[#7D8590] text-sm">
+            {clientUploads.length === 0 ? "No client uploads yet" : "All uploads reviewed"}
+          </p>
+          <p className="text-[#484F58] text-xs mt-1">
+            {clientUploads.length === 0
+              ? "When clients submit script results via the portal, they'll appear here"
+              : "Nothing left in the pending queue"
+            }
+          </p>
+          {!showReviewed && reviewed.length > 0 && (
+            <button
+              onClick={() => setShowReviewed(true)}
+              className="mt-3 text-xs text-[#0078D4] hover:text-[#1A90E0] transition-colors"
+            >
+              Show {reviewed.length} reviewed item{reviewed.length !== 1 ? "s" : ""}
+            </button>
+          )}
+        </div>
+      ) : (
+        <div className="bg-[#161B22] border border-[#30363D] rounded-xl overflow-hidden">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-[#30363D]">
+                <th className="text-left px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-[#7D8590]">Client</th>
+                <th className="text-left px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-[#7D8590]">Script</th>
+                <th className="text-left px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-[#7D8590] hidden md:table-cell">Submitted by</th>
+                <th className="text-left px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-[#7D8590] hidden lg:table-cell">Uploaded</th>
+                <th className="text-left px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-[#7D8590]">Status</th>
+                <th className="px-4 py-3 w-10" />
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-[#21262D]">
+              {displayed.map(r => {
+                const isExpanded = expandedId === r.id;
+                const isReviewed = r.reviewedAt !== null;
+                return (
+                  <Fragment key={r.id}>
+                    <tr
+                      onClick={() => setExpandedId(isExpanded ? null : r.id)}
+                      className={`hover:bg-[#1C2128] transition-colors cursor-pointer group ${isReviewed ? "opacity-60" : ""}`}
+                    >
+                      <td className="px-4 py-3">
+                        <span className="font-medium text-[#E6EDF3]">
+                          {r.clientName ?? (r.customerId ? `Client #${r.customerId}` : <span className="text-[#484F58] italic">No client</span>)}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className="text-[#C9D1D9]">{r.scriptName ?? `Script #${r.scriptId}`}</span>
+                      </td>
+                      <td className="px-4 py-3 hidden md:table-cell">
+                        <span className="text-xs text-[#7D8590]">{r.uploadedBy ?? <span className="italic text-[#484F58]">—</span>}</span>
+                      </td>
+                      <td className="px-4 py-3 hidden lg:table-cell">
+                        <span className="text-xs text-[#7D8590]" title={r.uploadedAt ? formatDate(r.uploadedAt) : undefined}>
+                          {r.uploadedAt ? formatRelative(r.uploadedAt) : <span className="italic text-[#484F58]">Not yet</span>}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3">
+                        {isReviewed ? (
+                          <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full border bg-green-500/15 text-green-400 border-green-500/25">
+                            <CheckCircle className="w-3 h-3" /> Reviewed
+                          </span>
+                        ) : (
+                          <StatusBadge status={r.status} />
+                        )}
+                      </td>
+                      <td className="px-4 py-3">
+                        {isExpanded
+                          ? <ChevronUp className="w-4 h-4 text-[#7D8590]" />
+                          : <ChevronDown className="w-4 h-4 text-[#484F58] group-hover:text-[#7D8590]" />
+                        }
+                      </td>
+                    </tr>
+                    {isExpanded && (
+                      <tr key={`${r.id}-expanded`}>
+                        <td colSpan={6} className="p-0">
+                          {r.status === "awaiting_upload"
+                            ? <AwaitingUploadPanel result={r} onUploaded={onUploaded} />
+                            : <ClientUploadDetail result={r} onMarkReviewed={onMarkReviewed} />
+                          }
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
+                );
+              })}
+            </tbody>
+          </table>
+
+          <div className="px-4 py-3 border-t border-[#30363D] flex items-center justify-between">
+            <span className="text-xs text-[#484F58]">
+              {displayed.length} upload{displayed.length !== 1 ? "s" : ""}
+              {!showReviewed && reviewed.length > 0 && ` · ${reviewed.length} reviewed hidden`}
+            </span>
+            <span className="text-[10px] text-[#484F58]">Click a row to view submitted data</span>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Main Page ─────────────────────────────────────────────────────────────────
+
+type PageTab = "all" | "uploads";
 
 export default function M365RunResultsPage() {
   const { fetchWithAuth } = useAuth();
@@ -402,6 +703,7 @@ export default function M365RunResultsPage() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [expandedId, setExpandedId] = useState<number | null>(null);
+  const [activeTab, setActiveTab] = useState<PageTab>("uploads");
   const [filters, setFilters] = useState<FilterState>({
     clientId: "",
     scriptId: "",
@@ -433,7 +735,20 @@ export default function M365RunResultsPage() {
     );
   };
 
-  // Filtered results
+  const handleMarkReviewed = (id: number, reviewedAt: string) => {
+    setResults(prev =>
+      prev.map(r => r.id === id ? { ...r, reviewedAt } : r)
+    );
+  };
+
+  // Client uploads count for the tab badge
+  const pendingUploadsCount = results.filter(r =>
+    r.executionSource === "manual" &&
+    (r.uploadedAt !== null || r.status === "awaiting_upload") &&
+    r.reviewedAt === null
+  ).length;
+
+  // Filtered results for the "All Results" tab
   const filtered = results.filter(r => {
     if (filters.clientId && String(r.customerId) !== filters.clientId) return false;
     if (filters.scriptId && String(r.scriptId) !== filters.scriptId) return false;
@@ -468,183 +783,231 @@ export default function M365RunResultsPage() {
       <div className="flex items-center justify-between flex-wrap gap-4">
         <div>
           <h1 className="text-xl font-bold text-[#E6EDF3]">Run Results</h1>
-          <p className="text-sm text-[#7D8590] mt-0.5">Post-run stored results for all M365 Command Center script executions</p>
+          <p className="text-sm text-[#7D8590] mt-0.5">Script execution history and client-submitted uploads</p>
         </div>
-        <button
-          onClick={() => void load(true)}
-          disabled={refreshing}
-          className="flex items-center gap-2 text-sm font-semibold text-[#0078D4] border border-[#0078D4]/30 hover:border-[#0078D4] hover:bg-[#0078D4]/10 rounded-lg px-3 py-2 transition-colors disabled:opacity-50"
-        >
-          <RefreshCw className={`w-4 h-4 ${refreshing ? "animate-spin" : ""}`} />
-          Refresh
-        </button>
-      </div>
-
-      {/* Filters */}
-      <div className="bg-[#161B22] border border-[#30363D] rounded-xl p-4">
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
-          <div>
-            <label className="block text-[10px] font-bold uppercase tracking-wider text-[#7D8590] mb-1">Client</label>
-            <select
-              className="w-full border border-[#30363D] rounded-lg px-2.5 py-1.5 text-xs text-[#E6EDF3] bg-[#0D1117] focus:outline-none focus:ring-2 focus:ring-[#0078D4]/40"
-              value={filters.clientId}
-              onChange={e => setFilters(f => ({ ...f, clientId: e.target.value }))}
-            >
-              <option value="">All clients</option>
-              {clientOptions.map(o => (
-                <option key={o.value} value={o.value}>{o.label ?? `Client ${o.value}`}</option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="block text-[10px] font-bold uppercase tracking-wider text-[#7D8590] mb-1">Script</label>
-            <select
-              className="w-full border border-[#30363D] rounded-lg px-2.5 py-1.5 text-xs text-[#E6EDF3] bg-[#0D1117] focus:outline-none focus:ring-2 focus:ring-[#0078D4]/40"
-              value={filters.scriptId}
-              onChange={e => setFilters(f => ({ ...f, scriptId: e.target.value }))}
-            >
-              <option value="">All scripts</option>
-              {scriptOptions.map(o => (
-                <option key={o.value} value={o.value}>{o.label ?? `Script ${o.value}`}</option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="block text-[10px] font-bold uppercase tracking-wider text-[#7D8590] mb-1">Status</label>
-            <select
-              className="w-full border border-[#30363D] rounded-lg px-2.5 py-1.5 text-xs text-[#E6EDF3] bg-[#0D1117] focus:outline-none focus:ring-2 focus:ring-[#0078D4]/40"
-              value={filters.status}
-              onChange={e => setFilters(f => ({ ...f, status: e.target.value }))}
-            >
-              <option value="">All statuses</option>
-              <option value="running">Running</option>
-              <option value="completed">Completed</option>
-              <option value="failed">Failed</option>
-              <option value="awaiting_upload">Awaiting Upload</option>
-            </select>
-          </div>
-          <div>
-            <label className="block text-[10px] font-bold uppercase tracking-wider text-[#7D8590] mb-1">From</label>
-            <input
-              type="date"
-              className="w-full border border-[#30363D] rounded-lg px-2.5 py-1.5 text-xs text-[#E6EDF3] bg-[#0D1117] focus:outline-none focus:ring-2 focus:ring-[#0078D4]/40"
-              value={filters.dateFrom}
-              onChange={e => setFilters(f => ({ ...f, dateFrom: e.target.value }))}
-            />
-          </div>
-          <div>
-            <label className="block text-[10px] font-bold uppercase tracking-wider text-[#7D8590] mb-1">To</label>
-            <input
-              type="date"
-              className="w-full border border-[#30363D] rounded-lg px-2.5 py-1.5 text-xs text-[#E6EDF3] bg-[#0D1117] focus:outline-none focus:ring-2 focus:ring-[#0078D4]/40"
-              value={filters.dateTo}
-              onChange={e => setFilters(f => ({ ...f, dateTo: e.target.value }))}
-            />
-          </div>
-        </div>
-        {hasFilters && (
-          <div className="flex items-center justify-between mt-3 pt-3 border-t border-[#30363D]">
-            <span className="text-xs text-[#7D8590]">
-              Showing {filtered.length} of {results.length} results
-            </span>
-            <button
-              onClick={clearFilters}
-              className="text-xs text-[#0078D4] hover:text-[#1A90E0] font-medium transition-colors"
-            >
-              Clear filters
-            </button>
-          </div>
+        {activeTab === "all" && (
+          <button
+            onClick={() => void load(true)}
+            disabled={refreshing}
+            className="flex items-center gap-2 text-sm font-semibold text-[#0078D4] border border-[#0078D4]/30 hover:border-[#0078D4] hover:bg-[#0078D4]/10 rounded-lg px-3 py-2 transition-colors disabled:opacity-50"
+          >
+            <RefreshCw className={`w-4 h-4 ${refreshing ? "animate-spin" : ""}`} />
+            Refresh
+          </button>
         )}
       </div>
 
-      {/* Results table */}
-      {filtered.length === 0 ? (
-        <div className="text-center py-16">
-          <ClipboardList className="w-10 h-10 text-[#30363D] mx-auto mb-3" />
-          <p className="text-[#7D8590] text-sm">
-            {hasFilters ? "No results match your filters" : "No script runs recorded yet"}
-          </p>
-          <p className="text-[#484F58] text-xs mt-1">
-            {hasFilters ? "Try adjusting the filters above" : "Run a package or individual script to see results here"}
-          </p>
-        </div>
-      ) : (
-        <div className="bg-[#161B22] border border-[#30363D] rounded-xl overflow-hidden">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-[#30363D]">
-                <th className="text-left px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-[#7D8590]">Client</th>
-                <th className="text-left px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-[#7D8590]">Script</th>
-                <th className="text-left px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-[#7D8590] hidden md:table-cell">Package</th>
-                <th className="text-left px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-[#7D8590] hidden lg:table-cell">Ran</th>
-                <th className="text-left px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-[#7D8590]">Status</th>
-                <th className="px-4 py-3 w-10" />
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-[#21262D]">
-              {filtered.map(r => {
-                const isExpanded = expandedId === r.id;
-                return [
-                  <tr
-                    key={r.id}
-                    onClick={() => setExpandedId(isExpanded ? null : r.id)}
-                    className="hover:bg-[#1C2128] transition-colors cursor-pointer group"
-                  >
-                    <td className="px-4 py-3">
-                      <span className="font-medium text-[#E6EDF3]">
-                        {r.clientName ?? (r.customerId ? `Client #${r.customerId}` : <span className="text-[#484F58] italic">No client</span>)}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="flex flex-col gap-0.5">
-                        <span className="text-[#C9D1D9]">{r.scriptName ?? `Script #${r.scriptId}`}</span>
-                        {r.executionSource === "manual" && (
-                          <span className="inline-flex items-center gap-1 text-[9px] font-bold uppercase tracking-wider text-amber-500/70 w-fit">
-                            📋 Manual
-                          </span>
-                        )}
-                      </div>
-                    </td>
-                    <td className="px-4 py-3 hidden md:table-cell">
-                      <span className="text-xs text-[#7D8590]">
-                        {r.packageName ?? (r.packageId ? `Package #${r.packageId}` : <span className="italic text-[#484F58]">—</span>)}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 hidden lg:table-cell">
-                      <span className="text-xs text-[#7D8590]" title={formatDate(r.createdAt)}>
-                        {formatRelative(r.createdAt)}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3">
-                      <StatusBadge status={r.status} />
-                    </td>
-                    <td className="px-4 py-3">
-                      {isExpanded
-                        ? <ChevronUp className="w-4 h-4 text-[#7D8590]" />
-                        : <ChevronDown className="w-4 h-4 text-[#484F58] group-hover:text-[#7D8590]" />
-                      }
-                    </td>
-                  </tr>,
-                  isExpanded && (
-                    <tr key={`${r.id}-expanded`}>
-                      <td colSpan={6} className="p-0">
-                        <ExpandedRow result={r} onUploaded={handleUploaded} />
-                      </td>
-                    </tr>
-                  ),
-                ];
-              })}
-            </tbody>
-          </table>
-
-          <div className="px-4 py-3 border-t border-[#30363D] flex items-center justify-between">
-            <span className="text-xs text-[#484F58]">
-              {filtered.length} result{filtered.length !== 1 ? "s" : ""}
-              {hasFilters && ` (filtered from ${results.length})`}
+      {/* Tabs */}
+      <div className="flex gap-1 border-b border-[#30363D]">
+        <button
+          onClick={() => setActiveTab("uploads")}
+          className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium transition-colors border-b-2 -mb-px ${
+            activeTab === "uploads"
+              ? "text-[#E6EDF3] border-[#0078D4]"
+              : "text-[#7D8590] border-transparent hover:text-[#C9D1D9]"
+          }`}
+        >
+          Client Uploads
+          {pendingUploadsCount > 0 && (
+            <span className="inline-flex items-center justify-center w-5 h-5 text-[10px] font-bold bg-amber-500 text-white rounded-full">
+              {pendingUploadsCount > 9 ? "9+" : pendingUploadsCount}
             </span>
-            <span className="text-[10px] text-[#484F58]">Click a row to expand findings</span>
+          )}
+        </button>
+        <button
+          onClick={() => setActiveTab("all")}
+          className={`px-4 py-2.5 text-sm font-medium transition-colors border-b-2 -mb-px ${
+            activeTab === "all"
+              ? "text-[#E6EDF3] border-[#0078D4]"
+              : "text-[#7D8590] border-transparent hover:text-[#C9D1D9]"
+          }`}
+        >
+          All Results
+        </button>
+      </div>
+
+      {/* Client Uploads tab */}
+      {activeTab === "uploads" && (
+        <ClientUploadsTab
+          results={results}
+          onMarkReviewed={handleMarkReviewed}
+          onUploaded={handleUploaded}
+          refreshing={refreshing}
+          onRefresh={() => void load(true)}
+        />
+      )}
+
+      {/* All Results tab */}
+      {activeTab === "all" && (
+        <>
+          {/* Filters */}
+          <div className="bg-[#161B22] border border-[#30363D] rounded-xl p-4">
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
+              <div>
+                <label className="block text-[10px] font-bold uppercase tracking-wider text-[#7D8590] mb-1">Client</label>
+                <select
+                  className="w-full border border-[#30363D] rounded-lg px-2.5 py-1.5 text-xs text-[#E6EDF3] bg-[#0D1117] focus:outline-none focus:ring-2 focus:ring-[#0078D4]/40"
+                  value={filters.clientId}
+                  onChange={e => setFilters(f => ({ ...f, clientId: e.target.value }))}
+                >
+                  <option value="">All clients</option>
+                  {clientOptions.map(o => (
+                    <option key={o.value} value={o.value}>{o.label ?? `Client ${o.value}`}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-[10px] font-bold uppercase tracking-wider text-[#7D8590] mb-1">Script</label>
+                <select
+                  className="w-full border border-[#30363D] rounded-lg px-2.5 py-1.5 text-xs text-[#E6EDF3] bg-[#0D1117] focus:outline-none focus:ring-2 focus:ring-[#0078D4]/40"
+                  value={filters.scriptId}
+                  onChange={e => setFilters(f => ({ ...f, scriptId: e.target.value }))}
+                >
+                  <option value="">All scripts</option>
+                  {scriptOptions.map(o => (
+                    <option key={o.value} value={o.value}>{o.label ?? `Script ${o.value}`}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-[10px] font-bold uppercase tracking-wider text-[#7D8590] mb-1">Status</label>
+                <select
+                  className="w-full border border-[#30363D] rounded-lg px-2.5 py-1.5 text-xs text-[#E6EDF3] bg-[#0D1117] focus:outline-none focus:ring-2 focus:ring-[#0078D4]/40"
+                  value={filters.status}
+                  onChange={e => setFilters(f => ({ ...f, status: e.target.value }))}
+                >
+                  <option value="">All statuses</option>
+                  <option value="running">Running</option>
+                  <option value="completed">Completed</option>
+                  <option value="failed">Failed</option>
+                  <option value="awaiting_upload">Awaiting Upload</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-[10px] font-bold uppercase tracking-wider text-[#7D8590] mb-1">From</label>
+                <input
+                  type="date"
+                  className="w-full border border-[#30363D] rounded-lg px-2.5 py-1.5 text-xs text-[#E6EDF3] bg-[#0D1117] focus:outline-none focus:ring-2 focus:ring-[#0078D4]/40"
+                  value={filters.dateFrom}
+                  onChange={e => setFilters(f => ({ ...f, dateFrom: e.target.value }))}
+                />
+              </div>
+              <div>
+                <label className="block text-[10px] font-bold uppercase tracking-wider text-[#7D8590] mb-1">To</label>
+                <input
+                  type="date"
+                  className="w-full border border-[#30363D] rounded-lg px-2.5 py-1.5 text-xs text-[#E6EDF3] bg-[#0D1117] focus:outline-none focus:ring-2 focus:ring-[#0078D4]/40"
+                  value={filters.dateTo}
+                  onChange={e => setFilters(f => ({ ...f, dateTo: e.target.value }))}
+                />
+              </div>
+            </div>
+            {hasFilters && (
+              <div className="flex items-center justify-between mt-3 pt-3 border-t border-[#30363D]">
+                <span className="text-xs text-[#7D8590]">
+                  Showing {filtered.length} of {results.length} results
+                </span>
+                <button
+                  onClick={clearFilters}
+                  className="text-xs text-[#0078D4] hover:text-[#1A90E0] font-medium transition-colors"
+                >
+                  Clear filters
+                </button>
+              </div>
+            )}
           </div>
-        </div>
+
+          {/* Results table */}
+          {filtered.length === 0 ? (
+            <div className="text-center py-16">
+              <ClipboardList className="w-10 h-10 text-[#30363D] mx-auto mb-3" />
+              <p className="text-[#7D8590] text-sm">
+                {hasFilters ? "No results match your filters" : "No script runs recorded yet"}
+              </p>
+              <p className="text-[#484F58] text-xs mt-1">
+                {hasFilters ? "Try adjusting the filters above" : "Run a package or individual script to see results here"}
+              </p>
+            </div>
+          ) : (
+            <div className="bg-[#161B22] border border-[#30363D] rounded-xl overflow-hidden">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-[#30363D]">
+                    <th className="text-left px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-[#7D8590]">Client</th>
+                    <th className="text-left px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-[#7D8590]">Script</th>
+                    <th className="text-left px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-[#7D8590] hidden md:table-cell">Package</th>
+                    <th className="text-left px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-[#7D8590] hidden lg:table-cell">Ran</th>
+                    <th className="text-left px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-[#7D8590]">Status</th>
+                    <th className="px-4 py-3 w-10" />
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-[#21262D]">
+                  {filtered.map(r => {
+                    const isExpanded = expandedId === r.id;
+                    return (
+                      <Fragment key={r.id}>
+                        <tr
+                          onClick={() => setExpandedId(isExpanded ? null : r.id)}
+                          className="hover:bg-[#1C2128] transition-colors cursor-pointer group"
+                        >
+                          <td className="px-4 py-3">
+                            <span className="font-medium text-[#E6EDF3]">
+                              {r.clientName ?? (r.customerId ? `Client #${r.customerId}` : <span className="text-[#484F58] italic">No client</span>)}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3">
+                            <div className="flex flex-col gap-0.5">
+                              <span className="text-[#C9D1D9]">{r.scriptName ?? `Script #${r.scriptId}`}</span>
+                              {r.executionSource === "manual" && (
+                                <span className="inline-flex items-center gap-1 text-[9px] font-bold uppercase tracking-wider text-amber-500/70 w-fit">
+                                  📋 Manual
+                                </span>
+                              )}
+                            </div>
+                          </td>
+                          <td className="px-4 py-3 hidden md:table-cell">
+                            <span className="text-xs text-[#7D8590]">
+                              {r.packageName ?? (r.packageId ? `Package #${r.packageId}` : <span className="italic text-[#484F58]">—</span>)}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 hidden lg:table-cell">
+                            <span className="text-xs text-[#7D8590]" title={formatDate(r.createdAt)}>
+                              {formatRelative(r.createdAt)}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3">
+                            <StatusBadge status={r.status} />
+                          </td>
+                          <td className="px-4 py-3">
+                            {isExpanded
+                              ? <ChevronUp className="w-4 h-4 text-[#7D8590]" />
+                              : <ChevronDown className="w-4 h-4 text-[#484F58] group-hover:text-[#7D8590]" />
+                            }
+                          </td>
+                        </tr>
+                        {isExpanded && (
+                          <tr key={`${r.id}-expanded`}>
+                            <td colSpan={6} className="p-0">
+                              <ExpandedRow result={r} onUploaded={handleUploaded} />
+                            </td>
+                          </tr>
+                        )}
+                      </Fragment>
+                    );
+                  })}
+                </tbody>
+              </table>
+
+              <div className="px-4 py-3 border-t border-[#30363D] flex items-center justify-between">
+                <span className="text-xs text-[#484F58]">
+                  {filtered.length} result{filtered.length !== 1 ? "s" : ""}
+                  {hasFilters && ` (filtered from ${results.length})`}
+                </span>
+                <span className="text-[10px] text-[#484F58]">Click a row to expand findings</span>
+              </div>
+            </div>
+          )}
+        </>
       )}
     </div>
   );

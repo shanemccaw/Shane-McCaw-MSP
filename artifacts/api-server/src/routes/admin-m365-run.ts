@@ -22,7 +22,7 @@ import {
   usersTable,
   servicesTable,
 } from "@workspace/db";
-import { eq, asc, desc, and, isNull } from "drizzle-orm";
+import { eq, asc, desc, and, isNull, isNotNull, sql } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/requireAuth";
 import { logger } from "../lib/logger";
 import { createRunbookJob, getJobStatus, getJobOutput, isTerminalStatus } from "../lib/azure-automation";
@@ -374,7 +374,9 @@ router.get("/admin/script-run-results", requireAdmin, async (req: Request, res: 
         profileUpdates: scriptRunResultsTable.profileUpdates,
         status: scriptRunResultsTable.status,
         executionSource: scriptRunResultsTable.executionSource,
+        uploadedBy: scriptRunResultsTable.uploadedBy,
         uploadedAt: scriptRunResultsTable.uploadedAt,
+        reviewedAt: scriptRunResultsTable.reviewedAt,
         createdAt: scriptRunResultsTable.createdAt,
         scriptName: scriptCatalogTable.name,
         clientName: usersTable.name,
@@ -391,6 +393,34 @@ router.get("/admin/script-run-results", requireAdmin, async (req: Request, res: 
   } catch (err) {
     logger.error({ err }, "admin-m365-run: failed to list script run results");
     res.status(500).json({ error: "Failed to list script run results" });
+  }
+});
+
+// ── PATCH /api/admin/script-run-results/:id/mark-reviewed ────────────────────
+
+router.patch("/admin/script-run-results/:id/mark-reviewed", requireAdmin, async (req: Request, res: Response) => {
+  const id = parseInt(String(req.params.id));
+  if (isNaN(id)) {
+    res.status(400).json({ error: "Invalid id" });
+    return;
+  }
+
+  try {
+    const [updated] = await db
+      .update(scriptRunResultsTable)
+      .set({ reviewedAt: sql`now()` })
+      .where(eq(scriptRunResultsTable.id, id))
+      .returning({ id: scriptRunResultsTable.id, reviewedAt: scriptRunResultsTable.reviewedAt });
+
+    if (!updated) {
+      res.status(404).json({ error: "Script run result not found" });
+      return;
+    }
+
+    res.json(updated);
+  } catch (err) {
+    logger.error({ err }, "admin-m365-run: failed to mark script run result reviewed");
+    res.status(500).json({ error: "Failed to mark as reviewed" });
   }
 });
 

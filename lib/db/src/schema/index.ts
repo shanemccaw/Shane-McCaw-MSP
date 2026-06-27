@@ -1332,6 +1332,7 @@ export const scriptRunResultsTable = pgTable("script_run_results", {
   executionSource: text("execution_source", { enum: ["automated", "manual"] }).notNull().default("automated"),
   uploadedBy: text("uploaded_by"),
   uploadedAt: timestamp("uploaded_at", { withTimezone: true }),
+  reviewedAt: timestamp("reviewed_at", { withTimezone: true }),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
