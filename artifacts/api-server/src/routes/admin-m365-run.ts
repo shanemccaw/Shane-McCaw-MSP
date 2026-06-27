@@ -18,6 +18,7 @@ import {
   scriptRunResultsTable,
   clientScoresTable,
   clientM365ProfilesTable,
+  clientHealthHistoryTable,
   azureTenantCredentialsTable,
   usersTable,
   servicesTable,
@@ -152,6 +153,26 @@ async function applyScoreImpact(
       .insert(clientScoresTable)
       .values({ clientId, ...updated });
   }
+
+  // Snapshot into client_health_history so the portal scorecard reflects the change.
+  // client_health_history uses "copilot" for what client_scores calls "copilotReadiness".
+  const categoryMap: Array<{ historyKey: "identity" | "security" | "collaboration" | "compliance" | "copilot"; score: number }> = [
+    { historyKey: "identity",      score: updated.identity },
+    { historyKey: "security",      score: updated.security },
+    { historyKey: "collaboration", score: updated.collaboration },
+    { historyKey: "compliance",    score: updated.compliance },
+    { historyKey: "copilot",       score: updated.copilotReadiness },
+  ];
+
+  const now = new Date();
+  await db.insert(clientHealthHistoryTable).values(
+    categoryMap.map(({ historyKey, score }) => ({
+      clientId,
+      category: historyKey,
+      score,
+      recordedAt: now,
+    }))
+  );
 }
 
 /** Merge profileUpdates into client_m365_profiles. */
