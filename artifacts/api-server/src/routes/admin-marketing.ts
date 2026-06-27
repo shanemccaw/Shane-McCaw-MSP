@@ -2338,10 +2338,21 @@ ${icpCtx}
 Hot leads right now: ${hotLeads.map(l => `${l.name} (${l.company ?? "?"}, score ${l.score})`).join("; ") || "none yet"}
 
 Generate 5-7 revenue-generating tasks (tasks that directly lead to income). Each task should be specific, actionable, and completable today or this week.
-Return JSON array: [{ "title": "task title", "description": "why this makes money and exactly how to do it" }]`;
 
-    const msg = await anthropic.messages.create({ model: "claude-haiku-4-5", max_tokens: 800, messages: [{ role: "user", content: prompt }] });
-    const raw = msg.content[0]?.type === "text" ? msg.content[0].text : "[]";
+Respond with ONLY a raw JSON array — no prose, no markdown fences. Schema:
+[{"title":"string","description":"string"}]`;
+
+    // Prefill assistant turn with "[" to force JSON array output (no prose preamble)
+    const msg = await anthropic.messages.create({
+      model: "claude-haiku-4-5",
+      max_tokens: 800,
+      messages: [
+        { role: "user", content: prompt },
+        { role: "assistant", content: "[" },
+      ],
+    });
+    const continuation = msg.content[0]?.type === "text" ? msg.content[0].text : "]";
+    const raw = "[" + continuation;
     const aiTasks = parseAiJson(raw, z.array(z.object({ title: z.string(), description: z.string() })));
 
     // Get current max order for money_task column
