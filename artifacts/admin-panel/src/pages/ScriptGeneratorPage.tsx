@@ -577,6 +577,9 @@ function ModulePackageView({
 // ─── Generator Tab ────────────────────────────────────────────────────────────
 
 const BASE_INSTRUCTIONS_KEY = "sg:baseInstructions";
+const PROMPT_KEY = "sg:prompt";
+const DETAILED_INSTRUCTIONS_KEY = "sg:detailedInstructions";
+const CATEGORY_KEY = "sg:category";
 
 function GeneratorTab({
   token,
@@ -593,9 +596,9 @@ function GeneratorTab({
   baseInstructions: string;
   onBaseInstructionsChange: (v: string) => void;
 }) {
-  const [category, setCategory] = useState(initialScript?.category ?? "m365");
-  const [prompt, setPrompt] = useState("");
-  const [detailedInstructions, setDetailedInstructions] = useState("");
+  const [category, setCategory] = useState(() => initialScript?.category ?? localStorage.getItem(CATEGORY_KEY) ?? "m365");
+  const [prompt, setPrompt] = useState(() => localStorage.getItem(PROMPT_KEY) ?? "");
+  const [detailedInstructions, setDetailedInstructions] = useState(() => localStorage.getItem(DETAILED_INSTRUCTIONS_KEY) ?? "");
   const [scriptBody, setScriptBody] = useState(initialScript?.scriptBody ?? "");
   const [permissions, setPermissions] = useState<PsScriptPermissions>(
     initialScript?.permissions ?? { appPermissions: [], delegatedPermissions: [], notes: "" }
@@ -743,7 +746,7 @@ function GeneratorTab({
           </div>
           <textarea
             value={detailedInstructions}
-            onChange={(e) => setDetailedInstructions(e.target.value)}
+            onChange={(e) => { setDetailedInstructions(e.target.value); localStorage.setItem(DETAILED_INSTRUCTIONS_KEY, e.target.value); }}
             rows={3}
             placeholder="e.g. The tenant uses a hybrid setup — avoid any commands that require cloud-only connectivity. Output must be compatible with PowerShell 5.1."
             className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2.5 text-sm text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60 transition-colors resize-none"
@@ -758,7 +761,7 @@ function GeneratorTab({
             <label className="block text-xs font-medium text-[#8B949E] mb-1.5">Category</label>
             <select
               value={category}
-              onChange={(e) => setCategory(e.target.value)}
+              onChange={(e) => { setCategory(e.target.value); localStorage.setItem(CATEGORY_KEY, e.target.value); }}
               className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-sm text-[#E6EDF3] outline-none focus:border-[#0078D4]/60 transition-colors"
             >
               {CATEGORIES.map((c) => (
@@ -772,7 +775,7 @@ function GeneratorTab({
           <label className="block text-xs font-medium text-[#8B949E] mb-1.5">Describe what you need</label>
           <textarea
             value={prompt}
-            onChange={(e) => setPrompt(e.target.value)}
+            onChange={(e) => { setPrompt(e.target.value); localStorage.setItem(PROMPT_KEY, e.target.value); }}
             rows={4}
             placeholder="e.g. List all Teams with more than 100 members and export to CSV with owner names, member count, and creation date…"
             className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2.5 text-sm text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60 transition-colors resize-none"
