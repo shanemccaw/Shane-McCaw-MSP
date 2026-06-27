@@ -4678,6 +4678,41 @@ router.patch("/admin/workflow-steps/:id", requireAdmin, async (req: Request, res
     });
   }
 
+  // When a phase is moved to in_progress, auto-populate its template tasks into the Kanban backlog
+  if (status === "in_progress" && updated.workflowTemplateStepId && updated.projectId) {
+    const [existingCount] = await db
+      .select({ n: count() })
+      .from(kanbanTasksTable)
+      .where(eq(kanbanTasksTable.workflowStepId, updated.id));
+
+    if ((Number(existingCount?.n) ?? 0) === 0) {
+      const templateTasks = await db
+        .select()
+        .from(workflowTemplateStepTasksTable)
+        .where(eq(workflowTemplateStepTasksTable.workflowTemplateStepId, updated.workflowTemplateStepId))
+        .orderBy(asc(workflowTemplateStepTasksTable.order));
+
+      if (templateTasks.length > 0) {
+        const resolvedMetadata = await resolveTemplateTaskMetadata(templateTasks);
+        await db.insert(kanbanTasksTable).values(
+          templateTasks.map((t, idx) => ({
+            projectId: updated.projectId!,
+            workflowStepId: updated.id,
+            groupName: t.groupName ?? null,
+            title: t.title,
+            description: t.description ?? null,
+            column: "backlog" as const,
+            order: idx,
+            taskType: t.taskType ?? null,
+            taskMetadata: resolvedMetadata[idx],
+          }))
+        );
+        await syncProjectProgress(updated.projectId);
+        req.log.info({ stepId: updated.id, projectId: updated.projectId, taskCount: templateTasks.length }, "Seeded kanban tasks for phase moved to in_progress");
+      }
+    }
+  }
+
   res.json(updated);
 });
 

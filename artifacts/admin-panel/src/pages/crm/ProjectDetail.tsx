@@ -1611,6 +1611,11 @@ export default function ProjectDetailPage() {
     });
     setSteps(prev => prev.map(s => s.id === stepId ? { ...s, status } : s));
     void loadAuditLogs();
+    // When a phase goes in_progress the server seeds its template tasks into the backlog — reload them
+    if (status === "in_progress" && projectId) {
+      const tasksRes = await fetchWithAuth(`/api/admin/kanban-tasks?projectId=${projectId}`);
+      if (tasksRes.ok) setTasks(await tasksRes.json() as KanbanTask[]);
+    }
   };
 
   const handleUpdateStepDueDate = async (stepId: number, dueDate: string) => {
