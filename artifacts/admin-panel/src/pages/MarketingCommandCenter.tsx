@@ -4211,6 +4211,395 @@ function CampaignAdAssetsStep({
 
 // ─── Section 7: Campaign Builder Wizard ───────────────────────────────────────
 
+// ─── Campaign 360° Detail View ────────────────────────────────────────────────
+
+interface CampaignDetailData {
+  campaign: Campaign;
+  assets: CampaignAsset[];
+  landingPages: Array<{ id: number; slug: string; title: string; headline: string | null; published: boolean; createdAt: string }>;
+  offers: Array<{ id: number; name: string; pricing: string | null; deliverables: string[]; outcomes: string[]; createdAt: string }>;
+  emailEvents: Array<{ id: number; subject: string | null; recipient: string | null; eventType: string; occurredAt: string }>;
+}
+
+const ASSET_TYPE_LABELS: Record<string, string> = {
+  landing_copy: "Landing Page Copy",
+  email_sequence: "Email Sequence",
+  google_ads: "Google Ads",
+  linkedin_ads: "LinkedIn Ads",
+  social_posts: "Social Posts",
+  blog_post: "Blog Post",
+  ad_copy: "Ad Copy",
+  subject_lines: "Subject Lines",
+  cta_variants: "CTA Variants",
+};
+
+const EVENT_COLORS: Record<string, string> = {
+  sent: "text-[#58A6FF]",
+  delivered: "text-emerald-400",
+  opened: "text-amber-400",
+  clicked: "text-purple-400",
+  bounced: "text-red-400",
+  complained: "text-orange-400",
+  unsubscribed: "text-[#7D8590]",
+};
+
+function CampaignDetailView({
+  campaignId,
+  fetchWithAuth,
+  onBack,
+  onCampaignUpdated,
+  onGenerateMoreAssets,
+}: {
+  campaignId: number;
+  fetchWithAuth: (url: string, opts?: RequestInit) => Promise<Response>;
+  onBack: () => void;
+  onCampaignUpdated: (campaign: Campaign) => void;
+  onGenerateMoreAssets: (campaign: Campaign) => void;
+}) {
+  const [data, setData] = useState<CampaignDetailData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  // Inline metrics edit
+  const [leads, setLeads] = useState("");
+  const [emails, setEmails] = useState("");
+  const [revenue, setRevenue] = useState("");
+  const [savingMetrics, setSavingMetrics] = useState(false);
+  const [savedMetrics, setSavedMetrics] = useState(false);
+
+  // Status edit
+  const [statusSaving, setStatusSaving] = useState(false);
+
+  // Asset expand map
+  const [expandedAssets, setExpandedAssets] = useState<Record<number, boolean>>({});
+
+  // Brief expand
+  const [briefOpen, setBriefOpen] = useState(false);
+
+  useEffect(() => {
+    setLoading(true);
+    setError(null);
+    fetchWithAuth(`${API}/admin/marketing/campaigns/${campaignId}`)
+      .then(r => r.json())
+      .then((d: CampaignDetailData) => {
+        setData(d);
+        setLeads(String(d.campaign.leadsGenerated ?? 0));
+        setEmails(String(d.campaign.emailsSent ?? 0));
+        setRevenue(String(Number(d.campaign.revenueAttributed ?? 0).toFixed(2)));
+      })
+      .catch(() => setError("Failed to load campaign details"))
+      .finally(() => setLoading(false));
+  }, [campaignId, fetchWithAuth]);
+
+  const handleSaveMetrics = async () => {
+    if (!data) return;
+    setSavingMetrics(true);
+    try {
+      const r = await fetchWithAuth(`${API}/admin/marketing/campaigns/${campaignId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          leadsGenerated: parseInt(leads, 10) || 0,
+          emailsSent: parseInt(emails, 10) || 0,
+          revenueAttributed: parseFloat(revenue) || 0,
+        }),
+      });
+      const updated = await r.json() as Campaign;
+      const merged = { ...updated, emailsSentAuto: data.campaign.emailsSentAuto };
+      setData(prev => prev ? { ...prev, campaign: merged } : prev);
+      onCampaignUpdated(merged);
+      setSavedMetrics(true);
+      setTimeout(() => setSavedMetrics(false), 2000);
+    } finally { setSavingMetrics(false); }
+  };
+
+  const handleStatusChange = async (newStatus: Campaign["status"]) => {
+    if (!data) return;
+    setStatusSaving(true);
+    try {
+      const r = await fetchWithAuth(`${API}/admin/marketing/campaigns/${campaignId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: newStatus }),
+      });
+      const updated = await r.json() as Campaign;
+      const merged = { ...updated, emailsSentAuto: data.campaign.emailsSentAuto };
+      setData(prev => prev ? { ...prev, campaign: merged } : prev);
+      onCampaignUpdated(merged);
+    } finally { setStatusSaving(false); }
+  };
+
+  if (loading) {
+    return (
+      <div className="space-y-4">
+        <button onClick={onBack} className="flex items-center gap-1 text-xs text-[#7D8590] hover:text-[#E6EDF3] transition-colors">
+          ← Back to Campaigns
+        </button>
+        <SkeletonCard />
+        <SkeletonCard />
+      </div>
+    );
+  }
+
+  if (error || !data) {
+    return (
+      <div className="space-y-3">
+        <button onClick={onBack} className="flex items-center gap-1 text-xs text-[#7D8590] hover:text-[#E6EDF3] transition-colors">
+          ← Back to Campaigns
+        </button>
+        <p className="text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2">{error ?? "Campaign not found"}</p>
+      </div>
+    );
+  }
+
+  const { campaign, assets, landingPages, offers, emailEvents } = data;
+
+  const autoCount = campaign.emailsSentAuto ?? 0;
+  const hasManualOverride = (campaign.emailsSent ?? 0) > 0;
+  const displayedEmails = hasManualOverride ? campaign.emailsSent : autoCount;
+
+  const statusColors: Record<Campaign["status"], string> = {
+    draft: "bg-[#30363D] text-[#7D8590]",
+    active: "bg-emerald-500/20 text-emerald-400",
+    paused: "bg-amber-500/20 text-amber-400",
+    completed: "bg-[#0078D4]/20 text-[#58A6FF]",
+  };
+
+  // Group assets by type
+  const assetsByType = assets.reduce<Record<string, CampaignAsset[]>>((acc, a) => {
+    const key = a.assetType;
+    if (!acc[key]) acc[key] = [];
+    acc[key].push(a);
+    return acc;
+  }, {});
+
+  return (
+    <div className="space-y-5">
+      {/* Header */}
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex items-start gap-3 min-w-0">
+          <button onClick={onBack} className="flex-shrink-0 mt-0.5 flex items-center gap-1 text-xs text-[#7D8590] hover:text-[#E6EDF3] transition-colors">
+            ← Back
+          </button>
+          <div className="min-w-0">
+            <h2 className="text-base font-semibold text-[#E6EDF3] truncate">{campaign.name}</h2>
+            <p className="text-[10px] text-[#7D8590] mt-0.5">Campaign ID #{campaign.id} · Created {new Date(campaign.createdAt).toLocaleDateString()}</p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2 flex-shrink-0">
+          <select
+            value={campaign.status}
+            onChange={e => { void handleStatusChange(e.target.value as Campaign["status"]); }}
+            disabled={statusSaving}
+            className={`text-xs px-2 py-1 rounded-full border-0 outline-none cursor-pointer font-semibold disabled:opacity-40 ${statusColors[campaign.status]}`}
+            style={{ background: "transparent" }}
+          >
+            <option value="draft">Draft</option>
+            <option value="active">Active</option>
+            <option value="paused">Paused</option>
+            <option value="completed">Completed</option>
+          </select>
+          <button
+            onClick={() => onGenerateMoreAssets(campaign)}
+            className="text-[10px] px-3 py-1.5 rounded-lg bg-[#0078D4]/20 text-[#58A6FF] border border-[#0078D4]/30 hover:bg-[#0078D4]/30 transition-colors font-semibold"
+          >
+            + Generate Assets
+          </button>
+        </div>
+      </div>
+
+      {/* KPI Strip */}
+      <div className="grid grid-cols-3 gap-3">
+        <div className="bg-[#161B22] border border-[#30363D] rounded-xl p-3 text-center">
+          <p className="text-[10px] text-[#7D8590] mb-1">Leads Generated</p>
+          <p className="text-xl font-bold text-emerald-400">{campaign.leadsGenerated ?? 0}</p>
+        </div>
+        <div className="bg-[#161B22] border border-[#30363D] rounded-xl p-3 text-center">
+          <p className="text-[10px] text-[#7D8590] mb-1">Emails Sent</p>
+          <p className="text-xl font-bold text-[#58A6FF]">{displayedEmails}</p>
+          {autoCount > 0 && (
+            <span className="text-[9px] bg-[#0078D4]/20 text-[#58A6FF] px-1.5 py-0.5 rounded-full">
+              {hasManualOverride ? `override (${autoCount} auto)` : "auto-tracked"}
+            </span>
+          )}
+        </div>
+        <div className="bg-[#161B22] border border-[#30363D] rounded-xl p-3 text-center">
+          <p className="text-[10px] text-[#7D8590] mb-1">Revenue</p>
+          <p className="text-xl font-bold text-amber-400">${Number(campaign.revenueAttributed ?? 0).toLocaleString()}</p>
+        </div>
+      </div>
+
+      {/* Update Metrics */}
+      <div className="bg-[#161B22] border border-[#30363D] rounded-xl p-4 space-y-3">
+        <div className="flex items-center justify-between">
+          <p className="text-xs font-semibold text-[#E6EDF3]">Update Metrics</p>
+          {autoCount > 0 && (
+            <span className="text-[9px] text-[#58A6FF]">{hasManualOverride ? `Auto: ${autoCount} · overridden` : "Auto-tracked · set override below"}</span>
+          )}
+        </div>
+        <div className="grid grid-cols-3 gap-2">
+          <div>
+            <label className="text-[10px] text-[#7D8590]">Leads</label>
+            <input type="number" min="0" value={leads} onChange={e => setLeads(e.target.value)}
+              className="mt-0.5 w-full bg-[#0D1117] border border-[#30363D] rounded px-2 py-1 text-xs text-[#E6EDF3] outline-none focus:border-[#0078D4]/60" />
+          </div>
+          <div>
+            <label className="text-[10px] text-[#7D8590]">{autoCount > 0 ? "Emails (override)" : "Emails Sent"}</label>
+            <input type="number" min="0" value={emails} onChange={e => setEmails(e.target.value)}
+              className={`mt-0.5 w-full bg-[#0D1117] border rounded px-2 py-1 text-xs text-[#E6EDF3] outline-none focus:border-[#0078D4]/60 ${autoCount > 0 ? "border-[#0078D4]/30" : "border-[#30363D]"}`} />
+          </div>
+          <div>
+            <label className="text-[10px] text-[#7D8590]">Revenue ($)</label>
+            <input type="number" min="0" step="0.01" value={revenue} onChange={e => setRevenue(e.target.value)}
+              className="mt-0.5 w-full bg-[#0D1117] border border-[#30363D] rounded px-2 py-1 text-xs text-[#E6EDF3] outline-none focus:border-[#0078D4]/60" />
+          </div>
+        </div>
+        <button onClick={() => { void handleSaveMetrics(); }} disabled={savingMetrics}
+          className={`w-full py-1.5 rounded-lg text-xs font-semibold transition-colors ${savedMetrics ? "bg-emerald-500/20 text-emerald-400" : "bg-[#0078D4] text-white hover:bg-[#0078D4]/80"} disabled:opacity-40`}>
+          {savingMetrics ? "Saving…" : savedMetrics ? "✓ Saved" : "Save Metrics"}
+        </button>
+      </div>
+
+      {/* Campaign Brief (collapsible) */}
+      <div className="bg-[#161B22] border border-[#30363D] rounded-xl overflow-hidden">
+        <button onClick={() => setBriefOpen(o => !o)}
+          className="w-full flex items-center justify-between px-4 py-3 text-xs font-semibold text-[#E6EDF3] hover:bg-[#1C2128] transition-colors">
+          <span>📋 Campaign Brief</span>
+          <span className="text-[#7D8590]">{briefOpen ? "▲" : "▼"}</span>
+        </button>
+        {briefOpen && (
+          <div className="px-4 pb-4 space-y-3 border-t border-[#30363D]">
+            {[
+              { label: "Goal", value: campaign.goal },
+              { label: "Audience", value: campaign.audience },
+              { label: "Offer", value: campaign.offer },
+            ].map(({ label, value }) => (
+              <div key={label}>
+                <p className="text-[10px] font-semibold text-[#7D8590] uppercase tracking-wide mb-1">{label}</p>
+                <p className="text-xs text-[#E6EDF3] whitespace-pre-wrap leading-relaxed">{value}</p>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Assets by Type */}
+      <div className="space-y-3">
+        <p className="text-xs font-semibold text-[#E6EDF3]">
+          📦 Campaign Assets
+          <span className="ml-2 text-[#7D8590] font-normal">{assets.length} total</span>
+        </p>
+        {assets.length === 0 ? (
+          <p className="text-xs text-[#7D8590] bg-[#161B22] border border-[#30363D] rounded-xl px-4 py-3">No assets saved yet.</p>
+        ) : (
+          Object.entries(assetsByType).map(([type, typeAssets]) => (
+            <div key={type} className="bg-[#161B22] border border-[#30363D] rounded-xl overflow-hidden">
+              <div className="px-4 py-2 border-b border-[#30363D] flex items-center justify-between">
+                <span className="text-[10px] font-semibold text-[#7D8590] uppercase tracking-wide">
+                  {ASSET_TYPE_LABELS[type] ?? type} <span className="text-[#484F58]">({typeAssets.length})</span>
+                </span>
+              </div>
+              <div className="divide-y divide-[#30363D]">
+                {typeAssets.map(asset => {
+                  const isExpanded = expandedAssets[asset.id] ?? false;
+                  return (
+                    <div key={asset.id} className="px-4 py-3">
+                      <div className="flex items-start justify-between gap-2">
+                        <p className="text-xs font-semibold text-[#E6EDF3] flex-1">{asset.title}</p>
+                        <div className="flex items-center gap-2 flex-shrink-0">
+                          <CopyButton text={asset.content} />
+                          <button onClick={() => setExpandedAssets(prev => ({ ...prev, [asset.id]: !prev[asset.id] }))}
+                            className="text-[10px] text-[#7D8590] hover:text-[#E6EDF3] transition-colors px-1">
+                            {isExpanded ? "Collapse ▲" : "Expand ▼"}
+                          </button>
+                        </div>
+                      </div>
+                      {isExpanded ? (
+                        <pre className="mt-2 text-[10px] text-[#8B949E] whitespace-pre-wrap font-sans leading-relaxed">{asset.content}</pre>
+                      ) : (
+                        <p className="mt-1 text-[10px] text-[#7D8590] line-clamp-2 font-sans">{asset.content}</p>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ))
+        )}
+      </div>
+
+      {/* Landing Pages */}
+      {landingPages.length > 0 && (
+        <div className="space-y-2">
+          <p className="text-xs font-semibold text-[#E6EDF3]">🌐 Landing Pages <span className="text-[#7D8590] font-normal">({landingPages.length})</span></p>
+          <div className="bg-[#161B22] border border-[#30363D] rounded-xl divide-y divide-[#30363D] overflow-hidden">
+            {landingPages.map(lp => (
+              <div key={lp.id} className="px-4 py-3 flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-xs font-semibold text-[#E6EDF3] truncate">{lp.title}</p>
+                  {lp.headline && <p className="text-[10px] text-[#7D8590] truncate mt-0.5">{lp.headline}</p>}
+                </div>
+                <div className="flex items-center gap-2 flex-shrink-0">
+                  <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-semibold ${lp.published ? "bg-emerald-500/20 text-emerald-400" : "bg-[#30363D] text-[#7D8590]"}`}>
+                    {lp.published ? "Live" : "Draft"}
+                  </span>
+                  <button onClick={() => { void navigator.clipboard.writeText(`/lp/${lp.slug}`); }}
+                    className="text-[9px] px-2 py-0.5 rounded border border-[#30363D] text-[#7D8590] hover:text-[#E6EDF3] hover:border-[#58A6FF]/40 transition-colors">
+                    Copy URL
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Offers */}
+      {offers.length > 0 && (
+        <div className="space-y-2">
+          <p className="text-xs font-semibold text-[#E6EDF3]">🎁 Linked Offers <span className="text-[#7D8590] font-normal">({offers.length})</span></p>
+          <div className="bg-[#161B22] border border-[#30363D] rounded-xl divide-y divide-[#30363D] overflow-hidden">
+            {offers.map(o => (
+              <div key={o.id} className="px-4 py-3 space-y-1">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-xs font-semibold text-[#E6EDF3]">{o.name}</p>
+                  {o.pricing && <span className="text-[10px] text-amber-400 font-semibold">{o.pricing}</span>}
+                </div>
+                {o.deliverables.length > 0 && (
+                  <p className="text-[10px] text-[#7D8590]">{o.deliverables.slice(0, 3).join(" · ")}{o.deliverables.length > 3 ? ` +${o.deliverables.length - 3} more` : ""}</p>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Email Activity */}
+      {emailEvents.length > 0 && (
+        <div className="space-y-2">
+          <p className="text-xs font-semibold text-[#E6EDF3]">📧 Email Activity <span className="text-[#7D8590] font-normal">(last {emailEvents.length})</span></p>
+          <div className="bg-[#161B22] border border-[#30363D] rounded-xl overflow-hidden">
+            <div className="max-h-64 overflow-y-auto divide-y divide-[#30363D]">
+              {emailEvents.map(ev => (
+                <div key={ev.id} className="px-4 py-2 flex items-center gap-3">
+                  <span className={`text-[9px] font-semibold uppercase w-16 flex-shrink-0 ${EVENT_COLORS[ev.eventType] ?? "text-[#7D8590]"}`}>{ev.eventType}</span>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-[10px] text-[#E6EDF3] truncate">{ev.subject ?? "(no subject)"}</p>
+                    {ev.recipient && <p className="text-[9px] text-[#7D8590] truncate">{ev.recipient}</p>}
+                  </div>
+                  <span className="text-[9px] text-[#484F58] flex-shrink-0">{new Date(ev.occurredAt).toLocaleDateString()}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Campaign Builder Wizard ───────────────────────────────────────────────────
+
 function CampaignBuilderWizard({ fetchWithAuth }: { fetchWithAuth: (url: string, opts?: RequestInit) => Promise<Response> }) {
   const [step, setStep] = useState(1);
   const [goal, setGoal] = useState("");
@@ -4225,7 +4614,7 @@ function CampaignBuilderWizard({ fetchWithAuth }: { fetchWithAuth: (url: string,
   const [savedCampaignId, setSavedCampaignId] = useState<number | null>(null);
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [loadingCampaigns, setLoadingCampaigns] = useState(true);
-  const [selectedCampaign, setSelectedCampaign] = useState<Campaign | null>(null);
+  const [detailCampaignId, setDetailCampaignId] = useState<number | null>(null);
 
   useEffect(() => {
     fetchWithAuth(`${API}/admin/marketing/campaigns`).then(r => r.json()).then(d => setCampaigns(d as Campaign[])).catch(() => null).finally(() => setLoadingCampaigns(false));
@@ -4288,7 +4677,7 @@ function CampaignBuilderWizard({ fetchWithAuth }: { fetchWithAuth: (url: string,
       });
 
       setCampaigns(prev => [campaign, ...prev]);
-      setSelectedCampaign(campaign);
+      setDetailCampaignId(campaign.id);
       setStep(5);
     } finally { setSaving(false); }
   };
@@ -4297,15 +4686,35 @@ function CampaignBuilderWizard({ fetchWithAuth }: { fetchWithAuth: (url: string,
     setStep(1); setGoal(""); setAudience(""); setOffer(""); setName(""); setPreviewAssets([]); setSavedCampaignId(null);
   };
 
-  const handleMetricsUpdated = (updated: Campaign) => {
+  const handleCampaignUpdated = (updated: Campaign) => {
     setCampaigns(prev => prev.map(c => c.id === updated.id ? updated : c));
-    if (selectedCampaign?.id === updated.id) setSelectedCampaign(updated);
+  };
+
+  const handleGenerateMoreAssets = (campaign: Campaign) => {
+    setGoal(campaign.goal);
+    setAudience(campaign.audience);
+    setOffer(campaign.offer);
+    setSavedCampaignId(campaign.id);
+    setDetailCampaignId(null);
+    setStep(5);
   };
 
   const steps = [
     { n: 1, label: "Goal" }, { n: 2, label: "Audience" }, { n: 3, label: "Offer" },
     { n: 4, label: "Review" }, { n: 5, label: "Ad Assets" }, { n: 6, label: "Saved" },
   ];
+
+  if (detailCampaignId !== null) {
+    return (
+      <CampaignDetailView
+        campaignId={detailCampaignId}
+        fetchWithAuth={fetchWithAuth}
+        onBack={() => setDetailCampaignId(null)}
+        onCampaignUpdated={handleCampaignUpdated}
+        onGenerateMoreAssets={handleGenerateMoreAssets}
+      />
+    );
+  }
 
   return (
     <div className="space-y-4">
@@ -4443,7 +4852,7 @@ function CampaignBuilderWizard({ fetchWithAuth }: { fetchWithAuth: (url: string,
                 </div>
                 <div>
                   <p className="text-sm font-semibold text-emerald-400">Campaign saved!</p>
-                  {savedCampaignId && <p className="text-xs text-[#7D8590]">ID: {savedCampaignId} — update its metrics in the panel →</p>}
+                  {savedCampaignId && <p className="text-xs text-[#7D8590]">ID: {savedCampaignId} — click it in the list to view the full detail</p>}
                 </div>
               </div>
               <button onClick={reset} className="text-xs px-3 py-1.5 rounded-lg border border-[#30363D] text-[#7D8590] hover:text-[#E6EDF3] transition-colors">
@@ -4454,14 +4863,6 @@ function CampaignBuilderWizard({ fetchWithAuth }: { fetchWithAuth: (url: string,
         </div>
 
         <div className="space-y-4">
-          {selectedCampaign && (
-            <CampaignMetricsPanel
-              key={selectedCampaign.id}
-              campaign={selectedCampaign}
-              fetchWithAuth={fetchWithAuth}
-              onUpdated={handleMetricsUpdated}
-            />
-          )}
           <div className="bg-[#161B22] border border-[#30363D] rounded-xl p-4 space-y-3">
             <h3 className="text-sm font-semibold text-[#E6EDF3]">Saved Campaigns</h3>
             {loadingCampaigns ? <SkeletonCard /> : campaigns.length === 0 ? (
@@ -4469,14 +4870,13 @@ function CampaignBuilderWizard({ fetchWithAuth }: { fetchWithAuth: (url: string,
             ) : (
               <div className="space-y-2 max-h-80 overflow-y-auto">
                 {campaigns.map(c => (
-                  <button key={c.id} onClick={() => setSelectedCampaign(prev => prev?.id === c.id ? null : c)}
-                    className={`w-full text-left bg-[#0D1117] rounded-lg p-2 text-xs space-y-1.5 border transition-colors ${selectedCampaign?.id === c.id ? "border-[#0078D4]/60" : "border-transparent hover:border-[#30363D]"}`}>
+                  <button key={c.id} onClick={() => setDetailCampaignId(c.id)}
+                    className="w-full text-left bg-[#0D1117] rounded-lg p-2 text-xs space-y-1.5 border border-transparent hover:border-[#0078D4]/50 transition-colors">
                     <div className="flex items-center justify-between gap-1">
                       <span className="font-semibold text-[#E6EDF3] truncate">{c.name}</span>
                       <Badge text={c.status} color={c.status === "active" ? "green" : c.status === "completed" ? "gray" : "yellow"} />
                     </div>
                     <p className="text-[#7D8590] line-clamp-1">{c.goal}</p>
-                    {/* Mini KPI strip */}
                     <div className="flex items-center gap-3 pt-0.5 border-t border-[#30363D]">
                       <span className="text-emerald-400 font-semibold">{c.leadsGenerated ?? 0} leads</span>
                       <span className="text-[#58A6FF]">{c.emailsSent ?? 0} emails</span>
@@ -4487,6 +4887,7 @@ function CampaignBuilderWizard({ fetchWithAuth }: { fetchWithAuth: (url: string,
               </div>
             )}
           </div>
+          <p className="text-[10px] text-[#484F58] text-center">Click a campaign to view its full 360° detail</p>
         </div>
       </div>
     </div>

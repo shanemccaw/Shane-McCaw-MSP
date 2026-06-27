@@ -900,6 +900,56 @@ router.delete("/admin/marketing/campaigns/:id", requireAdmin, async (req: Reques
   }
 });
 
+// ─── Campaign 360° Detail ─────────────────────────────────────────────────────
+
+router.get("/admin/marketing/campaigns/:id", requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const id = parseId(req.params, "id");
+    const [campaign] = await db
+      .select({
+        id: campaignsTable.id,
+        name: campaignsTable.name,
+        goal: campaignsTable.goal,
+        audience: campaignsTable.audience,
+        offer: campaignsTable.offer,
+        status: campaignsTable.status,
+        leadsGenerated: campaignsTable.leadsGenerated,
+        emailsSent: campaignsTable.emailsSent,
+        revenueAttributed: campaignsTable.revenueAttributed,
+        createdAt: campaignsTable.createdAt,
+        updatedAt: campaignsTable.updatedAt,
+        emailsSentAuto: count(emailEventsTable.id),
+      })
+      .from(campaignsTable)
+      .leftJoin(emailEventsTable, and(eq(emailEventsTable.campaignId, campaignsTable.id), eq(emailEventsTable.eventType, "sent")))
+      .where(eq(campaignsTable.id, id))
+      .groupBy(campaignsTable.id)
+      .limit(1);
+
+    if (!campaign) { res.status(404).json({ error: "Campaign not found" }); return; }
+
+    const [assets, landingPages, offers, emailEvents] = await Promise.all([
+      db.select().from(campaignAssetsTable).where(eq(campaignAssetsTable.campaignId, id)).orderBy(campaignAssetsTable.assetType, desc(campaignAssetsTable.createdAt)),
+      db.select({
+        id: landingPagesTable.id, slug: landingPagesTable.slug, title: landingPagesTable.title,
+        headline: landingPagesTable.headline, published: landingPagesTable.published, createdAt: landingPagesTable.createdAt,
+      }).from(landingPagesTable).where(eq(landingPagesTable.campaignId, id)).orderBy(desc(landingPagesTable.createdAt)),
+      db.select({
+        id: offersTable.id, name: offersTable.name, pricing: offersTable.pricing,
+        deliverables: offersTable.deliverables, outcomes: offersTable.outcomes, createdAt: offersTable.createdAt,
+      }).from(offersTable).where(eq(offersTable.campaignId, id)).orderBy(desc(offersTable.createdAt)),
+      db.select({
+        id: emailEventsTable.id, subject: emailEventsTable.subject, recipient: emailEventsTable.recipient,
+        eventType: emailEventsTable.eventType, occurredAt: emailEventsTable.occurredAt,
+      }).from(emailEventsTable).where(eq(emailEventsTable.campaignId, id)).orderBy(desc(emailEventsTable.occurredAt)).limit(50),
+    ]);
+
+    res.json({ campaign, assets, landingPages, offers, emailEvents });
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
 // ─── Campaign Assets ──────────────────────────────────────────────────────────
 
 router.get("/admin/marketing/campaign-assets", requireAdmin, async (req: Request, res: Response) => {
