@@ -8,7 +8,7 @@ import {
 import { eq, desc, count, and, gte, sql, inArray } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/requireAuth";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
-import { sendMessage } from "../lib/graphEmail";
+import { sendMessage, GraphMailConfigError } from "../lib/graphEmail";
 import { fetchTopQueries } from "../lib/search-console";
 import { z } from "zod";
 
@@ -833,6 +833,10 @@ router.post("/admin/marketing/send-outreach", requireAdmin, async (req: Request,
   } catch (e) {
     if (e instanceof z.ZodError) {
       res.status(400).json({ error: e.errors[0]?.message ?? "Validation error" });
+      return;
+    }
+    if (e instanceof GraphMailConfigError) {
+      res.status(503).json({ error: e.message });
       return;
     }
     res.status(500).json({ error: String(e) });

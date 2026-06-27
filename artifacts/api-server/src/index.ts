@@ -2,6 +2,7 @@ import app from "./app";
 import { logger } from "./lib/logger";
 import { validateStripeKeyOnStartup, checkWebhookHealthOnStartup } from "./lib/stripe";
 import { initGraphSubscription } from "./lib/graph-subscription";
+import { graphCredentialsPresent } from "./lib/graph";
 import { pool } from "@workspace/db";
 
 const rawPort = process.env["PORT"];
@@ -19,6 +20,24 @@ if (Number.isNaN(port) || port <= 0) {
 }
 
 validateStripeKeyOnStartup();
+
+// Warn at startup when Graph mail env vars are absent so the problem is
+// surfaced immediately in the workflow log, not only when an outreach is attempted.
+(function checkGraphMailConfig() {
+  const missing: string[] = [];
+  if (!graphCredentialsPresent()) {
+    if (!process.env.GRAPH_TENANT_ID) missing.push("GRAPH_TENANT_ID");
+    if (!process.env.GRAPH_CLIENT_ID) missing.push("GRAPH_CLIENT_ID");
+    if (!process.env.GRAPH_CLIENT_SECRET) missing.push("GRAPH_CLIENT_SECRET");
+  }
+  if (!process.env.GRAPH_MAIL_USER_ID) missing.push("GRAPH_MAIL_USER_ID");
+  if (missing.length > 0) {
+    logger.warn(
+      { missingSecrets: missing },
+      "Exchange Online outreach email is not configured — outreach sends will fail until these Replit Secrets are set"
+    );
+  }
+})();
 
 app.listen(port, (err) => {
   if (err) {

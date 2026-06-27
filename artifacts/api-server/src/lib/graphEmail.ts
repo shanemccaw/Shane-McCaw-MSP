@@ -1,5 +1,12 @@
 import { logger } from "./logger";
-import { getAccessToken } from "./graph";
+import { getAccessToken, graphCredentialsPresent } from "./graph";
+
+export class GraphMailConfigError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "GraphMailConfigError";
+  }
+}
 
 const GRAPH_BASE = "https://graph.microsoft.com/v1.0";
 
@@ -266,6 +273,13 @@ export interface SendMessageOpts {
 
 export async function sendMessage(opts: SendMessageOpts): Promise<boolean> {
   const { userId, to, cc = [], bcc = [], subject, body, bodyType = "html", saveToSentItems = true } = opts;
+
+  if (!graphCredentialsPresent()) {
+    throw new GraphMailConfigError(
+      "Exchange Online credentials not configured — check GRAPH_TENANT_ID, GRAPH_CLIENT_ID, and GRAPH_CLIENT_SECRET in Replit Secrets"
+    );
+  }
+
   try {
     const res = await graphEmailFetch(
       `/users/${encodeURIComponent(userId)}/sendMail`,
@@ -283,8 +297,26 @@ export async function sendMessage(opts: SendMessageOpts): Promise<boolean> {
         }),
       }
     );
+
+    if (res.status === 401) {
+      const text = await res.text();
+      logger.warn({ status: 401, body: text }, "sendMessage: Graph returned 401");
+      throw new GraphMailConfigError(
+        "Exchange Online authentication failed (401) — credentials may be expired or the service principal is missing the Mail.Send application permission"
+      );
+    }
+
+    if (res.status === 403) {
+      const text = await res.text();
+      logger.warn({ status: 403, body: text }, "sendMessage: Graph returned 403");
+      throw new GraphMailConfigError(
+        "Exchange Online authorization failed (403) — ensure the Mail.Send application permission has been admin-consented in Azure AD"
+      );
+    }
+
     return res.ok || res.status === 202;
   } catch (err) {
+    if (err instanceof GraphMailConfigError) throw err;
     logger.error({ err }, "sendMessage error");
     return false;
   }

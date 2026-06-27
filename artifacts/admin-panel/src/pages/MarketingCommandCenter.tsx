@@ -172,10 +172,11 @@ function SendEmailModal({ initialTo, initialSubject, initialBody, leadId, campai
   const [sending, setSending] = useState(false);
   const [result, setResult] = useState<"success" | "error" | null>(null);
   const [errorMsg, setErrorMsg] = useState("");
+  const [isConfigError, setIsConfigError] = useState(false);
 
   const send = async () => {
     if (!to.trim() || !subject.trim() || !body.trim()) return;
-    setSending(true); setResult(null);
+    setSending(true); setResult(null); setIsConfigError(false);
     try {
       const r = await fetchWithAuth(`${API}/admin/marketing/send-outreach`, {
         method: "POST",
@@ -187,7 +188,9 @@ function SendEmailModal({ initialTo, initialSubject, initialBody, leadId, campai
         setTimeout(onClose, 1800);
       } else {
         const d = await r.json() as { error?: string };
-        setErrorMsg(d.error ?? "Send failed");
+        const msg = d.error ?? "Send failed";
+        setErrorMsg(msg);
+        setIsConfigError(r.status === 503 || r.status === 401 || r.status === 403);
         setResult("error");
       }
     } finally { setSending(false); }
@@ -227,7 +230,10 @@ function SendEmailModal({ initialTo, initialSubject, initialBody, leadId, campai
                   className="mt-1 w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-sm text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60 resize-none font-mono" />
               </div>
               {result === "error" && (
-                <p className="text-red-400 text-xs">{errorMsg || "Failed to send — check that Exchange Online / Graph credentials are configured."}</p>
+                <div className={`rounded-lg px-3 py-2 text-xs ${isConfigError ? "bg-amber-500/10 border border-amber-500/30 text-amber-300" : "bg-red-500/10 border border-red-500/30 text-red-400"}`}>
+                  {isConfigError && <p className="font-semibold mb-0.5">Setup required</p>}
+                  <p>{errorMsg || "Failed to send — check that Exchange Online / Graph credentials are configured."}</p>
+                </div>
               )}
             </div>
             <div className="flex gap-2">
