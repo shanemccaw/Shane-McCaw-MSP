@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
+import { ChevronDown, ChevronUp } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import {
   BarChart, Bar, LineChart, Line, PieChart, Pie, Cell,
@@ -1049,6 +1050,15 @@ function DailyCommandPanel({ fetchWithAuth, onNavigate }: { fetchWithAuth: (url:
   const [cmd, setCmd] = useState<DailyCommand | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [expanded, setExpanded] = useState<boolean>(() => localStorage.getItem("rcc-expanded") !== "false");
+
+  const toggleExpanded = () => {
+    setExpanded(prev => {
+      const next = !prev;
+      localStorage.setItem("rcc-expanded", String(next));
+      return next;
+    });
+  };
 
   const load = (bust = false) => {
     const url = `${API}/admin/marketing/daily-command${bust ? "?refresh=1" : ""}`;
@@ -1097,18 +1107,23 @@ function DailyCommandPanel({ fetchWithAuth, onNavigate }: { fetchWithAuth: (url:
             className="text-xs text-[#58A6FF] border border-[#30363D] rounded-lg px-3 py-1.5 hover:bg-[#161B22] disabled:opacity-50 transition-colors">
             {refreshing ? "…" : "↻ Refresh"}
           </button>
+          <button onClick={toggleExpanded} title={expanded ? "Collapse" : "Expand"}
+            className="text-[#7D8590] border border-[#30363D] rounded-lg p-1.5 hover:bg-[#161B22] hover:text-[#E6EDF3] transition-colors">
+            {expanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+          </button>
         </div>
       </div>
 
-      <div className="bg-[#0078D4]/10 border border-[#0078D4]/20 rounded-lg p-3">
-        <p className="text-xs font-semibold text-[#58A6FF] mb-1">✦ Today's #1 Priority</p>
-        <p className="text-sm text-[#E6EDF3]">{cmd.aiInsight.topPriority}</p>
-        {cmd.aiInsight.closestToBuying && (
-          <p className="text-xs text-amber-300 mt-1.5">🏆 Closest to buying: {cmd.aiInsight.closestToBuying}</p>
-        )}
-      </div>
+      {expanded && <>
+        <div className="bg-[#0078D4]/10 border border-[#0078D4]/20 rounded-lg p-3">
+          <p className="text-xs font-semibold text-[#58A6FF] mb-1">✦ Today's #1 Priority</p>
+          <p className="text-sm text-[#E6EDF3]">{cmd.aiInsight.topPriority}</p>
+          {cmd.aiInsight.closestToBuying && (
+            <p className="text-xs text-amber-300 mt-1.5">🏆 Closest to buying: {cmd.aiInsight.closestToBuying}</p>
+          )}
+        </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
         {leadsToContact.length > 0 && (
           <div>
             <p className="text-[10px] font-semibold text-[#7D8590] uppercase tracking-wide mb-2">🔥 Leads to Contact</p>
@@ -1215,10 +1230,11 @@ function DailyCommandPanel({ fetchWithAuth, onNavigate }: { fetchWithAuth: (url:
         )}
       </div>
 
-      <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-lg px-3 py-2">
-        <p className="text-[10px] font-semibold text-emerald-400 mb-0.5">Revenue Insight</p>
-        <p className="text-xs text-[#E6EDF3]">{cmd.aiInsight.revenueInsight}</p>
-      </div>
+        <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-lg px-3 py-2">
+          <p className="text-[10px] font-semibold text-emerald-400 mb-0.5">Revenue Insight</p>
+          <p className="text-xs text-[#E6EDF3]">{cmd.aiInsight.revenueInsight}</p>
+        </div>
+      </>}
     </div>
   );
 }
