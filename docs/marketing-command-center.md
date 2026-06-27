@@ -29,23 +29,21 @@
 
 ## Overview
 
-The Marketing Command Center is a single-page section within the Admin Panel that consolidates all outbound marketing operations for Shane McCaw Consulting into one interface. It covers lead intelligence, outreach automation, content creation, traffic analytics, task management, and campaign planning — all with AI assistance powered by Claude (Anthropic).
+The Marketing Command Center is a single-page section within the Admin Panel that consolidates all outbound marketing operations for Shane McCaw Consulting. It covers lead intelligence, outreach automation, content creation, traffic analytics, task management, and campaign planning — all with AI assistance powered by Claude (Anthropic) via `@workspace/integrations-anthropic-ai`.
 
-The component (`MarketingCommandCenter`) is mounted at the `/admin-panel/marketing` route and uses a shared `fetchWithAuth` helper that automatically attaches the admin `Authorization: Bearer <password>` header to every API call.
+The component (`MarketingCommandCenter`) is mounted inside the Admin Panel and uses a shared `fetchWithAuth` helper from `AuthContext` that automatically attaches the `Authorization: Bearer <password>` header to every API call.
 
 ---
 
 ## Authentication & Access
 
-Every API route under `/api/admin/marketing/...` is protected by the `requireAdmin` middleware. The middleware validates the `Authorization: Bearer <password>` header against the `CRM_ADMIN_PASSWORD` environment variable. Unauthenticated requests receive `401 Unauthorized`.
-
-In the frontend, `fetchWithAuth` (from `AuthContext`) wraps every `fetch` call, injecting the stored session password.
+Every API route under `/api/admin/marketing/...` is protected by the `requireAdmin` middleware, which validates the `Authorization: Bearer <password>` header against the `CRM_ADMIN_PASSWORD` environment variable. Unauthenticated requests receive `401 Unauthorized`.
 
 ---
 
 ## Navigation Structure
 
-The command center renders a horizontal tab bar. Each tab is a string label mapped to a React section component:
+The command center renders a horizontal tab bar. Each tab maps to a React section component:
 
 | Tab Label | Component | Nav Key |
 |-----------|-----------|---------|
@@ -58,7 +56,7 @@ The command center renders a horizontal tab bar. Each tab is a string label mapp
 | Tasks | `MarketingTasksKanban` | `tasks` |
 | Campaigns | `CampaignBuilderWizard` | `campaigns` |
 
-The active tab is stored in local `useState`. Only the active section renders; others are unmounted (no lazy loading — each section re-fetches its data on mount).
+The active tab is stored in local `useState`. Only the active section renders — others are unmounted, so each section re-fetches its data on mount.
 
 ---
 
@@ -67,48 +65,101 @@ The active tab is stored in local `useState`. Only the active section renders; o
 **Component:** `RecommendedLeadsSection`
 
 ### Purpose
-Generates a batch of AI-recommended prospects that match Shane's Ideal Customer Profile (ICP), lets the admin review each one in detail, and then take action (add to CRM, send outreach, dismiss).
+Generates a batch of AI-recommended prospects matched to Shane's Ideal Customer Profile (ICP), lets the admin review each one, and take direct action (add to CRM, send outreach, dismiss).
+
+### Auto-Generate on Mount
+
+On mount, the component fetches existing leads from `GET /api/admin/marketing/recommended-leads`. If no leads with `status = "pending"` exist, it automatically calls `generate()` without requiring the admin to click a button. This `hasFetched` guard (via `useRef`) prevents re-triggering on re-renders.
 
 ### Generating Leads
 
-- On mount, the component fetches existing recommended leads from the database: `GET /api/admin/marketing/recommended-leads`
-- The **✦ Generate Leads** button calls `POST /api/admin/marketing/recommended-leads/generate`
-- The server asks Claude (via `buildICPContext()`) to produce **7 recommended leads** as a JSON array. The ICP context is derived from the live CRM — it includes industry distributions, average deal size, top company sizes, and existing lead sources actually present in the database.
-- A compliance note is injected into the Claude prompt: suggested contacts must not work at NASA, federal agencies, or other organisations that could create conflicts of interest with Shane's government employment.
-- Each returned lead has: `name`, `company`, `role`, `industry`, `companySize`, `location`, `fitScore` (0–100), `reasoning` (one-sentence explanation), and `suggestedOutreach` (recommended first message).
-- The leads are saved to the `recommended_leads` table with `source = "ai_recommended"` and `status = "pending"`.
+The **Generate Leads** button calls `POST /api/admin/marketing/recommended-leads/generate`. New leads are prepended to the existing list (`setLeads(prev => [...newLeads, ...prev])`). The server uses all of `buildICPContext()` (see [AI Integration](#ai-integration)) and asks Claude (`claude-haiku-4-5`, max 2000 tokens) to produce 7 recommended leads.
+
+The Claude prompt includes a compliance constraint:
+
+> Shane McCaw is a full-time federal employee (NASA). He is legally prohibited from contracting with: (1) other federal agencies, government departments, national laboratories, DoD components, or any other government entity; (2) any commercial company that holds, pursues, or is known to be a prime or subcontractor on NASA contracts. Only recommend private-sector, commercially-focused companies with NO known NASA or federal prime/sub contract relationships.
+
+Each lead returned by Claude is a JSON object with: `name`, `company`, `role`, `email`, `industry`, `companySize`, `location`, `painPoints` (string array), `whyFit` (one-sentence explanation), `recommendedService` (service name), `confidence` (integer 0–100).
+
+The server parses the JSON array with `parseAiJson`, inserts all rows into `recommended_leads`, and returns the inserted records.
 
 ### Lead Cards
 
-Each lead renders as a card showing:
-- Name, role, company, industry, company size, location
-- A fit score badge (colour-coded: green ≥ 80, yellow ≥ 60, red < 60)
-- `reasoning` text
-- A **View Details** button that opens the `RecommendedLeadSlideOver`
+The lead list renders as a responsive grid (1-2-3 columns at sm/md/xl). Only leads with `status = "pending"` are shown. Each card displays:
+
+- Name, role, company, email (if present)
+- `confidence` badge (colour-coded: green ≥80, yellow ≥60, grey <60)
+- Industry, company size, location, `recommendedService` badges
+- `whyFit` text (truncated to 2 lines via `line-clamp-2`)
+- Up to 2 `painPoints` as red tags
+- A green "Draft saved" indicator if a generated outreach draft exists in `generatedDrafts[lead.id]` or `lead.lastOutreachDraft`
+
+**The entire card is clickable** — clicking anywhere (outside the action buttons) opens the `RecommendedLeadSlideOver`. Action buttons along the bottom of the card (described below) use `e.stopPropagation()` to avoid triggering the slide-over when clicked directly.
+
+### Card Action Buttons (on the card itself)
+
+| Button | Action |
+|--------|--------|
+| Add to Leads | Calls `convert(lead.id)` — see Convert below |
+| Email | Opens `OutreachModal` with `cold_email` type, passing `recommendedLeadId` |
+| LinkedIn | Opens `OutreachModal` with `linkedin` type |
+| Follow-Up Seq. | Opens `OutreachModal` with `followup` type |
+| Add Task | Opens `AddTaskModal` |
+| Add to Campaign | Opens `AddToCampaignModal` |
+| Dismiss | Calls `dismiss(lead.id)` — see Dismiss & Undo below |
 
 ### Slide-Over Panel (`RecommendedLeadSlideOver`)
 
-Clicking a card opens a slide-over panel (fixed overlay, right-aligned) showing all lead fields plus the `suggestedOutreach` message.
+Title: **"AI Lead Details"**. Fixed full-height panel on the right side with a dark scrim on the left. Clicking the scrim closes it.
 
-Action buttons available inside the slide-over:
+Content displayed:
+- Name, role, company, email (clickable `mailto:` link), industry badge, company size badge, location badge
+- **Recommended Service** block (if present)
+- **Why They Fit** block (labelled "Why They Fit" in Electric Blue) containing `whyFit`
+- **Pain Points** list — each item preceded by a red dot
+- A green "Outreach draft saved" banner if a draft exists in `generatedDrafts[lead.id]`
 
-| Button | Behaviour |
-|--------|-----------|
-| Add to Leads | `POST /api/admin/marketing/recommended-leads/{id}/convert` — creates a real CRM lead record from the recommended lead and marks it `converted` |
-| Email | Opens the `OutreachModal` pre-filled with `cold_email` type |
-| LinkedIn | Opens the `OutreachModal` pre-filled with `linkedin` type |
-| Follow-Up Seq. | Opens the `OutreachModal` pre-filled with `followup` type |
-| Add Task | Creates a marketing task linked to the lead |
-| Add to Campaign | Opens a campaign selector and tags the lead to a campaign |
-| Dismiss | `PATCH /api/admin/marketing/recommended-leads/{id}` sets `status = "dismissed"` |
+Action buttons in the slide-over footer:
+
+| Button | Action |
+|--------|--------|
+| Add to Leads | `convert(lead.id)` then closes slide-over |
+| Email | Opens `OutreachModal` with `cold_email` type, closes slide-over |
+| LinkedIn | Opens `OutreachModal` with `linkedin` type, closes slide-over |
+| Follow-Up Seq. | Opens `OutreachModal` with `followup` type, closes slide-over |
+| Add Task | Opens `AddTaskModal`, closes slide-over |
+| Add to Campaign | Opens `AddToCampaignModal`, closes slide-over |
+| Dismiss Lead | Calls `dismiss(lead.id)`, closes slide-over |
+
+### Convert to CRM Lead
+
+`POST /api/admin/marketing/recommended-leads/{id}/convert`
+
+The body includes `{ outreachDraft: string | null }` — if a draft exists in `generatedDrafts[id]`, it is sent along.
+
+The server creates a `leads` record with:
+- `source = "ai_recommended"`, `status = "contacted"`, `stage = "AQL"`
+- A generated email fallback (`firstname.lastname@company.com`) if no email was provided
+- `notes` containing a timestamped entry plus `whyFit`, `recommendedService`, `confidence`, and the outreach draft (if any)
+- `painPoints` copied from the recommended lead
+
+Then the `recommended_leads` row is updated to `status = "converted"` with `convertedLeadId` pointing to the new lead.
+
+The frontend marks the card as `status = "converted"` immediately (optimistic update), hiding it from the pending list.
 
 ### Dismiss & Undo
 
-Dismissing a lead shows a toast with an **Undo** link. If the admin clicks Undo within 5 seconds, the card is restored (status patched back to `pending`). After 5 seconds the undo option disappears and the lead stays dismissed.
+Dismissing a lead hides it from the list immediately (optimistic `status = "dismissed"` update).
 
-### Filtering
+**With a saved draft** (`generatedDrafts[id]` or `lead.lastOutreachDraft`): A fixed-position undo toast appears at the bottom of the screen showing "{leadName} dismissed — saved draft will be lost" with an **Undo** button. The actual `PATCH /api/admin/marketing/recommended-leads/{id}/dismiss` call is deferred for 5 seconds. If the admin clicks Undo within that window, the timer is cleared, the card is restored to `status = "pending"`, and no PATCH is sent.
 
-Dismissed leads are hidden from the list by default. Only leads with `status = "pending"` or `status = "converted"` are shown.
+**Without a saved draft**: The PATCH call fires immediately. No toast is shown.
+
+### Supporting Modals
+
+**`AddTaskModal`**: Prepopulates Title with `"Outreach: {name} @ {company}"` and Description with `lead.whyFit`. Saving calls `POST /api/admin/marketing/tasks` with `status = "ideas"`.
+
+**`AddToCampaignModal`**: Shows a list of all campaigns (fetched from `GET /api/admin/marketing/campaigns`). Selecting one and saving calls `POST /api/admin/marketing/campaign-assets` with `assetType = "follow_up_task"` and `content` containing the lead's fields (name, company, role, email, whyFit, painPoints, recommendedService). This creates a campaign asset linked to the selected campaign — it does not tag the lead record itself.
 
 ---
 
@@ -117,27 +168,22 @@ Dismissed leads are hidden from the list by default. Only leads with `status = "
 **Component:** `KPIStrip`
 
 ### Purpose
-Provides a at-a-glance summary of four key marketing metrics, displayed as tiles in a 2×2 (mobile) or 1×4 (desktop) grid.
+Four summary tiles showing at-a-glance marketing health.
 
 ### Metrics
 
-| Tile | Icon | Data Source |
+| Tile | Icon | Description |
 |------|------|-------------|
-| Visitors Today | 👁 | `visitorsToday` from KPI endpoint |
-| Leads This Week | 🎯 | `leadsThisWeek` |
-| Conversion Rate | 📈 | `conversionRate` (%) |
-| Active Campaigns | 🚀 | `activeCampaigns` |
+| Visitors Today | 👁 | Count of `analytics_sessions` rows where `startedAt >= today's midnight (UTC local)` |
+| Leads This Week | 🎯 | Count of `leads` rows where `createdAt >= 7 days ago` |
+| Conversion Rate | 📈 | Count of `analytics_site_events` with `event_type = "cta_click"` and `createdAt >= 7 days ago` ÷ Visitors Today × 100, formatted to one decimal place (e.g. `"3.7"`) |
+| Active Campaigns | 🚀 | Count of `campaigns` with `status = "active"` |
 
 ### Data Loading
 
-On mount: `GET /api/admin/marketing/kpi` — returns a single JSON object with the four fields above. While loading, each tile shows an animated skeleton placeholder. On error the tile shows `—`.
+On mount: `GET /api/admin/marketing/kpi` — returns `{ visitorsToday, leadsThisWeek, conversionRate, activeCampaigns }`. While loading, all four tiles show an animated skeleton placeholder. On error, tiles show `"—"`.
 
-### API
-`GET /api/admin/marketing/kpi` — computes values from the live database:
-- `visitorsToday` — count of `analytics_sessions` rows started today (UTC)
-- `leadsThisWeek` — count of `leads` created in the last 7 days
-- `conversionRate` — percentage of total leads with `status = "converted"` (0 decimal places)
-- `activeCampaigns` — count of `campaigns` with `status = "active"`
+The `conversionRate` is returned as a **string** (e.g. `"3.7"`) by the server, not a number. The frontend renders it as `${kpi.conversionRate}%`.
 
 ---
 
@@ -146,48 +192,71 @@ On mount: `GET /api/admin/marketing/kpi` — returns a single JSON object with t
 **Component:** `LeadFinderSection`
 
 ### Purpose
-A searchable, filterable table over the CRM's lead records. Designed for quickly finding a specific lead and launching outreach or checking history.
+A searchable, filterable table over CRM lead records for quickly finding a lead and launching outreach or checking email history.
 
 ### Data Loading
 
-`GET /api/leads?limit=100` — fetches the latest 100 CRM leads. (Note: this is the shared leads endpoint, not a marketing-specific one.)
+`GET /api/leads?limit=100` — fetches the latest 100 CRM leads. This is the shared CRM leads endpoint (not a marketing-specific one).
 
 ### Search & Filters
 
 | Control | Behaviour |
 |---------|-----------|
-| Search box | Client-side filter on `name`, `company`, `email`, `industry` (case-insensitive) |
-| Status dropdown | Filters by `status`: new / contacted / qualified / converted / archived |
-| Source dropdown | Filters by `source`: AI Suggested, AI Recommended, Contact Form, Lead Magnet |
-| Industry dropdown | Dynamically built from unique values in the loaded lead set |
-| Company Size dropdown | Dynamically built from unique values |
-| Location dropdown | Dynamically built from unique values (only shown if ≥1 location exists) |
+| Search box | Client-side filter on `name`, `company`, `email`, `industry` (case-insensitive substring) |
+| Status dropdown | `new` / `contacted` / `qualified` / `converted` / `archived` |
+| Source dropdown | `ai_suggested` / `ai_recommended` / `contact_form` / `lead_magnet` |
+| Industry dropdown | Dynamically built from unique `industry` values in the loaded set |
+| Company Size dropdown | Dynamically built from unique `companySize` values |
+| Location dropdown | Dynamically built from unique `location` values; only rendered when ≥1 location exists |
 
-All filters are applied simultaneously (AND logic). Up to 50 matched leads are displayed in the table; a footer note shows "Showing N of M leads" when the full set exceeds 50.
+All filters apply simultaneously (AND logic). Up to 50 matched leads are shown; a footer shows "Showing N of M leads" when M > 50.
 
 ### Table Columns
 
-`Name / Email` · `Company / Location` · `Industry / Size` · `Source` (badge) · `Status` (badge) · `Stage` (MQL/SQL/AQL badge) · `Score` (numeric) · `Actions`
+`Name / Email` · `Company / Location` · `Industry / Size` · `Source` (colour-coded badge) · `Status` (badge) · `Stage` (MQL/SQL/AQL badge) · `Score` (mono number) · `Actions`
 
-Source badges use distinct colours: violet for AI Recommended, teal for Lead Magnet, blue for Contact Form, grey for everything else.
+Source badge colours: violet for `ai_recommended`, teal for `lead_magnet`, blue for `contact_form`, grey for all others.
 
-### Actions per Row
+### Row Actions
 
 | Button | Behaviour |
 |--------|-----------|
-| Email | Opens `OutreachModal` with `cold_email` type |
+| Email | Opens `OutreachModal` with `cold_email` type, passing `leadId` |
 | LinkedIn | Opens `OutreachModal` with `linkedin` type |
 | Follow-Up | Opens `OutreachModal` with `followup` type |
 | Call Script | Opens `OutreachModal` with `cold_call` type |
-| History | Opens `LeadEmailHistoryModal` showing all sent emails for this lead |
+| History | Opens `LeadEmailHistoryModal` |
 
 ### Outreach Modal (`OutreachModal`)
 
-A dialog that wraps the outreach generation flow for a specific lead. It pre-populates the lead's name and email, generates outreach copy via the AI endpoint, and allows the admin to review, edit, and send directly from this modal. Saving a template is also available inside this modal.
+A full-screen dialog (z-50) for generating and managing outreach content for a specific lead. It accepts either `leadId` (CRM lead) or `recommendedLeadId` (recommended lead); the server uses whichever is present to pre-fill lead data from the database.
+
+The modal header shows "Generate Outreach — {leadName}". Four type tabs at the top: **Cold Email** / **LinkedIn** / **Follow-Up Seq.** / **Cold Call Script**. Switching tabs clears the content area and sets a new `selectedType`.
+
+Clicking **Generate** (or **Regenerate** if content already exists) calls `POST /api/admin/marketing/generate/outreach` with `{ leadId?, recommendedLeadId?, name, templateType }`. The response `{ content }` is displayed in a `<pre>` block with a **Copy** button in the top-right corner.
+
+When content is present, a footer row appears with:
+- A text input for a template name + **Save Template** button (calls `POST /api/admin/marketing/outreach-templates` then closes the modal)
+- A **Send Email** button — only shown for `cold_email`, `followup`, and `newsletter` types (not for `linkedin` or `cold_call`). Clicking this opens the `SendEmailModal`.
+
+When a draft is generated for a `recommendedLeadId`, the server saves it to `recommended_leads.last_outreach_draft` automatically. The component fires the `onGenerated` callback (if provided) so the parent can track the draft.
+
+### Send Email Modal (`SendEmailModal`)
+
+A modal (z-60, above the Outreach Modal) titled **"Send via Exchange Online"** with subtitle "Sends from Shane's Exchange mailbox via Microsoft Graph".
+
+All three fields are editable:
+- **To** — editable text input (pre-filled with lead email)
+- **Subject** — editable text input (pre-filled by extracting `SUBJECT: …` from the generated content via regex)
+- **Body** — editable 10-row monospace textarea (pre-filled with the full generated content)
+
+There is also a **Campaign (optional)** dropdown, populated from `GET /api/admin/marketing/campaigns`, to attribute the send to a campaign.
+
+Clicking **Send Email** calls `POST /api/admin/marketing/send-outreach`. On success, the modal shows a green ✓ confirmation and closes after 1.8 seconds. On failure, an error panel appears (amber for 503/401/403 config errors; red for other errors).
 
 ### Email History Modal (`LeadEmailHistoryModal`)
 
-Fetches `GET /api/admin/marketing/leads/{id}/emails` and displays a chronological list of all `email_events` records linked to this lead — subject line, recipient, sent timestamp, and linked campaign.
+Title: "Email History — {lead.name}". Fetches `GET /api/admin/marketing/leads/{id}/emails` and displays a chronological list of `email_events` records. Each row shows subject, recipient ("To: …"), event type badge, and sent timestamp. Footer shows "N email(s) in history".
 
 ---
 
@@ -196,49 +265,42 @@ Fetches `GET /api/admin/marketing/leads/{id}/emails` and displays a chronologica
 **Component:** `OutreachAutomationSection`
 
 ### Purpose
-Generates personalised outreach copy for a named prospect, allows editing and saving as a reusable template, and can send the message directly via Exchange Online (Microsoft Graph API).
+Generates personalised outreach copy for a prospect, saves reusable templates, and sends email directly via Exchange Online.
 
 ### Tabs
 
-| Tab | Template Type |
-|-----|---------------|
+| Tab Label | `templateType` |
+|-----------|----------------|
 | Cold Email | `cold_email` |
 | LinkedIn | `linkedin` |
 | Follow-Up Seq. | `followup` |
-| Call Script | `cold_call` |
-
-Switching tabs clears the current content area (the content is per-type, not shared).
+| Cold Call Script | `cold_call` |
 
 ### Prospect Fields
 
-Four text inputs: **Name**, **Company**, **Role**, **Industry**. These can be filled manually or auto-populated by the ✦ Suggest button.
+Four text inputs: **Name**, **Company**, **Role**, **Industry**. Filled manually or via ✦ Suggest.
 
 ### ✦ Suggest (AI Prospect Suggestion)
 
-`POST /api/admin/marketing/generate/outreach-suggest` — sends the active template type to Claude, which returns a realistic ICP-matched prospect as `{ name, company, role, industry }`. The four fields are filled automatically and the admin can then click **✦ Generate** to write the outreach copy.
+`POST /api/admin/marketing/generate/outreach-suggest` — sends the active template type. Claude returns `{ name, company, role, industry }` for an ICP-matched prospect. All four fields are auto-filled.
 
-After suggestion, an **+ Add to Leads** button appears. Clicking it creates a new CRM lead from the suggested prospect (`POST /api/leads`), and the button transitions to "✓ Added" to prevent duplicates.
+After suggestion, an **+ Add to Leads** button appears. Clicking it calls `POST /api/admin/leads` (the admin lead creation endpoint, not `/api/leads`) with `{ name, company, role, industry, source: "ai_suggested" }`. The button transitions to "✓ Added" after success to prevent duplicates.
 
 ### ✦ Generate (AI Copy Generation)
 
-`POST /api/admin/marketing/generate/outreach` — sends the template type plus all four prospect fields to Claude. Returns `{ content: string }` — the full outreach message. The content is loaded into an editable textarea.
+`POST /api/admin/marketing/generate/outreach` — sends `{ templateType, name, company, role, industry }`. Returns `{ content }` loaded into an editable textarea.
 
 ### Campaign Tagging
 
-A dropdown populated from `GET /api/admin/marketing/campaigns` lets the admin associate the current message with a campaign. When the email is sent, the `campaignId` is recorded against the email event.
+A dropdown (populated from `GET /api/admin/marketing/campaigns`) lets the admin tag the current content to a campaign. The selected `campaignId` is passed when sending.
 
 ### Save Template
 
-The admin can give the content a name and click **Save Template** (`POST /api/admin/marketing/outreach-templates`). Saved templates appear in a collapsible **Saved Templates** panel below, grouped by type. Each saved template can be loaded back into the editor or deleted.
+A name input + **Save Template** button — calls `POST /api/admin/marketing/outreach-templates`. Saved templates appear in a collapsible **Saved Templates** panel below the editor. Each template can be loaded back into the editor or deleted.
 
 ### Send Email
 
-The **Send Email** button opens a `SendDialog` modal. The modal shows:
-- **To** — email address (editable)
-- **Subject** — prefilled, editable
-- **Body** — the generated content (read-only preview)
-
-Clicking **Send** fires `POST /api/admin/marketing/send-outreach`. On success, a green toast confirms delivery. On failure, the error message is displayed inline. After sending, the lead's CRM `notes` field is automatically updated with a timestamped entry (handled server-side).
+The **Send Email** button opens the `SendEmailModal` (see [above](#send-email-modal-sendemailmodal)) pre-filled with the lead email and generated content. The `campaignId` from the tag dropdown is passed through.
 
 ---
 
@@ -247,50 +309,48 @@ Clicking **Send** fires `POST /api/admin/marketing/send-outreach`. On success, a
 **Component:** `ContentHubSection`
 
 ### Purpose
-Generates long-form and short-form marketing content (blog posts, LinkedIn updates, newsletters, social posts, SEO keywords), allows saving assets, and manages a library of saved content.
+Generates marketing content across five formats, saves assets, and manages a library of saved content.
 
 ### Content Type Tabs
 
-| Tab | Content Type |
-|-----|-------------|
+| Tab | `contentType` |
+|-----|--------------|
 | Blog Post | `blog_post` |
 | LinkedIn | `linkedin_post` |
 | Newsletter | `newsletter` |
-| Social Posts | `social_posts` |
+| Social Posts | `social_post` |
 | SEO Keywords | `seo_keywords` |
 
 ### Input Fields
 
 | Field | Purpose |
 |-------|---------|
-| Topic* | Required — the subject of the content |
-| Tone | Optional — e.g. "authoritative", "conversational" |
-| Keywords | Optional — comma-separated keywords to weave in |
+| Topic | Required — the subject of the content |
+| Tone | Optional (e.g. "authoritative", "conversational") |
+| Keywords | Optional — comma-separated keywords |
 
-The asterisk on Topic indicates it is required before generating.
+### ✦ Suggest
 
-### ✦ Suggest (AI Topic Suggestion)
+`POST /api/admin/marketing/generate/content-suggest` — sends the active `contentType`. Claude returns `{ topic, tone, keywords }`. All three fields are auto-filled.
 
-`POST /api/admin/marketing/generate/content-suggest` — sends the active content type to Claude, which returns `{ topic, tone, keywords }`. All three fields are filled automatically.
+### ✦ Generate
 
-### ✦ Generate (AI Content Generation)
-
-`POST /api/admin/marketing/generate/content` — sends the content type, topic, tone, and keywords to Claude. Returns `{ content: string }` — the full piece. Content loads into a scrollable preview area.
+`POST /api/admin/marketing/generate/content` — sends `{ contentType, topic, tone, keywords }`. Returns `{ content }` displayed in a preview area.
 
 ### Saving Assets
 
-Clicking **Save Asset** persists the generated content: `POST /api/admin/marketing/campaign-assets` with `assetType` mapped from the tab, `title` (from the Topic field), and `content`. No `campaignId` is set when saved from here (it's a standalone asset).
+**Save Asset** calls `POST /api/admin/marketing/campaign-assets` with `{ assetType, title: topic, content }`. No `campaignId` is attached (standalone asset).
 
 ### Saved Assets List
 
-A panel below the generator lists previously saved assets filtered by the active content type (`GET /api/admin/marketing/campaign-assets?assetType=<type>`). Each item shows its title and a truncated preview.
+Filtered by active content type (`GET /api/admin/marketing/campaign-assets?assetType=<type>`). Each item shows title and a truncated preview.
 
 Actions per saved asset:
 
 | Button | Behaviour |
 |--------|-----------|
-| Expand / Collapse | Toggles the full content view |
-| Copy | Copies the content to the clipboard |
+| Expand / Collapse | Toggles full content view |
+| Copy | Copies content to clipboard |
 | Delete | `DELETE /api/admin/marketing/campaign-assets/{id}` |
 
 ---
@@ -300,41 +360,50 @@ Actions per saved asset:
 **Component:** `TrafficAnalyticsSection`
 
 ### Purpose
-Visualises website traffic patterns, lead conversion funnels, email send rates, per-campaign revenue, and SEO keyword rankings — all sourced from first-party data stored in the PostgreSQL database.
+Visualises website traffic, conversions, email sends, campaign ROI, and SEO rankings from first-party PostgreSQL data.
 
 ### Data Loading
 
-On mount: `GET /api/admin/marketing/analytics` and `GET /api/admin/marketing/email-stats` are both called. The analytics endpoint returns a single response object covering all chart data.
+On mount: `GET /api/admin/marketing/analytics` (all chart data) and `GET /api/admin/marketing/email-stats` (email totals) are fetched. Both are independent fetches within the component.
 
 ### Charts & Panels
 
-| Panel | Type | Window |
-|-------|------|--------|
-| Visitors | Line chart (Recharts `LineChart`) | Last 7 days, one point per day |
-| Traffic Sources | Pie chart (`PieChart`) | Last 30 days, grouped by `utm_source` or Direct/Referral |
-| Conversion Funnel | Horizontal bar / funnel | Last 30 days: Visitors → Contact Page Views → Leads → Converted |
-| Revenue per Lead | Ranked bar list | All campaigns, sorted by revenue ÷ leadsGenerated (descending) |
-| Top Pages | Bar chart | Last 30 days, top 10 pages by view count |
-| Email Stats | Summary card | Last 30 days (`EmailStatsCard`) |
-| SEO Rankings | Ranked keyword list | All tracked keywords (`SeoRankingsCard`) |
+The section renders in a 2-column grid (full-width at mobile, 2-column at lg):
+
+| Panel | Chart Type | Data Window |
+|-------|-----------|-------------|
+| Visitors (Last 7 Days) | `LineChart` (Recharts) | 7-day daily visitor counts from `analytics_sessions` |
+| Traffic Sources | `PieChart` | 30-day sessions grouped by `utm_source` or Direct/Referral |
+| Conversion Funnel (30 Days) | `FunnelChart` | 4 stages: Visitors → Contact Page → Leads → Converted |
+| Revenue per Lead by Campaign | Ranked bar list with inline edit | All campaigns sorted by `revenueAttributed ÷ leadsGenerated` descending; campaigns with 0 leads show `—` |
+| Top Pages (Last 30 Days) | Horizontal `BarChart` | Top 10 pages by view count from `analytics_pageviews` |
+| Email Stats | Summary card (`EmailStatsCard`) | 30-day `email_events` totals |
+| SEO Rankings | Keyword list (`SeoRankingsCard`) | All tracked keywords from `seo_rankings` |
+
+The Revenue per Lead panel uses a full-width `lg:col-span-2` layout. The top campaign gets an Electric Blue `★ Top` badge and a highlighted progress bar. The next panel (Top Pages) is also `lg:col-span-2`.
 
 ### Revenue per Lead — Inline Edit
 
-Each campaign row in the Revenue per Lead panel has an **Edit** icon. Clicking it expands two inline number inputs: **Leads Generated** and **Revenue ($)**. Saving fires `PATCH /api/admin/marketing/campaigns/{id}` with the updated values, then refreshes the analytics data.
+Clicking the pencil icon on any campaign row expands two inline inputs: **Leads Generated** and **Revenue Attributed ($)**. Saving calls `PATCH /api/admin/marketing/campaigns/{id}` then reloads the analytics data.
 
 ### Email Stats Card (`EmailStatsCard`)
 
-`GET /api/admin/marketing/email-stats` returns aggregate counts for the last 30 days: total emails sent, delivered, opened, clicked, bounced. Displayed as a simple stat grid. (Note: open/click/bounce tracking requires inbound webhook events; without them these counts will show zero.)
+`GET /api/admin/marketing/email-stats` returns:
+```json
+{ "totalSent": 42, "hasData": true, "dailyTrend": [{ "day": "2025-06-15", "sent": 5 }, ...] }
+```
+
+When `hasData` is false, the card shows a placeholder. When true, it displays `totalSent` as a large number and renders `dailyTrend` as a sparkline (7-day view of sent-per-day counts). Note: The endpoint only tracks `sent` events from `email_events` — open/click/bounce event data is only present if those events are recorded separately; the response does not include those counts.
 
 ### SEO Rankings Card (`SeoRankingsCard`)
 
-A self-contained card with its own data fetching (`GET /api/admin/marketing/seo-rankings`). Features:
+See [SEO Rankings](#seo-rankings) under the API Reference for endpoint details.
 
-**Keyword list:** Each row shows position number (colour-coded: emerald ≤3, blue ≤10, amber ≤20, grey >20), keyword, optional ranking URL, monthly search volume, and a position-change indicator (▲ or ▼ delta vs. `previousPosition`).
+**Keyword list:** Each row shows position number (colour-coded: emerald ≤3, blue ≤10, amber ≤20, grey >20), keyword, optional ranking URL, monthly search volume, and position-change indicator (▲ or ▼ + delta vs. `previousPosition`).
 
-**Add / Edit Keyword:** A collapsible inline form with fields: Keyword (required), Position 1–100 (required), Monthly Volume (optional), Ranking URL (optional). Submits `POST` to create or `PATCH /{id}` to update.
+**Add / Edit Keyword:** Collapsible inline form: Keyword (required), Position 1–100 (required), Monthly Volume (optional), Ranking URL (optional). Submits `POST` to create or `PATCH /{id}` to update. On `PATCH`, the server stores the old position as `previousPosition` before updating.
 
-**Sync Search Console:** The **↻ Sync Search Console** button calls `POST /api/admin/marketing/seo-rankings/sync-search-console`. The server uses the Google Search Console API (service account) to pull real position data and upserts all keywords. The button shows a spinner during sync; on completion a green banner reports "Synced N keywords — X new, Y updated". If `GOOGLE_SEARCH_CONSOLE_KEY_JSON` or `GOOGLE_SEARCH_CONSOLE_SITE_URL` is missing, the banner shows a clear configuration error with the secret names.
+**↻ Sync Search Console:** Calls `POST /api/admin/marketing/seo-rankings/sync-search-console`. The server calls the Google Search Console API (service account via `GOOGLE_SEARCH_CONSOLE_KEY_JSON`) to pull the top 100 queries for the last 28 days, then upserts each into `seo_rankings`. On upsert, the `notes` field is set to "Last synced from Search Console (N clicks, M impressions)". Returns `{ synced, inserted, updated }`. The UI shows a green success banner for 6 seconds. If either `GOOGLE_SEARCH_CONSOLE_KEY_JSON` or `GOOGLE_SEARCH_CONSOLE_SITE_URL` is missing, the response is `400` with an error message naming the missing secret.
 
 ---
 
@@ -343,39 +412,43 @@ A self-contained card with its own data fetching (`GET /api/admin/marketing/seo-
 **Component:** `MarketingTasksKanban`
 
 ### Purpose
-A Kanban board for planning and tracking marketing activities. Tasks move through columns by drag-and-drop or via a status dropdown.
+A Kanban board for planning and tracking marketing activities via drag-and-drop or dropdown status changes.
 
 ### Columns
 
-| Column | Status Value |
-|--------|-------------|
-| Ideas | `ideas` |
-| In Progress | `in_progress` |
-| Scheduled | `scheduled` |
-| Published | `published` |
-| Completed | `completed` |
+| Column Label | Status Value | Colour |
+|--------------|-------------|--------|
+| Ideas | `ideas` | Grey |
+| In Progress | `in_progress` | Amber |
+| Scheduled | `scheduled` | Blue |
+| Published | `published` | Emerald |
+| Completed | `completed` | (default) |
 
 ### Drag-and-Drop
 
-Implemented with `@dnd-kit/core` and `@dnd-kit/sortable`. Dragging a task card from one column and dropping it into another calls `PATCH /api/admin/marketing/tasks/{id}` with the new `status`. The `order` field is also patched to reflect position within the column.
+Implemented with `@dnd-kit/core` (`DndContext`, `PointerSensor`, `KeyboardSensor`) and `@dnd-kit/sortable` (`SortableContext`, `useSortable`). Each column is a `DroppableColumn` using `useDroppable`. Dropping a card into a different column calls `PATCH /api/admin/marketing/tasks/{id}` with the new `status`. Reordering within a column uses `arrayMove` on the local state and patches the `order` field.
 
 ### Status Dropdown
 
-Each card has a ▾ Status dropdown that allows changing the column without dragging. This fires the same PATCH call.
+Each card has a ▾ Status dropdown showing all five column values. Changing it fires the same PATCH call. No drag required.
 
-### Add Task
+### Add Task (Inline Form)
 
-The **+ Add Task** button reveals an inline form with **Title** (required) and **Description** (optional) fields. Submitting calls `POST /api/admin/marketing/tasks` with `status = "ideas"` (new tasks always land in the Ideas column).
+The **+ Add Task** button toggles an inline form with two fields:
+- **Title** (required text input)
+- **Description** (optional text input)
+
+Submitting calls `POST /api/admin/marketing/tasks` with `status = "ideas"`. No due date or priority fields exist in this form.
 
 ### ✦ AI Suggest Tasks
 
-`POST /api/admin/marketing/generate/task-suggestions` — asks Claude to produce **6 prioritised, actionable marketing tasks** tailored to Shane's services and ICP. Returns a JSON array of `{ title, description }` objects.
+`POST /api/admin/marketing/generate/task-suggestions` — Claude produces 6 prioritised marketing tasks as `[{ title, description }]`.
 
-A modal opens showing all 6 suggestions as checkboxes (all pre-checked). The admin can deselect any they don't want, then click **Add N Tasks** to batch-create the selected ones. Each selected task is created via `POST /api/admin/marketing/tasks`.
+A modal opens listing all 6 as checkboxes (all pre-checked). The footer shows "N of 6 selected". The **Add N Tasks** button batch-creates the selected ones via individual `POST /api/admin/marketing/tasks` calls, each with `status = "ideas"`. The button is disabled if 0 are selected.
 
 ### Delete Task
 
-A × button on each card calls `DELETE /api/admin/marketing/tasks/{id}` and removes the card immediately.
+A × button on each card calls `DELETE /api/admin/marketing/tasks/{id}` and removes the card from state.
 
 ---
 
@@ -384,247 +457,247 @@ A × button on each card calls `DELETE /api/admin/marketing/tasks/{id}` and remo
 **Component:** `CampaignBuilderWizard`
 
 ### Purpose
-A guided 5-step wizard to define and save a marketing campaign, generate a preview of four AI-written campaign assets, and then track performance metrics over time.
+A guided 5-step wizard to define, preview, and save marketing campaigns, then track performance metrics.
 
 ### Wizard Steps
 
-| Step | Label | Field |
-|------|-------|-------|
-| 1 | Goal | Campaign goal (free text) |
+| Step | Label | Content |
+|------|-------|---------|
+| 1 | Goal | Free-text campaign goal |
 | 2 | Audience | Target audience description |
 | 3 | Offer | Compelling offer description |
-| 4 | Review | Preview generated assets |
-| 5 | Saved | Campaign saved — view metrics |
+| 4 | Review | Preview of 4 AI-generated assets |
+| 5 | Saved | Campaign saved — view & edit metrics |
 
-A horizontal stepper displays progress. Completed steps are shown in Electric Blue (#0078D4); future steps are grey.
+A horizontal stepper shows progress. Steps completed or current are shown in Electric Blue (#0078D4); future steps are grey. A connector line between steps is blue if the previous step is complete.
 
 ### Campaign Name
 
-An optional **Campaign Name** field is available throughout all steps. If left blank, it defaults to `"Campaign <today's date>"`.
+An optional **Campaign Name** field spans all steps. Defaults to `"Campaign <today's date>"` if left blank.
 
 ### ✦ AI Fill (Per Step)
 
-Each of steps 1–3 has a **✦ AI Fill** button:
-
-`POST /api/admin/marketing/generate/campaign-suggest` with `{ field, name, goal, audience }`.
-
-The server uses the current campaign context plus ICP data to suggest a value for the specific field. The response is `{ value: string }` and populates the field automatically. The button shows a spinner and is disabled while generating.
+Each of steps 1–3 has a **✦ AI Fill** button next to its field. Clicking calls `POST /api/admin/marketing/generate/campaign-suggest` with `{ field: "goal"|"audience"|"offer", name, goal, audience }`. The server returns `{ value: string }` and populates the field. The button shows a spinner and is disabled during generation.
 
 ### Step 3 → Step 4: Preview Campaign
 
-After filling all three fields, **Preview Campaign** calls `POST /api/admin/marketing/campaigns/preview-assets` with `{ name, goal, audience, offer }`. The server uses Claude to generate four campaign assets in one request:
+**Preview Campaign** calls `POST /api/admin/marketing/campaigns/preview-assets` with `{ name, goal, audience, offer }`. Claude (`claude-haiku-4-5`, max 3000 tokens) returns a JSON object with four keys, which the server maps to `assetType` values:
 
-| Asset Type | Description |
-|------------|-------------|
-| `landing_copy` | Landing page / hero copy |
-| `email_sequence` | Cold email sequence (multi-step) |
-| `social_post` | Social media post |
-| `follow_up_task` | A concrete follow-up action |
+| JSON Key from Claude | `assetType` stored |
+|---------------------|-------------------|
+| `landing_copy` | `landing_copy` |
+| `email_sequence` | `email_sequence` |
+| `social_posts` | `social_post` |
+| `follow_up_tasks` | `follow_up_task` |
 
-The response is an array of `{ assetType, title, content }` objects. Each asset is displayed as an expandable card on step 4.
+The response is an array of `{ assetType, title, content }`. Each is displayed as an expandable card on step 4. No database write occurs at this point.
 
 ### Step 4 → Step 5: Confirm & Save
 
 **Confirm & Save**:
-1. `POST /api/admin/marketing/campaigns` — creates the campaign record with `status = "draft"`
-2. `POST /api/admin/marketing/campaigns/save-assets` — bulk-inserts all four preview assets linked to the new campaign ID
+1. `POST /api/admin/marketing/campaigns` — creates the campaign with `status = "draft"`, returns the new campaign record
+2. `POST /api/admin/marketing/campaigns/save-assets` — bulk-inserts all four preview assets linked to the new campaign ID (validated with Zod on the server)
 
 After saving, the wizard advances to step 5. The new campaign is prepended to the **Saved Campaigns** list.
 
 ### Saved Campaigns List
 
-Displayed alongside the wizard (right column on desktop). Populated by `GET /api/admin/marketing/campaigns` on mount. Each campaign shows name, status badge, creation date, and an asset count. Clicking a campaign selects it and opens its `CampaignMetricsPanel`.
+Right-column panel (desktop) populated by `GET /api/admin/marketing/campaigns` on mount. Includes `emailsSentAuto` (a join aggregate of `email_events` with `event_type = "sent"`). Clicking a campaign selects it and opens `CampaignMetricsPanel`.
 
 ### Campaign Metrics Panel (`CampaignMetricsPanel`)
 
-A details panel rendered for the selected campaign showing:
+Three display tiles: **Leads Generated** (emerald) · **Emails Sent** (blue) · **Revenue** (amber, dollar-formatted).
 
-**Display tiles:** Leads Generated · Emails Sent · Revenue
+The Emails Sent tile has three display modes based on the data:
+- `emailsSentAuto > 0` and `emailsSent = 0` → shows auto count with a blue "auto-tracked" badge
+- `emailsSent > 0` and `emailsSentAuto > 0` → shows manual override value with amber "override (N auto)" badge
+- `emailsSent > 0` and `emailsSentAuto = 0` → shows manual value with grey "manual" badge
 
-The Emails Sent tile has three display modes:
-- **Auto-tracked** — `emailsSentAuto` (count from `email_events`) is shown with a blue "auto-tracked" badge
-- **Manual override** — if `emailsSent` > 0, the manual value is shown with an amber "override (N auto)" badge
-- **Manual only** — if no auto data exists, the manual value is shown with a grey "manual" badge
-
-**Inline edit form:** Three number inputs for Leads Generated, Emails Sent (manual override), and Revenue ($). Saving calls `PATCH /api/admin/marketing/campaigns/{id}` and updates both the panel and the Saved Campaigns list.
+**Inline edit form** (three number inputs): Leads, Emails Sent (labeled "Emails (manual override)" when `emailsSentAuto > 0`), Revenue ($). Saving calls `PATCH /api/admin/marketing/campaigns/{id}`. The button shows "✓ Saved" for 2 seconds after success.
 
 ### Starting a New Campaign
 
-A **+ New Campaign** button (shown on step 5) resets all wizard state and returns to step 1.
+A **+ New Campaign** button (shown on step 5) resets all wizard state (`step`, `goal`, `audience`, `offer`, `name`, `previewAssets`, `savedCampaignId`) and returns to step 1.
 
 ---
 
 ## AI Integration
 
-All AI features use **Anthropic Claude** via the `@anthropic-ai/sdk`. The model is:
-- `claude-opus-4-5` for the heavy generation endpoints (full outreach copy, full content pieces, campaign preview assets)
-- `claude-haiku-4-5` for lightweight suggestion endpoints (prospect suggestions, content idea suggestions, task suggestions, campaign field suggestions, recommended leads)
+### Model
+
+All AI generation routes in `admin-marketing.ts` use **`claude-haiku-4-5`** (no route in this file uses a larger model). Token budgets vary by endpoint: 400 for suggest endpoints, 1000–1200 for outreach generation, 1800 for content generation, 2000 for lead generation, 3000 for campaign preview assets.
 
 ### ICP Context (`buildICPContext()`)
 
-A helper function queried before every AI call that enriches prompts with live CRM data:
-- Top industries by lead count
-- Most common company sizes
-- Most common lead sources
-- Average lead score (if available)
-- Lead-to-conversion rate
+Called before every AI request. Assembles a context string from four database sources:
 
-This ensures AI suggestions are grounded in Shane's actual client base rather than generic personas.
+1. **Settings table** — keys: `icp_description`, `target_industries`, `ideal_company_size`, `value_proposition`, `differentiators`
+2. **Services table** — up to 8 public services with name, description, and target audience
+3. **Leads table** — top 10 industry + company\_size combinations by frequency
+4. **`quiz_pain_signal_config` table** — up to 8 category pain signal names
+
+If all four sources return empty, the context defaults to a hardcoded fallback: "Microsoft 365 consulting, mid-market (50-2000 employees), IT decision-makers in healthcare, government, finance, or technology sectors".
 
 ### JSON Parsing & Validation
 
-All Claude responses that return structured JSON are parsed with `parseAiJson<T>(text, zodSchema)`. If the response is not valid JSON or fails Zod validation, the helper throws an `AiResponseError`. The route returns `422 Unprocessable Entity` in this case. This prevents silent bad data from reaching the frontend.
-
-### Compliance Constraint
-
-The recommended-leads prompt explicitly excludes NASA employees, federal government employees, and anyone at organisations that could create a conflict of interest with Shane's primary employment at NASA.
+`parseAiJson<T>(text, zodSchema)` — strips markdown code fences, parses JSON, and validates against a Zod schema. Throws `AiResponseError` if either step fails. Routes catch this and return `422 Unprocessable Entity` with `{ error: "AI returned an unreadable response — please try again" }` or `"AI returned unexpected format — please try again"`. This prevents silent bad data from reaching the frontend.
 
 ---
 
 ## Email Delivery
 
-Outreach emails are sent via **Microsoft Graph API** (Exchange Online), not SMTP or a transactional email service.
+Outreach emails are sent via **Microsoft Graph API** (Exchange Online), not SMTP.
 
-The `sendMessage()` helper (in `lib/graph-mail.ts`) is called with:
-- `userId` — from `GRAPH_MAIL_USER_ID` environment variable (Shane's Microsoft 365 mailbox UPN or ID)
-- `to` — array with the recipient email address
-- `subject` and `body` — from the outreach content
+The `sendMessage()` helper (`lib/graphEmail.ts`) is called with:
+- `userId` — from `GRAPH_MAIL_USER_ID` env var (Shane's M365 mailbox UPN or object ID)
+- `to` — array with one recipient address
+- `subject`, `body` — from the submitted form
 - `bodyType` — `"text"` (default) or `"html"`
-- `saveToSentItems: true` — the sent message appears in Shane's Sent Items folder
+- `saveToSentItems: true` — appears in Shane's Sent Items folder
 
-If `GRAPH_MAIL_USER_ID` is not set, the endpoint returns `503 Service Unavailable` with a descriptive message. If the Graph API rejects the send, the endpoint returns `502`.
+Error cases:
+- `GRAPH_MAIL_USER_ID` not set → `503 Service Unavailable`
+- Graph API rejects the send → `502 Bad Gateway`
+- `z.ZodError` on input validation → `400 Bad Request` with the first Zod error message
 
 After a successful send:
-1. An `email_events` record is inserted (`eventType = "sent"`) linked to the `leadId` and `campaignId` if provided.
-2. The associated lead's `notes` field is updated with a timestamped entry: `[Jun 15, 2025, 02:30 PM] Outreach email sent to: name@example.com — Subject: "..."`.
+1. An `email_events` row is inserted with `eventType = "sent"`, `recipient`, `subject`, and optional `campaignId` and `leadId` linkage. The `emailId` is generated as `outreach-{timestamp}-{random}`.
+2. If `leadId` was provided, the lead's `notes` field is appended with a timestamped entry: `[Jun 15, 2025, 02:30 PM] Outreach email sent to: {email} — Subject: "{subject}"`.
 
 ---
 
 ## Data Persistence
 
-All marketing data lives in the shared PostgreSQL database (accessed via `@workspace/db` and Drizzle ORM).
+All data lives in the shared PostgreSQL database via Drizzle ORM.
 
 | Table | Purpose |
 |-------|---------|
-| `recommended_leads` | AI-generated lead suggestions with status and fit scores |
+| `recommended_leads` | AI-generated prospects with status, confidence, ICP fields, and `last_outreach_draft` |
 | `outreach_templates` | Saved outreach message templates (all four types) |
-| `marketing_tasks` | Kanban task cards with status and order |
-| `campaigns` | Campaign records with goal, audience, offer, and metrics |
-| `campaign_assets` | Content pieces linked to a campaign |
-| `seo_rankings` | Keyword → position → volume → URL mappings |
-| `email_events` | Record of every sent email with lead/campaign linkage |
-| `analytics_sessions` | Website session records (source, referrer, UTM, start time) |
-| `analytics_pageviews` | Per-page view records linked to sessions |
-
-The `campaigns` table includes both `emails_sent` (manual override field) and an auto-computed `emails_sent_auto` column (a join aggregate over `email_events` with `event_type = "sent"`).
+| `marketing_tasks` | Kanban cards with `status`, `order`, `relatedLeadId`, `relatedCampaignId` |
+| `campaigns` | Campaign records with goal, audience, offer, `emails_sent` (manual), `leads_generated`, `revenue_attributed` |
+| `campaign_assets` | Content pieces linked to a campaign; valid `assetType` values: `landing_copy`, `email_sequence`, `social_post`, `follow_up_task`, `blog_post`, `linkedin_post`, `newsletter`, `seo_keywords` |
+| `seo_rankings` | Keyword → `position`, `previousPosition`, `searchVolume`, `url`, `notes`, `checkedAt` |
+| `email_events` | Every sent email with `eventType`, `recipient`, `subject`, `campaignId`, `leadId`, `occurredAt`, `metadata` |
+| `analytics_sessions` | Website sessions with `startedAt`, `utm_source`, `referrer` |
+| `analytics_site_events` | In-session events including `cta_click` (used for KPI conversion rate) |
+| `analytics_pageviews` | Per-page view records with `page`, `enteredAt`, linked to session |
 
 ---
 
 ## API Reference
 
-All routes require `Authorization: Bearer <password>` and return JSON. Errors return `{ error: string }`.
+All routes require `Authorization: Bearer <password>`. Errors return `{ error: string }`.
 
 ### KPI
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/api/admin/marketing/kpi` | Four KPI values |
+| GET | `/api/admin/marketing/kpi` | Returns `{ visitorsToday, leadsThisWeek, conversionRate, activeCampaigns }` |
 
 ### Recommended Leads
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/api/admin/marketing/recommended-leads` | List all recommended leads |
-| POST | `/api/admin/marketing/recommended-leads/generate` | Generate 7 AI-recommended leads |
-| POST | `/api/admin/marketing/recommended-leads/{id}/convert` | Convert to CRM lead |
-| PATCH | `/api/admin/marketing/recommended-leads/{id}` | Update status (e.g. dismiss) |
+| GET | `/api/admin/marketing/recommended-leads` | List up to 40 recommended leads ordered by `generatedAt` desc |
+| POST | `/api/admin/marketing/recommended-leads` | Create a lead manually |
+| POST | `/api/admin/marketing/recommended-leads/generate` | AI-generate 7 leads; inserts and returns them |
+| PATCH | `/api/admin/marketing/recommended-leads/{id}` | Update any field (name, company, role, status, etc.) |
+| PATCH | `/api/admin/marketing/recommended-leads/{id}/dismiss` | Sets `status = "dismissed"` |
+| POST | `/api/admin/marketing/recommended-leads/{id}/convert` | Creates CRM lead, updates status to `converted` |
 | DELETE | `/api/admin/marketing/recommended-leads/{id}` | Hard delete |
 
 ### Outreach Templates
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/api/admin/marketing/outreach-templates` | List all saved templates |
-| POST | `/api/admin/marketing/outreach-templates` | Save a new template |
-| PATCH | `/api/admin/marketing/outreach-templates/{id}` | Update template |
-| DELETE | `/api/admin/marketing/outreach-templates/{id}` | Delete template |
+| GET | `/api/admin/marketing/outreach-templates` | List all, ordered by `createdAt` desc |
+| POST | `/api/admin/marketing/outreach-templates` | Create: `{ name, templateType, subject?, body, leadId? }` |
+| PATCH | `/api/admin/marketing/outreach-templates/{id}` | Update any field |
+| DELETE | `/api/admin/marketing/outreach-templates/{id}` | Delete |
 
 ### Marketing Tasks
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/api/admin/marketing/tasks` | List all tasks (ordered by `order`, then `createdAt` desc) |
-| POST | `/api/admin/marketing/tasks` | Create a task |
-| PATCH | `/api/admin/marketing/tasks/{id}` | Update status, order, or fields |
-| DELETE | `/api/admin/marketing/tasks/{id}` | Delete task |
+| GET | `/api/admin/marketing/tasks` | List all, ordered by `order` then `createdAt` desc |
+| POST | `/api/admin/marketing/tasks` | Create: `{ title, description?, status?, dueDate?, relatedLeadId?, relatedCampaignId? }` |
+| PATCH | `/api/admin/marketing/tasks/{id}` | Update status, order, or any field |
+| DELETE | `/api/admin/marketing/tasks/{id}` | Delete |
 
 ### Campaigns
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/api/admin/marketing/campaigns` | List campaigns with `emailsSentAuto` join count |
-| POST | `/api/admin/marketing/campaigns` | Create campaign (status defaults to `draft`) |
-| PATCH | `/api/admin/marketing/campaigns/{id}` | Update any campaign field or metrics |
-| DELETE | `/api/admin/marketing/campaigns/{id}` | Delete campaign |
-| GET | `/api/admin/marketing/campaigns/{id}/assets` | List assets for one campaign |
+| GET | `/api/admin/marketing/campaigns` | List with `emailsSentAuto` (join count of sent email events) |
+| POST | `/api/admin/marketing/campaigns` | Create: `{ name, goal, audience, offer, status? }` (defaults to `draft`) |
+| PATCH | `/api/admin/marketing/campaigns/{id}` | Update any field including `leadsGenerated`, `emailsSent`, `revenueAttributed` |
+| DELETE | `/api/admin/marketing/campaigns/{id}` | Delete |
+| GET | `/api/admin/marketing/campaigns/{id}/assets` | List all assets for a campaign |
 
 ### Campaign Assets
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/api/admin/marketing/campaign-assets` | List assets (`?campaignId=N&assetType=X`) |
+| GET | `/api/admin/marketing/campaign-assets` | List assets; optional `?campaignId=N&assetType=X` filters |
 | POST | `/api/admin/marketing/campaign-assets` | Create one asset |
-| PATCH | `/api/admin/marketing/campaign-assets/{id}` | Update asset |
-| DELETE | `/api/admin/marketing/campaign-assets/{id}` | Delete asset |
-| POST | `/api/admin/marketing/campaigns/save-assets` | Bulk-insert assets for a campaign |
-| POST | `/api/admin/marketing/campaigns/preview-assets` | AI-generate 4 preview assets |
+| PATCH | `/api/admin/marketing/campaign-assets/{id}` | Update title, content, or assetType |
+| DELETE | `/api/admin/marketing/campaign-assets/{id}` | Delete |
+| POST | `/api/admin/marketing/campaigns/preview-assets` | AI-generate 4 preview assets (no DB write) |
+| POST | `/api/admin/marketing/campaigns/save-assets` | Bulk-insert assets: `{ campaignId, assets: [{ assetType, title, content }] }` |
 
 ### Email & Outreach
 
 | Method | Path | Description |
 |--------|------|-------------|
-| POST | `/api/admin/marketing/send-outreach` | Send email via Exchange Online |
-| GET | `/api/admin/marketing/leads/{id}/emails` | Email history for a lead |
-| GET | `/api/admin/marketing/email-stats` | 30-day email aggregate stats |
+| POST | `/api/admin/marketing/send-outreach` | Send via Exchange Online; body: `{ to, subject, body, leadId?, campaignId?, bodyType? }` |
+| GET | `/api/admin/marketing/leads/{id}/emails` | Sent email history for a CRM lead |
+| GET | `/api/admin/marketing/email-stats` | Returns `{ totalSent, hasData, dailyTrend: [{ day, sent }] }` for last 30 days |
 
 ### Analytics
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/api/admin/marketing/analytics` | All chart data (visitors, sources, funnel, campaign perf, top pages) |
+| GET | `/api/admin/marketing/analytics` | Returns `{ dailyVisitors, topPages, trafficSources, conversionFunnel, campaignPerformance }` |
 
 ### SEO Rankings
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/api/admin/marketing/seo-rankings` | List all tracked keywords |
-| POST | `/api/admin/marketing/seo-rankings` | Add a keyword |
-| PATCH | `/api/admin/marketing/seo-rankings/{id}` | Update position / volume / URL |
-| DELETE | `/api/admin/marketing/seo-rankings/{id}` | Remove keyword |
-| POST | `/api/admin/marketing/seo-rankings/sync-search-console` | Pull live positions from Google Search Console |
+| GET | `/api/admin/marketing/seo-rankings` | List all, ordered by `position` asc |
+| POST | `/api/admin/marketing/seo-rankings` | Create: `{ keyword, position, url?, searchVolume?, notes? }` (Zod-validated) |
+| PATCH | `/api/admin/marketing/seo-rankings/{id}` | Update; stores old position as `previousPosition` on position change |
+| DELETE | `/api/admin/marketing/seo-rankings/{id}` | Delete |
+| POST | `/api/admin/marketing/seo-rankings/sync-search-console` | Pull from Google Search Console; upserts top 100 queries (28-day window) |
 
 ### AI Generation
 
+| Method | Path | Body | Description |
+|--------|------|------|-------------|
+| POST | `/api/admin/marketing/generate/outreach` | `{ leadId?, recommendedLeadId?, name?, company?, role?, industry?, painPoints?, templateType }` | Generate outreach copy; fetches lead data from DB if ID provided |
+| POST | `/api/admin/marketing/generate/outreach-suggest` | `{ templateType? }` | Suggest prospect `{ name, company, role, industry }` |
+| POST | `/api/admin/marketing/generate/content` | `{ contentType, topic, tone?, keywords? }` | Generate long-form content |
+| POST | `/api/admin/marketing/generate/content-suggest` | `{ contentType? }` | Suggest `{ topic, tone, keywords }` |
+| POST | `/api/admin/marketing/generate/task-suggestions` | (none) | Suggest 6 tasks as `[{ title, description }]` |
+| POST | `/api/admin/marketing/generate/campaign-suggest` | `{ field, name?, goal?, audience? }` | Suggest value for one campaign field; returns `{ value }` |
+
+### Admin Lead Creation (Outreach Tab)
+
 | Method | Path | Description |
 |--------|------|-------------|
-| POST | `/api/admin/marketing/generate/outreach` | Generate outreach copy for a prospect |
-| POST | `/api/admin/marketing/generate/outreach-suggest` | Suggest a prospect (name/company/role/industry) |
-| POST | `/api/admin/marketing/generate/content` | Generate long-form content |
-| POST | `/api/admin/marketing/generate/content-suggest` | Suggest a content topic, tone, and keywords |
-| POST | `/api/admin/marketing/generate/task-suggestions` | Suggest 6 prioritised marketing tasks |
-| POST | `/api/admin/marketing/generate/campaign-suggest` | Suggest a value for one campaign field |
+| POST | `/api/admin/leads` | Create a CRM lead from AI-suggested prospect; `source = "ai_suggested"`, `status = "new"` |
 
 ---
 
 ## Configuration & Secrets
 
-| Secret / Env Var | Section | Effect if Missing |
-|------------------|---------|-------------------|
-| `CRM_ADMIN_PASSWORD` | All | All routes return 401 |
-| `ANTHROPIC_API_KEY` | All AI features | AI generation fails at runtime |
+| Secret / Env Var | Required By | Effect if Missing |
+|------------------|-------------|-------------------|
+| `CRM_ADMIN_PASSWORD` | All routes | All routes return 401 |
+| (Anthropic API key via integration) | All AI features | AI generation fails at runtime |
 | `GRAPH_MAIL_USER_ID` | Email delivery | Send Outreach returns 503 |
-| `GRAPH_CLIENT_ID` + `GRAPH_CLIENT_SECRET` + `GRAPH_TENANT_ID` | Email delivery | Graph API calls fail (auth error) |
-| `GOOGLE_SEARCH_CONSOLE_KEY_JSON` | SEO Rankings sync | Sync returns an error; manual entry still works |
+| `GRAPH_CLIENT_ID`, `GRAPH_CLIENT_SECRET`, `GRAPH_TENANT_ID` | Email delivery | Graph API auth fails |
+| `GOOGLE_SEARCH_CONSOLE_KEY_JSON` | SEO Rankings sync | Sync returns 400; manual entry still works |
 | `GOOGLE_SEARCH_CONSOLE_SITE_URL` | SEO Rankings sync | Same as above |
 
 The Google Search Console secrets are documented in `replit.md` under "Google Search Console Secrets". The Microsoft Graph secrets are shared with the calendar booking feature on the public website.
