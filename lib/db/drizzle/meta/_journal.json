@@ -519,6 +519,13 @@
       "when": 1782624000000,
       "tag": "0071_add_ad_asset_types",
       "breakpoints": true
+    },
+    {
+      "idx": 72,
+      "version": "7",
+      "when": 1782710400000,
+      "tag": "0072_add_analytics_identified_email",
+      "breakpoints": true
     }
   ]
 }

@@ -1,9 +1,10 @@
 import { Router } from "express";
 import rateLimit from "express-rate-limit";
 import { z } from "zod";
-import { sql } from "drizzle-orm";
+import { sql, eq } from "drizzle-orm";
 import { db, analyticsSessionsTable, analyticsPageviewsTable, analyticsSiteEventsTable } from "@workspace/db";
 import { requireAdmin } from "../middlewares/requireAuth";
+import { ingestIntentEvent, findLeadByEmail, HIGH_VALUE_PAGES } from "../lib/lead-intent";
 
 const router = Router();
 
@@ -140,6 +141,39 @@ router.post("/analytics/session", publicLimiter, async (req, res) => {
   return res.json({ ok: true });
 });
 
+// ─── Public: identify — links a session to a known lead email ─────────────────
+const identifySchema = z.object({
+  sessionId: z.string().uuid(),
+  email: z.string().email().max(500),
+});
+
+router.post("/analytics/identify", publicLimiter, async (req, res) => {
+  const parsed = identifySchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: "Invalid payload" });
+  try {
+    await db.update(analyticsSessionsTable)
+      .set({ identifiedEmail: parsed.data.email.toLowerCase().trim() })
+      .where(eq(analyticsSessionsTable.sessionId, parsed.data.sessionId));
+  } catch { /* non-fatal */ }
+  return res.json({ ok: true });
+});
+
+// ─── Internal helper — fire site_visit intent event when a known lead hits a high-value page ──
+async function maybeFireIntentEvent(sessionId: string, page: string): Promise<void> {
+  try {
+    const normalised = page.split("?")[0]?.replace(/\/$/, "") || "/";
+    if (!HIGH_VALUE_PAGES.has(normalised)) return;
+    const [session] = await execRows<{ identified_email: string | null }>(
+      sql`SELECT identified_email FROM analytics_sessions WHERE session_id = ${sessionId} LIMIT 1`
+    );
+    const email = session?.identified_email;
+    if (!email) return;
+    const lead = await findLeadByEmail(email);
+    if (!lead) return;
+    await ingestIntentEvent(lead.id, "site_visit", { page, sessionId });
+  } catch { /* non-fatal — never block the pageview response */ }
+}
+
 // ─── Public: pageview ─────────────────────────────────────────────────────────
 router.post("/analytics/pageview", publicLimiter, async (req, res) => {
   const parsed = pageviewSchema.safeParse(req.body);
@@ -153,6 +187,7 @@ router.post("/analytics/pageview", publicLimiter, async (req, res) => {
     const [row] = await db.insert(analyticsPageviewsTable)
       .values({ sessionId: d.sessionId, page: d.page, title: d.title, maxScrollPct: d.maxScrollPct ?? 0 })
       .returning({ id: analyticsPageviewsTable.id });
+    void maybeFireIntentEvent(d.sessionId, d.page);
     return res.json({ ok: true, pageviewId: row?.id });
   } catch { return res.json({ ok: true }); }
 });

@@ -729,6 +729,7 @@ export const analyticsSessionsTable = pgTable("analytics_sessions", {
   lastSeenAt: timestamp("last_seen_at").notNull().defaultNow(),
   totalSeconds: integer("total_seconds").notNull().default(0),
   isBounce: boolean("is_bounce").notNull().default(true),
+  identifiedEmail: text("identified_email"),
 });
 
 export const analyticsPageviewsTable = pgTable("analytics_pageviews", {

@@ -207,6 +207,23 @@ export function initTracker(): void {
   startHeartbeat();
 }
 
+/**
+ * Link the current analytics session to a known lead email.
+ * Call this after the user submits a form with their email address.
+ * Once linked, future high-value page visits will automatically score
+ * the lead's intent and surface them in the hot leads list.
+ */
+export async function identifyLead(email: string): Promise<void> {
+  if (!isEnabled() || !_sessionId || !email) return;
+  try {
+    await fetch("/api/analytics/identify", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sessionId: _sessionId, email }),
+    });
+  } catch { /* non-fatal */ }
+}
+
 export async function trackPageview(page: string): Promise<void> {
   if (!isEnabled() || !_sessionId) return;
 

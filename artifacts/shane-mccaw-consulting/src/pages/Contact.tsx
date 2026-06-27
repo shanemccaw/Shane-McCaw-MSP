@@ -4,6 +4,7 @@ import { Layout } from "@/components/Layout";
 import { CTAButton } from "@/components/CTAButton";
 import { MicrosoftBookingsEmbed } from "@/components/MicrosoftBookingsEmbed";
 import { Mail, MapPin, Clock, Send } from "lucide-react";
+import { identifyLead } from "@/lib/analytics";
 
 interface ChatMessage {
   role: "user" | "assistant";
@@ -166,6 +167,7 @@ export default function Contact() {
           }
 
           if (leadSaved) {
+            if (lead.email) void identifyLead(lead.email);
             const confirmMsg = data.reply ||
               "Thanks! Your information has been sent to Shane. He'll personally follow up within one business day.";
             setMessages([...newMessages, { role: "assistant", content: confirmMsg }]);

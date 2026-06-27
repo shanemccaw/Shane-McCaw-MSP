@@ -7,6 +7,7 @@ import {
   leadIntentEventsTable, followUpEventsTable, offersTable, landingPagesTable,
 } from "@workspace/db";
 import { eq, desc, count, and, gte, lte, sql, inArray, lt, isNull, or, ne } from "drizzle-orm";
+import { ingestIntentEvent, recomputeAndPersistHotScore } from "../lib/lead-intent";
 import { requireAdmin } from "../middlewares/requireAuth";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
 import { sendMessage, GraphMailConfigError } from "../lib/graphEmail";
@@ -1629,54 +1630,7 @@ router.post("/admin/marketing/seo-rankings/sync-search-console", requireAdmin, a
 
 let dailyCommandCache: { data: unknown; expiresAt: number } | null = null;
 
-// ─── Intent Events — ingest & hot-score recomputation ─────────────────────────
-
-// Spec-compliant weighted scoring: email_open=1, link_click=3, cta_click=5, site_visit=2, form_submit=10, reply=15
-const INTENT_SCORE_MAP: Record<string, number> = {
-  email_open: 1, link_click: 3, cta_click: 5, site_visit: 2, form_submit: 10, reply: 15,
-};
-
-async function recomputeAndPersistHotScore(leadId: number): Promise<number> {
-  const [lead] = await db.select().from(leadsTable).where(eq(leadsTable.id, leadId)).limit(1);
-  if (!lead) return 0;
-
-  const cutoff = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000);
-  const events = await db.select().from(leadIntentEventsTable)
-    .where(and(eq(leadIntentEventsTable.leadId, leadId), gte(leadIntentEventsTable.occurredAt, cutoff)));
-
-  // Base intent score from events
-  const intentScore = events.reduce((sum, e) => sum + (INTENT_SCORE_MAP[e.eventType] ?? 1), 0);
-
-  // ICP/pain-signal bonus: +2 per pain point, +5 if qualified stage, +3 per engagement signal
-  const icpBonus =
-    (lead.painPoints?.length ?? 0) * 2 +
-    (lead.stage === "SQL" ? 15 : lead.stage === "AQL" ? 8 : 0) +
-    (lead.engagementSignals?.length ?? 0) * 3 +
-    (lead.urgencySignals?.length ?? 0) * 4;
-
-  const newScore = Math.min(100, intentScore + icpBonus);
-  const prevScore = lead.score;
-
-  // Transactional update of both score and previousScore
-  await db.update(leadsTable)
-    .set({ score: newScore, previousScore: prevScore, updatedAt: new Date() })
-    .where(eq(leadsTable.id, leadId));
-
-  return newScore;
-}
-
 // ── Spec-compliant paths: POST /leads/:id/intent-event & GET /leads/:id/intent-events ──
-
-async function ingestIntentEvent(leadId: number, eventType: string, metadata: Record<string, unknown>): Promise<{ event: unknown; hotScore: number }> {
-  const [ev] = await db.insert(leadIntentEventsTable).values({
-    leadId,
-    eventType: eventType as "email_open" | "link_click" | "cta_click" | "site_visit" | "form_submit" | "reply",
-    metadata: metadata ?? {},
-    occurredAt: new Date(),
-  }).returning();
-  const hotScore = await recomputeAndPersistHotScore(leadId);
-  return { event: ev, hotScore };
-}
 
 router.post("/admin/marketing/leads/:id/intent-event", requireAdmin, async (req: Request, res: Response) => {
   try {
