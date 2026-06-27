@@ -124,6 +124,15 @@ function PermissionRow({
   );
 }
 
+// ── Runbook types ─────────────────────────────────────────────────────────────
+
+interface RunbookSummary {
+  name: string;
+  description?: string;
+  runbookType?: string;
+  state?: string;
+}
+
 // ── Script Form Modal ─────────────────────────────────────────────────────────
 
 const EMPTY_FORM = {
@@ -157,6 +166,38 @@ function ScriptFormModal({
       : { ...EMPTY_FORM, appRegPermissions: [] as AppRegPermission[] }
   );
   const [saving, setSaving] = useState(false);
+
+  const [runbooks, setRunbooks] = useState<RunbookSummary[]>([]);
+  const [loadingRunbooks, setLoadingRunbooks] = useState(true);
+  const [azureConfigured, setAzureConfigured] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoadingRunbooks(true);
+    fetchWithAuth("/api/admin/runbooks")
+      .then(async res => {
+        if (cancelled) return;
+        if (res.status === 503) {
+          const body = await res.json() as { configured: boolean };
+          if (!body.configured) {
+            setAzureConfigured(false);
+            return;
+          }
+        }
+        if (!res.ok) return;
+        const body = await res.json() as { configured: boolean; runbooks: RunbookSummary[] };
+        setRunbooks(body.runbooks ?? []);
+        setAzureConfigured(true);
+      })
+      .catch(() => {
+        if (!cancelled) setAzureConfigured(false);
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingRunbooks(false);
+      });
+    return () => { cancelled = true; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const addPerm = () =>
     setForm(f => ({ ...f, appRegPermissions: [...f.appRegPermissions, { permission: "", type: "Application", reason: "" }] }));
@@ -240,14 +281,47 @@ function ScriptFormModal({
 
           <div>
             <label className={labelCls}>Azure Automation Runbook Name *</label>
-            <input
-              type="text"
-              placeholder="e.g. Check-MFAStatus"
-              value={form.runbookName}
-              onChange={e => setForm(f => ({ ...f, runbookName: e.target.value }))}
-              className={`${inputCls} font-mono`}
-            />
-            <p className="text-[10px] text-[#484F58] mt-1">Must match exactly the runbook name in Azure Automation</p>
+            {loadingRunbooks ? (
+              <div className={`${inputCls} animate-pulse bg-[#1C2128] text-transparent select-none`}>
+                Loading runbooks…
+              </div>
+            ) : azureConfigured ? (
+              <>
+                <select
+                  value={form.runbookName}
+                  onChange={e => setForm(f => ({ ...f, runbookName: e.target.value }))}
+                  className={`${inputCls} font-mono`}
+                >
+                  <option value="" disabled>— select a runbook —</option>
+                  {runbooks.map(rb => (
+                    <option key={rb.name} value={rb.name}>
+                      {rb.name}{rb.runbookType ? ` (${rb.runbookType})` : ""}
+                    </option>
+                  ))}
+                  {form.runbookName && !runbooks.some(rb => rb.name === form.runbookName) && (
+                    <option value={form.runbookName} disabled>
+                      {form.runbookName} (not found in Azure)
+                    </option>
+                  )}
+                </select>
+                <p className="text-[10px] text-[#484F58] mt-1">
+                  Populated from your Azure Automation account — {runbooks.length} runbook{runbooks.length === 1 ? "" : "s"} available
+                </p>
+              </>
+            ) : (
+              <>
+                <input
+                  type="text"
+                  placeholder="e.g. Check-MFAStatus"
+                  value={form.runbookName}
+                  onChange={e => setForm(f => ({ ...f, runbookName: e.target.value }))}
+                  className={`${inputCls} font-mono`}
+                />
+                <p className="text-[10px] text-amber-500/70 mt-1">
+                  Azure secrets not set — enter the runbook name manually.
+                </p>
+              </>
+            )}
           </div>
 
           <div>
