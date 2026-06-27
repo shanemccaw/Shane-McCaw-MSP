@@ -877,6 +877,7 @@ function LeadFinderSection({ fetchWithAuth }: { fetchWithAuth: (url: string, opt
         </select>
         <select value={filterSource} onChange={e => setFilterSource(e.target.value)} className={select}>
           <option value="all">All Sources</option>
+          <option value="ai_suggested">AI Suggested</option>
           <option value="ai_recommended">AI Recommended</option>
           <option value="contact_form">Contact Form</option>
           <option value="lead_magnet">Lead Magnet</option>
@@ -996,6 +997,10 @@ function OutreachAutomationSection({ fetchWithAuth }: { fetchWithAuth: (url: str
   const [sendDialog, setSendDialog] = useState<{ to: string; subject: string; body: string; campaignId?: number } | null>(null);
   const [campaigns, setCampaigns] = useState<Array<{ id: number; name: string }>>([]);
   const [tagCampaignId, setTagCampaignId] = useState<number | null>(null);
+  const [addToLeadsReady, setAddToLeadsReady] = useState(false);
+  const [addingLead, setAddingLead] = useState(false);
+  const [leadAdded, setLeadAdded] = useState(false);
+  const [addLeadError, setAddLeadError] = useState<string | null>(null);
 
   useEffect(() => {
     fetchWithAuth(`${API}/admin/marketing/outreach-templates`).then(r => r.json()).then(d => setTemplates(d as typeof templates)).catch(() => null);
@@ -1019,6 +1024,9 @@ function OutreachAutomationSection({ fetchWithAuth }: { fetchWithAuth: (url: str
 
   const suggestProspect = async () => {
     setSuggesting(true);
+    setAddToLeadsReady(false);
+    setLeadAdded(false);
+    setAddLeadError(null);
     try {
       const r = await fetchWithAuth(`${API}/admin/marketing/generate/outreach-suggest`, {
         method: "POST",
@@ -1030,7 +1038,29 @@ function OutreachAutomationSection({ fetchWithAuth }: { fetchWithAuth: (url: str
       if (data.company) setCompany(data.company);
       if (data.role) setRole(data.role);
       if (data.industry) setIndustry(data.industry);
+      if (data.name || data.company) setAddToLeadsReady(true);
     } finally { setSuggesting(false); }
+  };
+
+  const addToLeads = async () => {
+    setAddingLead(true);
+    setAddLeadError(null);
+    try {
+      const r = await fetchWithAuth(`${API}/admin/leads`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name, company, role, industry }),
+      });
+      if (!r.ok) {
+        const err = await r.json().catch(() => ({})) as { error?: string };
+        setAddLeadError(err.error ?? "Failed to save lead");
+      } else {
+        setLeadAdded(true);
+        setAddToLeadsReady(false);
+      }
+    } catch {
+      setAddLeadError("Network error — please try again");
+    } finally { setAddingLead(false); }
   };
 
   const save = async () => {
@@ -1096,11 +1126,24 @@ function OutreachAutomationSection({ fetchWithAuth }: { fetchWithAuth: (url: str
             {([["Name", name, setName], ["Company", company, setCompany], ["Role", role, setRole], ["Industry", industry, setIndustry]] as [string, string, (v: string) => void][]).map(([label, val, setter]) => (
               <div key={label}>
                 <label className="text-[10px] text-[#7D8590] uppercase tracking-wide">{label}</label>
-                <input value={val} onChange={e => setter(e.target.value)} placeholder={`Lead ${label.toLowerCase()}…`}
+                <input value={val} onChange={e => { setter(e.target.value); setLeadAdded(false); setAddLeadError(null); }} placeholder={`Lead ${label.toLowerCase()}…`}
                   className="mt-1 w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-2 py-1.5 text-sm text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60" />
               </div>
             ))}
           </div>
+          {(addToLeadsReady || leadAdded || addLeadError) && (
+            <div className="flex items-center gap-2 flex-wrap">
+              {leadAdded ? (
+                <span className="text-xs text-emerald-400 flex items-center gap-1">✓ Added to Lead Finder</span>
+              ) : (
+                <button onClick={() => { void addToLeads(); }} disabled={addingLead || !name.trim()}
+                  className="text-xs px-3 py-1.5 rounded-lg border border-emerald-500/40 text-emerald-400 hover:bg-emerald-500/10 disabled:opacity-40 transition-colors flex items-center gap-1">
+                  {addingLead ? <><div className="w-3 h-3 border border-emerald-400 border-t-transparent rounded-full animate-spin" />Adding…</> : "＋ Add to Leads"}
+                </button>
+              )}
+              {addLeadError && <span className="text-xs text-red-400">{addLeadError}</span>}
+            </div>
+          )}
           <button onClick={() => { void generate(); }} disabled={generating}
             className="w-full py-2 rounded-lg bg-[#0078D4] text-white text-sm font-semibold hover:bg-[#0078D4]/80 disabled:opacity-40 transition-colors">
             {generating ? "Generating…" : "Generate"}

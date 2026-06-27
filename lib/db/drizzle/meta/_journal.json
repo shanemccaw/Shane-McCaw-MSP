@@ -484,6 +484,13 @@
       "when": 1751472000000,
       "tag": "0066_add_last_outreach_draft",
       "breakpoints": true
+    },
+    {
+      "idx": 67,
+      "version": "7",
+      "when": 1782532789202,
+      "tag": "0067_add_ai_suggested_source",
+      "breakpoints": true
     }
   ]
 }

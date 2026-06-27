@@ -1321,4 +1321,35 @@ router.post("/admin/marketing/seo-rankings/sync-search-console", requireAdmin, a
   }
 });
 
+// ─── Admin: Create lead from AI suggestion ────────────────────────────────────
+
+router.post("/admin/leads", requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const body = req.body as { name?: string; company?: string; role?: string; industry?: string };
+    const { name, company, role, industry } = body;
+
+    if (!name?.trim()) {
+      res.status(400).json({ error: "name is required" });
+      return;
+    }
+
+    const emailFallback = `${name.toLowerCase().replace(/\s+/g, ".")}@${(company ?? "unknown").toLowerCase().replace(/[^a-z0-9]/g, "")}.com`;
+
+    const [newLead] = await db.insert(leadsTable).values({
+      name: name.trim(),
+      email: emailFallback,
+      company: company?.trim() ?? null,
+      role: role?.trim() ?? null,
+      industry: industry?.trim() ?? null,
+      source: "ai_suggested",
+      status: "new",
+      notes: `[AI Suggested] Created from Outreach Automation tab.`,
+    }).returning();
+
+    res.status(201).json(newLead);
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
 export default router;

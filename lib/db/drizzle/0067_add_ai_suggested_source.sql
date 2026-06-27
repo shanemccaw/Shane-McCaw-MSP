@@ -1,0 +1,4 @@
+-- Add "ai_suggested" to the leads source enum
+-- No SQL required: Drizzle text() enums are TypeScript-only type constraints.
+-- The "source" column is a plain text column with no Postgres CHECK constraint,
+-- so new enum values are accepted by the database without any DDL changes.
