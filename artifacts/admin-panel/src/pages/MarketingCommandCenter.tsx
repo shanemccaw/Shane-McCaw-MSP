@@ -7046,30 +7046,59 @@ function MarketingDashboard({ fetchWithAuth, onNavigate }: {
   onNavigate: (section: string) => void;
 }) {
   const [kpi, setKpi] = useState<KPI | null>(null);
+  const [kpiLoading, setKpiLoading] = useState(true);
+  const [kpiError, setKpiError] = useState(false);
+
   const [leads, setLeads] = useState<RecommendedLead[]>([]);
+  const [leadsLoading, setLeadsLoading] = useState(true);
+  const [leadsError, setLeadsError] = useState(false);
+
   const [tasks, setTasks] = useState<MarketingTask[]>([]);
+  const [tasksLoading, setTasksLoading] = useState(true);
+  const [tasksError, setTasksError] = useState(false);
+
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
+  const [campaignsLoading, setCampaignsLoading] = useState(true);
+  const [campaignsError, setCampaignsError] = useState(false);
+
   const [analytics, setAnalytics] = useState<AnalyticsData | null>(null);
+  const [analyticsLoading, setAnalyticsLoading] = useState(true);
+  const [analyticsError, setAnalyticsError] = useState(false);
+
   const [seoRankings, setSeoRankings] = useState<SeoRanking[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [seoLoading, setSeoLoading] = useState(true);
+  const [seoError, setSeoError] = useState(false);
 
   useEffect(() => {
-    setLoading(true);
-    Promise.all([
-      fetchWithAuth(`${API}/admin/marketing/kpi`).then(r => r.json()).catch(() => null),
-      fetchWithAuth(`${API}/admin/marketing/recommended-leads`).then(r => r.json()).catch(() => []),
-      fetchWithAuth(`${API}/admin/marketing/tasks`).then(r => r.json()).catch(() => []),
-      fetchWithAuth(`${API}/admin/marketing/campaigns`).then(r => r.json()).catch(() => []),
-      fetchWithAuth(`${API}/admin/marketing/analytics`).then(r => r.json()).catch(() => null),
-      fetchWithAuth(`${API}/admin/marketing/seo-rankings`).then(r => r.json()).catch(() => []),
-    ]).then(([k, l, t, c, a, s]) => {
-      setKpi(k as KPI | null);
-      setLeads(Array.isArray(l) ? (l as RecommendedLead[]).filter(x => x.status === "pending").slice(0, 6) : []);
-      setTasks(Array.isArray(t) ? (t as MarketingTask[]) : []);
-      setCampaigns(Array.isArray(c) ? (c as Campaign[]) : []);
-      setAnalytics(a as AnalyticsData | null);
-      setSeoRankings(Array.isArray(s) ? (s as SeoRanking[]).slice(0, 5) : []);
-    }).finally(() => setLoading(false));
+    fetchWithAuth(`${API}/admin/marketing/kpi`).then(r => r.json())
+      .then(k => { setKpi(k as KPI); setKpiError(false); })
+      .catch(() => setKpiError(true))
+      .finally(() => setKpiLoading(false));
+
+    fetchWithAuth(`${API}/admin/marketing/recommended-leads`).then(r => r.json())
+      .then(l => { setLeads(Array.isArray(l) ? (l as RecommendedLead[]).filter(x => x.status === "pending").slice(0, 6) : []); setLeadsError(false); })
+      .catch(() => setLeadsError(true))
+      .finally(() => setLeadsLoading(false));
+
+    fetchWithAuth(`${API}/admin/marketing/tasks`).then(r => r.json())
+      .then(t => { setTasks(Array.isArray(t) ? (t as MarketingTask[]) : []); setTasksError(false); })
+      .catch(() => setTasksError(true))
+      .finally(() => setTasksLoading(false));
+
+    fetchWithAuth(`${API}/admin/marketing/campaigns`).then(r => r.json())
+      .then(c => { setCampaigns(Array.isArray(c) ? (c as Campaign[]) : []); setCampaignsError(false); })
+      .catch(() => setCampaignsError(true))
+      .finally(() => setCampaignsLoading(false));
+
+    fetchWithAuth(`${API}/admin/marketing/analytics`).then(r => r.json())
+      .then(a => { setAnalytics(a as AnalyticsData); setAnalyticsError(false); })
+      .catch(() => setAnalyticsError(true))
+      .finally(() => setAnalyticsLoading(false));
+
+    fetchWithAuth(`${API}/admin/marketing/seo-rankings`).then(r => r.json())
+      .then(s => { setSeoRankings(Array.isArray(s) ? (s as SeoRanking[]).slice(0, 5) : []); setSeoError(false); })
+      .catch(() => setSeoError(true))
+      .finally(() => setSeoLoading(false));
   }, [fetchWithAuth]);
 
   const dueTasks = tasks.filter(t =>
@@ -7082,7 +7111,8 @@ function MarketingDashboard({ fetchWithAuth, onNavigate }: {
   const kpiTiles = [
     {
       label: "AI Leads Pending",
-      value: loading ? "—" : String(leads.length),
+      value: String(leads.length),
+      loading: leadsLoading,
       sub: "Awaiting action",
       icon: "🤖",
       color: "from-[#0078D4]/20 to-[#0078D4]/5",
@@ -7091,7 +7121,8 @@ function MarketingDashboard({ fetchWithAuth, onNavigate }: {
     },
     {
       label: "Active Campaigns",
-      value: loading ? "—" : String(kpi?.activeCampaigns ?? activeCampaigns.length),
+      value: String(kpi?.activeCampaigns ?? activeCampaigns.length),
+      loading: kpiLoading && campaignsLoading,
       sub: "Running now",
       icon: "📣",
       color: "from-violet-500/20 to-violet-500/5",
@@ -7100,7 +7131,8 @@ function MarketingDashboard({ fetchWithAuth, onNavigate }: {
     },
     {
       label: "Hot Leads",
-      value: loading ? "—" : String(kpi?.hotLeadsCount ?? "—"),
+      value: String(kpi?.hotLeadsCount ?? "—"),
+      loading: kpiLoading,
       sub: "Score ≥ 70",
       icon: "🔥",
       color: "from-red-500/20 to-red-500/5",
@@ -7109,7 +7141,8 @@ function MarketingDashboard({ fetchWithAuth, onNavigate }: {
     },
     {
       label: "Revenue Opportunity",
-      value: loading ? "—" : (kpi ? `$${kpi.revenueOpportunity.toLocaleString()}` : "—"),
+      value: kpi ? `$${kpi.revenueOpportunity.toLocaleString()}` : "—",
+      loading: kpiLoading,
       sub: "Pipeline estimate",
       icon: "💰",
       color: "from-emerald-500/20 to-emerald-500/5",
@@ -7127,7 +7160,7 @@ function MarketingDashboard({ fetchWithAuth, onNavigate }: {
             className={`bg-gradient-to-br ${tile.color} border ${tile.border} rounded-xl p-4 text-left hover:brightness-110 transition-all`}>
             <div className="flex items-center justify-between mb-3">
               <span className="text-2xl">{tile.icon}</span>
-              {loading
+              {tile.loading
                 ? <div className="w-16 h-7 bg-[#30363D] rounded animate-pulse" />
                 : <span className="text-2xl font-bold text-[#E6EDF3]">{tile.value}</span>}
             </div>
@@ -7148,8 +7181,10 @@ function MarketingDashboard({ fetchWithAuth, onNavigate }: {
               <button onClick={() => onNavigate("recommendations")}
                 className="text-[10px] text-[#58A6FF] hover:underline">View all →</button>
             </div>
-            {loading ? (
+            {leadsLoading ? (
               <div className="p-4 space-y-2"><SkeletonCard count={3} /></div>
+            ) : leadsError ? (
+              <div className="px-4 py-4 flex items-center gap-2 text-xs text-[#7D8590]"><span className="text-amber-400">⚠</span>Failed to load leads</div>
             ) : leads.length === 0 ? (
               <div className="px-4 py-6 text-center text-[#7D8590] text-xs">No pending AI leads — generate some in AI Leads</div>
             ) : (
@@ -7178,8 +7213,10 @@ function MarketingDashboard({ fetchWithAuth, onNavigate }: {
               <button onClick={() => onNavigate("tasks")}
                 className="text-[10px] text-[#58A6FF] hover:underline">View board →</button>
             </div>
-            {loading ? (
+            {tasksLoading ? (
               <div className="p-4 space-y-2"><SkeletonCard count={2} /></div>
+            ) : tasksError ? (
+              <div className="px-4 py-4 flex items-center gap-2 text-xs text-[#7D8590]"><span className="text-amber-400">⚠</span>Failed to load tasks</div>
             ) : allPendingTasks.length === 0 ? (
               <div className="px-4 py-6 text-center text-[#7D8590] text-xs">No open tasks</div>
             ) : (
@@ -7211,10 +7248,14 @@ function MarketingDashboard({ fetchWithAuth, onNavigate }: {
                 className="text-[10px] text-[#58A6FF] hover:underline">Full analytics →</button>
             </div>
             <div className="p-4">
-              {loading || trafficData.length === 0 ? (
-                <div className="h-24 flex items-center justify-center text-[#7D8590] text-xs">
-                  {loading ? <div className="w-4 h-4 border-2 border-[#0078D4] border-t-transparent rounded-full animate-spin" /> : "No traffic data yet"}
+              {analyticsLoading ? (
+                <div className="h-24 flex items-center justify-center">
+                  <div className="w-4 h-4 border-2 border-[#0078D4] border-t-transparent rounded-full animate-spin" />
                 </div>
+              ) : analyticsError ? (
+                <div className="h-24 flex items-center justify-center gap-2 text-xs text-[#7D8590]"><span className="text-amber-400">⚠</span>Failed to load traffic data</div>
+              ) : trafficData.length === 0 ? (
+                <div className="h-24 flex items-center justify-center text-[#7D8590] text-xs">No traffic data yet</div>
               ) : (
                 <ResponsiveContainer width="100%" height={90}>
                   <LineChart data={trafficData} margin={{ top: 2, right: 4, bottom: 2, left: 0 }}>
@@ -7242,8 +7283,10 @@ function MarketingDashboard({ fetchWithAuth, onNavigate }: {
               <button onClick={() => onNavigate("campaigns")}
                 className="text-[10px] text-[#58A6FF] hover:underline">Manage →</button>
             </div>
-            {loading ? (
+            {campaignsLoading ? (
               <div className="p-4 space-y-2"><SkeletonCard count={2} /></div>
+            ) : campaignsError ? (
+              <div className="px-4 py-4 flex items-center gap-2 text-xs text-[#7D8590]"><span className="text-amber-400">⚠</span>Failed to load campaigns</div>
             ) : activeCampaigns.length === 0 ? (
               <div className="px-4 py-6 text-center text-[#7D8590] text-xs">No active campaigns</div>
             ) : (
@@ -7262,28 +7305,34 @@ function MarketingDashboard({ fetchWithAuth, onNavigate }: {
           </div>
 
           {/* SEO Snapshot */}
-          {seoRankings.length > 0 && (
+          {(seoLoading || seoRankings.length > 0 || seoError) && (
             <div className="bg-[#161B22] border border-[#30363D] rounded-xl overflow-hidden">
               <div className="flex items-center justify-between px-4 py-3 border-b border-[#30363D]">
                 <p className="text-sm font-semibold text-[#E6EDF3]">🔍 SEO Rankings</p>
                 <button onClick={() => onNavigate("analytics")}
                   className="text-[10px] text-[#58A6FF] hover:underline">All rankings →</button>
               </div>
-              <div className="divide-y divide-[#30363D]">
-                {seoRankings.map(r => (
-                  <div key={r.id} className="px-4 py-2.5 flex items-center justify-between">
-                    <p className="text-xs text-[#E6EDF3] truncate flex-1 mr-3">{r.keyword}</p>
-                    <div className="flex items-center gap-2 flex-shrink-0">
-                      {r.previousPosition !== null && r.previousPosition !== r.position && (
-                        <span className={`text-[10px] font-semibold ${r.position < r.previousPosition ? "text-emerald-400" : "text-red-400"}`}>
-                          {r.position < r.previousPosition ? "↑" : "↓"}
-                        </span>
-                      )}
-                      <span className="text-xs font-bold text-[#E6EDF3]">#{r.position}</span>
+              {seoLoading ? (
+                <div className="p-4 space-y-2"><SkeletonCard count={3} /></div>
+              ) : seoError ? (
+                <div className="px-4 py-4 flex items-center gap-2 text-xs text-[#7D8590]"><span className="text-amber-400">⚠</span>Failed to load rankings</div>
+              ) : (
+                <div className="divide-y divide-[#30363D]">
+                  {seoRankings.map(r => (
+                    <div key={r.id} className="px-4 py-2.5 flex items-center justify-between">
+                      <p className="text-xs text-[#E6EDF3] truncate flex-1 mr-3">{r.keyword}</p>
+                      <div className="flex items-center gap-2 flex-shrink-0">
+                        {r.previousPosition !== null && r.previousPosition !== r.position && (
+                          <span className={`text-[10px] font-semibold ${r.position < r.previousPosition ? "text-emerald-400" : "text-red-400"}`}>
+                            {r.position < r.previousPosition ? "↑" : "↓"}
+                          </span>
+                        )}
+                        <span className="text-xs font-bold text-[#E6EDF3]">#{r.position}</span>
+                      </div>
                     </div>
-                  </div>
-                ))}
-              </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
         </div>
