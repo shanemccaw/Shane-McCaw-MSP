@@ -1972,6 +1972,10 @@ function MarketingTasksKanban({ fetchWithAuth }: { fetchWithAuth: (url: string, 
   const [adding, setAdding] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [aiSuggesting, setAiSuggesting] = useState(false);
+  const [aiSuggestions, setAiSuggestions] = useState<Array<{ title: string; description: string }>>([]);
+  const [checkedSuggestions, setCheckedSuggestions] = useState<Set<number>>(new Set());
+  const [showSuggestionsModal, setShowSuggestionsModal] = useState(false);
+  const [insertingSuggestions, setInsertingSuggestions] = useState(false);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
@@ -2060,15 +2064,81 @@ function MarketingTasksKanban({ fetchWithAuth }: { fetchWithAuth: (url: string, 
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({}),
       });
-      const newTasks = await r.json() as MarketingTask[];
-      if (Array.isArray(newTasks)) {
-        setTasks(prev => [...newTasks, ...prev]);
+      const suggestions = await r.json() as Array<{ title: string; description: string }>;
+      if (Array.isArray(suggestions) && suggestions.length > 0) {
+        setAiSuggestions(suggestions);
+        setCheckedSuggestions(new Set(suggestions.map((_, i) => i)));
+        setShowSuggestionsModal(true);
       }
     } finally { setAiSuggesting(false); }
   };
 
+  const confirmSuggestions = async () => {
+    const selected = aiSuggestions.filter((_, i) => checkedSuggestions.has(i));
+    if (selected.length === 0) { setShowSuggestionsModal(false); return; }
+    setInsertingSuggestions(true);
+    try {
+      const inserted = await Promise.all(selected.map(s =>
+        fetchWithAuth(`${API}/admin/marketing/tasks`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ title: s.title, description: s.description || null, status: "ideas" }),
+        }).then(r => r.json() as Promise<MarketingTask>)
+      ));
+      setTasks(prev => [...inserted, ...prev]);
+      setShowSuggestionsModal(false);
+      setAiSuggestions([]);
+    } finally { setInsertingSuggestions(false); }
+  };
+
   return (
     <div className="space-y-4">
+      {showSuggestionsModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={e => { if (e.target === e.currentTarget) setShowSuggestionsModal(false); }}>
+          <div className="bg-[#161B22] border border-[#30363D] rounded-xl w-full max-w-md mx-4 shadow-2xl">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-[#30363D]">
+              <div>
+                <h3 className="text-sm font-semibold text-[#E6EDF3]">✦ AI Suggested Tasks</h3>
+                <p className="text-xs text-[#7D8590] mt-0.5">Uncheck tasks you don't want, then add the rest.</p>
+              </div>
+              <button onClick={() => setShowSuggestionsModal(false)} className="text-[#7D8590] hover:text-[#E6EDF3] text-lg leading-none transition-colors">×</button>
+            </div>
+            <div className="px-5 py-3 space-y-2 max-h-80 overflow-y-auto">
+              {aiSuggestions.map((s, i) => (
+                <label key={i} className="flex items-start gap-3 cursor-pointer group">
+                  <input
+                    type="checkbox"
+                    checked={checkedSuggestions.has(i)}
+                    onChange={() => setCheckedSuggestions(prev => {
+                      const next = new Set(prev);
+                      if (next.has(i)) next.delete(i); else next.add(i);
+                      return next;
+                    })}
+                    className="mt-0.5 accent-[#0078D4] w-4 h-4 shrink-0"
+                  />
+                  <div className={`transition-opacity ${checkedSuggestions.has(i) ? "opacity-100" : "opacity-40"}`}>
+                    <p className="text-sm font-medium text-[#E6EDF3] leading-snug">{s.title}</p>
+                    {s.description && <p className="text-xs text-[#7D8590] mt-0.5 leading-snug">{s.description}</p>}
+                  </div>
+                </label>
+              ))}
+            </div>
+            <div className="flex items-center justify-between px-5 py-4 border-t border-[#30363D]">
+              <span className="text-xs text-[#7D8590]">{checkedSuggestions.size} of {aiSuggestions.length} selected</span>
+              <div className="flex gap-2">
+                <button onClick={() => setShowSuggestionsModal(false)} className="text-xs px-3 py-1.5 rounded-lg border border-[#30363D] text-[#7D8590] hover:text-[#E6EDF3] transition-colors">Cancel</button>
+                <button
+                  onClick={() => { void confirmSuggestions(); }}
+                  disabled={insertingSuggestions || checkedSuggestions.size === 0}
+                  className="text-xs px-4 py-1.5 rounded-lg bg-[#0078D4] text-white font-semibold hover:bg-[#0078D4]/80 disabled:opacity-40 transition-colors flex items-center gap-1.5">
+                  {insertingSuggestions ? <><div className="w-3 h-3 border border-white border-t-transparent rounded-full animate-spin" />Adding…</> : `Add ${checkedSuggestions.size} Task${checkedSuggestions.size !== 1 ? "s" : ""}`}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="flex items-center justify-between gap-2">
         <h2 className="text-lg font-semibold text-[#E6EDF3]">Marketing Tasks</h2>
         <div className="flex items-center gap-2">

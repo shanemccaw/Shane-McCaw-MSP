@@ -577,15 +577,7 @@ Respond with a JSON array only (no markdown):
     const rawText = content.text.replace(/^```(?:json)?\s*/i, "").replace(/\s*```\s*$/, "").trim();
     const suggestions = JSON.parse(rawText) as Array<{ title: string; description: string }>;
 
-    const inserted = await db.insert(marketingTasksTable).values(
-      suggestions.map(s => ({
-        title: s.title,
-        description: s.description ?? null,
-        status: "ideas" as const,
-      }))
-    ).returning();
-
-    res.json(inserted);
+    res.json(suggestions);
   } catch (e) {
     res.status(500).json({ error: String(e) });
   }
