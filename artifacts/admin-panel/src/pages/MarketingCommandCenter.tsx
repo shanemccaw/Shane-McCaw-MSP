@@ -173,6 +173,15 @@ function SendEmailModal({ initialTo, initialSubject, initialBody, leadId, campai
   const [result, setResult] = useState<"success" | "error" | null>(null);
   const [errorMsg, setErrorMsg] = useState("");
   const [isConfigError, setIsConfigError] = useState(false);
+  const [campaigns, setCampaigns] = useState<Campaign[]>([]);
+  const [selectedCampaignId, setSelectedCampaignId] = useState<number | null>(campaignId ?? null);
+
+  useEffect(() => {
+    fetchWithAuth(`${API}/admin/marketing/campaigns`)
+      .then(r => r.json())
+      .then((d: Campaign[]) => setCampaigns(d))
+      .catch(() => {});
+  }, [fetchWithAuth]);
 
   const send = async () => {
     if (!to.trim() || !subject.trim() || !body.trim()) return;
@@ -181,7 +190,7 @@ function SendEmailModal({ initialTo, initialSubject, initialBody, leadId, campai
       const r = await fetchWithAuth(`${API}/admin/marketing/send-outreach`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ to, subject, body, leadId, campaignId, bodyType: "text" }),
+        body: JSON.stringify({ to, subject, body, leadId, campaignId: selectedCampaignId ?? undefined, bodyType: "text" }),
       });
       if (r.ok) {
         setResult("success");
@@ -228,6 +237,19 @@ function SendEmailModal({ initialTo, initialSubject, initialBody, leadId, campai
                 <label className="text-[10px] text-[#7D8590] uppercase tracking-wide">Body</label>
                 <textarea value={body} onChange={e => setBody(e.target.value)} rows={10}
                   className="mt-1 w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-sm text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60 resize-none font-mono" />
+              </div>
+              <div>
+                <label className="text-[10px] text-[#7D8590] uppercase tracking-wide">Campaign <span className="normal-case">(optional)</span></label>
+                <select
+                  value={selectedCampaignId ?? ""}
+                  onChange={e => setSelectedCampaignId(e.target.value ? Number(e.target.value) : null)}
+                  className="mt-1 w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-sm text-[#E6EDF3] outline-none focus:border-[#0078D4]/60"
+                >
+                  <option value="">— No campaign —</option>
+                  {campaigns.map(c => (
+                    <option key={c.id} value={c.id}>{c.name}</option>
+                  ))}
+                </select>
               </div>
               {result === "error" && (
                 <div className={`rounded-lg px-3 py-2 text-xs ${isConfigError ? "bg-amber-500/10 border border-amber-500/30 text-amber-300" : "bg-red-500/10 border border-red-500/30 text-red-400"}`}>
