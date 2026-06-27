@@ -1070,6 +1070,7 @@ export const recommendedLeadsTable = pgTable("recommended_leads", {
   confidence: integer("confidence").notNull().default(0),
   status: text("status", { enum: ["pending", "converted", "dismissed"] }).notNull().default("pending"),
   convertedLeadId: integer("converted_lead_id").references(() => leadsTable.id, { onDelete: "set null" }),
+  lastOutreachDraft: text("last_outreach_draft"),
   generatedAt: timestamp("generated_at").notNull().defaultNow(),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });

@@ -244,7 +244,7 @@ router.post("/admin/marketing/recommended-leads/:id/convert", requireAdmin, asyn
     }
 
     const body = req.body as { outreachDraft?: string | null } | undefined;
-    const outreachDraft = body?.outreachDraft ?? null;
+    const outreachDraft = body?.outreachDraft ?? rec.lastOutreachDraft ?? null;
 
     const emailFallback = `${rec.name.toLowerCase().replace(/\s+/g, ".")}@${(rec.company ?? "company").toLowerCase().replace(/\s+/g, "")}.com`;
     const noteParts: string[] = [`[${new Date().toISOString()}] Converted from AI-recommended lead.`];
@@ -293,6 +293,7 @@ router.patch("/admin/marketing/recommended-leads/:id/dismiss", requireAdmin, asy
 
 const generateOutreachSchema = z.object({
   leadId: z.number().optional(),
+  recommendedLeadId: z.number().optional(),
   name: z.string().optional(),
   company: z.string().optional(),
   role: z.string().optional(),
@@ -345,6 +346,12 @@ router.post("/admin/marketing/generate/outreach", requireAdmin, async (req: Requ
 
     const content = message.content[0];
     if (content?.type !== "text") throw new Error("Unexpected response type");
+
+    if (body.recommendedLeadId) {
+      await db.update(recommendedLeadsTable)
+        .set({ lastOutreachDraft: content.text })
+        .where(eq(recommendedLeadsTable.id, body.recommendedLeadId));
+    }
 
     res.json({ content: content.text, templateType: body.templateType, leadName: leadData.name });
   } catch (e) {

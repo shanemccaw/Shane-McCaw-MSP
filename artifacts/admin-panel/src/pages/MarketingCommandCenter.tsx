@@ -252,8 +252,8 @@ function SendEmailModal({ initialTo, initialSubject, initialBody, leadId, campai
 
 // ─── Outreach Modal ───────────────────────────────────────────────────────────
 
-function OutreachModal({ leadName, leadEmail, leadId, templateType, onClose, fetchWithAuth, onGenerated }: {
-  leadName?: string; leadEmail?: string; leadId?: number; templateType?: string; onClose: () => void;
+function OutreachModal({ leadName, leadEmail, leadId, recommendedLeadId, templateType, onClose, fetchWithAuth, onGenerated }: {
+  leadName?: string; leadEmail?: string; leadId?: number; recommendedLeadId?: number; templateType?: string; onClose: () => void;
   fetchWithAuth: (url: string, opts?: RequestInit) => Promise<Response>;
   onGenerated?: (content: string) => void;
 }) {
@@ -270,7 +270,7 @@ function OutreachModal({ leadName, leadEmail, leadId, templateType, onClose, fet
       const r = await fetchWithAuth(`${API}/admin/marketing/generate/outreach`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ leadId, name: leadName, templateType: selectedType }),
+        body: JSON.stringify({ leadId, recommendedLeadId, name: leadName, templateType: selectedType }),
       });
       const data = await r.json() as { content: string };
       const generated = data.content ?? "";
@@ -565,7 +565,7 @@ function RecommendedLeadsSection({ fetchWithAuth }: { fetchWithAuth: (url: strin
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
-  const [outreachModal, setOutreachModal] = useState<{ leadId: number; leadName: string; leadEmail: string; type: string } | null>(null);
+  const [outreachModal, setOutreachModal] = useState<{ recommendedLeadId: number; leadName: string; leadEmail: string; type: string } | null>(null);
   const [taskModal, setTaskModal] = useState<RecommendedLead | null>(null);
   const [campaignModal, setCampaignModal] = useState<RecommendedLead | null>(null);
   const [generatedDrafts, setGeneratedDrafts] = useState<Record<number, string>>({});
@@ -688,9 +688,9 @@ function RecommendedLeadsSection({ fetchWithAuth }: { fetchWithAuth: (url: strin
               )}
               <div className="flex flex-wrap gap-1 pt-1 border-t border-[#30363D]">
                 <button onClick={() => { void convert(lead.id); }} className="text-[10px] px-2 py-1 rounded bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30 transition-colors">Add to Leads</button>
-                <button onClick={() => setOutreachModal({ leadId: lead.id, leadName: lead.name, leadEmail: lead.email ?? "", type: "cold_email" })} className="text-[10px] px-2 py-1 rounded bg-[#0078D4]/20 text-[#58A6FF] hover:bg-[#0078D4]/30 transition-colors">Email</button>
-                <button onClick={() => setOutreachModal({ leadId: lead.id, leadName: lead.name, leadEmail: lead.email ?? "", type: "linkedin" })} className="text-[10px] px-2 py-1 rounded bg-[#0078D4]/20 text-[#58A6FF] hover:bg-[#0078D4]/30 transition-colors">LinkedIn</button>
-                <button onClick={() => setOutreachModal({ leadId: lead.id, leadName: lead.name, leadEmail: lead.email ?? "", type: "followup" })} className="text-[10px] px-2 py-1 rounded bg-[#0078D4]/20 text-[#58A6FF] hover:bg-[#0078D4]/30 transition-colors">Follow-Up Seq.</button>
+                <button onClick={() => setOutreachModal({ recommendedLeadId: lead.id, leadName: lead.name, leadEmail: lead.email ?? "", type: "cold_email" })} className="text-[10px] px-2 py-1 rounded bg-[#0078D4]/20 text-[#58A6FF] hover:bg-[#0078D4]/30 transition-colors">Email</button>
+                <button onClick={() => setOutreachModal({ recommendedLeadId: lead.id, leadName: lead.name, leadEmail: lead.email ?? "", type: "linkedin" })} className="text-[10px] px-2 py-1 rounded bg-[#0078D4]/20 text-[#58A6FF] hover:bg-[#0078D4]/30 transition-colors">LinkedIn</button>
+                <button onClick={() => setOutreachModal({ recommendedLeadId: lead.id, leadName: lead.name, leadEmail: lead.email ?? "", type: "followup" })} className="text-[10px] px-2 py-1 rounded bg-[#0078D4]/20 text-[#58A6FF] hover:bg-[#0078D4]/30 transition-colors">Follow-Up Seq.</button>
                 <button onClick={() => setTaskModal(lead)} className="text-[10px] px-2 py-1 rounded bg-violet-500/20 text-violet-400 hover:bg-violet-500/30 transition-colors">Add Task</button>
                 <button onClick={() => setCampaignModal(lead)} className="text-[10px] px-2 py-1 rounded bg-amber-500/20 text-amber-400 hover:bg-amber-500/30 transition-colors">Add to Campaign</button>
                 <button onClick={() => { void dismiss(lead.id); }} className="text-[10px] px-2 py-1 rounded bg-[#30363D] text-[#7D8590] hover:text-[#E6EDF3] transition-colors">Dismiss</button>
@@ -701,9 +701,9 @@ function RecommendedLeadsSection({ fetchWithAuth }: { fetchWithAuth: (url: strin
       )}
 
       {outreachModal && (
-        <OutreachModal leadId={outreachModal.leadId} leadName={outreachModal.leadName} leadEmail={outreachModal.leadEmail}
+        <OutreachModal recommendedLeadId={outreachModal.recommendedLeadId} leadName={outreachModal.leadName} leadEmail={outreachModal.leadEmail}
           templateType={outreachModal.type} onClose={() => setOutreachModal(null)} fetchWithAuth={fetchWithAuth}
-          onGenerated={(content) => setGeneratedDrafts(prev => ({ ...prev, [outreachModal.leadId]: content }))} />
+          onGenerated={(content) => setGeneratedDrafts(prev => ({ ...prev, [outreachModal.recommendedLeadId]: content }))} />
       )}
       {taskModal && (
         <AddTaskModal lead={taskModal} onClose={() => setTaskModal(null)} fetchWithAuth={fetchWithAuth} />
