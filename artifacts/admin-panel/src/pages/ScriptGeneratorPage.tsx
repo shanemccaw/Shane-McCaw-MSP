@@ -1673,6 +1673,26 @@ export default function ScriptGeneratorPage() {
         ))}
       </div>
 
+      {/* Loaded-script banner — only visible when a library script is in the editor */}
+      {tab === "generator" && editorScript && (
+        <div className="flex items-center gap-2.5 px-3.5 py-2 bg-[#0078D4]/10 border border-[#0078D4]/25 rounded-xl text-sm">
+          <svg className="w-3.5 h-3.5 text-[#58A6FF] flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+          </svg>
+          <span className="text-[#7D8590] flex-shrink-0">Editing:</span>
+          <span className="text-[#E6EDF3] font-medium truncate">{editorScript.title}</span>
+          <button
+            onClick={() => setEditorScript(null)}
+            title="Clear — start a new script"
+            className="ml-auto flex-shrink-0 p-0.5 rounded text-[#484F58] hover:text-[#E6EDF3] hover:bg-[#30363D] transition-colors"
+          >
+            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+      )}
+
       {/* Tab content */}
       {tab === "generator" && (
         <GeneratorTab
