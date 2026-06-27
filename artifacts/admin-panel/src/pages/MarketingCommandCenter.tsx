@@ -6178,6 +6178,10 @@ function CampaignBuilderWizard({ fetchWithAuth }: { fetchWithAuth: (url: string,
   const [detailCampaignId, setDetailCampaignId] = useState<number | null>(null);
   const [deleteDialogCampaign, setDeleteDialogCampaign] = useState<Campaign | null>(null);
   const [deletingInProgress, setDeletingInProgress] = useState(false);
+  const [builderMode, setBuilderMode] = useState<"guided" | "prompt">("guided");
+  const [promptText, setPromptText] = useState("");
+  const [buildingFromPrompt, setBuildingFromPrompt] = useState(false);
+  const [promptError, setPromptError] = useState<string | null>(null);
 
   useEffect(() => {
     fetchWithAuth(`${API}/admin/marketing/campaigns`).then(r => r.json()).then(d => setCampaigns(d as Campaign[])).catch(() => null).finally(() => setLoadingCampaigns(false));
@@ -6362,6 +6366,32 @@ function CampaignBuilderWizard({ fetchWithAuth }: { fetchWithAuth: (url: string,
     setStep(5);
   };
 
+  const buildFromPrompt = async () => {
+    if (!promptText.trim()) return;
+    setBuildingFromPrompt(true);
+    setPromptError(null);
+    try {
+      const r = await fetchWithAuth(`${API}/admin/marketing/campaigns/build-from-prompt`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prompt: promptText }),
+      });
+      if (!r.ok) {
+        const err = await r.json() as { error?: string };
+        throw new Error(err.error ?? "Build failed");
+      }
+      const campaign = await r.json() as Campaign;
+      setCampaigns(prev => [campaign, ...prev]);
+      setPromptText("");
+      setBuilderMode("guided");
+      setDetailCampaignId(campaign.id);
+    } catch (e) {
+      setPromptError(e instanceof Error ? e.message : "Something went wrong");
+    } finally {
+      setBuildingFromPrompt(false);
+    }
+  };
+
   const steps = [
     { n: 1, label: "Goal" }, { n: 2, label: "Audience" }, { n: 3, label: "Offer" },
     { n: 4, label: "Review" }, { n: 5, label: "Ad Assets" }, { n: 6, label: "Saved" },
@@ -6390,9 +6420,56 @@ function CampaignBuilderWizard({ fetchWithAuth }: { fetchWithAuth: (url: string,
           isDeleting={deletingInProgress}
         />
       )}
-      <h2 className="text-lg font-semibold text-[#E6EDF3]">Campaign Builder</h2>
+      <div className="flex items-center justify-between">
+        <h2 className="text-lg font-semibold text-[#E6EDF3]">Campaign Builder</h2>
+        <button
+          onClick={() => { setBuilderMode(m => m === "prompt" ? "guided" : "prompt"); setPromptError(null); }}
+          className={`text-xs px-3 py-1.5 rounded-lg border font-medium transition-colors flex items-center gap-1.5 ${builderMode === "prompt" ? "border-violet-500/60 bg-violet-500/15 text-violet-300" : "border-violet-500/40 text-violet-400 hover:bg-violet-500/10"}`}
+        >
+          ⚡ {builderMode === "prompt" ? "Back to Wizard" : "Build from Prompt"}
+        </button>
+      </div>
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         <div className="lg:col-span-2 bg-[#161B22] border border-[#30363D] rounded-xl p-4 space-y-4">
+          {builderMode === "prompt" && (
+            <div className="space-y-4">
+              <div>
+                <label className="text-sm font-semibold text-[#E6EDF3] block mb-1">Describe your campaign</label>
+                <p className="text-xs text-[#7D8590] mb-3">Paste a brief, idea, email thread, or bullet points — AI will extract the goal, audience, and offer and build a full campaign instantly.</p>
+                <textarea
+                  value={promptText}
+                  onChange={e => setPromptText(e.target.value)}
+                  placeholder={"e.g. We want to target IT Directors at healthcare companies with 500–2000 employees who haven't adopted Copilot yet. Offer them a free 30-minute risk assessment to uncover blockers and build a roadmap. Goal is to book 10 discovery calls this quarter."}
+                  rows={10}
+                  className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2.5 text-sm text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60 resize-none leading-relaxed"
+                />
+              </div>
+              {promptError && (
+                <div className="flex items-start gap-2 p-3 rounded-lg bg-red-500/10 border border-red-500/30">
+                  <span className="text-red-400 text-sm mt-0.5">⚠</span>
+                  <p className="text-xs text-red-400">{promptError}</p>
+                </div>
+              )}
+              <div className="flex gap-2">
+                <button
+                  onClick={() => { void buildFromPrompt(); }}
+                  disabled={!promptText.trim() || buildingFromPrompt}
+                  className="flex-1 py-2.5 rounded-lg bg-[#0078D4] text-white text-sm font-semibold hover:bg-[#0078D4]/80 disabled:opacity-40 transition-colors flex items-center justify-center gap-2"
+                >
+                  {buildingFromPrompt ? (
+                    <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />Building campaign…</>
+                  ) : "⚡ Build Campaign"}
+                </button>
+                <button
+                  onClick={() => { setBuilderMode("guided"); setPromptError(null); setPromptText(""); }}
+                  className="px-4 py-2.5 rounded-lg border border-[#30363D] text-xs text-[#7D8590] hover:text-[#E6EDF3] transition-colors"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
+          {builderMode === "guided" && (<>
           {/* Stepper */}
           <div className="flex items-center gap-1 overflow-x-auto pb-1">
             {steps.map((s, i) => (
@@ -6704,6 +6781,7 @@ function CampaignBuilderWizard({ fetchWithAuth }: { fetchWithAuth: (url: string,
               </div>
             </div>
           )}
+          </>)}
         </div>
 
         <div className="space-y-4">

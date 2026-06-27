@@ -977,6 +977,65 @@ router.get("/admin/marketing/campaigns", requireAdmin, async (_req: Request, res
   }
 });
 
+router.post("/admin/marketing/campaigns/build-from-prompt", requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const { prompt } = req.body as { prompt?: string };
+    if (!prompt?.trim()) { res.status(400).json({ error: "prompt is required" }); return; }
+    const icpContext = await buildICPContext();
+
+    const msg = await anthropic.messages.create({
+      model: "claude-haiku-4-5",
+      max_tokens: 800,
+      messages: [{
+        role: "user",
+        content: `You are a marketing strategist for Shane McCaw Consulting, a Microsoft 365 consulting firm led by a 30-year Microsoft veteran.
+
+${icpContext}
+
+The user has described this campaign:
+"""
+${prompt.trim()}
+"""
+
+Extract a complete campaign from this brief. Respond ONLY with valid JSON (no prose, no markdown):
+{
+  "name": "campaign name, 3-6 words",
+  "goal": "specific measurable campaign goal, 1-2 sentences",
+  "audience": "detailed target audience description, 2-3 sentences",
+  "offer": "compelling offer description, 1-2 sentences"
+}`,
+      }],
+    });
+
+    const raw = msg.content[0]?.type === "text" ? msg.content[0].text : "{}";
+    const schema = z.object({
+      name: z.string().min(1),
+      goal: z.string().min(1),
+      audience: z.string().min(1),
+      offer: z.string().min(1),
+    });
+    const fields = parseAiJson(raw, schema);
+
+    const [campaign] = await db.insert(campaignsTable)
+      .values({ name: fields.name, goal: fields.goal, audience: fields.audience, offer: fields.offer, status: "draft" })
+      .returning();
+
+    if (fields.offer.trim()) {
+      await db.insert(offersTable).values({
+        name: fields.offer, goal: fields.goal, audience: fields.audience, campaignId: campaign.id,
+      });
+    }
+
+    res.status(201).json(campaign);
+  } catch (e) {
+    if (e instanceof AiResponseError) {
+      res.status(422).json({ error: "AI could not extract a campaign from your prompt — try adding more detail about the goal, audience, and offer." });
+      return;
+    }
+    res.status(500).json({ error: String(e) });
+  }
+});
+
 router.post("/admin/marketing/campaigns", requireAdmin, async (req: Request, res: Response) => {
   try {
     const { name, goal, audience, offer, status } = req.body as {
