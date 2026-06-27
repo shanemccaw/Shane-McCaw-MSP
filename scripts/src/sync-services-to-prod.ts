@@ -75,16 +75,19 @@ async function main(): Promise<void> {
     return;
   }
 
-  // Upsert dev services into production
+  // Upsert dev services into production.
+  // workflowTemplateId references dev-local IDs that don't exist in production,
+  // so we strip it to avoid the services_workflow_template_id_fk constraint error.
   console.log(`Upserting ${sluggedServices.length} service(s) into production…`);
   for (const svc of sluggedServices) {
-    const { id: _id, ...rest } = svc;
+    const { id: _id, workflowTemplateId: _wt, ...rest } = svc;
+    const prodRow = { ...rest, workflowTemplateId: null };
     await prodDb
       .insert(servicesTable)
-      .values(rest)
+      .values(prodRow)
       .onConflictDoUpdate({
         target: servicesTable.slug,
-        set: rest,
+        set: prodRow,
       });
     console.log(`  synced: ${svc.slug} — ${svc.name}`);
   }
