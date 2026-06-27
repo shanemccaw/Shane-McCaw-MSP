@@ -290,6 +290,15 @@ export default function ClientDetailPage() {
   const [clientInvoices, setClientInvoices] = useState<Array<{id:number;invoiceNumber:string;invoiceType:string;status:string;amount:string;currency:string;dueDate:string|null;paidAt:string|null;discountAmount:string|null;couponCode:string|null;createdAt:string}>>([]);
   const [invoicesLoading, setInvoicesLoading] = useState(false);
 
+  // M365 Intelligence dialog
+  const [showM365Dialog, setShowM365Dialog] = useState(false);
+  const [m365FormData, setM365FormData] = useState<Record<string, unknown>>({});
+  const [m365FormLoading, setM365FormLoading] = useState(false);
+  const [m365FormSaving, setM365FormSaving] = useState(false);
+
+  // App Registration dialog
+  const [showAppRegDialog, setShowAppRegDialog] = useState(false);
+
   const CRM_PORTAL_BASE = `${window.location.protocol}//${window.location.host}/crm`;
 
   const loadDocuments = useCallback(async () => {
@@ -553,6 +562,41 @@ export default function ClientDetailPage() {
       toast({ title: "MFA reset — email sent to client" });
     } finally {
       setResettingMfa(false);
+    }
+  }
+
+  // ─── M365 Intelligence dialog ─────────────────────────────────────────────
+
+  async function openM365Dialog() {
+    setShowM365Dialog(true);
+    setM365FormLoading(true);
+    try {
+      const res = await fetchWithAuth(`/api/admin/clients/${clientId}/m365-profile`);
+      if (res.ok) {
+        const data = await res.json() as { profile: Record<string, unknown> | null };
+        setM365FormData(data.profile ?? {});
+      }
+    } finally {
+      setM365FormLoading(false);
+    }
+  }
+
+  async function saveM365Profile() {
+    setM365FormSaving(true);
+    try {
+      const res = await fetchWithAuth(`/api/admin/clients/${clientId}/m365-profile`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ profile: m365FormData }),
+      });
+      if (res.ok) {
+        toast({ title: "M365 profile saved" });
+        setShowM365Dialog(false);
+      } else {
+        toast({ title: "Save failed", variant: "destructive" });
+      }
+    } finally {
+      setM365FormSaving(false);
     }
   }
 
@@ -844,19 +888,14 @@ export default function ClientDetailPage() {
             Open Inbox
           </button>
           <button
-            onClick={() => navigate("/crm/m365-intelligence")}
+            onClick={() => void openM365Dialog()}
             className="flex items-center gap-1.5 text-xs font-semibold border border-[#0078D4]/40 text-[#0078D4] px-3 py-1.5 rounded-lg hover:bg-[#0078D4]/10 transition-colors"
           >
             <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg>
             M365 Intelligence
           </button>
           <button
-            onClick={() => {
-              setShowSettings(true);
-              setTimeout(() => {
-                document.getElementById("workspace-credentials")?.scrollIntoView({ behavior: "smooth", block: "start" });
-              }, 50);
-            }}
+            onClick={() => setShowAppRegDialog(true)}
             className="flex items-center gap-1.5 text-xs font-semibold border border-[#0078D4]/40 text-[#0078D4] px-3 py-1.5 rounded-lg hover:bg-[#0078D4]/10 transition-colors"
           >
             <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" /></svg>
@@ -2355,6 +2394,247 @@ export default function ClientDetailPage() {
           )}
         </div>
       </div>
+
+      {/* ── M365 Intelligence Dialog ─────────────────────────────────────────── */}
+      {showM365Dialog && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={() => setShowM365Dialog(false)}>
+          <div className="absolute inset-0 bg-black/60" />
+          <div
+            className="relative bg-[#161B22] border border-border rounded-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto shadow-2xl"
+            onClick={e => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="flex items-center justify-between px-6 py-4 border-b border-border sticky top-0 bg-[#161B22] z-10">
+              <div>
+                <p className="text-sm font-bold text-[#E6EDF3]">M365 Intelligence Profile</p>
+                <p className="text-xs text-muted-foreground mt-0.5">{client.company ?? client.name}</p>
+              </div>
+              <button onClick={() => setShowM365Dialog(false)} className="text-muted-foreground hover:text-[#E6EDF3] transition-colors">
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+              </button>
+            </div>
+
+            {m365FormLoading ? (
+              <div className="flex items-center justify-center py-16">
+                <div className="w-6 h-6 border-4 border-[#0078D4] border-t-transparent rounded-full animate-spin" />
+              </div>
+            ) : (
+              <div className="p-6 space-y-6">
+                {/* Copilot Readiness Score */}
+                <div>
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-3">Copilot Readiness</p>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+                    <div>
+                      <label className={labelCls}>Readiness Score (1–5)</label>
+                      <select
+                        className={inputCls}
+                        value={String(m365FormData.copilotReadinessScore ?? "")}
+                        onChange={e => setM365FormData(f => ({ ...f, copilotReadinessScore: e.target.value ? Number(e.target.value) : undefined }))}
+                      >
+                        <option value="">— select —</option>
+                        <option value="1">1 — Not Ready</option>
+                        <option value="2">2 — Early Stage</option>
+                        <option value="3">3 — Developing</option>
+                        <option value="4">4 — Nearly Ready</option>
+                        <option value="5">5 — Ready</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className={labelCls}>Auth Method</label>
+                      <input className={inputCls} placeholder="e.g. Cloud-only" value={String(m365FormData.authMethod ?? "")} onChange={e => setM365FormData(f => ({ ...f, authMethod: e.target.value }))} />
+                    </div>
+                    <div>
+                      <label className={labelCls}>Active User %</label>
+                      <input type="number" min="0" max="100" className={inputCls} placeholder="e.g. 80" value={String(m365FormData.activeUserPercent ?? "")} onChange={e => setM365FormData(f => ({ ...f, activeUserPercent: e.target.value ? Number(e.target.value) : undefined }))} />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Tenant Info */}
+                <div>
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-3">Tenant Info</p>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+                    <div>
+                      <label className={labelCls}>Org Name</label>
+                      <input className={inputCls} value={String(m365FormData.orgName ?? "")} onChange={e => setM365FormData(f => ({ ...f, orgName: e.target.value }))} />
+                    </div>
+                    <div>
+                      <label className={labelCls}>Tenant Domain</label>
+                      <input className={inputCls} placeholder="contoso.onmicrosoft.com" value={String(m365FormData.tenantDomain ?? "")} onChange={e => setM365FormData(f => ({ ...f, tenantDomain: e.target.value }))} />
+                    </div>
+                    <div>
+                      <label className={labelCls}>Industry</label>
+                      <input className={inputCls} value={String(m365FormData.industry ?? "")} onChange={e => setM365FormData(f => ({ ...f, industry: e.target.value }))} />
+                    </div>
+                    <div>
+                      <label className={labelCls}>Employee Count</label>
+                      <input type="number" min="1" className={inputCls} value={String(m365FormData.employeeCount ?? "")} onChange={e => setM365FormData(f => ({ ...f, employeeCount: e.target.value ? Number(e.target.value) : undefined }))} />
+                    </div>
+                    <div>
+                      <label className={labelCls}>IT Contact Name</label>
+                      <input className={inputCls} value={String(m365FormData.itContactName ?? "")} onChange={e => setM365FormData(f => ({ ...f, itContactName: e.target.value }))} />
+                    </div>
+                    <div>
+                      <label className={labelCls}>License SKUs (comma-sep)</label>
+                      <input className={inputCls} placeholder="E3, E5, Business Premium" value={Array.isArray(m365FormData.licenseSKUs) ? (m365FormData.licenseSKUs as string[]).join(", ") : String(m365FormData.licenseSKUs ?? "")} onChange={e => setM365FormData(f => ({ ...f, licenseSKUs: e.target.value.split(",").map(s => s.trim()).filter(Boolean) }))} />
+                    </div>
+                    <div className="sm:col-span-3">
+                      <label className={labelCls}>Primary Copilot Use Case</label>
+                      <input className={inputCls} placeholder="e.g. Document summarisation, meeting transcripts" value={String(m365FormData.copilotUseCase ?? "")} onChange={e => setM365FormData(f => ({ ...f, copilotUseCase: e.target.value }))} />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Boolean Flags */}
+                <div>
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-3">Security & Licensing Flags</p>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                    {([
+                      { key: "hasCopilotLicenses", label: "Has Copilot Licenses" },
+                      { key: "mfaEnforced", label: "MFA Enforced" },
+                      { key: "conditionalAccessEnabled", label: "Conditional Access" },
+                      { key: "allUsersLicensed", label: "All Users Licensed" },
+                      { key: "hasAADP1orP2", label: "AAD P1 / P2" },
+                      { key: "intuneEnabled", label: "Intune Enabled" },
+                      { key: "hasDLP", label: "DLP Policies" },
+                      { key: "isHybrid", label: "Hybrid Environment" },
+                      { key: "externalSharingEnabled", label: "External Sharing On" },
+                    ] as { key: string; label: string }[]).map(({ key, label }) => (
+                      <label key={key} className="flex items-center gap-2 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={Boolean(m365FormData[key])}
+                          onChange={e => setM365FormData(f => ({ ...f, [key]: e.target.checked }))}
+                          className="w-3.5 h-3.5 rounded accent-[#0078D4]"
+                        />
+                        <span className="text-xs text-[#E6EDF3]">{label}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Footer */}
+            {!m365FormLoading && (
+              <div className="flex items-center gap-3 px-6 py-4 border-t border-border sticky bottom-0 bg-[#161B22]">
+                <button onClick={() => void saveM365Profile()} disabled={m365FormSaving} className="bg-[#0078D4] text-white text-xs font-semibold px-4 py-1.5 rounded-lg hover:bg-[#0078D4]/90 disabled:opacity-50 transition-colors">
+                  {m365FormSaving ? "Saving…" : "Save Profile"}
+                </button>
+                <button onClick={() => setShowM365Dialog(false)} className="border border-border text-xs px-4 py-1.5 rounded-lg hover:bg-[#1C2128] text-[#E6EDF3] transition-colors">Cancel</button>
+                <a
+                  href={`/api/admin/clients/${clientId}/m365-profile/pdf`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="ml-auto flex items-center gap-1.5 text-xs text-muted-foreground hover:text-[#0078D4] transition-colors"
+                >
+                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
+                  Export PDF
+                </a>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ── App Registration Dialog ──────────────────────────────────────────── */}
+      {showAppRegDialog && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={() => setShowAppRegDialog(false)}>
+          <div className="absolute inset-0 bg-black/60" />
+          <div
+            className="relative bg-[#161B22] border border-border rounded-2xl w-full max-w-xl max-h-[90vh] overflow-y-auto shadow-2xl"
+            onClick={e => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="flex items-center justify-between px-6 py-4 border-b border-border sticky top-0 bg-[#161B22] z-10">
+              <div>
+                <p className="text-sm font-bold text-[#E6EDF3]">App Registration</p>
+                <p className="text-xs text-muted-foreground mt-0.5">Azure credentials &amp; portal submission</p>
+              </div>
+              <button onClick={() => setShowAppRegDialog(false)} className="text-muted-foreground hover:text-[#E6EDF3] transition-colors">
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+              </button>
+            </div>
+
+            {(credLoading || appRegLoading) ? (
+              <div className="flex items-center justify-center py-16">
+                <div className="w-6 h-6 border-4 border-[#0078D4] border-t-transparent rounded-full animate-spin" />
+              </div>
+            ) : (
+              <div className="p-6 space-y-6">
+                {/* Admin credential section */}
+                <div>
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-3">Admin Credential (Script Runner)</p>
+                  {azureCred ? (
+                    <div className="space-y-4">
+                      {azureCred.expiresOn && daysUntil(azureCred.expiresOn) <= EXPIRY_WARN_DAYS && (
+                        <div className={`flex items-start gap-3 rounded-lg border px-4 py-3 ${daysUntil(azureCred.expiresOn) <= 14 ? "bg-red-500/10 border-red-500/20" : "bg-amber-500/10 border-amber-500/20"}`}>
+                          <svg className={`w-4 h-4 flex-shrink-0 mt-0.5 ${daysUntil(azureCred.expiresOn) <= 14 ? "text-red-500" : "text-amber-500"}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                          <p className={`text-xs font-semibold ${daysUntil(azureCred.expiresOn) <= 14 ? "text-red-400" : "text-amber-400"}`}>{daysUntil(azureCred.expiresOn) <= 0 ? "Secret expired" : `Expires in ${daysUntil(azureCred.expiresOn)} days`} — rotate before expiry</p>
+                        </div>
+                      )}
+                      <div className="grid grid-cols-2 gap-4">
+                        <div><p className={labelCls}>Display Name</p><div className="flex items-center gap-2"><p className="text-sm text-[#E6EDF3]">{azureCred.displayName}</p><ExpiryBadge expiresOn={azureCred.expiresOn} /></div></div>
+                        <div><p className={labelCls}>Type</p><p className="text-sm text-[#E6EDF3]">{azureCred.credentialType === "certificate" ? "Certificate" : "Client Secret"}</p></div>
+                        <div><p className={labelCls}>Tenant ID</p><p className="text-xs text-[#E6EDF3] font-mono break-all">{azureCred.tenantId}</p></div>
+                        <div><p className={labelCls}>Client ID</p><p className="text-xs text-[#E6EDF3] font-mono break-all">{azureCred.clientId}</p></div>
+                        {azureCred.keyVaultSecretName && <div className="col-span-2"><p className={labelCls}>Key Vault Secret</p><p className="text-xs text-[#E6EDF3] font-mono">{azureCred.keyVaultSecretName}</p></div>}
+                      </div>
+                    </div>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">No admin credential on file. Add one from the Workspace &amp; Credentials section.</p>
+                  )}
+                </div>
+
+                {/* Portal App Registration */}
+                {appReg && (
+                  <div className="border-t border-border pt-6">
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-3">Portal App Registration (Client-submitted)</p>
+                    <div className="space-y-4">
+                      <div className="flex items-center gap-3 flex-wrap">
+                        {appReg.status === "verified" ? (
+                          <span className="inline-flex items-center gap-1.5 text-xs font-bold px-2.5 py-1 rounded-full bg-green-500/15 text-green-400 border border-green-500/20"><svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>Verified</span>
+                        ) : appReg.status === "submitted" ? (
+                          <span className="inline-flex items-center gap-1.5 text-xs font-bold px-2.5 py-1 rounded-full bg-amber-500/15 text-amber-400 border border-amber-500/20"><span className="w-1.5 h-1.5 rounded-full bg-amber-500" />Submitted · Pending Verification</span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1.5 text-xs font-bold px-2.5 py-1 rounded-full bg-red-500/15 text-red-400 border border-red-500/20"><span className="w-1.5 h-1.5 rounded-full bg-red-500" />Pending</span>
+                        )}
+                        <ExpiryBadge expiresOn={appReg.expiresOn} />
+                      </div>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div><p className={labelCls}>Tenant ID</p><p className="text-xs text-[#E6EDF3] font-mono break-all">{appReg.tenantId}</p></div>
+                        <div><p className={labelCls}>Azure Client ID</p><p className="text-xs text-[#E6EDF3] font-mono break-all">{appReg.azureClientId}</p></div>
+                        {appReg.keyVaultSecretName && <div className="col-span-2"><p className={labelCls}>Key Vault Secret</p><p className="text-xs text-[#E6EDF3] font-mono">{appReg.keyVaultSecretName}</p></div>}
+                        {appReg.submittedAt && <div><p className={labelCls}>Submitted</p><p className="text-xs text-[#E6EDF3]">{new Date(appReg.submittedAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</p></div>}
+                        {appReg.verifiedAt && <div><p className={labelCls}>Verified</p><p className="text-xs text-[#E6EDF3]">{new Date(appReg.verifiedAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</p></div>}
+                      </div>
+                      <div className="flex gap-2 flex-wrap">
+                        {appReg.status !== "verified" && (
+                          <button onClick={() => void handleSetAppRegStatus("verified")} disabled={verifyingAppReg} className="flex items-center gap-1.5 text-xs font-semibold bg-green-600 text-white px-4 py-1.5 rounded-lg hover:bg-green-700 disabled:opacity-50 transition-colors">
+                            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
+                            Mark Verified
+                          </button>
+                        )}
+                        {appReg.status === "verified" && (
+                          <button onClick={() => void handleSetAppRegStatus("submitted")} disabled={verifyingAppReg} className="text-xs font-semibold text-amber-400 border border-amber-500/30 bg-amber-500/10 px-4 py-1.5 rounded-lg hover:bg-amber-500/20 disabled:opacity-50 transition-colors">Revert to Submitted</button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {!azureCred && !appReg && (
+                  <p className="text-sm text-muted-foreground text-center py-4">No App Registration or admin credential on file for this client.</p>
+                )}
+              </div>
+            )}
+
+            <div className="flex justify-end px-6 py-4 border-t border-border sticky bottom-0 bg-[#161B22]">
+              <button onClick={() => setShowAppRegDialog(false)} className="border border-border text-xs px-4 py-1.5 rounded-lg hover:bg-[#1C2128] text-[#E6EDF3] transition-colors">Close</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
