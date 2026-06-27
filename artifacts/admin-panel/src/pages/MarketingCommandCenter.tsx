@@ -5335,7 +5335,7 @@ function LandingCopyPanel({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          topic: campaign.name,
+          topic: `${campaign.name}\n\nLanding Page Copy:\n${asset.content}`,
           audience: campaign.audience,
           cta: campaign.offer,
         }),
