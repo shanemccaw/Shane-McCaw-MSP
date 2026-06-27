@@ -71,12 +71,45 @@ export async function seedMarketingServices(): Promise<void> {
   // Fix stale records that were mis-categorised as "service_area" in an earlier seed
   // run but don't have dedicated /services/* sub-pages. Reclassify them as "retainer"
   // and point their pageHref at the pricing page where they actually live.
+  // This is a safe UPDATE — it only touches existing rows, never inserts.
   const staleSlugs = ["architect-essentials", "architect-growth", "architect-enterprise", "fractional-m365-architect-retainer"];
   await db
     .update(servicesTable)
     .set({ serviceType: "retainer", pageHref: "/pricing" })
     .where(inArray(servicesTable.slug, staleSlugs));
 
+  // Guard: if any of our canonical seed slugs already exist, this environment was
+  // previously seeded. Respect admin deletions — never re-insert a service that
+  // was deliberately removed. Only insert on a completely fresh environment.
+  const sentinelSlugs = [
+    "m365-tenant-health-audit", "copilot-readiness", "service-area-m365",
+    "architect-essentials", "m365-health-check",
+  ];
+  const existingRows = await db
+    .select({ slug: servicesTable.slug })
+    .from(servicesTable)
+    .where(inArray(servicesTable.slug, sentinelSlugs));
+  const alreadySeeded = existingRows.length > 0;
+
+  if (alreadySeeded) {
+    // Only run the safe pageHref/pageSlug sync — no new rows created.
+    // Jump straight to the sync block below.
+    const microOfferPageHrefs: Array<{ slug: string; pageHref: string; pageSlug: string }> = [
+      { slug: "m365-tenant-health-audit",              pageHref: "/micro-offers/tenant-health-audit",            pageSlug: "tenant-health-audit" },
+      { slug: "migration-readiness-assessment",         pageHref: "/micro-offers/migration-readiness-assessment", pageSlug: "migration-readiness-assessment" },
+      { slug: "power-platform-quickstart",              pageHref: "/micro-offers/power-platform-quick-start",     pageSlug: "power-platform-quick-start" },
+      { slug: "copilot-for-m365-readiness-assessment",  pageHref: "/micro-offers/copilot-readiness-assessment",  pageSlug: "copilot-readiness-assessment" },
+      { slug: "governance-foundations-package",          pageHref: "/micro-offers/governance-foundations",        pageSlug: "governance-foundations" },
+      { slug: "microsoft-365-training--enablement",     pageHref: "/micro-offers/m365-training-enablement",      pageSlug: "m365-training-enablement" },
+    ];
+    for (const { slug, pageHref, pageSlug } of microOfferPageHrefs) {
+      await db.update(servicesTable).set({ pageHref, pageSlug }).where(eq(servicesTable.slug, slug));
+    }
+    void sqlTag;
+    return;
+  }
+
+  // ── First-time setup only: seed the canonical service catalogue ──────────────
   // Ensure the 6 primary micro-offer services exist in every environment.
   // These were originally created via the admin panel in dev; production never
   // ran seedPortalDemo so they were missing there.
@@ -516,10 +549,7 @@ export async function seedMarketingServices(): Promise<void> {
     await db
       .insert(servicesTable)
       .values({ slug, ...(rest as typeof servicesTable.$inferInsert) })
-      .onConflictDoUpdate({
-        target: servicesTable.slug,
-        set: rest as Partial<typeof servicesTable.$inferInsert>,
-      });
+      .onConflictDoNothing({ target: servicesTable.slug });
   }
   void sqlTag;
 }
