@@ -32,6 +32,7 @@ import { requireAdmin } from "../middlewares/requireAuth";
 import { logger } from "../lib/logger";
 import { generateManualScriptPackage } from "../lib/manual-script-package";
 import { processManualScriptUpload, UploadError } from "../lib/manual-script-upload";
+import { createManualScriptKanbanCard, completeManualScriptKanbanCard } from "../lib/manual-script-kanban";
 
 const router: IRouter = Router();
 
@@ -116,6 +117,29 @@ router.post("/admin/manual-scripts/:scriptId/generate-package", requireAdmin, as
 
     logger.info({ scriptId, runResultId, customerId }, "admin-manual-scripts: generated package");
 
+    const baseUrl = getUploadBaseUrl();
+    const downloadUrl = `${baseUrl}/api/admin/manual-scripts/${runResultId}/download`;
+    const instructionsUrl = `${baseUrl}/api/admin/manual-scripts/${runResultId}/instructions`;
+    const uploadUrl = `${baseUrl}/api/admin/manual-scripts/${runResultId}/upload`;
+
+    if (customerId) {
+      createManualScriptKanbanCard({
+        scriptId,
+        scriptRunResultId: runResultId,
+        customerId,
+        scriptName: script.name,
+        manualRequirements: Array.isArray(script.manualRequirements)
+          ? script.manualRequirements as string[]
+          : [],
+        description: script.description ?? null,
+        downloadUrl,
+        instructionsUrl,
+        uploadUrl,
+      }).catch((err) => {
+        logger.warn({ err, scriptId, runResultId }, "admin-manual-scripts: kanban card creation failed (non-fatal)");
+      });
+    }
+
     res.json({
       runResultId,
       scriptId,
@@ -123,7 +147,7 @@ router.post("/admin/manual-scripts/:scriptId/generate-package", requireAdmin, as
       filename: pkg.filename,
       psContent: pkg.psContent,
       instructions: pkg.instructions,
-      uploadUrl: `${getUploadBaseUrl()}/api/admin/manual-scripts/${runResultId}/upload`,
+      uploadUrl,
       status: "awaiting_upload",
     });
   } catch (err) {
@@ -177,6 +201,124 @@ router.post("/admin/manual-scripts/:runResultId/upload", requireAdmin, async (re
     }
     logger.error({ err, runResultId }, "admin-manual-scripts: upload failed");
     res.status(500).json({ error: "Failed to process uploaded results" });
+  }
+});
+
+// ── GET /api/admin/manual-scripts/:runResultId/download ───────────────────────
+// Regenerates and serves the .ps1 script for a previously-created run result.
+
+router.get("/admin/manual-scripts/:runResultId/download", requireAdmin, async (req: Request, res: Response) => {
+  const runResultId = parseInt(String(req.params.runResultId));
+  if (isNaN(runResultId)) {
+    res.status(400).json({ error: "Invalid runResultId" });
+    return;
+  }
+
+  try {
+    const [runResult] = await db
+      .select()
+      .from(scriptRunResultsTable)
+      .where(eq(scriptRunResultsTable.id, runResultId))
+      .limit(1);
+
+    if (!runResult) {
+      res.status(404).json({ error: "Run result not found" });
+      return;
+    }
+
+    const [script] = await db
+      .select()
+      .from(scriptCatalogTable)
+      .where(eq(scriptCatalogTable.id, runResult.scriptId))
+      .limit(1);
+
+    if (!script) {
+      res.status(404).json({ error: "Script not found" });
+      return;
+    }
+
+    let customerDisplayName: string | undefined;
+    if (runResult.customerId) {
+      const [user] = await db.select({ name: usersTable.name }).from(usersTable).where(eq(usersTable.id, runResult.customerId)).limit(1);
+      customerDisplayName = user?.name ?? undefined;
+    }
+
+    const pkg = generateManualScriptPackage({
+      scriptId: script.id,
+      scriptName: script.name,
+      description: script.description,
+      manualRequirements: Array.isArray(script.manualRequirements) ? script.manualRequirements as string[] : [],
+      psScriptBody: script.psScriptBody ?? null,
+      runResultId,
+      customerDisplayName,
+      uploadBaseUrl: getUploadBaseUrl(),
+    });
+
+    res.setHeader("Content-Type", "application/octet-stream");
+    res.setHeader("Content-Disposition", `attachment; filename="${pkg.filename}"`);
+    res.send(pkg.psContent);
+  } catch (err) {
+    logger.error({ err, runResultId }, "admin-manual-scripts: download failed");
+    res.status(500).json({ error: "Failed to generate script download" });
+  }
+});
+
+// ── GET /api/admin/manual-scripts/:runResultId/instructions ───────────────────
+// Serves the plain-text instruction document for a previously-created run result.
+
+router.get("/admin/manual-scripts/:runResultId/instructions", requireAdmin, async (req: Request, res: Response) => {
+  const runResultId = parseInt(String(req.params.runResultId));
+  if (isNaN(runResultId)) {
+    res.status(400).json({ error: "Invalid runResultId" });
+    return;
+  }
+
+  try {
+    const [runResult] = await db
+      .select()
+      .from(scriptRunResultsTable)
+      .where(eq(scriptRunResultsTable.id, runResultId))
+      .limit(1);
+
+    if (!runResult) {
+      res.status(404).json({ error: "Run result not found" });
+      return;
+    }
+
+    const [script] = await db
+      .select()
+      .from(scriptCatalogTable)
+      .where(eq(scriptCatalogTable.id, runResult.scriptId))
+      .limit(1);
+
+    if (!script) {
+      res.status(404).json({ error: "Script not found" });
+      return;
+    }
+
+    let customerDisplayName: string | undefined;
+    if (runResult.customerId) {
+      const [user] = await db.select({ name: usersTable.name }).from(usersTable).where(eq(usersTable.id, runResult.customerId)).limit(1);
+      customerDisplayName = user?.name ?? undefined;
+    }
+
+    const pkg = generateManualScriptPackage({
+      scriptId: script.id,
+      scriptName: script.name,
+      description: script.description,
+      manualRequirements: Array.isArray(script.manualRequirements) ? script.manualRequirements as string[] : [],
+      psScriptBody: script.psScriptBody ?? null,
+      runResultId,
+      customerDisplayName,
+      uploadBaseUrl: getUploadBaseUrl(),
+    });
+
+    res.setHeader("Content-Type", "text/plain; charset=utf-8");
+    res.setHeader("Content-Disposition", `inline; filename="instructions_${runResultId}.txt"`);
+    res.send(pkg.instructions);
+  } catch (err) {
+    logger.error({ err, runResultId }, "admin-manual-scripts: instructions failed");
+    res.status(500).json({ error: "Failed to generate instructions" });
   }
 });
 

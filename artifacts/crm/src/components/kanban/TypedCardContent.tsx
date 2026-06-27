@@ -1,10 +1,14 @@
+import { useState, useRef, useCallback } from "react";
+import { useAuth } from "@/contexts/AuthContext";
+
 export type TaskType =
   | "training"
   | "environmentHealthCheck"
   | "governanceSetup"
   | "automationBuild"
   | "documentDelivery"
-  | "discovery";
+  | "discovery"
+  | "manualScript";
 
 export interface TrainingMetadata {
   modules?: Array<{ name: string; completed?: boolean; durationMins?: number }>;
@@ -53,6 +57,17 @@ export interface DiscoveryMetadata {
   assessmentUrl?: string;
 }
 
+export interface ManualScriptMetadata {
+  scriptId?: number;
+  scriptRunResultId?: number;
+  projectId?: number;
+  instructions?: string[];
+  checklist?: Array<{ id: string; label: string }>;
+  checklistState?: Record<string, boolean>;
+  clientDeliverables?: string[];
+  uploadedArtifacts?: string[];
+}
+
 export const TASK_TYPE_CONFIG: Record<
   TaskType,
   { label: string; badge: string; bar: string; icon: string }
@@ -92,6 +107,12 @@ export const TASK_TYPE_CONFIG: Record<
     badge: "bg-pink-100 text-pink-700 border border-pink-200",
     bar: "bg-pink-500",
     icon: "microwave",
+  },
+  manualScript: {
+    label: "Manual Script",
+    badge: "bg-cyan-100 text-cyan-700 border border-cyan-200",
+    bar: "bg-cyan-500",
+    icon: "terminal",
   },
 };
 
@@ -310,6 +331,31 @@ function DocumentBody({ m, onMarkApproved }: { m: DocumentMetadata; onMarkApprov
   );
 }
 
+function ManualScriptBody({ m }: { m: ManualScriptMetadata }) {
+  const checklist = m.checklist ?? [];
+  const checklistState = m.checklistState ?? {};
+  const done = checklist.filter(item => checklistState[item.id]).length;
+  const total = checklist.length;
+  return (
+    <div className="space-y-2">
+      {total > 0 && (
+        <div>
+          <div className="flex items-center justify-between mb-1">
+            <p className="text-[10px] font-semibold text-[#0A2540]">{done}/{total} steps complete</p>
+          </div>
+          <div className="w-full bg-gray-100 rounded-full h-1.5">
+            <div
+              className="h-1.5 rounded-full bg-cyan-500 transition-all"
+              style={{ width: `${total ? (done / total) * 100 : 0}%` }}
+            />
+          </div>
+        </div>
+      )}
+      <p className="text-[10px] text-muted-foreground">Click Details to download the script and upload results.</p>
+    </div>
+  );
+}
+
 function GenericBody({ m }: { m: Record<string, unknown> }) {
   const deliverables = (m.clientDeliverables as string[] | undefined) ?? [];
   const checklist = (m.checklist as Array<{ id: string; label: string }> | undefined) ?? [];
@@ -442,6 +488,7 @@ export function TypedCardContent({
           {taskType === "discovery" && ((metadata as DiscoveryMetadata).riskScore || (metadata as DiscoveryMetadata).findingsSummary)
             ? <DiscoveryBody m={metadata as DiscoveryMetadata} />
             : taskType === "discovery" && <GenericBody m={metadata} />}
+          {taskType === "manualScript" && <ManualScriptBody m={metadata as ManualScriptMetadata} />}
         </div>
       )}
     </div>
@@ -689,6 +736,197 @@ function DocumentModalBody({ m }: { m: Record<string, unknown> }) {
   );
 }
 
+function ManualScriptModalBody({ m }: { m: Record<string, unknown> }) {
+  const mm = m as ManualScriptMetadata;
+  const checklist = mm.checklist ?? [];
+  const checklistState = mm.checklistState ?? {};
+  const instructions = mm.instructions ?? [];
+  const runResultId = mm.scriptRunResultId;
+  const projectId = mm.projectId;
+  const done = checklist.filter(item => checklistState[item.id]).length;
+  const total = checklist.length;
+
+  const { fetchWithAuth, user } = useAuth();
+  const isAdmin = user?.role === "admin";
+
+  const [downloading, setDownloading] = useState(false);
+  const [showInstructions, setShowInstructions] = useState(false);
+  const [uploadStatus, setUploadStatus] = useState<"idle" | "processing" | "done">("idle");
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleDownload = useCallback(async () => {
+    if (!runResultId || downloading) return;
+    setDownloading(true);
+    try {
+      const url = isAdmin
+        ? `/api/admin/manual-scripts/${runResultId}/download`
+        : `/api/portal/projects/${projectId}/manual-scripts/${runResultId}/download`;
+      const res = await fetchWithAuth(url);
+      if (!res.ok) { setDownloading(false); return; }
+      const blob = await res.blob();
+      const blobUrl = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = blobUrl;
+      const cd = res.headers.get("Content-Disposition") ?? "";
+      const match = /filename="([^"]+)"/.exec(cd);
+      a.download = match?.[1] ?? `script_${runResultId}.ps1`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(blobUrl);
+    } finally {
+      setDownloading(false);
+    }
+  }, [runResultId, projectId, isAdmin, fetchWithAuth, downloading]);
+
+  const processUploadFile = useCallback(async (file: File) => {
+    if (!runResultId) return;
+    setUploadError(null);
+    if (!file.name.endsWith(".json") && file.type !== "application/json") {
+      setUploadError("Only .json files are accepted. Please upload the JSON output file created by the PowerShell script.");
+      return;
+    }
+    let parsed: Record<string, unknown>;
+    try {
+      parsed = JSON.parse(await file.text()) as Record<string, unknown>;
+    } catch {
+      setUploadError("The file is not valid JSON. Upload the exact JSON file the PowerShell script generated.");
+      return;
+    }
+    if (!("data" in parsed)) {
+      setUploadError("The JSON is missing the required 'data' key. Make sure you are uploading the file created by the downloaded script.");
+      return;
+    }
+    setUploadStatus("processing");
+    try {
+      const url = isAdmin
+        ? `/api/admin/manual-scripts/${runResultId}/upload`
+        : `/api/portal/manual-scripts/${runResultId}/upload`;
+      const res = await fetchWithAuth(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ jsonData: parsed }),
+      });
+      if (!res.ok) {
+        const body = await res.json() as { error?: string };
+        setUploadError(body.error ?? "Upload failed. Please try again.");
+        setUploadStatus("idle");
+        return;
+      }
+      setUploadStatus("done");
+    } catch {
+      setUploadError("Upload failed due to a network error. Check your connection and try again.");
+      setUploadStatus("idle");
+    }
+  }, [runResultId, isAdmin, fetchWithAuth]);
+
+  const handleFileChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) void processUploadFile(file);
+    e.target.value = "";
+  }, [processUploadFile]);
+
+  return (
+    <div className="space-y-5">
+      {runResultId && (
+        <div className="space-y-2">
+          <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Actions</p>
+          <div className="flex flex-col gap-2">
+            <button
+              onClick={() => void handleDownload()}
+              disabled={downloading}
+              className="flex items-center justify-center gap-2 w-full bg-[#0A2540] text-white text-sm font-semibold px-4 py-2.5 rounded-lg hover:bg-[#0A2540]/90 disabled:opacity-50 transition-colors"
+            >
+              {downloading
+                ? <><div className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" /> Downloading…</>
+                : <><span>⬇</span> Download Script (.ps1)</>}
+            </button>
+
+            <button
+              onClick={() => setShowInstructions(o => !o)}
+              className="flex items-center justify-center gap-2 w-full bg-white border border-border text-[#0A2540] text-sm font-semibold px-4 py-2.5 rounded-lg hover:bg-gray-50 transition-colors"
+            >
+              <span>📄</span> {showInstructions ? "Hide Instructions" : "View Instructions"}
+            </button>
+
+            {showInstructions && instructions.length > 0 && (
+              <div className="bg-[#F7F9FC] border border-border rounded-lg p-4">
+                <ol className="space-y-2">
+                  {instructions.map((step, i) => (
+                    <li key={i} className="flex items-start gap-3">
+                      <span className="flex-shrink-0 w-5 h-5 rounded-full bg-cyan-100 text-cyan-700 text-[10px] font-bold flex items-center justify-center mt-0.5">{i + 1}</span>
+                      <span className="text-sm text-[#0A2540] leading-relaxed">{step.replace(/\*\*/g, "")}</span>
+                    </li>
+                  ))}
+                </ol>
+              </div>
+            )}
+
+            {uploadStatus === "done" ? (
+              <div className="flex items-center gap-2.5 bg-green-50 border border-green-200 rounded-lg px-4 py-3">
+                <svg className="w-4 h-4 text-green-600 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <span className="text-sm font-semibold text-green-800">Results received — thank you!</span>
+              </div>
+            ) : (
+              <>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".json,application/json"
+                  onChange={handleFileChange}
+                  className="sr-only"
+                  disabled={uploadStatus === "processing"}
+                />
+                <button
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={uploadStatus === "processing"}
+                  className="flex items-center justify-center gap-2 w-full bg-cyan-600 text-white text-sm font-semibold px-4 py-2.5 rounded-lg hover:bg-cyan-700 disabled:opacity-50 transition-colors"
+                >
+                  {uploadStatus === "processing"
+                    ? <><div className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" /> Processing…</>
+                    : <><span>⬆</span> Upload Results (.json)</>}
+                </button>
+                {uploadError && (
+                  <p className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{uploadError}</p>
+                )}
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
+      {total > 0 && (
+        <div>
+          <div className="flex items-center justify-between mb-2">
+            <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Progress</p>
+            <span className="text-xs text-muted-foreground">{done}/{total} complete</span>
+          </div>
+          <div className="w-full bg-gray-100 rounded-full h-2.5 mb-3">
+            <div className="h-2.5 rounded-full bg-cyan-500 transition-all" style={{ width: `${total ? (done / total) * 100 : 0}%` }} />
+          </div>
+          <div className="space-y-1.5">
+            {checklist.map(item => (
+              <div key={item.id} className={`flex items-center gap-3 rounded-lg px-3 py-2.5 border ${checklistState[item.id] ? "bg-cyan-50 border-cyan-100" : "bg-white border-border"}`}>
+                <div className={`w-5 h-5 rounded-full flex-shrink-0 flex items-center justify-center border-2 ${checklistState[item.id] ? "bg-cyan-500 border-cyan-500" : "border-gray-300"}`}>
+                  {checklistState[item.id] && (
+                    <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
+                  )}
+                </div>
+                <span className={`text-sm flex-1 leading-snug ${checklistState[item.id] ? "line-through text-muted-foreground" : "text-[#0A2540] font-medium"}`}>
+                  {item.label}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function DiscoveryModalBody({ m }: { m: Record<string, unknown> }) {
   const dm = m as DiscoveryMetadata;
   const recs = dm.recommendations ?? [];
@@ -752,6 +990,7 @@ export function TypedModalSection({
       {taskType === "automationBuild"        && <AutomationModalBody   m={m} />}
       {taskType === "documentDelivery"       && <DocumentModalBody     m={m} />}
       {taskType === "discovery"              && <DiscoveryModalBody    m={m} />}
+      {taskType === "manualScript"           && <ManualScriptModalBody m={m} />}
     </div>
   );
 }

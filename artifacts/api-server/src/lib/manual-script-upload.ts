@@ -17,6 +17,7 @@ import {
 import { eq } from "drizzle-orm";
 import { logger } from "./logger";
 import { runAiAnalyzer } from "./ai-analyzer";
+import { completeManualScriptKanbanCard } from "./manual-script-kanban";
 
 function clampScore(current: number, delta: number): number {
   return Math.max(0, Math.min(100, current + delta));
@@ -211,6 +212,13 @@ export async function processManualScriptUpload(
       );
     }
   }
+
+  completeManualScriptKanbanCard(runResultId).catch((err) => {
+    logger.warn(
+      { err, runResultId },
+      "manual-script-upload: kanban card completion failed (non-fatal)",
+    );
+  });
 
   logger.info(
     { runResultId, scriptId: runResult.scriptId, uploadedBy },
