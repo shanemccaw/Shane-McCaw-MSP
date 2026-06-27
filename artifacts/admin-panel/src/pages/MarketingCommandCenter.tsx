@@ -475,23 +475,40 @@ function RecommendedLeadsSection({ fetchWithAuth }: { fetchWithAuth: (url: strin
   const [taskModal, setTaskModal] = useState<RecommendedLead | null>(null);
   const [campaignModal, setCampaignModal] = useState<RecommendedLead | null>(null);
   const [generatedDrafts, setGeneratedDrafts] = useState<Record<number, string>>({});
+  const [genError, setGenError] = useState<string | null>(null);
   const hasFetched = useRef(false);
 
   const loadLeads = useCallback(async () => {
     try {
       const r = await fetchWithAuth(`${API}/admin/marketing/recommended-leads`);
-      const data = await r.json() as RecommendedLead[];
-      setLeads(data);
-      return data;
+      const data = await r.json() as unknown;
+      if (!r.ok || !Array.isArray(data)) {
+        const msg = (data as { error?: string })?.error ?? "Failed to load leads";
+        setGenError(msg);
+        return [] as RecommendedLead[];
+      }
+      setLeads(data as RecommendedLead[]);
+      return data as RecommendedLead[];
+    } catch (e) {
+      setGenError(String(e));
+      return [] as RecommendedLead[];
     } finally { setLoading(false); }
   }, [fetchWithAuth]);
 
   const generate = useCallback(async () => {
     setGenerating(true);
+    setGenError(null);
     try {
       const r = await fetchWithAuth(`${API}/admin/marketing/recommended-leads/generate`, { method: "POST" });
-      const data = await r.json() as RecommendedLead[];
-      setLeads(prev => [...data, ...prev]);
+      const data = await r.json() as unknown;
+      if (!r.ok || !Array.isArray(data)) {
+        const msg = (data as { error?: string })?.error ?? "Lead generation failed";
+        setGenError(msg);
+        return;
+      }
+      setLeads(prev => [...(data as RecommendedLead[]), ...prev]);
+    } catch (e) {
+      setGenError(String(e));
     } finally { setGenerating(false); }
   }, [fetchWithAuth]);
 
@@ -537,6 +554,13 @@ function RecommendedLeadsSection({ fetchWithAuth }: { fetchWithAuth: (url: strin
             : <><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>Generate Leads</>}
         </button>
       </div>
+
+      {genError && (
+        <div className="flex items-center justify-between gap-3 px-4 py-2.5 rounded-lg bg-red-500/10 border border-red-500/30 text-red-400 text-sm">
+          <span>{genError}</span>
+          <button onClick={() => setGenError(null)} className="text-red-400/60 hover:text-red-400 flex-shrink-0">✕</button>
+        </div>
+      )}
 
       {loading || generating && active.length === 0 ? (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4"><SkeletonCard count={3} /></div>
