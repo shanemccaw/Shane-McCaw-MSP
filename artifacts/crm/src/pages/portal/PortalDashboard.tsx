@@ -200,6 +200,12 @@ export default function PortalDashboard() {
   const overdueCount = invoiceSummary.filter(i => i.status === "overdue").length;
   const dueCount = invoiceSummary.filter(i => i.status === "due").length;
 
+  const scorecardScores = SCORECARD_DEFS.map(d => scorecardHistory?.latest?.[d.key] ?? 0);
+  const scorecardOverall = scorecardScores.length > 0
+    ? Math.round(scorecardScores.reduce((a, b) => a + b, 0) / scorecardScores.length)
+    : 0;
+  const scorecardIsFirstSameAsLatest = scorecardHistory?.firstDate === scorecardHistory?.latestDate;
+
   return (
     <PortalLayout unreadNotifications={data?.unreadNotifications} unreadMessages={data?.unreadMessages}>
       <div className="px-4 sm:px-6 py-6 sm:py-8 max-w-7xl mx-auto">
@@ -277,83 +283,78 @@ export default function PortalDashboard() {
                         </span>
                       </div>
                     </div>
-                  ) : (() => {
-                    const scores = SCORECARD_DEFS.map(d => scorecardHistory.latest?.[d.key] ?? 0);
-                    const overall = Math.round(scores.reduce((a, b) => a + b, 0) / scores.length);
-                    const isFirstSameAsLatest = scorecardHistory.firstDate === scorecardHistory.latestDate;
-                    return (
-                      <div className="rounded-2xl overflow-hidden shadow-lg">
-                        {/* ── Command header ── */}
-                        <div className="bg-[#0A2540] px-6 py-5">
-                          <div className="flex items-center justify-between gap-4 flex-wrap">
-                            <div className="flex items-center gap-4">
-                              <OverallRing score={overall} />
-                              <div>
-                                <p className="text-[10px] font-bold tracking-[0.2em] uppercase text-white/40">Mission Status</p>
-                                <h2 className="text-xl font-black text-white tracking-tight leading-tight">M365 Environment Health</h2>
-                                <div className="flex items-center gap-2 mt-1.5">
-                                  <span className={`inline-flex items-center gap-1.5 text-[10px] font-bold px-2.5 py-1 rounded-md border ${statusBadge(overall)}`}>
-                                    <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: ringColor(overall) }} />
-                                    {statusLabel(overall)}
+                  ) : (
+                    <div className="rounded-2xl overflow-hidden shadow-lg">
+                      {/* ── Command header ── */}
+                      <div className="bg-[#0A2540] px-6 py-5">
+                        <div className="flex items-center justify-between gap-4 flex-wrap">
+                          <div className="flex items-center gap-4">
+                            <OverallRing score={scorecardOverall} />
+                            <div>
+                              <p className="text-[10px] font-bold tracking-[0.2em] uppercase text-white/40">Mission Status</p>
+                              <h2 className="text-xl font-black text-white tracking-tight leading-tight">M365 Environment Health</h2>
+                              <div className="flex items-center gap-2 mt-1.5">
+                                <span className={`inline-flex items-center gap-1.5 text-[10px] font-bold px-2.5 py-1 rounded-md border ${statusBadge(scorecardOverall)}`}>
+                                  <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: ringColor(scorecardOverall) }} />
+                                  {statusLabel(scorecardOverall)}
+                                </span>
+                                {scorecardHistory?.firstDate && (
+                                  <span className="text-[10px] text-white/30 font-medium">
+                                    Tracking since {new Date(scorecardHistory.firstDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
                                   </span>
-                                  {scorecardHistory.firstDate && (
-                                    <span className="text-[10px] text-white/30 font-medium">
-                                      Tracking since {new Date(scorecardHistory.firstDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
-                                    </span>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                          <span className="text-xs font-bold text-[#0078D4] whitespace-nowrap">Update profile →</span>
+                        </div>
+                      </div>
+
+                      {/* ── Score cards ── */}
+                      <div className="bg-[#0d2d4a] border-x border-b border-[#0A2540]/80 rounded-b-2xl p-4">
+                        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+                          {SCORECARD_DEFS.map(({ key, label }) => {
+                            const current = scorecardHistory?.latest?.[key] ?? 0;
+                            const baseline = scorecardHistory?.first?.[key] ?? null;
+                            const delta = baseline !== null ? current - baseline : null;
+                            const showHistory = baseline !== null && !scorecardIsFirstSameAsLatest;
+                            return (
+                              <div key={key} className="bg-[#0A2540] border border-white/5 rounded-xl overflow-hidden">
+                                {/* colored top bar */}
+                                <div className={`h-1 w-full ${ringTopBar(current)}`} />
+                                <div className="p-4 flex flex-col items-center gap-3">
+                                  <ScoreRing score={current} size={72} />
+                                  <div className="text-center">
+                                    <p className="text-[11px] font-bold text-white/80 leading-snug uppercase tracking-wide">{label}</p>
+                                  </div>
+                                  {showHistory && baseline !== null ? (
+                                    <div className="w-full bg-white/5 rounded-lg px-3 py-2 flex flex-col items-center gap-1">
+                                      <div className="flex items-center gap-1.5 text-[11px] text-white/50">
+                                        <span>{baseline}%</span>
+                                        <svg className="w-3 h-3 flex-shrink-0 text-white/30" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                                          <path strokeLinecap="round" strokeLinejoin="round" d="M13 7l5 5m0 0l-5 5m5-5H6" />
+                                        </svg>
+                                        <span className="font-black text-white">{current}%</span>
+                                      </div>
+                                      {delta !== null && delta !== 0 && (
+                                        <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${delta > 0 ? "bg-green-500/20 text-green-400" : "bg-red-500/20 text-red-400"}`}>
+                                          {delta > 0 ? "+" : ""}{delta} pts
+                                        </span>
+                                      )}
+                                    </div>
+                                  ) : (
+                                    <div className="w-full bg-white/5 rounded-lg px-3 py-2 text-center">
+                                      <span className="text-[10px] text-white/30 font-medium">Baseline set</span>
+                                    </div>
                                   )}
                                 </div>
                               </div>
-                            </div>
-                            <span className="text-xs font-bold text-[#0078D4] whitespace-nowrap">Update profile →</span>
-                          </div>
-                        </div>
-
-                        {/* ── Score cards ── */}
-                        <div className="bg-[#0d2d4a] border-x border-b border-[#0A2540]/80 rounded-b-2xl p-4">
-                          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
-                            {SCORECARD_DEFS.map(({ key, label }) => {
-                              const current = scorecardHistory.latest?.[key] ?? 0;
-                              const baseline = scorecardHistory.first?.[key] ?? null;
-                              const delta = baseline !== null ? current - baseline : null;
-                              const showHistory = baseline !== null && !isFirstSameAsLatest;
-                              return (
-                                <div key={key} className="bg-[#0A2540] border border-white/5 rounded-xl overflow-hidden">
-                                    {/* colored top bar */}
-                                    <div className={`h-1 w-full ${ringTopBar(current)}`} />
-                                    <div className="p-4 flex flex-col items-center gap-3">
-                                      <ScoreRing score={current} size={72} />
-                                      <div className="text-center">
-                                        <p className="text-[11px] font-bold text-white/80 leading-snug uppercase tracking-wide">{label}</p>
-                                      </div>
-                                      {showHistory && baseline !== null ? (
-                                        <div className="w-full bg-white/5 rounded-lg px-3 py-2 flex flex-col items-center gap-1">
-                                          <div className="flex items-center gap-1.5 text-[11px] text-white/50">
-                                            <span>{baseline}%</span>
-                                            <svg className="w-3 h-3 flex-shrink-0 text-white/30" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                                              <path strokeLinecap="round" strokeLinejoin="round" d="M13 7l5 5m0 0l-5 5m5-5H6" />
-                                            </svg>
-                                            <span className="font-black text-white">{current}%</span>
-                                          </div>
-                                          {delta !== null && delta !== 0 && (
-                                            <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${delta > 0 ? "bg-green-500/20 text-green-400" : "bg-red-500/20 text-red-400"}`}>
-                                              {delta > 0 ? "+" : ""}{delta} pts
-                                            </span>
-                                          )}
-                                        </div>
-                                      ) : (
-                                        <div className="w-full bg-white/5 rounded-lg px-3 py-2 text-center">
-                                          <span className="text-[10px] text-white/30 font-medium">Baseline set</span>
-                                        </div>
-                                      )}
-                                    </div>
-                                </div>
-                              );
-                            })}
-                          </div>
+                            );
+                          })}
                         </div>
                       </div>
-                    );
-                  })()}
+                    </div>
+                  )}
                 </section>
 
                 {/* M365 Profile Summary */}
