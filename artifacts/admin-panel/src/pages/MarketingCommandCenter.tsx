@@ -3696,6 +3696,405 @@ function CampaignsHubSection({ fetchWithAuth }: { fetchWithAuth: (url: string, o
   );
 }
 
+// ─── Ad Variation Type ────────────────────────────────────────────────────────
+
+interface AdVariation {
+  headline: string;
+  description: string;
+  cta?: string;
+}
+
+interface AdSectionState {
+  topic: string;
+  offer: string;
+  angle: string;
+  audience: string;
+  variations: AdVariation[];
+  generating: boolean;
+  suggesting: boolean;
+  saving: boolean;
+  saved: boolean;
+  error: string | null;
+  open: boolean;
+}
+
+type AdType = "ad_google" | "ad_linkedin" | "ad_retargeting" | "ad_creative" | "landing_page";
+
+const AD_TYPES: { type: AdType; label: string; icon: string; hint: string }[] = [
+  { type: "ad_google", label: "Google Search Ads", icon: "🔍", hint: "Headlines ≤30 chars · Descriptions ≤90 chars" },
+  { type: "ad_linkedin", label: "LinkedIn Sponsored Ads", icon: "💼", hint: "Headline ≤70 chars · Intro text ≤150 chars" },
+  { type: "ad_retargeting", label: "Retargeting Ads", icon: "🎯", hint: "Re-engage warm visitors with urgency copy" },
+  { type: "ad_creative", label: "Creative Prompts", icon: "🎨", hint: "Design briefs for your creative team" },
+  { type: "landing_page", label: "Landing Page Copy", icon: "📄", hint: "Above-the-fold hero sections" },
+];
+
+function CampaignAdAssetsStep({
+  campaignId, goal, audience: campaignAudience, offer: campaignOffer, fetchWithAuth, onNext, onSkip,
+}: {
+  campaignId: number;
+  goal: string;
+  audience: string;
+  offer: string;
+  fetchWithAuth: (url: string, opts?: RequestInit) => Promise<Response>;
+  onNext: () => void;
+  onSkip: () => void;
+}) {
+  const makeDefault = (type: AdType): AdSectionState => ({
+    topic: goal.slice(0, 120),
+    offer: campaignOffer.slice(0, 120),
+    angle: "benefit-focused",
+    audience: campaignAudience.slice(0, 120),
+    variations: [],
+    generating: false,
+    suggesting: false,
+    saving: false,
+    saved: false,
+    error: null,
+    open: type === "ad_google",
+  });
+
+  const [sections, setSections] = useState<Record<AdType, AdSectionState>>(() => ({
+    ad_google: makeDefault("ad_google"),
+    ad_linkedin: makeDefault("ad_linkedin"),
+    ad_retargeting: makeDefault("ad_retargeting"),
+    ad_creative: makeDefault("ad_creative"),
+    landing_page: makeDefault("landing_page"),
+  }));
+
+  const [addTaskModal, setAddTaskModal] = useState<{ title: string; description: string } | null>(null);
+  const [addTaskSaving, setAddTaskSaving] = useState(false);
+  const [addContentSaving, setAddContentSaving] = useState<string | null>(null);
+  const [outreachSaving, setOutreachSaving] = useState<string | null>(null);
+  const [outreachSaved, setOutreachSaved] = useState<string | null>(null);
+
+  const patchSection = (type: AdType, patch: Partial<AdSectionState>) =>
+    setSections(prev => ({ ...prev, [type]: { ...prev[type], ...patch } }));
+
+  const patchVariation = (type: AdType, idx: number, patch: Partial<AdVariation>) =>
+    setSections(prev => ({
+      ...prev,
+      [type]: {
+        ...prev[type],
+        variations: prev[type].variations.map((v, i) => i === idx ? { ...v, ...patch } : v),
+      },
+    }));
+
+  const suggest = async (type: AdType) => {
+    patchSection(type, { suggesting: true, error: null });
+    try {
+      const r = await fetchWithAuth(`${API}/admin/marketing/campaigns/generate-ads`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          campaignId, adType: type,
+          topic: sections[type].topic || goal,
+          offer: sections[type].offer,
+          angle: sections[type].angle,
+          audience: sections[type].audience,
+        }),
+      });
+      const data = await r.json() as { variations?: AdVariation[]; error?: string };
+      if (!r.ok) { patchSection(type, { error: data.error ?? "Generation failed — try again.", suggesting: false }); return; }
+      patchSection(type, { variations: data.variations ?? [], suggesting: false });
+    } catch { patchSection(type, { error: "Network error — check your connection.", suggesting: false }); }
+  };
+
+  const saveAd = async (type: AdType) => {
+    const s = sections[type];
+    if (!s.variations.length) return;
+    patchSection(type, { saving: true, error: null });
+    try {
+      const r = await fetchWithAuth(`${API}/admin/marketing/campaigns/save-ads`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          campaignId, adType: type,
+          title: (s.topic || AD_TYPES.find(a => a.type === type)?.label) ?? type,
+          variations: s.variations,
+        }),
+      });
+      if (r.ok) { patchSection(type, { saving: false, saved: true }); }
+      else {
+        const d = await r.json() as { error?: string };
+        patchSection(type, { saving: false, error: d.error ?? "Save failed." });
+      }
+    } catch { patchSection(type, { saving: false, error: "Network error." }); }
+  };
+
+  const addToTask = async (title: string, description: string) => {
+    setAddTaskSaving(true);
+    try {
+      await fetchWithAuth(`${API}/admin/marketing/tasks`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title, description, status: "ideas" }),
+      });
+      setAddTaskModal(null);
+    } finally { setAddTaskSaving(false); }
+  };
+
+  const addToContentHub = async (type: AdType, v: AdVariation) => {
+    const label = `${AD_TYPES.find(a => a.type === type)?.label ?? type}: ${v.headline}`;
+    setAddContentSaving(label);
+    try {
+      await fetchWithAuth(`${API}/admin/marketing/campaign-assets`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          campaignId,
+          assetType: "social_post",
+          title: label,
+          content: `${v.headline}\n\n${v.description}${v.cta ? `\n\nCTA: ${v.cta}` : ""}`,
+        }),
+      });
+    } finally { setTimeout(() => setAddContentSaving(null), 1500); }
+  };
+
+  const addToOutreach = async (type: AdType, v: AdVariation) => {
+    const typeLabel = AD_TYPES.find(a => a.type === type)?.label ?? type;
+    const templateType = type === "ad_linkedin" ? "linkedin" : "cold_email";
+    const key = `${type}:${v.headline}`;
+    setOutreachSaving(key);
+    try {
+      await fetchWithAuth(`${API}/admin/marketing/outreach-templates`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: `${typeLabel}: ${v.headline}`,
+          templateType,
+          body: `Angle: ${v.headline}\n\n${v.description}${v.cta ? `\n\nCTA: ${v.cta}` : ""}`,
+        }),
+      });
+      setOutreachSaved(key);
+      setTimeout(() => setOutreachSaved(null), 1800);
+    } catch {
+      /* silently drop — clipboard fallback */
+    } finally {
+      setOutreachSaving(null);
+    }
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <div>
+          <p className="text-sm font-semibold text-[#E6EDF3]">Ad Assets</p>
+          <p className="text-xs text-[#7D8590] mt-0.5">Generate paid ad content powered by your campaign context</p>
+        </div>
+        <button onClick={onSkip} className="text-xs px-3 py-1.5 rounded-lg border border-[#30363D] text-[#7D8590] hover:text-[#E6EDF3] transition-colors">
+          Skip →
+        </button>
+      </div>
+
+      <div className="space-y-3">
+        {AD_TYPES.map(({ type, label, icon, hint }) => {
+          const s = sections[type];
+          return (
+            <div key={type} className="bg-[#0D1117] border border-[#30363D] rounded-xl overflow-hidden">
+              <button
+                onClick={() => patchSection(type, { open: !s.open })}
+                className="w-full flex items-center justify-between px-4 py-3 hover:bg-[#161B22] transition-colors"
+              >
+                <div className="flex items-center gap-2">
+                  <span>{icon}</span>
+                  <span className="text-sm font-semibold text-[#E6EDF3]">{label}</span>
+                  {s.saved && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 font-semibold">Saved ✓</span>}
+                  {s.variations.length > 0 && !s.saved && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-[#0078D4]/20 text-[#58A6FF]">{s.variations.length} variations</span>}
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] text-[#484F58] hidden sm:block">{hint}</span>
+                  <span className="text-[#7D8590] text-xs">{s.open ? "▲" : "▼"}</span>
+                </div>
+              </button>
+
+              {s.open && (
+                <div className="border-t border-[#30363D] p-4 space-y-4">
+                  {/* Inputs */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-[10px] text-[#7D8590] uppercase tracking-wide">Topic / Focus</label>
+                      <input
+                        value={s.topic}
+                        onChange={e => patchSection(type, { topic: e.target.value })}
+                        placeholder="e.g. Microsoft Copilot for mid-market teams"
+                        className="mt-1 w-full bg-[#161B22] border border-[#30363D] rounded-lg px-3 py-2 text-xs text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[10px] text-[#7D8590] uppercase tracking-wide">Offer</label>
+                      <input
+                        value={s.offer}
+                        onChange={e => patchSection(type, { offer: e.target.value })}
+                        placeholder="e.g. Free 30-min Copilot Assessment"
+                        className="mt-1 w-full bg-[#161B22] border border-[#30363D] rounded-lg px-3 py-2 text-xs text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[10px] text-[#7D8590] uppercase tracking-wide">Angle</label>
+                      <input
+                        value={s.angle}
+                        onChange={e => patchSection(type, { angle: e.target.value })}
+                        placeholder="e.g. benefit-focused, urgency, ROI"
+                        className="mt-1 w-full bg-[#161B22] border border-[#30363D] rounded-lg px-3 py-2 text-xs text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[10px] text-[#7D8590] uppercase tracking-wide">Audience</label>
+                      <input
+                        value={s.audience}
+                        onChange={e => patchSection(type, { audience: e.target.value })}
+                        placeholder="e.g. IT Directors at 100-500 employee firms"
+                        className="mt-1 w-full bg-[#161B22] border border-[#30363D] rounded-lg px-3 py-2 text-xs text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Generate buttons */}
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => { void suggest(type); }}
+                      disabled={s.suggesting || s.generating || !s.topic.trim()}
+                      className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-violet-500/20 text-violet-400 hover:bg-violet-500/30 disabled:opacity-40 text-xs font-semibold transition-colors"
+                    >
+                      {s.suggesting ? <><div className="w-3 h-3 border border-violet-400 border-t-transparent rounded-full animate-spin" />Generating…</> : "✦ Generate Ads"}
+                    </button>
+                    {s.variations.length > 0 && (
+                      <button
+                        onClick={() => { void suggest(type); }}
+                        disabled={s.suggesting}
+                        className="text-xs px-3 py-1.5 rounded-lg border border-[#30363D] text-[#7D8590] hover:text-[#E6EDF3] disabled:opacity-40 transition-colors"
+                      >
+                        Regenerate
+                      </button>
+                    )}
+                  </div>
+
+                  {s.error && (
+                    <p className="text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2">{s.error}</p>
+                  )}
+
+                  {/* Variations */}
+                  {s.variations.length > 0 && (
+                    <div className="space-y-3">
+                      <p className="text-[10px] text-[#7D8590] uppercase tracking-wide font-semibold">Variations</p>
+                      {s.variations.map((v, idx) => {
+                        const outreachKey = `${type}:${v.headline}`;
+                        const hubKey = `${AD_TYPES.find(a => a.type === type)?.label ?? type}: ${v.headline}`;
+                        return (
+                          <div key={idx} className="bg-[#161B22] border border-[#30363D] rounded-lg p-3 space-y-2">
+                            <div className="flex items-start justify-between gap-2">
+                              <span className="text-[10px] text-[#484F58] font-semibold uppercase tracking-wide">Variation {idx + 1}</span>
+                              <div className="flex gap-1 flex-wrap justify-end">
+                                <CopyButton text={`${v.headline}\n${v.description}${v.cta ? `\nCTA: ${v.cta}` : ""}`} />
+                                <button
+                                  onClick={() => setAddTaskModal({ title: `Ad: ${v.headline}`, description: `${label} Ad\n\nHeadline: ${v.headline}\nDescription: ${v.description}${v.cta ? `\nCTA: ${v.cta}` : ""}` })}
+                                  className="text-[10px] px-2 py-1 rounded bg-amber-500/20 text-amber-400 hover:bg-amber-500/30 transition-colors"
+                                >+ Task</button>
+                                <button
+                                  onClick={() => { void addToContentHub(type, v); }}
+                                  disabled={addContentSaving !== null}
+                                  className="text-[10px] px-2 py-1 rounded bg-teal-500/20 text-teal-400 hover:bg-teal-500/30 disabled:opacity-40 transition-colors"
+                                >{addContentSaving === hubKey ? "Added!" : "+ Hub"}</button>
+                                <button
+                                  onClick={() => { void addToOutreach(type, v); }}
+                                  disabled={outreachSaving === outreachKey}
+                                  className="text-[10px] px-2 py-1 rounded bg-[#0078D4]/20 text-[#58A6FF] hover:bg-[#0078D4]/30 disabled:opacity-40 transition-colors"
+                                >{outreachSaved === outreachKey ? "Saved!" : outreachSaving === outreachKey ? "Saving…" : "+ Outreach"}</button>
+                              </div>
+                            </div>
+                            {/* Editable fields */}
+                            <div className="space-y-2">
+                              <div>
+                                <label className="text-[10px] text-[#7D8590] uppercase tracking-wide">Headline</label>
+                                <input
+                                  value={v.headline}
+                                  onChange={e => patchVariation(type, idx, { headline: e.target.value })}
+                                  className="mt-0.5 w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-1.5 text-xs font-semibold text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60"
+                                />
+                              </div>
+                              <div>
+                                <label className="text-[10px] text-[#7D8590] uppercase tracking-wide">Description</label>
+                                <textarea
+                                  value={v.description}
+                                  onChange={e => patchVariation(type, idx, { description: e.target.value })}
+                                  rows={2}
+                                  className="mt-0.5 w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-1.5 text-xs text-[#7D8590] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60 resize-none"
+                                />
+                              </div>
+                              <div>
+                                <label className="text-[10px] text-[#7D8590] uppercase tracking-wide">CTA</label>
+                                <input
+                                  value={v.cta ?? ""}
+                                  onChange={e => patchVariation(type, idx, { cta: e.target.value || undefined })}
+                                  placeholder="e.g. Book a Free Call"
+                                  className="mt-0.5 w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-1.5 text-[10px] text-[#58A6FF] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60"
+                                />
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+
+                      {/* Save to Campaign */}
+                      <button
+                        onClick={() => { void saveAd(type); }}
+                        disabled={s.saving || s.saved}
+                        className={`w-full py-2 rounded-lg text-sm font-semibold transition-colors ${s.saved ? "bg-emerald-500/20 text-emerald-400 cursor-default" : "bg-emerald-500 text-white hover:bg-emerald-400 disabled:opacity-40"}`}
+                      >
+                        {s.saving ? "Saving…" : s.saved ? "✓ Saved to Campaign" : "Save to Campaign"}
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Add Task Modal */}
+      {addTaskModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
+          <div className="bg-[#161B22] border border-[#30363D] rounded-xl w-full max-w-md p-6 space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-[#E6EDF3] font-semibold">Add to Marketing Tasks</h3>
+              <button onClick={() => setAddTaskModal(null)} className="text-[#7D8590] hover:text-[#E6EDF3]">✕</button>
+            </div>
+            <div className="space-y-3">
+              <input
+                value={addTaskModal.title}
+                onChange={e => setAddTaskModal(prev => prev ? { ...prev, title: e.target.value } : prev)}
+                className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-sm text-[#E6EDF3] outline-none focus:border-[#0078D4]/60"
+              />
+              <textarea
+                value={addTaskModal.description}
+                onChange={e => setAddTaskModal(prev => prev ? { ...prev, description: e.target.value } : prev)}
+                rows={4}
+                className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-sm text-[#E6EDF3] outline-none focus:border-[#0078D4]/60 resize-none font-mono text-xs"
+              />
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={() => { void addToTask(addTaskModal.title, addTaskModal.description); }}
+                disabled={addTaskSaving || !addTaskModal.title.trim()}
+                className="flex-1 py-2 rounded-lg bg-[#0078D4] text-white text-sm font-semibold hover:bg-[#0078D4]/80 disabled:opacity-40 transition-colors"
+              >{addTaskSaving ? "Adding…" : "Add Task"}</button>
+              <button onClick={() => setAddTaskModal(null)} className="px-4 py-2 rounded-lg border border-[#30363D] text-[#7D8590] text-sm hover:text-[#E6EDF3] transition-colors">Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div className="flex gap-2 pt-2 border-t border-[#30363D]">
+        <button onClick={onNext}
+          className="flex-1 py-2 rounded-lg bg-[#0078D4] text-white text-sm font-semibold hover:bg-[#0078D4]/80 transition-colors">
+          Finish →
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ─── Section 7: Campaign Builder Wizard ───────────────────────────────────────
 
 function CampaignBuilderWizard({ fetchWithAuth }: { fetchWithAuth: (url: string, opts?: RequestInit) => Promise<Response> }) {
@@ -3791,7 +4190,7 @@ function CampaignBuilderWizard({ fetchWithAuth }: { fetchWithAuth: (url: string,
 
   const steps = [
     { n: 1, label: "Goal" }, { n: 2, label: "Audience" }, { n: 3, label: "Offer" },
-    { n: 4, label: "Review" }, { n: 5, label: "Saved" },
+    { n: 4, label: "Review" }, { n: 5, label: "Ad Assets" }, { n: 6, label: "Saved" },
   ];
 
   return (
@@ -3910,7 +4309,19 @@ function CampaignBuilderWizard({ fetchWithAuth }: { fetchWithAuth: (url: string,
             </div>
           )}
 
-          {step === 5 && (
+          {step === 5 && savedCampaignId && (
+            <CampaignAdAssetsStep
+              campaignId={savedCampaignId}
+              goal={goal}
+              audience={audience}
+              offer={offer}
+              fetchWithAuth={fetchWithAuth}
+              onNext={() => setStep(6)}
+              onSkip={() => setStep(6)}
+            />
+          )}
+
+          {step === 6 && (
             <div className="space-y-4">
               <div className="flex items-center gap-2">
                 <div className="w-8 h-8 rounded-full bg-emerald-500/20 flex items-center justify-center">

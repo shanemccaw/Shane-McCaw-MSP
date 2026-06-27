@@ -1133,7 +1133,7 @@ export type Campaign = typeof campaignsTable.$inferSelect;
 export const campaignAssetsTable = pgTable("campaign_assets", {
   id: serial("id").primaryKey(),
   campaignId: integer("campaign_id").references(() => campaignsTable.id, { onDelete: "cascade" }),
-  assetType: text("asset_type", { enum: ["landing_copy", "email_sequence", "social_post", "follow_up_task", "blog_post", "linkedin_post", "newsletter", "seo_keywords", "lead_magnet"] }).notNull(),
+  assetType: text("asset_type", { enum: ["landing_copy", "email_sequence", "social_post", "follow_up_task", "blog_post", "linkedin_post", "newsletter", "seo_keywords", "lead_magnet", "ad_google", "ad_linkedin", "ad_retargeting", "ad_creative", "landing_page"] }).notNull(),
   title: text("title").notNull(),
   content: text("content").notNull(),
   metadata: jsonb("metadata").$type<Record<string, unknown>>().default({}),

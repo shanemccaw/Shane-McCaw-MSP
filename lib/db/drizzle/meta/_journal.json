@@ -512,6 +512,13 @@
       "when": 1782540000000,
       "tag": "0070_campaigns_offer_fk_and_lead_magnet_asset",
       "breakpoints": true
+    },
+    {
+      "idx": 71,
+      "version": "7",
+      "when": 1782624000000,
+      "tag": "0071_add_ad_asset_types",
+      "breakpoints": true
     }
   ]
 }

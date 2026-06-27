@@ -1002,6 +1002,202 @@ router.post("/admin/marketing/campaigns/save-assets", requireAdmin, async (req: 
   }
 });
 
+// ─── Ad Generation endpoint ───────────────────────────────────────────────────
+
+const generateAdsSchema = z.object({
+  campaignId: z.number(),
+  adType: z.enum(["ad_google", "ad_linkedin", "ad_retargeting", "ad_creative", "landing_page"]),
+  topic: z.string().min(1),
+  offer: z.string().optional().default(""),
+  angle: z.string().optional().default(""),
+  audience: z.string().optional().default(""),
+});
+
+const adVariationSchema = z.object({
+  headline: z.string(),
+  description: z.string(),
+  cta: z.string().optional(),
+});
+
+router.post("/admin/marketing/campaigns/generate-ads", requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const body = generateAdsSchema.parse(req.body);
+
+    const [campaignRow] = await db.select().from(campaignsTable).where(eq(campaignsTable.id, body.campaignId));
+    const icpContext = await buildICPContext();
+
+    const campaignContext = campaignRow
+      ? `Campaign goal: ${campaignRow.goal}\nCampaign audience: ${campaignRow.audience}\nCampaign offer: ${campaignRow.offer}`
+      : "";
+
+    const audience = body.audience || campaignRow?.audience || "IT decision-makers at mid-market companies";
+    const offer = body.offer || campaignRow?.offer || body.topic;
+    const angle = body.angle || "benefit-focused";
+
+    const prompts: Record<string, string> = {
+      ad_google: `You are a Google Ads copywriter for Shane McCaw Consulting, a Microsoft 365 consulting firm.
+
+${icpContext}
+${campaignContext}
+
+Topic: ${body.topic}
+Offer: ${offer}
+Angle: ${angle}
+Audience: ${audience}
+
+Generate 3 Google Search Ad variations. Each variation must have:
+- headline: max 30 characters (STRICT — count carefully)
+- description: max 90 characters (STRICT — count carefully)
+- cta: 2-4 words call to action
+
+Respond ONLY with valid JSON, no prose:
+{
+  "variations": [
+    { "headline": "...", "description": "...", "cta": "..." },
+    { "headline": "...", "description": "...", "cta": "..." },
+    { "headline": "...", "description": "...", "cta": "..." }
+  ]
+}`,
+      ad_linkedin: `You are a LinkedIn Ads specialist for Shane McCaw Consulting, a Microsoft 365 consulting firm.
+
+${icpContext}
+${campaignContext}
+
+Topic: ${body.topic}
+Offer: ${offer}
+Angle: ${angle}
+Audience: ${audience}
+
+Generate 3 LinkedIn Sponsored Content ad variations. Each variation must have:
+- headline: 70 characters max, attention-grabbing
+- description: 150 characters max, benefit-driven intro text
+- cta: one of "Learn More", "Sign Up", "Download", "Register", "Get Quote", "Contact Us"
+
+Respond ONLY with valid JSON, no prose:
+{
+  "variations": [
+    { "headline": "...", "description": "...", "cta": "..." },
+    { "headline": "...", "description": "...", "cta": "..." },
+    { "headline": "...", "description": "...", "cta": "..." }
+  ]
+}`,
+      ad_retargeting: `You are a retargeting ad specialist for Shane McCaw Consulting, a Microsoft 365 consulting firm.
+
+${icpContext}
+${campaignContext}
+
+Topic: ${body.topic}
+Offer: ${offer}
+Angle: ${angle}
+Audience: ${audience} (these users already visited the site)
+
+Generate 3 retargeting ad variations designed to re-engage warm visitors. Each variation must have:
+- headline: 60 characters max, urgency or value reinforcement
+- description: 120 characters max, addressing hesitation or reinforcing the offer
+- cta: short action phrase
+
+Respond ONLY with valid JSON, no prose:
+{
+  "variations": [
+    { "headline": "...", "description": "...", "cta": "..." },
+    { "headline": "...", "description": "...", "cta": "..." },
+    { "headline": "...", "description": "...", "cta": "..." }
+  ]
+}`,
+      ad_creative: `You are a creative director briefing a design team for Shane McCaw Consulting, a Microsoft 365 consulting firm.
+
+${icpContext}
+${campaignContext}
+
+Topic: ${body.topic}
+Offer: ${offer}
+Angle: ${angle}
+Audience: ${audience}
+
+Generate 3 creative concept prompts for a designer. Each prompt must have:
+- headline: The main visual/text concept name (5-8 words)
+- description: A 2-3 sentence brief describing the visual style, imagery, color mood, and the emotion to evoke
+- cta: The button/action text for the creative
+
+Respond ONLY with valid JSON, no prose:
+{
+  "variations": [
+    { "headline": "...", "description": "...", "cta": "..." },
+    { "headline": "...", "description": "...", "cta": "..." },
+    { "headline": "...", "description": "...", "cta": "..." }
+  ]
+}`,
+      landing_page: `You are a landing page copywriter for Shane McCaw Consulting, a Microsoft 365 consulting firm.
+
+${icpContext}
+${campaignContext}
+
+Topic: ${body.topic}
+Offer: ${offer}
+Angle: ${angle}
+Audience: ${audience}
+
+Generate 3 landing page copy variations (above-the-fold sections). Each variation must have:
+- headline: 10 words max, outcome-focused hero headline
+- description: 2-3 sentences of subheadline + supporting copy, 200 chars max
+- cta: button text (3-6 words)
+
+Respond ONLY with valid JSON, no prose:
+{
+  "variations": [
+    { "headline": "...", "description": "...", "cta": "..." },
+    { "headline": "...", "description": "...", "cta": "..." },
+    { "headline": "...", "description": "...", "cta": "..." }
+  ]
+}`,
+    };
+
+    const prompt = prompts[body.adType] ?? prompts["ad_google"] ?? "";
+    const message = await anthropic.messages.create({
+      model: "claude-haiku-4-5",
+      max_tokens: 1000,
+      messages: [{ role: "user", content: prompt }],
+    });
+
+    const raw = message.content[0]?.type === "text" ? message.content[0].text : "{}";
+    const parsed = parseAiJson(raw, z.object({ variations: z.array(adVariationSchema) }));
+
+    res.json({ adType: body.adType, variations: parsed.variations });
+  } catch (e) {
+    const status = e instanceof AiResponseError ? 422 : 500;
+    res.status(status).json({ error: e instanceof Error ? e.message : String(e) });
+  }
+});
+
+// ─── Save ads endpoint (bulk insert ad assets with variations) ─────────────────
+
+const saveAdsSchema = z.object({
+  campaignId: z.number(),
+  adType: z.enum(["ad_google", "ad_linkedin", "ad_retargeting", "ad_creative", "landing_page"]),
+  title: z.string(),
+  variations: z.array(adVariationSchema),
+});
+
+router.post("/admin/marketing/campaigns/save-ads", requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const body = saveAdsSchema.parse(req.body);
+    type AssetType = typeof campaignAssetsTable.$inferInsert["assetType"];
+    const primaryContent = body.variations
+      .map((v, i) => `Variation ${i + 1}:\nHeadline: ${v.headline}\nDescription: ${v.description}${v.cta ? `\nCTA: ${v.cta}` : ""}`)
+      .join("\n\n");
+    const [saved] = await db.insert(campaignAssetsTable).values({
+      campaignId: body.campaignId,
+      assetType: body.adType as AssetType,
+      title: body.title,
+      content: primaryContent,
+      metadata: { variations: body.variations },
+    }).returning();
+    res.json(saved);
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
 // ─── Analytics for marketing ──────────────────────────────────────────────────
 
 // ─── Send outreach email via Exchange Online ──────────────────────────────────
