@@ -1214,6 +1214,9 @@ function SeoRankingsCard({ fetchWithAuth }: { fetchWithAuth: (url: string, opts?
   const [url, setUrl] = useState("");
   const [volume, setVolume] = useState("");
   const [saving, setSaving] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+  const [syncResult, setSyncResult] = useState<{ synced: number; inserted: number; updated: number; message?: string } | null>(null);
+  const [syncError, setSyncError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -1271,6 +1274,27 @@ function SeoRankingsCard({ fetchWithAuth }: { fetchWithAuth: (url: string, opts?
     setRankings(prev => prev.filter(r => r.id !== id));
   };
 
+  const syncFromSearchConsole = async () => {
+    setSyncing(true);
+    setSyncResult(null);
+    setSyncError(null);
+    try {
+      const r = await fetchWithAuth(`${API}/admin/marketing/seo-rankings/sync-search-console`, { method: "POST" });
+      const data = await r.json() as { synced?: number; inserted?: number; updated?: number; message?: string; error?: string };
+      if (!r.ok) {
+        setSyncError(data.error ?? "Sync failed");
+        return;
+      }
+      setSyncResult({ synced: data.synced ?? 0, inserted: data.inserted ?? 0, updated: data.updated ?? 0, message: data.message });
+      await load();
+    } catch (e) {
+      setSyncError(String(e));
+    } finally {
+      setSyncing(false);
+      setTimeout(() => { setSyncResult(null); setSyncError(null); }, 6000);
+    }
+  };
+
   const positionColor = (pos: number) => {
     if (pos <= 3) return "text-emerald-400";
     if (pos <= 10) return "text-[#58A6FF]";
@@ -1293,13 +1317,47 @@ function SeoRankingsCard({ fetchWithAuth }: { fetchWithAuth: (url: string, opts?
 
   return (
     <div className="bg-[#161B22] border border-[#30363D] rounded-xl p-4 space-y-3">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-2 flex-wrap">
         <h3 className="text-sm font-semibold text-[#E6EDF3]">SEO Rankings</h3>
-        <button onClick={() => { resetForm(); setShowForm(f => !f); }}
-          className="text-[10px] px-2 py-1 rounded bg-[#0078D4]/20 text-[#58A6FF] hover:bg-[#0078D4]/30 transition-colors">
-          {showForm && editingId === null ? "Cancel" : "+ Add Keyword"}
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => { void syncFromSearchConsole(); }}
+            disabled={syncing}
+            title="Pull latest positions from Google Search Console"
+            className="text-[10px] px-2 py-1 rounded bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30 disabled:opacity-40 transition-colors flex items-center gap-1">
+            {syncing ? (
+              <><span className="w-2.5 h-2.5 border border-emerald-400 border-t-transparent rounded-full animate-spin inline-block" /> Syncing…</>
+            ) : "↻ Sync Search Console"}
+          </button>
+          <button onClick={() => { resetForm(); setShowForm(f => !f); }}
+            className="text-[10px] px-2 py-1 rounded bg-[#0078D4]/20 text-[#58A6FF] hover:bg-[#0078D4]/30 transition-colors">
+            {showForm && editingId === null ? "Cancel" : "+ Add Keyword"}
+          </button>
+        </div>
       </div>
+
+      {syncResult && (
+        <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-lg px-3 py-2">
+          <p className="text-[11px] text-emerald-400 font-medium">
+            {syncResult.message
+              ? syncResult.message
+              : `Synced ${syncResult.synced} keywords — ${syncResult.inserted} new, ${syncResult.updated} updated`}
+          </p>
+        </div>
+      )}
+
+      {syncError && (
+        <div className="bg-red-500/10 border border-red-500/30 rounded-lg px-3 py-2 space-y-1">
+          <p className="text-[11px] text-red-400 font-medium">Sync failed</p>
+          <p className="text-[10px] text-red-400/70">{syncError}</p>
+          {syncError.includes("GOOGLE_SEARCH_CONSOLE") && (
+            <p className="text-[10px] text-[#7D8590]">
+              Set <code className="bg-[#0D1117] px-1 rounded">GOOGLE_SEARCH_CONSOLE_KEY_JSON</code> and{" "}
+              <code className="bg-[#0D1117] px-1 rounded">GOOGLE_SEARCH_CONSOLE_SITE_URL</code> in Replit Secrets to enable automatic sync.
+            </p>
+          )}
+        </div>
+      )}
 
       {showForm && (
         <div className="bg-[#0D1117] rounded-lg p-3 space-y-2">
@@ -1326,7 +1384,7 @@ function SeoRankingsCard({ fetchWithAuth }: { fetchWithAuth: (url: string, opts?
       {rankings.length === 0 ? (
         <div className="text-center py-6">
           <p className="text-[#7D8590] text-xs">No keywords tracked yet — add your first keyword above</p>
-          <p className="text-[10px] text-[#484F58] mt-1">Track positions manually or sync from Google Search Console</p>
+          <p className="text-[10px] text-[#484F58] mt-1">Or click "Sync Search Console" to import live rankings automatically</p>
         </div>
       ) : (
         <div className="space-y-1 max-h-64 overflow-y-auto">

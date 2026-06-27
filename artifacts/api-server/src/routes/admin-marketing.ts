@@ -9,6 +9,7 @@ import { eq, desc, count, and, gte, sql, inArray } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/requireAuth";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
 import { sendMessage } from "../lib/graphEmail";
+import { fetchTopQueries } from "../lib/search-console";
 import { z } from "zod";
 
 const router = Router();
@@ -1033,6 +1034,70 @@ router.delete("/admin/marketing/seo-rankings/:id", requireAdmin, async (req: Req
     const id = parseId(req.params, "id");
     await db.delete(seoRankingsTable).where(eq(seoRankingsTable.id, id));
     res.json({ success: true });
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+// ─── Search Console Sync ──────────────────────────────────────────────────────
+
+router.post("/admin/marketing/seo-rankings/sync-search-console", requireAdmin, async (_req: Request, res: Response) => {
+  try {
+    const siteUrl = process.env["GOOGLE_SEARCH_CONSOLE_SITE_URL"];
+    if (!siteUrl) {
+      res.status(400).json({ error: "GOOGLE_SEARCH_CONSOLE_SITE_URL is not configured" });
+      return;
+    }
+
+    const entries = await fetchTopQueries(siteUrl, 28, 100);
+    if (entries.length === 0) {
+      res.json({ synced: 0, inserted: 0, updated: 0, message: "No data returned from Search Console" });
+      return;
+    }
+
+    const existing = await db.select({
+      id: seoRankingsTable.id,
+      keyword: seoRankingsTable.keyword,
+      position: seoRankingsTable.position,
+    }).from(seoRankingsTable);
+
+    const existingByKeyword = new Map(existing.map(r => [r.keyword.toLowerCase(), r]));
+
+    let inserted = 0;
+    let updated = 0;
+
+    for (const entry of entries) {
+      if (!entry.query) continue;
+      const keyLower = entry.query.toLowerCase();
+      const match = existingByKeyword.get(keyLower);
+
+      if (match) {
+        const prevPos = match.position !== entry.position ? match.position : undefined;
+        await db.update(seoRankingsTable)
+          .set({
+            position: entry.position,
+            ...(prevPos !== undefined ? { previousPosition: prevPos } : {}),
+            checkedAt: new Date(),
+            updatedAt: new Date(),
+            notes: `Last synced from Search Console (${entry.clicks} clicks, ${entry.impressions} impressions)`,
+          })
+          .where(eq(seoRankingsTable.id, match.id));
+        existingByKeyword.set(keyLower, { ...match, position: entry.position });
+        updated++;
+      } else {
+        const [inserted_row] = await db.insert(seoRankingsTable).values({
+          keyword: entry.query,
+          position: entry.position,
+          notes: `Imported from Search Console (${entry.clicks} clicks, ${entry.impressions} impressions)`,
+        }).returning({ id: seoRankingsTable.id, keyword: seoRankingsTable.keyword, position: seoRankingsTable.position });
+        if (inserted_row) {
+          existingByKeyword.set(keyLower, inserted_row);
+        }
+        inserted++;
+      }
+    }
+
+    res.json({ synced: entries.length, inserted, updated });
   } catch (e) {
     res.status(500).json({ error: String(e) });
   }

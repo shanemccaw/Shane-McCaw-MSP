@@ -112,3 +112,14 @@ Required to enable the Script Runner (PowerShell Runbook execution) in the Admin
 | `AZURE_AUTOMATION_ACCOUNT_NAME` | Name of the Azure Automation account |
 
 The service principal needs: **Key Vault Secrets User** and **Key Vault Certificates User** on the vault, and **Automation Operator** on the Automation account.
+
+## Google Search Console Secrets
+
+Required to enable automatic SEO ranking sync in the Admin Panel (Marketing → SEO Rankings → "Sync Search Console"):
+
+| Secret | Description |
+|--------|-------------|
+| `GOOGLE_SEARCH_CONSOLE_KEY_JSON` | Full contents of the Google service account JSON key file (created in Google Cloud Console → IAM → Service Accounts → create key → JSON). The service account must be granted **Full** permission on the site in Google Search Console. |
+| `GOOGLE_SEARCH_CONSOLE_SITE_URL` | Exact site URL as registered in Search Console (e.g. `https://shanemccawconsulting.com/` — include the trailing slash if that's how it's registered). |
+
+If either secret is missing, clicking "Sync Search Console" shows a clear error message in the card without crashing. Manual keyword entry is always available as a fallback.
