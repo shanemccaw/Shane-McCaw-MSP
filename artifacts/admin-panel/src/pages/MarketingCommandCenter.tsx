@@ -6027,6 +6027,9 @@ function CampaignBuilderWizard({ fetchWithAuth }: { fetchWithAuth: (url: string,
   const [offerSuggestions, setOfferSuggestions] = useState<string[] | null>(null);
   const [loadingOfferTopics, setLoadingOfferTopics] = useState(false);
   const [expandingOffer, setExpandingOffer] = useState<string | null>(null);
+  const [selectedTopic, setSelectedTopic] = useState<string | null>(null);
+  const [selectedAudience, setSelectedAudience] = useState<string | null>(null);
+  const [selectedOffer, setSelectedOffer] = useState<string | null>(null);
   const [previewing, setPreviewing] = useState(false);
   const [previewError, setPreviewError] = useState<string | null>(null);
   const [previewAssets, setPreviewAssets] = useState<PreviewAsset[]>([]);
@@ -6055,13 +6058,13 @@ function CampaignBuilderWizard({ fetchWithAuth }: { fetchWithAuth: (url: string,
         if (field === "goal") {
           setGoal(data.value);
           if (!name.trim() && topic) setName(topic);
-          setTopicSuggestions(null);
+          if (topic) setSelectedTopic(topic);
         } else if (field === "audience") {
           setAudience(data.value);
-          setAudienceSuggestions(null);
+          if (topic) setSelectedAudience(topic);
         } else if (field === "offer") {
           setOffer(data.value);
-          setOfferSuggestions(null);
+          if (topic) setSelectedOffer(topic);
         }
       }
     } finally { setAiFillingField(null); setExpandingTopic(null); setExpandingAudience(null); setExpandingOffer(null); }
@@ -6070,6 +6073,7 @@ function CampaignBuilderWizard({ fetchWithAuth }: { fetchWithAuth: (url: string,
   const fetchTopics = async () => {
     setLoadingTopics(true);
     setTopicSuggestions(null);
+    setSelectedTopic(null);
     try {
       const r = await fetchWithAuth(`${API}/admin/marketing/generate/campaign-topics`, {
         method: "POST",
@@ -6089,6 +6093,7 @@ function CampaignBuilderWizard({ fetchWithAuth }: { fetchWithAuth: (url: string,
   const fetchAudienceTopics = async () => {
     setLoadingAudienceTopics(true);
     setAudienceSuggestions(null);
+    setSelectedAudience(null);
     try {
       const r = await fetchWithAuth(`${API}/admin/marketing/generate/audience-topics`, {
         method: "POST",
@@ -6108,6 +6113,7 @@ function CampaignBuilderWizard({ fetchWithAuth }: { fetchWithAuth: (url: string,
   const fetchOfferTopics = async () => {
     setLoadingOfferTopics(true);
     setOfferSuggestions(null);
+    setSelectedOffer(null);
     try {
       const r = await fetchWithAuth(`${API}/admin/marketing/generate/offer-topics`, {
         method: "POST",
@@ -6173,6 +6179,7 @@ function CampaignBuilderWizard({ fetchWithAuth }: { fetchWithAuth: (url: string,
     setTopicSuggestions(null); setLoadingTopics(false); setExpandingTopic(null);
     setAudienceSuggestions(null); setLoadingAudienceTopics(false); setExpandingAudience(null);
     setOfferSuggestions(null); setLoadingOfferTopics(false); setExpandingOffer(null);
+    setSelectedTopic(null); setSelectedAudience(null); setSelectedOffer(null);
   };
 
   const handleCampaignUpdated = (updated: Campaign) => {
@@ -6282,9 +6289,17 @@ function CampaignBuilderWizard({ fetchWithAuth }: { fetchWithAuth: (url: string,
                               key={topic}
                               onClick={() => { void pickTopic(topic); }}
                               disabled={aiFillingField === "goal"}
-                              className="flex items-center gap-1 px-2.5 py-1 rounded-full border border-[#0078D4]/50 bg-[#0078D4]/10 text-[#58A6FF] text-xs font-medium hover:bg-[#0078D4]/20 hover:border-[#0078D4] disabled:opacity-40 transition-colors">
+                              className={`flex items-center gap-1 px-2.5 py-1 rounded-full border text-xs font-medium transition-colors disabled:cursor-wait ${
+                                selectedTopic === topic
+                                  ? "border-[#0078D4] bg-[#0078D4] text-white hover:bg-[#0069BD]"
+                                  : selectedTopic !== null
+                                  ? "border-[#0078D4]/30 bg-[#0078D4]/5 text-[#58A6FF] opacity-50 hover:opacity-80 hover:bg-[#0078D4]/15 disabled:opacity-30"
+                                  : "border-[#0078D4]/50 bg-[#0078D4]/10 text-[#58A6FF] hover:bg-[#0078D4]/20 hover:border-[#0078D4] disabled:opacity-40"
+                              }`}>
                               {expandingTopic === topic && aiFillingField === "goal"
-                                ? <><div className="w-2.5 h-2.5 border border-[#58A6FF] border-t-transparent rounded-full animate-spin" />{topic}</>
+                                ? <><div className="w-2.5 h-2.5 border border-current border-t-transparent rounded-full animate-spin" />{topic}</>
+                                : selectedTopic === topic
+                                ? <>✓ {topic}</>
                                 : topic}
                             </button>
                           ))}
@@ -6339,9 +6354,17 @@ function CampaignBuilderWizard({ fetchWithAuth }: { fetchWithAuth: (url: string,
                               key={seg}
                               onClick={() => { void pickAudience(seg); }}
                               disabled={aiFillingField === "audience"}
-                              className="flex items-center gap-1 px-2.5 py-1 rounded-full border border-[#0078D4]/50 bg-[#0078D4]/10 text-[#58A6FF] text-xs font-medium hover:bg-[#0078D4]/20 hover:border-[#0078D4] disabled:opacity-40 transition-colors">
+                              className={`flex items-center gap-1 px-2.5 py-1 rounded-full border text-xs font-medium transition-colors disabled:cursor-wait ${
+                                selectedAudience === seg
+                                  ? "border-[#0078D4] bg-[#0078D4] text-white hover:bg-[#0069BD]"
+                                  : selectedAudience !== null
+                                  ? "border-[#0078D4]/30 bg-[#0078D4]/5 text-[#58A6FF] opacity-50 hover:opacity-80 hover:bg-[#0078D4]/15 disabled:opacity-30"
+                                  : "border-[#0078D4]/50 bg-[#0078D4]/10 text-[#58A6FF] hover:bg-[#0078D4]/20 hover:border-[#0078D4] disabled:opacity-40"
+                              }`}>
                               {expandingAudience === seg && aiFillingField === "audience"
-                                ? <><div className="w-2.5 h-2.5 border border-[#58A6FF] border-t-transparent rounded-full animate-spin" />{seg}</>
+                                ? <><div className="w-2.5 h-2.5 border border-current border-t-transparent rounded-full animate-spin" />{seg}</>
+                                : selectedAudience === seg
+                                ? <>✓ {seg}</>
                                 : seg}
                             </button>
                           ))}
@@ -6399,9 +6422,17 @@ function CampaignBuilderWizard({ fetchWithAuth }: { fetchWithAuth: (url: string,
                               key={ofr}
                               onClick={() => { void pickOffer(ofr); }}
                               disabled={aiFillingField === "offer"}
-                              className="flex items-center gap-1 px-2.5 py-1 rounded-full border border-[#0078D4]/50 bg-[#0078D4]/10 text-[#58A6FF] text-xs font-medium hover:bg-[#0078D4]/20 hover:border-[#0078D4] disabled:opacity-40 transition-colors">
+                              className={`flex items-center gap-1 px-2.5 py-1 rounded-full border text-xs font-medium transition-colors disabled:cursor-wait ${
+                                selectedOffer === ofr
+                                  ? "border-[#0078D4] bg-[#0078D4] text-white hover:bg-[#0069BD]"
+                                  : selectedOffer !== null
+                                  ? "border-[#0078D4]/30 bg-[#0078D4]/5 text-[#58A6FF] opacity-50 hover:opacity-80 hover:bg-[#0078D4]/15 disabled:opacity-30"
+                                  : "border-[#0078D4]/50 bg-[#0078D4]/10 text-[#58A6FF] hover:bg-[#0078D4]/20 hover:border-[#0078D4] disabled:opacity-40"
+                              }`}>
                               {expandingOffer === ofr && aiFillingField === "offer"
-                                ? <><div className="w-2.5 h-2.5 border border-[#58A6FF] border-t-transparent rounded-full animate-spin" />{ofr}</>
+                                ? <><div className="w-2.5 h-2.5 border border-current border-t-transparent rounded-full animate-spin" />{ofr}</>
+                                : selectedOffer === ofr
+                                ? <>✓ {ofr}</>
                                 : ofr}
                             </button>
                           ))}
