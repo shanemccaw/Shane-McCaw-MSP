@@ -100,13 +100,25 @@ Rules:
 // ─── POST /api/admin/ps-scripts/generate ─────────────────────────────────────
 
 router.post("/admin/ps-scripts/generate", requireAdmin, async (req: Request, res: Response) => {
-  const { prompt, category } = req.body as { prompt?: string; category?: string };
+  const { prompt, category, baseInstructions, detailedInstructions } = req.body as {
+    prompt?: string;
+    category?: string;
+    baseInstructions?: string;
+    detailedInstructions?: string;
+  };
   if (!prompt || typeof prompt !== "string" || prompt.trim().length < 5) {
     res.status(400).json({ error: "prompt is required (min 5 characters)" });
     return;
   }
 
   const categoryLabel = category ? (CATEGORY_LABELS[category] ?? category) : "Microsoft 365";
+
+  const baseBlock = baseInstructions?.trim()
+    ? `\n\nBase instructions (always apply):\n${baseInstructions.trim()}`
+    : "";
+  const detailedBlock = detailedInstructions?.trim()
+    ? `\n\nAdditional instructions for this generation:\n${detailedInstructions.trim()}`
+    : "";
 
   try {
     const msg = await anthropic.messages.create({
@@ -115,7 +127,7 @@ router.post("/admin/ps-scripts/generate", requireAdmin, async (req: Request, res
       messages: [
         {
           role: "user",
-          content: `${SYSTEM_PROMPT}
+          content: `${SYSTEM_PROMPT}${baseBlock}${detailedBlock}
 
 Category: ${categoryLabel}
 

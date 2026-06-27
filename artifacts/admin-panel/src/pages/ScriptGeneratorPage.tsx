@@ -424,17 +424,24 @@ function ScriptDrawer({
 
 // ─── Generator Tab ────────────────────────────────────────────────────────────
 
+const BASE_INSTRUCTIONS_KEY = "sg:baseInstructions";
+
 function GeneratorTab({
   token,
   initialScript,
   onScriptSaved,
+  baseInstructions,
+  onBaseInstructionsChange,
 }: {
   token: string;
   initialScript?: PsScriptDetail | null;
   onScriptSaved: (s: PsScriptListItem) => void;
+  baseInstructions: string;
+  onBaseInstructionsChange: (v: string) => void;
 }) {
   const [category, setCategory] = useState(initialScript?.category ?? "m365");
   const [prompt, setPrompt] = useState("");
+  const [detailedInstructions, setDetailedInstructions] = useState("");
   const [scriptBody, setScriptBody] = useState(initialScript?.scriptBody ?? "");
   const [permissions, setPermissions] = useState<PsScriptPermissions>(
     initialScript?.permissions ?? { appPermissions: [], delegatedPermissions: [], notes: "" }
@@ -452,7 +459,12 @@ function GeneratorTab({
     try {
       const result = await apiFetch("/admin/ps-scripts/generate", token, {
         method: "POST",
-        body: JSON.stringify({ prompt: prompt.trim(), category }),
+        body: JSON.stringify({
+          prompt: prompt.trim(),
+          category,
+          baseInstructions: baseInstructions.trim() || undefined,
+          detailedInstructions: detailedInstructions.trim() || undefined,
+        }),
       }) as { script: string; permissions: PsScriptPermissions };
       setScriptBody(result.script);
       setPermissions(result.permissions);
@@ -477,6 +489,44 @@ function GeneratorTab({
 
   return (
     <div className="space-y-5">
+      {/* Instructions panel */}
+      <div className="bg-[#161B22] border border-[#30363D] rounded-xl p-5 space-y-4">
+        <div className="flex items-center gap-2 mb-1">
+          <svg className="w-4 h-4 text-[#58A6FF] flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+          </svg>
+          <h3 className="text-sm font-semibold text-[#E6EDF3]">Custom Instructions</h3>
+        </div>
+
+        <div>
+          <div className="flex items-center justify-between mb-1.5">
+            <label className="text-xs font-medium text-[#8B949E]">Base Instructions</label>
+            <span className="text-[10px] text-[#484F58] bg-[#0D1117] border border-[#30363D] rounded px-1.5 py-0.5">Saved · applied to every generation</span>
+          </div>
+          <textarea
+            value={baseInstructions}
+            onChange={(e) => onBaseInstructionsChange(e.target.value)}
+            rows={3}
+            placeholder="e.g. Always use the PnP PowerShell module. Follow Microsoft best practices. Include error handling and verbose logging in every script."
+            className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2.5 text-sm text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60 transition-colors resize-none"
+          />
+        </div>
+
+        <div>
+          <div className="flex items-center justify-between mb-1.5">
+            <label className="text-xs font-medium text-[#8B949E]">Detailed Instructions</label>
+            <span className="text-[10px] text-[#484F58] bg-[#0D1117] border border-[#30363D] rounded px-1.5 py-0.5">This generation only</span>
+          </div>
+          <textarea
+            value={detailedInstructions}
+            onChange={(e) => setDetailedInstructions(e.target.value)}
+            rows={3}
+            placeholder="e.g. The tenant uses a hybrid setup — avoid any commands that require cloud-only connectivity. Output must be compatible with PowerShell 5.1."
+            className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2.5 text-sm text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60 transition-colors resize-none"
+          />
+        </div>
+      </div>
+
       {/* Prompt controls */}
       <div className="bg-[#161B22] border border-[#30363D] rounded-xl p-5 space-y-4">
         <div className="flex flex-col sm:flex-row gap-3">
@@ -735,6 +785,14 @@ export default function ScriptGeneratorPage() {
   const [libraryLoaded, setLibraryLoaded] = useState(false);
   const [openScriptId, setOpenScriptId] = useState<string | null>(null);
   const [editorScript, setEditorScript] = useState<PsScriptDetail | null>(null);
+  const [baseInstructions, setBaseInstructions] = useState<string>(() => {
+    try { return localStorage.getItem(BASE_INSTRUCTIONS_KEY) ?? ""; } catch { return ""; }
+  });
+
+  const handleBaseInstructionsChange = useCallback((v: string) => {
+    setBaseInstructions(v);
+    try { localStorage.setItem(BASE_INSTRUCTIONS_KEY, v); } catch { /* ignore */ }
+  }, []);
 
   const loadLibrary = useCallback(async () => {
     if (libraryLoaded && !libraryLoading) return;
@@ -826,6 +884,8 @@ export default function ScriptGeneratorPage() {
           token={token}
           initialScript={editorScript}
           onScriptSaved={handleScriptSaved}
+          baseInstructions={baseInstructions}
+          onBaseInstructionsChange={handleBaseInstructionsChange}
         />
       )}
       {tab === "library" && (
