@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
+import { useLocation } from "wouter";
 import { ChevronDown, ChevronUp } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import {
@@ -3475,8 +3476,93 @@ const KANBAN_COLUMNS: { id: MarketingTask["status"]; label: string; color: strin
 
 type TaskStatus = MarketingTask["status"];
 
-function TaskDetailModal({ task, onClose }: { task: MarketingTask; onClose: () => void }) {
+// ─── Intelligent Action Rule Engine ──────────────────────────────────────────
+
+interface ActionDescriptor {
+  label: string;
+  icon: string;
+  type: "navigate" | "status";
+  /** For navigate: absolute path starting with "/" or a section id (no slash).
+   *  For status: the target TaskStatus string. */
+  target: string;
+}
+
+const STATUS_PROGRESSION: TaskStatus[] = ["ideas", "in_progress", "scheduled", "published", "completed"];
+const NEXT_STATUS_LABELS: Partial<Record<TaskStatus, string>> = {
+  in_progress: "Start → In Progress",
+  scheduled: "Schedule → Scheduled",
+  published: "Publish → Published",
+  completed: "Complete → Completed",
+};
+
+function getIntelligentActions(task: MarketingTask): ActionDescriptor[] {
+  const text = `${task.title} ${task.description ?? ""}`.toLowerCase();
+  const actions: ActionDescriptor[] = [];
+
+  if (/blog|article|content|draft|write/.test(text))
+    actions.push({ label: "Open Article Editor", icon: "✍️", type: "navigate", target: "/articles" });
+
+  if (task.relatedLeadId || /\blead\b|prospect|outreach/.test(text))
+    actions.push({ label: "View Lead", icon: "👤", type: "navigate",
+      target: task.relatedLeadId ? `/crm/leads/${task.relatedLeadId}` : "/crm/leads" });
+
+  if (task.relatedCampaignId || /campaign|email blast|newsletter/.test(text))
+    actions.push({ label: "View Campaign", icon: "📣", type: "navigate", target: "campaigns" });
+
+  if (/\bemail\b|\binbox\b/.test(text))
+    actions.push({ label: "Open Inbox", icon: "📬", type: "navigate", target: "/inbox" });
+
+  if (/analytics|seo|ranking|traffic|report|metrics/.test(text))
+    actions.push({ label: "Open Analytics", icon: "📊", type: "navigate", target: "analytics" });
+
+  if (/social|linkedin|twitter|\bpost\b|\bshare\b/.test(text))
+    actions.push({ label: "View Content & SEO", icon: "📲", type: "navigate", target: "content" });
+
+  if (/invoice|payment|billing|finance/.test(text))
+    actions.push({ label: "Open Invoices", icon: "💳", type: "navigate", target: "/crm/invoices" });
+
+  // Status-change actions — always present
+  const idx = STATUS_PROGRESSION.indexOf(task.status as typeof STATUS_PROGRESSION[number]);
+  const nextStatus = idx >= 0 && idx < STATUS_PROGRESSION.length - 1 ? STATUS_PROGRESSION[idx + 1] : null;
+  if (nextStatus)
+    actions.push({ label: NEXT_STATUS_LABELS[nextStatus] ?? `→ ${nextStatus}`, icon: "➡️", type: "status", target: nextStatus });
+
+  if (task.status !== "completed")
+    actions.push({ label: "Mark Complete", icon: "✅", type: "status", target: "completed" });
+
+  return actions;
+}
+
+// ─── Task Detail Modal ────────────────────────────────────────────────────────
+
+function TaskDetailModal({
+  task,
+  onClose,
+  onStatusChange,
+  onSectionNavigate,
+}: {
+  task: MarketingTask;
+  onClose: () => void;
+  onStatusChange: (id: number, status: TaskStatus) => void;
+  onSectionNavigate: (section: string) => void;
+}) {
+  const [, navigate] = useLocation();
   const col = KANBAN_COLUMNS.find(c => c.id === task.status);
+  const actions = getIntelligentActions(task);
+
+  const handleAction = (action: ActionDescriptor) => {
+    if (action.type === "status") {
+      onStatusChange(task.id, action.target as TaskStatus);
+      onClose();
+    } else {
+      onClose();
+      if (action.target.startsWith("/")) {
+        navigate(action.target);
+      } else {
+        onSectionNavigate(action.target);
+      }
+    }
+  };
 
   return (
     <div
@@ -3517,6 +3603,34 @@ function TaskDetailModal({ task, onClose }: { task: MarketingTask; onClose: () =
             </div>
           ) : (
             <p className="text-xs text-[#484F58] italic">No description provided.</p>
+          )}
+
+          {actions.length > 0 && (
+            <div>
+              <p className="text-[10px] font-semibold text-[#7D8590] uppercase tracking-wide mb-2">Suggested Actions</p>
+              <div className="flex flex-wrap gap-2">
+                {actions.map((action, i) => {
+                  const isStatus = action.type === "status";
+                  const isComplete = action.target === "completed";
+                  return (
+                    <button
+                      key={i}
+                      onClick={() => handleAction(action)}
+                      className={`flex items-center gap-1.5 text-[11px] font-medium px-3 py-1.5 rounded-lg border transition-colors ${
+                        isComplete
+                          ? "border-emerald-500/40 text-emerald-400 hover:bg-emerald-500/10"
+                          : isStatus
+                          ? "border-[#0078D4]/40 text-[#58A6FF] hover:bg-[#0078D4]/10"
+                          : "border-[#30363D] text-[#C9D1D9] hover:border-[#484F58] hover:text-[#E6EDF3]"
+                      }`}
+                    >
+                      <span>{action.icon}</span>
+                      <span>{action.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
           )}
         </div>
 
@@ -3625,7 +3739,7 @@ function DroppableColumn({ col, tasks, onDelete, onStatusChange, onOpen }: {
   );
 }
 
-function MarketingTasksKanban({ fetchWithAuth }: { fetchWithAuth: (url: string, opts?: RequestInit) => Promise<Response> }) {
+function MarketingTasksKanban({ fetchWithAuth, onSectionNavigate }: { fetchWithAuth: (url: string, opts?: RequestInit) => Promise<Response>; onSectionNavigate: (section: string) => void }) {
   const [tasks, setTasks] = useState<MarketingTask[]>([]);
   const [loading, setLoading] = useState(true);
   const [newTitle, setNewTitle] = useState("");
@@ -3756,7 +3870,14 @@ function MarketingTasksKanban({ fetchWithAuth }: { fetchWithAuth: (url: string, 
 
   return (
     <div className="space-y-4">
-      {selectedTask && <TaskDetailModal task={selectedTask} onClose={() => setSelectedTask(null)} />}
+      {selectedTask && (
+        <TaskDetailModal
+          task={selectedTask}
+          onClose={() => setSelectedTask(null)}
+          onStatusChange={(id, status) => { void handleStatusChange(id, status); }}
+          onSectionNavigate={section => { setSelectedTask(null); onSectionNavigate(section); }}
+        />
+      )}
 
       {showSuggestionsModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={e => { if (e.target === e.currentTarget) setShowSuggestionsModal(false); }}>
@@ -6125,7 +6246,7 @@ export default function MarketingCommandCenter() {
         {activeSection === "content" && <ContentHubSection fetchWithAuth={fetchWithAuth} />}
         {activeSection === "follow-ups" && <FollowUpsSection fetchWithAuth={fetchWithAuth} />}
         {activeSection === "analytics" && <TrafficAnalyticsSection fetchWithAuth={fetchWithAuth} />}
-        {activeSection === "tasks" && <MarketingTasksKanban fetchWithAuth={fetchWithAuth} />}
+        {activeSection === "tasks" && <MarketingTasksKanban fetchWithAuth={fetchWithAuth} onSectionNavigate={setActiveSection} />}
         {activeSection === "campaigns" && <CampaignsHubSection fetchWithAuth={fetchWithAuth} />}
         {activeSection === "ad-library" && <AdLibrarySection fetchWithAuth={fetchWithAuth} onNavigate={setActiveSection} />}
       </div>
