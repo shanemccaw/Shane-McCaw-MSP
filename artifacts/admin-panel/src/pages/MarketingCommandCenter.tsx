@@ -67,6 +67,8 @@ interface MarketingTask {
   dueDate?: string;
   relatedLeadId?: number | null;
   relatedCampaignId?: number | null;
+  leadEmail?: string | null;
+  leadName?: string | null;
 }
 
 interface Offer {
@@ -3686,9 +3688,11 @@ function TaskDetailModal({
   const { openCompose } = useInbox();
   const [leadEmail, setLeadEmail] = useState<string | null>(null);
 
-  // Fetch the linked lead's email so we can offer an "Email Lead" compose action
+  // Fetch the linked lead's email as a fallback when task.leadEmail is absent
   useEffect(() => {
-    if (!task.relatedLeadId) return;
+    // Always reset so switching tasks never shows a stale email
+    setLeadEmail(task.leadEmail ?? null);
+    if (!task.relatedLeadId || task.leadEmail) return;
     let cancelled = false;
     fetchWithAuth(`/api/leads/${task.relatedLeadId}`)
       .then(r => r.ok ? r.json() : null)
@@ -3697,7 +3701,7 @@ function TaskDetailModal({
       })
       .catch(() => {});
     return () => { cancelled = true; };
-  }, [task.relatedLeadId, fetchWithAuth]);
+  }, [task.id, task.relatedLeadId, task.leadEmail, fetchWithAuth]);
 
   const col = KANBAN_COLUMNS.find(c => c.id === task.status);
   const actions = getIntelligentActions(task, leadEmail);

@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from "react";
 import { useAuth } from "@/contexts/AuthContext";
-import { InboxProvider, useInbox } from "@/contexts/InboxContext";
+import { useInbox } from "@/contexts/InboxContext";
 import InboxFolderPane from "./InboxFolderPane";
 import InboxMessageList, { type InboxMessage } from "./InboxMessageList";
 import InboxMessageDetail from "./InboxMessageDetail";
@@ -123,25 +123,23 @@ function InboxShell() {
 
 export default function InboxPage() {
   return (
-    <InboxProvider>
-      <div className="flex flex-col h-full overflow-hidden">
-        <div className="px-6 py-4 border-b border-[#30363D] bg-[#0D1117] shrink-0">
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-lg bg-[#0078D4]/15 flex items-center justify-center">
-              <svg className="w-4 h-4 text-[#0078D4]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21.75 6.75v10.5a2.25 2.25 0 01-2.25 2.25h-15a2.25 2.25 0 01-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25m19.5 0v.243a2.25 2.25 0 01-1.07 1.916l-7.5 4.615a2.25 2.25 0 01-2.36 0L3.32 8.91a2.25 2.25 0 01-1.07-1.916V6.75" />
-              </svg>
-            </div>
-            <div>
-              <h1 className="text-base font-semibold text-[#E6EDF3]">Inbox</h1>
-              <p className="text-xs text-[#7D8590]">Microsoft 365 mailbox — CRM-integrated</p>
-            </div>
+    <div className="flex flex-col h-full overflow-hidden">
+      <div className="px-6 py-4 border-b border-[#30363D] bg-[#0D1117] shrink-0">
+        <div className="flex items-center gap-3">
+          <div className="w-8 h-8 rounded-lg bg-[#0078D4]/15 flex items-center justify-center">
+            <svg className="w-4 h-4 text-[#0078D4]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21.75 6.75v10.5a2.25 2.25 0 01-2.25 2.25h-15a2.25 2.25 0 01-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25m19.5 0v.243a2.25 2.25 0 01-1.07 1.916l-7.5 4.615a2.25 2.25 0 01-2.36 0L3.32 8.91a2.25 2.25 0 01-1.07-1.916V6.75" />
+            </svg>
+          </div>
+          <div>
+            <h1 className="text-base font-semibold text-[#E6EDF3]">Inbox</h1>
+            <p className="text-xs text-[#7D8590]">Microsoft 365 mailbox — CRM-integrated</p>
           </div>
         </div>
-        <div className="flex-1 overflow-hidden">
-          <InboxShell />
-        </div>
       </div>
-    </InboxProvider>
+      <div className="flex-1 overflow-hidden">
+        <InboxShell />
+      </div>
+    </div>
   );
 }

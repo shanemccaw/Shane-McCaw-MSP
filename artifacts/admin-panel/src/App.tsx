@@ -3,6 +3,7 @@ import { useEffect } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
+import { InboxProvider } from "@/contexts/InboxContext";
 import LoginPage from "@/pages/Login";
 import DashboardShell from "@/components/DashboardShell";
 import ArticlesPage from "@/pages/Articles";
@@ -275,6 +276,7 @@ function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
+        <InboxProvider>
         <div className="flex flex-col h-screen overflow-hidden">
           {import.meta.env.DEV && (
             <div className="flex-shrink-0 flex items-center justify-center gap-2 bg-amber-400 text-amber-950 text-xs font-semibold py-1 px-3 select-none">
@@ -289,6 +291,7 @@ function App() {
           </div>
         </div>
         <Toaster />
+        </InboxProvider>
       </AuthProvider>
     </QueryClientProvider>
   );
