@@ -3488,13 +3488,14 @@ interface ActionDescriptor {
   disabled?: boolean;
 }
 
+// money_task is treated as a parallel track that progresses to ideas when "moved"
 const STATUS_PROGRESSION: TaskStatus[] = ["ideas", "in_progress", "scheduled", "published", "completed"];
-const NEXT_STATUS_LABELS: Partial<Record<TaskStatus, string>> = {
-  in_progress: "Start → In Progress",
-  scheduled: "Schedule → Scheduled",
-  published: "Publish → Published",
-  completed: "Complete → Completed",
-};
+
+function nextStatusInChain(current: TaskStatus): TaskStatus | null {
+  if (current === "money_task") return "in_progress"; // money tasks can be started
+  const idx = STATUS_PROGRESSION.indexOf(current);
+  return idx >= 0 && idx < STATUS_PROGRESSION.length - 1 ? STATUS_PROGRESSION[idx + 1] : null;
+}
 
 function getIntelligentActions(task: MarketingTask): ActionDescriptor[] {
   const text = `${task.title} ${task.description ?? ""}`.toLowerCase();
@@ -3524,14 +3525,13 @@ function getIntelligentActions(task: MarketingTask): ActionDescriptor[] {
 
   // Status-change actions — always present on every card
   const isCompleted = task.status === "completed";
-  const idx = STATUS_PROGRESSION.indexOf(task.status as typeof STATUS_PROGRESSION[number]);
-  const nextStatus = idx >= 0 && idx < STATUS_PROGRESSION.length - 1 ? STATUS_PROGRESSION[idx + 1] : null;
+  const nextStatus = nextStatusInChain(task.status);
 
-  // "Move to Next Stage" always shown; disabled (not removed) when already Completed
+  // "Move to Next Stage" always shown; disabled only when already Completed
   if (nextStatus) {
-    actions.push({ label: NEXT_STATUS_LABELS[nextStatus] ?? `→ ${nextStatus}`, icon: "➡️", type: "status", target: nextStatus });
+    actions.push({ label: "Move to Next Stage", icon: "➡️", type: "status", target: nextStatus });
   } else {
-    actions.push({ label: "Already at final stage", icon: "➡️", type: "status", target: "completed", disabled: true });
+    actions.push({ label: "Move to Next Stage", icon: "➡️", type: "status", target: "completed", disabled: true });
   }
 
   // "Mark Complete" always shown for non-completed tasks
