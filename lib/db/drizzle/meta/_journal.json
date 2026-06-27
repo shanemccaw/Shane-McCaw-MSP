@@ -540,6 +540,13 @@
       "when": 1782883200000,
       "tag": "0074_add_intent_event_session_dedup",
       "breakpoints": true
+    },
+    {
+      "idx": 75,
+      "version": "7",
+      "when": 1782969600000,
+      "tag": "0075_add_lead_intent_events_lead_event_idx",
+      "breakpoints": true
     }
   ]
 }
