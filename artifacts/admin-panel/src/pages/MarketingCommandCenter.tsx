@@ -3028,8 +3028,13 @@ function LandingPagesPanel({ fetchWithAuth }: { fetchWithAuth: (url: string, opt
       const r = await fetchWithAuth(`${API}/admin/marketing/generate/landing-page`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ topic, audience, cta }) });
       const data = await r.json() as Partial<LandingPage> | AiErrorShape;
       if (isAiError(data)) { setSuggestError(data.message ?? "AI generation failed — please try again"); return; }
-      setDraft(data);
-      if (data.title) setSlugInput(data.title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 50));
+      const resolvedTitle = data.title?.trim()
+        || data.headline?.trim()
+        || (topic.trim() ? topic.trim().replace(/[^a-z0-9 ]/gi, "").slice(0, 60) : "")
+        || "Untitled Landing Page";
+      const draftWithTitle = { ...data, title: resolvedTitle };
+      setDraft(draftWithTitle);
+      setSlugInput(resolvedTitle.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 50));
     } finally { setGenerating(false); }
   };
 
@@ -5380,14 +5385,18 @@ function LandingCopyPanel({
       });
       if (!genRes.ok) throw new Error("Generation failed");
       const lpData = await genRes.json() as {
-        title: string; headline: string; subheadline: string;
-        valuePropBlocks: unknown[]; socialProof: unknown[];
-        cta: { buttonText: string; href: string; subtext?: string };
+        title?: string; headline?: string; subheadline?: string;
+        valuePropBlocks?: unknown[]; socialProof?: unknown[];
+        cta?: { buttonText: string; href: string; subtext?: string };
       };
+      const lpTitle = lpData.title?.trim()
+        || lpData.headline?.trim()
+        || campaign.name
+        || "Untitled Landing Page";
       const saveRes = await fetchWithAuth(`${API}/admin/marketing/landing-pages`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...lpData, campaignId: campaign.id, published: false }),
+        body: JSON.stringify({ ...lpData, title: lpTitle, campaignId: campaign.id, published: false }),
       });
       if (!saveRes.ok) {
         const err = await saveRes.json() as { error?: string };

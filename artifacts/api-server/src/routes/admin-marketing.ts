@@ -2169,11 +2169,15 @@ router.get("/admin/marketing/landing-pages", requireAdmin, async (_req: Request,
 router.post("/admin/marketing/landing-pages", requireAdmin, async (req: Request, res: Response) => {
   try {
     const body = req.body as { slug?: string; title?: string; headline?: string; subheadline?: string; valuePropBlocks?: unknown[]; socialProof?: unknown[]; cta?: unknown; campaignId?: number; published?: boolean };
-    if (!body.title) { res.status(400).json({ error: "title required" }); return; }
+    // Derive a title if missing: prefer headline, then prettify slug, then default
+    const resolvedTitle = body.title?.trim()
+      || body.headline?.trim()
+      || (body.slug ? body.slug.replace(/-/g, " ").replace(/\b\w/g, c => c.toUpperCase()) : "")
+      || "Untitled Landing Page";
     // Auto-generate slug from title if not provided
-    const autoSlug = body.slug ?? body.title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 60);
+    const autoSlug = body.slug ?? resolvedTitle.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 60);
     const [row] = await db.insert(landingPagesTable).values({
-      slug: autoSlug, title: body.title, headline: body.headline ?? null,
+      slug: autoSlug, title: resolvedTitle, headline: body.headline ?? null,
       subheadline: body.subheadline ?? null,
       valuePropBlocks: (body.valuePropBlocks ?? []) as Array<{ icon?: string; heading: string; body: string }>,
       socialProof: (body.socialProof ?? []) as Array<{ quote: string; author: string; role?: string }>,
