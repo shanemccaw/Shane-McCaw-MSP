@@ -274,32 +274,32 @@ router.get("/admin/clients/with-azure-credentials", requireAdmin, async (_req: R
         .orderBy(asc(azureTenantCredentialsTable.displayName));
 
       if (unlinked.length > 0) {
-        // Pass 1: deterministic name match — if a credential's displayName
-        // exactly matches (case-insensitive) the client's name or email-prefix,
-        // it is confidently attributed to that client.
+        // Pass 1: deterministic name match — assign only when a credential's
+        // displayName exactly matches (case-insensitive) the client's name or
+        // email-prefix. Consumes the matched credential so it is not reused.
+        const usedIds = new Set<number>();
         for (const client of uncredentialedClients) {
           const clientName = (client.name ?? "").toLowerCase();
           const clientEmailPrefix = client.email.split("@")[0].toLowerCase();
           const nameMatch = unlinked.find(
             u =>
-              (clientName && u.displayName.toLowerCase() === clientName) ||
-              u.displayName.toLowerCase() === clientEmailPrefix,
+              !usedIds.has(u.id) &&
+              ((clientName && u.displayName.toLowerCase() === clientName) ||
+                u.displayName.toLowerCase() === clientEmailPrefix),
           );
           if (nameMatch) {
             client.credential = nameMatch;
+            usedIds.add(nameMatch.id);
           }
         }
 
-        // Pass 2: final fallback — assign the first unlinked credential to any
-        // client that still has no credential after the name pass. This handles
-        // credentials added via the global manager that do not name-match the
-        // client record. Clients genuinely without any credential (no unlinked
-        // rows exist at all) remain null and keep the grey dot correctly.
-        const fallback = unlinked[0];
-        for (const client of uncredentialedClients) {
-          if (client.credential === null) {
-            client.credential = fallback;
-          }
+        // Pass 2: unambiguous 1-to-1 — apply only when exactly one client
+        // remains uncredentialed AND exactly one unlinked credential remains
+        // unused. This is the only safe fallback when names do not match.
+        const stillNull = uncredentialedClients.filter(c => c.credential === null);
+        const stillUnused = unlinked.filter(u => !usedIds.has(u.id));
+        if (stillNull.length === 1 && stillUnused.length === 1) {
+          stillNull[0].credential = stillUnused[0];
         }
       }
     }
