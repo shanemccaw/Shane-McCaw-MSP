@@ -5311,7 +5311,114 @@ const TAB_ICONS: Record<string, string> = {
   lead_magnet: "🧲", seo_keywords: "🔑",
 };
 
-function CampaignAssetTabPanel({ asset }: { asset: CampaignAsset }) {
+function LandingCopyPanel({
+  asset,
+  campaign,
+  fetchWithAuth,
+  onLandingPageCreated,
+}: {
+  asset: CampaignAsset;
+  campaign: Campaign;
+  fetchWithAuth: (url: string, opts?: RequestInit) => Promise<Response>;
+  onLandingPageCreated: () => void;
+}) {
+  const [generating, setGenerating] = useState(false);
+  const [genError, setGenError] = useState<string | null>(null);
+  const [genSuccess, setGenSuccess] = useState(false);
+
+  const handleGenerate = async () => {
+    setGenerating(true);
+    setGenError(null);
+    setGenSuccess(false);
+    try {
+      const genRes = await fetchWithAuth(`${API}/admin/marketing/generate/landing-page`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          topic: campaign.name,
+          audience: campaign.audience,
+          cta: campaign.offer,
+        }),
+      });
+      if (!genRes.ok) throw new Error("Generation failed");
+      const lpData = await genRes.json() as {
+        title: string; headline: string; subheadline: string;
+        valuePropBlocks: unknown[]; socialProof: unknown[];
+        cta: { buttonText: string; href: string; subtext?: string };
+      };
+      const saveRes = await fetchWithAuth(`${API}/admin/marketing/landing-pages`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...lpData, campaignId: campaign.id, published: false }),
+      });
+      if (!saveRes.ok) {
+        const err = await saveRes.json() as { error?: string };
+        throw new Error(err.error ?? "Failed to save landing page");
+      }
+      setGenSuccess(true);
+      onLandingPageCreated();
+    } catch (e) {
+      setGenError(e instanceof Error ? e.message : "Something went wrong");
+    } finally {
+      setGenerating(false);
+    }
+  };
+
+  return (
+    <div className="space-y-3">
+      <div className="bg-[#0D1117] border border-[#30363D] rounded-xl p-4">
+        <div className="flex items-center justify-between mb-3">
+          <p className="text-[10px] text-[#484F58] uppercase tracking-wide font-semibold">Landing Page Copy</p>
+          <CopyButton text={asset.content} />
+        </div>
+        <pre className="text-xs text-[#8B949E] whitespace-pre-wrap font-sans leading-relaxed">{asset.content}</pre>
+      </div>
+      <RawToggle content={asset.content} />
+      <div className="flex items-center gap-3 flex-wrap">
+        <button
+          onClick={() => { void handleGenerate(); }}
+          disabled={generating || genSuccess}
+          className={`flex items-center gap-2 text-xs font-semibold px-4 py-2 rounded-lg border transition-colors ${
+            genSuccess
+              ? "border-emerald-500/40 text-emerald-400 bg-emerald-500/10 cursor-default"
+              : generating
+              ? "border-[#30363D] text-[#484F58] cursor-wait opacity-60"
+              : "border-[#0078D4]/40 text-[#58A6FF] hover:bg-[#0078D4]/10"
+          }`}
+        >
+          {generating ? (
+            <>
+              <svg className="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+              </svg>
+              Generating…
+            </>
+          ) : genSuccess ? (
+            <>✅ Landing Page Created</>
+          ) : (
+            <>🌐 Generate Landing Page</>
+          )}
+        </button>
+        {genError && (
+          <p className="text-[11px] text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-1.5">{genError}</p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function CampaignAssetTabPanel({
+  asset,
+  campaign,
+  fetchWithAuth,
+  onLandingPageCreated,
+}: {
+  asset: CampaignAsset;
+  campaign: Campaign;
+  fetchWithAuth: (url: string, opts?: RequestInit) => Promise<Response>;
+  onLandingPageCreated: () => void;
+}) {
   switch (asset.assetType) {
     case "ad_google": return <GoogleAdPreview asset={asset} />;
     case "ad_linkedin": return <LinkedInAdPreview asset={asset} />;
@@ -5327,6 +5434,14 @@ function CampaignAssetTabPanel({ asset }: { asset: CampaignAsset }) {
     case "blog_post": return <BlogPostPreview asset={asset} />;
     case "follow_up_task": return <TaskCardPreview asset={asset} />;
     case "lead_magnet": return <GenericAssetPreview asset={asset} />;
+    case "landing_copy": return (
+      <LandingCopyPanel
+        asset={asset}
+        campaign={campaign}
+        fetchWithAuth={fetchWithAuth}
+        onLandingPageCreated={onLandingPageCreated}
+      />
+    );
     default: return <GenericAssetPreview asset={asset} />;
   }
 }
@@ -5382,7 +5497,17 @@ function CampaignDeleteDialog({
   );
 }
 
-function CampaignAssetTabs({ assets }: { assets: CampaignAsset[] }) {
+function CampaignAssetTabs({
+  assets,
+  campaign,
+  fetchWithAuth,
+  onLandingPageCreated,
+}: {
+  assets: CampaignAsset[];
+  campaign: Campaign;
+  fetchWithAuth: (url: string, opts?: RequestInit) => Promise<Response>;
+  onLandingPageCreated: () => void;
+}) {
   const presentTypes = Array.from(new Set(assets.map(a => a.assetType)));
   const [activeTab, setActiveTab] = useState(presentTypes[0] ?? "");
 
@@ -5417,7 +5542,12 @@ function CampaignAssetTabs({ assets }: { assets: CampaignAsset[] }) {
             {tabAssets.length > 1 && (
               <p className="text-[10px] text-[#484F58] font-semibold mb-2">{asset.title}</p>
             )}
-            <CampaignAssetTabPanel asset={asset} />
+            <CampaignAssetTabPanel
+              asset={asset}
+              campaign={campaign}
+              fetchWithAuth={fetchWithAuth}
+              onLandingPageCreated={onLandingPageCreated}
+            />
           </div>
         ))}
       </div>
@@ -5473,6 +5603,7 @@ function CampaignDetailView({
   const [data, setData] = useState<CampaignDetailData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [refreshKey, setRefreshKey] = useState(0);
 
   // Inline metrics edit
   const [leads, setLeads] = useState("");
@@ -5504,7 +5635,7 @@ function CampaignDetailView({
       })
       .catch(() => setError("Failed to load campaign details"))
       .finally(() => setLoading(false));
-  }, [campaignId, fetchWithAuth]);
+  }, [campaignId, fetchWithAuth, refreshKey]);
 
   const handleSaveMetrics = async () => {
     if (!data) return;
@@ -5721,7 +5852,12 @@ function CampaignDetailView({
           📦 Campaign Assets
           <span className="ml-2 text-[#7D8590] font-normal">{assets.length} total</span>
         </p>
-        <CampaignAssetTabs assets={assets} />
+        <CampaignAssetTabs
+          assets={assets}
+          campaign={campaign}
+          fetchWithAuth={fetchWithAuth}
+          onLandingPageCreated={() => setRefreshKey(k => k + 1)}
+        />
       </div>
 
       {/* Landing Pages */}
