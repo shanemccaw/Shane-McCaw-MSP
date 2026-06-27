@@ -59,6 +59,15 @@ const appRegPermissionSchema = z.object({
   reason: z.string().min(1),
 });
 
+const outputSchemaPropertySchema = z.object({
+  type: z.enum(["string", "number", "boolean", "array", "object"]),
+});
+
+const outputSchemaSchema = z.object({
+  required: z.array(z.string().min(1)).optional(),
+  properties: z.record(z.string(), outputSchemaPropertySchema).optional(),
+}).nullable().optional();
+
 const createScriptSchema = z.object({
   name: z.string().min(1).max(200),
   description: z.string().optional(),
@@ -68,6 +77,7 @@ const createScriptSchema = z.object({
   executionMode: z.enum(["automated", "manual"]).default("automated"),
   manualRequirements: z.array(z.string()).default([]),
   psScriptBody: z.string().optional(),
+  outputSchema: outputSchemaSchema,
   categoryIds: z.array(z.number().int().positive()).optional(),
 });
 
@@ -115,6 +125,7 @@ router.post("/admin/scripts", requireAdmin, async (req: Request, res: Response) 
         executionMode: parsed.data.executionMode ?? "automated",
         manualRequirements: parsed.data.manualRequirements ?? [],
         psScriptBody: parsed.data.psScriptBody ?? null,
+        outputSchema: parsed.data.outputSchema ?? null,
       })
       .returning();
 

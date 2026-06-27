@@ -7660,13 +7660,68 @@ router.post("/portal/manual-scripts/:scriptRunId/upload", requireAuth, async (re
   }
 
   try {
-    // Ownership check — ensure the run result belongs to this authenticated client
-    const [ownership] = await db
-      .select({ id: scriptRunResultsTable.id })
+    // Ownership check — ensure the run result belongs to this authenticated client,
+    // and fetch the associated script catalog entry (needed for outputSchema validation).
+    const [runRow] = await db
+      .select({
+        id: scriptRunResultsTable.id,
+        outputSchema: scriptCatalogTable.outputSchema,
+        scriptName: scriptCatalogTable.name,
+      })
       .from(scriptRunResultsTable)
+      .innerJoin(scriptCatalogTable, eq(scriptRunResultsTable.scriptId, scriptCatalogTable.id))
       .where(and(eq(scriptRunResultsTable.id, scriptRunId), eq(scriptRunResultsTable.customerId, userId)))
       .limit(1);
-    if (!ownership) { res.status(404).json({ error: "Script run not found" }); return; }
+    if (!runRow) { res.status(404).json({ error: "Script run not found" }); return; }
+
+    // ── Schema validation ───────────────────────────────────────────────────────
+    // If the script catalog entry defines an outputSchema, validate the uploaded
+    // JSON data against it before accepting the payload.
+    if (runRow.outputSchema) {
+      const schema = runRow.outputSchema as {
+        required?: string[];
+        properties?: Record<string, { type: string }>;
+      };
+
+      const missingKeys: string[] = [];
+      const typeErrors: string[] = [];
+
+      if (Array.isArray(schema.required)) {
+        for (const key of schema.required) {
+          if (!(key in data)) {
+            missingKeys.push(key);
+          }
+        }
+      }
+
+      if (missingKeys.length > 0) {
+        res.status(422).json({
+          error: `Uploaded JSON is missing required field(s) for "${runRow.scriptName}": ${missingKeys.map(k => `"${k}"`).join(", ")}. Please re-run the script and upload the correct output file.`,
+        });
+        return;
+      }
+
+      if (schema.properties) {
+        for (const [key, def] of Object.entries(schema.properties)) {
+          if (!(key in data)) continue;
+          const value = data[key];
+          const expectedType = def.type;
+          let actualType: string = typeof value;
+          if (Array.isArray(value)) actualType = "array";
+
+          if (actualType !== expectedType) {
+            typeErrors.push(`"${key}" must be of type ${expectedType} but got ${actualType}`);
+          }
+        }
+      }
+
+      if (typeErrors.length > 0) {
+        res.status(422).json({
+          error: `Uploaded JSON has type mismatches for "${runRow.scriptName}": ${typeErrors.join("; ")}. Please upload the correct output file.`,
+        });
+        return;
+      }
+    }
 
     const [user] = await db
       .select({ name: usersTable.name, email: usersTable.email })

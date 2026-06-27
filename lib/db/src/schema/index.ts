@@ -1295,6 +1295,19 @@ export const scriptCatalogTable = pgTable("script_catalog", {
   executionMode: text("execution_mode", { enum: ["automated", "manual"] }).notNull().default("automated"),
   manualRequirements: jsonb("manual_requirements").$type<string[]>().notNull().default([]),
   psScriptBody: text("ps_script_body"),
+  /**
+   * Optional JSON Schema (subset) describing the expected shape of uploaded JSON results.
+   * Supported keys:
+   *   required   — array of top-level key names that must be present in the uploaded data
+   *   properties — map of key → { type } for basic type checking (string | number | boolean | array | object)
+   *
+   * When null the upload endpoint skips structural validation and only checks that the
+   * payload is a non-empty object containing a "data" key (legacy behaviour).
+   */
+  outputSchema: jsonb("output_schema").$type<{
+    required?: string[];
+    properties?: Record<string, { type: "string" | "number" | "boolean" | "array" | "object" }>;
+  } | null>(),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });

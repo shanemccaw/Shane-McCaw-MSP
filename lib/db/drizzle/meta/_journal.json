@@ -603,6 +603,13 @@
       "when": 1782700800000,
       "tag": "0083_add_script_run_result_reviewed_at",
       "breakpoints": true
+    },
+    {
+      "idx": 84,
+      "version": "7",
+      "when": 1782787200000,
+      "tag": "0084_add_script_catalog_output_schema",
+      "breakpoints": true
     }
   ]
 }
