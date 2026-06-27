@@ -7319,6 +7319,9 @@ function AdLibrarySection({
   const [search, setSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState<string>("all");
   const [expandedId, setExpandedId] = useState<number | null>(null);
+  const [linkingAssetId, setLinkingAssetId] = useState<number | null>(null);
+  const [linkCampaignId, setLinkCampaignId] = useState<string>("");
+  const [linking, setLinking] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -7529,6 +7532,69 @@ function AdLibrarySection({
                       ))
                     ) : (
                       <pre className="text-xs text-[#7D8590] whitespace-pre-wrap break-words">{asset.content}</pre>
+                    )}
+
+                    {asset.campaignId == null && (
+                      <div className="pt-2 border-t border-[#30363D]">
+                        {linkingAssetId === asset.id ? (
+                          <div className="flex items-center gap-2">
+                            <select
+                              value={linkCampaignId}
+                              onChange={e => setLinkCampaignId(e.target.value)}
+                              className="flex-1 bg-[#0D1117] border border-[#30363D] rounded-lg px-2 py-1.5 text-xs text-[#E6EDF3] outline-none focus:border-[#0078D4]/60"
+                            >
+                              <option value="">— choose a campaign —</option>
+                              {Object.entries(campaignNames).map(([id, name]) => (
+                                <option key={id} value={id}>{name}</option>
+                              ))}
+                            </select>
+                            <button
+                              disabled={!linkCampaignId || linking}
+                              onClick={async () => {
+                                if (!linkCampaignId) return;
+                                setLinking(true);
+                                try {
+                                  const res = await fetchWithAuth(`${API}/admin/marketing/campaign-assets/${asset.id}`, {
+                                    method: "PATCH",
+                                    headers: { "Content-Type": "application/json" },
+                                    body: JSON.stringify({ campaignId: Number(linkCampaignId) }),
+                                  });
+                                  if (res.ok) {
+                                    const updated = await res.json() as CampaignAsset;
+                                    setAssets(prev => prev.map(a => a.id === updated.id ? updated : a));
+                                    const cid = Number(linkCampaignId);
+                                    if (!(cid in campaignOffers)) {
+                                      try {
+                                        const offersRes = await fetchWithAuth(`${API}/admin/marketing/campaigns/${cid}/offers`);
+                                        const offersData = await offersRes.json() as Array<{ name: string }>;
+                                        setCampaignOffers(prev => ({ ...prev, [cid]: Array.isArray(offersData) ? offersData : [] }));
+                                      } catch { /* non-critical */ }
+                                    }
+                                    setLinkingAssetId(null);
+                                    setLinkCampaignId("");
+                                  }
+                                } finally {
+                                  setLinking(false);
+                                }
+                              }}
+                              className="text-xs px-3 py-1.5 rounded-lg bg-[#0078D4]/20 text-[#58A6FF] hover:bg-[#0078D4]/30 transition-colors disabled:opacity-40 disabled:cursor-not-allowed font-medium"
+                            >
+                              {linking ? "Saving…" : "Assign"}
+                            </button>
+                            <button
+                              onClick={() => { setLinkingAssetId(null); setLinkCampaignId(""); }}
+                              className="text-xs px-2 py-1.5 rounded-lg border border-[#30363D] text-[#7D8590] hover:text-[#E6EDF3] transition-colors"
+                            >✕</button>
+                          </div>
+                        ) : (
+                          <button
+                            onClick={() => { setLinkingAssetId(asset.id); setLinkCampaignId(""); }}
+                            className="text-xs px-3 py-1.5 rounded-lg border border-[#30363D] text-[#7D8590] hover:text-[#E6EDF3] hover:border-[#0078D4]/40 transition-colors"
+                          >
+                            🔗 Link to campaign
+                          </button>
+                        )}
+                      </div>
                     )}
                   </div>
                 )}

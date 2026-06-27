@@ -1246,12 +1246,18 @@ router.post("/admin/marketing/campaign-assets", requireAdmin, async (req: Reques
 router.patch("/admin/marketing/campaign-assets/:id", requireAdmin, async (req: Request, res: Response) => {
   try {
     const id = parseId(req.params, "id");
-    const { title, content, assetType } = req.body as { title?: string; content?: string; assetType?: string };
+    const { title, content, assetType, campaignId } = req.body as { title?: string; content?: string; assetType?: string; campaignId?: number | null };
     type AssetType = "landing_copy" | "email_sequence" | "social_post" | "follow_up_task" | "blog_post" | "linkedin_post" | "newsletter" | "seo_keywords";
     const updateData: Partial<typeof campaignAssetsTable.$inferInsert> = {};
     if (title !== undefined) updateData.title = title;
     if (content !== undefined) updateData.content = content;
     if (assetType !== undefined) updateData.assetType = assetType as AssetType;
+    if (campaignId !== undefined) {
+      updateData.campaignId = campaignId ?? null;
+      if (campaignId != null) {
+        updateData.generatedWithOfferIds = null;
+      }
+    }
     const [row] = await db.update(campaignAssetsTable).set(updateData).where(eq(campaignAssetsTable.id, id)).returning();
     res.json(row);
   } catch (e) {
