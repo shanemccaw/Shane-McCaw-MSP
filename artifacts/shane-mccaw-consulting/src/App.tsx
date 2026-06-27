@@ -41,6 +41,8 @@ import RetainerQuiz from "@/pages/retainers/RetainerQuiz";
 import MicroOfferDetail from "@/pages/micro-offers/MicroOfferDetail";
 import QuickWinQuiz from "@/pages/QuickWinQuiz";
 import QuickWinResultsPage from "@/pages/QuickWinResultsPage";
+import HowItWorks from "@/pages/HowItWorks";
+import TechnicalOverview from "@/pages/TechnicalOverview";
 
 const queryClient = new QueryClient();
 
@@ -111,6 +113,8 @@ function Router() {
       <Route path="/retainers/architect-essentials" component={ArchitectEssentials} />
       <Route path="/retainers/architect-growth" component={ArchitectGrowth} />
       <Route path="/retainers/architect-enterprise" component={ArchitectEnterprise} />
+      <Route path="/how-it-works/technical" component={TechnicalOverview} />
+      <Route path="/how-it-works" component={HowItWorks} />
       <Route component={NotFound} />
     </Switch>
     </>

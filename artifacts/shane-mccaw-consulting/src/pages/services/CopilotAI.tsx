@@ -17,6 +17,7 @@ import FixedPriceOfferCard from "@/components/FixedPriceOfferCard";
 import { EngagementProjectCard } from "@/components/EngagementProjectCard";
 import { useEngagementProjects } from "@/hooks/useEngagementProjects";
 import { TestimonialDiscountCallout } from "@/components/TestimonialDiscountCallout";
+import { AfterPurchaseSection } from "@/components/AfterPurchaseSection";
 
 const comparisonRows = [
   {
@@ -493,6 +494,7 @@ export default function CopilotAI() {
       </section>
 
       {/* ── FINAL CTA ────────────────────────────────────────────────────── */}
+      <AfterPurchaseSection serviceName="Copilot for M365" />
       <TestimonialDiscountCallout />
       <section className="bg-[#0A2540] py-24 relative overflow-hidden">
         <div

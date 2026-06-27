@@ -155,6 +155,24 @@ export default function PortalAppRegistration() {
           </p>
         </div>
 
+        {/* ── What happens after you connect ─────────────────────────────────── */}
+        <div className="bg-[#0078D4]/6 border border-[#0078D4]/20 rounded-xl p-5">
+          <p className="text-xs font-bold text-[#0078D4] uppercase tracking-wider mb-3">What happens after you connect</p>
+          <div className="grid grid-cols-3 gap-4">
+            {[
+              { n: "1", title: "Connect", body: "Your App Registration credentials are stored securely in Azure Key Vault." },
+              { n: "2", title: "Automation runs", body: "Shane's runbooks read your M365 environment — licensing, security, governance, and Copilot readiness." },
+              { n: "3", title: "Insights appear", body: "AI analyses the findings, Shane reviews them, and a structured project plan appears in your portal." },
+            ].map(s => (
+              <div key={s.n} className="flex flex-col items-center text-center">
+                <div className="w-8 h-8 rounded-full bg-[#0078D4] text-white text-sm font-bold flex items-center justify-center mb-2">{s.n}</div>
+                <p className="text-xs font-bold text-[#0A2540] mb-1">{s.title}</p>
+                <p className="text-[11px] text-gray-500 leading-snug">{s.body}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+
         {/* ── Security ────────────────────────────────────────────────────────── */}
         <div className="bg-[#0A2540] rounded-xl p-5 text-white">
           <div className="flex items-start gap-3">

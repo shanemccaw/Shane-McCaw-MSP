@@ -696,6 +696,29 @@ export default function ClientProjectDashboard() {
           </p>
         </div>
 
+        {/* ── How your project was built ──────────────────────────────────────── */}
+        {!projectsLoading && projects.length === 0 && (
+          <div className="mb-4 bg-[#F7F9FC] border border-border rounded-2xl p-5">
+            <p className="text-xs font-bold text-[#0078D4] uppercase tracking-wider mb-3">How your engagement project is built</p>
+            <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+              {[
+                { n: "1", title: "Connect", body: "You add your Azure App Registration so automation can reach your M365 tenant." },
+                { n: "2", title: "Automation runs", body: "Shane's runbooks read your live M365 environment — security, governance, licensing, Teams, SharePoint." },
+                { n: "3", title: "AI analyses", body: "Findings are scored across six dimensions. Shane reviews every output before it reaches you." },
+                { n: "4", title: "Project appears here", body: "A structured workspace is auto-generated from the findings — with a task board, phases, and milestones." },
+              ].map(s => (
+                <div key={s.n} className="flex gap-3">
+                  <div className="w-6 h-6 rounded-full bg-[#0078D4] text-white text-[10px] font-bold flex items-center justify-center flex-shrink-0 mt-0.5">{s.n}</div>
+                  <div>
+                    <p className="text-xs font-bold text-[#0A2540]">{s.title}</p>
+                    <p className="text-[11px] text-gray-500 leading-snug mt-0.5">{s.body}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* ── App Registration nudge (shown above M365 nudge — more urgent) ── */}
         {appRegStatus !== null && appRegStatus !== "submitted" && appRegStatus !== "verified" && (
           <div className="mb-4 bg-[#0A2540] border-l-4 border-[#0078D4] rounded-xl p-4 flex flex-col sm:flex-row sm:items-center gap-3">

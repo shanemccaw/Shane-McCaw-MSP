@@ -15,6 +15,7 @@ import { useEngagementProjects } from "@/hooks/useEngagementProjects";
 import { OfferCard } from "@/components/OfferCard";
 import { useServicePageTriggerKeys } from "@/hooks/useServicePageTriggerKeys";
 import { TestimonialDiscountCallout } from "@/components/TestimonialDiscountCallout";
+import { AfterPurchaseSection } from "@/components/AfterPurchaseSection";
 
 const WHO_FOR = [
   { icon: <Building2 className="w-5 h-5 text-[#0078D4]" />, label: "Mid-market companies (200–2,000 employees)" },
@@ -420,6 +421,7 @@ export default function Microsoft365() {
       />
 
       {/* ── FINAL CTA ────────────────────────────────────────────────────── */}
+      <AfterPurchaseSection serviceName="Microsoft 365 Architecture" />
       <TestimonialDiscountCallout />
       <section className="bg-[#0A2540] py-24 relative overflow-hidden">
         <div className="absolute inset-0 pointer-events-none" style={{

@@ -454,6 +454,24 @@ export default function OnboardingSuccess() {
             </div>
           )}
 
+          {/* What happens next */}
+          <div className="bg-[#0078D4]/6 border border-[#0078D4]/20 rounded-2xl p-5 text-left mb-6">
+            <p className="text-xs font-bold text-[#0078D4] uppercase tracking-wider mb-3">What happens next</p>
+            <div className="space-y-2.5">
+              {[
+                { n: "1", text: "Shane's automation runs inside your Azure tenant and collects live data from your M365 environment." },
+                { n: "2", text: "AI analyses the findings and scores your environment across security, governance, and Copilot readiness." },
+                { n: "3", text: "A structured project workspace appears in your portal — complete with findings, a task board, and next steps." },
+                { n: "4", text: "Shane reviews everything and schedules a findings session to walk through the results with you." },
+              ].map(step => (
+                <div key={step.n} className="flex items-start gap-3">
+                  <div className="w-5 h-5 rounded-full bg-[#0078D4] text-white text-[10px] font-bold flex items-center justify-center flex-shrink-0 mt-0.5">{step.n}</div>
+                  <p className="text-xs text-[#0A2540] leading-relaxed">{step.text}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+
           {/* Guest account: always show email setup guidance */}
           {!user && !setupDone && (
             <div className="bg-white border border-[#0078D4]/30 rounded-2xl p-5 text-left mb-6 flex items-start gap-3">

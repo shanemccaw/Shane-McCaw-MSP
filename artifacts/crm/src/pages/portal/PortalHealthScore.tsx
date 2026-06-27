@@ -108,6 +108,14 @@ export default function PortalHealthScore() {
           <Link href="/portal" className="text-sm text-[#0078D4] hover:underline">← Dashboard</Link>
           <h1 className="text-2xl font-bold text-[#0A2540] mt-2">M365 Environment Health</h1>
           <p className="text-gray-500 text-sm mt-1">Track your Microsoft 365 security and readiness over time.</p>
+          <div className="mt-3 bg-[#0078D4]/6 border border-[#0078D4]/20 rounded-xl px-4 py-3 flex items-start gap-2.5">
+            <svg className="w-4 h-4 text-[#0078D4] flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <p className="text-xs text-[#0A2540] leading-relaxed">
+              <span className="font-semibold">How this score is calculated:</span> Shane's automation reads your live M365 configuration — security policies, governance settings, licensing, and Copilot prerequisites. AI analyses the findings and produces a score across six dimensions. Shane reviews every result before it appears here. Scores update each time the automation runs.
+            </p>
+          </div>
         </div>
 
         {loading && (

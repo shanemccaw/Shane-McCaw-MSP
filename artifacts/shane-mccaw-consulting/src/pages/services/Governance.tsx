@@ -16,6 +16,7 @@ import { EngagementProjectCard } from "@/components/EngagementProjectCard";
 import { useEngagementProjects } from "@/hooks/useEngagementProjects";
 import { useServicePageTriggerKeys } from "@/hooks/useServicePageTriggerKeys";
 import FixedPriceOfferCard from "@/components/FixedPriceOfferCard";
+import { AfterPurchaseSection } from "@/components/AfterPurchaseSection";
 
 const comparisonRows = [
   {
@@ -602,6 +603,7 @@ export default function Governance() {
       </section>
 
       {/* ── FINAL CTA ────────────────────────────────────────────────────── */}
+      <AfterPurchaseSection serviceName="M365 Governance" />
       <TestimonialDiscountCallout />
       <section className="bg-[#0A2540] py-24 relative overflow-hidden">
         <div

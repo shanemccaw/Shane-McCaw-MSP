@@ -593,6 +593,74 @@ export default function Home() {
         </div>
       </section>
 
+      {/* ── HOW THE AUTOMATION WORKS ─────────────────────────────────────── */}
+      <section className="bg-[#0A2540] py-20">
+        <div className="max-w-[1200px] mx-auto px-6">
+          <div className="text-center mb-12">
+            <p className="text-[#00B4D8] text-sm font-semibold uppercase tracking-[0.1em] mb-3">Behind the Scenes</p>
+            <h2 className="text-3xl md:text-4xl font-extrabold text-white mb-4">
+              Not questionnaires. Live data from your tenant.
+            </h2>
+            <p className="text-white/60 max-w-2xl mx-auto leading-relaxed">
+              Every engagement starts with automation running inside your Microsoft 365 environment — reading the real configuration, not a self-assessment survey. Shane's PowerShell runbooks collect structured data, AI scores the findings, and a project workspace appears in your portal before your first meeting.
+            </p>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-10">
+            {[
+              {
+                icon: (
+                  <svg className="w-5 h-5 text-[#00B4D8]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+                  </svg>
+                ),
+                step: "01",
+                title: "You connect your tenant",
+                body: "A short setup wizard guides you through creating a read-only Azure App Registration. You own it — and can revoke access at any time.",
+              },
+              {
+                icon: (
+                  <svg className="w-5 h-5 text-[#00B4D8]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                  </svg>
+                ),
+                step: "02",
+                title: "Automation collects findings",
+                body: "Shane's runbooks execute inside your tenant via Azure Automation — reading licensing, security policies, SharePoint, Teams, and Copilot readiness. No manual surveys.",
+              },
+              {
+                icon: (
+                  <svg className="w-5 h-5 text-[#00B4D8]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                  </svg>
+                ),
+                step: "03",
+                title: "AI scores, Shane validates",
+                body: "Claude analyses the structured findings and scores your environment across security, governance, and Copilot readiness. Shane reviews every output before you see it.",
+              },
+            ].map((item, i) => (
+              <div key={i} className="bg-white/5 border border-white/10 rounded-2xl p-6">
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="w-9 h-9 rounded-xl bg-[#0078D4]/20 flex items-center justify-center flex-shrink-0">
+                    {item.icon}
+                  </div>
+                  <span className="text-[10px] font-bold text-white/30 uppercase tracking-widest">{item.step}</span>
+                </div>
+                <h3 className="text-white font-extrabold mb-2">{item.title}</h3>
+                <p className="text-white/55 text-sm leading-relaxed">{item.body}</p>
+              </div>
+            ))}
+          </div>
+          <div className="text-center">
+            <a
+              href="/how-it-works"
+              className="inline-flex items-center gap-2 text-[#00B4D8] hover:text-white font-semibold text-sm transition-colors"
+            >
+              See the full process →
+            </a>
+          </div>
+        </div>
+      </section>
+
       {/* ── WHAT WE'LL COVER IN YOUR DISCOVERY CALL ─────────────────────── */}
       <section className="bg-[#F7F9FC] py-20" data-testid="discovery-call-section">
         <div className="max-w-[860px] mx-auto px-6 text-center">

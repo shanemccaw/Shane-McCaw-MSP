@@ -622,6 +622,26 @@ function StepAppRegistration({ onSaveAndContinue, onBack, onSkip }: { onSaveAndC
           </p>
         </div>
 
+        {/* What happens after this step */}
+        <div className="rounded-xl border border-[#0078D4]/30 overflow-hidden">
+          <div className="bg-[#0078D4]/8 px-4 py-2.5 border-b border-[#0078D4]/20">
+            <p className="text-xs font-bold text-[#0078D4] uppercase tracking-wider">What happens after you connect</p>
+          </div>
+          <div className="bg-white px-4 py-3 grid grid-cols-3 gap-3">
+            {[
+              { n: "1", label: "Connect", desc: "You add your App Registration credentials here" },
+              { n: "2", label: "Automation runs", desc: "Shane's scripts read your M365 environment" },
+              { n: "3", label: "Insights appear", desc: "Your portal fills with findings & a project plan" },
+            ].map(step => (
+              <div key={step.n} className="text-center">
+                <div className="w-7 h-7 rounded-full bg-[#0078D4] text-white text-xs font-bold flex items-center justify-center mx-auto mb-1.5">{step.n}</div>
+                <p className="text-xs font-semibold text-[#0A2540]">{step.label}</p>
+                <p className="text-[10px] text-gray-500 leading-snug mt-0.5">{step.desc}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+
         {/* Security callout */}
         <div className="bg-[#0A2540] rounded-xl p-4 flex items-start gap-3">
           <div className="w-8 h-8 rounded-lg bg-[#0078D4]/20 flex items-center justify-center flex-shrink-0 mt-0.5">

@@ -13,6 +13,7 @@ import { EngagementProjectCard } from "@/components/EngagementProjectCard";
 import { useEngagementProjects } from "@/hooks/useEngagementProjects";
 import { useServicePageTriggerKeys } from "@/hooks/useServicePageTriggerKeys";
 import FixedPriceOfferCard from "@/components/FixedPriceOfferCard";
+import { AfterPurchaseSection } from "@/components/AfterPurchaseSection";
 
 const comparisonRows = [
   {
@@ -545,6 +546,7 @@ export default function SharePoint() {
         </div>
       </section>
 
+      <AfterPurchaseSection serviceName="SharePoint Architecture" />
       <TestimonialDiscountCallout />
       <ConsultationCTA />
       <ServiceOverviewModal
