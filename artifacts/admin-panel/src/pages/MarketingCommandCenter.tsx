@@ -3392,21 +3392,90 @@ const KANBAN_COLUMNS: { id: MarketingTask["status"]; label: string; color: strin
 
 type TaskStatus = MarketingTask["status"];
 
+function TaskDetailModal({ task, onClose }: { task: MarketingTask; onClose: () => void }) {
+  const col = KANBAN_COLUMNS.find(c => c.id === task.status);
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
+      onClick={e => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      <div className="bg-[#161B22] border border-[#30363D] rounded-xl w-full max-w-lg mx-4 shadow-2xl">
+        <div className="flex items-start justify-between px-5 py-4 border-b border-[#30363D] gap-3">
+          <h3 className="text-sm font-semibold text-[#E6EDF3] leading-snug">{task.title}</h3>
+          <button
+            onClick={onClose}
+            className="flex-shrink-0 text-[#7D8590] hover:text-[#E6EDF3] text-xl leading-none transition-colors mt-0.5"
+          >
+            ×
+          </button>
+        </div>
+
+        <div className="px-5 py-4 space-y-4">
+          <div className="flex flex-wrap gap-2 items-center">
+            {col && (
+              <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full bg-[#30363D] ${col.color}`}>
+                {col.label}
+              </span>
+            )}
+            {task.dueDate && (
+              <span className="text-[10px] text-amber-400 bg-amber-400/10 px-2 py-0.5 rounded-full">
+                Due {new Date(task.dueDate).toLocaleDateString(undefined, { year: "numeric", month: "long", day: "numeric" })}
+              </span>
+            )}
+            {task.relatedLeadId && <Badge text={`Lead #${task.relatedLeadId}`} color="blue" />}
+            {task.relatedCampaignId && <Badge text={`Campaign #${task.relatedCampaignId}`} color="yellow" />}
+          </div>
+
+          {task.description ? (
+            <div>
+              <p className="text-[10px] font-semibold text-[#7D8590] uppercase tracking-wide mb-1.5">Description</p>
+              <p className="text-sm text-[#E6EDF3] leading-relaxed whitespace-pre-wrap">{task.description}</p>
+            </div>
+          ) : (
+            <p className="text-xs text-[#484F58] italic">No description provided.</p>
+          )}
+        </div>
+
+        <div className="px-5 py-3 border-t border-[#30363D] flex justify-end">
+          <button
+            onClick={onClose}
+            className="text-xs px-4 py-1.5 rounded-lg border border-[#30363D] text-[#7D8590] hover:text-[#E6EDF3] transition-colors"
+          >
+            Close
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 interface SortableTaskCardProps {
   task: MarketingTask;
   onDelete: (id: number) => void;
   onStatusChange: (id: number, status: TaskStatus) => void;
+  onOpen: (task: MarketingTask) => void;
 }
 
-function SortableTaskCard({ task, onDelete, onStatusChange }: SortableTaskCardProps) {
+function SortableTaskCard({ task, onDelete, onStatusChange, onOpen }: SortableTaskCardProps) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: task.id });
   const [showStatusMenu, setShowStatusMenu] = useState(false);
   const style = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.5 : 1 };
 
   return (
-    <div ref={setNodeRef} style={style} className="bg-[#0D1117] border border-[#30363D] rounded-lg p-3 space-y-1.5 hover:border-[#0078D4]/40 transition-colors">
+    <div
+      ref={setNodeRef}
+      style={style}
+      onClick={() => onOpen(task)}
+      className="bg-[#0D1117] border border-[#30363D] rounded-lg p-3 space-y-1.5 hover:border-[#0078D4]/40 transition-colors cursor-pointer"
+    >
       <div className="flex items-start gap-1">
-        <div {...attributes} {...listeners} className="mt-0.5 cursor-grab active:cursor-grabbing text-[#484F58] hover:text-[#7D8590] flex-shrink-0">
+        <div
+          {...attributes}
+          {...listeners}
+          onClick={e => e.stopPropagation()}
+          className="mt-0.5 cursor-grab active:cursor-grabbing text-[#484F58] hover:text-[#7D8590] flex-shrink-0"
+        >
           <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20">
             <path d="M7 2a2 2 0 1 0 .001 4.001A2 2 0 0 0 7 2zm0 6a2 2 0 1 0 .001 4.001A2 2 0 0 0 7 8zm0 6a2 2 0 1 0 .001 4.001A2 2 0 0 0 7 14zm6-8a2 2 0 1 0-.001-4.001A2 2 0 0 0 13 6zm0 2a2 2 0 1 0 .001 4.001A2 2 0 0 0 13 8zm0 6a2 2 0 1 0 .001 4.001A2 2 0 0 0 13 14z" />
           </svg>
@@ -3422,30 +3491,39 @@ function SortableTaskCard({ task, onDelete, onStatusChange }: SortableTaskCardPr
         </div>
       )}
       <div className="flex items-center gap-1 ml-4.5 relative">
-        <button onClick={() => setShowStatusMenu(m => !m)} className="text-[10px] px-1.5 py-0.5 rounded bg-[#30363D] text-[#7D8590] hover:text-[#E6EDF3] transition-colors">
+        <button
+          onClick={e => { e.stopPropagation(); setShowStatusMenu(m => !m); }}
+          className="text-[10px] px-1.5 py-0.5 rounded bg-[#30363D] text-[#7D8590] hover:text-[#E6EDF3] transition-colors"
+        >
           Status ▾
         </button>
         {showStatusMenu && (
           <div className="absolute top-5 left-0 z-20 bg-[#161B22] border border-[#30363D] rounded-lg shadow-xl py-1 min-w-28">
             {KANBAN_COLUMNS.map(col => (
-              <button key={col.id} onClick={() => { onStatusChange(task.id, col.id); setShowStatusMenu(false); }}
+              <button key={col.id} onClick={e => { e.stopPropagation(); onStatusChange(task.id, col.id); setShowStatusMenu(false); }}
                 className={`w-full text-left px-3 py-1.5 text-[10px] hover:bg-[#1C2128] transition-colors ${col.color} ${task.status === col.id ? "font-bold" : ""}`}>
                 {col.label}
               </button>
             ))}
           </div>
         )}
-        <button onClick={() => onDelete(task.id)} className="text-[10px] text-[#484F58] hover:text-red-400 transition-colors ml-auto">Delete</button>
+        <button
+          onClick={e => { e.stopPropagation(); onDelete(task.id); }}
+          className="text-[10px] text-[#484F58] hover:text-red-400 transition-colors ml-auto"
+        >
+          Delete
+        </button>
       </div>
     </div>
   );
 }
 
-function DroppableColumn({ col, tasks, onDelete, onStatusChange }: {
+function DroppableColumn({ col, tasks, onDelete, onStatusChange, onOpen }: {
   col: typeof KANBAN_COLUMNS[0];
   tasks: MarketingTask[];
   onDelete: (id: number) => void;
   onStatusChange: (id: number, status: TaskStatus) => void;
+  onOpen: (task: MarketingTask) => void;
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: col.id });
 
@@ -3457,7 +3535,7 @@ function DroppableColumn({ col, tasks, onDelete, onStatusChange }: {
       </div>
       <SortableContext items={tasks.map(t => t.id)} strategy={verticalListSortingStrategy}>
         <div className="space-y-2">
-          {tasks.map(t => <SortableTaskCard key={t.id} task={t} onDelete={onDelete} onStatusChange={onStatusChange} />)}
+          {tasks.map(t => <SortableTaskCard key={t.id} task={t} onDelete={onDelete} onStatusChange={onStatusChange} onOpen={onOpen} />)}
         </div>
       </SortableContext>
     </div>
@@ -3476,6 +3554,7 @@ function MarketingTasksKanban({ fetchWithAuth }: { fetchWithAuth: (url: string, 
   const [checkedSuggestions, setCheckedSuggestions] = useState<Set<number>>(new Set());
   const [showSuggestionsModal, setShowSuggestionsModal] = useState(false);
   const [insertingSuggestions, setInsertingSuggestions] = useState(false);
+  const [selectedTask, setSelectedTask] = useState<MarketingTask | null>(null);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
@@ -3593,6 +3672,8 @@ function MarketingTasksKanban({ fetchWithAuth }: { fetchWithAuth: (url: string, 
 
   return (
     <div className="space-y-4">
+      {selectedTask && <TaskDetailModal task={selectedTask} onClose={() => setSelectedTask(null)} />}
+
       {showSuggestionsModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={e => { if (e.target === e.currentTarget) setShowSuggestionsModal(false); }}>
           <div className="bg-[#161B22] border border-[#30363D] rounded-xl w-full max-w-md mx-4 shadow-2xl">
@@ -3677,6 +3758,7 @@ function MarketingTasksKanban({ fetchWithAuth }: { fetchWithAuth: (url: string, 
                 tasks={tasks.filter(t => t.status === col.id)}
                 onDelete={id => { void deleteTask(id); }}
                 onStatusChange={(id, status) => { void handleStatusChange(id, status); }}
+                onOpen={setSelectedTask}
               />
             ))}
           </div>
