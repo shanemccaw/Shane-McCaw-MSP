@@ -9,6 +9,7 @@ interface AppRegRecord {
   azureClientId: string;
   submittedAt: string | null;
   verifiedAt: string | null;
+  connectionTestedAt: string | null;
 }
 
 function StatusBadge({ status }: { status: AppRegRecord["status"] | null }) {
@@ -120,7 +121,6 @@ export default function PortalAppRegistration() {
 
   const isVerified = record?.status === "verified";
   const isSubmitted = submitted || record?.status === "submitted" || record?.status === "verified";
-  const wasAlreadyConnected = !!(record && (record.status === "submitted" || record.status === "verified"));
 
   return (
     <PortalLayout>
@@ -256,7 +256,7 @@ export default function PortalAppRegistration() {
               {
                 n: 6,
                 title: "Submit your credentials",
-                body: "Paste all three values into the form below and click Submit. Shane will verify the connection and confirm within one business day.",
+                body: "Paste all three values into the form below and click Connect. The connection will be tested instantly — you'll get a green confirmation or a specific error message to help you fix any issues.",
               },
             ].map(step => (
               <li key={step.n} className="flex gap-4 px-5 py-4">
@@ -308,9 +308,9 @@ export default function PortalAppRegistration() {
                   <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
                 </svg>
                 <div>
-                  <p className="text-sm font-semibold text-amber-800">Resubmitting will pause automations until re-verified</p>
+                  <p className="text-sm font-semibold text-amber-800">Updated credentials will be tested immediately</p>
                   <p className="text-xs text-amber-700 mt-1 leading-relaxed">
-                    Updating your credentials resets the connection status to <strong>Submitted · Pending Verification</strong>. Shane will need to test and re-verify the new credentials before your automations can run again. This typically takes one business day.
+                    The new credentials will be verified against Azure before being saved. If the test passes, your connection will be marked <strong>Verified &amp; Active</strong> right away.
                   </p>
                 </div>
               </div>
@@ -320,7 +320,7 @@ export default function PortalAppRegistration() {
                   <svg className="w-4 h-4 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                     <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                   </svg>
-                  {error}
+                  <span>{error}</span>
                 </div>
               )}
 
@@ -395,19 +395,19 @@ export default function PortalAppRegistration() {
                 <button
                   type="submit"
                   disabled={saving}
-                  className="flex-1 bg-amber-600 hover:bg-amber-700 disabled:opacity-60 text-white text-sm font-semibold py-2.5 rounded-lg transition-colors flex items-center justify-center gap-2"
+                  className="flex-1 bg-[#0078D4] hover:bg-[#0078D4]/90 disabled:opacity-60 text-white text-sm font-semibold py-2.5 rounded-lg transition-colors flex items-center justify-center gap-2"
                 >
                   {saving ? (
                     <>
                       <span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
-                      Updating…
+                      Testing connection…
                     </>
                   ) : (
                     <>
                       <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
                         <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                       </svg>
-                      Update &amp; Resubmit
+                      Update &amp; Reconnect
                     </>
                   )}
                 </button>
@@ -436,6 +436,12 @@ export default function PortalAppRegistration() {
                   <div>
                     <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-1">Verified on</p>
                     <p className="text-[#0A2540] text-sm">{new Date(record.verifiedAt).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}</p>
+                  </div>
+                )}
+                {record?.connectionTestedAt && (
+                  <div>
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-1">Last connection test</p>
+                    <p className="text-[#0A2540] text-sm">{new Date(record.connectionTestedAt).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}</p>
                   </div>
                 )}
               </div>
@@ -484,7 +490,7 @@ export default function PortalAppRegistration() {
                   <svg className="w-4 h-4 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                     <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                   </svg>
-                  {error}
+                  <span>{error}</span>
                 </div>
               )}
 
@@ -556,14 +562,14 @@ export default function PortalAppRegistration() {
                   {saving ? (
                     <>
                       <span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
-                      Encrypting &amp; Saving…
+                      Testing connection…
                     </>
                   ) : (
                     <>
                       <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
                         <path strokeLinecap="round" strokeLinejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
                       </svg>
-                      Submit Credentials Securely
+                      Connect &amp; Verify
                     </>
                   )}
                 </button>

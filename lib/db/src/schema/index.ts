@@ -855,6 +855,7 @@ export const clientAppRegistrationsTable = pgTable("client_app_registrations", {
   status: text("status", { enum: ["pending", "submitted", "verified"] }).notNull().default("pending"),
   submittedAt: timestamp("submitted_at"),
   verifiedAt: timestamp("verified_at"),
+  connectionTestedAt: timestamp("connection_tested_at"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });

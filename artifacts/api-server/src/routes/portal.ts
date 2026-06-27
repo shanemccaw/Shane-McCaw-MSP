@@ -10,7 +10,7 @@ import { createAuditLog } from "../lib/audit";
 import { getStripeKey } from "../lib/stripe";
 import { listDriveItems, graphCredentialsPresent, createProjectFolder, uploadFileToClientContracts, getDriveItemDownloadUrl } from "../lib/graph";
 import { setSecretValue, getSecretValue, getSecretMetadata } from "../lib/azure-keyvault";
-import { ClientSecretCredential } from "@azure/identity";
+import { testClientCredentials } from "../lib/azure-credentials";
 import { uploadInvoiceToSharePoint } from "../lib/invoice-sharepoint";
 import { getPortalBaseUrl } from "../lib/portal-url";
 import { generateM365ProfilePdf } from "../lib/m365-profile-pdf";
@@ -507,6 +507,7 @@ router.get("/portal/app-registration", requireAuth, async (req: Request, res: Re
     azureClientId: row.azureClientId,
     submittedAt: row.submittedAt,
     verifiedAt: row.verifiedAt,
+    connectionTestedAt: row.connectionTestedAt,
   });
 });
 
@@ -523,6 +524,20 @@ router.put("/portal/app-registration", requireAuth, async (req: Request, res: Re
     return;
   }
 
+  // ── Step 1: Live credential test BEFORE storing anything ──────────────────
+  const testResult = await testClientCredentials(
+    tenantId.trim(),
+    azureClientId.trim(),
+    clientSecret.trim(),
+  );
+
+  if (!testResult.ok) {
+    req.log.warn({ userId, tenantId: tenantId.trim(), azureClientId: azureClientId.trim() }, "portal/app-registration: credential test failed");
+    res.status(422).json({ error: testResult.reason });
+    return;
+  }
+
+  // ── Step 2: Credentials valid — store in Key Vault ────────────────────────
   const kvSecretName = `client-${userId}-app-secret`;
 
   try {
@@ -533,6 +548,7 @@ router.put("/portal/app-registration", requireAuth, async (req: Request, res: Re
     return;
   }
 
+  // ── Step 3: Upsert record as verified immediately ─────────────────────────
   const now = new Date();
   await db.insert(clientAppRegistrationsTable)
     .values({
@@ -540,8 +556,10 @@ router.put("/portal/app-registration", requireAuth, async (req: Request, res: Re
       tenantId: tenantId.trim(),
       azureClientId: azureClientId.trim(),
       keyVaultSecretName: kvSecretName,
-      status: "submitted",
+      status: "verified",
       submittedAt: now,
+      verifiedAt: now,
+      connectionTestedAt: now,
       updatedAt: now,
     })
     .onConflictDoUpdate({
@@ -550,19 +568,21 @@ router.put("/portal/app-registration", requireAuth, async (req: Request, res: Re
         tenantId: tenantId.trim(),
         azureClientId: azureClientId.trim(),
         keyVaultSecretName: kvSecretName,
-        status: "submitted",
+        status: "verified",
         submittedAt: now,
-        verifiedAt: null,
+        verifiedAt: now,
+        connectionTestedAt: now,
         updatedAt: now,
       },
     });
 
   res.json({
-    status: "submitted",
+    status: "verified",
     tenantId: tenantId.trim(),
     azureClientId: azureClientId.trim(),
     submittedAt: now,
-    verifiedAt: null,
+    verifiedAt: now,
+    connectionTestedAt: now,
   });
 });
 
@@ -636,18 +656,17 @@ router.patch("/admin/clients/:id/app-registration", requireAdmin, async (req: Re
 
   // When marking as verified, test the credentials against Azure first
   if (status === "verified") {
+    let testResult: { ok: true } | { ok: false; reason: string };
     try {
       const clientSecret = await getSecretValue(existing.keyVaultSecretName);
-      const credential = new ClientSecretCredential(existing.tenantId, existing.azureClientId, clientSecret);
-      // A token request to the Azure Management API confirms all three values are valid
-      await credential.getToken("https://management.azure.com/.default");
+      testResult = await testClientCredentials(existing.tenantId, existing.azureClientId, clientSecret);
     } catch (err) {
-      req.log.warn({ err, clientId }, "app-registration verify: Azure credential test failed");
-      const msg = err instanceof Error ? err.message : String(err);
-      const isAuthErr = /AADSTS|unauthorized|invalid_client|invalid_grant|credentials|tenant/i.test(msg);
-      const userMessage = isAuthErr
-        ? "Invalid credentials — check the Client ID, Tenant ID, and Client Secret"
-        : "Could not verify credentials — Azure returned an unexpected error. Check Key Vault access and try again.";
+      req.log.warn({ err, clientId }, "app-registration verify: failed to retrieve secret from Key Vault");
+      res.status(503).json({ error: "Could not retrieve credentials from Key Vault. Check Key Vault access and try again." });
+      return;
+    }
+    if (!testResult.ok) {
+      req.log.warn({ clientId, reason: testResult.reason }, "app-registration verify: Azure credential test failed");
       void createAuditLog({
         actorUserId: req.user!.id,
         actorName: req.user!.name ?? req.user!.email,
@@ -661,10 +680,10 @@ router.patch("/admin/clients/:id/app-registration", requireAdmin, async (req: Re
           tenantId: existing.tenantId,
           azureClientId: existing.azureClientId,
           outcome: "failed",
-          errorMessage: msg.slice(0, 500),
+          errorMessage: testResult.reason.slice(0, 500),
         },
       });
-      res.status(400).json({ error: userMessage });
+      res.status(400).json({ error: testResult.reason });
       return;
     }
   }
@@ -673,7 +692,7 @@ router.patch("/admin/clients/:id/app-registration", requireAdmin, async (req: Re
     status: status as "pending" | "submitted" | "verified",
     updatedAt: now,
   };
-  if (status === "verified") updates.verifiedAt = now;
+  if (status === "verified") { updates.verifiedAt = now; updates.connectionTestedAt = now; }
   if (status !== "verified") updates.verifiedAt = null;
 
   await db.update(clientAppRegistrationsTable)
