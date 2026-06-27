@@ -1054,14 +1054,10 @@ function DailyCommandPanel({ fetchWithAuth, onNavigate }: { fetchWithAuth: (url:
   const [cmd, setCmd] = useState<DailyCommand | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [expanded, setExpanded] = useState<boolean>(() => localStorage.getItem("rcc-expanded") !== "false");
+  const [expanded, setExpanded] = useState(true);
 
   const toggleExpanded = () => {
-    setExpanded(prev => {
-      const next = !prev;
-      localStorage.setItem("rcc-expanded", String(next));
-      return next;
-    });
+    setExpanded(prev => !prev);
   };
 
   const load = (bust = false) => {
@@ -7170,6 +7166,9 @@ function MarketingDashboard({ fetchWithAuth, onNavigate }: {
         ))}
       </div>
 
+      {/* Revenue Command Center — always expanded on dashboard load */}
+      <DailyCommandPanel fetchWithAuth={fetchWithAuth} onNavigate={onNavigate} />
+
       {/* Main Two-Column Grid */}
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
         {/* Left: Priority Actions */}
@@ -7357,9 +7356,6 @@ function MarketingDashboard({ fetchWithAuth, onNavigate }: {
           ))}
         </div>
       </div>
-
-      {/* Revenue Command Center (collapsed by default on dashboard) */}
-      <DailyCommandPanel fetchWithAuth={fetchWithAuth} onNavigate={onNavigate} />
     </div>
   );
 }
