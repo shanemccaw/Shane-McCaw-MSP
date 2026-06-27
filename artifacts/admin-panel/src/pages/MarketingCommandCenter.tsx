@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useLocation } from "wouter";
+import { useInbox } from "@/contexts/InboxContext";
 import { ChevronDown, ChevronUp } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import {
@@ -3598,11 +3599,12 @@ type TaskStatus = MarketingTask["status"];
 interface ActionDescriptor {
   label: string;
   icon: string;
-  type: "navigate" | "status";
-  /** For navigate: absolute path starting with "/" or a section id (no slash).
-   *  For status: the target TaskStatus string. */
+  type: "navigate" | "status" | "compose";
+  /** navigate: absolute path or section id. status: target TaskStatus. compose: unused (""). */
   target: string;
   disabled?: boolean;
+  composeTo?: string;
+  composeSubject?: string;
 }
 
 // money_task is treated as a parallel track that progresses to ideas when "moved"
@@ -3614,16 +3616,23 @@ function nextStatusInChain(current: TaskStatus): TaskStatus | null {
   return idx >= 0 && idx < STATUS_PROGRESSION.length - 1 ? STATUS_PROGRESSION[idx + 1] : null;
 }
 
-function getIntelligentActions(task: MarketingTask): ActionDescriptor[] {
+function getIntelligentActions(task: MarketingTask, leadEmail?: string | null): ActionDescriptor[] {
   const text = `${task.title} ${task.description ?? ""}`.toLowerCase();
   const actions: ActionDescriptor[] = [];
 
   if (/blog|article|content|draft|write/.test(text))
     actions.push({ label: "Open Article Editor", icon: "✍️", type: "navigate", target: "/articles" });
 
-  if (task.relatedLeadId || /\blead\b|prospect|outreach/.test(text))
-    actions.push({ label: "View Lead", icon: "👤", type: "navigate",
-      target: task.relatedLeadId ? `/crm/leads/${task.relatedLeadId}` : "/crm/leads" });
+  // Email Lead compose action — only when we have a real email address
+  if (leadEmail)
+    actions.push({ label: "Email Lead", icon: "✉️", type: "compose", target: "",
+      composeTo: leadEmail, composeSubject: task.title });
+
+  // View Lead → specific record when relatedLeadId is known; Browse Leads for keyword-only matches
+  if (task.relatedLeadId)
+    actions.push({ label: "View Lead", icon: "👤", type: "navigate", target: `/crm/leads/${task.relatedLeadId}` });
+  else if (/\blead\b|prospect|outreach/.test(text))
+    actions.push({ label: "Browse Leads", icon: "👥", type: "navigate", target: "/crm/leads" });
 
   if (task.relatedCampaignId || /campaign|email blast|newsletter/.test(text))
     actions.push({ label: "View Campaign", icon: "📣", type: "navigate", target: "campaigns" });
@@ -3665,20 +3674,42 @@ function TaskDetailModal({
   onClose,
   onStatusChange,
   onSectionNavigate,
+  fetchWithAuth,
 }: {
   task: MarketingTask;
   onClose: () => void;
   onStatusChange: (id: number, status: TaskStatus) => void;
   onSectionNavigate: (section: string) => void;
+  fetchWithAuth: (url: string, opts?: RequestInit) => Promise<Response>;
 }) {
   const [, navigate] = useLocation();
+  const { openCompose } = useInbox();
+  const [leadEmail, setLeadEmail] = useState<string | null>(null);
+
+  // Fetch the linked lead's email so we can offer an "Email Lead" compose action
+  useEffect(() => {
+    if (!task.relatedLeadId) return;
+    let cancelled = false;
+    fetchWithAuth(`/api/leads/${task.relatedLeadId}`)
+      .then(r => r.ok ? r.json() : null)
+      .then((lead: { email?: string } | null) => {
+        if (!cancelled && lead?.email) setLeadEmail(lead.email);
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [task.relatedLeadId, fetchWithAuth]);
+
   const col = KANBAN_COLUMNS.find(c => c.id === task.status);
-  const actions = getIntelligentActions(task);
+  const actions = getIntelligentActions(task, leadEmail);
 
   const handleAction = (action: ActionDescriptor) => {
     if (action.type === "status") {
       onStatusChange(task.id, action.target as TaskStatus);
       onClose();
+    } else if (action.type === "compose") {
+      openCompose("new", { to: action.composeTo ?? "", subject: action.composeSubject ?? "" });
+      onClose();
+      navigate("/inbox");
     } else {
       onClose();
       if (action.target.startsWith("/")) {
@@ -3736,6 +3767,7 @@ function TaskDetailModal({
               <div className="flex flex-wrap gap-2">
                 {actions.map((action, i) => {
                   const isStatus = action.type === "status";
+                  const isCompose = action.type === "compose";
                   const isComplete = action.target === "completed" && !action.disabled;
                   const isDisabled = action.disabled === true;
                   return (
@@ -3748,6 +3780,8 @@ function TaskDetailModal({
                           ? "border-[#30363D] text-[#484F58] cursor-not-allowed opacity-50"
                           : isComplete
                           ? "border-emerald-500/40 text-emerald-400 hover:bg-emerald-500/10"
+                          : isCompose
+                          ? "border-teal-500/40 text-teal-400 hover:bg-teal-500/10"
                           : isStatus
                           ? "border-[#0078D4]/40 text-[#58A6FF] hover:bg-[#0078D4]/10"
                           : "border-[#30363D] text-[#C9D1D9] hover:border-[#484F58] hover:text-[#E6EDF3]"
@@ -4005,6 +4039,7 @@ function MarketingTasksKanban({ fetchWithAuth, onSectionNavigate }: { fetchWithA
           onClose={() => setSelectedTask(null)}
           onStatusChange={(id, status) => { void handleStatusChange(id, status); }}
           onSectionNavigate={section => { setSelectedTask(null); onSectionNavigate(section); }}
+          fetchWithAuth={fetchWithAuth}
         />
       )}
 
