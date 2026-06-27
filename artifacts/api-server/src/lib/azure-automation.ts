@@ -191,31 +191,55 @@ export async function getJobOutput(jobId: string): Promise<JobOutputLine[]> {
   const needsFetch = rawLines.filter(s => !s.streamText?.trim() && s.jobStreamId);
 
   if (needsFetch.length > 0) {
-    const CHUNK = 20;
-    for (let i = 0; i < needsFetch.length; i += CHUNK) {
-      const chunk = needsFetch.slice(i, i + CHUNK);
-      const fetched = await Promise.all(
-        chunk.map(async s => {
-          try {
-            const detail = await client.jobStream.get(
-              cfg.resourceGroup,
-              cfg.accountName,
-              jobId,
-              s.jobStreamId!,
-            ) as StreamItem;
-            return { id: s.jobStreamId!, text: detail.streamText ?? "" };
-          } catch (e) {
-            logger.warn({ err: e, jobStreamId: s.jobStreamId, jobId }, "azure-automation: jobStream.get failed");
-            return { id: s.jobStreamId!, text: "" };
-          }
-        }),
+    /** Maximum parallel Azure API calls per iteration. Tune here if rate-limiting occurs. */
+    const CHUNK_SIZE = 20;
+    /** Retry delays in ms for exponential backoff on transient jobStream.get failures. */
+    const RETRY_DELAYS_MS = [200, 400, 800];
+
+    const fetchStreamWithRetry = async (s: StreamItem): Promise<{ id: string; text: string; fallback: boolean }> => {
+      let lastErr: unknown;
+      for (let attempt = 0; attempt <= RETRY_DELAYS_MS.length; attempt++) {
+        if (attempt > 0) {
+          await new Promise(resolve => setTimeout(resolve, RETRY_DELAYS_MS[attempt - 1]));
+        }
+        try {
+          const detail = await client.jobStream.get(
+            cfg.resourceGroup,
+            cfg.accountName,
+            jobId,
+            s.jobStreamId!,
+          ) as StreamItem;
+          return { id: s.jobStreamId!, text: detail.streamText ?? "", fallback: false };
+        } catch (e) {
+          lastErr = e;
+        }
+      }
+      logger.warn(
+        { err: lastErr, jobStreamId: s.jobStreamId, jobId, attempts: RETRY_DELAYS_MS.length + 1 },
+        "azure-automation: jobStream.get failed after retries — using summary stub as fallback",
       );
+      return { id: s.jobStreamId!, text: s.summary ?? "", fallback: true };
+    };
+
+    let fallbackCount = 0;
+
+    for (let i = 0; i < needsFetch.length; i += CHUNK_SIZE) {
+      const chunk = needsFetch.slice(i, i + CHUNK_SIZE);
+      const fetched = await Promise.all(chunk.map(fetchStreamWithRetry));
+      fallbackCount += fetched.filter(f => f.fallback).length;
       const textMap = new Map(fetched.map(f => [f.id, f.text]));
       for (const line of rawLines) {
         if (line.jobStreamId && textMap.has(line.jobStreamId)) {
           line.streamText = textMap.get(line.jobStreamId) ?? line.streamText;
         }
       }
+    }
+
+    if (fallbackCount > 0) {
+      logger.warn(
+        { jobId, fallbackCount, totalFetched: needsFetch.length },
+        "azure-automation: some job stream records used summary stub fallback after repeated API failures — full stream text unavailable for those lines",
+      );
     }
   }
 
