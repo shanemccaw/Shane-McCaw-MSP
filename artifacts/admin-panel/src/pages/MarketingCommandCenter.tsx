@@ -581,6 +581,157 @@ function LeadEmailHistoryModal({ lead, onClose, fetchWithAuth }: {
   );
 }
 
+// ─── Recommended Lead Slide-Over ──────────────────────────────────────────────
+
+function RecommendedLeadSlideOver({ lead, campaigns, generatedDrafts, fetchWithAuth, onClose, onConvert, onDismiss, onOutreach, onTask, onCampaign }: {
+  lead: RecommendedLead;
+  campaigns: Campaign[];
+  generatedDrafts: Record<number, string>;
+  fetchWithAuth: (url: string, opts?: RequestInit) => Promise<Response>;
+  onClose: () => void;
+  onConvert: (id: number) => void;
+  onDismiss: (id: number) => void;
+  onOutreach: (opts: { recommendedLeadId: number; leadName: string; leadEmail: string; type: string }) => void;
+  onTask: (lead: RecommendedLead) => void;
+  onCampaign: (lead: RecommendedLead) => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-50 flex">
+      <div className="flex-1 bg-black/40" onClick={onClose} />
+      <div className="w-full sm:max-w-lg bg-[#161B22] shadow-2xl flex flex-col h-full">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-[#30363D] bg-[#0A2540] flex-shrink-0">
+          <h2 className="text-white font-bold">AI Lead Details</h2>
+          <button onClick={onClose} className="text-white/60 hover:text-white transition-colors text-xl leading-none">×</button>
+        </div>
+
+        <div className="flex-1 min-h-0 overflow-y-auto px-6 py-6 space-y-5">
+          {/* Identity */}
+          <div className="space-y-3">
+            <div className="flex items-start justify-between gap-2">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wider text-[#7D8590] mb-1">Name</p>
+                <p className="text-[#E6EDF3] font-semibold text-base">{lead.name}</p>
+              </div>
+              <Badge text={`${lead.confidence}%`} color={lead.confidence >= 80 ? "green" : lead.confidence >= 60 ? "yellow" : "gray"} />
+            </div>
+            {lead.role && (
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wider text-[#7D8590] mb-1">Role</p>
+                <p className="text-sm text-[#E6EDF3]">{lead.role}</p>
+              </div>
+            )}
+            {lead.company && (
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wider text-[#7D8590] mb-1">Company</p>
+                <p className="text-sm text-[#E6EDF3]">{lead.company}</p>
+              </div>
+            )}
+            {lead.email && (
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wider text-[#7D8590] mb-1">Email</p>
+                <a href={`mailto:${lead.email}`} className="text-sm text-[#0078D4] hover:underline">{lead.email}</a>
+              </div>
+            )}
+            <div className="flex flex-wrap gap-4">
+              {lead.industry && (
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wider text-[#7D8590] mb-1">Industry</p>
+                  <Badge text={lead.industry} color="blue" />
+                </div>
+              )}
+              {lead.companySize && (
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wider text-[#7D8590] mb-1">Company Size</p>
+                  <Badge text={lead.companySize} color="gray" />
+                </div>
+              )}
+              {lead.location && (
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wider text-[#7D8590] mb-1">Location</p>
+                  <Badge text={lead.location} color="gray" />
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Recommended service */}
+          {lead.recommendedService && (
+            <div className="bg-[#0D1117] border border-[#30363D] rounded-xl p-4">
+              <p className="text-xs font-semibold uppercase tracking-wider text-[#7D8590] mb-1">Recommended Service</p>
+              <p className="text-sm text-[#E6EDF3] font-medium">{lead.recommendedService}</p>
+            </div>
+          )}
+
+          {/* Why fit */}
+          {lead.whyFit && (
+            <div className="bg-[#0D1117] border border-[#30363D] rounded-xl p-4">
+              <p className="text-xs font-bold text-[#0078D4] uppercase tracking-wider mb-1.5">Why They Fit</p>
+              <p className="text-sm text-[#E6EDF3] leading-relaxed">{lead.whyFit}</p>
+            </div>
+          )}
+
+          {/* Pain points */}
+          {lead.painPoints.length > 0 && (
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wider text-[#7D8590] mb-2">Pain Points</p>
+              <div className="space-y-1.5">
+                {lead.painPoints.map((p, i) => (
+                  <div key={i} className="flex items-start gap-2">
+                    <span className="mt-1 w-1.5 h-1.5 rounded-full bg-red-400 flex-shrink-0" />
+                    <span className="text-sm text-[#E6EDF3]">{p}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Outreach draft badge */}
+          {generatedDrafts[lead.id] && (
+            <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-emerald-500/10 border border-emerald-500/20">
+              <svg className="w-3.5 h-3.5 text-emerald-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+              <span className="text-xs text-emerald-400 font-medium">Outreach draft saved</span>
+            </div>
+          )}
+        </div>
+
+        {/* Action buttons */}
+        <div className="px-6 py-4 border-t border-[#30363D] space-y-2 flex-shrink-0">
+          <div className="flex flex-wrap gap-2">
+            <button onClick={() => { onConvert(lead.id); onClose(); }}
+              className="text-xs px-3 py-1.5 rounded-lg bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30 transition-colors font-medium">
+              Add to Leads
+            </button>
+            <button onClick={() => onOutreach({ recommendedLeadId: lead.id, leadName: lead.name, leadEmail: lead.email ?? "", type: "cold_email" })}
+              className="text-xs px-3 py-1.5 rounded-lg bg-[#0078D4]/20 text-[#58A6FF] hover:bg-[#0078D4]/30 transition-colors font-medium">
+              Email
+            </button>
+            <button onClick={() => onOutreach({ recommendedLeadId: lead.id, leadName: lead.name, leadEmail: lead.email ?? "", type: "linkedin" })}
+              className="text-xs px-3 py-1.5 rounded-lg bg-[#0078D4]/20 text-[#58A6FF] hover:bg-[#0078D4]/30 transition-colors font-medium">
+              LinkedIn
+            </button>
+            <button onClick={() => onOutreach({ recommendedLeadId: lead.id, leadName: lead.name, leadEmail: lead.email ?? "", type: "followup" })}
+              className="text-xs px-3 py-1.5 rounded-lg bg-[#0078D4]/20 text-[#58A6FF] hover:bg-[#0078D4]/30 transition-colors font-medium">
+              Follow-Up Seq.
+            </button>
+            <button onClick={() => onTask(lead)}
+              className="text-xs px-3 py-1.5 rounded-lg bg-violet-500/20 text-violet-400 hover:bg-violet-500/30 transition-colors font-medium">
+              Add Task
+            </button>
+            <button onClick={() => { onCampaign(lead); }}
+              className="text-xs px-3 py-1.5 rounded-lg bg-amber-500/20 text-amber-400 hover:bg-amber-500/30 transition-colors font-medium">
+              Add to Campaign
+            </button>
+          </div>
+          <button onClick={() => { onDismiss(lead.id); onClose(); }}
+            className="w-full py-2 rounded-lg border border-[#30363D] text-[#7D8590] text-sm hover:text-[#E6EDF3] hover:border-[#484F58] transition-colors">
+            Dismiss Lead
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Section 0: Recommended Leads ─────────────────────────────────────────────
 
 function RecommendedLeadsSection({ fetchWithAuth }: { fetchWithAuth: (url: string, opts?: RequestInit) => Promise<Response> }) {
@@ -594,6 +745,7 @@ function RecommendedLeadsSection({ fetchWithAuth }: { fetchWithAuth: (url: strin
   const [generatedDrafts, setGeneratedDrafts] = useState<Record<number, string>>({});
   const [genError, setGenError] = useState<string | null>(null);
   const [pendingDismiss, setPendingDismiss] = useState<{ id: number; leadName: string; timerId: ReturnType<typeof setTimeout> } | null>(null);
+  const [selectedLead, setSelectedLead] = useState<RecommendedLead | null>(null);
   const hasFetched = useRef(false);
 
   const loadLeads = useCallback(async () => {
@@ -723,7 +875,8 @@ function RecommendedLeadsSection({ fetchWithAuth }: { fetchWithAuth: (url: strin
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
           {active.map(lead => (
-            <div key={lead.id} className="bg-[#161B22] border border-[#30363D] rounded-xl p-4 space-y-3 hover:border-[#0078D4]/40 transition-colors">
+            <div key={lead.id} onClick={() => setSelectedLead(lead)}
+              className="bg-[#161B22] border border-[#30363D] rounded-xl p-4 space-y-3 hover:border-[#0078D4]/40 transition-colors cursor-pointer">
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0">
                   <p className="font-semibold text-[#E6EDF3] truncate">{lead.name}</p>
@@ -751,13 +904,13 @@ function RecommendedLeadsSection({ fetchWithAuth }: { fetchWithAuth: (url: strin
                 </div>
               )}
               <div className="flex flex-wrap gap-1 pt-1 border-t border-[#30363D]">
-                <button onClick={() => { void convert(lead.id); }} className="text-[10px] px-2 py-1 rounded bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30 transition-colors">Add to Leads</button>
-                <button onClick={() => setOutreachModal({ recommendedLeadId: lead.id, leadName: lead.name, leadEmail: lead.email ?? "", type: "cold_email" })} className="text-[10px] px-2 py-1 rounded bg-[#0078D4]/20 text-[#58A6FF] hover:bg-[#0078D4]/30 transition-colors">Email</button>
-                <button onClick={() => setOutreachModal({ recommendedLeadId: lead.id, leadName: lead.name, leadEmail: lead.email ?? "", type: "linkedin" })} className="text-[10px] px-2 py-1 rounded bg-[#0078D4]/20 text-[#58A6FF] hover:bg-[#0078D4]/30 transition-colors">LinkedIn</button>
-                <button onClick={() => setOutreachModal({ recommendedLeadId: lead.id, leadName: lead.name, leadEmail: lead.email ?? "", type: "followup" })} className="text-[10px] px-2 py-1 rounded bg-[#0078D4]/20 text-[#58A6FF] hover:bg-[#0078D4]/30 transition-colors">Follow-Up Seq.</button>
-                <button onClick={() => setTaskModal(lead)} className="text-[10px] px-2 py-1 rounded bg-violet-500/20 text-violet-400 hover:bg-violet-500/30 transition-colors">Add Task</button>
-                <button onClick={() => setCampaignModal(lead)} className="text-[10px] px-2 py-1 rounded bg-amber-500/20 text-amber-400 hover:bg-amber-500/30 transition-colors">Add to Campaign</button>
-                <button onClick={() => { void dismiss(lead.id); }} className="text-[10px] px-2 py-1 rounded bg-[#30363D] text-[#7D8590] hover:text-[#E6EDF3] transition-colors">Dismiss</button>
+                <button onClick={e => { e.stopPropagation(); void convert(lead.id); }} className="text-[10px] px-2 py-1 rounded bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30 transition-colors">Add to Leads</button>
+                <button onClick={e => { e.stopPropagation(); setOutreachModal({ recommendedLeadId: lead.id, leadName: lead.name, leadEmail: lead.email ?? "", type: "cold_email" }); }} className="text-[10px] px-2 py-1 rounded bg-[#0078D4]/20 text-[#58A6FF] hover:bg-[#0078D4]/30 transition-colors">Email</button>
+                <button onClick={e => { e.stopPropagation(); setOutreachModal({ recommendedLeadId: lead.id, leadName: lead.name, leadEmail: lead.email ?? "", type: "linkedin" }); }} className="text-[10px] px-2 py-1 rounded bg-[#0078D4]/20 text-[#58A6FF] hover:bg-[#0078D4]/30 transition-colors">LinkedIn</button>
+                <button onClick={e => { e.stopPropagation(); setOutreachModal({ recommendedLeadId: lead.id, leadName: lead.name, leadEmail: lead.email ?? "", type: "followup" }); }} className="text-[10px] px-2 py-1 rounded bg-[#0078D4]/20 text-[#58A6FF] hover:bg-[#0078D4]/30 transition-colors">Follow-Up Seq.</button>
+                <button onClick={e => { e.stopPropagation(); setTaskModal(lead); }} className="text-[10px] px-2 py-1 rounded bg-violet-500/20 text-violet-400 hover:bg-violet-500/30 transition-colors">Add Task</button>
+                <button onClick={e => { e.stopPropagation(); setCampaignModal(lead); }} className="text-[10px] px-2 py-1 rounded bg-amber-500/20 text-amber-400 hover:bg-amber-500/30 transition-colors">Add to Campaign</button>
+                <button onClick={e => { e.stopPropagation(); void dismiss(lead.id); }} className="text-[10px] px-2 py-1 rounded bg-[#30363D] text-[#7D8590] hover:text-[#E6EDF3] transition-colors">Dismiss</button>
               </div>
             </div>
           ))}
@@ -775,6 +928,20 @@ function RecommendedLeadsSection({ fetchWithAuth }: { fetchWithAuth: (url: strin
         </div>
       )}
 
+      {selectedLead && (
+        <RecommendedLeadSlideOver
+          lead={selectedLead}
+          campaigns={campaigns}
+          generatedDrafts={generatedDrafts}
+          fetchWithAuth={fetchWithAuth}
+          onClose={() => setSelectedLead(null)}
+          onConvert={(id) => { void convert(id); setSelectedLead(null); }}
+          onDismiss={(id) => { dismiss(id); setSelectedLead(null); }}
+          onOutreach={(opts) => { setOutreachModal(opts); setSelectedLead(null); }}
+          onTask={(lead) => { setTaskModal(lead); setSelectedLead(null); }}
+          onCampaign={(lead) => { setCampaignModal(lead); setSelectedLead(null); }}
+        />
+      )}
       {outreachModal && (
         <OutreachModal recommendedLeadId={outreachModal.recommendedLeadId} leadName={outreachModal.leadName} leadEmail={outreachModal.leadEmail}
           templateType={outreachModal.type} onClose={() => setOutreachModal(null)} fetchWithAuth={fetchWithAuth}

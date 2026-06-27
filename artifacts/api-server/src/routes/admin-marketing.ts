@@ -206,6 +206,8 @@ ${icpContext}
 
 Generate 7 highly specific, realistic recommended leads who perfectly match the above ICP. Each should be a real-sounding decision-maker at a company that would genuinely benefit from these services.
 
+IMPORTANT COMPLIANCE CONSTRAINT: Shane McCaw is a full-time federal employee (NASA). He is legally prohibited from contracting with: (1) other federal agencies, government departments, national laboratories, DoD components, or any other government entity; (2) any commercial company that holds, pursues, or is known to be a prime or subcontractor on NASA contracts. Only recommend private-sector, commercially-focused companies with NO known NASA or federal prime/sub contract relationships.
+
 Respond with a JSON array (no markdown):
 [
   {
