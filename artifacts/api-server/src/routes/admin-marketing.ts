@@ -2551,4 +2551,24 @@ router.post("/admin/leads", requireAdmin, async (req: Request, res: Response) =>
   }
 });
 
+// ─── Site config (public site URL for linking) ───────────────────────────────
+
+router.get("/admin/site-config", requireAdmin, (_req: Request, res: Response) => {
+  const domains = (process.env.REPLIT_DOMAINS ?? "")
+    .split(",")
+    .map((d) => d.trim())
+    .filter(Boolean);
+
+  const custom = domains.find((d) => !d.includes("replit."));
+  if (custom) { res.json({ publicSiteUrl: `https://${custom}` }); return; }
+
+  const replitApp = domains.find((d) => d.endsWith(".replit.app"));
+  if (replitApp) { res.json({ publicSiteUrl: `https://${replitApp}` }); return; }
+
+  const replitDev = domains.find((d) => d.endsWith(".replit.dev")) ?? process.env.REPLIT_DEV_DOMAIN;
+  if (replitDev) { res.json({ publicSiteUrl: `https://${replitDev}` }); return; }
+
+  res.json({ publicSiteUrl: "" });
+});
+
 export default router;

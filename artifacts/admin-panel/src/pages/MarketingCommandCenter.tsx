@@ -2933,9 +2933,14 @@ function LandingPagesPanel({ fetchWithAuth }: { fetchWithAuth: (url: string, opt
   const [suggestionIdx, setSuggestionIdx] = useState(0);
   const [loadingSuggestions, setLoadingSuggestions] = useState(false);
   const [suggestError, setSuggestError] = useState<string | null>(null);
+  const [publicSiteUrl, setPublicSiteUrl] = useState("");
+  const [copiedId, setCopiedId] = useState<number | null>(null);
 
   useEffect(() => {
-    fetchWithAuth(`${API}/admin/marketing/landing-pages`).then(r => r.json()).then(d => setPages(Array.isArray(d) ? d as LandingPage[] : [])).catch(() => null).finally(() => setLoading(false));
+    Promise.all([
+      fetchWithAuth(`${API}/admin/marketing/landing-pages`).then(r => r.json()).then(d => setPages(Array.isArray(d) ? d as LandingPage[] : [])).catch(() => null),
+      fetchWithAuth(`${API}/admin/site-config`).then(r => r.json()).then((d: { publicSiteUrl?: string }) => setPublicSiteUrl(d.publicSiteUrl ?? "")).catch(() => null),
+    ]).finally(() => setLoading(false));
   }, [fetchWithAuth]);
 
   const fetchSuggestions = async (force = false) => {
@@ -3007,6 +3012,17 @@ function LandingPagesPanel({ fetchWithAuth }: { fetchWithAuth: (url: string, opt
   const deletePage = async (id: number) => {
     await fetchWithAuth(`${API}/admin/marketing/landing-pages/${id}`, { method: "DELETE" });
     setPages(prev => prev.filter(p => p.id !== id));
+  };
+
+  const getPublicUrl = (slug: string) => {
+    const base = publicSiteUrl || window.location.origin;
+    return `${base}/lp/${slug}`;
+  };
+
+  const copyLink = async (page: LandingPage) => {
+    await navigator.clipboard.writeText(getPublicUrl(page.slug));
+    setCopiedId(page.id);
+    setTimeout(() => setCopiedId(null), 2000);
   };
 
   return (
@@ -3096,21 +3112,29 @@ function LandingPagesPanel({ fetchWithAuth }: { fetchWithAuth: (url: string, opt
         <div className="space-y-2">
           {pages.map(page => (
             <div key={page.id} className="bg-[#161B22] border border-[#30363D] rounded-xl overflow-hidden">
-              <div className="flex items-center gap-3 px-4 py-3">
-                <button onClick={() => setExpandedId(prev => prev === page.id ? null : page.id)} className="flex-1 text-left">
+              <div className="flex items-start gap-3 px-4 py-3">
+                <button onClick={() => setExpandedId(prev => prev === page.id ? null : page.id)} className="flex-1 text-left min-w-0">
                   <p className="text-sm font-medium text-[#E6EDF3] truncate">{page.title}</p>
-                  <p className="text-xs text-[#7D8590]">/lp/{page.slug}</p>
+                  {page.published ? (
+                    <p className="text-xs text-emerald-400/80 truncate mt-0.5 font-mono">{getPublicUrl(page.slug)}</p>
+                  ) : (
+                    <p className="text-xs text-[#7D8590] truncate mt-0.5">/lp/{page.slug} · Draft</p>
+                  )}
                 </button>
-                <div className="flex items-center gap-2 flex-shrink-0">
+                <div className="flex items-center gap-2 flex-shrink-0 mt-0.5">
                   <button onClick={() => { void togglePublish(page); }}
                     className={`text-[10px] px-2 py-0.5 rounded-full font-semibold transition-colors ${page.published ? "bg-emerald-500/20 text-emerald-400 hover:bg-red-500/20 hover:text-red-400" : "bg-[#30363D] text-[#7D8590] hover:bg-emerald-500/20 hover:text-emerald-400"}`}>
-                    {page.published ? "Published" : "Draft"}
+                    {page.published ? "Live" : "Publish"}
                   </button>
                   {page.published && (
                     <>
-                      <a href={`/lp/${page.slug}`} target="_blank" rel="noopener noreferrer" className="text-[10px] text-[#58A6FF] hover:underline">View →</a>
-                      <button onClick={() => { void navigator.clipboard.writeText(`${window.location.origin}/lp/${page.slug}`); }}
-                        className="text-[10px] px-1.5 py-0.5 rounded bg-[#30363D] text-[#7D8590] hover:text-[#E6EDF3] transition-colors" title="Copy link">🔗 Copy</button>
+                      <a href={getPublicUrl(page.slug)} target="_blank" rel="noopener noreferrer"
+                        className="text-[10px] px-1.5 py-0.5 rounded bg-[#0078D4]/20 text-[#58A6FF] hover:bg-[#0078D4]/30 transition-colors" title="Open live page">↗ Open</a>
+                      <button onClick={() => { void copyLink(page); }}
+                        className={`text-[10px] px-1.5 py-0.5 rounded transition-colors ${copiedId === page.id ? "bg-emerald-500/20 text-emerald-400" : "bg-[#30363D] text-[#7D8590] hover:text-[#E6EDF3]"}`}
+                        title="Copy public link">
+                        {copiedId === page.id ? "✓ Copied" : "🔗 Copy"}
+                      </button>
                     </>
                   )}
                   <button onClick={e => { e.stopPropagation(); void deletePage(page.id); }} className="text-[#484F58] hover:text-red-400 text-xs">✕</button>
@@ -4625,10 +4649,12 @@ function CampaignDetailView({
                   <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-semibold ${lp.published ? "bg-emerald-500/20 text-emerald-400" : "bg-[#30363D] text-[#7D8590]"}`}>
                     {lp.published ? "Live" : "Draft"}
                   </span>
-                  <button onClick={() => { void navigator.clipboard.writeText(`/lp/${lp.slug}`); }}
-                    className="text-[9px] px-2 py-0.5 rounded border border-[#30363D] text-[#7D8590] hover:text-[#E6EDF3] hover:border-[#58A6FF]/40 transition-colors">
-                    Copy URL
-                  </button>
+                  {lp.published && (
+                    <button onClick={() => { void navigator.clipboard.writeText(`${window.location.origin}/lp/${lp.slug}`); }}
+                      className="text-[9px] px-2 py-0.5 rounded border border-[#30363D] text-[#7D8590] hover:text-[#E6EDF3] hover:border-[#58A6FF]/40 transition-colors">
+                      Copy URL
+                    </button>
+                  )}
                 </div>
               </div>
             ))}
