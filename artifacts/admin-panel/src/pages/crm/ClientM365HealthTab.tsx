@@ -85,18 +85,28 @@ const CATEGORY_ICONS: Record<string, React.ReactNode> = {
 interface Props {
   clientId: number;
   fetchWithAuth: (url: string, init?: RequestInit) => Promise<Response>;
+  onOpenWizard?: () => void;
 }
 
-export default function ClientM365HealthTab({ clientId, fetchWithAuth }: Props) {
+export default function ClientM365HealthTab({ clientId, fetchWithAuth, onOpenWizard }: Props) {
   const [data, setData] = useState<HealthResponse | null>(null);
   const [loading, setLoading] = useState(true);
+  const [apiError, setApiError] = useState<string | null>(null);
 
   useEffect(() => {
     setLoading(true);
+    setApiError(null);
     fetchWithAuth(`/api/admin/clients/${clientId}/health/summary`)
-      .then(r => r.ok ? r.json() as Promise<HealthResponse> : ({ hasData: false } as HealthResponse))
+      .then(async r => {
+        if (r.ok) return r.json() as Promise<HealthResponse>;
+        const text = await r.text().catch(() => "");
+        throw new Error(`HTTP ${r.status}${text ? `: ${text.slice(0, 120)}` : ""}`);
+      })
       .then(setData)
-      .catch(() => setData({ hasData: false }))
+      .catch((err: unknown) => {
+        setApiError(err instanceof Error ? err.message : "Failed to load health data");
+        setData(null);
+      })
       .finally(() => setLoading(false));
   }, [clientId, fetchWithAuth]);
 
@@ -108,6 +118,18 @@ export default function ClientM365HealthTab({ clientId, fetchWithAuth }: Props) 
     );
   }
 
+  if (apiError) {
+    return (
+      <div className="text-center py-12 px-6">
+        <svg className="w-10 h-10 mx-auto mb-3 text-red-500/50" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+        </svg>
+        <p className="text-sm font-semibold text-red-400 mb-1">Failed to load health data</p>
+        <p className="text-xs text-[#484F58] font-mono max-w-xs mx-auto">{apiError}</p>
+      </div>
+    );
+  }
+
   if (!data || !data.hasData) {
     return (
       <div className="text-center py-12 px-6">
@@ -115,9 +137,20 @@ export default function ClientM365HealthTab({ clientId, fetchWithAuth }: Props) 
           <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
         </svg>
         <p className="text-sm font-semibold text-[#7D8590] mb-1">No health data yet</p>
-        <p className="text-xs text-[#484F58] max-w-xs mx-auto">
-          Health snapshots are recorded each time the client saves their M365 profile. Open M365 Intelligence to complete or update the profile.
+        <p className="text-xs text-[#484F58] max-w-xs mx-auto mb-5">
+          Health snapshots are recorded each time the M365 profile is saved. Complete or update the profile to generate the first snapshot.
         </p>
+        {onOpenWizard && (
+          <button
+            onClick={onOpenWizard}
+            className="inline-flex items-center gap-2 text-xs font-semibold bg-[#0078D4] text-white px-4 py-2 rounded-lg hover:bg-[#006CBE] transition-colors"
+          >
+            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+            </svg>
+            Open M365 Intelligence Wizard
+          </button>
+        )}
       </div>
     );
   }

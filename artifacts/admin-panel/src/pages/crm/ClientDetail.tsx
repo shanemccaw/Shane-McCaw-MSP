@@ -2287,7 +2287,7 @@ export default function ClientDetailPage() {
           </button>
           {showM365Health && (
             <div className="border-t border-[#30363D] bg-[#0D1117]">
-              <ClientM365HealthTab clientId={clientId} fetchWithAuth={fetchWithAuth} />
+              <ClientM365HealthTab clientId={clientId} fetchWithAuth={fetchWithAuth} onOpenWizard={() => void openM365Dialog()} />
             </div>
           )}
         </div>
