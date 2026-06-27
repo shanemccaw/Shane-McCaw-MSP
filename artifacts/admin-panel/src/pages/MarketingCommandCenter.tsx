@@ -6021,6 +6021,12 @@ function CampaignBuilderWizard({ fetchWithAuth }: { fetchWithAuth: (url: string,
   const [topicSuggestions, setTopicSuggestions] = useState<string[] | null>(null);
   const [loadingTopics, setLoadingTopics] = useState(false);
   const [expandingTopic, setExpandingTopic] = useState<string | null>(null);
+  const [audienceSuggestions, setAudienceSuggestions] = useState<string[] | null>(null);
+  const [loadingAudienceTopics, setLoadingAudienceTopics] = useState(false);
+  const [expandingAudience, setExpandingAudience] = useState<string | null>(null);
+  const [offerSuggestions, setOfferSuggestions] = useState<string[] | null>(null);
+  const [loadingOfferTopics, setLoadingOfferTopics] = useState(false);
+  const [expandingOffer, setExpandingOffer] = useState<string | null>(null);
   const [previewing, setPreviewing] = useState(false);
   const [previewError, setPreviewError] = useState<string | null>(null);
   const [previewAssets, setPreviewAssets] = useState<PreviewAsset[]>([]);
@@ -6050,10 +6056,15 @@ function CampaignBuilderWizard({ fetchWithAuth }: { fetchWithAuth: (url: string,
           setGoal(data.value);
           if (!name.trim() && topic) setName(topic);
           setTopicSuggestions(null);
-        } else if (field === "audience") setAudience(data.value);
-        else if (field === "offer") setOffer(data.value);
+        } else if (field === "audience") {
+          setAudience(data.value);
+          setAudienceSuggestions(null);
+        } else if (field === "offer") {
+          setOffer(data.value);
+          setOfferSuggestions(null);
+        }
       }
-    } finally { setAiFillingField(null); setExpandingTopic(null); }
+    } finally { setAiFillingField(null); setExpandingTopic(null); setExpandingAudience(null); setExpandingOffer(null); }
   };
 
   const fetchTopics = async () => {
@@ -6073,6 +6084,44 @@ function CampaignBuilderWizard({ fetchWithAuth }: { fetchWithAuth: (url: string,
   const pickTopic = async (topic: string) => {
     setExpandingTopic(topic);
     await aiFillField("goal", topic);
+  };
+
+  const fetchAudienceTopics = async () => {
+    setLoadingAudienceTopics(true);
+    setAudienceSuggestions(null);
+    try {
+      const r = await fetchWithAuth(`${API}/admin/marketing/generate/audience-topics`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ goal }),
+      });
+      const data = await r.json() as { topics?: string[] };
+      if (Array.isArray(data.topics)) setAudienceSuggestions(data.topics);
+    } finally { setLoadingAudienceTopics(false); }
+  };
+
+  const pickAudience = async (topic: string) => {
+    setExpandingAudience(topic);
+    await aiFillField("audience", topic);
+  };
+
+  const fetchOfferTopics = async () => {
+    setLoadingOfferTopics(true);
+    setOfferSuggestions(null);
+    try {
+      const r = await fetchWithAuth(`${API}/admin/marketing/generate/offer-topics`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ goal, audience }),
+      });
+      const data = await r.json() as { topics?: string[] };
+      if (Array.isArray(data.topics)) setOfferSuggestions(data.topics);
+    } finally { setLoadingOfferTopics(false); }
+  };
+
+  const pickOffer = async (topic: string) => {
+    setExpandingOffer(topic);
+    await aiFillField("offer", topic);
   };
 
   const previewAssetGeneration = async () => {
@@ -6122,6 +6171,8 @@ function CampaignBuilderWizard({ fetchWithAuth }: { fetchWithAuth: (url: string,
   const reset = () => {
     setStep(1); setGoal(""); setAudience(""); setOffer(""); setName(""); setPreviewAssets([]); setSavedCampaignId(null);
     setTopicSuggestions(null); setLoadingTopics(false); setExpandingTopic(null);
+    setAudienceSuggestions(null); setLoadingAudienceTopics(false); setExpandingAudience(null);
+    setOfferSuggestions(null); setLoadingOfferTopics(false); setExpandingOffer(null);
   };
 
   const handleCampaignUpdated = (updated: Campaign) => {
@@ -6262,11 +6313,50 @@ function CampaignBuilderWizard({ fetchWithAuth }: { fetchWithAuth: (url: string,
               <div>
                 <div className="flex items-center justify-between mb-1">
                   <label className="text-xs font-semibold text-[#E6EDF3]">Target Audience *</label>
-                  <button onClick={() => { void aiFillField("audience"); }} disabled={aiFillingField !== null}
+                  <button
+                    onClick={() => { void fetchAudienceTopics(); }}
+                    disabled={loadingAudienceTopics || aiFillingField === "audience"}
                     className="text-[10px] px-2 py-0.5 rounded border border-[#0078D4]/40 text-[#58A6FF] hover:bg-[#0078D4]/10 disabled:opacity-40 transition-colors flex items-center gap-1">
-                    {aiFillingField === "audience" ? <><div className="w-2.5 h-2.5 border border-[#58A6FF] border-t-transparent rounded-full animate-spin" />Filling…</> : "✦ AI Fill"}
+                    {loadingAudienceTopics ? <><div className="w-2.5 h-2.5 border border-[#58A6FF] border-t-transparent rounded-full animate-spin" />Loading…</> : "✦ AI Fill"}
                   </button>
                 </div>
+
+                {/* Audience bubble picker */}
+                {(loadingAudienceTopics || audienceSuggestions !== null) && (
+                  <div className="mb-2 p-2.5 bg-[#0D1117] border border-[#30363D] rounded-lg space-y-2">
+                    {loadingAudienceTopics && (
+                      <div className="flex items-center gap-2 text-[#7D8590] text-xs">
+                        <div className="w-3 h-3 border border-[#58A6FF] border-t-transparent rounded-full animate-spin" />
+                        Generating audience ideas…
+                      </div>
+                    )}
+                    {audienceSuggestions !== null && !loadingAudienceTopics && (
+                      <>
+                        <p className="text-[10px] text-[#7D8590]">Pick an audience segment to expand:</p>
+                        <div className="flex flex-wrap gap-1.5">
+                          {audienceSuggestions.map(seg => (
+                            <button
+                              key={seg}
+                              onClick={() => { void pickAudience(seg); }}
+                              disabled={aiFillingField === "audience"}
+                              className="flex items-center gap-1 px-2.5 py-1 rounded-full border border-[#0078D4]/50 bg-[#0078D4]/10 text-[#58A6FF] text-xs font-medium hover:bg-[#0078D4]/20 hover:border-[#0078D4] disabled:opacity-40 transition-colors">
+                              {expandingAudience === seg && aiFillingField === "audience"
+                                ? <><div className="w-2.5 h-2.5 border border-[#58A6FF] border-t-transparent rounded-full animate-spin" />{seg}</>
+                                : seg}
+                            </button>
+                          ))}
+                        </div>
+                        <button
+                          onClick={() => { void fetchAudienceTopics(); }}
+                          disabled={loadingAudienceTopics || aiFillingField === "audience"}
+                          className="text-[10px] text-[#7D8590] hover:text-[#58A6FF] disabled:opacity-40 transition-colors">
+                          ↻ New suggestions
+                        </button>
+                      </>
+                    )}
+                  </div>
+                )}
+
                 <textarea value={audience} onChange={e => setAudience(e.target.value)} rows={3} placeholder="e.g. IT Directors and CTOs at mid-market companies (100-500 employees) using Microsoft 365…"
                   className="mt-1 w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-sm text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60 resize-none" />
               </div>
@@ -6283,11 +6373,50 @@ function CampaignBuilderWizard({ fetchWithAuth }: { fetchWithAuth: (url: string,
               <div>
                 <div className="flex items-center justify-between mb-1">
                   <label className="text-xs font-semibold text-[#E6EDF3]">Your Offer *</label>
-                  <button onClick={() => { void aiFillField("offer"); }} disabled={aiFillingField !== null}
+                  <button
+                    onClick={() => { void fetchOfferTopics(); }}
+                    disabled={loadingOfferTopics || aiFillingField === "offer"}
                     className="text-[10px] px-2 py-0.5 rounded border border-[#0078D4]/40 text-[#58A6FF] hover:bg-[#0078D4]/10 disabled:opacity-40 transition-colors flex items-center gap-1">
-                    {aiFillingField === "offer" ? <><div className="w-2.5 h-2.5 border border-[#58A6FF] border-t-transparent rounded-full animate-spin" />Filling…</> : "✦ AI Fill"}
+                    {loadingOfferTopics ? <><div className="w-2.5 h-2.5 border border-[#58A6FF] border-t-transparent rounded-full animate-spin" />Loading…</> : "✦ AI Fill"}
                   </button>
                 </div>
+
+                {/* Offer bubble picker */}
+                {(loadingOfferTopics || offerSuggestions !== null) && (
+                  <div className="mb-2 p-2.5 bg-[#0D1117] border border-[#30363D] rounded-lg space-y-2">
+                    {loadingOfferTopics && (
+                      <div className="flex items-center gap-2 text-[#7D8590] text-xs">
+                        <div className="w-3 h-3 border border-[#58A6FF] border-t-transparent rounded-full animate-spin" />
+                        Generating offer ideas…
+                      </div>
+                    )}
+                    {offerSuggestions !== null && !loadingOfferTopics && (
+                      <>
+                        <p className="text-[10px] text-[#7D8590]">Pick an offer to expand:</p>
+                        <div className="flex flex-wrap gap-1.5">
+                          {offerSuggestions.map(ofr => (
+                            <button
+                              key={ofr}
+                              onClick={() => { void pickOffer(ofr); }}
+                              disabled={aiFillingField === "offer"}
+                              className="flex items-center gap-1 px-2.5 py-1 rounded-full border border-[#0078D4]/50 bg-[#0078D4]/10 text-[#58A6FF] text-xs font-medium hover:bg-[#0078D4]/20 hover:border-[#0078D4] disabled:opacity-40 transition-colors">
+                              {expandingOffer === ofr && aiFillingField === "offer"
+                                ? <><div className="w-2.5 h-2.5 border border-[#58A6FF] border-t-transparent rounded-full animate-spin" />{ofr}</>
+                                : ofr}
+                            </button>
+                          ))}
+                        </div>
+                        <button
+                          onClick={() => { void fetchOfferTopics(); }}
+                          disabled={loadingOfferTopics || aiFillingField === "offer"}
+                          className="text-[10px] text-[#7D8590] hover:text-[#58A6FF] disabled:opacity-40 transition-colors">
+                          ↻ New suggestions
+                        </button>
+                      </>
+                    )}
+                  </div>
+                )}
+
                 <textarea value={offer} onChange={e => setOffer(e.target.value)} rows={3} placeholder="e.g. Free 30-min Microsoft Copilot Readiness Assessment ($297 value)…"
                   className="mt-1 w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-sm text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60 resize-none" />
               </div>

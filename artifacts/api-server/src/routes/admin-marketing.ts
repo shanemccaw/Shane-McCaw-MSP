@@ -733,8 +733,12 @@ router.post("/admin/marketing/generate/campaign-suggest", requireAdmin, async (r
       goal: topic
         ? `Write a single specific, measurable campaign goal sentence centred on the topic "${topic}" for a Microsoft 365 consulting firm. Context: ${icpContext}. Return one concise goal sentence (1-2 sentences).`
         : `Suggest a specific, measurable campaign goal for a Microsoft 365 consulting firm. Campaign name: "${name ?? "new campaign"}". Context: ${icpContext}. Return one concise goal sentence (1-2 sentences).`,
-      audience: `Suggest a target audience description for a Microsoft 365 consulting campaign with goal: "${goal ?? "generate leads"}". Context: ${icpContext}. Return one concise audience paragraph.`,
-      offer: `Suggest a compelling offer for a Microsoft 365 consulting campaign targeting "${audience ?? "IT decision-makers"}" with goal "${goal ?? "generate leads"}". Context: ${icpContext}. Return one concise offer description (1-2 sentences).`,
+      audience: topic
+        ? `Write a specific target audience description for the audience segment "${topic}" for a Microsoft 365 consulting campaign with goal: "${goal ?? "generate leads"}". Context: ${icpContext}. Return one concise audience paragraph (2-3 sentences).`
+        : `Suggest a target audience description for a Microsoft 365 consulting campaign with goal: "${goal ?? "generate leads"}". Context: ${icpContext}. Return one concise audience paragraph.`,
+      offer: topic
+        ? `Write a compelling offer description focused on "${topic}" for a Microsoft 365 consulting campaign targeting "${audience ?? "IT decision-makers"}" with goal "${goal ?? "generate leads"}". Context: ${icpContext}. Return one concise offer description (1-2 sentences).`
+        : `Suggest a compelling offer for a Microsoft 365 consulting campaign targeting "${audience ?? "IT decision-makers"}" with goal "${goal ?? "generate leads"}". Context: ${icpContext}. Return one concise offer description (1-2 sentences).`,
     };
 
     const prompt = fieldPrompts[field];
@@ -755,6 +759,71 @@ router.post("/admin/marketing/generate/campaign-suggest", requireAdmin, async (r
     res.json(result);
   } catch (e) {
     if (e instanceof AiResponseError) { req.log.warn({ err: e }, "AI parse failed on /generate/campaign-suggest"); res.json({ ...aiErrorResponse(e), value: "" }); return; }
+    res.status(500).json({ error: e instanceof Error ? e.message : String(e) });
+  }
+});
+
+router.post("/admin/marketing/generate/audience-topics", requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const { goal } = req.body as { goal?: string };
+    const icpContext = await buildICPContext();
+
+    const message = await anthropic.messages.create({
+      model: "claude-haiku-4-5",
+      max_tokens: 400,
+      messages: [{
+        role: "user",
+        content: `You are a marketing strategist for Shane McCaw Consulting, a Microsoft 365 consulting firm led by a 30-year Microsoft veteran.
+
+${icpContext}
+
+Campaign goal: "${goal ?? "generate leads for Microsoft 365 consulting"}"
+
+Generate exactly 5 short target audience segment labels relevant to this campaign. Each should be 3-7 words, specific and job-role focused (e.g. "IT Directors — Healthcare", "CTOs at Mid-Market SaaS", "Government IT Managers").
+
+Respond with JSON only (no markdown): {"topics":["Audience One","Audience Two","Audience Three","Audience Four","Audience Five"]}`,
+      }],
+    });
+
+    const content = message.content[0];
+    if (content?.type !== "text") throw new Error("Unexpected response type");
+    const result = parseAiJson(content.text, z.object({ topics: z.array(z.string()).length(5) }));
+    res.json(result);
+  } catch (e) {
+    if (e instanceof AiResponseError) { res.json(aiErrorResponse(e)); return; }
+    res.status(500).json({ error: e instanceof Error ? e.message : String(e) });
+  }
+});
+
+router.post("/admin/marketing/generate/offer-topics", requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const { goal, audience } = req.body as { goal?: string; audience?: string };
+    const icpContext = await buildICPContext();
+
+    const message = await anthropic.messages.create({
+      model: "claude-haiku-4-5",
+      max_tokens: 400,
+      messages: [{
+        role: "user",
+        content: `You are a marketing strategist for Shane McCaw Consulting, a Microsoft 365 consulting firm led by a 30-year Microsoft veteran.
+
+${icpContext}
+
+Campaign goal: "${goal ?? "generate leads"}"
+Target audience: "${audience ?? "IT decision-makers"}"
+
+Generate exactly 5 short offer idea labels for this campaign. Each should be 3-7 words, compelling and specific (e.g. "Free Copilot Assessment", "30-Day M365 Audit", "SharePoint Quick-Start Package").
+
+Respond with JSON only (no markdown): {"topics":["Offer One","Offer Two","Offer Three","Offer Four","Offer Five"]}`,
+      }],
+    });
+
+    const content = message.content[0];
+    if (content?.type !== "text") throw new Error("Unexpected response type");
+    const result = parseAiJson(content.text, z.object({ topics: z.array(z.string()).length(5) }));
+    res.json(result);
+  } catch (e) {
+    if (e instanceof AiResponseError) { res.json(aiErrorResponse(e)); return; }
     res.status(500).json({ error: e instanceof Error ? e.message : String(e) });
   }
 });
