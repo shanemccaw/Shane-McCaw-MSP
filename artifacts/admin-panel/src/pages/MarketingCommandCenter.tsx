@@ -3468,6 +3468,9 @@ function FollowUpsSection({ fetchWithAuth }: { fetchWithAuth: (url: string, opts
 function AiMoneyTasksButton({ fetchWithAuth, onAdded }: { fetchWithAuth: (url: string, opts?: RequestInit) => Promise<Response>; onAdded: (tasks: MarketingTask[]) => void }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [pendingTasks, setPendingTasks] = useState<MarketingTask[]>([]);
+  const [checkedMoneyTasks, setCheckedMoneyTasks] = useState<Set<number>>(new Set());
+  const [showDialog, setShowDialog] = useState(false);
 
   const generate = async () => {
     setLoading(true);
@@ -3480,20 +3483,100 @@ function AiMoneyTasksButton({ fetchWithAuth, onAdded }: { fetchWithAuth: (url: s
         setError(msg);
         return;
       }
-      if (Array.isArray(data)) onAdded(data as MarketingTask[]);
+      if (Array.isArray(data) && (data as MarketingTask[]).length > 0) {
+        const tasks = data as MarketingTask[];
+        setPendingTasks(tasks);
+        setCheckedMoneyTasks(new Set(tasks.map((_, i) => i)));
+        setShowDialog(true);
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Network error");
     } finally { setLoading(false); }
   };
 
+  const confirm = () => {
+    const selected = pendingTasks.filter((_, i) => checkedMoneyTasks.has(i));
+    if (selected.length > 0) onAdded(selected);
+    setPendingTasks([]);
+    setCheckedMoneyTasks(new Set());
+    setShowDialog(false);
+  };
+
+  const cancel = () => {
+    setPendingTasks([]);
+    setCheckedMoneyTasks(new Set());
+    setShowDialog(false);
+  };
+
+  const allChecked = checkedMoneyTasks.size === pendingTasks.length;
+
   return (
-    <div className="flex flex-col items-start gap-1">
-      <button onClick={() => { void generate(); }} disabled={loading}
-        className="text-xs px-3 py-1.5 rounded-lg border border-amber-500/40 text-amber-300 hover:bg-amber-500/10 disabled:opacity-40 transition-colors flex items-center gap-1">
-        {loading ? <><div className="w-3 h-3 border border-amber-300 border-t-transparent rounded-full animate-spin" />Generating…</> : "💰 AI Money Tasks"}
-      </button>
-      {error && <p className="text-xs text-red-400 max-w-xs">{error}</p>}
-    </div>
+    <>
+      {showDialog && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
+          onClick={e => { if (e.target === e.currentTarget) cancel(); }}
+        >
+          <div className="bg-[#161B22] border border-[#30363D] rounded-xl w-full max-w-md mx-4 shadow-2xl">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-[#30363D]">
+              <div>
+                <h3 className="text-sm font-semibold text-[#E6EDF3]">💰 AI Money Tasks</h3>
+                <p className="text-xs text-[#7D8590] mt-0.5">Uncheck tasks you don't want, then add the rest to the board.</p>
+              </div>
+              <button onClick={cancel} className="text-[#7D8590] hover:text-[#E6EDF3] text-lg leading-none transition-colors">×</button>
+            </div>
+            <div className="px-5 py-2 border-b border-[#30363D]/60">
+              <button
+                onClick={() => setCheckedMoneyTasks(allChecked ? new Set() : new Set(pendingTasks.map((_, i) => i)))}
+                className="text-[10px] text-[#7D8590] hover:text-[#58A6FF] transition-colors"
+              >
+                {allChecked ? "Deselect all" : "Select all"}
+              </button>
+            </div>
+            <div className="px-5 py-3 space-y-2 max-h-80 overflow-y-auto">
+              {pendingTasks.map((t, i) => (
+                <label key={i} className="flex items-start gap-3 cursor-pointer group">
+                  <input
+                    type="checkbox"
+                    checked={checkedMoneyTasks.has(i)}
+                    onChange={() => setCheckedMoneyTasks(prev => {
+                      const next = new Set(prev);
+                      if (next.has(i)) next.delete(i); else next.add(i);
+                      return next;
+                    })}
+                    className="mt-0.5 accent-amber-400 w-4 h-4 shrink-0"
+                  />
+                  <div className={`transition-opacity ${checkedMoneyTasks.has(i) ? "opacity-100" : "opacity-40"}`}>
+                    <p className="text-sm font-medium text-[#E6EDF3] leading-snug">{t.title}</p>
+                    {t.description && <p className="text-xs text-[#7D8590] mt-0.5 leading-snug">{t.description}</p>}
+                  </div>
+                </label>
+              ))}
+            </div>
+            <div className="flex items-center justify-between px-5 py-4 border-t border-[#30363D]">
+              <span className="text-xs text-[#7D8590]">{checkedMoneyTasks.size} of {pendingTasks.length} selected</span>
+              <div className="flex gap-2">
+                <button onClick={cancel} className="text-xs px-3 py-1.5 rounded-lg border border-[#30363D] text-[#7D8590] hover:text-[#E6EDF3] transition-colors">Cancel</button>
+                <button
+                  onClick={confirm}
+                  disabled={checkedMoneyTasks.size === 0}
+                  className="text-xs px-4 py-1.5 rounded-lg bg-amber-500 text-[#0D1117] font-semibold hover:bg-amber-400 disabled:opacity-40 transition-colors"
+                >
+                  Add {checkedMoneyTasks.size} to Board
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+      <div className="flex flex-col items-start gap-1">
+        <button onClick={() => { void generate(); }} disabled={loading}
+          className="text-xs px-3 py-1.5 rounded-lg border border-amber-500/40 text-amber-300 hover:bg-amber-500/10 disabled:opacity-40 transition-colors flex items-center gap-1">
+          {loading ? <><div className="w-3 h-3 border border-amber-300 border-t-transparent rounded-full animate-spin" />Generating…</> : "💰 AI Money Tasks"}
+        </button>
+        {error && <p className="text-xs text-red-400 max-w-xs">{error}</p>}
+      </div>
+    </>
   );
 }
 
