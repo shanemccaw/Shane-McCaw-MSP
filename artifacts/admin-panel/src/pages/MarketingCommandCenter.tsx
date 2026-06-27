@@ -2503,6 +2503,7 @@ function CampaignBuilderWizard({ fetchWithAuth }: { fetchWithAuth: (url: string,
   const [name, setName] = useState("");
   const [aiFillingField, setAiFillingField] = useState<"goal" | "audience" | "offer" | null>(null);
   const [previewing, setPreviewing] = useState(false);
+  const [previewError, setPreviewError] = useState<string | null>(null);
   const [previewAssets, setPreviewAssets] = useState<PreviewAsset[]>([]);
   const [saving, setSaving] = useState(false);
   const [savedCampaignId, setSavedCampaignId] = useState<number | null>(null);
@@ -2533,15 +2534,22 @@ function CampaignBuilderWizard({ fetchWithAuth }: { fetchWithAuth: (url: string,
 
   const previewAssetGeneration = async () => {
     setPreviewing(true);
+    setPreviewError(null);
     try {
       const r = await fetchWithAuth(`${API}/admin/marketing/campaigns/preview-assets`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name: name || `Campaign ${new Date().toLocaleDateString()}`, goal, audience, offer }),
       });
-      const assets = await r.json() as PreviewAsset[];
-      setPreviewAssets(assets);
+      const data = await r.json() as PreviewAsset[] | { error: string };
+      if (!r.ok || !Array.isArray(data)) {
+        setPreviewError((data as { error?: string }).error ?? "Failed to generate preview — please try again.");
+        return;
+      }
+      setPreviewAssets(data);
       setStep(4);
+    } catch {
+      setPreviewError("Network error — check your connection and try again.");
     } finally { setPreviewing(false); }
   };
 
@@ -2663,6 +2671,9 @@ function CampaignBuilderWizard({ fetchWithAuth }: { fetchWithAuth: (url: string,
                   {previewing ? <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />Generating Preview…</> : "Preview Campaign →"}
                 </button>
               </div>
+              {previewError && (
+                <p className="text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2">{previewError}</p>
+              )}
             </div>
           )}
 
