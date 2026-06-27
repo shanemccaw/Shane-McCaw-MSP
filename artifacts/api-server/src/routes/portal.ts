@@ -7496,6 +7496,7 @@ router.get("/portal/projects/:projectId/manual-scripts", requireAuth, async (req
         scriptName: scriptCatalogTable.name,
         description: scriptCatalogTable.description,
         manualRequirements: scriptCatalogTable.manualRequirements,
+        outputSchema: scriptCatalogTable.outputSchema,
         psScriptBody: scriptCatalogTable.psScriptBody,
       })
       .from(scriptRunResultsTable)
@@ -7547,6 +7548,10 @@ router.get("/portal/projects/:projectId/manual-scripts", requireAuth, async (req
         scriptName: row.scriptName,
         description: row.description,
         manualRequirements: Array.isArray(row.manualRequirements) ? row.manualRequirements as string[] : [],
+        outputSchema: (row.outputSchema ?? null) as {
+          required?: string[];
+          properties?: Record<string, { type: string }>;
+        } | null,
         filename: pkg.filename,
         instructions: pkg.instructions,
         findings: Array.isArray(row.parsedFindings) ? row.parsedFindings as string[] : [],

@@ -1,12 +1,19 @@
 import { useState, useRef, useCallback } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 
+export interface OutputSchema {
+  required?: string[];
+  properties?: Record<string, { type: string }>;
+}
+
 export interface ManualScriptRecord {
   runResultId: number;
   scriptId: number;
   scriptName: string;
   description: string | null;
   manualRequirements: string[];
+  /** JSON schema used to validate uploaded output client-side before POSTing */
+  outputSchema: OutputSchema | null;
   status: "awaiting_upload" | "completed";
   createdAt: string;
   uploadedAt: string | null;
@@ -18,6 +25,42 @@ export interface ManualScriptRecord {
   findings?: string[];
   /** AI-generated recommendations from the uploaded JSON output */
   recommendations?: string[];
+}
+
+/**
+ * Runs a lightweight client-side schema check against the uploaded JSON data.
+ * Returns an array of human-readable error strings (empty = valid).
+ */
+function validateAgainstSchema(
+  data: Record<string, unknown>,
+  schema: OutputSchema,
+  scriptName: string,
+): string[] {
+  const errors: string[] = [];
+
+  if (Array.isArray(schema.required)) {
+    const missing = schema.required.filter(key => !(key in data));
+    if (missing.length > 0) {
+      errors.push(
+        `Missing required field${missing.length > 1 ? "s" : ""} for "${scriptName}": ${missing.map(k => `"${k}"`).join(", ")}. Please re-run the script and upload the correct output file.`,
+      );
+    }
+  }
+
+  if (schema.properties) {
+    for (const [key, def] of Object.entries(schema.properties)) {
+      if (!(key in data)) continue;
+      const value = data[key];
+      const expectedType = def.type;
+      let actualType: string = typeof value;
+      if (Array.isArray(value)) actualType = "array";
+      if (actualType !== expectedType) {
+        errors.push(`"${key}" must be of type ${expectedType} but got ${actualType}.`);
+      }
+    }
+  }
+
+  return errors;
 }
 
 interface Props {
@@ -163,8 +206,17 @@ export function ManualScriptUploadCard({ script, projectId, onCompleted }: Props
       return;
     }
 
+    if (script.outputSchema) {
+      const schemaErrors = validateAgainstSchema(parsed, script.outputSchema, script.scriptName);
+      if (schemaErrors.length > 0) {
+        setErrorKind("mismatch");
+        setError(schemaErrors.join(" "));
+        return;
+      }
+    }
+
     await submitJson(parsed);
-  }, [submitJson]);
+  }, [submitJson, script.outputSchema, script.scriptName]);
 
   const handlePasteSubmit = useCallback(async () => {
     setError(null);
@@ -193,8 +245,17 @@ export function ManualScriptUploadCard({ script, projectId, onCompleted }: Props
       return;
     }
 
+    if (script.outputSchema) {
+      const schemaErrors = validateAgainstSchema(parsed, script.outputSchema, script.scriptName);
+      if (schemaErrors.length > 0) {
+        setErrorKind("mismatch");
+        setError(schemaErrors.join(" "));
+        return;
+      }
+    }
+
     await submitJson(parsed);
-  }, [pasteText, submitJson]);
+  }, [pasteText, submitJson, script.outputSchema, script.scriptName]);
 
   const handleFileDrop = useCallback((e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
