@@ -51,12 +51,10 @@ const CATEGORIES = [
 
 const CATEGORY_MAP = Object.fromEntries(CATEGORIES.map((c) => [c.value, c.label]));
 
-const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
-
 // ─── API helpers ──────────────────────────────────────────────────────────────
 
 async function apiFetch(path: string, token: string, opts: RequestInit = {}) {
-  const res = await fetch(`${BASE}/api${path}`, {
+  const res = await fetch(`/api${path}`, {
     ...opts,
     headers: {
       "Content-Type": "application/json",
