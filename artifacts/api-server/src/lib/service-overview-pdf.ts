@@ -429,7 +429,9 @@ export async function generateServiceOverviewPdf(serviceName: string): Promise<B
   page.drawRectangle({ x: margin, y: y - 32, width: bodyW, height: 40, color: rgb(0.94, 0.97, 1) });
   page.drawRectangle({ x: margin, y: y + 8 - 32, width: 3, height: 32, color: navy });
   dt(page, "Purchase This Service", margin + 12, y - 4, bold, 10, navy);
-  const purchaseUrl = `https://shanemccaw.com/crm/portal/onboarding/select?serviceIds=${service.id}`;
+  const purchaseUrl = service.slug
+    ? `https://shanemccaw.com/crm/portal/onboarding/select?service=${service.slug}`
+    : `https://shanemccaw.com/crm/portal/onboarding/select`;
   const purchaseUrlX = margin + 12;
   const purchaseUrlY = y - 18;
   dt(page, purchaseUrl, purchaseUrlX, purchaseUrlY, regular, 8, blue);
