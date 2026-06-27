@@ -5868,7 +5868,8 @@ function LandingCopyPanel({
   );
 }
 
-function OfferIndicator({ offers, isSnapshot, hasCampaign }: { offers: Array<{ name: string }>; isSnapshot?: boolean; hasCampaign?: boolean }) {
+function OfferIndicator({ offers, isSnapshot, hasCampaign, deletedCount }: { offers: Array<{ name: string }>; isSnapshot?: boolean; hasCampaign?: boolean; deletedCount?: number }) {
+  const hasDeleted = (deletedCount ?? 0) > 0;
   return (
     <p className="text-[10px] text-[#484F58]">
       {offers.length > 0
@@ -5877,10 +5878,22 @@ function OfferIndicator({ offers, isSnapshot, hasCampaign }: { offers: Array<{ n
               ? <span className="text-[#58A6FF] mr-1" title="Snapshot of offers active at generation time">📸</span>
               : null}
             {`${isSnapshot ? "Generated with" : "Using"} ${offers.length} offer${offers.length === 1 ? "" : "s"}: ${offers.map(o => o.name).join(", ")}`}
+            {hasDeleted && (
+              <span className="text-amber-400 ml-1" title="Some offers linked at generation time have since been deleted">
+                ({deletedCount} deleted offer{deletedCount === 1 ? "" : "s"})
+              </span>
+            )}
           </>
         : hasCampaign === false
           ? "Standalone asset — no offer context"
-          : "No linked offers — using campaign description only"}
+          : hasDeleted
+            ? <>
+                <span className="text-[#58A6FF] mr-1" title="Snapshot of offers active at generation time">📸</span>
+                <span className="text-amber-400">
+                  {deletedCount} deleted offer{deletedCount === 1 ? "" : "s"} — attribution data incomplete
+                </span>
+              </>
+            : "No linked offers — using campaign description only"}
     </p>
   );
 }
@@ -7455,6 +7468,9 @@ function AdLibrarySection({
             const assetOffers = hasSnapshot
               ? (snapshotIds as number[]).map(id => allOffersById[id]).filter(Boolean) as Array<{ name: string }>
               : (asset.campaignId != null ? (campaignOffers[asset.campaignId] ?? []) : []);
+            const deletedOfferCount = hasSnapshot
+              ? (snapshotIds as number[]).length - assetOffers.length
+              : 0;
 
             return (
               <div key={asset.id} className="bg-[#161B22] border border-[#30363D] rounded-xl overflow-hidden">
@@ -7480,7 +7496,7 @@ function AdLibrarySection({
                       )}
                     </div>
                     <p className="text-sm font-semibold text-[#E6EDF3] truncate">{asset.title}</p>
-                    <OfferIndicator offers={assetOffers} isSnapshot={hasSnapshot} hasCampaign={asset.campaignId != null} />
+                    <OfferIndicator offers={assetOffers} isSnapshot={hasSnapshot} hasCampaign={asset.campaignId != null} deletedCount={deletedOfferCount} />
                     <p className="text-[10px] text-[#484F58]">
                       {variations.length > 0 && `${variations.length} variation${variations.length !== 1 ? "s" : ""} · `}
                       {new Date(asset.createdAt).toLocaleDateString()}
