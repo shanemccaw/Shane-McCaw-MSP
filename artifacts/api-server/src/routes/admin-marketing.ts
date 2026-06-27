@@ -242,11 +242,15 @@ router.post("/admin/marketing/recommended-leads/:id/convert", requireAdmin, asyn
       return;
     }
 
+    const body = req.body as { outreachDraft?: string | null } | undefined;
+    const outreachDraft = body?.outreachDraft ?? null;
+
     const emailFallback = `${rec.name.toLowerCase().replace(/\s+/g, ".")}@${(rec.company ?? "company").toLowerCase().replace(/\s+/g, "")}.com`;
     const noteParts: string[] = [`[${new Date().toISOString()}] Converted from AI-recommended lead.`];
     if (rec.whyFit) noteParts.push(`Why fit: ${rec.whyFit}`);
     if (rec.recommendedService) noteParts.push(`Recommended service: ${rec.recommendedService}`);
     if (rec.confidence) noteParts.push(`Confidence: ${rec.confidence}%`);
+    if (outreachDraft) noteParts.push(`\n--- AI Outreach Draft ---\n${outreachDraft}`);
 
     const [newLead] = await db.insert(leadsTable).values({
       name: rec.name,

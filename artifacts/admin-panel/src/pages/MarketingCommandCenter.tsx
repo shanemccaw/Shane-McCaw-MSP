@@ -224,9 +224,10 @@ function SendEmailModal({ initialTo, initialSubject, initialBody, leadId, onClos
 
 // ─── Outreach Modal ───────────────────────────────────────────────────────────
 
-function OutreachModal({ leadName, leadEmail, leadId, templateType, onClose, fetchWithAuth }: {
+function OutreachModal({ leadName, leadEmail, leadId, templateType, onClose, fetchWithAuth, onGenerated }: {
   leadName?: string; leadEmail?: string; leadId?: number; templateType?: string; onClose: () => void;
   fetchWithAuth: (url: string, opts?: RequestInit) => Promise<Response>;
+  onGenerated?: (content: string) => void;
 }) {
   const [selectedType, setSelectedType] = useState(templateType ?? "cold_email");
   const [content, setContent] = useState("");
@@ -244,7 +245,9 @@ function OutreachModal({ leadName, leadEmail, leadId, templateType, onClose, fet
         body: JSON.stringify({ leadId, name: leadName, templateType: selectedType }),
       });
       const data = await r.json() as { content: string };
-      setContent(data.content ?? "");
+      const generated = data.content ?? "";
+      setContent(generated);
+      if (generated) onGenerated?.(generated);
     } finally { setGenerating(false); }
   };
 
@@ -453,6 +456,7 @@ function RecommendedLeadsSection({ fetchWithAuth }: { fetchWithAuth: (url: strin
   const [outreachModal, setOutreachModal] = useState<{ leadId: number; leadName: string; leadEmail: string; type: string } | null>(null);
   const [taskModal, setTaskModal] = useState<RecommendedLead | null>(null);
   const [campaignModal, setCampaignModal] = useState<RecommendedLead | null>(null);
+  const [generatedDrafts, setGeneratedDrafts] = useState<Record<number, string>>({});
   const hasFetched = useRef(false);
 
   const loadLeads = useCallback(async () => {
@@ -485,7 +489,12 @@ function RecommendedLeadsSection({ fetchWithAuth }: { fetchWithAuth: (url: strin
   }, [loadLeads, generate, fetchWithAuth]);
 
   const convert = async (id: number) => {
-    await fetchWithAuth(`${API}/admin/marketing/recommended-leads/${id}/convert`, { method: "POST" });
+    const draft = generatedDrafts[id] ?? null;
+    await fetchWithAuth(`${API}/admin/marketing/recommended-leads/${id}/convert`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ outreachDraft: draft }),
+    });
     setLeads(prev => prev.map(l => l.id === id ? { ...l, status: "converted" as const } : l));
   };
 
@@ -557,7 +566,8 @@ function RecommendedLeadsSection({ fetchWithAuth }: { fetchWithAuth: (url: strin
 
       {outreachModal && (
         <OutreachModal leadId={outreachModal.leadId} leadName={outreachModal.leadName} leadEmail={outreachModal.leadEmail}
-          templateType={outreachModal.type} onClose={() => setOutreachModal(null)} fetchWithAuth={fetchWithAuth} />
+          templateType={outreachModal.type} onClose={() => setOutreachModal(null)} fetchWithAuth={fetchWithAuth}
+          onGenerated={(content) => setGeneratedDrafts(prev => ({ ...prev, [outreachModal.leadId]: content }))} />
       )}
       {taskModal && (
         <AddTaskModal lead={taskModal} onClose={() => setTaskModal(null)} fetchWithAuth={fetchWithAuth} />
