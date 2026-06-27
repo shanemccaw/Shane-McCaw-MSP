@@ -64,6 +64,11 @@ export const leadsTable = pgTable("leads", {
   maturityIndicators: jsonb("maturity_indicators").$type<string[]>().notNull().default([]),
   engagementSignals: jsonb("engagement_signals").$type<string[]>().notNull().default([]),
   urgencySignals: jsonb("urgency_signals").$type<string[]>().notNull().default([]),
+  // Extended fields for Marketing Command Center
+  role: text("role"),
+  phone: text("phone"),
+  location: text("location"),
+  notes: text("notes"),
 });
 
 export const insertLeadSchema = createInsertSchema(leadsTable).omit({ id: true, createdAt: true, updatedAt: true });
@@ -1047,6 +1052,90 @@ export type InsertClientHealthHistory = typeof clientHealthHistoryTable.$inferIn
 export type ClientHealthHistory = typeof clientHealthHistoryTable.$inferSelect;
 
 // Quiz Pain Signal Config — single-row admin-editable config for quiz→pain mappings
+// ── Marketing Command Center ────────────────────────────────────────────────
+
+export const recommendedLeadsTable = pgTable("recommended_leads", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  company: text("company"),
+  role: text("role"),
+  email: text("email"),
+  phone: text("phone"),
+  industry: text("industry"),
+  companySize: text("company_size"),
+  location: text("location"),
+  painPoints: jsonb("pain_points").$type<string[]>().notNull().default([]),
+  whyFit: text("why_fit"),
+  recommendedService: text("recommended_service"),
+  confidence: integer("confidence").notNull().default(0),
+  status: text("status", { enum: ["pending", "converted", "dismissed"] }).notNull().default("pending"),
+  convertedLeadId: integer("converted_lead_id").references(() => leadsTable.id, { onDelete: "set null" }),
+  generatedAt: timestamp("generated_at").notNull().defaultNow(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export type InsertRecommendedLead = typeof recommendedLeadsTable.$inferInsert;
+export type RecommendedLead = typeof recommendedLeadsTable.$inferSelect;
+
+export const outreachTemplatesTable = pgTable("outreach_templates", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  templateType: text("template_type", { enum: ["cold_email", "linkedin", "followup", "cold_call"] }).notNull(),
+  subject: text("subject"),
+  body: text("body").notNull(),
+  leadId: integer("lead_id").references(() => leadsTable.id, { onDelete: "set null" }),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export type InsertOutreachTemplate = typeof outreachTemplatesTable.$inferInsert;
+export type OutreachTemplate = typeof outreachTemplatesTable.$inferSelect;
+
+export const marketingTasksTable = pgTable("marketing_tasks", {
+  id: serial("id").primaryKey(),
+  title: text("title").notNull(),
+  description: text("description"),
+  status: text("status", { enum: ["ideas", "in_progress", "scheduled", "published", "completed"] }).notNull().default("ideas"),
+  order: integer("order").notNull().default(0),
+  dueDate: timestamp("due_date"),
+  relatedLeadId: integer("related_lead_id").references(() => leadsTable.id, { onDelete: "set null" }),
+  relatedCampaignId: integer("related_campaign_id"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export type InsertMarketingTask = typeof marketingTasksTable.$inferInsert;
+export type MarketingTask = typeof marketingTasksTable.$inferSelect;
+
+export const campaignsTable = pgTable("campaigns", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  goal: text("goal").notNull(),
+  audience: text("audience").notNull(),
+  offer: text("offer").notNull(),
+  status: text("status", { enum: ["draft", "active", "paused", "completed"] }).notNull().default("draft"),
+  startDate: timestamp("start_date"),
+  endDate: timestamp("end_date"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export type InsertCampaign = typeof campaignsTable.$inferInsert;
+export type Campaign = typeof campaignsTable.$inferSelect;
+
+export const campaignAssetsTable = pgTable("campaign_assets", {
+  id: serial("id").primaryKey(),
+  campaignId: integer("campaign_id").references(() => campaignsTable.id, { onDelete: "cascade" }),
+  assetType: text("asset_type", { enum: ["landing_copy", "email_sequence", "social_post", "follow_up_task", "blog_post", "linkedin_post", "newsletter", "seo_keywords"] }).notNull(),
+  title: text("title").notNull(),
+  content: text("content").notNull(),
+  metadata: jsonb("metadata").$type<Record<string, unknown>>().default({}),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export type InsertCampaignAsset = typeof campaignAssetsTable.$inferInsert;
+export type CampaignAsset = typeof campaignAssetsTable.$inferSelect;
+
 export const quizPainSignalConfigTable = pgTable("quiz_pain_signal_config", {
   id: serial("id").primaryKey(),
   quizTypePainMap: jsonb("quiz_type_pain_map").$type<Record<string, string[]>>().notNull().default({}),

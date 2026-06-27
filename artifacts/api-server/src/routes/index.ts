@@ -46,6 +46,7 @@ import aiNextBestActionsRouter from "./ai-next-best-actions";
 import analyticsForecastRouter from "./analytics-forecast";
 import clientHealthTrendsRouter from "./client-health-trends";
 import adminFinanceRouter from "./admin-finance";
+import adminMarketingRouter from "./admin-marketing";
 
 const router: IRouter = Router();
 
@@ -96,5 +97,6 @@ router.use(aiNextBestActionsRouter);
 router.use(analyticsForecastRouter);
 router.use(clientHealthTrendsRouter);
 router.use(adminFinanceRouter);
+router.use(adminMarketingRouter);
 
 export default router;

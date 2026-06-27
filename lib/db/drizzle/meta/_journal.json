@@ -442,6 +442,13 @@
       "when": 1750953600000,
       "tag": "0060_add_invoice_type_fields",
       "breakpoints": true
+    },
+    {
+      "idx": 61,
+      "version": "7",
+      "when": 1751040000000,
+      "tag": "0061_add_marketing_command_center",
+      "breakpoints": true
     }
   ]
 }

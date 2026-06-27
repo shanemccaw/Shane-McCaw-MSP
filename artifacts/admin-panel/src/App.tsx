@@ -48,6 +48,7 @@ import CouponsPage from "@/pages/Coupons";
 import ServicePageTriggersPage from "@/pages/ServicePageTriggers";
 import ScriptRunnerPage from "@/pages/ScriptRunner";
 import AdminSecurity from "@/pages/AdminSecurity";
+import MarketingCommandCenterPage from "@/pages/MarketingCommandCenter";
 import type { ReactNode } from "react";
 
 const queryClient = new QueryClient({
@@ -251,6 +252,11 @@ function Router() {
       </Route>
       <Route path="/script-runner">
         <RequireAdmin><DashboardShell><ScriptRunnerPage /></DashboardShell></RequireAdmin>
+      </Route>
+
+      {/* Marketing Command Center */}
+      <Route path="/marketing-command-center">
+        <RequireAdmin><DashboardShell><MarketingCommandCenterPage /></DashboardShell></RequireAdmin>
       </Route>
 
       {/* Security */}
