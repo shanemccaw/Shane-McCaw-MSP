@@ -128,10 +128,103 @@ function SkeletonCard({ count = 1 }: { count?: number }) {
   return <>{Array.from({ length: count }).map((_, i) => <div key={i} className="bg-[#161B22] border border-[#30363D] rounded-xl p-4 animate-pulse h-24" />)}</>;
 }
 
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+const EMAIL_TYPES = new Set(["cold_email", "followup", "newsletter"]);
+
+function parseSubjectFromContent(content: string): string {
+  const match = /^SUBJECT:\s*(.+)/im.exec(content);
+  return match?.[1]?.trim() ?? "";
+}
+
+// ─── Send Email Modal ─────────────────────────────────────────────────────────
+
+function SendEmailModal({ initialTo, initialSubject, initialBody, leadId, onClose, fetchWithAuth }: {
+  initialTo: string; initialSubject: string; initialBody: string; leadId?: number; onClose: () => void;
+  fetchWithAuth: (url: string, opts?: RequestInit) => Promise<Response>;
+}) {
+  const [to, setTo] = useState(initialTo);
+  const [subject, setSubject] = useState(initialSubject);
+  const [body, setBody] = useState(initialBody);
+  const [sending, setSending] = useState(false);
+  const [result, setResult] = useState<"success" | "error" | null>(null);
+  const [errorMsg, setErrorMsg] = useState("");
+
+  const send = async () => {
+    if (!to.trim() || !subject.trim() || !body.trim()) return;
+    setSending(true); setResult(null);
+    try {
+      const r = await fetchWithAuth(`${API}/admin/marketing/send-outreach`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ to, subject, body, leadId, bodyType: "text" }),
+      });
+      if (r.ok) {
+        setResult("success");
+        setTimeout(onClose, 1800);
+      } else {
+        const d = await r.json() as { error?: string };
+        setErrorMsg(d.error ?? "Send failed");
+        setResult("error");
+      }
+    } finally { setSending(false); }
+  };
+
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 p-4">
+      <div className="bg-[#161B22] border border-[#30363D] rounded-xl w-full max-w-lg p-6 space-y-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <h3 className="text-[#E6EDF3] font-semibold">Send via Exchange Online</h3>
+            <p className="text-[10px] text-[#7D8590] mt-0.5">Sends from Shane's Exchange mailbox via Microsoft Graph</p>
+          </div>
+          <button onClick={onClose} className="text-[#7D8590] hover:text-[#E6EDF3]">✕</button>
+        </div>
+        {result === "success" ? (
+          <div className="flex flex-col items-center justify-center h-24 gap-2">
+            <span className="text-2xl">✓</span>
+            <p className="text-emerald-400 text-sm font-medium">Email sent from your Exchange mailbox</p>
+          </div>
+        ) : (
+          <>
+            <div className="space-y-3">
+              <div>
+                <label className="text-[10px] text-[#7D8590] uppercase tracking-wide">To</label>
+                <input value={to} onChange={e => setTo(e.target.value)} placeholder="recipient@company.com"
+                  className="mt-1 w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-sm text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60" />
+              </div>
+              <div>
+                <label className="text-[10px] text-[#7D8590] uppercase tracking-wide">Subject</label>
+                <input value={subject} onChange={e => setSubject(e.target.value)} placeholder="Email subject…"
+                  className="mt-1 w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-sm text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60" />
+              </div>
+              <div>
+                <label className="text-[10px] text-[#7D8590] uppercase tracking-wide">Body</label>
+                <textarea value={body} onChange={e => setBody(e.target.value)} rows={10}
+                  className="mt-1 w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-sm text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60 resize-none font-mono" />
+              </div>
+              {result === "error" && (
+                <p className="text-red-400 text-xs">{errorMsg || "Failed to send — check that Exchange Online / Graph credentials are configured."}</p>
+              )}
+            </div>
+            <div className="flex gap-2">
+              <button onClick={() => { void send(); }} disabled={sending || !to.trim() || !subject.trim()}
+                className="flex-1 py-2 rounded-lg bg-[#0078D4] text-white text-sm font-semibold hover:bg-[#0078D4]/80 disabled:opacity-40 transition-colors">
+                {sending ? "Sending…" : "Send Email"}
+              </button>
+              <button onClick={onClose} className="px-4 py-2 rounded-lg border border-[#30363D] text-[#7D8590] text-sm hover:text-[#E6EDF3] transition-colors">Cancel</button>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ─── Outreach Modal ───────────────────────────────────────────────────────────
 
-function OutreachModal({ leadName, leadId, templateType, onClose, fetchWithAuth }: {
-  leadName?: string; leadId?: number; templateType?: string; onClose: () => void;
+function OutreachModal({ leadName, leadEmail, leadId, templateType, onClose, fetchWithAuth }: {
+  leadName?: string; leadEmail?: string; leadId?: number; templateType?: string; onClose: () => void;
   fetchWithAuth: (url: string, opts?: RequestInit) => Promise<Response>;
 }) {
   const [selectedType, setSelectedType] = useState(templateType ?? "cold_email");
@@ -139,6 +232,7 @@ function OutreachModal({ leadName, leadId, templateType, onClose, fetchWithAuth 
   const [generating, setGenerating] = useState(false);
   const [saving, setSaving] = useState(false);
   const [templateName, setTemplateName] = useState("");
+  const [sendModal, setSendModal] = useState(false);
 
   const generate = async () => {
     setGenerating(true);
@@ -170,53 +264,73 @@ function OutreachModal({ leadName, leadId, templateType, onClose, fetchWithAuth 
     cold_email: "Cold Email", linkedin: "LinkedIn", followup: "Follow-Up Seq.", cold_call: "Cold Call Script",
   };
 
+  const canSendEmail = content && EMAIL_TYPES.has(selectedType);
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
-      <div className="bg-[#161B22] border border-[#30363D] rounded-xl w-full max-w-2xl max-h-[90vh] flex flex-col">
-        <div className="flex items-center justify-between p-4 border-b border-[#30363D]">
-          <h3 className="text-[#E6EDF3] font-semibold">Generate Outreach{leadName ? ` — ${leadName}` : ""}</h3>
-          <button onClick={onClose} className="text-[#7D8590] hover:text-[#E6EDF3]">✕</button>
-        </div>
-        <div className="p-4 flex gap-2 flex-wrap">
-          {(["cold_email", "linkedin", "followup", "cold_call"] as const).map(t => (
-            <button key={t} onClick={() => setSelectedType(t)}
-              className={`text-xs px-3 py-1.5 rounded-lg border transition-colors ${selectedType === t ? "bg-[#0078D4]/20 border-[#0078D4]/40 text-[#58A6FF]" : "border-[#30363D] text-[#7D8590] hover:text-[#E6EDF3]"}`}>
-              {TYPE_LABELS[t]}
-            </button>
-          ))}
-        </div>
-        <div className="flex-1 overflow-y-auto p-4 space-y-3">
-          {generating ? (
-            <div className="flex items-center justify-center h-32 text-[#7D8590]">
-              <div className="w-6 h-6 border-2 border-[#0078D4] border-t-transparent rounded-full animate-spin mr-2" />Generating…
-            </div>
-          ) : content ? (
-            <div className="relative">
-              <div className="absolute top-2 right-2"><CopyButton text={content} /></div>
-              <pre className="text-[#E6EDF3] text-sm whitespace-pre-wrap font-sans bg-[#0D1117] rounded-lg p-4 pt-8">{content}</pre>
-            </div>
-          ) : (
-            <div className="flex items-center justify-center h-32 text-[#7D8590] text-sm">Click Generate to create content</div>
-          )}
-        </div>
-        <div className="p-4 border-t border-[#30363D] flex flex-col gap-2">
-          {content && (
-            <div className="flex gap-2">
-              <input value={templateName} onChange={e => setTemplateName(e.target.value)} placeholder="Template name to save…"
-                className="flex-1 bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-1.5 text-sm text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60" />
-              <button onClick={() => { void saveTemplate(); }} disabled={saving || !templateName.trim()}
-                className="text-xs px-3 py-1.5 rounded-lg bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30 disabled:opacity-40 transition-colors">
-                {saving ? "Saving…" : "Save Template"}
+    <>
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
+        <div className="bg-[#161B22] border border-[#30363D] rounded-xl w-full max-w-2xl max-h-[90vh] flex flex-col">
+          <div className="flex items-center justify-between p-4 border-b border-[#30363D]">
+            <h3 className="text-[#E6EDF3] font-semibold">Generate Outreach{leadName ? ` — ${leadName}` : ""}</h3>
+            <button onClick={onClose} className="text-[#7D8590] hover:text-[#E6EDF3]">✕</button>
+          </div>
+          <div className="p-4 flex gap-2 flex-wrap">
+            {(["cold_email", "linkedin", "followup", "cold_call"] as const).map(t => (
+              <button key={t} onClick={() => { setSelectedType(t); setContent(""); }}
+                className={`text-xs px-3 py-1.5 rounded-lg border transition-colors ${selectedType === t ? "bg-[#0078D4]/20 border-[#0078D4]/40 text-[#58A6FF]" : "border-[#30363D] text-[#7D8590] hover:text-[#E6EDF3]"}`}>
+                {TYPE_LABELS[t]}
               </button>
-            </div>
-          )}
-          <button onClick={() => { void generate(); }} disabled={generating}
-            className="w-full py-2 rounded-lg bg-[#0078D4] text-white text-sm font-semibold hover:bg-[#0078D4]/80 disabled:opacity-40 transition-colors">
-            {generating ? "Generating…" : content ? "Regenerate" : "Generate"}
-          </button>
+            ))}
+          </div>
+          <div className="flex-1 overflow-y-auto p-4 space-y-3">
+            {generating ? (
+              <div className="flex items-center justify-center h-32 text-[#7D8590]">
+                <div className="w-6 h-6 border-2 border-[#0078D4] border-t-transparent rounded-full animate-spin mr-2" />Generating…
+              </div>
+            ) : content ? (
+              <div className="relative">
+                <div className="absolute top-2 right-2"><CopyButton text={content} /></div>
+                <pre className="text-[#E6EDF3] text-sm whitespace-pre-wrap font-sans bg-[#0D1117] rounded-lg p-4 pt-8">{content}</pre>
+              </div>
+            ) : (
+              <div className="flex items-center justify-center h-32 text-[#7D8590] text-sm">Click Generate to create content</div>
+            )}
+          </div>
+          <div className="p-4 border-t border-[#30363D] flex flex-col gap-2">
+            {content && (
+              <div className="flex gap-2 flex-wrap">
+                <input value={templateName} onChange={e => setTemplateName(e.target.value)} placeholder="Template name to save…"
+                  className="flex-1 min-w-32 bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-1.5 text-sm text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60" />
+                <button onClick={() => { void saveTemplate(); }} disabled={saving || !templateName.trim()}
+                  className="text-xs px-3 py-1.5 rounded-lg bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30 disabled:opacity-40 transition-colors">
+                  {saving ? "Saving…" : "Save Template"}
+                </button>
+                {canSendEmail && (
+                  <button onClick={() => setSendModal(true)}
+                    className="text-xs px-3 py-1.5 rounded-lg bg-[#0078D4]/20 text-[#58A6FF] hover:bg-[#0078D4]/30 transition-colors">
+                    Send Email
+                  </button>
+                )}
+              </div>
+            )}
+            <button onClick={() => { void generate(); }} disabled={generating}
+              className="w-full py-2 rounded-lg bg-[#0078D4] text-white text-sm font-semibold hover:bg-[#0078D4]/80 disabled:opacity-40 transition-colors">
+              {generating ? "Generating…" : content ? "Regenerate" : "Generate"}
+            </button>
+          </div>
         </div>
       </div>
-    </div>
+      {sendModal && (
+        <SendEmailModal
+          initialTo={leadEmail ?? ""}
+          initialSubject={parseSubjectFromContent(content)}
+          initialBody={content}
+          leadId={leadId}
+          onClose={() => setSendModal(false)}
+          fetchWithAuth={fetchWithAuth}
+        />
+      )}
+    </>
   );
 }
 
@@ -335,7 +449,7 @@ function RecommendedLeadsSection({ fetchWithAuth }: { fetchWithAuth: (url: strin
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
-  const [outreachModal, setOutreachModal] = useState<{ leadId: number; leadName: string; type: string } | null>(null);
+  const [outreachModal, setOutreachModal] = useState<{ leadId: number; leadName: string; leadEmail: string; type: string } | null>(null);
   const [taskModal, setTaskModal] = useState<RecommendedLead | null>(null);
   const [campaignModal, setCampaignModal] = useState<RecommendedLead | null>(null);
   const hasFetched = useRef(false);
@@ -428,9 +542,9 @@ function RecommendedLeadsSection({ fetchWithAuth }: { fetchWithAuth: (url: strin
               )}
               <div className="flex flex-wrap gap-1 pt-1 border-t border-[#30363D]">
                 <button onClick={() => { void convert(lead.id); }} className="text-[10px] px-2 py-1 rounded bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30 transition-colors">Add to Leads</button>
-                <button onClick={() => setOutreachModal({ leadId: lead.id, leadName: lead.name, type: "cold_email" })} className="text-[10px] px-2 py-1 rounded bg-[#0078D4]/20 text-[#58A6FF] hover:bg-[#0078D4]/30 transition-colors">Email</button>
-                <button onClick={() => setOutreachModal({ leadId: lead.id, leadName: lead.name, type: "linkedin" })} className="text-[10px] px-2 py-1 rounded bg-[#0078D4]/20 text-[#58A6FF] hover:bg-[#0078D4]/30 transition-colors">LinkedIn</button>
-                <button onClick={() => setOutreachModal({ leadId: lead.id, leadName: lead.name, type: "followup" })} className="text-[10px] px-2 py-1 rounded bg-[#0078D4]/20 text-[#58A6FF] hover:bg-[#0078D4]/30 transition-colors">Follow-Up Seq.</button>
+                <button onClick={() => setOutreachModal({ leadId: lead.id, leadName: lead.name, leadEmail: lead.email ?? "", type: "cold_email" })} className="text-[10px] px-2 py-1 rounded bg-[#0078D4]/20 text-[#58A6FF] hover:bg-[#0078D4]/30 transition-colors">Email</button>
+                <button onClick={() => setOutreachModal({ leadId: lead.id, leadName: lead.name, leadEmail: lead.email ?? "", type: "linkedin" })} className="text-[10px] px-2 py-1 rounded bg-[#0078D4]/20 text-[#58A6FF] hover:bg-[#0078D4]/30 transition-colors">LinkedIn</button>
+                <button onClick={() => setOutreachModal({ leadId: lead.id, leadName: lead.name, leadEmail: lead.email ?? "", type: "followup" })} className="text-[10px] px-2 py-1 rounded bg-[#0078D4]/20 text-[#58A6FF] hover:bg-[#0078D4]/30 transition-colors">Follow-Up Seq.</button>
                 <button onClick={() => setTaskModal(lead)} className="text-[10px] px-2 py-1 rounded bg-violet-500/20 text-violet-400 hover:bg-violet-500/30 transition-colors">Add Task</button>
                 <button onClick={() => setCampaignModal(lead)} className="text-[10px] px-2 py-1 rounded bg-amber-500/20 text-amber-400 hover:bg-amber-500/30 transition-colors">Add to Campaign</button>
                 <button onClick={() => { void dismiss(lead.id); }} className="text-[10px] px-2 py-1 rounded bg-[#30363D] text-[#7D8590] hover:text-[#E6EDF3] transition-colors">Dismiss</button>
@@ -441,8 +555,8 @@ function RecommendedLeadsSection({ fetchWithAuth }: { fetchWithAuth: (url: strin
       )}
 
       {outreachModal && (
-        <OutreachModal leadId={outreachModal.leadId} leadName={outreachModal.leadName} templateType={outreachModal.type}
-          onClose={() => setOutreachModal(null)} fetchWithAuth={fetchWithAuth} />
+        <OutreachModal leadId={outreachModal.leadId} leadName={outreachModal.leadName} leadEmail={outreachModal.leadEmail}
+          templateType={outreachModal.type} onClose={() => setOutreachModal(null)} fetchWithAuth={fetchWithAuth} />
       )}
       {taskModal && (
         <AddTaskModal lead={taskModal} onClose={() => setTaskModal(null)} fetchWithAuth={fetchWithAuth} />
@@ -502,7 +616,7 @@ function LeadFinderSection({ fetchWithAuth }: { fetchWithAuth: (url: string, opt
   const [filterIndustry, setFilterIndustry] = useState("all");
   const [filterCompanySize, setFilterCompanySize] = useState("all");
   const [filterLocation, setFilterLocation] = useState("all");
-  const [outreachModal, setOutreachModal] = useState<{ leadId: number; leadName: string; type: string } | null>(null);
+  const [outreachModal, setOutreachModal] = useState<{ leadId: number; leadName: string; leadEmail: string; type: string } | null>(null);
 
   useEffect(() => {
     fetchWithAuth(`${API}/leads?limit=100`).then(r => r.json()).then(d => {
@@ -587,10 +701,10 @@ function LeadFinderSection({ fetchWithAuth }: { fetchWithAuth: (url: string, opt
                     <td className="px-4 py-2 text-[#E6EDF3] text-xs font-mono">{lead.score}</td>
                     <td className="px-4 py-2">
                       <div className="flex flex-wrap gap-1">
-                        <button onClick={() => setOutreachModal({ leadId: lead.id, leadName: lead.name, type: "cold_email" })} className="text-[10px] px-1.5 py-0.5 rounded bg-[#0078D4]/20 text-[#58A6FF] hover:bg-[#0078D4]/30 transition-colors">Email</button>
-                        <button onClick={() => setOutreachModal({ leadId: lead.id, leadName: lead.name, type: "linkedin" })} className="text-[10px] px-1.5 py-0.5 rounded bg-[#0078D4]/20 text-[#58A6FF] hover:bg-[#0078D4]/30 transition-colors">LinkedIn</button>
-                        <button onClick={() => setOutreachModal({ leadId: lead.id, leadName: lead.name, type: "followup" })} className="text-[10px] px-1.5 py-0.5 rounded bg-[#0078D4]/20 text-[#58A6FF] hover:bg-[#0078D4]/30 transition-colors">Follow-Up</button>
-                        <button onClick={() => setOutreachModal({ leadId: lead.id, leadName: lead.name, type: "cold_call" })} className="text-[10px] px-1.5 py-0.5 rounded bg-[#0078D4]/20 text-[#58A6FF] hover:bg-[#0078D4]/30 transition-colors">Call Script</button>
+                        <button onClick={() => setOutreachModal({ leadId: lead.id, leadName: lead.name, leadEmail: lead.email, type: "cold_email" })} className="text-[10px] px-1.5 py-0.5 rounded bg-[#0078D4]/20 text-[#58A6FF] hover:bg-[#0078D4]/30 transition-colors">Email</button>
+                        <button onClick={() => setOutreachModal({ leadId: lead.id, leadName: lead.name, leadEmail: lead.email, type: "linkedin" })} className="text-[10px] px-1.5 py-0.5 rounded bg-[#0078D4]/20 text-[#58A6FF] hover:bg-[#0078D4]/30 transition-colors">LinkedIn</button>
+                        <button onClick={() => setOutreachModal({ leadId: lead.id, leadName: lead.name, leadEmail: lead.email, type: "followup" })} className="text-[10px] px-1.5 py-0.5 rounded bg-[#0078D4]/20 text-[#58A6FF] hover:bg-[#0078D4]/30 transition-colors">Follow-Up</button>
+                        <button onClick={() => setOutreachModal({ leadId: lead.id, leadName: lead.name, leadEmail: lead.email, type: "cold_call" })} className="text-[10px] px-1.5 py-0.5 rounded bg-[#0078D4]/20 text-[#58A6FF] hover:bg-[#0078D4]/30 transition-colors">Call Script</button>
                       </div>
                     </td>
                   </tr>
@@ -610,8 +724,8 @@ function LeadFinderSection({ fetchWithAuth }: { fetchWithAuth: (url: string, opt
       )}
 
       {outreachModal && (
-        <OutreachModal leadId={outreachModal.leadId} leadName={outreachModal.leadName} templateType={outreachModal.type}
-          onClose={() => setOutreachModal(null)} fetchWithAuth={fetchWithAuth} />
+        <OutreachModal leadId={outreachModal.leadId} leadName={outreachModal.leadName} leadEmail={outreachModal.leadEmail}
+          templateType={outreachModal.type} onClose={() => setOutreachModal(null)} fetchWithAuth={fetchWithAuth} />
       )}
     </div>
   );
@@ -630,6 +744,7 @@ function OutreachAutomationSection({ fetchWithAuth }: { fetchWithAuth: (url: str
   const [templates, setTemplates] = useState<Array<{ id: number; name: string; templateType: string; body: string }>>([]);
   const [saving, setSaving] = useState(false);
   const [saveName, setSaveName] = useState("");
+  const [sendDialog, setSendDialog] = useState<{ to: string; subject: string; body: string } | null>(null);
 
   useEffect(() => {
     fetchWithAuth(`${API}/admin/marketing/outreach-templates`).then(r => r.json()).then(d => setTemplates(d as typeof templates)).catch(() => null);
@@ -708,13 +823,19 @@ function OutreachAutomationSection({ fetchWithAuth }: { fetchWithAuth: (url: str
                 <CopyButton text={content} />
               </div>
               <pre className="text-[#E6EDF3] text-sm whitespace-pre-wrap font-sans bg-[#0D1117] rounded-lg p-3 max-h-64 overflow-y-auto">{content}</pre>
-              <div className="flex gap-2">
+              <div className="flex gap-2 flex-wrap">
                 <input value={saveName} onChange={e => setSaveName(e.target.value)} placeholder="Template name…"
-                  className="flex-1 bg-[#0D1117] border border-[#30363D] rounded-lg px-2 py-1.5 text-sm text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60" />
+                  className="flex-1 min-w-24 bg-[#0D1117] border border-[#30363D] rounded-lg px-2 py-1.5 text-sm text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60" />
                 <button onClick={() => { void save(); }} disabled={saving || !saveName.trim()}
                   className="text-xs px-3 py-1.5 rounded-lg bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30 disabled:opacity-40 transition-colors">
                   {saving ? "Saving…" : "Save"}
                 </button>
+                {EMAIL_TYPES.has(activeTab) && (
+                  <button onClick={() => setSendDialog({ to: "", subject: parseSubjectFromContent(content), body: content })}
+                    className="text-xs px-3 py-1.5 rounded-lg bg-[#0078D4]/20 text-[#58A6FF] hover:bg-[#0078D4]/30 transition-colors">
+                    Send Email
+                  </button>
+                )}
               </div>
             </div>
           )}
@@ -735,13 +856,30 @@ function OutreachAutomationSection({ fetchWithAuth }: { fetchWithAuth: (url: str
                     </div>
                   </div>
                   <p className="text-[#7D8590] line-clamp-2">{t.body}</p>
-                  <CopyButton text={t.body} />
+                  <div className="flex gap-1">
+                    <CopyButton text={t.body} />
+                    {EMAIL_TYPES.has(t.templateType) && (
+                      <button onClick={() => setSendDialog({ to: "", subject: parseSubjectFromContent(t.body), body: t.body })}
+                        className="text-xs px-2 py-1 rounded bg-[#0078D4]/20 text-[#58A6FF] hover:bg-[#0078D4]/30 transition-colors">
+                        Send
+                      </button>
+                    )}
+                  </div>
                 </div>
               ))}
             </div>
           )}
         </div>
       </div>
+      {sendDialog && (
+        <SendEmailModal
+          initialTo={sendDialog.to}
+          initialSubject={sendDialog.subject}
+          initialBody={sendDialog.body}
+          onClose={() => setSendDialog(null)}
+          fetchWithAuth={fetchWithAuth}
+        />
+      )}
     </div>
   );
 }

@@ -8,6 +8,7 @@ import {
 import { eq, desc, count, and, gte, sql, inArray } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/requireAuth";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
+import { sendMessage } from "../lib/graphEmail";
 import { z } from "zod";
 
 const router = Router();
@@ -716,6 +717,64 @@ router.post("/admin/marketing/campaigns/save-assets", requireAdmin, async (req: 
       .returning();
     res.json(inserted);
   } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+// ─── Analytics for marketing ──────────────────────────────────────────────────
+
+// ─── Send outreach email via Exchange Online ──────────────────────────────────
+
+const sendOutreachSchema = z.object({
+  to: z.string().email("Invalid recipient email address"),
+  subject: z.string().min(1, "Subject is required"),
+  body: z.string().min(1, "Body is required"),
+  leadId: z.number().optional(),
+  bodyType: z.enum(["text", "html"]).optional().default("text"),
+});
+
+router.post("/admin/marketing/send-outreach", requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const parsed = sendOutreachSchema.parse(req.body);
+    const userId = process.env["GRAPH_MAIL_USER_ID"];
+    if (!userId) {
+      res.status(503).json({ error: "GRAPH_MAIL_USER_ID is not configured — cannot send via Exchange Online" });
+      return;
+    }
+
+    const sent = await sendMessage({
+      userId,
+      to: [parsed.to],
+      subject: parsed.subject,
+      body: parsed.body,
+      bodyType: parsed.bodyType ?? "text",
+      saveToSentItems: true,
+    });
+
+    if (!sent) {
+      res.status(502).json({ error: "Graph API rejected the send request" });
+      return;
+    }
+
+    if (parsed.leadId) {
+      const [lead] = await db
+        .select({ notes: leadsTable.notes })
+        .from(leadsTable)
+        .where(eq(leadsTable.id, parsed.leadId));
+      if (lead !== undefined) {
+        const timestamp = new Date().toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" });
+        const entry = `[${timestamp}] Outreach email sent to: ${parsed.to} — Subject: "${parsed.subject}"`;
+        const updated = lead.notes ? `${lead.notes}\n${entry}` : entry;
+        await db.update(leadsTable).set({ notes: updated }).where(eq(leadsTable.id, parsed.leadId));
+      }
+    }
+
+    res.json({ success: true });
+  } catch (e) {
+    if (e instanceof z.ZodError) {
+      res.status(400).json({ error: e.errors[0]?.message ?? "Validation error" });
+      return;
+    }
     res.status(500).json({ error: String(e) });
   }
 });
