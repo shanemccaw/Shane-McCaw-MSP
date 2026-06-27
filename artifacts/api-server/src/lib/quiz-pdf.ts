@@ -58,7 +58,7 @@ export async function generateQuizPdf(data: QuizPdfData): Promise<Buffer> {
   page1.drawText("Lead Microsoft 365 Architect", {
     x: 36, y: height - 52, size: 10, font: helvetica, color: rgb(0.6, 0.7, 0.8),
   });
-  page1.drawText("shanemccaw.consulting", {
+  page1.drawText("shanemccaw.com", {
     x: width - 36 - 160, y: height - 44, size: 10, font: helvetica, color: BLUE,
   });
 
@@ -184,7 +184,7 @@ export async function generateQuizPdf(data: QuizPdfData): Promise<Buffer> {
     "Review this report with your leadership team and IT stakeholders.",
     "Identify the top 2–3 categories where you scored below 7 and prioritise those gaps.",
     "Book a complimentary 30-minute strategy call with Shane to map a personalised roadmap.",
-    "Visit shanemccaw.consulting/contact to get started today.",
+    "Visit shanemccaw.com/contact to get started today.",
   ];
   for (let i = 0; i < steps.length; i++) {
     page2.drawCircle({ x: 46, y: p2Y + 4, size: 8, color: BLUE });
@@ -203,16 +203,16 @@ export async function generateQuizPdf(data: QuizPdfData): Promise<Buffer> {
   page2.drawText("Ready to act on your results?", {
     x: 56, y: p2Y - 14, size: 13, font: helveticaBold, color: WHITE,
   });
-  page2.drawText("Book your complimentary strategy call at shanemccaw.consulting/contact", {
+  page2.drawText("Book your complimentary strategy call at shanemccaw.com/contact", {
     x: 56, y: p2Y - 32, size: 10, font: helvetica, color: rgb(0.7, 0.85, 1),
   });
-  page2.drawText("or email: shane@shanemccaw.consulting", {
+  page2.drawText("or email: shane@shanemccaw.com", {
     x: 56, y: p2Y - 46, size: 10, font: helvetica, color: rgb(0.7, 0.85, 1),
   });
 
   // Footer on both pages
   for (const page of [page1, page2]) {
-    page.drawText("© Shane McCaw Consulting LLC  |  shanemccaw.consulting  |  Confidential", {
+    page.drawText("© Shane McCaw Consulting LLC  |  shanemccaw.com  |  Confidential", {
       x: 36, y: 18, size: 8, font: helvetica, color: MID_GRAY,
     });
   }

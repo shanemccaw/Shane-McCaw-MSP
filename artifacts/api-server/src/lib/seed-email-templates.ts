@@ -417,7 +417,7 @@ const TEMPLATES: TemplateDefinition[] = [
     <p style="margin:0 0 16px;font-size:14px;line-height:1.6;">{{roiProjection}}</p>
     <p style="margin:12px 0;"><a href="{{resultsUrl}}" style="color:${BLUE};font-size:13px;">View your full results online →</a></p>
     <p>Ready to discuss your results? Book a complimentary 30-minute strategy call with Shane.</p>
-    <p style="margin:24px 0 0;"><a href="https://shanemccaw.consulting/contact" style="display:inline-block;background:${BLUE};color:#ffffff;text-decoration:none;font-weight:600;font-size:14px;padding:12px 24px;border-radius:6px;">Book a Strategy Call →</a></p>
+    <p style="margin:24px 0 0;"><a href="https://shanemccaw.com/contact" style="display:inline-block;background:${BLUE};color:#ffffff;text-decoration:none;font-weight:600;font-size:14px;padding:12px 24px;border-radius:6px;">Book a Strategy Call →</a></p>
     <p style="margin-top:24px;">— Shane McCaw<br/><span style="color:#64748b;font-size:13px;">Lead Microsoft 365 Architect | Shane McCaw Consulting</span></p>
   `,
   },

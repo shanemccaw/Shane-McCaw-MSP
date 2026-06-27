@@ -8,7 +8,7 @@ import { graphCredentialsPresent, sendMailViaGraph } from "./graph";
 
 // ─── Brand constants ──────────────────────────────────────────────────────────
 const BRAND_FROM = "Shane McCaw Consulting <noreply@shanemccaw.com>";
-export const PORTAL_URL = "https://shanemccaw.consulting/crm/portal";
+export const PORTAL_URL = "https://shanemccaw.com/crm/portal";
 const NAVY = "#0A2540";
 const BLUE = "#0078D4";
 
@@ -42,7 +42,7 @@ export function brandedEmail(bodyHtml: string): string {
         <tr>
           <td style="background:#f1f5f9;padding:20px 32px;border-top:1px solid #e2e8f0;">
             <p style="margin:0;color:#64748b;font-size:12px;line-height:1.6;">
-              Shane McCaw Consulting LLC &nbsp;|&nbsp; <a href="https://shanemccaw.consulting" style="color:${BLUE};text-decoration:none;">shanemccaw.consulting</a><br/>
+              Shane McCaw Consulting LLC &nbsp;|&nbsp; <a href="https://shanemccaw.com" style="color:${BLUE};text-decoration:none;">shanemccaw.com</a><br/>
               You're receiving this because you have an account or made a purchase with us.
             </p>
           </td>
@@ -372,7 +372,7 @@ export function closureRequestEmail(opts: {
   projectId: number;
   portalUrl?: string;
 }): string {
-  const url = `${opts.portalUrl ?? "https://shanemccaw.consulting/crm/portal"}/projects/${opts.projectId}`;
+  const url = `${opts.portalUrl ?? "https://shanemccaw.com/crm/portal"}/projects/${opts.projectId}`;
   return `
     <p>Hi ${opts.clientName || "there"},</p>
     <p>Congratulations — your project <strong>${opts.projectTitle}</strong> has reached completion!</p>
@@ -416,8 +416,8 @@ export function clientThreadReplyEmail(opts: {
   projectId?: number | null;
 }): string {
   const adminUrl = opts.projectId
-    ? `https://shanemccaw.consulting/admin-panel/crm/projects/${opts.projectId}`
-    : `https://shanemccaw.consulting/admin-panel/crm/status-reports`;
+    ? `https://shanemccaw.com/admin-panel/crm/projects/${opts.projectId}`
+    : `https://shanemccaw.com/admin-panel/crm/status-reports`;
   const safeContent = escapeHtml(opts.replyContent).replace(/\n/g, "<br/>");
   return `
     <p>Hi Shane,</p>
@@ -482,7 +482,7 @@ export function serviceOverviewConfirmationEmail(opts: {
     <p>Hi ${name},</p>
     ${overviewLine}
     <p>In the meantime, you can book a free discovery call with Shane below.</p>
-    ${emailButton("Book a Free Discovery Call", "https://shanemccaw.consulting/book")}
+    ${emailButton("Book a Free Discovery Call", "https://shanemccaw.com/book")}
     <p style="margin-top:24px;">— Shane McCaw</p>
   `;
 }
