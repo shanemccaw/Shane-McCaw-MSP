@@ -11,7 +11,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Loader2, Plus, Trash2, Pencil, ChevronUp, ChevronDown, Copy, Check, TerminalSquare, X, Play } from "lucide-react";
+import { Loader2, Plus, Trash2, Pencil, ChevronUp, ChevronDown, Copy, Check, TerminalSquare, X, Play, RefreshCw } from "lucide-react";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -169,11 +169,16 @@ function ScriptFormModal({
 
   const [runbooks, setRunbooks] = useState<RunbookSummary[]>([]);
   const [loadingRunbooks, setLoadingRunbooks] = useState(true);
+  const [refreshingRunbooks, setRefreshingRunbooks] = useState(false);
   const [azureConfigured, setAzureConfigured] = useState(true);
 
-  useEffect(() => {
+  const fetchRunbooks = useCallback((isRefresh = false) => {
+    if (isRefresh) {
+      setRefreshingRunbooks(true);
+    } else {
+      setLoadingRunbooks(true);
+    }
     let cancelled = false;
-    setLoadingRunbooks(true);
     fetchWithAuth("/api/admin/runbooks")
       .then(async res => {
         if (cancelled) return;
@@ -193,9 +198,17 @@ function ScriptFormModal({
         if (!cancelled) setAzureConfigured(false);
       })
       .finally(() => {
-        if (!cancelled) setLoadingRunbooks(false);
+        if (!cancelled) {
+          setLoadingRunbooks(false);
+          setRefreshingRunbooks(false);
+        }
       });
     return () => { cancelled = true; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    return fetchRunbooks(false);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -280,7 +293,20 @@ function ScriptFormModal({
           </div>
 
           <div>
-            <label className={labelCls}>Azure Automation Runbook Name *</label>
+            <div className="flex items-center gap-2 mb-1">
+              <label className={`${labelCls} mb-0`}>Azure Automation Runbook Name *</label>
+              {azureConfigured && !loadingRunbooks && (
+                <button
+                  type="button"
+                  onClick={() => fetchRunbooks(true)}
+                  disabled={refreshingRunbooks}
+                  title="Refresh runbook list"
+                  className="text-[#484F58] hover:text-[#7D8590] transition-colors disabled:opacity-50 flex-shrink-0"
+                >
+                  <RefreshCw className={`w-3 h-3 ${refreshingRunbooks ? "animate-spin" : ""}`} />
+                </button>
+              )}
+            </div>
             {loadingRunbooks ? (
               <div className={`${inputCls} animate-pulse bg-[#1C2128] text-transparent select-none`}>
                 Loading runbooks…
@@ -290,7 +316,8 @@ function ScriptFormModal({
                 <select
                   value={form.runbookName}
                   onChange={e => setForm(f => ({ ...f, runbookName: e.target.value }))}
-                  className={`${inputCls} font-mono`}
+                  disabled={refreshingRunbooks}
+                  className={`${inputCls} font-mono ${refreshingRunbooks ? "opacity-50 cursor-not-allowed" : ""}`}
                 >
                   <option value="" disabled>— select a runbook —</option>
                   {runbooks.map(rb => (
