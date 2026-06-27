@@ -2185,16 +2185,22 @@ Respond with ONLY a raw JSON array — no prose, no markdown fences. Schema:
 
 router.post("/admin/marketing/generate/landing-page", requireAdmin, async (req: Request, res: Response) => {
   try {
-    const body = req.body as { offerId?: number; topic?: string; audience?: string; cta?: string };
+    const body = req.body as { offerId?: number; topic?: string; audience?: string; cta?: string; copy?: string };
     let offerCtx = "";
     if (body.offerId) {
       const [offer] = await db.select().from(offersTable).where(eq(offersTable.id, body.offerId)).limit(1);
       if (offer) offerCtx = `Offer: ${offer.name} — ${offer.goal}. Deliverables: ${offer.deliverables.join(", ")}. Outcomes: ${offer.outcomes.join(", ")}.`;
     }
     const icpCtx = await buildICPContext();
+
+    // When existing copy is supplied, instruct the AI to STRUCTURE that copy rather than invent new content
+    const copySection = body.copy?.trim()
+      ? `\nEXISTING LANDING PAGE COPY (use this as your primary source — extract and structure the headline, value propositions, social proof, and CTA directly from this text; do NOT invent new content):\n---\n${body.copy.trim()}\n---`
+      : "";
+
     const prompt = `You are a conversion copywriter for a Microsoft 365 consulting firm.
 ${icpCtx}
-${offerCtx}
+${offerCtx}${copySection}
 Topic: ${body.topic ?? "Microsoft 365 Copilot adoption"}
 Target audience: ${body.audience ?? "IT decision-makers"}
 CTA: ${body.cta ?? "Book a discovery call"}

@@ -5523,9 +5523,10 @@ function LandingCopyPanel({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          topic: `${campaign.name}\n\nLanding Page Copy:\n${liveContent}`,
+          topic: campaign.name,
           audience: campaign.audience,
           cta: campaign.offer,
+          copy: liveContent,
         }),
       });
       if (!genRes.ok) throw new Error("Generation failed");
