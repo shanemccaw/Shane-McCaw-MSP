@@ -1,8 +1,9 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useParams, Link } from "wouter";
 import { Layout } from "@/components/Layout";
 import { SEOMeta } from "@/components/SEOMeta";
 import { CTAButton } from "@/components/CTAButton";
+import { identifyLead } from "@/lib/analytics";
 import {
   CheckCircle,
   ArrowRight,
@@ -14,6 +15,7 @@ import {
   TrendingUp,
   Star,
   RefreshCw,
+  Mail,
 } from "lucide-react";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -202,6 +204,20 @@ export default function QuickWinResultsPage() {
   const [result, setResult] = useState<QuizResult | null>(null);
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState<FetchError | null>(null);
+  const [emailInput, setEmailInput] = useState("");
+  const [emailSubmitted, setEmailSubmitted] = useState(false);
+  const [emailSubmitting, setEmailSubmitting] = useState(false);
+  const emailInputRef = useRef<HTMLInputElement>(null);
+
+  async function handleEmailCapture(e: React.FormEvent) {
+    e.preventDefault();
+    const trimmed = emailInput.trim();
+    if (!trimmed || emailSubmitted || emailSubmitting) return;
+    setEmailSubmitting(true);
+    await identifyLead(trimmed);
+    setEmailSubmitted(true);
+    setEmailSubmitting(false);
+  }
 
   useEffect(() => {
     if (!resultId) {
@@ -623,6 +639,44 @@ export default function QuickWinResultsPage() {
               </div>
             </div>
           </div>
+        </div>
+      </section>
+
+      {/* ── Email capture ─────────────────────────────────────────────────────── */}
+      <section className="bg-white border-t border-border py-12">
+        <div className="max-w-[520px] mx-auto px-6 text-center">
+          <div className="inline-flex items-center justify-center w-10 h-10 rounded-full bg-[#0078D4]/10 mb-4">
+            <Mail className="w-5 h-5 text-[#0078D4]" />
+          </div>
+          <h3 className="text-lg font-extrabold text-[#0A2540] mb-2">Save these results</h3>
+          <p className="text-muted-foreground text-sm leading-relaxed mb-5">
+            Enter your email and we'll send you a link to revisit this page any time.
+          </p>
+          {emailSubmitted ? (
+            <div className="flex items-center justify-center gap-2 text-sm font-semibold text-emerald-600 bg-emerald-50 border border-emerald-200 rounded-xl px-5 py-3">
+              <CheckCircle className="w-4 h-4" />
+              Got it — we'll send your results link shortly.
+            </div>
+          ) : (
+            <form onSubmit={(e) => { void handleEmailCapture(e); }} className="flex gap-2">
+              <input
+                ref={emailInputRef}
+                type="email"
+                required
+                value={emailInput}
+                onChange={e => setEmailInput(e.target.value)}
+                placeholder="you@company.com"
+                className="flex-1 min-w-0 rounded-xl border border-border bg-[#F7F9FC] px-4 py-2.5 text-sm text-[#0A2540] placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-[#0078D4]/40"
+              />
+              <button
+                type="submit"
+                disabled={emailSubmitting || !emailInput.trim()}
+                className="flex-shrink-0 bg-[#0078D4] hover:bg-[#006CBF] disabled:opacity-50 text-white text-sm font-semibold px-5 py-2.5 rounded-xl transition-colors"
+              >
+                {emailSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : "Send"}
+              </button>
+            </form>
+          )}
         </div>
       </section>
 
