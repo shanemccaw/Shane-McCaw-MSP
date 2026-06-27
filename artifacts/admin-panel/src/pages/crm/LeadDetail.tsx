@@ -6,7 +6,7 @@ import {
 } from "recharts";
 
 type LeadStatus = "new" | "contacted" | "qualified" | "converted" | "archived";
-type LeadSource = "contact_form" | "lead_magnet";
+type LeadSource = "contact_form" | "lead_magnet" | "ai_recommended";
 type Tier = "Beginner" | "Developing" | "Emerging" | "Advanced" | "Ready";
 
 interface Lead {
@@ -17,6 +17,7 @@ interface Lead {
   companySize: string | null;
   serviceArea: string | null;
   message: string | null;
+  notes: string | null;
   source: LeadSource;
   status: LeadStatus;
   howFound: string | null;
@@ -106,7 +107,29 @@ const STATUS_COLORS: Record<LeadStatus, string> = {
 const SOURCE_COLORS: Record<LeadSource, string> = {
   contact_form: "bg-[#0078D4]/10 text-[#0078D4]",
   lead_magnet: "bg-teal-500/15 text-teal-400",
+  ai_recommended: "bg-violet-500/15 text-violet-400",
 };
+
+const SOURCE_LABELS: Record<LeadSource, string> = {
+  contact_form: "Contact Form",
+  lead_magnet: "Lead Magnet",
+  ai_recommended: "AI Recommended",
+};
+
+function parseAiNote(notes: string | null): { whyFit: string; recommendedService: string; confidence: string } | null {
+  if (!notes) return null;
+  const firstSegment = notes.split("--- AI Outreach Draft ---")[0] ?? notes;
+  const parts = firstSegment.split("|").map(s => s.trim());
+  const whyFitRaw = parts.find(p => p.toLowerCase().startsWith("why fit:"));
+  const serviceRaw = parts.find(p => p.toLowerCase().startsWith("recommended service:"));
+  const confRaw = parts.find(p => p.toLowerCase().startsWith("confidence:"));
+  if (!whyFitRaw && !serviceRaw) return null;
+  return {
+    whyFit: whyFitRaw ? whyFitRaw.replace(/^why fit:\s*/i, "") : "",
+    recommendedService: serviceRaw ? serviceRaw.replace(/^recommended service:\s*/i, "") : "",
+    confidence: confRaw ? confRaw.replace(/^confidence:\s*/i, "") : "",
+  };
+}
 
 const TIER_COLORS: Record<string, string> = {
   Beginner: "bg-red-500/15 text-red-400",
@@ -861,9 +884,14 @@ export default function LeadDetailPage({ params }: { params: { id: string } }) {
           {lead.serviceArea && <InfoRow label="Service Area">{lead.serviceArea}</InfoRow>}
           {lead.howFound && <InfoRow label="How They Found Shane">{lead.howFound}</InfoRow>}
           <InfoRow label="Source">
-            <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${SOURCE_COLORS[lead.source]}`}>
-              {lead.source === "contact_form" ? "Contact Form" : "Lead Magnet"}
-            </span>
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${SOURCE_COLORS[lead.source] ?? "bg-[#30363D]/50 text-[#7D8590]"}`}>
+                {lead.source === "ai_recommended" && (
+                  <span className="mr-1">✦</span>
+                )}
+                {SOURCE_LABELS[lead.source] ?? lead.source}
+              </span>
+            </div>
           </InfoRow>
           <InfoRow label="Submitted">
             {new Date(lead.createdAt).toLocaleDateString(undefined, { year: "numeric", month: "long", day: "numeric" })}
@@ -877,6 +905,52 @@ export default function LeadDetailPage({ params }: { params: { id: string } }) {
           <p className="text-sm text-[#E6EDF3] leading-relaxed whitespace-pre-wrap">{lead.message}</p>
         </SectionCard>
       )}
+
+      {/* AI Context — shown only for AI-recommended leads */}
+      {lead.source === "ai_recommended" && (() => {
+        const parsed = parseAiNote(lead.notes);
+        if (!parsed && !lead.notes) return null;
+        return (
+          <div className="bg-[#161B22] border border-violet-500/30 rounded-xl overflow-hidden">
+            <div className="px-5 py-3.5 border-b border-violet-500/20 bg-violet-500/10 flex items-center gap-2">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} className="w-4 h-4 text-violet-400 flex-shrink-0">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z" />
+                <path strokeLinecap="round" strokeLinejoin="round" d="M18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 00-2.456 2.456z" />
+              </svg>
+              <h2 className="text-sm font-bold text-violet-300">AI Recommendation Context</h2>
+              {parsed?.confidence && (
+                <span className="ml-auto text-xs font-semibold px-2 py-0.5 rounded-full bg-violet-500/20 text-violet-300">
+                  {parsed.confidence} confidence
+                </span>
+              )}
+            </div>
+            <div className="px-5 py-5 space-y-4">
+              {parsed ? (
+                <>
+                  {parsed.whyFit && (
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">Why This Lead Fits</p>
+                      <p className="text-sm text-[#E6EDF3] leading-relaxed">{parsed.whyFit}</p>
+                    </div>
+                  )}
+                  {parsed.recommendedService && (
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">Recommended Service</p>
+                      <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-[#0078D4]/10 text-[#0078D4]">
+                        {parsed.recommendedService}
+                      </span>
+                    </div>
+                  )}
+                </>
+              ) : (
+                lead.notes && (
+                  <p className="text-sm text-[#E6EDF3] leading-relaxed whitespace-pre-wrap">{lead.notes}</p>
+                )
+              )}
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Qualification Profile */}
       <div className="bg-[#161B22] border border-border rounded-xl overflow-hidden">

@@ -828,7 +828,7 @@ function LeadFinderSection({ fetchWithAuth }: { fetchWithAuth: (url: string, opt
             <table className="w-full text-sm">
               <thead className="border-b border-[#30363D] bg-[#0D1117]">
                 <tr>
-                  {["Name", "Company", "Industry / Size", "Status", "Stage", "Score", "Actions"].map(h => (
+                  {["Name", "Company", "Industry / Size", "Source", "Status", "Stage", "Score", "Actions"].map(h => (
                     <th key={h} className="px-4 py-2 text-left text-xs font-semibold text-[#7D8590]">{h}</th>
                   ))}
                 </tr>
@@ -849,6 +849,19 @@ function LeadFinderSection({ fetchWithAuth }: { fetchWithAuth: (url: string, opt
                       {lead.companySize && <p className="text-[10px] text-[#484F58]">{lead.companySize}</p>}
                     </td>
                     <td className="px-4 py-2">
+                      {lead.source === "ai_recommended" ? (
+                        <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-violet-500/20 text-violet-400">
+                          <span>✦</span> AI Recommended
+                        </span>
+                      ) : lead.source === "lead_magnet" ? (
+                        <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-teal-500/20 text-teal-400">Lead Magnet</span>
+                      ) : lead.source === "contact_form" ? (
+                        <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-[#0078D4]/20 text-[#58A6FF]">Contact Form</span>
+                      ) : (
+                        <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-[#30363D] text-[#7D8590]">{lead.source}</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-2">
                       <Badge text={lead.status} color={lead.status === "converted" ? "green" : lead.status === "new" ? "blue" : lead.status === "archived" ? "gray" : "yellow"} />
                     </td>
                     <td className="px-4 py-2">
@@ -867,7 +880,7 @@ function LeadFinderSection({ fetchWithAuth }: { fetchWithAuth: (url: string, opt
                   </tr>
                 ))}
                 {filtered.length === 0 && (
-                  <tr><td colSpan={7} className="px-4 py-8 text-center text-[#7D8590] text-sm">No leads match the filters</td></tr>
+                  <tr><td colSpan={8} className="px-4 py-8 text-center text-[#7D8590] text-sm">No leads match the filters</td></tr>
                 )}
               </tbody>
             </table>
