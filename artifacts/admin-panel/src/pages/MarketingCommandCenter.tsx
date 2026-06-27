@@ -7257,6 +7257,7 @@ function AdLibrarySection({
 }) {
   const [assets, setAssets] = useState<CampaignAsset[]>([]);
   const [campaignNames, setCampaignNames] = useState<Record<number, string>>({});
+  const [campaignOffers, setCampaignOffers] = useState<Record<number, Array<{ name: string }>>>({});
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState<string>("all");
@@ -7293,6 +7294,23 @@ function AdLibrarySection({
       });
       deduped.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
       setAssets(deduped);
+
+      const campaignIds = [...new Set(deduped.map(a => a.campaignId).filter((id): id is number => id != null))];
+      if (campaignIds.length > 0) {
+        const offerResults = await Promise.all(
+          campaignIds.map(id => fetchWithAuth(`${API}/admin/marketing/campaigns/${id}/offers`))
+        );
+        const offerMap: Record<number, Array<{ name: string }>> = {};
+        for (let i = 0; i < campaignIds.length; i++) {
+          try {
+            const data = await offerResults[i].json() as Array<{ name: string }>;
+            offerMap[campaignIds[i]] = Array.isArray(data) ? data : [];
+          } catch {
+            offerMap[campaignIds[i]] = [];
+          }
+        }
+        setCampaignOffers(offerMap);
+      }
     } catch {
       setAssets([]);
     } finally {
@@ -7378,6 +7396,7 @@ function AdLibrarySection({
             const campaignName = asset.campaignId != null ? campaignNames[asset.campaignId] : undefined;
             const isExpanded = expandedId === asset.id;
             const variations = asset.metadata?.variations ?? [];
+            const assetOffers = asset.campaignId != null ? (campaignOffers[asset.campaignId] ?? []) : [];
 
             return (
               <div key={asset.id} className="bg-[#161B22] border border-[#30363D] rounded-xl overflow-hidden">
@@ -7403,6 +7422,7 @@ function AdLibrarySection({
                       )}
                     </div>
                     <p className="text-sm font-semibold text-[#E6EDF3] truncate">{asset.title}</p>
+                    <OfferIndicator offers={assetOffers} />
                     <p className="text-[10px] text-[#484F58]">
                       {variations.length > 0 && `${variations.length} variation${variations.length !== 1 ? "s" : ""} · `}
                       {new Date(asset.createdAt).toLocaleDateString()}
