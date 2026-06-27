@@ -1902,8 +1902,10 @@ function ContentHubSection({ fetchWithAuth }: { fetchWithAuth: (url: string, opt
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ topic, format: tone || "checklist", audience: keywords || undefined }),
         });
-        const data = await r.json() as { title: string; subtitle: string; format: string; items: string[]; cta: string; outlineMarkdown: string };
-        const formatted = `# ${data.title}\n${data.subtitle}\n\n**Format:** ${data.format}\n\n## Checklist Items\n${data.items.map(i => `- ${i}`).join("\n")}\n\n**CTA:** ${data.cta}\n\n---\n${data.outlineMarkdown}`;
+        const data = await r.json() as { title?: string; subtitle?: string; format?: string; items?: string[]; cta?: string; outlineMarkdown?: string; error?: string };
+        if (!r.ok) throw new Error(data.error ?? `Server error ${r.status}`);
+        const items = Array.isArray(data.items) ? data.items : [];
+        const formatted = `# ${data.title ?? ""}\n${data.subtitle ?? ""}\n\n**Format:** ${data.format ?? ""}\n\n## Checklist Items\n${items.map(i => `- ${i}`).join("\n")}\n\n**CTA:** ${data.cta ?? ""}\n\n---\n${data.outlineMarkdown ?? ""}`;
         setContent(formatted);
       } else {
         const r = await fetchWithAuth(`${API}/admin/marketing/generate/content`, {
