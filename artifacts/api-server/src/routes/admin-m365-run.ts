@@ -424,6 +424,53 @@ router.patch("/admin/script-run-results/:id/mark-reviewed", requireAdmin, async 
   }
 });
 
+// ── POST /api/admin/script-run-results/:id/apply-to-client ───────────────────
+
+router.post("/admin/script-run-results/:id/apply-to-client", requireAdmin, async (req: Request, res: Response) => {
+  const id = parseInt(String(req.params.id));
+  if (isNaN(id)) {
+    res.status(400).json({ error: "Invalid id" });
+    return;
+  }
+
+  try {
+    const [row] = await db
+      .select({
+        customerId: scriptRunResultsTable.customerId,
+        scoreImpact: scriptRunResultsTable.scoreImpact,
+        profileUpdates: scriptRunResultsTable.profileUpdates,
+      })
+      .from(scriptRunResultsTable)
+      .where(eq(scriptRunResultsTable.id, id))
+      .limit(1);
+
+    if (!row) {
+      res.status(404).json({ error: "Script run result not found" });
+      return;
+    }
+
+    if (!row.customerId) {
+      res.status(400).json({ error: "This result has no client linked — cannot apply scores" });
+      return;
+    }
+
+    const scoreImpact = (row.scoreImpact ?? {}) as Record<string, number>;
+    const profileUpdates = (row.profileUpdates ?? {}) as Record<string, unknown>;
+
+    await applyScoreImpact(row.customerId, scoreImpact);
+    await applyProfileUpdates(row.customerId, profileUpdates);
+
+    res.json({
+      ok: true,
+      appliedScores: Object.keys(scoreImpact).length,
+      appliedProfileFields: Object.keys(profileUpdates).length,
+    });
+  } catch (err) {
+    logger.error({ err }, "admin-m365-run: failed to apply run result to client");
+    res.status(500).json({ error: "Failed to apply result to client" });
+  }
+});
+
 // ── POST /api/admin/run-package ───────────────────────────────────────────────
 
 router.post("/admin/run-package", requireAdmin, async (req: Request, res: Response) => {

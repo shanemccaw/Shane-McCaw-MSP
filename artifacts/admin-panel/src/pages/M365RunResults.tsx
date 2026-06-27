@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, Fragment } from "react";
 import { useAuth } from "@/contexts/AuthContext";
-import { ClipboardList, ChevronDown, ChevronUp, RefreshCw, Download, Upload, X, CheckCircle, Eye, Clock, User } from "lucide-react";
+import { ClipboardList, ChevronDown, ChevronUp, RefreshCw, Download, Upload, X, CheckCircle, Eye, Clock, User, Zap } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -268,7 +268,38 @@ function AwaitingUploadPanel({
 // ── Expanded Row ──────────────────────────────────────────────────────────────
 
 function ExpandedRow({ result, onUploaded }: { result: RunResult; onUploaded: (id: number) => void }) {
+  const { fetchWithAuth } = useAuth();
+  const { toast } = useToast();
   const [subTab, setSubTab] = useState<"raw" | "findings">("findings");
+  const [applying, setApplying] = useState(false);
+
+  const hasImpact =
+    Object.keys(result.scoreImpact ?? {}).length > 0 ||
+    Object.keys(result.profileUpdates ?? {}).length > 0;
+
+  const handleApplyToClient = async () => {
+    if (!result.customerId) return;
+    setApplying(true);
+    try {
+      const res = await fetchWithAuth(`/api/admin/script-run-results/${result.id}/apply-to-client`, {
+        method: "POST",
+      });
+      if (!res.ok) {
+        const err = await res.json() as { error?: string };
+        toast({ title: err.error ?? "Failed to apply scores", variant: "destructive" });
+        return;
+      }
+      const data = await res.json() as { appliedScores: number; appliedProfileFields: number };
+      toast({
+        title: "Scores applied to client",
+        description: `${data.appliedScores} score categor${data.appliedScores === 1 ? "y" : "ies"} and ${data.appliedProfileFields} profile field${data.appliedProfileFields === 1 ? "" : "s"} updated.`,
+      });
+    } catch {
+      toast({ title: "Failed to apply scores", variant: "destructive" });
+    } finally {
+      setApplying(false);
+    }
+  };
 
   if (result.status === "awaiting_upload") {
     return <AwaitingUploadPanel result={result} onUploaded={onUploaded} />;
@@ -375,6 +406,20 @@ function ExpandedRow({ result, onUploaded }: { result: RunResult; onUploaded: (i
           )}
         </div>
       )}
+
+      {/* Apply to client */}
+      {result.customerId && hasImpact && result.status === "completed" && (
+        <div className="mt-4 pt-3 border-t border-[#21262D] flex justify-end">
+          <button
+            onClick={() => void handleApplyToClient()}
+            disabled={applying}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-[#0078D4] border border-[#0078D4]/30 hover:border-[#0078D4] hover:bg-[#0078D4]/10 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {applying ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Zap className="w-3.5 h-3.5" />}
+            {applying ? "Applying…" : "Apply Scores to Client"}
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -391,7 +436,36 @@ function ClientUploadDetail({
   const { fetchWithAuth } = useAuth();
   const { toast } = useToast();
   const [marking, setMarking] = useState(false);
+  const [applying, setApplying] = useState(false);
   const [subTab, setSubTab] = useState<"submitted" | "findings">("submitted");
+
+  const hasImpact =
+    Object.keys(result.scoreImpact ?? {}).length > 0 ||
+    Object.keys(result.profileUpdates ?? {}).length > 0;
+
+  const handleApplyToClient = async () => {
+    if (!result.customerId) return;
+    setApplying(true);
+    try {
+      const res = await fetchWithAuth(`/api/admin/script-run-results/${result.id}/apply-to-client`, {
+        method: "POST",
+      });
+      if (!res.ok) {
+        const err = await res.json() as { error?: string };
+        toast({ title: err.error ?? "Failed to apply scores", variant: "destructive" });
+        return;
+      }
+      const data = await res.json() as { appliedScores: number; appliedProfileFields: number };
+      toast({
+        title: "Scores applied to client",
+        description: `${data.appliedScores} score categor${data.appliedScores === 1 ? "y" : "ies"} and ${data.appliedProfileFields} profile field${data.appliedProfileFields === 1 ? "" : "s"} updated.`,
+      });
+    } catch {
+      toast({ title: "Failed to apply scores", variant: "destructive" });
+    } finally {
+      setApplying(false);
+    }
+  };
 
   const handleMarkReviewed = async () => {
     setMarking(true);
@@ -508,6 +582,20 @@ function ClientUploadDetail({
             <p className="text-[10px] font-bold uppercase tracking-wider text-[#7D8590] mb-2">Score Impact</p>
             <ScoreImpactChart scoreImpact={result.scoreImpact} />
           </div>
+        </div>
+      )}
+
+      {/* Apply to client */}
+      {result.customerId && hasImpact && result.status === "completed" && (
+        <div className="pt-3 border-t border-[#21262D] flex justify-end">
+          <button
+            onClick={() => void handleApplyToClient()}
+            disabled={applying}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-[#0078D4] border border-[#0078D4]/30 hover:border-[#0078D4] hover:bg-[#0078D4]/10 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {applying ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Zap className="w-3.5 h-3.5" />}
+            {applying ? "Applying…" : "Apply Scores to Client"}
+          </button>
         </div>
       )}
     </div>
