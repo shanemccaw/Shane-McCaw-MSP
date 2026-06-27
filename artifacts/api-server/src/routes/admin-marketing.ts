@@ -2237,6 +2237,64 @@ Generate a landing page in JSON:
   }
 });
 
+router.post("/admin/marketing/generate/landing-copy", requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const body = req.body as {
+      campaignName?: string;
+      goal?: string;
+      audience?: string;
+      offer?: string;
+      deliverables?: string[];
+      outcomes?: string[];
+    };
+
+    const icpCtx = await buildICPContext();
+
+    const deliverables = (body.deliverables ?? []).filter(Boolean);
+    const outcomes = (body.outcomes ?? []).filter(Boolean);
+
+    const offerSection = [
+      body.offer ? `Offer description: ${body.offer}` : "",
+      deliverables.length > 0 ? `Deliverables: ${deliverables.join(", ")}` : "",
+      outcomes.length > 0 ? `Outcomes / results: ${outcomes.join(", ")}` : "",
+    ].filter(Boolean).join("\n");
+
+    const prompt = `You are a conversion copywriter for a Microsoft 365 consulting firm.
+${icpCtx}
+Campaign: ${body.campaignName ?? "Microsoft 365 Consulting"}
+Goal: ${body.goal ?? "Generate qualified leads"}
+Target audience: ${body.audience ?? "IT decision-makers"}
+${offerSection}
+
+Write plain-text landing page copy with the following structure (no JSON, no markdown — just text):
+
+1. Headline — a single punchy benefit-driven headline (under 10 words)
+2. Hook — 2–3 sentences that speak directly to the audience's pain and promise the transformation
+3. Three benefit bullets — each starting with "•" followed by a bold feature and its outcome
+4. Social proof line — one sentence quoting or paraphrasing a client result
+5. CTA sentence — one compelling call-to-action sentence
+
+Keep the tone authoritative, specific, and outcome-focused. Avoid generic phrases like "unlock the power of" or "take your business to the next level".`;
+
+    const msg = await anthropic.messages.create({
+      model: "claude-haiku-4-5",
+      max_tokens: 800,
+      messages: [{ role: "user", content: prompt }],
+    });
+
+    const raw = msg.content[0]?.type === "text" ? msg.content[0].text : "";
+    if (!raw.trim()) {
+      res.status(502).json({ error: "AI returned empty content — please try again" });
+      return;
+    }
+
+    res.json({ copy: raw.trim() });
+  } catch (e) {
+    req.log.error({ err: e }, "Failed to generate landing copy");
+    res.status(500).json({ error: String(e) });
+  }
+});
+
 router.get("/admin/marketing/landing-pages", requireAdmin, async (_req: Request, res: Response) => {
   try {
     const rows = await db.select().from(landingPagesTable).orderBy(desc(landingPagesTable.createdAt));

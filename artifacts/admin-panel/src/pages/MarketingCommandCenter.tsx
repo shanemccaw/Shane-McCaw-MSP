@@ -5464,11 +5464,13 @@ const TAB_ICONS: Record<string, string> = {
 function LandingCopyPanel({
   asset,
   campaign,
+  offers,
   fetchWithAuth,
   onLandingPageCreated,
 }: {
   asset: CampaignAsset;
   campaign: Campaign;
+  offers: Array<{ id: number; name: string; pricing: string | null; deliverables: string[]; outcomes: string[] }>;
   fetchWithAuth: (url: string, opts?: RequestInit) => Promise<Response>;
   onLandingPageCreated: () => void;
 }) {
@@ -5484,6 +5486,10 @@ function LandingCopyPanel({
   const [generating, setGenerating] = useState(false);
   const [genError, setGenError] = useState<string | null>(null);
   const [genSuccess, setGenSuccess] = useState(false);
+
+  // Regenerate copy state
+  const [regenerating, setRegenerating] = useState(false);
+  const [regenError, setRegenError] = useState<string | null>(null);
 
   const handleSaveEdit = async () => {
     setSaving(true);
@@ -5512,6 +5518,39 @@ function LandingCopyPanel({
     setEditText(liveContent);
     setSaveError(null);
     setEditing(false);
+  };
+
+  const handleRegenerateCopy = async () => {
+    setRegenerating(true);
+    setRegenError(null);
+    try {
+      const allDeliverables = offers.flatMap(o => o.deliverables);
+      const allOutcomes = offers.flatMap(o => o.outcomes);
+      const r = await fetchWithAuth(`${API}/admin/marketing/generate/landing-copy`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          campaignName: campaign.name,
+          goal: campaign.goal,
+          audience: campaign.audience,
+          offer: campaign.offer,
+          deliverables: allDeliverables,
+          outcomes: allOutcomes,
+        }),
+      });
+      if (!r.ok) {
+        const err = await r.json() as { error?: string };
+        throw new Error(err.error ?? "Regeneration failed");
+      }
+      const result = await r.json() as { copy: string };
+      setEditText(result.copy);
+      setEditing(true);
+      setSaveError(null);
+    } catch (e) {
+      setRegenError(e instanceof Error ? e.message : "Something went wrong");
+    } finally {
+      setRegenerating(false);
+    }
   };
 
   const handleGenerate = async () => {
@@ -5567,6 +5606,22 @@ function LandingCopyPanel({
           <p className="text-[10px] text-[#484F58] uppercase tracking-wide font-semibold">Landing Page Copy</p>
           <div className="flex items-center gap-2">
             {!editing && <CopyButton text={liveContent} />}
+            <button
+              onClick={() => { void handleRegenerateCopy(); }}
+              disabled={regenerating || saving || generating}
+              title="Regenerate copy from offer deliverables and outcomes"
+              className="text-[10px] px-2 py-0.5 rounded border border-violet-500/40 text-violet-400 hover:bg-violet-500/10 transition-colors disabled:opacity-50 disabled:cursor-wait flex items-center gap-1"
+            >
+              {regenerating ? (
+                <>
+                  <svg className="w-2.5 h-2.5 animate-spin" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+                  </svg>
+                  Generating…
+                </>
+              ) : "✨ Regenerate Copy"}
+            </button>
             {!editing ? (
               <button
                 onClick={() => { setEditText(liveContent); setEditing(true); setSaveError(null); }}
@@ -5607,6 +5662,9 @@ function LandingCopyPanel({
         {saveError && (
           <p className="mt-2 text-[11px] text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-1.5">{saveError}</p>
         )}
+        {regenError && (
+          <p className="mt-2 text-[11px] text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-1.5">{regenError}</p>
+        )}
       </div>
       {!editing && <RawToggle content={liveContent} />}
       <div className="flex items-center gap-3 flex-wrap">
@@ -5646,11 +5704,13 @@ function LandingCopyPanel({
 function CampaignAssetTabPanel({
   asset,
   campaign,
+  offers,
   fetchWithAuth,
   onLandingPageCreated,
 }: {
   asset: CampaignAsset;
   campaign: Campaign;
+  offers: Array<{ id: number; name: string; pricing: string | null; deliverables: string[]; outcomes: string[] }>;
   fetchWithAuth: (url: string, opts?: RequestInit) => Promise<Response>;
   onLandingPageCreated: () => void;
 }) {
@@ -5673,6 +5733,7 @@ function CampaignAssetTabPanel({
       <LandingCopyPanel
         asset={asset}
         campaign={campaign}
+        offers={offers}
         fetchWithAuth={fetchWithAuth}
         onLandingPageCreated={onLandingPageCreated}
       />
@@ -5735,11 +5796,13 @@ function CampaignDeleteDialog({
 function CampaignAssetTabs({
   assets,
   campaign,
+  offers,
   fetchWithAuth,
   onLandingPageCreated,
 }: {
   assets: CampaignAsset[];
   campaign: Campaign;
+  offers: Array<{ id: number; name: string; pricing: string | null; deliverables: string[]; outcomes: string[] }>;
   fetchWithAuth: (url: string, opts?: RequestInit) => Promise<Response>;
   onLandingPageCreated: () => void;
 }) {
@@ -5780,6 +5843,7 @@ function CampaignAssetTabs({
             <CampaignAssetTabPanel
               asset={asset}
               campaign={campaign}
+              offers={offers}
               fetchWithAuth={fetchWithAuth}
               onLandingPageCreated={onLandingPageCreated}
             />
@@ -6067,6 +6131,7 @@ function CampaignDetailView({
         <CampaignAssetTabs
           assets={assets}
           campaign={campaign}
+          offers={offers}
           fetchWithAuth={fetchWithAuth}
           onLandingPageCreated={() => setRefreshKey(k => k + 1)}
         />
