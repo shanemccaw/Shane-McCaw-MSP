@@ -4,7 +4,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { X, ChevronRight, CheckCircle, Loader2, BarChart3, Award, Zap, ArrowRight, Link2, Check } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { trackEvent } from "@/lib/analytics";
+import { trackEvent, identifyLead } from "@/lib/analytics";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface Message {
@@ -297,6 +297,7 @@ export function GenericQuizModal({ config, onClose }: { config: QuizConfig; onCl
       setResendEmail(lead.email);
       setResults(data);
       setState("results");
+      void identifyLead(lead.email);
     } catch {
       setSubmitError("Something went wrong. Please try again.");
       setState("lead-capture");
