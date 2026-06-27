@@ -186,6 +186,39 @@ export async function getJobOutput(jobId: string): Promise<JobOutputLine[]> {
     nextLink = page.nextLink;
   }
 
+  // listByJob returns summary-level stubs where streamText is null.
+  // Fetch the full stream detail for each item that has a jobStreamId but no text.
+  const needsFetch = rawLines.filter(s => !s.streamText?.trim() && s.jobStreamId);
+
+  if (needsFetch.length > 0) {
+    const CHUNK = 20;
+    for (let i = 0; i < needsFetch.length; i += CHUNK) {
+      const chunk = needsFetch.slice(i, i + CHUNK);
+      const fetched = await Promise.all(
+        chunk.map(async s => {
+          try {
+            const detail = await client.jobStream.get(
+              cfg.resourceGroup,
+              cfg.accountName,
+              jobId,
+              s.jobStreamId!,
+            ) as StreamItem;
+            return { id: s.jobStreamId!, text: detail.streamText ?? "" };
+          } catch (e) {
+            logger.warn({ err: e, jobStreamId: s.jobStreamId, jobId }, "azure-automation: jobStream.get failed");
+            return { id: s.jobStreamId!, text: "" };
+          }
+        }),
+      );
+      const textMap = new Map(fetched.map(f => [f.id, f.text]));
+      for (const line of rawLines) {
+        if (line.jobStreamId && textMap.has(line.jobStreamId)) {
+          line.streamText = textMap.get(line.jobStreamId) ?? line.streamText;
+        }
+      }
+    }
+  }
+
   rawLines.sort((a, b) => {
     const ta = a.time ? new Date(a.time).getTime() : 0;
     const tb = b.time ? new Date(b.time).getTime() : 0;
