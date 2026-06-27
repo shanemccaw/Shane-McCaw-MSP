@@ -12,6 +12,7 @@ import { requireAdmin } from "../middlewares/requireAuth";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
 import { sendMessage, GraphMailConfigError } from "../lib/graphEmail";
 import { fetchTopQueries } from "../lib/search-console";
+import { logger } from "../lib/logger";
 import { z } from "zod";
 
 const router = Router();
@@ -58,9 +59,16 @@ function parseAiJson<T>(text: string, schema: z.ZodType<T>): T {
   }
   const result = schema.safeParse(parsed);
   if (!result.success) {
-    throw new AiResponseError("AI returned unexpected format — please try again");
+    throw new AiResponseError(`AI returned unexpected format — please try again (${result.error.issues.map(i => i.message).join("; ")})`);
   }
   return result.data;
+}
+
+const AI_ERROR_MESSAGE = "AI generation failed — please try again";
+
+function aiErrorResponse(e: unknown): { _aiError: true; error: string; message: string } {
+  const msg = e instanceof Error ? e.message : AI_ERROR_MESSAGE;
+  return { _aiError: true, error: msg, message: msg };
 }
 
 // ─── ICP context helper — sources from DB ─────────────────────────────────────
@@ -306,8 +314,8 @@ Respond with a JSON array (no markdown):
 
     res.json(inserted);
   } catch (e) {
-    const status = e instanceof AiResponseError ? 422 : 500;
-    res.status(status).json({ error: e instanceof Error ? e.message : String(e) });
+    if (e instanceof AiResponseError) { logger.warn({ err: e }, "AI parse failed on /recommended-leads/generate"); res.json(aiErrorResponse(e)); return; }
+    res.status(500).json({ error: e instanceof Error ? e.message : String(e) });
   }
 });
 
@@ -446,6 +454,11 @@ router.post("/admin/marketing/generate/outreach", requireAdmin, async (req: Requ
 
     res.json({ content: content.text, templateType: body.templateType, leadName: leadData.name });
   } catch (e) {
+    if (e instanceof AiResponseError || (e instanceof Error && e.message === "Unexpected response type")) {
+      req.log.warn({ err: e }, "AI generation failed on /generate/outreach");
+      res.json({ ...aiErrorResponse(e), content: "", templateType: (req.body as Record<string, unknown>).templateType ?? "cold_email", leadName: "" });
+      return;
+    }
     res.status(500).json({ error: String(e) });
   }
 });
@@ -482,6 +495,11 @@ router.post("/admin/marketing/generate/content", requireAdmin, async (req: Reque
 
     res.json({ content: content.text, contentType: body.contentType });
   } catch (e) {
+    if (e instanceof AiResponseError || (e instanceof Error && e.message === "Unexpected response type")) {
+      req.log.warn({ err: e }, "AI generation failed on /generate/content");
+      res.json({ ...aiErrorResponse(e), content: "", contentType: (req.body as Record<string, unknown>).contentType ?? "blog_post" });
+      return;
+    }
     res.status(500).json({ error: String(e) });
   }
 });
@@ -555,8 +573,8 @@ Generate complete campaign assets. Respond with JSON only (no markdown):
 
     res.json(preview);
   } catch (e) {
-    const status = e instanceof AiResponseError ? 422 : 500;
-    res.status(status).json({ error: e instanceof Error ? e.message : String(e) });
+    if (e instanceof AiResponseError) { req.log.warn({ err: e }, "AI parse failed on /campaigns/preview-assets"); res.json(aiErrorResponse(e)); return; }
+    res.status(500).json({ error: e instanceof Error ? e.message : String(e) });
   }
 });
 
@@ -587,8 +605,8 @@ Respond with JSON only (no markdown):
     const prospect = parseAiJson(content.text, z.object({ name: z.string(), company: z.string(), role: z.string(), industry: z.string() }));
     res.json(prospect);
   } catch (e) {
-    const status = e instanceof AiResponseError ? 422 : 500;
-    res.status(status).json({ error: e instanceof Error ? e.message : String(e) });
+    if (e instanceof AiResponseError) { req.log.warn({ err: e }, "AI parse failed on /generate/outreach-suggest"); res.json({ ...aiErrorResponse(e), name: "", company: "", role: "", industry: "" }); return; }
+    res.status(500).json({ error: e instanceof Error ? e.message : String(e) });
   }
 });
 
@@ -619,8 +637,8 @@ Respond with JSON only (no markdown):
     const idea = parseAiJson(content.text, z.object({ topic: z.string(), tone: z.string(), keywords: z.string() }));
     res.json(idea);
   } catch (e) {
-    const status = e instanceof AiResponseError ? 422 : 500;
-    res.status(status).json({ error: e instanceof Error ? e.message : String(e) });
+    if (e instanceof AiResponseError) { req.log.warn({ err: e }, "AI parse failed on /generate/content-suggest"); res.json({ ...aiErrorResponse(e), topic: "", tone: "", keywords: "" }); return; }
+    res.status(500).json({ error: e instanceof Error ? e.message : String(e) });
   }
 });
 
@@ -651,8 +669,8 @@ Respond with a JSON array only (no markdown):
 
     res.json(suggestions);
   } catch (e) {
-    const status = e instanceof AiResponseError ? 422 : 500;
-    res.status(status).json({ error: e instanceof Error ? e.message : String(e) });
+    if (e instanceof AiResponseError) { logger.warn({ err: e }, "AI parse failed on /generate/task-suggestions"); res.json(aiErrorResponse(e)); return; }
+    res.status(500).json({ error: e instanceof Error ? e.message : String(e) });
   }
 });
 
@@ -691,8 +709,8 @@ router.post("/admin/marketing/generate/campaign-suggest", requireAdmin, async (r
     const result = parseAiJson(content.text, z.object({ value: z.string() }));
     res.json(result);
   } catch (e) {
-    const status = e instanceof AiResponseError ? 422 : 500;
-    res.status(status).json({ error: e instanceof Error ? e.message : String(e) });
+    if (e instanceof AiResponseError) { req.log.warn({ err: e }, "AI parse failed on /generate/campaign-suggest"); res.json({ ...aiErrorResponse(e), value: "" }); return; }
+    res.status(500).json({ error: e instanceof Error ? e.message : String(e) });
   }
 });
 
@@ -1312,8 +1330,8 @@ Respond ONLY with valid JSON, no prose:
 
     res.json({ adType: body.adType, variations });
   } catch (e) {
-    const status = e instanceof AiResponseError ? 422 : 500;
-    res.status(status).json({ error: e instanceof Error ? e.message : String(e) });
+    if (e instanceof AiResponseError) { req.log.warn({ err: e }, "AI parse failed on /campaigns/generate-ads"); res.json({ ...aiErrorResponse(e), adType: (req.body as Record<string, unknown>).adType ?? "ad_google", variations: [] }); return; }
+    res.status(500).json({ error: e instanceof Error ? e.message : String(e) });
   }
 });
 
@@ -1897,6 +1915,11 @@ Return JSON:
     const schema = z.object({ name: z.string(), goal: z.string(), audience: z.string(), pricing: z.string().optional(), deliverables: z.array(z.string()), outcomes: z.array(z.string()), cta: z.string().optional() });
     res.json(parseAiJson(raw, schema));
   } catch (e) {
+    if (e instanceof AiResponseError) {
+      req.log.warn({ err: e }, "AI parse failed on /generate/offer");
+      res.json({ ...aiErrorResponse(e), name: "", goal: "", audience: "", pricing: "", deliverables: [], outcomes: [], cta: "" });
+      return;
+    }
     res.status(500).json({ error: String(e) });
   }
 });
@@ -1977,9 +2000,9 @@ Respond with ONLY a raw JSON array — no prose, no markdown fences. Schema:
     const schema = z.array(z.object({ goal: z.string(), audience: z.string(), pricePoint: z.string() }));
     res.json(parseAiJson(raw, schema));
   } catch (e) {
+    if (e instanceof AiResponseError) { req.log.warn({ err: e }, "AI parse failed on /suggest/offer"); res.json(aiErrorResponse(e)); return; }
     req.log.error({ err: e }, "POST /admin/marketing/suggest/offer failed");
-    const status = e instanceof AiResponseError ? 422 : 500;
-    res.status(status).json({ error: String(e) });
+    res.status(500).json({ error: String(e) });
   }
 });
 
@@ -2024,6 +2047,11 @@ Generate a landing page in JSON:
     });
     res.json(parseAiJson(raw, schema));
   } catch (e) {
+    if (e instanceof AiResponseError) {
+      req.log.warn({ err: e }, "AI parse failed on /generate/landing-page");
+      res.json({ ...aiErrorResponse(e), title: "", headline: "", subheadline: "", valuePropBlocks: [], socialProof: [], cta: { buttonText: "Get Started", href: "/contact" } });
+      return;
+    }
     res.status(500).json({ error: String(e) });
   }
 });
@@ -2119,9 +2147,9 @@ Respond with ONLY a raw JSON array — no prose, no markdown fences. Schema:
     const schema = z.array(z.object({ topic: z.string(), audience: z.string(), cta: z.string() }));
     res.json(parseAiJson(raw, schema));
   } catch (e) {
+    if (e instanceof AiResponseError) { req.log.warn({ err: e }, "AI parse failed on /suggest/landing-page"); res.json(aiErrorResponse(e)); return; }
     req.log.error({ err: e }, "POST /admin/marketing/suggest/landing-page failed");
-    const status = e instanceof AiResponseError ? 422 : 500;
-    res.status(status).json({ error: String(e) });
+    res.status(500).json({ error: String(e) });
   }
 });
 
@@ -2168,6 +2196,11 @@ Generate a lead magnet in JSON:
 
     res.json({ ...generated, assetId: saved?.id ?? null });
   } catch (e) {
+    if (e instanceof AiResponseError) {
+      req.log.warn({ err: e }, "AI parse failed on /generate/lead-magnet");
+      res.json({ ...aiErrorResponse(e), title: "", subtitle: "", format: "checklist", items: [], cta: "", outlineMarkdown: "", assetId: null });
+      return;
+    }
     res.status(500).json({ error: String(e) });
   }
 });
@@ -2270,6 +2303,11 @@ Write a concise, value-driven follow-up message (3-5 sentences). Return JSON:
 
     res.json({ ...draft, followUp: updated });
   } catch (e) {
+    if (e instanceof AiResponseError) {
+      req.log.warn({ err: e }, "AI parse failed on /follow-ups/:id/generate-copy");
+      res.json({ ...aiErrorResponse(e), subject: "", content: "", followUp: null });
+      return;
+    }
     res.status(500).json({ error: String(e) });
   }
 });
@@ -2295,6 +2333,11 @@ Write a concise, value-driven follow-up message (3-5 sentences). Return JSON:
     const raw = msg.content[0]?.type === "text" ? msg.content[0].text : "{}";
     res.json(parseAiJson(raw, z.object({ subject: z.string(), content: z.string() })));
   } catch (e) {
+    if (e instanceof AiResponseError) {
+      req.log.warn({ err: e }, "AI parse failed on /generate/follow-up-draft");
+      res.json({ ...aiErrorResponse(e), subject: "", content: "" });
+      return;
+    }
     res.status(500).json({ error: String(e) });
   }
 });
@@ -2539,12 +2582,9 @@ Respond with ONLY a raw JSON array — no prose, no markdown fences. Schema:
 
     res.json(insertedTasks);
   } catch (e) {
+    if (e instanceof AiResponseError) { req.log.warn({ err: e }, "AI parse failed on /generate/money-tasks"); res.json(aiErrorResponse(e)); return; }
     req.log.error({ err: e }, "POST /admin/marketing/generate/money-tasks failed");
-    if (e instanceof AiResponseError) {
-      res.status(422).json({ error: String(e) });
-    } else {
-      res.status(500).json({ error: String(e) });
-    }
+    res.status(500).json({ error: String(e) });
   }
 });
 
@@ -2613,6 +2653,11 @@ Return JSON:
     const parsed = parseAiJson(raw, schema);
     res.json({ ...parsed, trafficSpikeDetected: trafficSpike, trafficSpikeNote });
   } catch (e) {
+    if (e instanceof AiResponseError) {
+      logger.warn({ err: e }, "AI parse failed on /analytics/insights");
+      res.json({ ...aiErrorResponse(e), summary: "AI analysis could not be generated — please try again", wins: [], gaps: [], recommendations: [], revenueAlert: "", trafficSpikeDetected: false, trafficSpikeNote: null });
+      return;
+    }
     res.status(500).json({ error: String(e) });
   }
 });

@@ -16,6 +16,11 @@ import { CSS } from "@dnd-kit/utilities";
 
 const API = "/api";
 
+type AiErrorShape = { _aiError: true; error: string; message: string };
+function isAiError(d: unknown): d is AiErrorShape {
+  return typeof d === "object" && d !== null && (d as Record<string, unknown>)._aiError === true;
+}
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 interface RecommendedLead {
@@ -2766,7 +2771,7 @@ function OfferBuilderPanel({ fetchWithAuth }: { fetchWithAuth: (url: string, opt
     try {
       const r = await fetchWithAuth(`${API}/admin/marketing/suggest/offer`, { method: "POST" });
       const data = await r.json() as unknown;
-      if (!r.ok) { setSuggestError((data as { error?: string })?.error ?? "Suggest failed"); return; }
+      if (!r.ok || isAiError(data)) { setSuggestError(isAiError(data) ? data.message : ((data as { error?: string })?.error ?? "Suggest failed")); return; }
       const list = Array.isArray(data) ? data as OfferSuggestion[] : [];
       if (list.length === 0) { setSuggestError("No suggestions returned"); return; }
       setSuggestions(list); setSuggestionIdx(0);
@@ -2788,7 +2793,9 @@ function OfferBuilderPanel({ fetchWithAuth }: { fetchWithAuth: (url: string, opt
     setGenerating(true); setDraft(null);
     try {
       const r = await fetchWithAuth(`${API}/admin/marketing/generate/offer`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ goal, audience, pricePoint }) });
-      setDraft(await r.json() as Omit<Offer, "id" | "createdAt">);
+      const data = await r.json() as Omit<Offer, "id" | "createdAt"> | AiErrorShape;
+      if (!isAiError(data)) setDraft(data);
+      else setSuggestError(data.message ?? "AI generation failed — please try again");
     } finally { setGenerating(false); }
   };
 
@@ -2968,7 +2975,7 @@ function LandingPagesPanel({ fetchWithAuth }: { fetchWithAuth: (url: string, opt
     try {
       const r = await fetchWithAuth(`${API}/admin/marketing/suggest/landing-page`, { method: "POST" });
       const data = await r.json() as unknown;
-      if (!r.ok) { setSuggestError((data as { error?: string })?.error ?? "Suggest failed"); return; }
+      if (!r.ok || isAiError(data)) { setSuggestError(isAiError(data) ? data.message : ((data as { error?: string })?.error ?? "Suggest failed")); return; }
       const list = Array.isArray(data) ? data as LandingPageSuggestion[] : [];
       if (list.length === 0) { setSuggestError("No suggestions returned"); return; }
       setSuggestions(list); setSuggestionIdx(0);
@@ -2990,7 +2997,8 @@ function LandingPagesPanel({ fetchWithAuth }: { fetchWithAuth: (url: string, opt
     setGenerating(true); setDraft(null);
     try {
       const r = await fetchWithAuth(`${API}/admin/marketing/generate/landing-page`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ topic, audience, cta }) });
-      const data = await r.json() as Partial<LandingPage>;
+      const data = await r.json() as Partial<LandingPage> | AiErrorShape;
+      if (isAiError(data)) { setSuggestError(data.message ?? "AI generation failed — please try again"); return; }
       setDraft(data);
       if (data.title) setSlugInput(data.title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 50));
     } finally { setGenerating(false); }
@@ -3216,7 +3224,8 @@ function FollowUpsSection({ fetchWithAuth }: { fetchWithAuth: (url: string, opts
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ channel, context: leadQuery }),
       });
-      const data = await r.json() as { subject: string; content: string };
+      const data = await r.json() as { subject: string; content: string } | AiErrorShape;
+      if (isAiError(data)) { setDraftContent(""); return; }
       if (data.subject) setSubject(data.subject);
       setDraftContent(data.content ?? "");
     } finally { setGeneratingDraft(false); }
@@ -3258,7 +3267,8 @@ function FollowUpsSection({ fetchWithAuth }: { fetchWithAuth: (url: string, opts
     setExpandedId(id);
     try {
       const r = await fetchWithAuth(`${API}/admin/marketing/follow-ups/${id}/generate-copy`, { method: "POST" });
-      if (r.ok) { const data = await r.json() as { followUp: FollowUp }; setFollowUps(prev => prev.map(f => f.id === id ? data.followUp : f)); }
+      const data = await r.json() as { followUp: FollowUp } | AiErrorShape;
+      if (r.ok && !isAiError(data) && data.followUp) { setFollowUps(prev => prev.map(f => f.id === id ? data.followUp : f)); }
     } finally { setGeneratingCopyId(null); }
   };
 
@@ -3399,8 +3409,8 @@ function AiMoneyTasksButton({ fetchWithAuth, onAdded }: { fetchWithAuth: (url: s
     try {
       const r = await fetchWithAuth(`${API}/admin/marketing/generate/money-tasks`, { method: "POST" });
       const data = await r.json() as unknown;
-      if (!r.ok) {
-        const msg = (data as { error?: string })?.error ?? `Server error ${r.status}`;
+      if (!r.ok || isAiError(data)) {
+        const msg = isAiError(data) ? data.message : ((data as { error?: string })?.error ?? `Server error ${r.status}`);
         setError(msg);
         return;
       }
@@ -3685,7 +3695,8 @@ function MarketingTasksKanban({ fetchWithAuth }: { fetchWithAuth: (url: string, 
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({}),
       });
-      const suggestions = await r.json() as Array<{ title: string; description: string }>;
+      const suggestions = await r.json() as Array<{ title: string; description: string }> | AiErrorShape;
+      if (isAiError(suggestions)) return;
       if (Array.isArray(suggestions) && suggestions.length > 0) {
         setAiSuggestions(suggestions);
         setCheckedSuggestions(new Set(suggestions.map((_, i) => i)));
@@ -4334,9 +4345,9 @@ function CampaignAdAssetsStep({
           audience: sections[type].audience,
         }),
       });
-      const data = await r.json() as { variations?: AdVariation[]; error?: string };
-      if (!r.ok) { patchSection(type, { error: data.error ?? "Generation failed — try again.", suggesting: false }); return; }
-      patchSection(type, { variations: data.variations ?? [], suggesting: false });
+      const data = await r.json() as { variations?: AdVariation[]; error?: string } | AiErrorShape;
+      if (!r.ok || isAiError(data)) { patchSection(type, { error: isAiError(data) ? data.message : ((data as { error?: string }).error ?? "Generation failed — try again."), suggesting: false }); return; }
+      patchSection(type, { variations: (data as { variations?: AdVariation[] }).variations ?? [], suggesting: false });
     } catch { patchSection(type, { error: "Network error — check your connection.", suggesting: false }); }
   };
 
