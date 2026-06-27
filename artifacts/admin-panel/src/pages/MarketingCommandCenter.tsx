@@ -2977,14 +2977,17 @@ function LandingPagesPanel({ fetchWithAuth }: { fetchWithAuth: (url: string, opt
   const [copiedId, setCopiedId] = useState<number | null>(null);
 
   const [lpCampaigns, setLpCampaigns] = useState<Campaign[]>([]);
+  const [lpOffers, setLpOffers] = useState<Offer[]>([]);
   useEffect(() => {
     Promise.all([
       fetchWithAuth(`${API}/admin/marketing/landing-pages`).then(r => r.json()).then(d => setPages(Array.isArray(d) ? d as LandingPage[] : [])).catch(() => null),
       fetchWithAuth(`${API}/admin/site-config`).then(r => r.json()).then((d: { publicSiteUrl?: string }) => setPublicSiteUrl(d.publicSiteUrl ?? "")).catch(() => null),
       fetchWithAuth(`${API}/admin/marketing/campaigns`).then(r => r.json()).then(d => setLpCampaigns(Array.isArray(d) ? d as Campaign[] : [])).catch(() => null),
+      fetchWithAuth(`${API}/admin/marketing/offers`).then(r => r.json()).then(d => setLpOffers(Array.isArray(d) ? d as Offer[] : [])).catch(() => null),
     ]).finally(() => setLoading(false));
   }, [fetchWithAuth]);
   const lpCampaignMap = new Map(lpCampaigns.map(c => [c.id, c.name]));
+  const lpOfferByCampaignId = new Map(lpOffers.filter(o => o.campaignId != null).map(o => [o.campaignId as number, o]));
 
   const fetchSuggestions = async (force = false) => {
     if (suggestions.length > 0 && !force) {
@@ -3198,17 +3201,48 @@ function LandingPagesPanel({ fetchWithAuth }: { fetchWithAuth: (url: string, opt
                   <button onClick={e => { e.stopPropagation(); void deletePage(page.id); }} className="text-[#484F58] hover:text-red-400 text-xs">✕</button>
                 </div>
               </div>
-              {expandedId === page.id && page.valuePropBlocks.length > 0 && (
-                <div className="border-t border-[#30363D] px-4 pb-4 pt-3 space-y-2">
-                  <p className="text-xs text-[#7D8590]">{page.headline}</p>
-                  <div className="grid grid-cols-3 gap-2">
-                    {page.valuePropBlocks.slice(0, 3).map((b, i) => (
-                      <div key={i} className="bg-[#0D1117] rounded-lg p-2">
-                        {b.icon && <span>{b.icon}</span>}
-                        <p className="text-[10px] font-semibold text-[#E6EDF3]">{b.heading}</p>
+              {expandedId === page.id && (page.valuePropBlocks.length > 0 || (page.campaignId && lpOfferByCampaignId.get(page.campaignId))) && (
+                <div className="border-t border-[#30363D] px-4 pb-4 pt-3 space-y-3">
+                  {page.valuePropBlocks.length > 0 && (
+                    <>
+                      <p className="text-xs text-[#7D8590]">{page.headline}</p>
+                      <div className="grid grid-cols-3 gap-2">
+                        {page.valuePropBlocks.slice(0, 3).map((b, i) => (
+                          <div key={i} className="bg-[#0D1117] rounded-lg p-2">
+                            {b.icon && <span>{b.icon}</span>}
+                            <p className="text-[10px] font-semibold text-[#E6EDF3]">{b.heading}</p>
+                          </div>
+                        ))}
                       </div>
-                    ))}
-                  </div>
+                    </>
+                  )}
+                  {(() => {
+                    const offer = page.campaignId ? lpOfferByCampaignId.get(page.campaignId) : undefined;
+                    if (!offer) return null;
+                    return (
+                      <div className="bg-amber-500/5 border border-amber-500/20 rounded-lg px-3 py-2.5 space-y-1.5">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="text-[10px] font-bold text-amber-400 uppercase tracking-wide">🎁 Linked Offer</span>
+                          <span className="text-xs font-semibold text-[#E6EDF3]">{offer.name}</span>
+                          {offer.pricing && (
+                            <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-amber-500/20 text-amber-300">
+                              {offer.pricing}
+                            </span>
+                          )}
+                        </div>
+                        {offer.deliverables.length > 0 && (
+                          <ul className="space-y-0.5">
+                            {offer.deliverables.slice(0, 3).map((d, i) => (
+                              <li key={i} className="flex items-start gap-1.5 text-[10px] text-[#C9D1D9]">
+                                <span className="text-amber-500 mt-px flex-shrink-0">✓</span>
+                                <span>{d}</span>
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                      </div>
+                    );
+                  })()}
                 </div>
               )}
             </div>
