@@ -5872,7 +5872,7 @@ function LandingCopyPanel({
   );
 }
 
-function OfferIndicator({ offers, isSnapshot }: { offers: Array<{ name: string }>; isSnapshot?: boolean }) {
+function OfferIndicator({ offers, isSnapshot, hasCampaign }: { offers: Array<{ name: string }>; isSnapshot?: boolean; hasCampaign?: boolean }) {
   return (
     <p className="text-[10px] text-[#484F58]">
       {offers.length > 0
@@ -5882,7 +5882,9 @@ function OfferIndicator({ offers, isSnapshot }: { offers: Array<{ name: string }
               : null}
             {`${isSnapshot ? "Generated with" : "Using"} ${offers.length} offer${offers.length === 1 ? "" : "s"}: ${offers.map(o => o.name).join(", ")}`}
           </>
-        : "No linked offers — using campaign description only"}
+        : hasCampaign === false
+          ? "Standalone asset — no offer context"
+          : "No linked offers — using campaign description only"}
     </p>
   );
 }
@@ -7481,7 +7483,7 @@ function AdLibrarySection({
                       )}
                     </div>
                     <p className="text-sm font-semibold text-[#E6EDF3] truncate">{asset.title}</p>
-                    <OfferIndicator offers={assetOffers} isSnapshot={hasSnapshot} />
+                    <OfferIndicator offers={assetOffers} isSnapshot={hasSnapshot} hasCampaign={asset.campaignId != null} />
                     <p className="text-[10px] text-[#484F58]">
                       {variations.length > 0 && `${variations.length} variation${variations.length !== 1 ? "s" : ""} · `}
                       {new Date(asset.createdAt).toLocaleDateString()}
