@@ -360,16 +360,18 @@ function NavItemLink({
   collapsed,
   onClick,
   badge,
+  href,
 }: {
   item: NavItem;
   isActive: boolean;
   collapsed: boolean;
   onClick?: () => void;
   badge?: number;
+  href?: string;
 }) {
   const linkEl = (
     <Link
-      href={item.path}
+      href={href ?? item.path}
       onClick={onClick}
       className={`flex items-center gap-2.5 rounded-lg text-sm font-medium transition-all duration-150 border ${
         collapsed ? "px-0 py-2 justify-center relative w-full" : "px-2.5 py-2"
@@ -605,6 +607,8 @@ function SidebarContent({
                 {group.items.map(item => {
                   const isActive = location === item.path || location.startsWith(item.path + "/");
                   const itemBadge = item.label === "Inbox" ? unreadEmailCount : 0;
+                  const search = typeof window !== "undefined" ? window.location.search : "";
+                  const effectiveHref = isActive && search ? item.path + search : undefined;
                   return (
                     <NavItemLink
                       key={item.label + item.path}
@@ -613,6 +617,7 @@ function SidebarContent({
                       collapsed={collapsed}
                       onClick={onClose}
                       badge={itemBadge || undefined}
+                      href={effectiveHref}
                     />
                   );
                 })}
