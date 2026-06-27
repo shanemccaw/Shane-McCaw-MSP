@@ -9,6 +9,7 @@ import PortalProjectCloseOut from "./PortalProjectCloseOut";
 import { KanbanCardModal } from "@/components/KanbanCardModal";
 import type { KanbanCardModalTask } from "@/components/KanbanCardModal";
 import { TypedCardContent } from "@/components/kanban/TypedCardContent";
+import { ManualScriptsSection } from "@/components/ManualScriptsSection";
 
 interface Project {
   id: number;
@@ -1271,6 +1272,9 @@ export default function PortalProjectDetail() {
                 )}
               </div>
             )}
+
+            {/* Manual Script Upload Section — injected above the workflow explorer */}
+            <ManualScriptsSection projectId={project.id} />
 
             <div className="grid grid-cols-12 gap-6 items-start">
               {/* Left: Workflow Explorer */}

@@ -25,72 +25,16 @@ import {
   db,
   scriptCatalogTable,
   scriptRunResultsTable,
-  clientScoresTable,
-  clientM365ProfilesTable,
   usersTable,
 } from "@workspace/db";
 import { eq, desc, and } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/requireAuth";
 import { logger } from "../lib/logger";
-import { runAiAnalyzer } from "../lib/ai-analyzer";
 import { generateManualScriptPackage } from "../lib/manual-script-package";
+import { processManualScriptUpload, UploadError } from "../lib/manual-script-upload";
 
 const router: IRouter = Router();
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
-
-function clampScore(current: number, delta: number): number {
-  return Math.max(0, Math.min(100, current + delta));
-}
-
-async function applyScoreImpact(clientId: number, scoreImpact: Record<string, number>): Promise<void> {
-  if (Object.keys(scoreImpact).length === 0) return;
-
-  const [existing] = await db
-    .select()
-    .from(clientScoresTable)
-    .where(eq(clientScoresTable.clientId, clientId))
-    .limit(1);
-
-  const base = {
-    identity: existing?.identity ?? 0,
-    security: existing?.security ?? 0,
-    collaboration: existing?.collaboration ?? 0,
-    compliance: existing?.compliance ?? 0,
-    copilotReadiness: existing?.copilotReadiness ?? 0,
-  };
-
-  const updated = {
-    identity: scoreImpact.identity !== undefined ? clampScore(base.identity, scoreImpact.identity) : base.identity,
-    security: scoreImpact.security !== undefined ? clampScore(base.security, scoreImpact.security) : base.security,
-    collaboration: scoreImpact.collaboration !== undefined ? clampScore(base.collaboration, scoreImpact.collaboration) : base.collaboration,
-    compliance: scoreImpact.compliance !== undefined ? clampScore(base.compliance, scoreImpact.compliance) : base.compliance,
-    copilotReadiness: scoreImpact.copilotReadiness !== undefined ? clampScore(base.copilotReadiness, scoreImpact.copilotReadiness) : base.copilotReadiness,
-  };
-
-  if (existing) {
-    await db.update(clientScoresTable).set({ ...updated, updatedAt: new Date() }).where(eq(clientScoresTable.clientId, clientId));
-  } else {
-    await db.insert(clientScoresTable).values({ clientId, ...updated });
-  }
-}
-
-async function applyProfileUpdates(clientId: number, profileUpdates: Record<string, unknown>): Promise<void> {
-  if (Object.keys(profileUpdates).length === 0) return;
-
-  const [existing] = await db
-    .select()
-    .from(clientM365ProfilesTable)
-    .where(eq(clientM365ProfilesTable.clientId, clientId))
-    .limit(1);
-
-  if (existing) {
-    const merged = { ...(existing.profile as Record<string, unknown> ?? {}), ...profileUpdates };
-    await db.update(clientM365ProfilesTable).set({ profile: merged, updatedAt: new Date() }).where(eq(clientM365ProfilesTable.clientId, clientId));
-  } else {
-    await db.insert(clientM365ProfilesTable).values({ clientId, profile: profileUpdates });
-  }
-}
 
 function getUploadBaseUrl(): string {
   const domains = process.env.REPLIT_DOMAINS;
@@ -220,90 +164,17 @@ router.post("/admin/manual-scripts/:runResultId/upload", requireAdmin, async (re
   const { jsonData, uploadedBy } = parsed.data;
 
   try {
-    const [runResult] = await db
-      .select()
-      .from(scriptRunResultsTable)
-      .where(eq(scriptRunResultsTable.id, runResultId))
-      .limit(1);
-
-    if (!runResult) {
-      res.status(404).json({ error: "Run result not found" });
-      return;
-    }
-
-    if (runResult.executionSource !== "manual") {
-      res.status(400).json({ error: "This run result was not created by the manual execution flow" });
-      return;
-    }
-
-    if (runResult.status === "completed") {
-      res.status(409).json({ error: "Results have already been uploaded for this run — to re-process, create a new package" });
-      return;
-    }
-
-    const [script] = await db
-      .select()
-      .from(scriptCatalogTable)
-      .where(eq(scriptCatalogTable.id, runResult.scriptId))
-      .limit(1);
-
-    const scriptOutput = JSON.stringify(jsonData, null, 2);
-
-    let aiResult = {
-      findings: [] as string[],
-      recommendations: [] as string[],
-      scoreImpact: {} as Record<string, number>,
-      profileUpdates: {} as Record<string, unknown>,
-    };
-
-    try {
-      aiResult = await runAiAnalyzer({
-        scriptOutput,
-        aiInstructions: script?.aiInstructions ?? "",
-        packageContext: runResult.packageId ? `Package ${runResult.packageId}` : "Manual script upload",
-      });
-    } catch (aiErr) {
-      logger.warn({ aiErr, runResultId }, "admin-manual-scripts: AI analysis failed (non-fatal)");
-    }
-
-    await db
-      .update(scriptRunResultsTable)
-      .set({
-        rawOutput: jsonData,
-        parsedFindings: aiResult.findings,
-        recommendations: aiResult.recommendations,
-        scoreImpact: aiResult.scoreImpact,
-        profileUpdates: aiResult.profileUpdates,
-        status: "completed",
-        uploadedBy: uploadedBy ?? null,
-        uploadedAt: new Date(),
-      })
-      .where(eq(scriptRunResultsTable.id, runResultId));
-
-    if (runResult.customerId) {
-      try {
-        await applyScoreImpact(runResult.customerId, aiResult.scoreImpact);
-      } catch (err) {
-        logger.warn({ err, customerId: runResult.customerId }, "admin-manual-scripts: score impact failed (non-fatal)");
-      }
-      try {
-        await applyProfileUpdates(runResult.customerId, aiResult.profileUpdates);
-      } catch (err) {
-        logger.warn({ err, customerId: runResult.customerId }, "admin-manual-scripts: profile updates failed (non-fatal)");
-      }
-    }
-
-    logger.info({ runResultId, scriptId: runResult.scriptId }, "admin-manual-scripts: upload processed");
-
-    res.json({
+    const result = await processManualScriptUpload(
       runResultId,
-      scriptId: runResult.scriptId,
-      status: "completed",
-      findings: aiResult.findings,
-      recommendations: aiResult.recommendations,
-      scoreImpact: aiResult.scoreImpact,
-    });
+      jsonData,
+      uploadedBy ?? "admin",
+    );
+    res.json(result);
   } catch (err) {
+    if (err instanceof UploadError) {
+      res.status(err.statusCode).json({ error: err.message });
+      return;
+    }
     logger.error({ err, runResultId }, "admin-manual-scripts: upload failed");
     res.status(500).json({ error: "Failed to process uploaded results" });
   }

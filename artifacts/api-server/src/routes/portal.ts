@@ -1,5 +1,5 @@
 import { Router, type IRouter, type Request, type Response } from "express";
-import { db, projectsTable, clientServicesTable, servicesTable, workflowStepsTable, kanbanTasksTable, documentsTable, reportsTable, invoicesTable, messagesTable, notificationsTable, projectUpdatesTable, usersTable, contractsTable, passwordResetTokensTable, workflowTemplateStepsTable, workflowTemplateStepTasksTable, contractTemplatesTable, impersonationTokensTable, statusReportsTable, deviceTokensTable, projectClosuresTable, auditLogsTable, instructionSetsTable, checklistsTable, artifactSetsTable, deliverableSetsTable, emailsTable, emailDomainRulesTable, clientM365ProfilesTable, couponsTable, clientAppRegistrationsTable, accountSetupTokensTable, mfaEnrollmentsTable, mfaChallengesTable, webauthnCredentialsTable, webauthnChallengesTable, clientHealthHistoryTable, quizLeadsTable } from "@workspace/db";
+import { db, projectsTable, clientServicesTable, servicesTable, workflowStepsTable, kanbanTasksTable, documentsTable, reportsTable, invoicesTable, messagesTable, notificationsTable, projectUpdatesTable, usersTable, contractsTable, passwordResetTokensTable, workflowTemplateStepsTable, workflowTemplateStepTasksTable, contractTemplatesTable, impersonationTokensTable, statusReportsTable, deviceTokensTable, projectClosuresTable, auditLogsTable, instructionSetsTable, checklistsTable, artifactSetsTable, deliverableSetsTable, emailsTable, emailDomainRulesTable, clientM365ProfilesTable, couponsTable, clientAppRegistrationsTable, accountSetupTokensTable, mfaEnrollmentsTable, mfaChallengesTable, webauthnCredentialsTable, webauthnChallengesTable, clientHealthHistoryTable, quizLeadsTable, scriptRunResultsTable, scriptCatalogTable, clientScoresTable } from "@workspace/db";
 import { eq, and, desc, asc, count, sql, inArray, gte, isNotNull, isNull, or, lt } from "drizzle-orm";
 import { requireAuth, requireAdmin } from "../middlewares/requireAuth";
 import jwt from "jsonwebtoken";
@@ -14,6 +14,8 @@ import { testClientCredentials } from "../lib/azure-credentials";
 import { uploadInvoiceToSharePoint } from "../lib/invoice-sharepoint";
 import { getPortalBaseUrl } from "../lib/portal-url";
 import { generateM365ProfilePdf } from "../lib/m365-profile-pdf";
+import { generateManualScriptPackage } from "../lib/manual-script-package";
+import { logger } from "../lib/logger";
 import multer from "multer";
 import path from "path";
 import fs from "fs";
@@ -7447,6 +7449,241 @@ router.post("/admin/clients/:id/mfa-reset", requireAdmin, async (req: Request, r
   } catch (err) {
     req.log.error(err, "Failed to reset client MFA");
     res.status(500).json({ error: "Failed to reset MFA" });
+  }
+});
+
+// ─── CLIENT: Manual Scripts ───────────────────────────────────────────────────
+
+/**
+ * GET /api/portal/projects/:projectId/manual-scripts
+ * Returns all manual script run results for a project that are awaiting_upload or completed.
+ * Also includes script metadata (name, description, manualRequirements).
+ */
+router.get("/portal/projects/:projectId/manual-scripts", requireAuth, async (req: Request, res: Response) => {
+  const userId = req.user!.id;
+  const projectId = parseInt(String(req.params.projectId));
+  if (isNaN(projectId)) { res.status(400).json({ error: "Invalid projectId" }); return; }
+
+  try {
+    // Verify project belongs to this client
+    const [project] = await db
+      .select({ id: projectsTable.id, clientUserId: projectsTable.clientUserId })
+      .from(projectsTable)
+      .where(and(eq(projectsTable.id, projectId), eq(projectsTable.clientUserId, userId)))
+      .limit(1);
+
+    if (!project) { res.status(404).json({ error: "Project not found" }); return; }
+
+    // Find the service linked to this project
+    const [clientService] = await db
+      .select({ serviceId: clientServicesTable.serviceId })
+      .from(clientServicesTable)
+      .where(and(eq(clientServicesTable.projectId, projectId), eq(clientServicesTable.clientUserId, userId)))
+      .limit(1);
+
+    if (!clientService) { res.json([]); return; }
+
+    // Fetch manual script run results for this package + customer
+    const rows = await db
+      .select({
+        runResultId: scriptRunResultsTable.id,
+        scriptId: scriptRunResultsTable.scriptId,
+        status: scriptRunResultsTable.status,
+        createdAt: scriptRunResultsTable.createdAt,
+        uploadedAt: scriptRunResultsTable.uploadedAt,
+        scriptName: scriptCatalogTable.name,
+        description: scriptCatalogTable.description,
+        manualRequirements: scriptCatalogTable.manualRequirements,
+        psScriptBody: scriptCatalogTable.psScriptBody,
+      })
+      .from(scriptRunResultsTable)
+      .innerJoin(scriptCatalogTable, eq(scriptRunResultsTable.scriptId, scriptCatalogTable.id))
+      .where(
+        and(
+          eq(scriptRunResultsTable.customerId, userId),
+          eq(scriptRunResultsTable.packageId, clientService.serviceId),
+          eq(scriptRunResultsTable.executionSource, "manual"),
+        ),
+      )
+      .orderBy(desc(scriptRunResultsTable.createdAt));
+
+    // Filter to only awaiting_upload or completed
+    const filtered = rows.filter(r => r.status === "awaiting_upload" || r.status === "completed");
+
+    // Look up the client's display name for the package generation context
+    const [clientUser] = await db
+      .select({ name: usersTable.name })
+      .from(usersTable)
+      .where(eq(usersTable.id, userId))
+      .limit(1);
+
+    const domains = process.env.REPLIT_DOMAINS;
+    const uploadBaseUrl = domains
+      ? `https://${domains.split(",")[0]?.trim()}`
+      : process.env.REPLIT_DEV_DOMAIN
+      ? `https://${process.env.REPLIT_DEV_DOMAIN}`
+      : "http://localhost:8080";
+
+    // Augment each row with the package-generated instructions and filename
+    const enriched = filtered.map(row => {
+      const pkg = generateManualScriptPackage({
+        scriptId: row.scriptId,
+        scriptName: row.scriptName,
+        description: row.description,
+        manualRequirements: Array.isArray(row.manualRequirements) ? row.manualRequirements as string[] : [],
+        psScriptBody: row.psScriptBody ?? null,
+        runResultId: row.runResultId,
+        customerDisplayName: clientUser?.name ?? undefined,
+        uploadBaseUrl,
+      });
+      return {
+        runResultId: row.runResultId,
+        scriptId: row.scriptId,
+        status: row.status,
+        createdAt: row.createdAt,
+        uploadedAt: row.uploadedAt,
+        scriptName: row.scriptName,
+        description: row.description,
+        manualRequirements: Array.isArray(row.manualRequirements) ? row.manualRequirements as string[] : [],
+        filename: pkg.filename,
+        instructions: pkg.instructions,
+      };
+    });
+
+    res.json(enriched);
+  } catch (err) {
+    logger.error({ err, projectId, userId }, "portal: failed to list manual scripts");
+    res.status(500).json({ error: "Failed to load manual scripts" });
+  }
+});
+
+/**
+ * GET /api/portal/projects/:projectId/manual-scripts/:runResultId/download
+ * Generates and returns the .ps1 script file for a manual script run.
+ */
+router.get("/portal/projects/:projectId/manual-scripts/:runResultId/download", requireAuth, async (req: Request, res: Response) => {
+  const userId = req.user!.id;
+  const projectId = parseInt(String(req.params.projectId));
+  const runResultId = parseInt(String(req.params.runResultId));
+  if (isNaN(projectId) || isNaN(runResultId)) { res.status(400).json({ error: "Invalid parameters" }); return; }
+
+  try {
+    // Verify project ownership
+    const [project] = await db
+      .select({ id: projectsTable.id })
+      .from(projectsTable)
+      .where(and(eq(projectsTable.id, projectId), eq(projectsTable.clientUserId, userId)))
+      .limit(1);
+    if (!project) { res.status(404).json({ error: "Project not found" }); return; }
+
+    // Fetch the run result and verify it belongs to this client
+    const [runResult] = await db
+      .select({
+        id: scriptRunResultsTable.id,
+        scriptId: scriptRunResultsTable.scriptId,
+        customerId: scriptRunResultsTable.customerId,
+        status: scriptRunResultsTable.status,
+      })
+      .from(scriptRunResultsTable)
+      .where(and(eq(scriptRunResultsTable.id, runResultId), eq(scriptRunResultsTable.customerId, userId)))
+      .limit(1);
+    if (!runResult) { res.status(404).json({ error: "Script run not found" }); return; }
+
+    const [script] = await db
+      .select()
+      .from(scriptCatalogTable)
+      .where(eq(scriptCatalogTable.id, runResult.scriptId))
+      .limit(1);
+    if (!script) { res.status(404).json({ error: "Script not found" }); return; }
+
+    const [user] = await db.select({ name: usersTable.name }).from(usersTable).where(eq(usersTable.id, userId)).limit(1);
+
+    const domains = process.env.REPLIT_DOMAINS;
+    const uploadBaseUrl = domains
+      ? `https://${domains.split(",")[0]?.trim()}`
+      : process.env.REPLIT_DEV_DOMAIN
+      ? `https://${process.env.REPLIT_DEV_DOMAIN}`
+      : "http://localhost:8080";
+
+    const pkg = generateManualScriptPackage({
+      scriptId: script.id,
+      scriptName: script.name,
+      description: script.description,
+      manualRequirements: Array.isArray(script.manualRequirements) ? script.manualRequirements as string[] : [],
+      psScriptBody: script.psScriptBody ?? null,
+      runResultId,
+      customerDisplayName: user?.name ?? undefined,
+      uploadBaseUrl,
+    });
+
+    res.setHeader("Content-Type", "text/plain; charset=utf-8");
+    res.setHeader("Content-Disposition", `attachment; filename="${pkg.filename}"`);
+    res.send(pkg.psContent);
+  } catch (err) {
+    logger.error({ err, runResultId }, "portal: failed to download manual script");
+    res.status(500).json({ error: "Failed to generate script download" });
+  }
+});
+
+/**
+ * POST /api/portal/manual-scripts/:scriptRunId/upload
+ * Accepts parsed JSON results from the client for a manual script run.
+ * Body: { jsonData: Record<string, unknown> }
+ * Validates and stores results, then triggers AI analysis and score updates.
+ */
+router.post("/portal/manual-scripts/:scriptRunId/upload", requireAuth, async (req: Request, res: Response) => {
+  const userId = req.user!.id;
+  const scriptRunId = parseInt(String(req.params.scriptRunId));
+  if (isNaN(scriptRunId)) { res.status(400).json({ error: "Invalid scriptRunId" }); return; }
+
+  const { jsonData } = req.body as { jsonData?: unknown };
+
+  if (!jsonData || typeof jsonData !== "object" || Array.isArray(jsonData)) {
+    res.status(400).json({ error: "Request body must include a valid JSON object in the 'jsonData' field" });
+    return;
+  }
+
+  const data = jsonData as Record<string, unknown>;
+
+  if (Object.keys(data).length === 0) {
+    res.status(400).json({ error: "Uploaded JSON must not be empty" });
+    return;
+  }
+
+  if (!("data" in data)) {
+    res.status(400).json({ error: "Uploaded JSON must contain a 'data' key with the collected output" });
+    return;
+  }
+
+  try {
+    // Ownership check — ensure the run result belongs to this authenticated client
+    const [ownership] = await db
+      .select({ id: scriptRunResultsTable.id })
+      .from(scriptRunResultsTable)
+      .where(and(eq(scriptRunResultsTable.id, scriptRunId), eq(scriptRunResultsTable.customerId, userId)))
+      .limit(1);
+    if (!ownership) { res.status(404).json({ error: "Script run not found" }); return; }
+
+    const [user] = await db
+      .select({ name: usersTable.name, email: usersTable.email })
+      .from(usersTable)
+      .where(eq(usersTable.id, userId))
+      .limit(1);
+    const uploadedBy = user?.name ?? user?.email ?? String(userId);
+
+    const { processManualScriptUpload, UploadError } = await import("../lib/manual-script-upload");
+    const result = await processManualScriptUpload(scriptRunId, data, uploadedBy);
+
+    logger.info({ scriptRunId, userId }, "portal: manual script upload processed");
+    res.json({ runResultId: result.runResultId, status: result.status });
+  } catch (err) {
+    const { UploadError } = await import("../lib/manual-script-upload");
+    if (err instanceof UploadError) {
+      res.status(err.statusCode).json({ error: err.message });
+      return;
+    }
+    logger.error({ err, scriptRunId }, "portal: manual script upload failed");
+    res.status(500).json({ error: "Failed to process uploaded results" });
   }
 });
 
