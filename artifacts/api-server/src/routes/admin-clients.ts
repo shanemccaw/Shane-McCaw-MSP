@@ -274,8 +274,10 @@ router.get("/admin/clients/with-azure-credentials", requireAdmin, async (_req: R
         .orderBy(asc(azureTenantCredentialsTable.displayName));
 
       if (unlinked.length > 0) {
+        // Pass 1: deterministic name match — if a credential's displayName
+        // exactly matches (case-insensitive) the client's name or email-prefix,
+        // it is confidently attributed to that client.
         for (const client of uncredentialedClients) {
-          // Strategy 1: exact case-insensitive displayName match
           const clientName = (client.name ?? "").toLowerCase();
           const clientEmailPrefix = client.email.split("@")[0].toLowerCase();
           const nameMatch = unlinked.find(
@@ -285,14 +287,19 @@ router.get("/admin/clients/with-azure-credentials", requireAdmin, async (_req: R
           );
           if (nameMatch) {
             client.credential = nameMatch;
-            continue;
           }
         }
 
-        // Strategy 2: unambiguous 1-to-1 — still uncredentialed after name pass
-        const stillUncredentialed = uncredentialedClients.filter(c => c.credential === null);
-        if (stillUncredentialed.length === 1 && unlinked.length === 1) {
-          stillUncredentialed[0].credential = unlinked[0];
+        // Pass 2: final fallback — assign the first unlinked credential to any
+        // client that still has no credential after the name pass. This handles
+        // credentials added via the global manager that do not name-match the
+        // client record. Clients genuinely without any credential (no unlinked
+        // rows exist at all) remain null and keep the grey dot correctly.
+        const fallback = unlinked[0];
+        for (const client of uncredentialedClients) {
+          if (client.credential === null) {
+            client.credential = fallback;
+          }
         }
       }
     }
