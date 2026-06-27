@@ -19,10 +19,35 @@
 
 import { Router, type IRouter, type Request, type Response } from "express";
 import { z } from "zod";
-import { db, scriptCatalogTable, packageScriptsTable } from "@workspace/db";
-import { eq, and, asc } from "drizzle-orm";
+import { db, scriptCatalogTable, packageScriptsTable, scriptCatalogCategoriesTable } from "@workspace/db";
+import { eq, and, asc, inArray } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/requireAuth";
 import { logger } from "../lib/logger";
+
+// ── Helpers ────────────────────────────────────────────────────────────────────
+
+async function getScriptCategoryIds(scriptIds: number[]): Promise<Map<number, number[]>> {
+  const map = new Map<number, number[]>();
+  if (scriptIds.length === 0) return map;
+  const rows = await db
+    .select({ scriptId: scriptCatalogCategoriesTable.scriptId, categoryId: scriptCatalogCategoriesTable.categoryId })
+    .from(scriptCatalogCategoriesTable)
+    .where(inArray(scriptCatalogCategoriesTable.scriptId, scriptIds));
+  for (const r of rows) {
+    if (!map.has(r.scriptId)) map.set(r.scriptId, []);
+    map.get(r.scriptId)!.push(r.categoryId);
+  }
+  return map;
+}
+
+async function syncScriptCategories(scriptId: number, categoryIds: number[]): Promise<void> {
+  await db.delete(scriptCatalogCategoriesTable).where(eq(scriptCatalogCategoriesTable.scriptId, scriptId));
+  if (categoryIds.length > 0) {
+    await db.insert(scriptCatalogCategoriesTable).values(
+      categoryIds.map(cid => ({ scriptId, categoryId: cid }))
+    );
+  }
+}
 
 const router: IRouter = Router();
 
@@ -43,6 +68,7 @@ const createScriptSchema = z.object({
   executionMode: z.enum(["automated", "manual"]).default("automated"),
   manualRequirements: z.array(z.string()).default([]),
   psScriptBody: z.string().optional(),
+  categoryIds: z.array(z.number().int().positive()).optional(),
 });
 
 const updateScriptSchema = createScriptSchema.partial();
@@ -62,7 +88,8 @@ const updatePackageScriptSchema = z.object({
 router.get("/admin/scripts", requireAdmin, async (_req: Request, res: Response) => {
   try {
     const rows = await db.select().from(scriptCatalogTable).orderBy(scriptCatalogTable.name);
-    res.json(rows);
+    const categoryMap = await getScriptCategoryIds(rows.map(r => r.id));
+    res.json(rows.map(r => ({ ...r, categoryIds: categoryMap.get(r.id) ?? [] })));
   } catch (err) {
     logger.error({ err }, "admin-m365-scripts: failed to list scripts");
     res.status(500).json({ error: "Failed to list scripts" });
@@ -91,7 +118,10 @@ router.post("/admin/scripts", requireAdmin, async (req: Request, res: Response) 
       })
       .returning();
 
-    res.status(201).json(row);
+    const categoryIds = parsed.data.categoryIds ?? [];
+    await syncScriptCategories(row.id, categoryIds);
+
+    res.status(201).json({ ...row, categoryIds });
   } catch (err) {
     logger.error({ err }, "admin-m365-scripts: failed to create script");
     res.status(500).json({ error: "Failed to create script" });
@@ -142,9 +172,10 @@ router.put("/admin/scripts/:id", requireAdmin, async (req: Request, res: Respons
   }
 
   try {
+    const { categoryIds, ...scriptFields } = parsed.data;
     const [row] = await db
       .update(scriptCatalogTable)
-      .set({ ...parsed.data, updatedAt: new Date() })
+      .set({ ...scriptFields, updatedAt: new Date() })
       .where(eq(scriptCatalogTable.id, id))
       .returning();
 
@@ -152,7 +183,16 @@ router.put("/admin/scripts/:id", requireAdmin, async (req: Request, res: Respons
       res.status(404).json({ error: "Script not found" });
       return;
     }
-    res.json(row);
+
+    if (categoryIds !== undefined) {
+      await syncScriptCategories(id, categoryIds);
+    }
+
+    const finalCategoryIds = categoryIds !== undefined
+      ? categoryIds
+      : ((await getScriptCategoryIds([id])).get(id) ?? []);
+
+    res.json({ ...row, categoryIds: finalCategoryIds });
   } catch (err) {
     logger.error({ err, id }, "admin-m365-scripts: failed to update script");
     res.status(500).json({ error: "Failed to update script" });

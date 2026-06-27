@@ -11,7 +11,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Loader2, Plus, Trash2, Pencil, ChevronUp, ChevronDown, Copy, Check, TerminalSquare, X, Play, RefreshCw } from "lucide-react";
+import { Loader2, Plus, Trash2, Pencil, ChevronUp, ChevronDown, Copy, Check, TerminalSquare, X, Play, RefreshCw, ChevronRight, Tag } from "lucide-react";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -19,6 +19,14 @@ interface AppRegPermission {
   permission: string;
   type: "Application" | "Delegated";
   reason: string;
+}
+
+interface Category {
+  id: number;
+  name: string;
+  displayOrder: number;
+  createdAt: string;
+  updatedAt: string;
 }
 
 interface Script {
@@ -31,6 +39,7 @@ interface Script {
   executionMode: "automated" | "manual";
   manualRequirements: string[];
   psScriptBody: string | null;
+  categoryIds: number[];
   createdAt: string;
   updatedAt: string;
 }
@@ -177,14 +186,17 @@ const EMPTY_FORM = {
   executionMode: "automated" as "automated" | "manual",
   manualRequirements: "",
   psScriptBody: "",
+  categoryIds: [] as number[],
 };
 
 function ScriptFormModal({
   script,
+  categories,
   onClose,
   onSaved,
 }: {
   script: Script | null;
+  categories: Category[];
   onClose: () => void;
   onSaved: (s: Script) => void;
 }) {
@@ -201,6 +213,7 @@ function ScriptFormModal({
           executionMode: script.executionMode ?? "automated" as "automated" | "manual",
           manualRequirements: (script.manualRequirements ?? []).join("\n"),
           psScriptBody: script.psScriptBody ?? "",
+          categoryIds: script.categoryIds ?? [] as number[],
         }
       : { ...EMPTY_FORM, appRegPermissions: [] as AppRegPermission[] }
   );
@@ -312,6 +325,7 @@ function ScriptFormModal({
           psScriptBody: form.executionMode === "manual" && form.psScriptBody.trim()
             ? form.psScriptBody.trim()
             : undefined,
+          categoryIds: form.categoryIds,
         }),
       });
       if (!res.ok) {
@@ -529,6 +543,44 @@ function ScriptFormModal({
             />
             <p className="text-[10px] text-[#484F58] mt-1">Used by the AI to generate findings, recommendations, and score impacts</p>
           </div>
+
+          {categories.length > 0 && (
+            <div>
+              <label className={labelCls}>Categories</label>
+              <div className="grid grid-cols-2 gap-1.5 mt-1">
+                {categories.map(cat => {
+                  const checked = form.categoryIds.includes(cat.id);
+                  return (
+                    <label
+                      key={cat.id}
+                      className={`flex items-center gap-2 px-2.5 py-1.5 rounded-lg border cursor-pointer transition-colors select-none ${
+                        checked
+                          ? "border-[#0078D4]/60 bg-[#0078D4]/10 text-[#E6EDF3]"
+                          : "border-[#30363D] bg-[#1C2128] text-[#7D8590] hover:bg-[#21262D]"
+                      }`}
+                    >
+                      <input
+                        type="checkbox"
+                        className="hidden"
+                        checked={checked}
+                        onChange={() => {
+                          setForm(f => ({
+                            ...f,
+                            categoryIds: checked
+                              ? f.categoryIds.filter(id => id !== cat.id)
+                              : [...f.categoryIds, cat.id],
+                          }));
+                        }}
+                      />
+                      <Tag className={`w-3 h-3 flex-shrink-0 ${checked ? "text-[#0078D4]" : "text-[#484F58]"}`} />
+                      <span className="text-xs font-medium truncate">{cat.name}</span>
+                    </label>
+                  );
+                })}
+              </div>
+              <p className="text-[10px] text-[#484F58] mt-1">Assigns this script to one or more categories in the grouped catalog view</p>
+            </div>
+          )}
         </div>
 
         {/* Footer */}
@@ -1358,24 +1410,353 @@ function RunScriptModal({ script, onClose }: { script: Script; onClose: () => vo
   );
 }
 
+// ── Category Manager Panel ────────────────────────────────────────────────────
+
+function CategoryManagerPanel({
+  categories,
+  onChanged,
+}: {
+  categories: Category[];
+  onChanged: () => void;
+}) {
+  const { fetchWithAuth } = useAuth();
+  const { toast } = useToast();
+  const [open, setOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [newName, setNewName] = useState("");
+  const [editId, setEditId] = useState<number | null>(null);
+  const [editName, setEditName] = useState("");
+  const [deleteTarget, setDeleteTarget] = useState<Category | null>(null);
+
+  const sorted = [...categories].sort((a, b) => a.displayOrder - b.displayOrder || a.id - b.id);
+
+  const handleCreate = async () => {
+    if (!newName.trim()) return;
+    setSaving(true);
+    try {
+      const res = await fetchWithAuth("/api/admin/script-categories", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: newName.trim(), displayOrder: categories.length }),
+      });
+      if (!res.ok) {
+        const err = await res.json() as { error?: string };
+        toast({ title: err.error ?? "Failed to create category", variant: "destructive" });
+        return;
+      }
+      setNewName("");
+      onChanged();
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleRename = async (id: number) => {
+    const trimmed = editName.trim();
+    setEditId(null);
+    if (!trimmed) return;
+    setSaving(true);
+    try {
+      const res = await fetchWithAuth(`/api/admin/script-categories/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: trimmed }),
+      });
+      if (!res.ok) {
+        const err = await res.json() as { error?: string };
+        toast({ title: err.error ?? "Failed to rename category", variant: "destructive" });
+        return;
+      }
+      onChanged();
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleMove = async (cat: Category, dir: -1 | 1) => {
+    const idx = sorted.findIndex(c => c.id === cat.id);
+    const next = idx + dir;
+    if (next < 0 || next >= sorted.length) return;
+    const neighbour = sorted[next];
+    setSaving(true);
+    try {
+      await Promise.all([
+        fetchWithAuth(`/api/admin/script-categories/${cat.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ displayOrder: neighbour.displayOrder }),
+        }),
+        fetchWithAuth(`/api/admin/script-categories/${neighbour.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ displayOrder: cat.displayOrder }),
+        }),
+      ]);
+      onChanged();
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!deleteTarget) return;
+    setSaving(true);
+    try {
+      const res = await fetchWithAuth(`/api/admin/script-categories/${deleteTarget.id}`, { method: "DELETE" });
+      if (!res.ok) {
+        const err = await res.json() as { error?: string };
+        toast({ title: err.error ?? "Failed to delete category", variant: "destructive" });
+        return;
+      }
+      setDeleteTarget(null);
+      onChanged();
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <>
+      <div className="bg-[#161B22] border border-[#30363D] rounded-xl overflow-hidden">
+        <button
+          onClick={() => setOpen(o => !o)}
+          className="w-full flex items-center justify-between px-4 py-3 text-left hover:bg-[#1C2128] transition-colors"
+        >
+          <div className="flex items-center gap-2">
+            <Tag className="w-3.5 h-3.5 text-[#0078D4]" />
+            <span className="text-xs font-bold text-[#E6EDF3]">Manage Categories</span>
+            <span className="text-[10px] text-[#7D8590] bg-[#0D1117] border border-[#30363D] rounded px-1.5 py-0.5">{categories.length}</span>
+          </div>
+          <ChevronRight className={`w-4 h-4 text-[#484F58] transition-transform duration-150 ${open ? "rotate-90" : ""}`} />
+        </button>
+
+        {open && (
+          <div className="border-t border-[#30363D] px-4 pb-4 pt-3 space-y-3">
+            {sorted.length === 0 ? (
+              <p className="text-xs text-[#484F58] italic text-center py-2">No categories yet — add one below</p>
+            ) : (
+              <div className="space-y-1">
+                {sorted.map((cat, idx) => (
+                  <div key={cat.id} className="flex items-center gap-2 bg-[#1C2128] border border-[#30363D] rounded-lg px-2.5 py-2">
+                    <div className="flex flex-col gap-0.5 flex-shrink-0">
+                      <button onClick={() => void handleMove(cat, -1)} disabled={idx === 0 || saving} className="text-[#484F58] hover:text-[#E6EDF3] disabled:opacity-30 transition-colors">
+                        <ChevronUp className="w-3 h-3" />
+                      </button>
+                      <button onClick={() => void handleMove(cat, 1)} disabled={idx === sorted.length - 1 || saving} className="text-[#484F58] hover:text-[#E6EDF3] disabled:opacity-30 transition-colors">
+                        <ChevronDown className="w-3 h-3" />
+                      </button>
+                    </div>
+                    {editId === cat.id ? (
+                      <input
+                        autoFocus
+                        className="flex-1 min-w-0 text-xs bg-[#0D1117] border border-[#0078D4]/50 rounded px-2 py-1 text-[#E6EDF3] focus:outline-none"
+                        value={editName}
+                        onChange={e => setEditName(e.target.value)}
+                        onBlur={() => void handleRename(cat.id)}
+                        onKeyDown={e => {
+                          if (e.key === "Enter") void handleRename(cat.id);
+                          if (e.key === "Escape") setEditId(null);
+                        }}
+                      />
+                    ) : (
+                      <span
+                        className="flex-1 min-w-0 text-xs text-[#E6EDF3] cursor-text hover:text-white truncate"
+                        onDoubleClick={() => { setEditId(cat.id); setEditName(cat.name); }}
+                        title="Double-click to rename"
+                      >
+                        {cat.name}
+                      </span>
+                    )}
+                    <button
+                      onClick={() => { setEditId(cat.id); setEditName(cat.name); }}
+                      className="text-[#484F58] hover:text-[#0078D4] transition-colors flex-shrink-0"
+                      title="Rename"
+                    >
+                      <Pencil className="w-3 h-3" />
+                    </button>
+                    <button
+                      onClick={() => setDeleteTarget(cat)}
+                      className="text-[#484F58] hover:text-red-400 transition-colors flex-shrink-0"
+                      title="Delete category"
+                    >
+                      <Trash2 className="w-3 h-3" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <div className="flex gap-2 border-t border-[#30363D] pt-3">
+              <input
+                type="text"
+                placeholder="New category name…"
+                value={newName}
+                onChange={e => setNewName(e.target.value)}
+                onKeyDown={e => { if (e.key === "Enter") void handleCreate(); }}
+                className={`${inputCls} flex-1`}
+              />
+              <button
+                onClick={() => void handleCreate()}
+                disabled={!newName.trim() || saving}
+                className="flex items-center gap-1.5 bg-[#0078D4] hover:bg-[#006CBE] disabled:opacity-50 text-white text-xs font-semibold px-3 py-2 rounded-lg transition-colors flex-shrink-0"
+              >
+                {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" />}
+                Add
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+
+      <AlertDialog open={!!deleteTarget} onOpenChange={o => { if (!o) setDeleteTarget(null); }}>
+        <AlertDialogContent className="bg-[#161B22] border border-[#30363D] text-[#E6EDF3]">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Category</AlertDialogTitle>
+            <AlertDialogDescription className="text-[#7D8590]">
+              Delete <strong className="text-[#E6EDF3]">{deleteTarget?.name}</strong>? Scripts in this category will become uncategorised — they are not deleted.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="bg-[#1C2128] border-[#30363D] text-[#E6EDF3] hover:bg-[#30363D]">Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={() => void handleDelete()} disabled={saving} className="bg-red-600 hover:bg-red-700 text-white">
+              {saving ? "Deleting…" : "Delete"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
+  );
+}
+
+// ── Script Row (shared between flat + grouped views) ──────────────────────────
+
+function ScriptRow({
+  s,
+  onEdit,
+  onDelete,
+  onRun,
+}: {
+  s: Script;
+  onEdit: (s: Script) => void;
+  onDelete: (s: Script) => void;
+  onRun: (s: Script) => void;
+}) {
+  return (
+    <tr className="hover:bg-[#1C2128] transition-colors group">
+      <td className="px-4 py-3">
+        <p className="font-semibold text-[#E6EDF3] truncate max-w-xs">{s.name}</p>
+        {s.description && (
+          <p className="text-[10px] text-[#7D8590] mt-0.5 truncate max-w-xs">{s.description}</p>
+        )}
+      </td>
+      <td className="px-4 py-3 hidden md:table-cell">
+        <span className="font-mono text-xs text-[#7D8590]">{s.runbookName}</span>
+      </td>
+      <td className="px-4 py-3 hidden lg:table-cell">
+        <span className="text-xs text-[#7D8590]">
+          {s.appRegPermissions.length > 0
+            ? `${s.appRegPermissions.length} permission${s.appRegPermissions.length !== 1 ? "s" : ""}`
+            : <span className="text-[#484F58] italic">None</span>}
+        </span>
+      </td>
+      <td className="px-4 py-3">
+        <div className="flex items-center gap-1 justify-end opacity-0 group-hover:opacity-100 transition-opacity">
+          <button onClick={() => onRun(s)} className="p-1.5 text-[#7D8590] hover:text-green-400 hover:bg-green-400/10 rounded transition-colors" title="Run script against a client">
+            <Play className="w-3.5 h-3.5" />
+          </button>
+          <button onClick={() => onEdit(s)} className="p-1.5 text-[#7D8590] hover:text-[#0078D4] hover:bg-[#0078D4]/10 rounded transition-colors" title="Edit">
+            <Pencil className="w-3.5 h-3.5" />
+          </button>
+          <button onClick={() => onDelete(s)} className="p-1.5 text-[#7D8590] hover:text-red-400 hover:bg-red-400/10 rounded transition-colors" title="Delete">
+            <Trash2 className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      </td>
+    </tr>
+  );
+}
+
+// ── Script Table (renders rows inside a styled table container) ───────────────
+
+function ScriptTable({
+  scripts,
+  onEdit,
+  onDelete,
+  onRun,
+}: {
+  scripts: Script[];
+  onEdit: (s: Script) => void;
+  onDelete: (s: Script) => void;
+  onRun: (s: Script) => void;
+}) {
+  return (
+    <div className="overflow-hidden">
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="border-b border-[#30363D]">
+            <th className="text-left px-4 py-2.5 text-[10px] font-bold uppercase tracking-wider text-[#7D8590]">Script</th>
+            <th className="text-left px-4 py-2.5 text-[10px] font-bold uppercase tracking-wider text-[#7D8590] hidden md:table-cell">Runbook Name</th>
+            <th className="text-left px-4 py-2.5 text-[10px] font-bold uppercase tracking-wider text-[#7D8590] hidden lg:table-cell">Permissions</th>
+            <th className="px-4 py-2.5 w-24" />
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-[#21262D]">
+          {scripts.map(s => (
+            <ScriptRow key={s.id} s={s} onEdit={onEdit} onDelete={onDelete} onRun={onRun} />
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 // ── Script Catalog Tab ────────────────────────────────────────────────────────
+
+const UNCATEGORISED_KEY = -1;
 
 function ScriptCatalogTab({
   scripts,
   loading,
+  categories,
   onEdit,
   onDeleted,
+  onCategoriesChanged,
 }: {
   scripts: Script[];
   loading: boolean;
+  categories: Category[];
   onEdit: (s: Script) => void;
   onDeleted: (id: number) => void;
+  onCategoriesChanged: () => void;
 }) {
   const { fetchWithAuth } = useAuth();
   const { toast } = useToast();
   const [deleteTarget, setDeleteTarget] = useState<Script | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [runTarget, setRunTarget] = useState<Script | null>(null);
+
+  const sortedCategories = [...categories].sort((a, b) => a.displayOrder - b.displayOrder || a.id - b.id);
+  const [openSections, setOpenSections] = useState<Set<number>>(() =>
+    new Set<number>([...categories.map(c => c.id), UNCATEGORISED_KEY])
+  );
+
+  // When categories grow (new ones added), automatically open the new section
+  useEffect(() => {
+    setOpenSections(prev => {
+      const next = new Set(prev);
+      for (const cat of categories) next.add(cat.id);
+      next.add(UNCATEGORISED_KEY);
+      return next;
+    });
+  }, [categories]);
+
+  const toggleSection = (id: number) => {
+    setOpenSections(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
 
   const handleDelete = async () => {
     if (!deleteTarget) return;
@@ -1400,75 +1781,100 @@ function ScriptCatalogTab({
     </div>
   );
 
-  if (scripts.length === 0) return (
-    <div className="text-center py-16">
-      <TerminalSquare className="w-10 h-10 text-[#30363D] mx-auto mb-3" />
-      <p className="text-[#7D8590] text-sm">No scripts in the catalog yet</p>
-      <p className="text-[#484F58] text-xs mt-1">Create your first script to get started</p>
-    </div>
-  );
+  // Build category → scripts map. Scripts with no categories → uncategorised.
+  const catMap = new Map<number, Script[]>();
+  const uncategorised: Script[] = [];
+  for (const s of scripts) {
+    if (!s.categoryIds || s.categoryIds.length === 0) {
+      uncategorised.push(s);
+    } else {
+      for (const cid of s.categoryIds) {
+        if (!catMap.has(cid)) catMap.set(cid, []);
+        catMap.get(cid)!.push(s);
+      }
+    }
+  }
+
+  const hasCategorised = catMap.size > 0;
+  const showUncategorised = uncategorised.length > 0 || (!hasCategorised && scripts.length === 0);
+  const useFlatView = categories.length === 0;
 
   return (
     <>
-      <div className="bg-[#161B22] border border-[#30363D] rounded-xl overflow-hidden">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-[#30363D]">
-              <th className="text-left px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-[#7D8590]">Script</th>
-              <th className="text-left px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-[#7D8590] hidden md:table-cell">Runbook Name</th>
-              <th className="text-left px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-[#7D8590] hidden lg:table-cell">Permissions</th>
-              <th className="px-4 py-3 w-24" />
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-[#21262D]">
-            {scripts.map(s => (
-              <tr key={s.id} className="hover:bg-[#1C2128] transition-colors group">
-                <td className="px-4 py-3">
-                  <p className="font-semibold text-[#E6EDF3] truncate max-w-xs">{s.name}</p>
-                  {s.description && (
-                    <p className="text-[10px] text-[#7D8590] mt-0.5 truncate max-w-xs">{s.description}</p>
-                  )}
-                </td>
-                <td className="px-4 py-3 hidden md:table-cell">
-                  <span className="font-mono text-xs text-[#7D8590]">{s.runbookName}</span>
-                </td>
-                <td className="px-4 py-3 hidden lg:table-cell">
-                  <span className="text-xs text-[#7D8590]">
-                    {s.appRegPermissions.length > 0
-                      ? `${s.appRegPermissions.length} permission${s.appRegPermissions.length !== 1 ? "s" : ""}`
-                      : <span className="text-[#484F58] italic">None</span>}
-                  </span>
-                </td>
-                <td className="px-4 py-3">
-                  <div className="flex items-center gap-1 justify-end opacity-0 group-hover:opacity-100 transition-opacity">
-                    <button
-                      onClick={() => setRunTarget(s)}
-                      className="p-1.5 text-[#7D8590] hover:text-green-400 hover:bg-green-400/10 rounded transition-colors"
-                      title="Run script against a client"
-                    >
-                      <Play className="w-3.5 h-3.5" />
-                    </button>
-                    <button
-                      onClick={() => onEdit(s)}
-                      className="p-1.5 text-[#7D8590] hover:text-[#0078D4] hover:bg-[#0078D4]/10 rounded transition-colors"
-                      title="Edit"
-                    >
-                      <Pencil className="w-3.5 h-3.5" />
-                    </button>
-                    <button
-                      onClick={() => setDeleteTarget(s)}
-                      className="p-1.5 text-[#7D8590] hover:text-red-400 hover:bg-red-400/10 rounded transition-colors"
-                      title="Delete"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
+      {/* Category manager collapsible panel */}
+      <CategoryManagerPanel categories={categories} onChanged={onCategoriesChanged} />
+
+      {scripts.length === 0 ? (
+        <div className="text-center py-16">
+          <TerminalSquare className="w-10 h-10 text-[#30363D] mx-auto mb-3" />
+          <p className="text-[#7D8590] text-sm">No scripts in the catalog yet</p>
+          <p className="text-[#484F58] text-xs mt-1">Create your first script to get started</p>
+        </div>
+      ) : useFlatView ? (
+        /* No categories — flat table */
+        <div className="bg-[#161B22] border border-[#30363D] rounded-xl overflow-hidden">
+          <ScriptTable scripts={scripts} onEdit={onEdit} onDelete={s => setDeleteTarget(s)} onRun={s => setRunTarget(s)} />
+        </div>
+      ) : (
+        /* Grouped accordion view */
+        <div className="space-y-2">
+          {sortedCategories.map(cat => {
+            const catScripts = catMap.get(cat.id) ?? [];
+            const isOpen = openSections.has(cat.id);
+            return (
+              <div key={cat.id} className="bg-[#161B22] border border-[#30363D] rounded-xl overflow-hidden">
+                <button
+                  onClick={() => toggleSection(cat.id)}
+                  className="w-full flex items-center justify-between px-4 py-3 hover:bg-[#1C2128] transition-colors text-left"
+                >
+                  <div className="flex items-center gap-2">
+                    <ChevronRight className={`w-4 h-4 text-[#484F58] transition-transform duration-150 ${isOpen ? "rotate-90" : ""}`} />
+                    <Tag className="w-3.5 h-3.5 text-[#0078D4]" />
+                    <span className="text-sm font-semibold text-[#E6EDF3]">{cat.name}</span>
+                    <span className="text-[10px] text-[#7D8590] bg-[#0D1117] border border-[#30363D] rounded px-1.5 py-0.5">
+                      {catScripts.length}
+                    </span>
                   </div>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+                </button>
+                {isOpen && (
+                  catScripts.length === 0 ? (
+                    <div className="border-t border-[#30363D] px-4 py-6 text-center">
+                      <p className="text-xs text-[#484F58] italic">No scripts assigned to this category</p>
+                    </div>
+                  ) : (
+                    <div className="border-t border-[#30363D]">
+                      <ScriptTable scripts={catScripts} onEdit={onEdit} onDelete={s => setDeleteTarget(s)} onRun={s => setRunTarget(s)} />
+                    </div>
+                  )
+                )}
+              </div>
+            );
+          })}
+
+          {/* Uncategorised section — only shown when there are uncategorised scripts */}
+          {showUncategorised && uncategorised.length > 0 && (
+            <div className="bg-[#161B22] border border-[#30363D] rounded-xl overflow-hidden">
+              <button
+                onClick={() => toggleSection(UNCATEGORISED_KEY)}
+                className="w-full flex items-center justify-between px-4 py-3 hover:bg-[#1C2128] transition-colors text-left"
+              >
+                <div className="flex items-center gap-2">
+                  <ChevronRight className={`w-4 h-4 text-[#484F58] transition-transform duration-150 ${openSections.has(UNCATEGORISED_KEY) ? "rotate-90" : ""}`} />
+                  <span className="text-sm font-semibold text-[#7D8590]">Uncategorised</span>
+                  <span className="text-[10px] text-[#484F58] bg-[#0D1117] border border-[#30363D] rounded px-1.5 py-0.5">
+                    {uncategorised.length}
+                  </span>
+                </div>
+              </button>
+              {openSections.has(UNCATEGORISED_KEY) && (
+                <div className="border-t border-[#30363D]">
+                  <ScriptTable scripts={uncategorised} onEdit={onEdit} onDelete={s => setDeleteTarget(s)} onRun={s => setRunTarget(s)} />
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
 
       <AlertDialog open={!!deleteTarget} onOpenChange={open => { if (!open) setDeleteTarget(null); }}>
         <AlertDialogContent className="bg-[#161B22] border border-[#30363D] text-[#E6EDF3]">
@@ -1507,6 +1913,7 @@ export default function M365ScriptCatalogPage() {
   const [tab, setTab] = useState<Tab>("catalog");
   const [scripts, setScripts] = useState<Script[]>([]);
   const [loading, setLoading] = useState(true);
+  const [categories, setCategories] = useState<Category[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [editScript, setEditScript] = useState<Script | null>(null);
 
@@ -1522,7 +1929,20 @@ export default function M365ScriptCatalogPage() {
     }
   }, [fetchWithAuth]);
 
-  useEffect(() => { void loadScripts(); }, [loadScripts]);
+  const loadCategories = useCallback(async () => {
+    try {
+      const res = await fetchWithAuth("/api/admin/script-categories");
+      const data = await res.json() as Category[];
+      setCategories(data);
+    } catch {
+      // ignore
+    }
+  }, [fetchWithAuth]);
+
+  useEffect(() => {
+    void loadScripts();
+    void loadCategories();
+  }, [loadScripts, loadCategories]);
 
   const handleEdit = (s: Script) => {
     setEditScript(s);
@@ -1596,8 +2016,10 @@ export default function M365ScriptCatalogPage() {
         <ScriptCatalogTab
           scripts={scripts}
           loading={loading}
+          categories={categories}
           onEdit={handleEdit}
           onDeleted={handleDeleted}
+          onCategoriesChanged={() => void loadCategories()}
         />
       )}
       {tab === "packages" && (
@@ -1608,6 +2030,7 @@ export default function M365ScriptCatalogPage() {
       {showForm && (
         <ScriptFormModal
           script={editScript}
+          categories={categories}
           onClose={() => { setShowForm(false); setEditScript(null); }}
           onSaved={handleSaved}
         />

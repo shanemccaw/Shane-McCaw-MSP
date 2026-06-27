@@ -582,6 +582,13 @@
       "when": 1782700000000,
       "tag": "0080_add_powershell_scripts",
       "breakpoints": true
+    },
+    {
+      "idx": 81,
+      "version": "7",
+      "when": 1782595557167,
+      "tag": "0081_add_script_categories",
+      "breakpoints": true
     }
   ]
 }

@@ -1,4 +1,4 @@
-import { pgTable, serial, text, timestamp, integer, boolean, numeric, jsonb, bigint, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { pgTable, serial, text, timestamp, integer, boolean, numeric, jsonb, bigint, uniqueIndex, uuid, primaryKey } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 
 export interface WizardOption {
@@ -1337,6 +1337,29 @@ export const scriptRunResultsTable = pgTable("script_run_results", {
 
 export type InsertScriptRunResult = typeof scriptRunResultsTable.$inferInsert;
 export type ScriptRunResult = typeof scriptRunResultsTable.$inferSelect;
+
+// Script Categories — named groups for organising the script catalog
+export const scriptCategoriesTable = pgTable("script_categories", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  displayOrder: integer("display_order").notNull().default(0),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export type InsertScriptCategory = typeof scriptCategoriesTable.$inferInsert;
+export type ScriptCategory = typeof scriptCategoriesTable.$inferSelect;
+
+// Join table: script_catalog ↔ script_categories (many-to-many)
+export const scriptCatalogCategoriesTable = pgTable("script_catalog_categories", {
+  scriptId: integer("script_id").notNull().references(() => scriptCatalogTable.id, { onDelete: "cascade" }),
+  categoryId: integer("category_id").notNull().references(() => scriptCategoriesTable.id, { onDelete: "cascade" }),
+}, (t) => ({
+  pk: primaryKey({ columns: [t.scriptId, t.categoryId] }),
+}));
+
+export type InsertScriptCatalogCategory = typeof scriptCatalogCategoriesTable.$inferInsert;
+export type ScriptCatalogCategory = typeof scriptCatalogCategoriesTable.$inferSelect;
 
 // Client Scores — upsert table tracking M365 health scores per client
 export const clientScoresTable = pgTable("client_scores", {
