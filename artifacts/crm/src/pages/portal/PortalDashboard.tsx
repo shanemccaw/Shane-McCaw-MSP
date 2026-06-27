@@ -346,7 +346,6 @@ export default function PortalDashboard() {
                                         </div>
                                       )}
                                     </div>
-                                  </div>
                                 </div>
                               );
                             })}
