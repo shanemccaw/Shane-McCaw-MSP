@@ -110,6 +110,7 @@ export default function ScriptRunnerPage() {
   const [history, setHistory] = useState<JobHistoryRow[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [replayingJobId, setReplayingJobId] = useState<string | null>(null);
+  const [refetchingJobId, setRefetchingJobId] = useState<string | null>(null);
 
   // AI Analysis
   const [aiAnalysis, setAiAnalysis] = useState<AIAnalysis | null>(null);
@@ -342,6 +343,50 @@ export default function ScriptRunnerPage() {
       setLogLabel(`${data.runbookName} — ${data.customerName}`);
     } finally {
       setReplayingJobId(null);
+    }
+  };
+
+  const handleRefetch = async (row: JobHistoryRow, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (refetchingJobId === row.jobId) return;
+    setRefetchingJobId(row.jobId);
+    try {
+      const res = await fetchWithAuth(
+        `/api/admin/runbook-jobs/${encodeURIComponent(row.jobId)}/refetch-output`,
+        { method: "POST" },
+      );
+      const data = await res.json() as {
+        runbookName?: string;
+        customerName?: string;
+        status?: string;
+        lines?: Array<{ sequence: number; text: string }>;
+        error?: string;
+      };
+      if (!res.ok) {
+        toast({ title: "Re-fetch failed", description: data.error ?? `HTTP ${res.status}`, variant: "destructive" });
+        return;
+      }
+      const lines = data.lines ?? [];
+      const fullOutput = lines.map(l => l.text).join("\n");
+      // Update the local history row so replay becomes available without a full reload
+      setHistory(prev => prev.map(h =>
+        h.jobId === row.jobId ? { ...h, output: fullOutput || null } : h,
+      ));
+      if (lines.length === 0) {
+        toast({ title: "No output found", description: "Azure Automation returned no stream records for this job." });
+        return;
+      }
+      // Load the freshly fetched output into the console
+      setJobStatus(data.status ?? row.status);
+      setLogLines(lines.map(l => l.text));
+      setLogLabel(`${data.runbookName ?? row.runbookName} — ${data.customerName ?? row.customerName}`);
+      setAiAnalysis(null);
+      setAiError(null);
+      toast({ title: "Output recovered", description: `${lines.length} line${lines.length === 1 ? "" : "s"} loaded from Azure Automation.` });
+    } catch {
+      toast({ title: "Re-fetch failed", description: "Network error — could not reach the server.", variant: "destructive" });
+    } finally {
+      setRefetchingJobId(null);
     }
   };
 
@@ -746,7 +791,9 @@ export default function ScriptRunnerPage() {
             {history.map(row => {
               const cfg = JOB_STATUS_CFG[row.status] ?? { cls: "bg-[#30363D]/50 text-[#7D8590]" };
               const isReplaying = replayingJobId === row.jobId;
+              const isRefetching = refetchingJobId === row.jobId;
               const hasOutput = !!row.output;
+              const isTerminal = ["Completed", "Failed", "Stopped", "Suspended"].includes(row.status);
               return (
                 <div
                   key={row.id}
@@ -783,6 +830,23 @@ export default function ScriptRunnerPage() {
                           </svg>
                         )}
                       </div>
+                    )}
+                    {!hasOutput && isTerminal && (
+                      <button
+                        onClick={e => void handleRefetch(row, e)}
+                        disabled={isRefetching || running}
+                        title="Re-fetch output from Azure Automation"
+                        className="flex items-center gap-1 text-[10px] font-semibold text-amber-400 border border-amber-500/30 bg-amber-500/10 hover:bg-amber-500/20 disabled:opacity-50 px-1.5 py-0.5 rounded transition-colors"
+                      >
+                        {isRefetching ? (
+                          <div className="w-2.5 h-2.5 border-2 border-amber-400/30 border-t-amber-400 rounded-full animate-spin" />
+                        ) : (
+                          <svg className="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                          </svg>
+                        )}
+                        {isRefetching ? "Fetching…" : "Re-fetch"}
+                      </button>
                     )}
                   </div>
                 </div>

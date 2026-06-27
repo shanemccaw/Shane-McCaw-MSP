@@ -290,6 +290,67 @@ router.get("/admin/runbook-jobs/history", requireAdmin, async (req: Request, res
 });
 
 /**
+ * POST /api/admin/runbook-jobs/:jobId/refetch-output
+ *
+ * Re-fetches job stream output from Azure Automation for a terminal job whose
+ * stored output column is empty, then persists the result to the history table.
+ * Returns the same line array shape as the replay endpoint so the frontend can
+ * load the freshly fetched content directly into the console panel.
+ */
+router.post("/admin/runbook-jobs/:jobId/refetch-output", requireAdmin, async (req: Request, res: Response) => {
+  const jobId = String(req.params.jobId);
+
+  try {
+    const [row] = await db
+      .select()
+      .from(runbookJobHistoryTable)
+      .where(eq(runbookJobHistoryTable.jobId, jobId))
+      .limit(1);
+
+    if (!row) {
+      res.status(404).json({ error: "Job not found in history" });
+      return;
+    }
+
+    const TERMINAL = new Set(["Completed", "Failed", "Stopped", "Suspended"]);
+    if (!TERMINAL.has(row.status)) {
+      res.status(409).json({ error: "Job is not in a terminal state — output may still be accumulating" });
+      return;
+    }
+
+    const outputLines = await getJobOutput(jobId);
+    const fullOutput = outputLines.map(l => l.text).join("\n");
+
+    await db
+      .update(runbookJobHistoryTable)
+      .set({
+        output: fullOutput || null,
+        completedAt: row.completedAt ?? new Date(),
+      })
+      .where(eq(runbookJobHistoryTable.jobId, jobId));
+
+    logger.info({ jobId, lineCount: outputLines.length }, "admin-script-runner: refetched job output");
+
+    res.json({
+      jobId: row.jobId,
+      runbookName: row.runbookName,
+      customerName: row.customerName,
+      status: row.status,
+      startedAt: row.startedAt,
+      completedAt: row.completedAt,
+      lines: outputLines.map(l => ({ sequence: l.sequence, streamType: l.streamType, text: l.text })),
+    });
+  } catch (err) {
+    if (isAzureConfigMissing(err)) {
+      res.status(503).json({ error: "Azure Automation is not configured — cannot fetch stream output" });
+      return;
+    }
+    logger.error({ err, jobId }, "admin-script-runner: failed to refetch job output");
+    res.status(500).json({ error: "Failed to refetch job output from Azure Automation" });
+  }
+});
+
+/**
  * GET /api/admin/runbook-jobs/:jobId/replay
  *
  * Returns the stored output lines for a completed job from the history table.
