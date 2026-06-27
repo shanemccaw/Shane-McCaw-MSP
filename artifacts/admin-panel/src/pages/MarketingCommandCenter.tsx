@@ -32,6 +32,7 @@ interface RecommendedLead {
   recommendedService?: string;
   confidence: number;
   status: "pending" | "converted" | "dismissed";
+  lastOutreachDraft?: string | null;
 }
 
 interface Lead {
@@ -603,8 +604,18 @@ function RecommendedLeadsSection({ fetchWithAuth }: { fetchWithAuth: (url: strin
         setGenError(msg);
         return [] as RecommendedLead[];
       }
-      setLeads(data as RecommendedLead[]);
-      return data as RecommendedLead[];
+      const loaded = data as RecommendedLead[];
+      setLeads(loaded);
+      setGeneratedDrafts(prev => {
+        const seeded: Record<number, string> = { ...prev };
+        for (const lead of loaded) {
+          if (lead.lastOutreachDraft && !seeded[lead.id]) {
+            seeded[lead.id] = lead.lastOutreachDraft;
+          }
+        }
+        return seeded;
+      });
+      return loaded;
     } catch (e) {
       setGenError(String(e));
       return [] as RecommendedLead[];
