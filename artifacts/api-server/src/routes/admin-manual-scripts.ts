@@ -27,7 +27,7 @@ import {
   scriptRunResultsTable,
   usersTable,
 } from "@workspace/db";
-import { eq, desc, and } from "drizzle-orm";
+import { eq, desc, and, isNull, lt, sql } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/requireAuth";
 import { logger } from "../lib/logger";
 import { generateManualScriptPackage } from "../lib/manual-script-package";
@@ -91,18 +91,44 @@ router.post("/admin/manual-scripts/:scriptId/generate-package", requireAdmin, as
       customerDisplayName = user?.name ?? undefined;
     }
 
-    const [resultRow] = await db
-      .insert(scriptRunResultsTable)
-      .values({
-        customerId: customerId ?? null,
-        scriptId,
-        packageId: packageId ?? null,
-        status: "awaiting_upload",
-        executionSource: "manual",
-      })
-      .returning({ id: scriptRunResultsTable.id });
+    // Deduplication: reuse an existing awaiting_upload row for the same
+    // (scriptId, customerId, packageId) triple rather than creating orphans.
+    const dedupConditions = [
+      eq(scriptRunResultsTable.scriptId, scriptId),
+      eq(scriptRunResultsTable.status, "awaiting_upload"),
+      eq(scriptRunResultsTable.executionSource, "manual"),
+      customerId
+        ? eq(scriptRunResultsTable.customerId, customerId)
+        : isNull(scriptRunResultsTable.customerId),
+      packageId
+        ? eq(scriptRunResultsTable.packageId, packageId)
+        : isNull(scriptRunResultsTable.packageId),
+    ];
 
-    const runResultId = resultRow.id;
+    const [existing] = await db
+      .select({ id: scriptRunResultsTable.id })
+      .from(scriptRunResultsTable)
+      .where(and(...dedupConditions))
+      .limit(1);
+
+    let runResultId: number;
+
+    if (existing) {
+      runResultId = existing.id;
+      logger.info({ scriptId, runResultId, customerId }, "admin-manual-scripts: reusing existing awaiting_upload row");
+    } else {
+      const [resultRow] = await db
+        .insert(scriptRunResultsTable)
+        .values({
+          customerId: customerId ?? null,
+          scriptId,
+          packageId: packageId ?? null,
+          status: "awaiting_upload",
+          executionSource: "manual",
+        })
+        .returning({ id: scriptRunResultsTable.id });
+      runResultId = resultRow.id;
+    }
 
     const pkg = generateManualScriptPackage({
       scriptId,
@@ -122,7 +148,7 @@ router.post("/admin/manual-scripts/:scriptId/generate-package", requireAdmin, as
     const instructionsUrl = `${baseUrl}/api/admin/manual-scripts/${runResultId}/instructions`;
     const uploadUrl = `${baseUrl}/api/admin/manual-scripts/${runResultId}/upload`;
 
-    if (customerId) {
+    if (customerId && !existing) {
       createManualScriptKanbanCard({
         scriptId,
         scriptRunResultId: runResultId,
@@ -319,6 +345,32 @@ router.get("/admin/manual-scripts/:runResultId/instructions", requireAdmin, asyn
   } catch (err) {
     logger.error({ err, runResultId }, "admin-manual-scripts: instructions failed");
     res.status(500).json({ error: "Failed to generate instructions" });
+  }
+});
+
+// ── DELETE /api/admin/manual-scripts/orphans ─────────────────────────────────
+// Purges awaiting_upload rows that are older than 48 hours (abandoned sessions).
+// Safe to call repeatedly — idempotent.
+
+router.delete("/admin/manual-scripts/orphans", requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const cutoff = sql`NOW() - INTERVAL '48 hours'`;
+
+    const deleted = await db
+      .delete(scriptRunResultsTable)
+      .where(
+        and(
+          eq(scriptRunResultsTable.status, "awaiting_upload"),
+          lt(scriptRunResultsTable.createdAt, cutoff),
+        ),
+      )
+      .returning({ id: scriptRunResultsTable.id });
+
+    logger.info({ count: deleted.length }, "admin-manual-scripts: purged orphaned awaiting_upload rows");
+    res.json({ deleted: deleted.length });
+  } catch (err) {
+    logger.error({ err }, "admin-manual-scripts: orphan purge failed");
+    res.status(500).json({ error: "Failed to purge orphaned rows" });
   }
 });
 
