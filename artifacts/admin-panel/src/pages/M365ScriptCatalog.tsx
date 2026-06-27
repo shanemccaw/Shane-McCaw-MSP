@@ -109,6 +109,19 @@ interface AzureCredential {
   clientUserId: number | null;
 }
 
+interface ClientWithCred {
+  id: number;
+  name: string | null;
+  email: string;
+  credential: {
+    id: number;
+    displayName: string;
+    tenantId: string;
+    clientId: string;
+    credentialType: "secret" | "certificate";
+  } | null;
+}
+
 interface AppRegRequirements {
   packageId: number;
   totalScripts: number;
@@ -893,30 +906,29 @@ function RunPackageCard({
 }) {
   const { fetchWithAuth } = useAuth();
   const { toast } = useToast();
-  const [credentials, setCredentials] = useState<AzureCredential[]>([]);
+  const [clients, setClients] = useState<ClientWithCred[]>([]);
   const [loadingCreds, setLoadingCreds] = useState(true);
-  const [selectedCredId, setSelectedCredId] = useState<number | "">("");
+  const [selectedClientId, setSelectedClientId] = useState<number | "">("");
   const [running, setRunning] = useState(false);
   const [runResult, setRunResult] = useState<PackageRunResult | null>(null);
 
   useEffect(() => {
-    fetchWithAuth("/api/admin/azure-credentials")
-      .then(r => r.json() as Promise<AzureCredential[]>)
-      .then(d => setCredentials(d))
+    fetchWithAuth("/api/admin/clients/with-azure-credentials")
+      .then(r => r.json() as Promise<ClientWithCred[]>)
+      .then(d => setClients(d.filter(c => c.credential !== null)))
       .catch(() => {})
       .finally(() => setLoadingCreds(false));
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const selectedCred = credentials.find(c => c.id === selectedCredId);
+  const selectedClient = clients.find(c => c.id === selectedClientId);
 
   const handleRun = async () => {
-    if (!selectedCredId) return;
+    if (!selectedClientId || !selectedClient?.credential) return;
     setRunning(true);
     setRunResult(null);
     try {
-      const body: Record<string, unknown> = { packageId, credentialId: selectedCredId };
-      if (selectedCred?.clientUserId) body.customerId = selectedCred.clientUserId;
+      const body: Record<string, unknown> = { packageId, credentialId: selectedClient.credential.id, customerId: selectedClient.id };
       const res = await fetchWithAuth("/api/admin/run-package", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -977,34 +989,34 @@ function RunPackageCard({
           <label className={labelCls}>Client</label>
           <select
             className={inputCls}
-            value={selectedCredId}
-            onChange={e => setSelectedCredId(e.target.value ? Number(e.target.value) : "")}
+            value={selectedClientId}
+            onChange={e => setSelectedClientId(e.target.value ? Number(e.target.value) : "")}
           >
             <option value="">Select a client…</option>
-            {credentials.map(c => (
-              <option key={c.id} value={c.id}>{c.displayName}</option>
+            {clients.map(c => (
+              <option key={c.id} value={c.id}>{c.name ?? c.email}</option>
             ))}
           </select>
         </div>
       )}
 
-      {selectedCred && (
+      {selectedClient?.credential && (
         <div className="text-[10px] text-[#7D8590] font-mono bg-[#1C2128] border border-[#30363D] rounded-lg px-3 py-2">
-          <span className="font-sans font-semibold text-[#484F58] mr-1">Tenant:</span>{selectedCred.tenantId}
+          <span className="font-sans font-semibold text-[#484F58] mr-1">Tenant:</span>{selectedClient.credential.tenantId}
           <span className="mx-2">·</span>
-          <span className="font-sans font-semibold text-[#484F58] mr-1">App:</span>{selectedCred.clientId}
+          <span className="font-sans font-semibold text-[#484F58] mr-1">App:</span>{selectedClient.credential.clientId}
           <span className="mx-2">·</span>
           <span className={`font-sans font-semibold px-1.5 py-0.5 rounded text-[9px] uppercase ${
-            selectedCred.credentialType === "secret"
+            selectedClient.credential.credentialType === "secret"
               ? "bg-[#0078D4]/15 text-[#0078D4]"
               : "bg-purple-500/15 text-purple-400"
-          }`}>{selectedCred.credentialType}</span>
+          }`}>{selectedClient.credential.credentialType}</span>
         </div>
       )}
 
       <button
         onClick={() => void handleRun()}
-        disabled={!selectedCredId || running || scriptCount === 0}
+        disabled={!selectedClientId || running || scriptCount === 0}
         className="flex items-center gap-2 bg-[#0078D4] hover:bg-[#006CBE] disabled:opacity-50 text-white text-sm font-semibold px-4 py-2 rounded-lg transition-colors w-full justify-center"
       >
         {running ? (
@@ -1298,29 +1310,28 @@ function PackageAssignmentsTab({ allScripts }: { allScripts: Script[] }) {
 function RunScriptModal({ script, onClose }: { script: Script; onClose: () => void }) {
   const { fetchWithAuth } = useAuth();
   const { toast } = useToast();
-  const [credentials, setCredentials] = useState<AzureCredential[]>([]);
+  const [clients, setClients] = useState<ClientWithCred[]>([]);
   const [loadingCreds, setLoadingCreds] = useState(true);
-  const [selectedCredId, setSelectedCredId] = useState<number | "">("");
+  const [selectedClientId, setSelectedClientId] = useState<number | "">("");
   const [running, setRunning] = useState(false);
   const [done, setDone] = useState(false);
 
   useEffect(() => {
-    fetchWithAuth("/api/admin/azure-credentials")
-      .then(r => r.json() as Promise<AzureCredential[]>)
-      .then(d => setCredentials(d))
+    fetchWithAuth("/api/admin/clients/with-azure-credentials")
+      .then(r => r.json() as Promise<ClientWithCred[]>)
+      .then(d => setClients(d.filter(c => c.credential !== null)))
       .catch(() => {})
       .finally(() => setLoadingCreds(false));
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const selectedCred = credentials.find(c => c.id === selectedCredId);
+  const selectedClient = clients.find(c => c.id === selectedClientId);
 
   const handleRun = async () => {
-    if (!selectedCredId) return;
+    if (!selectedClientId || !selectedClient?.credential) return;
     setRunning(true);
     try {
-      const body: Record<string, unknown> = { scriptId: script.id, credentialId: selectedCredId };
-      if (selectedCred?.clientUserId) body.customerId = selectedCred.clientUserId;
+      const body: Record<string, unknown> = { scriptId: script.id, credentialId: selectedClient.credential.id, customerId: selectedClient.id };
       const res = await fetchWithAuth("/api/admin/run-script", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -1373,22 +1384,22 @@ function RunScriptModal({ script, onClose }: { script: Script; onClose: () => vo
                 ) : (
                   <select
                     className={inputCls}
-                    value={selectedCredId}
-                    onChange={e => setSelectedCredId(e.target.value ? Number(e.target.value) : "")}
+                    value={selectedClientId}
+                    onChange={e => setSelectedClientId(e.target.value ? Number(e.target.value) : "")}
                   >
                     <option value="">Select a client…</option>
-                    {credentials.map(c => (
-                      <option key={c.id} value={c.id}>{c.displayName}</option>
+                    {clients.map(c => (
+                      <option key={c.id} value={c.id}>{c.name ?? c.email}</option>
                     ))}
                   </select>
                 )}
               </div>
 
-              {selectedCred && (
+              {selectedClient?.credential && (
                 <div className="text-[10px] text-[#7D8590] font-mono bg-[#1C2128] border border-[#30363D] rounded-lg px-3 py-2">
-                  <span className="font-sans font-semibold text-[#484F58] mr-1">Tenant:</span>{selectedCred.tenantId}
+                  <span className="font-sans font-semibold text-[#484F58] mr-1">Tenant:</span>{selectedClient.credential.tenantId}
                   <span className="mx-2">·</span>
-                  <span className="font-sans font-semibold text-[#484F58] mr-1">App:</span>{selectedCred.clientId}
+                  <span className="font-sans font-semibold text-[#484F58] mr-1">App:</span>{selectedClient.credential.clientId}
                 </div>
               )}
 
@@ -1409,7 +1420,7 @@ function RunScriptModal({ script, onClose }: { script: Script; onClose: () => vo
           {!done && (
             <button
               onClick={() => void handleRun()}
-              disabled={!selectedCredId || running}
+              disabled={!selectedClientId || running}
               className="flex items-center gap-2 bg-[#0078D4] hover:bg-[#006CBE] disabled:opacity-50 text-white text-sm font-semibold px-4 py-2 rounded-lg transition-colors"
             >
               {running ? (
