@@ -6388,16 +6388,44 @@ const SECTIONS = [
   { id: "ad-library", label: "Ad Library" },
 ];
 
+const VALID_TABS = new Set(["command", "recommendations", "kpi", "lead-finder", "outreach", "content", "follow-ups", "analytics", "tasks", "campaigns", "ad-library"]);
+
+function getTabFromSearch(): string {
+  const params = new URLSearchParams(window.location.search);
+  const tab = params.get("tab") ?? "";
+  return VALID_TABS.has(tab) ? tab : "command";
+}
+
 export default function MarketingCommandCenter() {
   const { fetchWithAuth } = useAuth();
-  const [activeSection, setActiveSection] = useState("recommendations");
+  const [activeSection, setActiveSection] = useState<string>(getTabFromSearch);
+
+  const navigate = useCallback((section: string) => {
+    const tab = VALID_TABS.has(section) ? section : "command";
+    const url = new URL(window.location.href);
+    if (tab === "command") {
+      url.searchParams.delete("tab");
+    } else {
+      url.searchParams.set("tab", tab);
+    }
+    history.pushState(null, "", url.toString());
+    setActiveSection(tab);
+  }, []);
+
+  useEffect(() => {
+    const onPopState = () => {
+      setActiveSection(getTabFromSearch());
+    };
+    window.addEventListener("popstate", onPopState);
+    return () => window.removeEventListener("popstate", onPopState);
+  }, []);
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
       <div className="flex-shrink-0 bg-[#161B22] border-b border-[#30363D] px-4 overflow-x-auto">
         <div className="flex gap-1 py-1">
           {SECTIONS.map(s => (
-            <button key={s.id} onClick={() => setActiveSection(s.id)}
+            <button key={s.id} onClick={() => navigate(s.id)}
               className={`flex-shrink-0 text-xs px-3 py-2 rounded-lg font-medium transition-colors ${activeSection === s.id ? "bg-[#0078D4]/20 text-[#58A6FF]" : "text-[#7D8590] hover:text-[#E6EDF3] hover:bg-[#1C2128]"}`}>
               {s.label}
             </button>
@@ -6405,7 +6433,7 @@ export default function MarketingCommandCenter() {
         </div>
       </div>
       <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-8">
-        <DailyCommandPanel fetchWithAuth={fetchWithAuth} onNavigate={setActiveSection} />
+        <DailyCommandPanel fetchWithAuth={fetchWithAuth} onNavigate={navigate} />
         {activeSection === "command" && null}
         {activeSection === "recommendations" && <RecommendedLeadsSection fetchWithAuth={fetchWithAuth} />}
         {activeSection === "kpi" && <KPIStrip fetchWithAuth={fetchWithAuth} />}
@@ -6414,9 +6442,9 @@ export default function MarketingCommandCenter() {
         {activeSection === "content" && <ContentHubSection fetchWithAuth={fetchWithAuth} />}
         {activeSection === "follow-ups" && <FollowUpsSection fetchWithAuth={fetchWithAuth} />}
         {activeSection === "analytics" && <TrafficAnalyticsSection fetchWithAuth={fetchWithAuth} />}
-        {activeSection === "tasks" && <MarketingTasksKanban fetchWithAuth={fetchWithAuth} onSectionNavigate={setActiveSection} />}
+        {activeSection === "tasks" && <MarketingTasksKanban fetchWithAuth={fetchWithAuth} onSectionNavigate={navigate} />}
         {activeSection === "campaigns" && <CampaignsHubSection fetchWithAuth={fetchWithAuth} />}
-        {activeSection === "ad-library" && <AdLibrarySection fetchWithAuth={fetchWithAuth} onNavigate={setActiveSection} />}
+        {activeSection === "ad-library" && <AdLibrarySection fetchWithAuth={fetchWithAuth} onNavigate={navigate} />}
       </div>
     </div>
   );
