@@ -93,7 +93,7 @@ interface KPI {
 }
 
 interface FunnelEntry { stage: string; value: number }
-interface CampaignPerf { id: number; name: string; status: string; assetCount: number }
+interface CampaignPerf { id: number; name: string; status: string; assetCount: number; leadsGenerated: number; revenueAttributed: number; revenuePerLead: number | null }
 interface AnalyticsData {
   dailyVisitors: Array<{ day: string; visitors: number }>;
   topPages: Array<{ page: string; views: number }>;
@@ -1581,23 +1581,45 @@ function TrafficAnalyticsSection({ fetchWithAuth }: { fetchWithAuth: (url: strin
           )}
         </div>
 
-        <div className="bg-[#161B22] border border-[#30363D] rounded-xl p-4">
-          <h3 className="text-sm font-semibold text-[#E6EDF3] mb-4">Campaign Performance</h3>
-          {analytics?.campaignPerformance && analytics.campaignPerformance.length > 0 ? (
-            <div className="space-y-2">
-              {analytics.campaignPerformance.map(c => (
-                <div key={c.id} className="flex items-center justify-between bg-[#0D1117] rounded-lg px-3 py-2">
-                  <div className="min-w-0">
-                    <p className="text-sm text-[#E6EDF3] truncate">{c.name}</p>
-                    <Badge text={c.status} color={c.status === "active" ? "green" : "gray"} />
-                  </div>
-                  <div className="text-right flex-shrink-0">
-                    <p className="text-xs text-[#7D8590]">{c.assetCount} asset{c.assetCount !== 1 ? "s" : ""}</p>
-                  </div>
-                </div>
-              ))}
-            </div>
-          ) : <p className="text-[#7D8590] text-sm text-center py-4">No campaigns yet</p>}
+        <div className="lg:col-span-2 bg-[#161B22] border border-[#30363D] rounded-xl p-4">
+          <h3 className="text-sm font-semibold text-[#E6EDF3] mb-1">Revenue per Lead by Campaign</h3>
+          <p className="text-xs text-[#7D8590] mb-4">Revenue attributed ÷ leads generated. Campaigns with no leads show —.</p>
+          {analytics?.campaignPerformance && analytics.campaignPerformance.length > 0 ? (() => {
+            const maxRpl = Math.max(0, ...analytics.campaignPerformance.map(c => c.revenuePerLead ?? 0));
+            const topId = analytics.campaignPerformance.find(c => c.revenuePerLead !== null && c.revenuePerLead === maxRpl)?.id ?? null;
+            return (
+              <div className="space-y-2">
+                {analytics.campaignPerformance.map(c => {
+                  const isTop = c.id === topId && c.revenuePerLead !== null;
+                  const barPct = maxRpl > 0 && c.revenuePerLead !== null ? (c.revenuePerLead / maxRpl) * 100 : 0;
+                  return (
+                    <div key={c.id} className={`rounded-lg px-3 py-2.5 ${isTop ? "bg-[#0D1117] ring-1 ring-[#0078D4]/50" : "bg-[#0D1117]"}`}>
+                      <div className="flex items-center justify-between mb-1.5">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <p className="text-sm text-[#E6EDF3] truncate font-medium">{c.name}</p>
+                          {isTop && <span className="text-[10px] font-bold text-[#0078D4] bg-[#0078D4]/10 border border-[#0078D4]/30 rounded-full px-2 py-0.5 flex-shrink-0">★ Top</span>}
+                          <Badge text={c.status} color={c.status === "active" ? "green" : "gray"} />
+                        </div>
+                        <div className="text-right flex-shrink-0 ml-3">
+                          {c.revenuePerLead !== null
+                            ? <span className="text-sm font-bold text-[#E6EDF3]">${c.revenuePerLead.toLocaleString("en-US", { maximumFractionDigits: 0 })}<span className="text-[#7D8590] font-normal text-xs">/lead</span></span>
+                            : <span className="text-[#484F58] text-sm">—</span>
+                          }
+                        </div>
+                      </div>
+                      <div className="h-1.5 rounded-full bg-[#21262D] overflow-hidden">
+                        <div className={`h-full rounded-full transition-all ${isTop ? "bg-[#0078D4]" : "bg-[#30363D]"}`} style={{ width: `${barPct}%` }} />
+                      </div>
+                      <div className="flex gap-3 mt-1.5">
+                        <span className="text-[10px] text-[#7D8590]">{c.leadsGenerated} lead{c.leadsGenerated !== 1 ? "s" : ""}</span>
+                        <span className="text-[10px] text-[#7D8590]">${c.revenueAttributed.toLocaleString("en-US", { maximumFractionDigits: 0 })} revenue</span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            );
+          })() : <p className="text-[#7D8590] text-sm text-center py-4">No campaigns yet. Add campaigns and track revenue to see ROI.</p>}
         </div>
 
         <div className="lg:col-span-2 bg-[#161B22] border border-[#30363D] rounded-xl p-4">

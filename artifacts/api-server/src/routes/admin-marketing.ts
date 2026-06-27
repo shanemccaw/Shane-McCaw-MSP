@@ -909,11 +909,13 @@ router.get("/admin/marketing/analytics", requireAdmin, async (_req: Request, res
       `),
       db.execute(sql`
         SELECT c.id, c.name, c.status, c.created_at,
-          COUNT(DISTINCT ca.id) as asset_count
+          COUNT(DISTINCT ca.id) as asset_count,
+          COALESCE(c.leads_generated, 0) as leads_generated,
+          COALESCE(c.revenue_attributed, 0) as revenue_attributed
         FROM campaigns c
         LEFT JOIN campaign_assets ca ON ca.campaign_id = c.id
-        GROUP BY c.id, c.name, c.status, c.created_at
-        ORDER BY c.created_at DESC LIMIT 5
+        GROUP BY c.id, c.name, c.status, c.created_at, c.leads_generated, c.revenue_attributed
+        ORDER BY c.revenue_attributed DESC NULLS LAST, c.created_at DESC LIMIT 10
       `),
     ]);
 
@@ -921,7 +923,7 @@ router.get("/admin/marketing/analytics", requireAdmin, async (_req: Request, res
     type PageRow = { page: string; views: string };
     type SourceRow = { source: string; sessions: string };
     type FunnelRow = { visitors: string; contact_page_views: string; leads: string; converted: string };
-    type CampaignRow = { id: number; name: string; status: string; asset_count: string };
+    type CampaignRow = { id: number; name: string; status: string; asset_count: string; leads_generated: string; revenue_attributed: string };
 
     const rawDaily = (dailyVisitors as unknown as { rows: DayRow[] }).rows ?? [];
     const rawPages = (topPages as unknown as { rows: PageRow[] }).rows ?? [];
@@ -941,7 +943,12 @@ router.get("/admin/marketing/analytics", requireAdmin, async (_req: Request, res
       topPages: rawPages.map(r => ({ page: String(r.page), views: Number(r.views) })),
       trafficSources: rawSources.map(r => ({ source: String(r.source), sessions: Number(r.sessions) })),
       conversionFunnel: funnelData,
-      campaignPerformance: rawCampaigns.map(r => ({ id: r.id, name: r.name, status: r.status, assetCount: Number(r.asset_count) })),
+      campaignPerformance: rawCampaigns.map(r => {
+        const leads = Number(r.leads_generated);
+        const revenue = Number(r.revenue_attributed);
+        const revenuePerLead = leads > 0 ? revenue / leads : null;
+        return { id: r.id, name: r.name, status: r.status, assetCount: Number(r.asset_count), leadsGenerated: leads, revenueAttributed: revenue, revenuePerLead };
+      }),
     });
   } catch (e) {
     res.status(500).json({ error: String(e) });
