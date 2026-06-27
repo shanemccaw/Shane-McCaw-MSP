@@ -5377,6 +5377,28 @@ function CampaignBuilderWizard({ fetchWithAuth }: { fetchWithAuth: (url: string,
             </div>
           )}
 
+          {step === 5 && !savedCampaignId && (
+            <div className="space-y-4">
+              <div className="rounded-lg border border-red-500/30 bg-red-500/10 p-4 space-y-3">
+                <div className="flex items-start gap-3">
+                  <svg className="w-5 h-5 text-red-400 mt-0.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+                  </svg>
+                  <div>
+                    <p className="text-sm font-semibold text-red-400">Campaign save incomplete</p>
+                    <p className="text-xs text-[#7D8590] mt-1">The campaign wasn't saved successfully — this can happen if the connection dropped or the request timed out. Go back to step 4 and try saving again.</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setStep(4)}
+                  className="w-full py-2 rounded-lg border border-red-500/40 text-red-400 text-sm font-medium hover:bg-red-500/10 transition-colors"
+                >
+                  ← Go back and retry
+                </button>
+              </div>
+            </div>
+          )}
+
           {step === 5 && savedCampaignId && (
             <CampaignAdAssetsStep
               campaignId={savedCampaignId}

@@ -1197,11 +1197,13 @@ router.post("/admin/marketing/campaigns/generate-ads", requireAdmin, async (req:
     const body = generateAdsSchema.parse(req.body);
 
     const [campaignRow] = await db.select().from(campaignsTable).where(eq(campaignsTable.id, body.campaignId));
+    if (!campaignRow) {
+      res.status(404).json({ error: `Campaign ${body.campaignId} not found — it may not have saved correctly. Please go back and retry saving the campaign.` });
+      return;
+    }
     const icpContext = await buildICPContext();
 
-    const campaignContext = campaignRow
-      ? `Campaign goal: ${campaignRow.goal}\nCampaign audience: ${campaignRow.audience}\nCampaign offer: ${campaignRow.offer}`
-      : "";
+    const campaignContext = `Campaign goal: ${campaignRow.goal}\nCampaign audience: ${campaignRow.audience}\nCampaign offer: ${campaignRow.offer}`;
 
     const audience = body.audience || campaignRow?.audience || "IT decision-makers at mid-market companies";
     const offer = body.offer || campaignRow?.offer || body.topic;
