@@ -1231,8 +1231,11 @@ router.post("/admin/marketing/campaign-assets", requireAdmin, async (req: Reques
       campaignId?: number; assetType: string; title: string; content: string;
     };
     type AssetType = "landing_copy" | "email_sequence" | "social_post" | "follow_up_task" | "blog_post" | "linkedin_post" | "newsletter" | "seo_keywords";
+    const generatedWithOfferIds = campaignId
+      ? (await db.select({ id: offersTable.id }).from(offersTable).where(eq(offersTable.campaignId, campaignId))).map(o => o.id)
+      : [];
     const [row] = await db.insert(campaignAssetsTable)
-      .values({ campaignId: campaignId ?? null, assetType: assetType as AssetType, title, content })
+      .values({ campaignId: campaignId ?? null, assetType: assetType as AssetType, title, content, generatedWithOfferIds })
       .returning();
     res.json(row);
   } catch (e) {

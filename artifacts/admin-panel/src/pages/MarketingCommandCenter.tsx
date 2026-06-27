@@ -5315,11 +5315,13 @@ function EmailSequencePanel({
   asset,
   campaign,
   offers,
+  isSnapshot,
   fetchWithAuth,
 }: {
   asset: CampaignAsset;
   campaign: Campaign;
   offers: Array<{ id: number; name: string; pricing: string | null; deliverables: string[]; outcomes: string[] }>;
+  isSnapshot?: boolean;
   fetchWithAuth: (url: string, opts?: RequestInit) => Promise<Response>;
 }) {
   const [editing, setEditing] = useState(false);
@@ -5459,11 +5461,7 @@ function EmailSequencePanel({
           )}
         </div>
         <div className="p-4">
-          <p className="text-[10px] text-[#484F58] mb-3">
-            {offers.length > 0
-              ? `Using ${offers.length} offer${offers.length === 1 ? "" : "s"}: ${offers.map(o => o.name).join(", ")}`
-              : "No linked offers — using campaign description only"}
-          </p>
+          <div className="mb-3"><OfferIndicator offers={offers} isSnapshot={isSnapshot} /></div>
           {editing ? (
             <textarea
               value={editText}
@@ -5627,12 +5625,14 @@ function LandingCopyPanel({
   asset,
   campaign,
   offers,
+  isSnapshot,
   fetchWithAuth,
   onLandingPageCreated,
 }: {
   asset: CampaignAsset;
   campaign: Campaign;
   offers: Array<{ id: number; name: string; pricing: string | null; deliverables: string[]; outcomes: string[] }>;
+  isSnapshot?: boolean;
   fetchWithAuth: (url: string, opts?: RequestInit) => Promise<Response>;
   onLandingPageCreated: () => void;
 }) {
@@ -5815,11 +5815,7 @@ function LandingCopyPanel({
             )}
           </div>
         </div>
-        <p className="text-[10px] text-[#484F58] mb-3">
-          {offers.length > 0
-            ? `Using ${offers.length} offer${offers.length === 1 ? "" : "s"}: ${offers.map(o => o.name).join(", ")}`
-            : "No linked offers — using campaign description only"}
-        </p>
+        <div className="mb-3"><OfferIndicator offers={offers} isSnapshot={isSnapshot} /></div>
         {editing ? (
           <textarea
             value={editText}
@@ -5950,7 +5946,7 @@ function CampaignAssetTabPanel({
     case "email_sequence":
     case "cold_email":
     case "followup":
-    case "newsletter": return <EmailSequencePanel asset={asset} campaign={campaign} offers={displayOffers} fetchWithAuth={fetchWithAuth} />;
+    case "newsletter": return <EmailSequencePanel asset={asset} campaign={campaign} offers={displayOffers} isSnapshot={hasSnapshot} fetchWithAuth={fetchWithAuth} />;
     case "social_post": return (
       <div className="space-y-3">
         <OfferIndicator offers={displayOffers} isSnapshot={hasSnapshot} />
@@ -5986,6 +5982,7 @@ function CampaignAssetTabPanel({
         asset={asset}
         campaign={campaign}
         offers={displayOffers}
+        isSnapshot={hasSnapshot}
         fetchWithAuth={fetchWithAuth}
         onLandingPageCreated={onLandingPageCreated}
       />
