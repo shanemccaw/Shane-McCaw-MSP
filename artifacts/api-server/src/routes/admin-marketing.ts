@@ -268,9 +268,14 @@ router.delete("/admin/marketing/recommended-leads/:id", requireAdmin, async (req
   }
 });
 
-router.post("/admin/marketing/recommended-leads/generate", requireAdmin, async (_req: Request, res: Response) => {
+router.post("/admin/marketing/recommended-leads/generate", requireAdmin, async (req: Request, res: Response) => {
   try {
+    const { targetingPrompt } = req.body as { targetingPrompt?: string };
     const icpContext = await buildICPContext();
+
+    const targetingClause = targetingPrompt?.trim()
+      ? `\nADDITIONAL TARGETING INSTRUCTIONS: ${targetingPrompt.trim()}\nFocus lead generation specifically on this criteria while still matching the ICP above.\n`
+      : "";
 
     const message = await anthropic.messages.create({
       model: "claude-haiku-4-5",
@@ -280,7 +285,7 @@ router.post("/admin/marketing/recommended-leads/generate", requireAdmin, async (
         content: `You are a B2B lead generation specialist for a Microsoft 365 consulting firm led by Shane McCaw, a 30-year Microsoft veteran and NASA M365 architect.
 
 ${icpContext}
-
+${targetingClause}
 Generate 7 highly specific, realistic recommended leads who perfectly match the above ICP. Each should be a real-sounding decision-maker at a company that would genuinely benefit from these services.
 
 IMPORTANT COMPLIANCE CONSTRAINT: Shane McCaw is a full-time federal employee (NASA). He is legally prohibited from contracting with: (1) other federal agencies, government departments, national laboratories, DoD components, or any other government entity; (2) any commercial company that holds, pursues, or is known to be a prime or subcontractor on NASA contracts. Only recommend private-sector, commercially-focused companies with NO known NASA or federal prime/sub contract relationships.

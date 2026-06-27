@@ -837,6 +837,7 @@ function RecommendedLeadsSection({ fetchWithAuth }: { fetchWithAuth: (url: strin
   const [genError, setGenError] = useState<string | null>(null);
   const [pendingDismiss, setPendingDismiss] = useState<{ id: number; leadName: string; timerId: ReturnType<typeof setTimeout> } | null>(null);
   const [selectedLead, setSelectedLead] = useState<RecommendedLead | null>(null);
+  const [targetingPrompt, setTargetingPrompt] = useState("");
   const hasFetched = useRef(false);
 
   const loadLeads = useCallback(async () => {
@@ -866,11 +867,15 @@ function RecommendedLeadsSection({ fetchWithAuth }: { fetchWithAuth: (url: strin
     } finally { setLoading(false); }
   }, [fetchWithAuth]);
 
-  const generate = useCallback(async () => {
+  const generate = useCallback(async (prompt?: string) => {
     setGenerating(true);
     setGenError(null);
     try {
-      const r = await fetchWithAuth(`${API}/admin/marketing/recommended-leads/generate`, { method: "POST" });
+      const r = await fetchWithAuth(`${API}/admin/marketing/recommended-leads/generate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ targetingPrompt: prompt ?? "" }),
+      });
       const data = await r.json() as unknown;
       if (!r.ok || !Array.isArray(data)) {
         const msg = (data as { error?: string })?.error ?? "Lead generation failed";
@@ -937,16 +942,34 @@ function RecommendedLeadsSection({ fetchWithAuth }: { fetchWithAuth: (url: strin
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex items-start justify-between gap-4">
         <div>
           <h2 className="text-lg font-semibold text-[#E6EDF3]">AI Lead Recommendations</h2>
           <p className="text-xs text-[#7D8590]">AI-powered leads matched to your ICP and services — auto-refreshed from DB context</p>
         </div>
-        <button onClick={() => { void generate(); }} disabled={generating}
-          className="flex items-center gap-2 px-4 py-2 rounded-lg bg-[#0078D4] text-white text-sm font-semibold hover:bg-[#0078D4]/80 disabled:opacity-60 transition-colors">
+      </div>
+
+      {/* Targeting input */}
+      <div className="bg-[#161B22] border border-[#30363D] rounded-xl p-4 space-y-3">
+        <div>
+          <label className="text-xs font-semibold text-[#E6EDF3]">Target Segment <span className="text-[#7D8590] font-normal">(optional)</span></label>
+          <p className="text-[11px] text-[#484F58] mt-0.5">Describe the type of companies or roles you want to target — e.g. "MSPs and System Integrators", "healthcare startups", "manufacturing companies in the Midwest"</p>
+        </div>
+        <textarea
+          value={targetingPrompt}
+          onChange={e => setTargetingPrompt(e.target.value)}
+          placeholder="e.g. Managed Service Providers (MSPs) and System Integrators with 50–500 employees who resell or implement Microsoft 365..."
+          rows={2}
+          className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-sm text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60 resize-none"
+        />
+        <button
+          onClick={() => { void generate(targetingPrompt.trim() || undefined); }}
+          disabled={generating}
+          className="flex items-center gap-2 px-4 py-2 rounded-lg bg-[#0078D4] text-white text-sm font-semibold hover:bg-[#0078D4]/80 disabled:opacity-60 transition-colors"
+        >
           {generating
             ? <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />Generating…</>
-            : <><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>Generate Leads</>}
+            : <><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>{targetingPrompt.trim() ? "Generate Targeted Leads" : "Generate Leads"}</>}
         </button>
       </div>
 
