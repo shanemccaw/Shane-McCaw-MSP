@@ -11,3 +11,9 @@ id = "UVO1rNdyhD_tCE9Plxi3r"
 uri = "file://artifacts/admin-panel/ADMIN_PORTAL_DOCS.md"
 type = "text"
 title = "Admin Portal Documentation"
+
+[[outputs]]
+id = "1W0K36USQX4rFWQVYOgYb"
+uri = "file://docs/marketing-command-center.md"
+type = "text"
+title = "Marketing Command Center Specification"
