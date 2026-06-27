@@ -532,7 +532,7 @@ router.post("/admin/marketing/campaigns/preview-assets", requireAdmin, async (re
 
     const message = await anthropic.messages.create({
       model: "claude-haiku-4-5",
-      max_tokens: 3000,
+      max_tokens: 4096,
       messages: [{
         role: "user",
         content: `You are a marketing strategist for Shane McCaw Consulting, a Microsoft 365 consulting firm.
@@ -543,25 +543,8 @@ Campaign Brief:
 - Target Audience: ${body.audience}
 - Offer: ${body.offer}
 
-Generate complete campaign assets. Respond with JSON only (no markdown):
-{
-  "landing_copy": {
-    "title": "Landing Page Copy",
-    "content": "Headline\\nSubheadline\\nValue props (bullet list)\\nCTA button text"
-  },
-  "email_sequence": {
-    "title": "3-Email Sequence",
-    "content": "EMAIL 1 - Subject: ...\\nBody: ...\\n\\nEMAIL 2 - Subject: ...\\nBody: ...\\n\\nEMAIL 3 - Subject: ...\\nBody: ..."
-  },
-  "social_posts": {
-    "title": "Social Media Posts",
-    "content": "LINKEDIN:\\n...\\n\\nTWITTER/X:\\n...\\n\\nFACEBOOK:\\n..."
-  },
-  "follow_up_tasks": {
-    "title": "Follow-Up Task List",
-    "content": "1. ...\\n2. ...\\n3. ...\\n4. ...\\n5. ..."
-  }
-}`,
+Generate concise campaign assets. Keep each content field short (2-5 sentences or bullet points max per section). Respond with JSON only (no markdown, no code fences):
+{"landing_copy":{"title":"Landing Page Copy","content":"HEADLINE: ...\\nSUBHEAD: ...\\n• Value prop 1\\n• Value prop 2\\n• Value prop 3\\nCTA: ..."},"email_sequence":{"title":"3-Email Sequence","content":"EMAIL 1 - Subject: ...\\nBody: 2-3 sentences.\\n\\nEMAIL 2 - Subject: ...\\nBody: 2-3 sentences.\\n\\nEMAIL 3 - Subject: ...\\nBody: 2-3 sentences."},"social_posts":{"title":"Social Media Posts","content":"LINKEDIN: 2-3 sentences + hashtags\\n\\nX/TWITTER: 1 sentence + hashtags\\n\\nFACEBOOK: 2 sentences + hashtags"},"follow_up_tasks":{"title":"Follow-Up Task List","content":"1. ...\\n2. ...\\n3. ...\\n4. ...\\n5. ..."}}`,
       }],
     });
 
