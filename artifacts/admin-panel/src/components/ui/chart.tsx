@@ -100,16 +100,41 @@ ${colorConfig
 
 const ChartTooltip = RechartsPrimitive.Tooltip
 
+type ChartTooltipPayloadItem = {
+  dataKey?: string | number
+  name?: string
+  value?: number | string | Array<number | string>
+  type?: string
+  color?: string
+  payload?: Record<string, unknown>
+  [key: string]: unknown
+}
+
 const ChartTooltipContent = React.forwardRef<
   HTMLDivElement,
-  React.ComponentProps<typeof RechartsPrimitive.Tooltip> &
-    React.ComponentProps<"div"> & {
-      hideLabel?: boolean
-      hideIndicator?: boolean
-      indicator?: "line" | "dot" | "dashed"
-      nameKey?: string
-      labelKey?: string
-    }
+  React.ComponentProps<"div"> & {
+    hideLabel?: boolean
+    hideIndicator?: boolean
+    indicator?: "line" | "dot" | "dashed"
+    nameKey?: string
+    labelKey?: string
+    active?: boolean
+    payload?: ChartTooltipPayloadItem[]
+    label?: string
+    labelFormatter?: (
+      label: unknown,
+      payload: ChartTooltipPayloadItem[]
+    ) => React.ReactNode
+    labelClassName?: string
+    formatter?: (
+      value: unknown,
+      name: string,
+      item: ChartTooltipPayloadItem,
+      index: number,
+      payload: ChartTooltipPayloadItem
+    ) => React.ReactNode
+    color?: string
+  }
 >(
   (
     {
@@ -188,7 +213,10 @@ const ChartTooltipContent = React.forwardRef<
             .map((item, index) => {
               const key = `${nameKey || item.name || item.dataKey || "value"}`
               const itemConfig = getPayloadConfigFromPayload(config, item, key)
-              const indicatorColor = color || item.payload.fill || item.color
+              const indicatorColor =
+                color ||
+                (item.payload?.fill as string | undefined) ||
+                item.color
 
               return (
                 <div
@@ -199,7 +227,7 @@ const ChartTooltipContent = React.forwardRef<
                   )}
                 >
                   {formatter && item?.value !== undefined && item.name ? (
-                    formatter(item.value, item.name, item, index, item.payload)
+                    formatter(item.value, item.name as string, item, index, item)
                   ) : (
                     <>
                       {itemConfig?.icon ? (
