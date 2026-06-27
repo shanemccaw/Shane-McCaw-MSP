@@ -18,8 +18,31 @@ function parseId(params: Request["params"], key: string): number {
   return parseInt(String(params[key] ?? ""), 10);
 }
 
-function stripFences(text: string): string {
-  return text.replace(/^```(?:json)?\s*/i, "").replace(/\s*```\s*$/, "").trim();
+function extractJson(text: string): string {
+  // 1. Try to pull JSON out of a ```json ... ``` or ``` ... ``` fence anywhere in the text
+  const fenceMatch = text.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  if (fenceMatch?.[1]) return fenceMatch[1].trim();
+
+  // 2. No fence — find the first { or [ and return from there to the matching close
+  const objStart = text.indexOf("{");
+  const arrStart = text.indexOf("[");
+  if (objStart === -1 && arrStart === -1) return text.trim();
+  const start = objStart === -1 ? arrStart : arrStart === -1 ? objStart : Math.min(objStart, arrStart);
+  const openChar = text[start] === "{" ? "{" : "[";
+  const closeChar = openChar === "{" ? "}" : "]";
+  let depth = 0;
+  let inString = false;
+  let escape = false;
+  for (let i = start; i < text.length; i++) {
+    const ch = text[i];
+    if (escape) { escape = false; continue; }
+    if (ch === "\\" && inString) { escape = true; continue; }
+    if (ch === '"') { inString = !inString; continue; }
+    if (inString) continue;
+    if (ch === openChar) depth++;
+    else if (ch === closeChar) { depth--; if (depth === 0) return text.slice(start, i + 1); }
+  }
+  return text.slice(start).trim();
 }
 
 class AiResponseError extends Error {}
@@ -27,7 +50,7 @@ class AiResponseError extends Error {}
 function parseAiJson<T>(text: string, schema: z.ZodType<T>): T {
   let parsed: unknown;
   try {
-    parsed = JSON.parse(stripFences(text));
+    parsed = JSON.parse(extractJson(text));
   } catch {
     throw new AiResponseError("AI returned an unreadable response — please try again");
   }
