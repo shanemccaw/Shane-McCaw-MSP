@@ -22,7 +22,7 @@ import {
   usersTable,
   servicesTable,
 } from "@workspace/db";
-import { eq, asc, desc } from "drizzle-orm";
+import { eq, asc, desc, and, isNull } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/requireAuth";
 import { logger } from "../lib/logger";
 import { createRunbookJob, getJobStatus, getJobOutput, isTerminalStatus } from "../lib/azure-automation";
@@ -490,6 +490,8 @@ router.post("/admin/run-package", requireAdmin, async (req: Request, res: Respon
     instructions?: string;
     filename?: string;
     uploadUrl?: string;
+    reused?: boolean;
+    packageCreatedAt?: string;
   }> = [];
 
   // ── Automated scripts — run via Azure Automation ──────────────────────────
@@ -609,18 +611,48 @@ router.post("/admin/run-package", requireAdmin, async (req: Request, res: Respon
       } catch (_) { /* non-fatal */ }
     }
 
-    const [resultRow] = await db
-      .insert(scriptRunResultsTable)
-      .values({
-        customerId: customerId ?? null,
-        scriptId: script.id,
-        packageId,
-        status: "awaiting_upload",
-        executionSource: "manual",
-      })
-      .returning({ id: scriptRunResultsTable.id });
+    // Deduplication: reuse an existing awaiting_upload row for the same
+    // (scriptId, customerId, packageId) triple rather than creating orphans.
+    const dedupConditions = [
+      eq(scriptRunResultsTable.scriptId, script.id),
+      eq(scriptRunResultsTable.status, "awaiting_upload"),
+      eq(scriptRunResultsTable.executionSource, "manual"),
+      customerId
+        ? eq(scriptRunResultsTable.customerId, customerId)
+        : isNull(scriptRunResultsTable.customerId),
+      packageId
+        ? eq(scriptRunResultsTable.packageId, packageId)
+        : isNull(scriptRunResultsTable.packageId),
+    ];
 
-    const runResultId = resultRow.id;
+    const [existing] = await db
+      .select({ id: scriptRunResultsTable.id, createdAt: scriptRunResultsTable.createdAt })
+      .from(scriptRunResultsTable)
+      .where(and(...dedupConditions))
+      .limit(1);
+
+    let runResultId: number;
+    let packageCreatedAt: Date;
+    const reused = !!existing;
+
+    if (existing) {
+      runResultId = existing.id;
+      packageCreatedAt = existing.createdAt;
+      logger.info({ scriptId: script.id, runResultId, customerId }, "admin-m365-run: reusing existing awaiting_upload row");
+    } else {
+      const [resultRow] = await db
+        .insert(scriptRunResultsTable)
+        .values({
+          customerId: customerId ?? null,
+          scriptId: script.id,
+          packageId,
+          status: "awaiting_upload",
+          executionSource: "manual",
+        })
+        .returning({ id: scriptRunResultsTable.id, createdAt: scriptRunResultsTable.createdAt });
+      runResultId = resultRow.id;
+      packageCreatedAt = resultRow.createdAt;
+    }
 
     const pkg = generateManualScriptPackage({
       scriptId: script.id,
@@ -648,6 +680,8 @@ router.post("/admin/run-package", requireAdmin, async (req: Request, res: Respon
       instructions: pkg.instructions,
       filename: pkg.filename,
       uploadUrl: `${uploadBaseUrl}/api/admin/manual-scripts/${runResultId}/upload`,
+      reused,
+      packageCreatedAt: packageCreatedAt.toISOString(),
     });
   }
 
