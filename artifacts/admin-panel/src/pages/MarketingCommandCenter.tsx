@@ -1085,7 +1085,7 @@ function DailyCommandPanel({ fetchWithAuth, onNavigate }: { fetchWithAuth: (url:
   const overdueCount = followUpsTodo.filter(f => f.status === "overdue").length;
 
   return (
-    <div className="bg-gradient-to-r from-[#0A2540] to-[#0D1B35] border border-[#0078D4]/30 rounded-xl p-5 space-y-4">
+    <div className="bg-gradient-to-r from-[#0A2540] to-[#0D1B35] border border-[#0078D4]/30 rounded-xl p-5">
       <div className="flex items-center justify-between flex-wrap gap-2">
         <div>
           <h2 className="text-sm font-semibold text-[#58A6FF] uppercase tracking-wide">Revenue Command Center</h2>
@@ -1114,7 +1114,11 @@ function DailyCommandPanel({ fetchWithAuth, onNavigate }: { fetchWithAuth: (url:
         </div>
       </div>
 
-      {expanded && <>
+      <div
+        className="overflow-hidden transition-[max-height] duration-300 ease-in-out"
+        style={{ maxHeight: expanded ? "2000px" : "0px" }}
+      >
+        <div className="space-y-4 pt-4">
         <div className="bg-[#0078D4]/10 border border-[#0078D4]/20 rounded-lg p-3">
           <p className="text-xs font-semibold text-[#58A6FF] mb-1">✦ Today's #1 Priority</p>
           <p className="text-sm text-[#E6EDF3]">{cmd.aiInsight.topPriority}</p>
@@ -1234,7 +1238,8 @@ function DailyCommandPanel({ fetchWithAuth, onNavigate }: { fetchWithAuth: (url:
           <p className="text-[10px] font-semibold text-emerald-400 mb-0.5">Revenue Insight</p>
           <p className="text-xs text-[#E6EDF3]">{cmd.aiInsight.revenueInsight}</p>
         </div>
-      </>}
+        </div>
+      </div>
     </div>
   );
 }
