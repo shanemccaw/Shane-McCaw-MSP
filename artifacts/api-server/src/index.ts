@@ -191,6 +191,24 @@ app.listen(port, (err) => {
   });
 
   pool.query(`
+    CREATE TABLE IF NOT EXISTS powershell_scripts (
+      id SERIAL PRIMARY KEY,
+      title TEXT NOT NULL,
+      description TEXT,
+      category TEXT NOT NULL DEFAULT 'other',
+      script_body TEXT NOT NULL,
+      permissions JSONB NOT NULL DEFAULT '{"appPermissions":[],"delegatedPermissions":[],"notes":""}',
+      tags JSONB NOT NULL DEFAULT '[]',
+      created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+    )
+  `).then(() => {
+    logger.info("Migration: powershell_scripts table ensured");
+  }).catch((err: unknown) => {
+    logger.warn({ err }, "Migration: powershell_scripts table failed (non-fatal)");
+  });
+
+  pool.query(`
     CREATE TABLE IF NOT EXISTS client_scores (
       id SERIAL PRIMARY KEY,
       client_id INTEGER NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,

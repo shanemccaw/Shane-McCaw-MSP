@@ -49,6 +49,7 @@ import CouponsPage from "@/pages/Coupons";
 import ServicePageTriggersPage from "@/pages/ServicePageTriggers";
 import ScriptRunnerPage from "@/pages/ScriptRunner";
 import M365ScriptCatalogPage from "@/pages/M365ScriptCatalog";
+import ScriptGeneratorPage from "@/pages/ScriptGeneratorPage";
 import M365RunResultsPage from "@/pages/M365RunResults";
 import AdminSecurity from "@/pages/AdminSecurity";
 import MarketingCommandCenterPage from "@/pages/MarketingCommandCenter";
@@ -261,6 +262,9 @@ function Router() {
       </Route>
       <Route path="/m365-run-results">
         <RequireAdmin><DashboardShell><M365RunResultsPage /></DashboardShell></RequireAdmin>
+      </Route>
+      <Route path="/script-generator">
+        <RequireAdmin><DashboardShell><ScriptGeneratorPage /></DashboardShell></RequireAdmin>
       </Route>
 
       {/* Marketing Command Center */}

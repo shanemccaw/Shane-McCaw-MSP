@@ -1352,3 +1352,25 @@ export const clientScoresTable = pgTable("client_scores", {
 
 export type InsertClientScore = typeof clientScoresTable.$inferInsert;
 export type ClientScore = typeof clientScoresTable.$inferSelect;
+
+// PowerShell Script Library — AI-generated scripts stored by Shane
+export interface PsScriptPermissions {
+  appPermissions: string[];
+  delegatedPermissions: string[];
+  notes: string;
+}
+
+export const powershellScriptsTable = pgTable("powershell_scripts", {
+  id: serial("id").primaryKey(),
+  title: text("title").notNull(),
+  description: text("description"),
+  category: text("category").notNull().default("other"),
+  scriptBody: text("script_body").notNull(),
+  permissions: jsonb("permissions").$type<PsScriptPermissions>().notNull().default({ appPermissions: [], delegatedPermissions: [], notes: "" }),
+  tags: jsonb("tags").$type<string[]>().notNull().default([]),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export type InsertPowershellScript = typeof powershellScriptsTable.$inferInsert;
+export type PowershellScript = typeof powershellScriptsTable.$inferSelect;
