@@ -5958,7 +5958,7 @@ function CampaignDetailView({
 
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-4">
       {deleteDialog && data && (
         <CampaignDeleteDialog
           campaign={data.campaign}
@@ -5967,23 +5967,24 @@ function CampaignDetailView({
           isDeleting={deleting}
         />
       )}
-      {/* Header */}
-      <div className="flex items-start justify-between gap-3">
-        <div className="flex items-start gap-3 min-w-0">
-          <button onClick={onBack} className="flex-shrink-0 mt-0.5 flex items-center gap-1 text-xs text-[#7D8590] hover:text-[#E6EDF3] transition-colors">
-            ← Back
+      {/* ── Breadcrumb + controls ── */}
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-2 min-w-0">
+          <button onClick={onBack} className="text-sm text-[#7D8590] hover:text-[#E6EDF3] transition-colors flex-shrink-0">
+            Campaigns
           </button>
-          <div className="min-w-0">
-            <h2 className="text-base font-semibold text-[#E6EDF3] truncate">{campaign.name}</h2>
-            <p className="text-[10px] text-[#7D8590] mt-0.5">Campaign ID #{campaign.id} · Created {new Date(campaign.createdAt).toLocaleDateString()}</p>
-          </div>
+          <span className="text-[#30363D] flex-shrink-0">/</span>
+          <h2 className="text-sm font-semibold text-[#E6EDF3] truncate">{campaign.name}</h2>
+          <span className="text-[9px] text-[#484F58] flex-shrink-0 hidden sm:block">
+            #{campaign.id} · {new Date(campaign.createdAt).toLocaleDateString()}
+          </span>
         </div>
         <div className="flex items-center gap-2 flex-shrink-0">
           <select
             value={campaign.status}
             onChange={e => { void handleStatusChange(e.target.value as Campaign["status"]); }}
             disabled={statusSaving}
-            className={`text-xs px-2 py-1 rounded-full border-0 outline-none cursor-pointer font-semibold disabled:opacity-40 ${statusColors[campaign.status]}`}
+            className={`text-xs px-2.5 py-1 rounded-full border border-[#30363D] outline-none cursor-pointer font-semibold disabled:opacity-40 ${statusColors[campaign.status]}`}
             style={{ background: "transparent" }}
           >
             <option value="draft">Draft</option>
@@ -5995,7 +5996,7 @@ function CampaignDetailView({
             onClick={() => onGenerateMoreAssets(campaign)}
             className="text-[10px] px-3 py-1.5 rounded-lg bg-[#0078D4]/20 text-[#58A6FF] border border-[#0078D4]/30 hover:bg-[#0078D4]/30 transition-colors font-semibold"
           >
-            + Generate Assets
+            + Assets
           </button>
           <button
             onClick={() => setDeleteDialog(true)}
@@ -6028,36 +6029,11 @@ function CampaignDetailView({
         </div>
       </div>
 
-      {/* Update Metrics */}
-      <div className="bg-[#161B22] border border-[#30363D] rounded-xl p-4 space-y-3">
-        <div className="flex items-center justify-between">
-          <p className="text-xs font-semibold text-[#E6EDF3]">Update Metrics</p>
-          {autoCount > 0 && (
-            <span className="text-[9px] text-[#58A6FF]">{hasManualOverride ? `Auto: ${autoCount} · overridden` : "Auto-tracked · set override below"}</span>
-          )}
-        </div>
-        <div className="grid grid-cols-3 gap-2">
-          <div>
-            <label className="text-[10px] text-[#7D8590]">Leads</label>
-            <input type="number" min="0" value={leads} onChange={e => setLeads(e.target.value)}
-              className="mt-0.5 w-full bg-[#0D1117] border border-[#30363D] rounded px-2 py-1 text-xs text-[#E6EDF3] outline-none focus:border-[#0078D4]/60" />
-          </div>
-          <div>
-            <label className="text-[10px] text-[#7D8590]">{autoCount > 0 ? "Emails (override)" : "Emails Sent"}</label>
-            <input type="number" min="0" value={emails} onChange={e => setEmails(e.target.value)}
-              className={`mt-0.5 w-full bg-[#0D1117] border rounded px-2 py-1 text-xs text-[#E6EDF3] outline-none focus:border-[#0078D4]/60 ${autoCount > 0 ? "border-[#0078D4]/30" : "border-[#30363D]"}`} />
-          </div>
-          <div>
-            <label className="text-[10px] text-[#7D8590]">Revenue ($)</label>
-            <input type="number" min="0" step="0.01" value={revenue} onChange={e => setRevenue(e.target.value)}
-              className="mt-0.5 w-full bg-[#0D1117] border border-[#30363D] rounded px-2 py-1 text-xs text-[#E6EDF3] outline-none focus:border-[#0078D4]/60" />
-          </div>
-        </div>
-        <button onClick={() => { void handleSaveMetrics(); }} disabled={savingMetrics}
-          className={`w-full py-1.5 rounded-lg text-xs font-semibold transition-colors ${savedMetrics ? "bg-emerald-500/20 text-emerald-400" : "bg-[#0078D4] text-white hover:bg-[#0078D4]/80"} disabled:opacity-40`}>
-          {savingMetrics ? "Saving…" : savedMetrics ? "✓ Saved" : "Save Metrics"}
-        </button>
-      </div>
+      {/* ── 2-column main layout ── */}
+      <div className="grid grid-cols-1 xl:grid-cols-5 gap-4">
+
+        {/* LEFT: Brief + Assets */}
+        <div className="xl:col-span-3 space-y-4">
 
       {/* Campaign Brief (collapsible) */}
       <div className="bg-[#161B22] border border-[#30363D] rounded-xl overflow-hidden">
@@ -6082,8 +6058,8 @@ function CampaignDetailView({
         )}
       </div>
 
-      {/* Campaign Assets — Tabbed Previews */}
-      <div className="space-y-3">
+      {/* Campaign Assets */}
+      <div className="space-y-2">
         <p className="text-xs font-semibold text-[#E6EDF3]">
           📦 Campaign Assets
           <span className="ml-2 text-[#7D8590] font-normal">{assets.length} total</span>
@@ -6095,6 +6071,42 @@ function CampaignDetailView({
           onLandingPageCreated={() => setRefreshKey(k => k + 1)}
         />
       </div>
+
+        </div>{/* end LEFT col */}
+
+        {/* RIGHT: Sidebar */}
+        <div className="xl:col-span-2 space-y-4">
+
+          {/* Update Metrics */}
+          <div className="bg-[#161B22] border border-[#30363D] rounded-xl p-4 space-y-3">
+            <div className="flex items-center justify-between">
+              <p className="text-xs font-semibold text-[#E6EDF3]">Update Metrics</p>
+              {autoCount > 0 && (
+                <span className="text-[9px] text-[#58A6FF]">{hasManualOverride ? `Auto: ${autoCount} · overridden` : "Auto-tracked"}</span>
+              )}
+            </div>
+            <div className="grid grid-cols-3 gap-2">
+              <div>
+                <label className="text-[10px] text-[#7D8590]">Leads</label>
+                <input type="number" min="0" value={leads} onChange={e => setLeads(e.target.value)}
+                  className="mt-0.5 w-full bg-[#0D1117] border border-[#30363D] rounded px-2 py-1 text-xs text-[#E6EDF3] outline-none focus:border-[#0078D4]/60" />
+              </div>
+              <div>
+                <label className="text-[10px] text-[#7D8590]">{autoCount > 0 ? "Emails (ovr)" : "Emails"}</label>
+                <input type="number" min="0" value={emails} onChange={e => setEmails(e.target.value)}
+                  className={`mt-0.5 w-full bg-[#0D1117] border rounded px-2 py-1 text-xs text-[#E6EDF3] outline-none focus:border-[#0078D4]/60 ${autoCount > 0 ? "border-[#0078D4]/30" : "border-[#30363D]"}`} />
+              </div>
+              <div>
+                <label className="text-[10px] text-[#7D8590]">Revenue ($)</label>
+                <input type="number" min="0" step="0.01" value={revenue} onChange={e => setRevenue(e.target.value)}
+                  className="mt-0.5 w-full bg-[#0D1117] border border-[#30363D] rounded px-2 py-1 text-xs text-[#E6EDF3] outline-none focus:border-[#0078D4]/60" />
+              </div>
+            </div>
+            <button onClick={() => { void handleSaveMetrics(); }} disabled={savingMetrics}
+              className={`w-full py-1.5 rounded-lg text-xs font-semibold transition-colors ${savedMetrics ? "bg-emerald-500/20 text-emerald-400" : "bg-[#0078D4] text-white hover:bg-[#0078D4]/80"} disabled:opacity-40`}>
+              {savingMetrics ? "Saving…" : savedMetrics ? "✓ Saved" : "Save Metrics"}
+            </button>
+          </div>
 
       {/* Landing Pages */}
       {landingPages.length > 0 && (
@@ -6166,7 +6178,7 @@ function CampaignDetailView({
         <div className="space-y-2">
           <p className="text-xs font-semibold text-[#E6EDF3]">📧 Email Activity <span className="text-[#7D8590] font-normal">(last {emailEvents.length})</span></p>
           <div className="bg-[#161B22] border border-[#30363D] rounded-xl overflow-hidden">
-            <div className="max-h-64 overflow-y-auto divide-y divide-[#30363D]">
+            <div className="max-h-48 overflow-y-auto divide-y divide-[#30363D]">
               {emailEvents.map(ev => (
                 <div key={ev.id} className="px-4 py-2 flex items-center gap-3">
                   <span className={`text-[9px] font-semibold uppercase w-16 flex-shrink-0 ${EVENT_COLORS[ev.eventType] ?? "text-[#7D8590]"}`}>{ev.eventType}</span>
@@ -6181,6 +6193,8 @@ function CampaignDetailView({
           </div>
         </div>
       )}
+        </div>{/* end RIGHT col */}
+      </div>{/* end 2-col grid */}
     </div>
   );
 }
@@ -6220,6 +6234,7 @@ function CampaignBuilderWizard({ fetchWithAuth }: { fetchWithAuth: (url: string,
   const [promptText, setPromptText] = useState("");
   const [buildingFromPrompt, setBuildingFromPrompt] = useState(false);
   const [promptError, setPromptError] = useState<string | null>(null);
+  const [showCreate, setShowCreate] = useState(false);
 
   useEffect(() => {
     fetchWithAuth(`${API}/admin/marketing/campaigns`).then(r => r.json()).then(d => setCampaigns(d as Campaign[])).catch(() => null).finally(() => setLoadingCampaigns(false));
@@ -6368,6 +6383,7 @@ function CampaignBuilderWizard({ fetchWithAuth }: { fetchWithAuth: (url: string,
   };
 
   const reset = () => {
+    setShowCreate(false);
     setStep(1); setGoal(""); setAudience(""); setOffer(""); setName(""); setPreviewAssets([]); setSavedCampaignId(null);
     setTopicSuggestions(null); setLoadingTopics(false); setExpandingTopic(null);
     setAudienceSuggestions(null); setLoadingAudienceTopics(false); setExpandingAudience(null);
@@ -6402,6 +6418,7 @@ function CampaignBuilderWizard({ fetchWithAuth }: { fetchWithAuth: (url: string,
     setSavedCampaignId(campaign.id);
     setDetailCampaignId(null);
     setStep(5);
+    setShowCreate(true);
   };
 
   const buildFromPrompt = async () => {
@@ -6458,17 +6475,124 @@ function CampaignBuilderWizard({ fetchWithAuth }: { fetchWithAuth: (url: string,
           isDeleting={deletingInProgress}
         />
       )}
-      <div className="flex items-center justify-between">
-        <h2 className="text-lg font-semibold text-[#E6EDF3]">Campaign Builder</h2>
-        <button
-          onClick={() => { setBuilderMode(m => m === "prompt" ? "guided" : "prompt"); setPromptError(null); }}
-          className={`text-xs px-3 py-1.5 rounded-lg border font-medium transition-colors flex items-center gap-1.5 ${builderMode === "prompt" ? "border-violet-500/60 bg-violet-500/15 text-violet-300" : "border-violet-500/40 text-violet-400 hover:bg-violet-500/10"}`}
-        >
-          ⚡ {builderMode === "prompt" ? "Back to Wizard" : "Build from Prompt"}
-        </button>
-      </div>
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        <div className="lg:col-span-2 bg-[#161B22] border border-[#30363D] rounded-xl p-4 space-y-4">
+
+      {!showCreate ? (
+        /* ── LIST VIEW ── */
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-lg font-bold text-[#E6EDF3]">Campaigns</h2>
+              {!loadingCampaigns && (
+                <p className="text-xs text-[#7D8590] mt-0.5">{campaigns.length} {campaigns.length === 1 ? "campaign" : "campaigns"}</p>
+              )}
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => { setBuilderMode("prompt"); setPromptError(null); setShowCreate(true); }}
+                className="text-xs px-3 py-1.5 rounded-lg border border-violet-500/40 text-violet-400 hover:bg-violet-500/10 transition-colors flex items-center gap-1.5 font-medium"
+              >
+                ⚡ Prompt
+              </button>
+              <button
+                onClick={() => { setBuilderMode("guided"); setStep(1); setShowCreate(true); }}
+                className="text-xs px-3 py-1.5 rounded-lg bg-[#0078D4] text-white hover:bg-[#0078D4]/80 transition-colors flex items-center gap-1.5 font-medium"
+              >
+                + New Campaign
+              </button>
+            </div>
+          </div>
+
+          {loadingCampaigns ? (
+            <div className="space-y-2"><SkeletonCard /><SkeletonCard /></div>
+          ) : campaigns.length === 0 ? (
+            <div className="bg-[#161B22] border border-[#30363D] rounded-xl p-12 text-center space-y-3">
+              <p className="text-3xl">🚀</p>
+              <p className="text-sm font-semibold text-[#E6EDF3]">No campaigns yet</p>
+              <p className="text-xs text-[#7D8590]">Build your first campaign to start generating leads and assets.</p>
+              <div className="flex justify-center gap-2 mt-4">
+                <button
+                  onClick={() => { setBuilderMode("prompt"); setPromptError(null); setShowCreate(true); }}
+                  className="text-xs px-3 py-1.5 rounded-lg border border-violet-500/40 text-violet-400 hover:bg-violet-500/10 transition-colors font-medium"
+                >
+                  ⚡ Build from Prompt
+                </button>
+                <button
+                  onClick={() => { setBuilderMode("guided"); setStep(1); setShowCreate(true); }}
+                  className="text-xs px-4 py-1.5 rounded-lg bg-[#0078D4] text-white hover:bg-[#0078D4]/80 transition-colors font-medium"
+                >
+                  + Guided Wizard
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="bg-[#161B22] border border-[#30363D] rounded-xl overflow-hidden">
+              <div className="grid grid-cols-[1fr_80px_56px_80px_84px] items-center gap-2 px-4 py-2 bg-[#0D1117] border-b border-[#30363D]">
+                <span className="text-[9px] font-semibold text-[#484F58] uppercase tracking-widest">Campaign</span>
+                <span className="text-[9px] font-semibold text-[#484F58] uppercase tracking-widest text-center">Status</span>
+                <span className="text-[9px] font-semibold text-[#484F58] uppercase tracking-widest text-right">Leads</span>
+                <span className="text-[9px] font-semibold text-[#484F58] uppercase tracking-widest text-right">Revenue</span>
+                <span></span>
+              </div>
+              {campaigns.map(c => (
+                <div key={c.id} className="border-b border-[#30363D] last:border-0">
+                  <div
+                    className="grid grid-cols-[1fr_80px_56px_80px_84px] items-center gap-2 px-4 py-3 hover:bg-[#1C2128] transition-colors cursor-pointer"
+                    onClick={() => setDetailCampaignId(c.id)}
+                  >
+                    <div className="min-w-0">
+                      <p className="text-xs font-semibold text-[#E6EDF3] truncate">{c.name}</p>
+                      <p className="text-[10px] text-[#7D8590] truncate mt-0.5">{c.goal}</p>
+                    </div>
+                    <div className="flex justify-center">
+                      <Badge text={c.status} color={c.status === "active" ? "green" : c.status === "completed" ? "blue" : c.status === "paused" ? "yellow" : "gray"} />
+                    </div>
+                    <p className="text-xs text-emerald-400 font-semibold text-right">{c.leadsGenerated ?? 0}</p>
+                    <p className="text-xs text-amber-400 font-semibold text-right">${Number(c.revenueAttributed ?? 0).toLocaleString()}</p>
+                    <div className="flex items-center justify-end gap-1" onClick={e => e.stopPropagation()}>
+                      <button
+                        onClick={() => setDetailCampaignId(c.id)}
+                        className="text-[9px] px-2 py-1 rounded border border-[#30363D] text-[#7D8590] hover:text-[#E6EDF3] hover:border-[#0078D4]/40 transition-colors"
+                      >
+                        Open
+                      </button>
+                      <button
+                        onClick={() => setDeleteDialogCampaign(c)}
+                        className="text-[10px] p-1 rounded text-[#484F58] hover:text-red-400 transition-colors"
+                        title="Delete"
+                      >
+                        🗑
+                      </button>
+                    </div>
+                  </div>
+                  <CampaignWorkspace campaign={c} fetchWithAuth={fetchWithAuth} />
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      ) : (
+        /* ── CREATE VIEW ── */
+        <div className="space-y-4">
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2 text-sm">
+              <button onClick={() => { reset(); }} className="text-[#7D8590] hover:text-[#E6EDF3] transition-colors">
+                Campaigns
+              </button>
+              <span className="text-[#30363D]">/</span>
+              <span className="text-[#E6EDF3] font-semibold">
+                {step === 5 && savedCampaignId ? "Generate Assets" : step === 6 ? "Campaign Saved" : "New Campaign"}
+              </span>
+            </div>
+            {step <= 4 && (
+              <button
+                onClick={() => { setBuilderMode(m => m === "prompt" ? "guided" : "prompt"); setPromptError(null); }}
+                className={`text-xs px-3 py-1.5 rounded-lg border font-medium transition-colors flex items-center gap-1.5 ${builderMode === "prompt" ? "border-violet-500/60 bg-violet-500/15 text-violet-300" : "border-violet-500/40 text-violet-400 hover:bg-violet-500/10"}`}
+              >
+                ⚡ {builderMode === "prompt" ? "Back to Wizard" : "Build from Prompt"}
+              </button>
+            )}
+          </div>
+          <div className="bg-[#161B22] border border-[#30363D] rounded-xl p-4 space-y-4">
           {builderMode === "prompt" && (
             <div className="space-y-4">
               <div>
@@ -6820,50 +6944,9 @@ function CampaignBuilderWizard({ fetchWithAuth }: { fetchWithAuth: (url: string,
             </div>
           )}
           </>)}
-        </div>
-
-        <div className="space-y-4">
-          <div className="bg-[#161B22] border border-[#30363D] rounded-xl p-4 space-y-3">
-            <h3 className="text-sm font-semibold text-[#E6EDF3]">Saved Campaigns</h3>
-            {loadingCampaigns ? <SkeletonCard /> : campaigns.length === 0 ? (
-              <p className="text-xs text-[#7D8590]">No campaigns yet — build your first one!</p>
-            ) : (
-              <div className="space-y-2 max-h-[32rem] overflow-y-auto">
-                {campaigns.map(c => (
-                  <div key={c.id} className="bg-[#0D1117] rounded-lg border border-transparent hover:border-[#0078D4]/30 transition-colors">
-                    <div className="flex items-start gap-1">
-                      <button onClick={() => setDetailCampaignId(c.id)}
-                        className="flex-1 text-left px-2 pt-2 pb-1.5 text-xs space-y-1.5 min-w-0">
-                        <div className="flex items-center justify-between gap-1">
-                          <span className="font-semibold text-[#E6EDF3] truncate">{c.name}</span>
-                          <Badge text={c.status} color={c.status === "active" ? "green" : c.status === "completed" ? "gray" : "yellow"} />
-                        </div>
-                        <p className="text-[#7D8590] line-clamp-1">{c.goal}</p>
-                        <div className="flex items-center gap-3 pt-0.5 border-t border-[#30363D]">
-                          <span className="text-emerald-400 font-semibold">{c.leadsGenerated ?? 0} leads</span>
-                          <span className="text-[#58A6FF]">{c.emailsSent ?? 0} emails</span>
-                          <span className="text-amber-400">${Number(c.revenueAttributed ?? 0).toLocaleString()}</span>
-                        </div>
-                      </button>
-                      <div className="flex-shrink-0 pt-2 pr-1">
-                        <button
-                          onClick={e => { e.stopPropagation(); setDeleteDialogCampaign(c); }}
-                          className="text-[11px] text-[#484F58] hover:text-red-400 transition-colors p-0.5"
-                          title="Delete campaign"
-                        >
-                          🗑
-                        </button>
-                      </div>
-                    </div>
-                    <CampaignWorkspace campaign={c} fetchWithAuth={fetchWithAuth} />
-                  </div>
-                ))}
-              </div>
-            )}
           </div>
-          <p className="text-[10px] text-[#484F58] text-center">Click a campaign to view its full 360° detail</p>
         </div>
-      </div>
+      )}
     </div>
   );
 }
