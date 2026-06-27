@@ -5858,6 +5858,16 @@ function LandingCopyPanel({
   );
 }
 
+function OfferIndicator({ offers }: { offers: Array<{ name: string }> }) {
+  return (
+    <p className="text-[10px] text-[#484F58]">
+      {offers.length > 0
+        ? `Using ${offers.length} offer${offers.length === 1 ? "" : "s"}: ${offers.map(o => o.name).join(", ")}`
+        : "No linked offers — using campaign description only"}
+    </p>
+  );
+}
+
 function CampaignAssetTabPanel({
   asset,
   campaign,
@@ -5872,20 +5882,70 @@ function CampaignAssetTabPanel({
   onLandingPageCreated: () => void;
 }) {
   switch (asset.assetType) {
-    case "ad_google": return <GoogleAdPreview asset={asset} />;
-    case "ad_linkedin": return <LinkedInAdPreview asset={asset} />;
-    case "ad_retargeting": return <AdVariationPreview asset={asset} label="Retargeting" />;
-    case "ad_creative": return <AdVariationPreview asset={asset} label="Creative" />;
-    case "landing_page": return <LandingPagePreview asset={asset} />;
+    case "ad_google": return (
+      <div className="space-y-3">
+        <OfferIndicator offers={offers} />
+        <GoogleAdPreview asset={asset} />
+      </div>
+    );
+    case "ad_linkedin": return (
+      <div className="space-y-3">
+        <OfferIndicator offers={offers} />
+        <LinkedInAdPreview asset={asset} />
+      </div>
+    );
+    case "ad_retargeting": return (
+      <div className="space-y-3">
+        <OfferIndicator offers={offers} />
+        <AdVariationPreview asset={asset} label="Retargeting" />
+      </div>
+    );
+    case "ad_creative": return (
+      <div className="space-y-3">
+        <OfferIndicator offers={offers} />
+        <AdVariationPreview asset={asset} label="Creative" />
+      </div>
+    );
+    case "landing_page": return (
+      <div className="space-y-3">
+        <OfferIndicator offers={offers} />
+        <LandingPagePreview asset={asset} />
+      </div>
+    );
     case "email_sequence":
     case "cold_email":
     case "followup":
     case "newsletter": return <EmailSequencePanel asset={asset} campaign={campaign} offers={offers} fetchWithAuth={fetchWithAuth} />;
-    case "social_post": return <SocialPostPreview asset={asset} />;
-    case "linkedin_post": return <SocialPostPreview asset={asset} handle="Shane McCaw on LinkedIn" />;
-    case "blog_post": return <BlogPostPreview asset={asset} />;
-    case "follow_up_task": return <TaskCardPreview asset={asset} />;
-    case "lead_magnet": return <GenericAssetPreview asset={asset} />;
+    case "social_post": return (
+      <div className="space-y-3">
+        <OfferIndicator offers={offers} />
+        <SocialPostPreview asset={asset} />
+      </div>
+    );
+    case "linkedin_post": return (
+      <div className="space-y-3">
+        <OfferIndicator offers={offers} />
+        <SocialPostPreview asset={asset} handle="Shane McCaw on LinkedIn" />
+      </div>
+    );
+    case "blog_post": return (
+      <div className="space-y-3">
+        <OfferIndicator offers={offers} />
+        <BlogPostPreview asset={asset} />
+      </div>
+    );
+    case "follow_up_task": return (
+      <div className="space-y-3">
+        <OfferIndicator offers={offers} />
+        <TaskCardPreview asset={asset} />
+      </div>
+    );
+    case "lead_magnet": return (
+      <div className="space-y-3">
+        <OfferIndicator offers={offers} />
+        <GenericAssetPreview asset={asset} />
+      </div>
+    );
     case "landing_copy": return (
       <LandingCopyPanel
         asset={asset}
@@ -5895,7 +5955,12 @@ function CampaignAssetTabPanel({
         onLandingPageCreated={onLandingPageCreated}
       />
     );
-    default: return <GenericAssetPreview asset={asset} />;
+    default: return (
+      <div className="space-y-3">
+        <OfferIndicator offers={offers} />
+        <GenericAssetPreview asset={asset} />
+      </div>
+    );
   }
 }
 
