@@ -1103,7 +1103,7 @@ router.get("/admin/marketing/leads/:id/emails", requireAdmin, async (req: Reques
 
 // ─── Analytics for marketing ──────────────────────────────────────────────────
 
-router.get("/admin/marketing/analytics", requireAdmin, async (_req: Request, res: Response) => {
+router.get("/admin/marketing/analytics", requireAdmin, async (req: Request, res: Response) => {
   try {
     const now = new Date();
     const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
@@ -1133,8 +1133,8 @@ router.get("/admin/marketing/analytics", requireAdmin, async (_req: Request, res
       db.execute(sql`
         SELECT
           (SELECT COUNT(*) FROM analytics_sessions WHERE started_at >= ${thirtyDaysAgo}) as visitors,
-          (SELECT COUNT(DISTINCT s.id) FROM analytics_sessions s
-           JOIN analytics_pageviews p ON p.session_id = s.id
+          (SELECT COUNT(DISTINCT s.session_id) FROM analytics_sessions s
+           JOIN analytics_pageviews p ON p.session_id = s.session_id
            WHERE s.started_at >= ${thirtyDaysAgo} AND p.page LIKE '/contact%') as contact_page_views,
           (SELECT COUNT(*) FROM leads WHERE created_at >= ${thirtyDaysAgo}) as leads,
           (SELECT COUNT(*) FROM leads WHERE status = 'converted' AND created_at >= ${thirtyDaysAgo}) as converted
@@ -1188,6 +1188,7 @@ router.get("/admin/marketing/analytics", requireAdmin, async (_req: Request, res
       }),
     });
   } catch (e) {
+    req.log.error({ err: e }, "GET /admin/marketing/analytics failed");
     res.status(500).json({ error: String(e) });
   }
 });
@@ -2166,7 +2167,12 @@ Return JSON array: [{ "title": "task title", "description": "why this makes mone
 
     res.json(insertedTasks);
   } catch (e) {
-    res.status(500).json({ error: String(e) });
+    req.log.error({ err: e }, "POST /admin/marketing/generate/money-tasks failed");
+    if (e instanceof AiResponseError) {
+      res.status(422).json({ error: String(e) });
+    } else {
+      res.status(500).json({ error: String(e) });
+    }
   }
 });
 

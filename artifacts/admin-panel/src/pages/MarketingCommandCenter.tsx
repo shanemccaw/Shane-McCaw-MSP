@@ -3235,21 +3235,33 @@ function FollowUpsSection({ fetchWithAuth }: { fetchWithAuth: (url: string, opts
 
 function AiMoneyTasksButton({ fetchWithAuth, onAdded }: { fetchWithAuth: (url: string, opts?: RequestInit) => Promise<Response>; onAdded: (tasks: MarketingTask[]) => void }) {
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const generate = async () => {
     setLoading(true);
+    setError(null);
     try {
       const r = await fetchWithAuth(`${API}/admin/marketing/generate/money-tasks`, { method: "POST" });
-      const data = await r.json() as MarketingTask[];
-      if (Array.isArray(data)) onAdded(data);
+      const data = await r.json() as unknown;
+      if (!r.ok) {
+        const msg = (data as { error?: string })?.error ?? `Server error ${r.status}`;
+        setError(msg);
+        return;
+      }
+      if (Array.isArray(data)) onAdded(data as MarketingTask[]);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Network error");
     } finally { setLoading(false); }
   };
 
   return (
-    <button onClick={() => { void generate(); }} disabled={loading}
-      className="text-xs px-3 py-1.5 rounded-lg border border-amber-500/40 text-amber-300 hover:bg-amber-500/10 disabled:opacity-40 transition-colors flex items-center gap-1">
-      {loading ? <><div className="w-3 h-3 border border-amber-300 border-t-transparent rounded-full animate-spin" />Generating…</> : "💰 AI Money Tasks"}
-    </button>
+    <div className="flex flex-col items-start gap-1">
+      <button onClick={() => { void generate(); }} disabled={loading}
+        className="text-xs px-3 py-1.5 rounded-lg border border-amber-500/40 text-amber-300 hover:bg-amber-500/10 disabled:opacity-40 transition-colors flex items-center gap-1">
+        {loading ? <><div className="w-3 h-3 border border-amber-300 border-t-transparent rounded-full animate-spin" />Generating…</> : "💰 AI Money Tasks"}
+      </button>
+      {error && <p className="text-xs text-red-400 max-w-xs">{error}</p>}
+    </div>
   );
 }
 
