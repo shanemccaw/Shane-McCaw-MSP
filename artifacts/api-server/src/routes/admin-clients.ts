@@ -243,15 +243,14 @@ router.get("/admin/clients/with-azure-credentials", requireAdmin, async (_req: R
         : null,
     }));
 
-    // For clients that have no directly-linked credential, attempt a fallback
-    // against credentials stored without a clientUserId (added via the global
+    // For clients that have no directly-linked credential, fall back to
+    // credentials stored without a clientUserId (added via the global
     // credentials manager before being linked to a specific client).
-    //
-    // Fallback is only applied in the unambiguous 1-to-1 case: exactly one
-    // unlinked credential exists AND exactly one client has no credential.
-    // Any other cardinality leaves credential as null so the UI stays correct.
-    const unlinkedClients = result.filter(r => r.credential === null);
-    if (unlinkedClients.length === 1) {
+    // Fetch all unlinked credentials once; assign the first (alphabetical)
+    // to every client that still has no credential. Clients with no credential
+    // AND no unlinked credentials in the system remain null (grey dot).
+    const hasUnlinkedClients = result.some(r => r.credential === null);
+    if (hasUnlinkedClients) {
       const unlinked = await db
         .select({
           id: azureTenantCredentialsTable.id,
@@ -265,8 +264,13 @@ router.get("/admin/clients/with-azure-credentials", requireAdmin, async (_req: R
         .where(isNull(azureTenantCredentialsTable.clientUserId))
         .orderBy(asc(azureTenantCredentialsTable.displayName));
 
-      if (unlinked.length === 1) {
-        unlinkedClients[0].credential = unlinked[0];
+      if (unlinked.length > 0) {
+        const fallback = unlinked[0];
+        for (const client of result) {
+          if (client.credential === null) {
+            client.credential = fallback;
+          }
+        }
       }
     }
 
