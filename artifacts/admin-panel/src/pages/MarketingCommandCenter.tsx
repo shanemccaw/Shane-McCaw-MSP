@@ -6018,6 +6018,9 @@ function CampaignBuilderWizard({ fetchWithAuth }: { fetchWithAuth: (url: string,
   const [offer, setOffer] = useState("");
   const [name, setName] = useState("");
   const [aiFillingField, setAiFillingField] = useState<"goal" | "audience" | "offer" | null>(null);
+  const [topicSuggestions, setTopicSuggestions] = useState<string[] | null>(null);
+  const [loadingTopics, setLoadingTopics] = useState(false);
+  const [expandingTopic, setExpandingTopic] = useState<string | null>(null);
   const [previewing, setPreviewing] = useState(false);
   const [previewError, setPreviewError] = useState<string | null>(null);
   const [previewAssets, setPreviewAssets] = useState<PreviewAsset[]>([]);
@@ -6033,21 +6036,43 @@ function CampaignBuilderWizard({ fetchWithAuth }: { fetchWithAuth: (url: string,
     fetchWithAuth(`${API}/admin/marketing/campaigns`).then(r => r.json()).then(d => setCampaigns(d as Campaign[])).catch(() => null).finally(() => setLoadingCampaigns(false));
   }, [fetchWithAuth]);
 
-  const aiFillField = async (field: "goal" | "audience" | "offer") => {
+  const aiFillField = async (field: "goal" | "audience" | "offer", topic?: string) => {
     setAiFillingField(field);
     try {
       const r = await fetchWithAuth(`${API}/admin/marketing/generate/campaign-suggest`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ field, name, goal, audience }),
+        body: JSON.stringify({ field, name, goal, audience, topic }),
       });
       const data = await r.json() as { value: string };
       if (data.value) {
-        if (field === "goal") setGoal(data.value);
-        else if (field === "audience") setAudience(data.value);
+        if (field === "goal") {
+          setGoal(data.value);
+          if (!name.trim() && topic) setName(topic);
+          setTopicSuggestions(null);
+        } else if (field === "audience") setAudience(data.value);
         else if (field === "offer") setOffer(data.value);
       }
-    } finally { setAiFillingField(null); }
+    } finally { setAiFillingField(null); setExpandingTopic(null); }
+  };
+
+  const fetchTopics = async () => {
+    setLoadingTopics(true);
+    setTopicSuggestions(null);
+    try {
+      const r = await fetchWithAuth(`${API}/admin/marketing/generate/campaign-topics`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: "{}",
+      });
+      const data = await r.json() as { topics?: string[] };
+      if (Array.isArray(data.topics)) setTopicSuggestions(data.topics);
+    } finally { setLoadingTopics(false); }
+  };
+
+  const pickTopic = async (topic: string) => {
+    setExpandingTopic(topic);
+    await aiFillField("goal", topic);
   };
 
   const previewAssetGeneration = async () => {
@@ -6096,6 +6121,7 @@ function CampaignBuilderWizard({ fetchWithAuth }: { fetchWithAuth: (url: string,
 
   const reset = () => {
     setStep(1); setGoal(""); setAudience(""); setOffer(""); setName(""); setPreviewAssets([]); setSavedCampaignId(null);
+    setTopicSuggestions(null); setLoadingTopics(false); setExpandingTopic(null);
   };
 
   const handleCampaignUpdated = (updated: Campaign) => {
@@ -6179,11 +6205,50 @@ function CampaignBuilderWizard({ fetchWithAuth }: { fetchWithAuth: (url: string,
               <div>
                 <div className="flex items-center justify-between mb-1">
                   <label className="text-xs font-semibold text-[#E6EDF3]">Campaign Goal *</label>
-                  <button onClick={() => { void aiFillField("goal"); }} disabled={aiFillingField !== null}
+                  <button
+                    onClick={() => { void fetchTopics(); }}
+                    disabled={loadingTopics || aiFillingField === "goal"}
                     className="text-[10px] px-2 py-0.5 rounded border border-[#0078D4]/40 text-[#58A6FF] hover:bg-[#0078D4]/10 disabled:opacity-40 transition-colors flex items-center gap-1">
-                    {aiFillingField === "goal" ? <><div className="w-2.5 h-2.5 border border-[#58A6FF] border-t-transparent rounded-full animate-spin" />Filling…</> : "✦ AI Fill"}
+                    {loadingTopics ? <><div className="w-2.5 h-2.5 border border-[#58A6FF] border-t-transparent rounded-full animate-spin" />Loading…</> : "✦ AI Fill"}
                   </button>
                 </div>
+
+                {/* Topic bubble picker */}
+                {(loadingTopics || topicSuggestions !== null) && (
+                  <div className="mb-2 p-2.5 bg-[#0D1117] border border-[#30363D] rounded-lg space-y-2">
+                    {loadingTopics && (
+                      <div className="flex items-center gap-2 text-[#7D8590] text-xs">
+                        <div className="w-3 h-3 border border-[#58A6FF] border-t-transparent rounded-full animate-spin" />
+                        Generating topic ideas…
+                      </div>
+                    )}
+                    {topicSuggestions !== null && !loadingTopics && (
+                      <>
+                        <p className="text-[10px] text-[#7D8590]">Pick a topic to seed your campaign:</p>
+                        <div className="flex flex-wrap gap-1.5">
+                          {topicSuggestions.map(topic => (
+                            <button
+                              key={topic}
+                              onClick={() => { void pickTopic(topic); }}
+                              disabled={aiFillingField === "goal"}
+                              className="flex items-center gap-1 px-2.5 py-1 rounded-full border border-[#0078D4]/50 bg-[#0078D4]/10 text-[#58A6FF] text-xs font-medium hover:bg-[#0078D4]/20 hover:border-[#0078D4] disabled:opacity-40 transition-colors">
+                              {expandingTopic === topic && aiFillingField === "goal"
+                                ? <><div className="w-2.5 h-2.5 border border-[#58A6FF] border-t-transparent rounded-full animate-spin" />{topic}</>
+                                : topic}
+                            </button>
+                          ))}
+                        </div>
+                        <button
+                          onClick={() => { void fetchTopics(); }}
+                          disabled={loadingTopics || aiFillingField === "goal"}
+                          className="text-[10px] text-[#7D8590] hover:text-[#58A6FF] disabled:opacity-40 transition-colors">
+                          ↻ New suggestions
+                        </button>
+                      </>
+                    )}
+                  </div>
+                )}
+
                 <textarea value={goal} onChange={e => setGoal(e.target.value)} rows={3} placeholder="e.g. Generate 20 qualified leads for Microsoft Copilot workshops…"
                   className="mt-1 w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-sm text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60 resize-none" />
               </div>

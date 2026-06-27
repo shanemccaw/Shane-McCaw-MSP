@@ -689,18 +689,50 @@ Respond with a JSON array only (no markdown):
 
 // ─── AI Suggest: Campaign Field ───────────────────────────────────────────────
 
+router.post("/admin/marketing/generate/campaign-topics", requireAdmin, async (_req: Request, res: Response) => {
+  try {
+    const icpContext = await buildICPContext();
+
+    const message = await anthropic.messages.create({
+      model: "claude-haiku-4-5",
+      max_tokens: 400,
+      messages: [{
+        role: "user",
+        content: `You are a marketing strategist for Shane McCaw Consulting, a Microsoft 365 consulting firm led by a 30-year Microsoft veteran.
+
+${icpContext}
+
+Generate exactly 5 short campaign topic ideas relevant to Microsoft 365 consulting. Each topic should be 2-6 words, punchy, and specific (e.g. "Microsoft Copilot Adoption", "Teams Governance Rollout", "SharePoint Intranet Launch").
+
+Respond with JSON only (no markdown): {"topics":["Topic One","Topic Two","Topic Three","Topic Four","Topic Five"]}`,
+      }],
+    });
+
+    const content = message.content[0];
+    if (content?.type !== "text") throw new Error("Unexpected response type");
+    const result = parseAiJson(content.text, z.object({ topics: z.array(z.string()).length(5) }));
+    res.json(result);
+  } catch (e) {
+    if (e instanceof AiResponseError) { res.json(aiErrorResponse(e)); return; }
+    res.status(500).json({ error: e instanceof Error ? e.message : String(e) });
+  }
+});
+
 router.post("/admin/marketing/generate/campaign-suggest", requireAdmin, async (req: Request, res: Response) => {
   try {
-    const { field, name, goal, audience } = req.body as {
+    const { field, name, goal, audience, topic } = req.body as {
       field: "goal" | "audience" | "offer";
       name?: string;
       goal?: string;
       audience?: string;
+      topic?: string;
     };
     const icpContext = await buildICPContext();
 
     const fieldPrompts: Record<string, string> = {
-      goal: `Suggest a specific, measurable campaign goal for a Microsoft 365 consulting firm. Campaign name: "${name ?? "new campaign"}". Context: ${icpContext}. Return one concise goal sentence (1-2 sentences).`,
+      goal: topic
+        ? `Write a single specific, measurable campaign goal sentence centred on the topic "${topic}" for a Microsoft 365 consulting firm. Context: ${icpContext}. Return one concise goal sentence (1-2 sentences).`
+        : `Suggest a specific, measurable campaign goal for a Microsoft 365 consulting firm. Campaign name: "${name ?? "new campaign"}". Context: ${icpContext}. Return one concise goal sentence (1-2 sentences).`,
       audience: `Suggest a target audience description for a Microsoft 365 consulting campaign with goal: "${goal ?? "generate leads"}". Context: ${icpContext}. Return one concise audience paragraph.`,
       offer: `Suggest a compelling offer for a Microsoft 365 consulting campaign targeting "${audience ?? "IT decision-makers"}" with goal "${goal ?? "generate leads"}". Context: ${icpContext}. Return one concise offer description (1-2 sentences).`,
     };
