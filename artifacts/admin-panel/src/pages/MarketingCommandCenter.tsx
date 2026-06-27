@@ -2747,9 +2747,12 @@ function OfferBuilderPanel({ fetchWithAuth }: { fetchWithAuth: (url: string, opt
   const [loadingSuggestions, setLoadingSuggestions] = useState(false);
   const [suggestError, setSuggestError] = useState<string | null>(null);
 
+  const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   useEffect(() => {
     fetchWithAuth(`${API}/admin/marketing/offers`).then(r => r.json()).then(d => setOffers(Array.isArray(d) ? d as Offer[] : [])).catch(() => null).finally(() => setLoading(false));
+    fetchWithAuth(`${API}/admin/marketing/campaigns`).then(r => r.json()).then(d => setCampaigns(Array.isArray(d) ? d as Campaign[] : [])).catch(() => null);
   }, [fetchWithAuth]);
+  const campaignNameMap = new Map(campaigns.map(c => [c.id, c.name]));
 
   const fetchSuggestions = async (force = false) => {
     if (suggestions.length > 0 && !force) {
@@ -2889,7 +2892,12 @@ function OfferBuilderPanel({ fetchWithAuth }: { fetchWithAuth: (url: string, opt
               <button onClick={() => setExpandedId(prev => prev === o.id ? null : o.id)} className="w-full flex items-center gap-3 px-4 py-3 text-left">
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium text-[#E6EDF3] truncate">{o.name}</p>
-                  <p className="text-xs text-[#7D8590]">{o.audience}</p>
+                  <div className="flex items-center gap-2 mt-0.5">
+                    <p className="text-xs text-[#7D8590]">{o.audience}</p>
+                    {o.campaignId && campaignNameMap.get(o.campaignId) && (
+                      <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-[#0078D4]/15 text-[#58A6FF] flex-shrink-0">📌 {campaignNameMap.get(o.campaignId)}</span>
+                    )}
+                  </div>
                 </div>
                 <div className="flex items-center gap-2 flex-shrink-0">
                   {o.pricing && <span className="text-xs text-emerald-400 font-semibold">{o.pricing}</span>}
@@ -2938,12 +2946,15 @@ function LandingPagesPanel({ fetchWithAuth }: { fetchWithAuth: (url: string, opt
   const [publicSiteUrl, setPublicSiteUrl] = useState("");
   const [copiedId, setCopiedId] = useState<number | null>(null);
 
+  const [lpCampaigns, setLpCampaigns] = useState<Campaign[]>([]);
   useEffect(() => {
     Promise.all([
       fetchWithAuth(`${API}/admin/marketing/landing-pages`).then(r => r.json()).then(d => setPages(Array.isArray(d) ? d as LandingPage[] : [])).catch(() => null),
       fetchWithAuth(`${API}/admin/site-config`).then(r => r.json()).then((d: { publicSiteUrl?: string }) => setPublicSiteUrl(d.publicSiteUrl ?? "")).catch(() => null),
+      fetchWithAuth(`${API}/admin/marketing/campaigns`).then(r => r.json()).then(d => setLpCampaigns(Array.isArray(d) ? d as Campaign[] : [])).catch(() => null),
     ]).finally(() => setLoading(false));
   }, [fetchWithAuth]);
+  const lpCampaignMap = new Map(lpCampaigns.map(c => [c.id, c.name]));
 
   const fetchSuggestions = async (force = false) => {
     if (suggestions.length > 0 && !force) {
@@ -3116,7 +3127,12 @@ function LandingPagesPanel({ fetchWithAuth }: { fetchWithAuth: (url: string, opt
             <div key={page.id} className="bg-[#161B22] border border-[#30363D] rounded-xl overflow-hidden">
               <div className="flex items-start gap-3 px-4 py-3">
                 <button onClick={() => setExpandedId(prev => prev === page.id ? null : page.id)} className="flex-1 text-left min-w-0">
-                  <p className="text-sm font-medium text-[#E6EDF3] truncate">{page.title}</p>
+                  <div className="flex items-center gap-2">
+                    <p className="text-sm font-medium text-[#E6EDF3] truncate">{page.title}</p>
+                    {page.campaignId && lpCampaignMap.get(page.campaignId) && (
+                      <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-[#0078D4]/15 text-[#58A6FF] flex-shrink-0">📌 {lpCampaignMap.get(page.campaignId)}</span>
+                    )}
+                  </div>
                   {page.published ? (
                     <p className="text-xs text-emerald-400/80 truncate mt-0.5 font-mono">{getPublicUrl(page.slug)}</p>
                   ) : (
@@ -3893,6 +3909,308 @@ function CampaignMetricsPanel({ campaign, fetchWithAuth, onUpdated }: {
 }
 
 // ─── Campaigns Hub (Campaigns + Offers + Landing Pages) ──────────────────────
+
+
+// ─── Campaign Workspace ────────────────────────────────────────────────────────
+
+function CampaignWorkspace({
+  campaign,
+  fetchWithAuth,
+}: {
+  campaign: Campaign;
+  fetchWithAuth: (url: string, opts?: RequestInit) => Promise<Response>;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [linkedOffers, setLinkedOffers] = useState<Offer[]>([]);
+  const [linkedPages, setLinkedPages] = useState<LandingPage[]>([]);
+  const [standaloneOffers, setStandaloneOffers] = useState<Offer[]>([]);
+  const [standalonePages, setStandalonePages] = useState<LandingPage[]>([]);
+  const [selOfferId, setSelOfferId] = useState("");
+  const [selPageId, setSelPageId] = useState("");
+  const [linking, setLinking] = useState(false);
+  const [showCreateOffer, setShowCreateOffer] = useState(false);
+  const [offerGoal, setOfferGoal] = useState(campaign.goal);
+  const [offerAudience, setOfferAudience] = useState(campaign.audience);
+  const [generatingOffer, setGeneratingOffer] = useState(false);
+  const [offerDraft, setOfferDraft] = useState<Omit<Offer, "id" | "createdAt"> | null>(null);
+  const [savingOffer, setSavingOffer] = useState(false);
+  const [showCreatePage, setShowCreatePage] = useState(false);
+  const [pageTopic, setPageTopic] = useState(campaign.goal);
+  const [pageAudience, setPageAudience] = useState(campaign.audience);
+  const [pageCta, setPageCta] = useState("Book a discovery call");
+  const [generatingPage, setGeneratingPage] = useState(false);
+  const [pageDraft, setPageDraft] = useState<Partial<LandingPage> | null>(null);
+  const [pageSlug, setPageSlug] = useState("");
+  const [savingPage, setSavingPage] = useState(false);
+
+  const loadWorkspace = useCallback(async () => {
+    setLoading(true);
+    try {
+      const [loRes, lpRes, aoRes, apRes] = await Promise.all([
+        fetchWithAuth(`${API}/admin/marketing/campaigns/${campaign.id}/offers`),
+        fetchWithAuth(`${API}/admin/marketing/campaigns/${campaign.id}/landing-pages`),
+        fetchWithAuth(`${API}/admin/marketing/offers`),
+        fetchWithAuth(`${API}/admin/marketing/landing-pages`),
+      ]);
+      const [lo, lp, ao, ap] = await Promise.all([loRes.json(), lpRes.json(), aoRes.json(), apRes.json()]) as [unknown, unknown, unknown, unknown];
+      const linked = Array.isArray(lo) ? lo as Offer[] : [];
+      const linkedPgs = Array.isArray(lp) ? lp as LandingPage[] : [];
+      const linkedIds = new Set(linked.map(o => o.id));
+      const linkedPageIds = new Set(linkedPgs.map(p => p.id));
+      setLinkedOffers(linked);
+      setLinkedPages(linkedPgs);
+      setStandaloneOffers((Array.isArray(ao) ? ao as Offer[] : []).filter(o => !o.campaignId || linkedIds.has(o.id)));
+      setStandalonePages((Array.isArray(ap) ? ap as LandingPage[] : []).filter(p => !p.campaignId || linkedPageIds.has(p.id)));
+    } finally { setLoading(false); }
+  }, [campaign.id, fetchWithAuth]);
+
+  useEffect(() => { if (expanded) void loadWorkspace(); }, [expanded, loadWorkspace]);
+
+  const linkOffer = async () => {
+    if (!selOfferId) return;
+    setLinking(true);
+    try {
+      await fetchWithAuth(`${API}/admin/marketing/campaigns/${campaign.id}/offers/${selOfferId}/link`, { method: "POST" });
+      setSelOfferId("");
+      void loadWorkspace();
+    } finally { setLinking(false); }
+  };
+
+  const unlinkOffer = async (offerId: number) => {
+    await fetchWithAuth(`${API}/admin/marketing/campaigns/${campaign.id}/offers/${offerId}/link`, { method: "DELETE" });
+    void loadWorkspace();
+  };
+
+  const linkPage = async () => {
+    if (!selPageId) return;
+    setLinking(true);
+    try {
+      await fetchWithAuth(`${API}/admin/marketing/campaigns/${campaign.id}/landing-pages/${selPageId}/link`, { method: "POST" });
+      setSelPageId("");
+      void loadWorkspace();
+    } finally { setLinking(false); }
+  };
+
+  const unlinkPage = async (pageId: number) => {
+    await fetchWithAuth(`${API}/admin/marketing/campaigns/${campaign.id}/landing-pages/${pageId}/link`, { method: "DELETE" });
+    void loadWorkspace();
+  };
+
+  const generateOffer = async () => {
+    setGeneratingOffer(true); setOfferDraft(null);
+    try {
+      const r = await fetchWithAuth(`${API}/admin/marketing/generate/offer`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ goal: offerGoal, audience: offerAudience }),
+      });
+      setOfferDraft(await r.json() as Omit<Offer, "id" | "createdAt">);
+    } finally { setGeneratingOffer(false); }
+  };
+
+  const saveGeneratedOffer = async () => {
+    if (!offerDraft) return;
+    setSavingOffer(true);
+    try {
+      await fetchWithAuth(`${API}/admin/marketing/offers`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...offerDraft, campaignId: campaign.id }),
+      });
+      setOfferDraft(null); setShowCreateOffer(false);
+      void loadWorkspace();
+    } finally { setSavingOffer(false); }
+  };
+
+  const generatePage = async () => {
+    setGeneratingPage(true); setPageDraft(null);
+    try {
+      const r = await fetchWithAuth(`${API}/admin/marketing/generate/landing-page`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ topic: pageTopic, audience: pageAudience, cta: pageCta }),
+      });
+      const data = await r.json() as Partial<LandingPage>;
+      setPageDraft(data);
+      if (data.title) setPageSlug(data.title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 50));
+    } finally { setGeneratingPage(false); }
+  };
+
+  const saveGeneratedPage = async () => {
+    if (!pageDraft || !pageSlug.trim()) return;
+    setSavingPage(true);
+    try {
+      await fetchWithAuth(`${API}/admin/marketing/landing-pages`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...pageDraft, slug: pageSlug.trim(), campaignId: campaign.id, published: false }),
+      });
+      setPageDraft(null); setShowCreatePage(false); setPageSlug("");
+      void loadWorkspace();
+    } finally { setSavingPage(false); }
+  };
+
+  return (
+    <div className="border-t border-[#21262D]">
+      <button
+        onClick={e => { e.stopPropagation(); setExpanded(prev => !prev); }}
+        className="w-full flex items-center justify-between px-3 py-1.5 text-[10px] text-[#484F58] hover:text-[#7D8590] hover:bg-[#1C2128] transition-colors rounded-b-lg"
+      >
+        <span>🗂 Campaign Workspace</span>
+        <span>{expanded ? "▲" : "▼"}</span>
+      </button>
+      {expanded && (
+        <div className="px-3 pb-3 space-y-3" onClick={e => e.stopPropagation()}>
+          {loading ? (
+            <div className="flex items-center justify-center py-4">
+              <div className="w-4 h-4 border-2 border-[#0078D4] border-t-transparent rounded-full animate-spin" />
+            </div>
+          ) : (
+            <>
+              <div className="space-y-1.5">
+                <p className="text-[10px] font-semibold text-[#58A6FF] uppercase tracking-wide">💡 Offers</p>
+                {linkedOffers.length === 0 ? (
+                  <p className="text-[10px] text-[#484F58]">No offers linked yet</p>
+                ) : (
+                  <div className="space-y-1">
+                    {linkedOffers.map(o => (
+                      <div key={o.id} className="flex items-center gap-2 bg-[#161B22] rounded px-2 py-1">
+                        <span className="text-[10px] text-[#E6EDF3] truncate flex-1">{o.name}</span>
+                        {o.pricing && <span className="text-[9px] text-emerald-400 flex-shrink-0">{o.pricing}</span>}
+                        <button onClick={() => { void unlinkOffer(o.id); }} className="text-[9px] text-[#484F58] hover:text-red-400 flex-shrink-0" title="Unlink">✕</button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <div className="flex gap-1 mt-1">
+                  <select value={selOfferId} onChange={e => setSelOfferId(e.target.value)}
+                    className="flex-1 min-w-0 bg-[#161B22] border border-[#30363D] rounded px-2 py-1 text-[10px] text-[#E6EDF3] outline-none">
+                    <option value="">— Attach existing offer —</option>
+                    {standaloneOffers.filter(o => !linkedOffers.some(lo => lo.id === o.id)).map(o => (
+                      <option key={o.id} value={o.id}>{o.name}</option>
+                    ))}
+                  </select>
+                  <button onClick={() => { void linkOffer(); }} disabled={!selOfferId || linking}
+                    className="text-[10px] px-2 py-1 rounded bg-[#0078D4]/20 text-[#58A6FF] hover:bg-[#0078D4]/30 disabled:opacity-40 transition-colors flex-shrink-0">
+                    Attach
+                  </button>
+                </div>
+                <button onClick={() => setShowCreateOffer(prev => !prev)}
+                  className="text-[10px] text-violet-400 hover:text-violet-300 transition-colors">
+                  {showCreateOffer ? "▲ Hide" : "✦ Generate new offer for this campaign"}
+                </button>
+                {showCreateOffer && (
+                  <div className="bg-[#161B22] rounded-lg p-2.5 space-y-2 border border-[#30363D]">
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="text-[9px] text-[#7D8590] uppercase tracking-wide">Goal</label>
+                        <input value={offerGoal} onChange={e => setOfferGoal(e.target.value)}
+                          className="mt-0.5 w-full bg-[#0D1117] border border-[#30363D] rounded px-2 py-1 text-[10px] text-[#E6EDF3] outline-none focus:border-[#0078D4]/60" />
+                      </div>
+                      <div>
+                        <label className="text-[9px] text-[#7D8590] uppercase tracking-wide">Audience</label>
+                        <input value={offerAudience} onChange={e => setOfferAudience(e.target.value)}
+                          className="mt-0.5 w-full bg-[#0D1117] border border-[#30363D] rounded px-2 py-1 text-[10px] text-[#E6EDF3] outline-none focus:border-[#0078D4]/60" />
+                      </div>
+                    </div>
+                    <button onClick={() => { void generateOffer(); }} disabled={generatingOffer || !offerGoal.trim()}
+                      className="w-full py-1 rounded bg-[#0078D4] text-white text-[10px] font-semibold hover:bg-[#0078D4]/80 disabled:opacity-40 transition-colors">
+                      {generatingOffer ? "Generating…" : "✦ Generate Offer"}
+                    </button>
+                    {offerDraft && (
+                      <div className="space-y-1.5 pt-1 border-t border-[#30363D]">
+                        <p className="text-[10px] font-semibold text-[#E6EDF3]">{offerDraft.name}</p>
+                        <p className="text-[9px] text-[#7D8590]">{offerDraft.goal}</p>
+                        {offerDraft.pricing && <p className="text-[9px] text-emerald-400">{offerDraft.pricing}</p>}
+                        <button onClick={() => { void saveGeneratedOffer(); }} disabled={savingOffer}
+                          className="w-full py-1 rounded bg-emerald-500/20 text-emerald-400 text-[10px] font-semibold hover:bg-emerald-500/30 disabled:opacity-40 transition-colors">
+                          {savingOffer ? "Saving…" : "Save & Link to Campaign"}
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+              <div className="space-y-1.5">
+                <p className="text-[10px] font-semibold text-teal-400 uppercase tracking-wide">🌐 Landing Pages</p>
+                {linkedPages.length === 0 ? (
+                  <p className="text-[10px] text-[#484F58]">No landing pages linked yet</p>
+                ) : (
+                  <div className="space-y-1">
+                    {linkedPages.map(p => (
+                      <div key={p.id} className="flex items-center gap-2 bg-[#161B22] rounded px-2 py-1">
+                        <span className="text-[10px] text-[#E6EDF3] truncate flex-1">{p.title}</span>
+                        <span className={`text-[9px] flex-shrink-0 ${p.published ? "text-emerald-400" : "text-[#484F58]"}`}>{p.published ? "Live" : "Draft"}</span>
+                        <button onClick={() => { void unlinkPage(p.id); }} className="text-[9px] text-[#484F58] hover:text-red-400 flex-shrink-0" title="Unlink">✕</button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <div className="flex gap-1 mt-1">
+                  <select value={selPageId} onChange={e => setSelPageId(e.target.value)}
+                    className="flex-1 min-w-0 bg-[#161B22] border border-[#30363D] rounded px-2 py-1 text-[10px] text-[#E6EDF3] outline-none">
+                    <option value="">— Attach existing page —</option>
+                    {standalonePages.filter(p => !linkedPages.some(lp => lp.id === p.id)).map(p => (
+                      <option key={p.id} value={p.id}>{p.title}</option>
+                    ))}
+                  </select>
+                  <button onClick={() => { void linkPage(); }} disabled={!selPageId || linking}
+                    className="text-[10px] px-2 py-1 rounded bg-[#0078D4]/20 text-[#58A6FF] hover:bg-[#0078D4]/30 disabled:opacity-40 transition-colors flex-shrink-0">
+                    Attach
+                  </button>
+                </div>
+                <button onClick={() => setShowCreatePage(prev => !prev)}
+                  className="text-[10px] text-violet-400 hover:text-violet-300 transition-colors">
+                  {showCreatePage ? "▲ Hide" : "✦ Generate new landing page for this campaign"}
+                </button>
+                {showCreatePage && (
+                  <div className="bg-[#161B22] rounded-lg p-2.5 space-y-2 border border-[#30363D]">
+                    <div className="grid grid-cols-3 gap-2">
+                      <div>
+                        <label className="text-[9px] text-[#7D8590] uppercase tracking-wide">Topic</label>
+                        <input value={pageTopic} onChange={e => setPageTopic(e.target.value)}
+                          className="mt-0.5 w-full bg-[#0D1117] border border-[#30363D] rounded px-2 py-1 text-[10px] text-[#E6EDF3] outline-none focus:border-[#0078D4]/60" />
+                      </div>
+                      <div>
+                        <label className="text-[9px] text-[#7D8590] uppercase tracking-wide">Audience</label>
+                        <input value={pageAudience} onChange={e => setPageAudience(e.target.value)}
+                          className="mt-0.5 w-full bg-[#0D1117] border border-[#30363D] rounded px-2 py-1 text-[10px] text-[#E6EDF3] outline-none focus:border-[#0078D4]/60" />
+                      </div>
+                      <div>
+                        <label className="text-[9px] text-[#7D8590] uppercase tracking-wide">CTA</label>
+                        <input value={pageCta} onChange={e => setPageCta(e.target.value)}
+                          className="mt-0.5 w-full bg-[#0D1117] border border-[#30363D] rounded px-2 py-1 text-[10px] text-[#E6EDF3] outline-none focus:border-[#0078D4]/60" />
+                      </div>
+                    </div>
+                    <button onClick={() => { void generatePage(); }} disabled={generatingPage || !pageTopic.trim()}
+                      className="w-full py-1 rounded bg-[#0078D4] text-white text-[10px] font-semibold hover:bg-[#0078D4]/80 disabled:opacity-40 transition-colors">
+                      {generatingPage ? "Generating…" : "✦ Generate Landing Page"}
+                    </button>
+                    {pageDraft && (
+                      <div className="space-y-2 pt-1 border-t border-[#30363D]">
+                        <p className="text-[10px] font-semibold text-[#E6EDF3]">{pageDraft.headline ?? pageDraft.title}</p>
+                        {pageDraft.subheadline && <p className="text-[9px] text-[#7D8590]">{pageDraft.subheadline}</p>}
+                        <div>
+                          <label className="text-[9px] text-[#7D8590] uppercase tracking-wide">Slug</label>
+                          <div className="flex items-center gap-1 mt-0.5">
+                            <span className="text-[9px] text-[#484F58]">/lp/</span>
+                            <input value={pageSlug} onChange={e => setPageSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ""))}
+                              className="flex-1 bg-[#0D1117] border border-[#30363D] rounded px-2 py-0.5 text-[10px] text-[#E6EDF3] outline-none" />
+                          </div>
+                        </div>
+                        <button onClick={() => { void saveGeneratedPage(); }} disabled={savingPage || !pageSlug.trim()}
+                          className="w-full py-1 rounded bg-emerald-500/20 text-emerald-400 text-[10px] font-semibold hover:bg-emerald-500/30 disabled:opacity-40 transition-colors">
+                          {savingPage ? "Saving…" : "Save & Link to Campaign"}
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
 
 function CampaignsHubSection({ fetchWithAuth }: { fetchWithAuth: (url: string, opts?: RequestInit) => Promise<Response> }) {
   const [activeTab, setActiveTab] = useState<"campaigns" | "offers" | "pages">("campaigns");
@@ -5017,21 +5335,24 @@ function CampaignBuilderWizard({ fetchWithAuth }: { fetchWithAuth: (url: string,
             {loadingCampaigns ? <SkeletonCard /> : campaigns.length === 0 ? (
               <p className="text-xs text-[#7D8590]">No campaigns yet — build your first one!</p>
             ) : (
-              <div className="space-y-2 max-h-80 overflow-y-auto">
+              <div className="space-y-2 max-h-[32rem] overflow-y-auto">
                 {campaigns.map(c => (
-                  <button key={c.id} onClick={() => setDetailCampaignId(c.id)}
-                    className="w-full text-left bg-[#0D1117] rounded-lg p-2 text-xs space-y-1.5 border border-transparent hover:border-[#0078D4]/50 transition-colors">
-                    <div className="flex items-center justify-between gap-1">
-                      <span className="font-semibold text-[#E6EDF3] truncate">{c.name}</span>
-                      <Badge text={c.status} color={c.status === "active" ? "green" : c.status === "completed" ? "gray" : "yellow"} />
-                    </div>
-                    <p className="text-[#7D8590] line-clamp-1">{c.goal}</p>
-                    <div className="flex items-center gap-3 pt-0.5 border-t border-[#30363D]">
-                      <span className="text-emerald-400 font-semibold">{c.leadsGenerated ?? 0} leads</span>
-                      <span className="text-[#58A6FF]">{c.emailsSent ?? 0} emails</span>
-                      <span className="text-amber-400">${Number(c.revenueAttributed ?? 0).toLocaleString()}</span>
-                    </div>
-                  </button>
+                  <div key={c.id} className="bg-[#0D1117] rounded-lg border border-transparent hover:border-[#0078D4]/30 transition-colors">
+                    <button onClick={() => setDetailCampaignId(c.id)}
+                      className="w-full text-left px-2 pt-2 pb-1.5 text-xs space-y-1.5">
+                      <div className="flex items-center justify-between gap-1">
+                        <span className="font-semibold text-[#E6EDF3] truncate">{c.name}</span>
+                        <Badge text={c.status} color={c.status === "active" ? "green" : c.status === "completed" ? "gray" : "yellow"} />
+                      </div>
+                      <p className="text-[#7D8590] line-clamp-1">{c.goal}</p>
+                      <div className="flex items-center gap-3 pt-0.5 border-t border-[#30363D]">
+                        <span className="text-emerald-400 font-semibold">{c.leadsGenerated ?? 0} leads</span>
+                        <span className="text-[#58A6FF]">{c.emailsSent ?? 0} emails</span>
+                        <span className="text-amber-400">${Number(c.revenueAttributed ?? 0).toLocaleString()}</span>
+                      </div>
+                    </button>
+                    <CampaignWorkspace campaign={c} fetchWithAuth={fetchWithAuth} />
+                  </div>
                 ))}
               </div>
             )}

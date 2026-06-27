@@ -951,6 +951,58 @@ router.get("/admin/marketing/campaigns/:id", requireAdmin, async (req: Request, 
   }
 });
 
+// ─── Campaign ↔ Offer / Landing-Page associations ─────────────────────────────
+
+router.get("/admin/marketing/campaigns/:id/offers", requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const id = parseId(req.params, "id");
+    const rows = await db.select().from(offersTable).where(eq(offersTable.campaignId, id)).orderBy(desc(offersTable.createdAt));
+    res.json(rows);
+  } catch (e) { res.status(500).json({ error: String(e) }); }
+});
+
+router.get("/admin/marketing/campaigns/:id/landing-pages", requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const id = parseId(req.params, "id");
+    const rows = await db.select().from(landingPagesTable).where(eq(landingPagesTable.campaignId, id)).orderBy(desc(landingPagesTable.createdAt));
+    res.json(rows);
+  } catch (e) { res.status(500).json({ error: String(e) }); }
+});
+
+router.post("/admin/marketing/campaigns/:id/offers/:offerId/link", requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const campaignId = parseId(req.params, "id");
+    const offerId = parseId(req.params, "offerId");
+    const [row] = await db.update(offersTable).set({ campaignId, updatedAt: new Date() }).where(eq(offersTable.id, offerId)).returning();
+    res.json(row);
+  } catch (e) { res.status(500).json({ error: String(e) }); }
+});
+
+router.delete("/admin/marketing/campaigns/:id/offers/:offerId/link", requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const offerId = parseId(req.params, "offerId");
+    const [row] = await db.update(offersTable).set({ campaignId: null, updatedAt: new Date() }).where(eq(offersTable.id, offerId)).returning();
+    res.json(row);
+  } catch (e) { res.status(500).json({ error: String(e) }); }
+});
+
+router.post("/admin/marketing/campaigns/:id/landing-pages/:pageId/link", requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const campaignId = parseId(req.params, "id");
+    const pageId = parseId(req.params, "pageId");
+    const [row] = await db.update(landingPagesTable).set({ campaignId, updatedAt: new Date() }).where(eq(landingPagesTable.id, pageId)).returning();
+    res.json(row);
+  } catch (e) { res.status(500).json({ error: String(e) }); }
+});
+
+router.delete("/admin/marketing/campaigns/:id/landing-pages/:pageId/link", requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const pageId = parseId(req.params, "pageId");
+    const [row] = await db.update(landingPagesTable).set({ campaignId: null, updatedAt: new Date() }).where(eq(landingPagesTable.id, pageId)).returning();
+    res.json(row);
+  } catch (e) { res.status(500).json({ error: String(e) }); }
+});
+
 // ─── Campaign Assets ──────────────────────────────────────────────────────────
 
 router.get("/admin/marketing/campaign-assets", requireAdmin, async (req: Request, res: Response) => {
