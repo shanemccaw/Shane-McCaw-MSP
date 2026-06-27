@@ -5223,7 +5223,6 @@ function CampaignBuilderWizard({ fetchWithAuth }: { fetchWithAuth: (url: string,
       });
 
       setCampaigns(prev => [campaign, ...prev]);
-      setDetailCampaignId(campaign.id);
       setStep(5);
     } finally { setSaving(false); }
   };
@@ -5398,12 +5397,21 @@ function CampaignBuilderWizard({ fetchWithAuth }: { fetchWithAuth: (url: string,
                 </div>
                 <div>
                   <p className="text-sm font-semibold text-emerald-400">Campaign saved!</p>
-                  {savedCampaignId && <p className="text-xs text-[#7D8590]">ID: {savedCampaignId} — click it in the list to view the full detail</p>}
+                  <p className="text-xs text-[#7D8590]">Your campaign and ad assets are ready to use.</p>
                 </div>
               </div>
-              <button onClick={reset} className="text-xs px-3 py-1.5 rounded-lg border border-[#30363D] text-[#7D8590] hover:text-[#E6EDF3] transition-colors">
-                Create Another Campaign
-              </button>
+              <div className="flex gap-2 flex-wrap">
+                {savedCampaignId && (
+                  <button
+                    onClick={() => setDetailCampaignId(savedCampaignId)}
+                    className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-[#0078D4] text-white text-sm font-semibold hover:bg-[#0078D4]/80 transition-colors">
+                    View Campaign Details →
+                  </button>
+                )}
+                <button onClick={reset} className="text-xs px-3 py-1.5 rounded-lg border border-[#30363D] text-[#7D8590] hover:text-[#E6EDF3] transition-colors">
+                  Create Another Campaign
+                </button>
+              </div>
             </div>
           )}
         </div>
