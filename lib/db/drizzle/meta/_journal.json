@@ -449,6 +449,13 @@
       "when": 1751040000000,
       "tag": "0061_add_marketing_command_center",
       "breakpoints": true
+    },
+    {
+      "idx": 62,
+      "version": "7",
+      "when": 1751126400000,
+      "tag": "0062_add_email_seo_analytics",
+      "breakpoints": true
     }
   ]
 }

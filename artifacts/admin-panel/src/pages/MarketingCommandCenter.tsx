@@ -98,6 +98,24 @@ interface AnalyticsData {
   campaignPerformance: CampaignPerf[];
 }
 
+interface EmailStats {
+  totalSent: number;
+  hasData: boolean;
+  dailyTrend: Array<{ day: string; sent: number }>;
+}
+
+interface SeoRanking {
+  id: number;
+  keyword: string;
+  position: number;
+  previousPosition: number | null;
+  url: string | null;
+  searchVolume: number | null;
+  notes: string | null;
+  checkedAt: string;
+  updatedAt: string;
+}
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 const COLORS = ["#0078D4", "#00B4D8", "#7C3AED", "#059669", "#F59E0B", "#EF4444", "#EC4899", "#6366F1"];
@@ -1012,6 +1030,215 @@ function ContentHubSection({ fetchWithAuth }: { fetchWithAuth: (url: string, opt
 
 // ─── Section 5: Traffic & Analytics ───────────────────────────────────────────
 
+function EmailStatsCard({ fetchWithAuth }: { fetchWithAuth: (url: string, opts?: RequestInit) => Promise<Response> }) {
+  const [stats, setStats] = useState<EmailStats | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetchWithAuth(`${API}/admin/marketing/email-stats`)
+      .then(r => r.json())
+      .then(d => setStats(d as EmailStats))
+      .catch(() => null)
+      .finally(() => setLoading(false));
+  }, [fetchWithAuth]);
+
+  if (loading) return <SkeletonCard />;
+
+  if (!stats?.hasData) {
+    return (
+      <div className="bg-[#161B22] border border-[#30363D] rounded-xl p-4 space-y-3">
+        <h3 className="text-sm font-semibold text-[#E6EDF3]">Emails Sent</h3>
+        <div className="flex items-center justify-center h-28 text-[#7D8590] text-sm">
+          <span className="px-3 py-1 rounded-full bg-[#30363D] text-[#484F58] text-xs">No emails recorded yet — volume will appear here automatically</span>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="bg-[#161B22] border border-[#30363D] rounded-xl p-4 space-y-3">
+      <div className="flex items-center justify-between">
+        <h3 className="text-sm font-semibold text-[#E6EDF3]">Emails Sent</h3>
+        <span className="text-[10px] text-[#7D8590]">Last 30 days</span>
+      </div>
+      <div className="flex gap-3">
+        <div className="bg-[#0D1117] rounded-lg p-3 text-center flex-1">
+          <p className="text-2xl font-bold text-[#E6EDF3]">{stats.totalSent}</p>
+          <p className="text-[10px] text-[#7D8590] mt-0.5">Total sent</p>
+        </div>
+      </div>
+      {stats.dailyTrend.length > 0 && (
+        <ResponsiveContainer width="100%" height={120}>
+          <LineChart data={stats.dailyTrend}>
+            <CartesianGrid strokeDasharray="3 3" stroke="#30363D" />
+            <XAxis dataKey="day" tick={{ fill: "#7D8590", fontSize: 9 }} tickFormatter={v => String(v).slice(5)} />
+            <YAxis tick={{ fill: "#7D8590", fontSize: 9 }} allowDecimals={false} />
+            <Tooltip contentStyle={{ background: "#161B22", border: "1px solid #30363D", borderRadius: 8 }} labelStyle={{ color: "#E6EDF3" }} itemStyle={{ color: "#58A6FF" }} />
+            <Line type="monotone" dataKey="sent" stroke="#0078D4" strokeWidth={2} dot={{ fill: "#0078D4", r: 3 }} name="Sent" />
+          </LineChart>
+        </ResponsiveContainer>
+      )}
+    </div>
+  );
+}
+
+function SeoRankingsCard({ fetchWithAuth }: { fetchWithAuth: (url: string, opts?: RequestInit) => Promise<Response> }) {
+  const [rankings, setRankings] = useState<SeoRanking[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [showForm, setShowForm] = useState(false);
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [keyword, setKeyword] = useState("");
+  const [position, setPosition] = useState("");
+  const [url, setUrl] = useState("");
+  const [volume, setVolume] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  const load = useCallback(async () => {
+    try {
+      const r = await fetchWithAuth(`${API}/admin/marketing/seo-rankings`);
+      setRankings(await r.json() as SeoRanking[]);
+    } finally { setLoading(false); }
+  }, [fetchWithAuth]);
+
+  useEffect(() => { void load(); }, [load]);
+
+  const resetForm = () => {
+    setKeyword(""); setPosition(""); setUrl(""); setVolume("");
+    setEditingId(null); setShowForm(false);
+  };
+
+  const startEdit = (r: SeoRanking) => {
+    setEditingId(r.id);
+    setKeyword(r.keyword);
+    setPosition(String(r.position));
+    setUrl(r.url ?? "");
+    setVolume(r.searchVolume ? String(r.searchVolume) : "");
+    setShowForm(true);
+  };
+
+  const save = async () => {
+    const pos = parseInt(position, 10);
+    if (!keyword.trim() || isNaN(pos)) return;
+    setSaving(true);
+    try {
+      const body = {
+        keyword: keyword.trim(),
+        position: pos,
+        url: url.trim() || undefined,
+        searchVolume: volume ? parseInt(volume, 10) : undefined,
+      };
+      if (editingId !== null) {
+        const r = await fetchWithAuth(`${API}/admin/marketing/seo-rankings/${editingId}`, {
+          method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+        });
+        const updated = await r.json() as SeoRanking;
+        setRankings(prev => prev.map(x => x.id === editingId ? updated : x));
+      } else {
+        const r = await fetchWithAuth(`${API}/admin/marketing/seo-rankings`, {
+          method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+        });
+        const created = await r.json() as SeoRanking;
+        setRankings(prev => [...prev, created].sort((a, b) => a.position - b.position));
+      }
+      resetForm();
+    } finally { setSaving(false); }
+  };
+
+  const deleteRanking = async (id: number) => {
+    await fetchWithAuth(`${API}/admin/marketing/seo-rankings/${id}`, { method: "DELETE" });
+    setRankings(prev => prev.filter(r => r.id !== id));
+  };
+
+  const positionColor = (pos: number) => {
+    if (pos <= 3) return "text-emerald-400";
+    if (pos <= 10) return "text-[#58A6FF]";
+    if (pos <= 20) return "text-amber-400";
+    return "text-[#7D8590]";
+  };
+
+  const changeIndicator = (r: SeoRanking) => {
+    if (r.previousPosition === null || r.previousPosition === r.position) return null;
+    const improved = r.position < r.previousPosition;
+    const delta = Math.abs(r.previousPosition - r.position);
+    return (
+      <span className={`text-[10px] font-bold ${improved ? "text-emerald-400" : "text-red-400"}`}>
+        {improved ? "▲" : "▼"}{delta}
+      </span>
+    );
+  };
+
+  if (loading) return <SkeletonCard />;
+
+  return (
+    <div className="bg-[#161B22] border border-[#30363D] rounded-xl p-4 space-y-3">
+      <div className="flex items-center justify-between">
+        <h3 className="text-sm font-semibold text-[#E6EDF3]">SEO Rankings</h3>
+        <button onClick={() => { resetForm(); setShowForm(f => !f); }}
+          className="text-[10px] px-2 py-1 rounded bg-[#0078D4]/20 text-[#58A6FF] hover:bg-[#0078D4]/30 transition-colors">
+          {showForm && editingId === null ? "Cancel" : "+ Add Keyword"}
+        </button>
+      </div>
+
+      {showForm && (
+        <div className="bg-[#0D1117] rounded-lg p-3 space-y-2">
+          <div className="grid grid-cols-2 gap-2">
+            <input value={keyword} onChange={e => setKeyword(e.target.value)} placeholder="Keyword…"
+              className="col-span-2 bg-[#161B22] border border-[#30363D] rounded px-2 py-1.5 text-xs text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60" />
+            <input value={position} onChange={e => setPosition(e.target.value)} placeholder="Position (1–100)" type="number" min="1" max="100"
+              className="bg-[#161B22] border border-[#30363D] rounded px-2 py-1.5 text-xs text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60" />
+            <input value={volume} onChange={e => setVolume(e.target.value)} placeholder="Monthly volume" type="number" min="0"
+              className="bg-[#161B22] border border-[#30363D] rounded px-2 py-1.5 text-xs text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60" />
+            <input value={url} onChange={e => setUrl(e.target.value)} placeholder="Ranking URL (optional)"
+              className="col-span-2 bg-[#161B22] border border-[#30363D] rounded px-2 py-1.5 text-xs text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60" />
+          </div>
+          <div className="flex gap-2">
+            <button onClick={() => { void save(); }} disabled={saving || !keyword.trim() || !position}
+              className="flex-1 py-1.5 rounded bg-[#0078D4] text-white text-xs font-semibold hover:bg-[#0078D4]/80 disabled:opacity-40 transition-colors">
+              {saving ? "Saving…" : editingId !== null ? "Update" : "Add"}
+            </button>
+            <button onClick={resetForm} className="px-3 py-1.5 rounded border border-[#30363D] text-[#7D8590] text-xs hover:text-[#E6EDF3] transition-colors">Cancel</button>
+          </div>
+        </div>
+      )}
+
+      {rankings.length === 0 ? (
+        <div className="text-center py-6">
+          <p className="text-[#7D8590] text-xs">No keywords tracked yet — add your first keyword above</p>
+          <p className="text-[10px] text-[#484F58] mt-1">Track positions manually or sync from Google Search Console</p>
+        </div>
+      ) : (
+        <div className="space-y-1 max-h-64 overflow-y-auto">
+          <div className="grid grid-cols-12 gap-1 px-2 pb-1 border-b border-[#30363D]">
+            <span className="col-span-1 text-[10px] text-[#484F58]">#</span>
+            <span className="col-span-7 text-[10px] text-[#484F58]">Keyword</span>
+            <span className="col-span-2 text-[10px] text-[#484F58] text-right">Vol.</span>
+            <span className="col-span-2 text-[10px] text-[#484F58] text-right">Actions</span>
+          </div>
+          {rankings.map(r => (
+            <div key={r.id} className="grid grid-cols-12 gap-1 items-center px-2 py-1 rounded hover:bg-[#0D1117] transition-colors group">
+              <span className={`col-span-1 text-sm font-bold ${positionColor(r.position)}`}>{r.position}</span>
+              <div className="col-span-7 min-w-0">
+                <div className="flex items-center gap-1">
+                  <span className="text-xs text-[#E6EDF3] truncate">{r.keyword}</span>
+                  {changeIndicator(r)}
+                </div>
+                {r.url && <p className="text-[10px] text-[#484F58] truncate">{r.url}</p>}
+              </div>
+              <span className="col-span-2 text-[10px] text-[#7D8590] text-right">
+                {r.searchVolume ? r.searchVolume.toLocaleString() : "—"}
+              </span>
+              <div className="col-span-2 flex justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                <button onClick={() => startEdit(r)} className="text-[10px] text-[#58A6FF] hover:text-white transition-colors">Edit</button>
+                <button onClick={() => { void deleteRanking(r.id); }} className="text-[10px] text-red-400/60 hover:text-red-400 transition-colors">×</button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function TrafficAnalyticsSection({ fetchWithAuth }: { fetchWithAuth: (url: string, opts?: RequestInit) => Promise<Response> }) {
   const [analytics, setAnalytics] = useState<AnalyticsData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -1112,6 +1339,9 @@ function TrafficAnalyticsSection({ fetchWithAuth }: { fetchWithAuth: (url: strin
             </ResponsiveContainer>
           ) : <p className="text-[#7D8590] text-sm text-center py-8">No page view data yet</p>}
         </div>
+
+        <EmailStatsCard fetchWithAuth={fetchWithAuth} />
+        <SeoRankingsCard fetchWithAuth={fetchWithAuth} />
       </div>
     </div>
   );

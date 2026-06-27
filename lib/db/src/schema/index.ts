@@ -1162,3 +1162,36 @@ export const clientDocumentsTable = pgTable("client_documents", {
 
 export type InsertClientDocument = typeof clientDocumentsTable.$inferInsert;
 export type ClientDocument = typeof clientDocumentsTable.$inferSelect;
+
+// ── Email Events (Resend webhook tracking) ───────────────────────────────────
+
+export const emailEventsTable = pgTable("email_events", {
+  id: serial("id").primaryKey(),
+  emailId: text("email_id").notNull(),
+  eventType: text("event_type", { enum: ["sent", "delivered", "opened", "clicked", "bounced", "complained", "unsubscribed"] }).notNull(),
+  recipient: text("recipient"),
+  subject: text("subject"),
+  occurredAt: timestamp("occurred_at").notNull().defaultNow(),
+  metadata: jsonb("metadata").$type<Record<string, unknown>>().default({}),
+});
+
+export type InsertEmailEvent = typeof emailEventsTable.$inferInsert;
+export type EmailEvent = typeof emailEventsTable.$inferSelect;
+
+// ── SEO Rankings ─────────────────────────────────────────────────────────────
+
+export const seoRankingsTable = pgTable("seo_rankings", {
+  id: serial("id").primaryKey(),
+  keyword: text("keyword").notNull(),
+  position: integer("position").notNull(),
+  previousPosition: integer("previous_position"),
+  url: text("url"),
+  searchVolume: integer("search_volume"),
+  notes: text("notes"),
+  checkedAt: timestamp("checked_at").notNull().defaultNow(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export type InsertSeoRanking = typeof seoRankingsTable.$inferInsert;
+export type SeoRanking = typeof seoRankingsTable.$inferSelect;

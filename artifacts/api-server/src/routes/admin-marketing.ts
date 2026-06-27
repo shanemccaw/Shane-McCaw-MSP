@@ -3,7 +3,7 @@ import {
   db, leadsTable, recommendedLeadsTable, outreachTemplatesTable,
   marketingTasksTable, campaignsTable, campaignAssetsTable,
   analyticsSessionsTable, analyticsSiteEventsTable, servicesTable,
-  settingsTable, quizPainSignalConfigTable,
+  settingsTable, quizPainSignalConfigTable, emailEventsTable, seoRankingsTable,
 } from "@workspace/db";
 import { eq, desc, count, and, gte, sql, inArray } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/requireAuth";
@@ -767,6 +767,14 @@ router.post("/admin/marketing/send-outreach", requireAdmin, async (req: Request,
       return;
     }
 
+    db.insert(emailEventsTable).values({
+      emailId: `outreach-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
+      eventType: "sent",
+      recipient: parsed.to,
+      subject: parsed.subject,
+      metadata: { source: "outreach" },
+    }).catch((err: unknown) => req.log.warn({ err }, "Failed to record email_event for outreach send"));
+
     if (parsed.leadId) {
       const [lead] = await db
         .select({ notes: leadsTable.notes })
@@ -864,6 +872,128 @@ router.get("/admin/marketing/analytics", requireAdmin, async (_req: Request, res
       conversionFunnel: funnelData,
       campaignPerformance: rawCampaigns.map(r => ({ id: r.id, name: r.name, status: r.status, assetCount: Number(r.asset_count) })),
     });
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+// ─── Email Stats (from stored Resend webhook events) ─────────────────────────
+
+router.get("/admin/marketing/email-stats", requireAdmin, async (_req: Request, res: Response) => {
+  try {
+    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+
+    const [totals, daily] = await Promise.all([
+      db.execute(sql`
+        SELECT
+          event_type,
+          COUNT(*) as cnt
+        FROM email_events
+        WHERE occurred_at >= ${thirtyDaysAgo}
+        GROUP BY event_type
+      `),
+      db.execute(sql`
+        SELECT
+          DATE(occurred_at) as day,
+          COUNT(*) as sent
+        FROM email_events
+        WHERE occurred_at >= ${thirtyDaysAgo}
+          AND event_type = 'sent'
+        GROUP BY DATE(occurred_at)
+        ORDER BY day
+      `),
+    ]);
+
+    type TotalsRow = { event_type: string; cnt: string };
+    type DailyRow = { day: string; sent: string };
+
+    const rawTotals = (totals as unknown as { rows: TotalsRow[] }).rows ?? [];
+    const rawDaily = (daily as unknown as { rows: DailyRow[] }).rows ?? [];
+
+    const countMap = Object.fromEntries(rawTotals.map(r => [String(r.event_type), Number(r.cnt)]));
+    const totalSent = countMap["sent"] ?? 0;
+
+    res.json({
+      totalSent,
+      hasData: totalSent > 0,
+      dailyTrend: rawDaily.map(r => ({
+        day: String(r.day).slice(0, 10),
+        sent: Number(r.sent),
+      })),
+    });
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+// ─── SEO Rankings ─────────────────────────────────────────────────────────────
+
+router.get("/admin/marketing/seo-rankings", requireAdmin, async (_req: Request, res: Response) => {
+  try {
+    const rows = await db.select().from(seoRankingsTable).orderBy(seoRankingsTable.position);
+    res.json(rows);
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+const seoRankingSchema = z.object({
+  keyword: z.string().min(1),
+  position: z.number().int().min(1).max(100),
+  url: z.string().optional(),
+  searchVolume: z.number().int().optional(),
+  notes: z.string().optional(),
+});
+
+router.post("/admin/marketing/seo-rankings", requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const body = seoRankingSchema.parse(req.body);
+    const [row] = await db.insert(seoRankingsTable).values({
+      keyword: body.keyword,
+      position: body.position,
+      url: body.url ?? null,
+      searchVolume: body.searchVolume ?? null,
+      notes: body.notes ?? null,
+    }).returning();
+    res.json(row);
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+router.patch("/admin/marketing/seo-rankings/:id", requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const id = parseId(req.params, "id");
+    const body = seoRankingSchema.partial().parse(req.body);
+
+    const existing = await db.select({ position: seoRankingsTable.position }).from(seoRankingsTable).where(eq(seoRankingsTable.id, id));
+    const prevPos = existing[0]?.position ?? null;
+
+    const updateData: Partial<typeof seoRankingsTable.$inferInsert> & { updatedAt: Date; checkedAt: Date } = {
+      updatedAt: new Date(),
+      checkedAt: new Date(),
+    };
+    if (body.keyword !== undefined) updateData.keyword = body.keyword;
+    if (body.position !== undefined) {
+      if (prevPos !== null && prevPos !== body.position) updateData.previousPosition = prevPos;
+      updateData.position = body.position;
+    }
+    if (body.url !== undefined) updateData.url = body.url;
+    if (body.searchVolume !== undefined) updateData.searchVolume = body.searchVolume;
+    if (body.notes !== undefined) updateData.notes = body.notes;
+
+    const [row] = await db.update(seoRankingsTable).set(updateData).where(eq(seoRankingsTable.id, id)).returning();
+    res.json(row);
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+router.delete("/admin/marketing/seo-rankings/:id", requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const id = parseId(req.params, "id");
+    await db.delete(seoRankingsTable).where(eq(seoRankingsTable.id, id));
+    res.json({ success: true });
   } catch (e) {
     res.status(500).json({ error: String(e) });
   }

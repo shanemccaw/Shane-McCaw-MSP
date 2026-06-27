@@ -1,7 +1,7 @@
 import nodemailer from "nodemailer";
 import { Resend } from "resend";
 import { ReplitConnectors } from "@replit/connectors-sdk";
-import { db, emailTemplatesTable } from "@workspace/db";
+import { db, emailTemplatesTable, emailEventsTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { logger } from "./logger";
 import { graphCredentialsPresent, sendMailViaGraph } from "./graph";
@@ -192,6 +192,13 @@ export async function sendEmailOrThrow(
   const html = opts?.skipWrapper ? bodyHtml : brandedEmail(bodyHtml);
   await sender(to, subject, html);
   logger.info({ to, subject }, "Email sent");
+  db.insert(emailEventsTable).values({
+    emailId: `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
+    eventType: "sent",
+    recipient: to,
+    subject,
+    metadata: {},
+  }).catch((err: unknown) => logger.warn({ err }, "Failed to record email_event"));
 }
 
 /**
