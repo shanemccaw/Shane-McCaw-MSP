@@ -6058,6 +6058,7 @@ function CampaignBuilderWizard({ fetchWithAuth }: { fetchWithAuth: (url: string,
         if (field === "goal") {
           setGoal(data.value);
           if (!name.trim() && topic) setName(topic);
+          // Keep topicSuggestions so they're still visible if the user navigates back to step 1
           if (topic) setSelectedTopic(topic);
         } else if (field === "audience") {
           setAudience(data.value);
