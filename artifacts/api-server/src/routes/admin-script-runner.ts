@@ -25,6 +25,7 @@ import {
 } from "../lib/azure-automation";
 import { logger } from "../lib/logger";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
+import { sendAdminSms } from "../lib/sms";
 
 const router: IRouter = Router();
 
@@ -402,6 +403,30 @@ Rules:
   } catch (err) {
     logger.error({ err }, "admin-script-runner: AI analysis failed");
     res.status(500).json({ error: "AI analysis failed — check server logs" });
+  }
+});
+
+// ─── POST /api/admin/test-sms ─────────────────────────────────────────────────
+router.post("/admin/test-sms", requireAdmin, async (_req: Request, res: Response) => {
+  const missing: string[] = [];
+  if (!process.env.TWILIO_ACCOUNT_SID)  missing.push("TWILIO_ACCOUNT_SID");
+  if (!process.env.TWILIO_AUTH_TOKEN)   missing.push("TWILIO_AUTH_TOKEN");
+  if (!process.env.TWILIO_FROM_NUMBER)  missing.push("TWILIO_FROM_NUMBER");
+  if (!process.env.SHANE_PHONE_NUMBER)  missing.push("SHANE_PHONE_NUMBER");
+
+  if (missing.length > 0) {
+    res.status(503).json({
+      error: `SMS not configured — missing secrets: ${missing.join(", ")}`,
+    });
+    return;
+  }
+
+  try {
+    await sendAdminSms("✅ Test message from Shane McCaw Consulting admin portal — Twilio is working.");
+    res.json({ ok: true });
+  } catch (err) {
+    logger.error({ err }, "admin test-sms: send failed");
+    res.status(500).json({ error: "SMS send failed — check server logs for details." });
   }
 });
 
