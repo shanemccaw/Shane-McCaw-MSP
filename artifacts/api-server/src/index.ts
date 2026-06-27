@@ -191,19 +191,29 @@ app.listen(port, (err) => {
   });
 
   pool.query(`
+    DO $$
+    BEGIN
+      IF EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name = 'powershell_scripts' AND column_name = 'id'
+          AND data_type = 'integer'
+      ) THEN
+        DROP TABLE powershell_scripts;
+      END IF;
+    END$$;
     CREATE TABLE IF NOT EXISTS powershell_scripts (
-      id SERIAL PRIMARY KEY,
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       title TEXT NOT NULL,
       description TEXT,
       category TEXT NOT NULL DEFAULT 'other',
       script_body TEXT NOT NULL,
       permissions JSONB NOT NULL DEFAULT '{"appPermissions":[],"delegatedPermissions":[],"notes":""}',
-      tags JSONB NOT NULL DEFAULT '[]',
+      tags TEXT[] NOT NULL DEFAULT '{}',
       created_at TIMESTAMP NOT NULL DEFAULT NOW(),
       updated_at TIMESTAMP NOT NULL DEFAULT NOW()
     )
   `).then(() => {
-    logger.info("Migration: powershell_scripts table ensured");
+    logger.info("Migration: powershell_scripts table ensured (UUID PK, text[] tags)");
   }).catch((err: unknown) => {
     logger.warn({ err }, "Migration: powershell_scripts table failed (non-fatal)");
   });

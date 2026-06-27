@@ -197,9 +197,11 @@ router.post("/admin/ps-scripts", requireAdmin, async (req: Request, res: Respons
 
 // ─── GET /api/admin/ps-scripts/:id ───────────────────────────────────────────
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 router.get("/admin/ps-scripts/:id", requireAdmin, async (req: Request, res: Response) => {
-  const id = parseInt(String(req.params["id"] ?? ""), 10);
-  if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
+  const id = String(req.params["id"] ?? "");
+  if (!UUID_RE.test(id)) { res.status(400).json({ error: "Invalid id" }); return; }
   try {
     const [script] = await db.select().from(powershellScriptsTable).where(eq(powershellScriptsTable.id, id));
     if (!script) { res.status(404).json({ error: "Script not found" }); return; }
@@ -213,8 +215,8 @@ router.get("/admin/ps-scripts/:id", requireAdmin, async (req: Request, res: Resp
 // ─── PUT /api/admin/ps-scripts/:id ───────────────────────────────────────────
 
 router.put("/admin/ps-scripts/:id", requireAdmin, async (req: Request, res: Response) => {
-  const id = parseInt(String(req.params["id"] ?? ""), 10);
-  if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
+  const id = String(req.params["id"] ?? "");
+  if (!UUID_RE.test(id)) { res.status(400).json({ error: "Invalid id" }); return; }
 
   const { title, description, category, scriptBody, permissions, tags } = req.body as {
     title?: string;
@@ -250,8 +252,8 @@ router.put("/admin/ps-scripts/:id", requireAdmin, async (req: Request, res: Resp
 // ─── DELETE /api/admin/ps-scripts/:id ────────────────────────────────────────
 
 router.delete("/admin/ps-scripts/:id", requireAdmin, async (req: Request, res: Response) => {
-  const id = parseInt(String(req.params["id"] ?? ""), 10);
-  if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
+  const id = String(req.params["id"] ?? "");
+  if (!UUID_RE.test(id)) { res.status(400).json({ error: "Invalid id" }); return; }
   try {
     await db.delete(powershellScriptsTable).where(eq(powershellScriptsTable.id, id));
     res.status(204).end();

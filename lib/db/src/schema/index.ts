@@ -1,4 +1,4 @@
-import { pgTable, serial, text, timestamp, integer, boolean, numeric, jsonb, bigint, uniqueIndex } from "drizzle-orm/pg-core";
+import { pgTable, serial, text, timestamp, integer, boolean, numeric, jsonb, bigint, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 
 export interface WizardOption {
@@ -1361,13 +1361,13 @@ export interface PsScriptPermissions {
 }
 
 export const powershellScriptsTable = pgTable("powershell_scripts", {
-  id: serial("id").primaryKey(),
+  id: uuid("id").primaryKey().defaultRandom(),
   title: text("title").notNull(),
   description: text("description"),
   category: text("category").notNull().default("other"),
   scriptBody: text("script_body").notNull(),
   permissions: jsonb("permissions").$type<PsScriptPermissions>().notNull().default({ appPermissions: [], delegatedPermissions: [], notes: "" }),
-  tags: jsonb("tags").$type<string[]>().notNull().default([]),
+  tags: text("tags").array().notNull().default([]),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });

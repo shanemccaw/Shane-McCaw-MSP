@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 
@@ -11,7 +11,7 @@ interface PsScriptPermissions {
 }
 
 interface PsScriptListItem {
-  id: number;
+  id: string;
   title: string;
   description: string | null;
   category: string;
@@ -288,11 +288,11 @@ function ScriptDrawer({
   onLoadInEditor,
   onDeleted,
 }: {
-  scriptId: number;
+  scriptId: string;
   token: string;
   onClose: () => void;
   onLoadInEditor: (script: PsScriptDetail) => void;
-  onDeleted: (id: number) => void;
+  onDeleted: (id: string) => void;
 }) {
   const [script, setScript] = useState<PsScriptDetail | null>(null);
   const [loading, setLoading] = useState(true);
@@ -300,12 +300,16 @@ function ScriptDrawer({
   const [copied, setCopied] = useState(false);
   const { toast } = useToast();
 
-  useState(() => {
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
     apiFetch(`/admin/ps-scripts/${scriptId}`, token)
-      .then((s) => setScript(s as PsScriptDetail))
-      .catch(() => toast({ title: "Failed to load script", variant: "destructive" }))
-      .finally(() => setLoading(false));
-  });
+      .then((s) => { if (!cancelled) setScript(s as PsScriptDetail); })
+      .catch(() => { if (!cancelled) toast({ title: "Failed to load script", variant: "destructive" }); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [scriptId]);
 
   const handleCopy = () => {
     if (!script) return;
@@ -604,8 +608,8 @@ function LibraryTab({
   token: string;
   scripts: PsScriptListItem[];
   loading: boolean;
-  onOpenScript: (id: number) => void;
-  onDeleteScript: (id: number) => void;
+  onOpenScript: (id: string) => void;
+  onDeleteScript: (id: string) => void;
 }) {
   const [search, setSearch] = useState("");
   const [catFilter, setCatFilter] = useState("all");
@@ -731,7 +735,7 @@ export default function ScriptGeneratorPage() {
   const [scripts, setScripts] = useState<PsScriptListItem[]>([]);
   const [libraryLoading, setLibraryLoading] = useState(false);
   const [libraryLoaded, setLibraryLoaded] = useState(false);
-  const [openScriptId, setOpenScriptId] = useState<number | null>(null);
+  const [openScriptId, setOpenScriptId] = useState<string | null>(null);
   const [editorScript, setEditorScript] = useState<PsScriptDetail | null>(null);
 
   const loadLibrary = useCallback(async () => {
@@ -759,7 +763,7 @@ export default function ScriptGeneratorPage() {
     toast({ title: "Script saved to library" });
   };
 
-  const handleDeleteScript = async (id: number) => {
+  const handleDeleteScript = async (id: string) => {
     if (!confirm("Delete this script? This cannot be undone.")) return;
     try {
       await apiFetch(`/admin/ps-scripts/${id}`, token, { method: "DELETE" });
@@ -776,7 +780,7 @@ export default function ScriptGeneratorPage() {
     setTab("generator");
   };
 
-  const handleOpenScriptId = (id: number) => {
+  const handleOpenScriptId = (id: string) => {
     setOpenScriptId(id);
   };
 
