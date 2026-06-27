@@ -87,9 +87,10 @@ const ASSESSMENTS_ITEMS: NavItem[] = withIcons([
 ]);
 
 const COMPANY_ITEMS: NavItem[] = withIcons([
-  { label: "About",   href: "/about" },
-  { label: "Pricing", href: "/pricing" },
-  { label: "Contact", href: "/contact" },
+  { label: "About",        href: "/about" },
+  { label: "How We Work",  href: "/how-it-works" },
+  { label: "Pricing",      href: "/pricing" },
+  { label: "Contact",      href: "/contact" },
 ]);
 
 // ─── Menu key type ─────────────────────────────────────────────────────────────
@@ -266,7 +267,7 @@ export function Header() {
   const isRetainersActive   = location.startsWith("/retainers") || location === "/retainer-quiz";
   const isAssessmentsActive = ASSESSMENTS_ITEMS.some((i) => location === i.href);
   const isResourcesActive   = location.startsWith("/resources");
-  const isCompanyActive     = ["/about", "/pricing", "/contact"].includes(location);
+  const isCompanyActive     = ["/about", "/pricing", "/contact", "/how-it-works"].includes(location) || location.startsWith("/how-it-works");
 
   const headerClasses = cn(
     "fixed top-0 left-0 right-0 z-50 transition-all duration-300",
