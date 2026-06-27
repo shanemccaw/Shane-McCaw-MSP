@@ -915,7 +915,12 @@ router.get("/admin/marketing/analytics", requireAdmin, async (_req: Request, res
         FROM campaigns c
         LEFT JOIN campaign_assets ca ON ca.campaign_id = c.id
         GROUP BY c.id, c.name, c.status, c.created_at, c.leads_generated, c.revenue_attributed
-        ORDER BY c.revenue_attributed DESC NULLS LAST, c.created_at DESC LIMIT 10
+        ORDER BY
+          CASE WHEN COALESCE(c.leads_generated, 0) > 0
+            THEN COALESCE(c.revenue_attributed, 0)::numeric / c.leads_generated
+          END DESC NULLS LAST,
+          c.created_at DESC
+        LIMIT 10
       `),
     ]);
 

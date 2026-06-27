@@ -1585,11 +1585,17 @@ function TrafficAnalyticsSection({ fetchWithAuth }: { fetchWithAuth: (url: strin
           <h3 className="text-sm font-semibold text-[#E6EDF3] mb-1">Revenue per Lead by Campaign</h3>
           <p className="text-xs text-[#7D8590] mb-4">Revenue attributed ÷ leads generated. Campaigns with no leads show —.</p>
           {analytics?.campaignPerformance && analytics.campaignPerformance.length > 0 ? (() => {
-            const maxRpl = Math.max(0, ...analytics.campaignPerformance.map(c => c.revenuePerLead ?? 0));
-            const topId = analytics.campaignPerformance.find(c => c.revenuePerLead !== null && c.revenuePerLead === maxRpl)?.id ?? null;
+            const sorted = [...analytics.campaignPerformance].sort((a, b) => {
+              if (a.revenuePerLead === null && b.revenuePerLead === null) return 0;
+              if (a.revenuePerLead === null) return 1;
+              if (b.revenuePerLead === null) return -1;
+              return b.revenuePerLead - a.revenuePerLead;
+            });
+            const maxRpl = sorted[0]?.revenuePerLead ?? 0;
+            const topId = maxRpl > 0 ? sorted[0]?.id ?? null : null;
             return (
               <div className="space-y-2">
-                {analytics.campaignPerformance.map(c => {
+                {sorted.map(c => {
                   const isTop = c.id === topId && c.revenuePerLead !== null;
                   const barPct = maxRpl > 0 && c.revenuePerLead !== null ? (c.revenuePerLead / maxRpl) * 100 : 0;
                   return (
