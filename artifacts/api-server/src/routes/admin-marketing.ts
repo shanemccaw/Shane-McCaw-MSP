@@ -327,6 +327,20 @@ router.post("/admin/marketing/generate/outreach", requireAdmin, async (req: Requ
       }
     }
 
+    if (body.recommendedLeadId && !body.leadId) {
+      const [recLead] = await db.select().from(recommendedLeadsTable)
+        .where(eq(recommendedLeadsTable.id, body.recommendedLeadId));
+      if (recLead) {
+        leadData = {
+          name: recLead.name,
+          company: recLead.company ?? "",
+          role: recLead.role ?? "",
+          industry: recLead.industry ?? "",
+          painPoints: recLead.painPoints ?? [],
+        };
+      }
+    }
+
     const icpContext = await buildICPContext();
     const painStr = leadData.painPoints.join(", ") || "M365 adoption challenges";
 

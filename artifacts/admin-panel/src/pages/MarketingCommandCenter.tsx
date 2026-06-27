@@ -708,6 +708,12 @@ function RecommendedLeadsSection({ fetchWithAuth }: { fetchWithAuth: (url: strin
                   {lead.painPoints.slice(0, 2).map((p, i) => <span key={i} className="text-[10px] px-1.5 py-0.5 rounded bg-red-500/10 text-red-400">{p}</span>)}
                 </div>
               )}
+              {generatedDrafts[lead.id] && (
+                <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-emerald-500/10 border border-emerald-500/20">
+                  <svg className="w-3 h-3 text-emerald-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+                  <span className="text-[10px] text-emerald-400">Draft saved</span>
+                </div>
+              )}
               <div className="flex flex-wrap gap-1 pt-1 border-t border-[#30363D]">
                 <button onClick={() => { void convert(lead.id); }} className="text-[10px] px-2 py-1 rounded bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30 transition-colors">Add to Leads</button>
                 <button onClick={() => setOutreachModal({ recommendedLeadId: lead.id, leadName: lead.name, leadEmail: lead.email ?? "", type: "cold_email" })} className="text-[10px] px-2 py-1 rounded bg-[#0078D4]/20 text-[#58A6FF] hover:bg-[#0078D4]/30 transition-colors">Email</button>
