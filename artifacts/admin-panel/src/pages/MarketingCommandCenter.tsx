@@ -5649,6 +5649,11 @@ function LandingCopyPanel({
             )}
           </div>
         </div>
+        <p className="text-[10px] text-[#484F58] mb-3">
+          {offers.length > 0
+            ? `Using ${offers.length} offer${offers.length === 1 ? "" : "s"}: ${offers.map(o => o.name).join(", ")}`
+            : "No linked offers — using campaign description only"}
+        </p>
         {editing ? (
           <textarea
             value={editText}
