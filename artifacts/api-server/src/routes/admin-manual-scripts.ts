@@ -106,15 +106,18 @@ router.post("/admin/manual-scripts/:scriptId/generate-package", requireAdmin, as
     ];
 
     const [existing] = await db
-      .select({ id: scriptRunResultsTable.id })
+      .select({ id: scriptRunResultsTable.id, createdAt: scriptRunResultsTable.createdAt })
       .from(scriptRunResultsTable)
       .where(and(...dedupConditions))
       .limit(1);
 
     let runResultId: number;
+    let packageCreatedAt: Date;
+    const reused = !!existing;
 
     if (existing) {
       runResultId = existing.id;
+      packageCreatedAt = existing.createdAt;
       logger.info({ scriptId, runResultId, customerId }, "admin-manual-scripts: reusing existing awaiting_upload row");
     } else {
       const [resultRow] = await db
@@ -126,8 +129,9 @@ router.post("/admin/manual-scripts/:scriptId/generate-package", requireAdmin, as
           status: "awaiting_upload",
           executionSource: "manual",
         })
-        .returning({ id: scriptRunResultsTable.id });
+        .returning({ id: scriptRunResultsTable.id, createdAt: scriptRunResultsTable.createdAt });
       runResultId = resultRow.id;
+      packageCreatedAt = resultRow.createdAt;
     }
 
     const pkg = generateManualScriptPackage({
@@ -175,6 +179,8 @@ router.post("/admin/manual-scripts/:scriptId/generate-package", requireAdmin, as
       instructions: pkg.instructions,
       uploadUrl,
       status: "awaiting_upload",
+      reused,
+      packageCreatedAt: packageCreatedAt.toISOString(),
     });
   } catch (err) {
     logger.error({ err, scriptId }, "admin-manual-scripts: generate-package failed");

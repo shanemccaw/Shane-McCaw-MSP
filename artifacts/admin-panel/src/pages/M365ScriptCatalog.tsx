@@ -77,6 +77,8 @@ interface PackageRunScriptResult {
   instructions?: string;
   filename?: string;
   uploadUrl?: string;
+  reused?: boolean;
+  packageCreatedAt?: string;
 }
 
 interface PackageRunResult {
@@ -766,6 +768,19 @@ function ManualScriptResultCard({
         </div>
         <span className="flex-shrink-0 text-[10px] text-[#484F58]">#{result.runOrder + 1}</span>
       </div>
+
+      {status !== "completed" && result.reused && result.packageCreatedAt && (
+        <div className="flex items-start gap-2 bg-amber-500/10 border border-amber-500/30 rounded-lg px-3 py-2">
+          <svg className="w-3.5 h-3.5 text-amber-400 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+          </svg>
+          <p className="text-[10px] text-amber-300 leading-snug">
+            <span className="font-semibold">Existing package reused</span> — originally created{" "}
+            {new Date(result.packageCreatedAt).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}.
+            The script and upload link are unchanged.
+          </p>
+        </div>
+      )}
 
       {status !== "completed" && (
         <div className="space-y-2">
