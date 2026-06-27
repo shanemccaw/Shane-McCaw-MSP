@@ -593,6 +593,7 @@ function RecommendedLeadsSection({ fetchWithAuth }: { fetchWithAuth: (url: strin
   const [campaignModal, setCampaignModal] = useState<RecommendedLead | null>(null);
   const [generatedDrafts, setGeneratedDrafts] = useState<Record<number, string>>({});
   const [genError, setGenError] = useState<string | null>(null);
+  const [pendingDismiss, setPendingDismiss] = useState<{ id: number; leadName: string; timerId: ReturnType<typeof setTimeout> } | null>(null);
   const hasFetched = useRef(false);
 
   const loadLeads = useCallback(async () => {
@@ -660,9 +661,33 @@ function RecommendedLeadsSection({ fetchWithAuth }: { fetchWithAuth: (url: strin
     setLeads(prev => prev.map(l => l.id === id ? { ...l, status: "converted" as const } : l));
   };
 
-  const dismiss = async (id: number) => {
+  const commitDismiss = useCallback(async (id: number) => {
     await fetchWithAuth(`${API}/admin/marketing/recommended-leads/${id}/dismiss`, { method: "PATCH" });
+  }, [fetchWithAuth]);
+
+  const dismiss = (id: number) => {
+    const lead = leads.find(l => l.id === id);
+    const hasDraft = !!(generatedDrafts[id] ?? lead?.lastOutreachDraft);
+    // Optimistically hide the lead immediately
     setLeads(prev => prev.map(l => l.id === id ? { ...l, status: "dismissed" as const } : l));
+    if (hasDraft) {
+      // Show undo toast — defer the PATCH for 5 seconds
+      const timerId = setTimeout(() => {
+        void commitDismiss(id);
+        setPendingDismiss(null);
+      }, 5000);
+      setPendingDismiss({ id, leadName: lead?.name ?? "Lead", timerId });
+    } else {
+      // No draft — dismiss immediately, no toast needed
+      void commitDismiss(id);
+    }
+  };
+
+  const undoDismiss = () => {
+    if (!pendingDismiss) return;
+    clearTimeout(pendingDismiss.timerId);
+    setLeads(prev => prev.map(l => l.id === pendingDismiss.id ? { ...l, status: "pending" as const } : l));
+    setPendingDismiss(null);
   };
 
   const active = leads.filter(l => l.status === "pending");
@@ -736,6 +761,17 @@ function RecommendedLeadsSection({ fetchWithAuth }: { fetchWithAuth: (url: strin
               </div>
             </div>
           ))}
+        </div>
+      )}
+
+      {pendingDismiss && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 px-4 py-3 rounded-xl bg-[#21262D] border border-[#30363D] shadow-2xl text-sm text-[#E6EDF3]">
+          <svg className="w-4 h-4 text-amber-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" /></svg>
+          <span><span className="font-medium">{pendingDismiss.leadName}</span> dismissed — saved draft will be lost</span>
+          <button onClick={undoDismiss}
+            className="ml-1 px-3 py-1 rounded-lg bg-[#0078D4] text-white text-xs font-semibold hover:bg-[#0078D4]/80 transition-colors flex-shrink-0">
+            Undo
+          </button>
         </div>
       )}
 
