@@ -588,10 +588,12 @@ function GeneratorTab({
   onPackageSaved,
   baseInstructions,
   onBaseInstructionsChange,
+  onScriptUpdated,
 }: {
   token: string;
   initialScript?: PsScriptDetail | null;
   onScriptSaved: (s: PsScriptListItem) => void;
+  onScriptUpdated?: (s: PsScriptListItem) => void;
   onPackageSaved: (p: ScriptPackageListItem) => void;
   baseInstructions: string;
   onBaseInstructionsChange: (v: string) => void;
@@ -604,6 +606,7 @@ function GeneratorTab({
     initialScript?.permissions ?? { appPermissions: [], delegatedPermissions: [], notes: "" }
   );
   const [generating, setGenerating] = useState(false);
+  const [updating, setUpdating] = useState(false);
   const [showSaveModal, setShowSaveModal] = useState(false);
   const [copied, setCopied] = useState(false);
 
@@ -712,6 +715,23 @@ function GeneratorTab({
   const handleDownload = () => {
     if (!scriptBody) return;
     downloadFile(scriptBody, `script-${Date.now()}.ps1`);
+  };
+
+  const updateSavedCopy = async () => {
+    if (!initialScript?.id || !scriptBody) return;
+    setUpdating(true);
+    try {
+      const updated = await apiFetch(`/admin/ps-scripts/${initialScript.id}`, token, {
+        method: "PUT",
+        body: JSON.stringify({ scriptBody, permissions }),
+      }) as PsScriptListItem;
+      onScriptUpdated?.(updated);
+      toast({ title: "Library entry updated" });
+    } catch (e) {
+      toast({ title: "Update failed", description: e instanceof Error ? e.message : "Unknown error", variant: "destructive" });
+    } finally {
+      setUpdating(false);
+    }
   };
 
   return (
@@ -872,6 +892,21 @@ function GeneratorTab({
                       <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
                       Download .ps1
                     </button>
+                    {initialScript?.id && (
+                      <button
+                        onClick={updateSavedCopy}
+                        disabled={updating || !scriptBody}
+                        title="Push current script & permissions back to the saved library entry"
+                        className="flex items-center gap-1.5 text-xs px-2.5 py-1 rounded bg-green-500/10 border border-green-500/30 text-green-400 hover:bg-green-500/20 disabled:opacity-50 transition-colors"
+                      >
+                        {updating ? (
+                          <div className="w-3 h-3 border border-green-400/40 border-t-green-400 rounded-full animate-spin" />
+                        ) : (
+                          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
+                        )}
+                        {updating ? "Updating…" : "Update saved copy"}
+                      </button>
+                    )}
                     <button
                       onClick={() => setShowSaveModal(true)}
                       className="flex items-center gap-1.5 text-xs px-2.5 py-1 rounded bg-[#0078D4]/15 border border-[#0078D4]/30 text-[#58A6FF] hover:bg-[#0078D4]/25 transition-colors"
@@ -1268,6 +1303,11 @@ export default function ScriptGeneratorPage() {
     toast({ title: "Script saved to library" });
   };
 
+  const handleScriptUpdated = (s: PsScriptListItem) => {
+    setScripts((prev) => prev.map((existing) => (existing.id === s.id ? s : existing)));
+    setLibraryLoaded(true);
+  };
+
   const handlePackageSaved = (p: ScriptPackageListItem) => {
     setPackages((prev) => [p, ...prev]);
     setLibraryLoaded(true);
@@ -1345,6 +1385,7 @@ export default function ScriptGeneratorPage() {
           token={token}
           initialScript={editorScript}
           onScriptSaved={handleScriptSaved}
+          onScriptUpdated={handleScriptUpdated}
           onPackageSaved={handlePackageSaved}
           baseInstructions={baseInstructions}
           onBaseInstructionsChange={handleBaseInstructionsChange}
