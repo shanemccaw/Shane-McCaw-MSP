@@ -63,6 +63,7 @@ export function ManualScriptUploadCard({ script, projectId, onCompleted }: Props
   const [instructionsOpen, setInstructionsOpen] = useState(false);
   const [dragOver, setDragOver] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [errorKind, setErrorKind] = useState<"mismatch" | "generic">("generic");
   const [downloading, setDownloading] = useState(false);
   const [uploadMode, setUploadMode] = useState<"file" | "paste">("file");
   const [pasteText, setPasteText] = useState("");
@@ -106,7 +107,13 @@ export function ManualScriptUploadCard({ script, projectId, onCompleted }: Props
 
       if (!res.ok) {
         const data = await res.json() as { error?: string };
-        setError(data.error ?? "Upload failed. Please try again.");
+        if (res.status === 422) {
+          setErrorKind("mismatch");
+          setError(data.error ?? "The uploaded file does not match the expected schema for this script.");
+        } else {
+          setErrorKind("generic");
+          setError(data.error ?? "Upload failed. Please try again.");
+        }
         setStatus("awaiting_upload");
         return;
       }
@@ -123,6 +130,7 @@ export function ManualScriptUploadCard({ script, projectId, onCompleted }: Props
       setStatus("completed");
       onCompleted();
     } catch {
+      setErrorKind("generic");
       setError("Upload failed due to a network error. Please check your connection and try again.");
       setStatus("awaiting_upload");
     }
@@ -204,6 +212,7 @@ export function ManualScriptUploadCard({ script, projectId, onCompleted }: Props
   const handleModeSwitch = (mode: "file" | "paste") => {
     setUploadMode(mode);
     setError(null);
+    setErrorKind("generic");
   };
 
   return (
@@ -478,7 +487,18 @@ export function ManualScriptUploadCard({ script, projectId, onCompleted }: Props
             </div>
 
             {/* Error state */}
-            {error && (
+            {error && errorKind === "mismatch" && (
+              <div className="flex items-start gap-2.5 bg-amber-50 border border-amber-300 rounded-lg px-4 py-3">
+                <svg className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
+                </svg>
+                <div>
+                  <p className="text-sm font-semibold text-amber-800">Wrong script output — file doesn't match</p>
+                  <p className="text-xs text-amber-700 mt-1 leading-relaxed">{error}</p>
+                </div>
+              </div>
+            )}
+            {error && errorKind === "generic" && (
               <div className="flex items-start gap-2.5 bg-red-50 border border-red-200 rounded-lg px-4 py-3">
                 <svg className="w-4 h-4 text-red-500 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
