@@ -626,8 +626,6 @@ function GeneratorTab({
   const generate = async () => {
     if (!prompt.trim()) { toast({ title: "Enter a description first", variant: "destructive" }); return; }
     setGenerating(true);
-    setScriptBody("");
-    setPermissions({ appPermissions: [], delegatedPermissions: [], notes: "" });
     setModules([]);
     setFixSummary("");
     setShowBugReporter(false);
@@ -641,6 +639,14 @@ function GeneratorTab({
           detailedInstructions: detailedInstructions.trim() || undefined,
         }),
       }) as { script: string; permissions: PsScriptPermissions };
+      if (!result.script || result.script.trim().length < 20) {
+        toast({
+          title: "Generation could not be applied",
+          description: "The AI returned an unreadable response. No changes have been made.",
+          variant: "destructive",
+        });
+        return;
+      }
       setScriptBody(result.script);
       setPermissions(result.permissions);
     } catch (e) {

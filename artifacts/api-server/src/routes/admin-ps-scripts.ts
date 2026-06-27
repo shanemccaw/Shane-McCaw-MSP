@@ -181,9 +181,23 @@ Write the complete PowerShell script followed by the permissions JSON block.`,
 
     // Extract the script body — everything before the ```json block
     const jsonFenceIdx = fullText.search(/```json/i);
-    const scriptBody = jsonFenceIdx > 0
+    let scriptBody = jsonFenceIdx > 0
       ? fullText.slice(0, jsonFenceIdx).replace(/```powershell\s*/i, "").replace(/```\s*$/, "").trim()
       : fullText.replace(/```(?:powershell)?\s*/gi, "").replace(/```\s*/g, "").trim();
+
+    if (scriptBody.length < 20) {
+      logger.warn(
+        { rawResponsePrefix: fullText.slice(0, 500) },
+        "generate endpoint: scriptBody extraction yielded empty/short result; applying safe fallback",
+      );
+      // Safe fallback: return the full text stripped of the JSON block and fences
+      const jsonBlockRe = /```json[\s\S]*?```/gi;
+      scriptBody = fullText
+        .replace(jsonBlockRe, "")
+        .replace(/```powershell\s*/gi, "")
+        .replace(/```\s*$/gm, "")
+        .trim();
+    }
 
     // Extract permissions JSON
     const rawPermissions = extractJson(fullText);
