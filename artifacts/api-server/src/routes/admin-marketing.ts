@@ -209,7 +209,10 @@ Respond with a JSON array (no markdown):
     if (content?.type !== "text") throw new Error("Unexpected response type");
 
     let leads: Array<Record<string, unknown>>;
-    try { leads = JSON.parse(content.text) as Array<Record<string, unknown>>; }
+    try {
+      const rawText = content.text.replace(/^```(?:json)?\s*/i, "").replace(/\s*```\s*$/, "").trim();
+      leads = JSON.parse(rawText) as Array<Record<string, unknown>>;
+    }
     catch { throw new Error("Failed to parse AI response as JSON"); }
 
     const inserted = await db.insert(recommendedLeadsTable).values(
@@ -479,6 +482,150 @@ Generate complete campaign assets. Respond with JSON only (no markdown):
     }));
 
     res.json(preview);
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+// ─── AI Suggest: Outreach Prospect ────────────────────────────────────────────
+
+router.post("/admin/marketing/generate/outreach-suggest", requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const { templateType } = req.body as { templateType?: string };
+    const icpContext = await buildICPContext();
+
+    const message = await anthropic.messages.create({
+      model: "claude-haiku-4-5",
+      max_tokens: 400,
+      messages: [{
+        role: "user",
+        content: `You are a B2B sales specialist for Shane McCaw Consulting, a Microsoft 365 consulting firm.
+
+${icpContext}
+
+Generate one realistic ICP-matched prospect suitable for a "${templateType ?? "cold_email"}" outreach.
+Respond with JSON only (no markdown):
+{"name":"First Last","company":"Company Name","role":"Job Title","industry":"Industry"}`,
+      }],
+    });
+
+    const content = message.content[0];
+    if (content?.type !== "text") throw new Error("Unexpected response type");
+    const rawText = content.text.replace(/^```(?:json)?\s*/i, "").replace(/\s*```\s*$/, "").trim();
+    const prospect = JSON.parse(rawText) as { name: string; company: string; role: string; industry: string };
+    res.json(prospect);
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+// ─── AI Suggest: Content Idea ─────────────────────────────────────────────────
+
+router.post("/admin/marketing/generate/content-suggest", requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const { contentType } = req.body as { contentType?: string };
+    const icpContext = await buildICPContext();
+
+    const message = await anthropic.messages.create({
+      model: "claude-haiku-4-5",
+      max_tokens: 400,
+      messages: [{
+        role: "user",
+        content: `You are a content strategist for Shane McCaw Consulting, a Microsoft 365 consulting firm.
+
+${icpContext}
+
+Suggest one on-brand content idea for a "${contentType ?? "blog_post"}".
+Respond with JSON only (no markdown):
+{"topic":"Topic title here","tone":"e.g. authoritative, conversational","keywords":"keyword1, keyword2, keyword3"}`,
+      }],
+    });
+
+    const content = message.content[0];
+    if (content?.type !== "text") throw new Error("Unexpected response type");
+    const rawText = content.text.replace(/^```(?:json)?\s*/i, "").replace(/\s*```\s*$/, "").trim();
+    const idea = JSON.parse(rawText) as { topic: string; tone: string; keywords: string };
+    res.json(idea);
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+// ─── AI Suggest: Marketing Tasks ──────────────────────────────────────────────
+
+router.post("/admin/marketing/generate/task-suggestions", requireAdmin, async (_req: Request, res: Response) => {
+  try {
+    const icpContext = await buildICPContext();
+
+    const message = await anthropic.messages.create({
+      model: "claude-haiku-4-5",
+      max_tokens: 1000,
+      messages: [{
+        role: "user",
+        content: `You are a marketing strategist for Shane McCaw Consulting, a Microsoft 365 consulting firm.
+
+${icpContext}
+
+Generate 6 prioritised, actionable marketing and sales tasks tailored to Shane's services and ICP.
+Respond with a JSON array only (no markdown):
+[{"title":"Task title","description":"Brief description of what to do and why"}]`,
+      }],
+    });
+
+    const content = message.content[0];
+    if (content?.type !== "text") throw new Error("Unexpected response type");
+    const rawText = content.text.replace(/^```(?:json)?\s*/i, "").replace(/\s*```\s*$/, "").trim();
+    const suggestions = JSON.parse(rawText) as Array<{ title: string; description: string }>;
+
+    const inserted = await db.insert(marketingTasksTable).values(
+      suggestions.map(s => ({
+        title: s.title,
+        description: s.description ?? null,
+        status: "ideas" as const,
+      }))
+    ).returning();
+
+    res.json(inserted);
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+// ─── AI Suggest: Campaign Field ───────────────────────────────────────────────
+
+router.post("/admin/marketing/generate/campaign-suggest", requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const { field, name, goal, audience } = req.body as {
+      field: "goal" | "audience" | "offer";
+      name?: string;
+      goal?: string;
+      audience?: string;
+    };
+    const icpContext = await buildICPContext();
+
+    const fieldPrompts: Record<string, string> = {
+      goal: `Suggest a specific, measurable campaign goal for a Microsoft 365 consulting firm. Campaign name: "${name ?? "new campaign"}". Context: ${icpContext}. Return one concise goal sentence (1-2 sentences).`,
+      audience: `Suggest a target audience description for a Microsoft 365 consulting campaign with goal: "${goal ?? "generate leads"}". Context: ${icpContext}. Return one concise audience paragraph.`,
+      offer: `Suggest a compelling offer for a Microsoft 365 consulting campaign targeting "${audience ?? "IT decision-makers"}" with goal "${goal ?? "generate leads"}". Context: ${icpContext}. Return one concise offer description (1-2 sentences).`,
+    };
+
+    const prompt = fieldPrompts[field];
+    if (!prompt) { res.status(400).json({ error: "Invalid field" }); return; }
+
+    const message = await anthropic.messages.create({
+      model: "claude-haiku-4-5",
+      max_tokens: 300,
+      messages: [{
+        role: "user",
+        content: `You are a marketing strategist for Shane McCaw Consulting, a Microsoft 365 consulting firm. ${prompt} Respond with JSON only (no markdown): {"value":"your suggestion here"}`,
+      }],
+    });
+
+    const content = message.content[0];
+    if (content?.type !== "text") throw new Error("Unexpected response type");
+    const rawText = content.text.replace(/^```(?:json)?\s*/i, "").replace(/\s*```\s*$/, "").trim();
+    const result = JSON.parse(rawText) as { value: string };
+    res.json(result);
   } catch (e) {
     res.status(500).json({ error: String(e) });
   }

@@ -985,6 +985,7 @@ function OutreachAutomationSection({ fetchWithAuth }: { fetchWithAuth: (url: str
   const [activeTab, setActiveTab] = useState<"cold_email" | "linkedin" | "followup" | "cold_call">("cold_email");
   const [content, setContent] = useState("");
   const [generating, setGenerating] = useState(false);
+  const [suggesting, setSuggesting] = useState(false);
   const [name, setName] = useState("");
   const [company, setCompany] = useState("");
   const [role, setRole] = useState("");
@@ -1014,6 +1015,22 @@ function OutreachAutomationSection({ fetchWithAuth }: { fetchWithAuth: (url: str
       const data = await r.json() as { content: string };
       setContent(data.content ?? "");
     } finally { setGenerating(false); }
+  };
+
+  const suggestProspect = async () => {
+    setSuggesting(true);
+    try {
+      const r = await fetchWithAuth(`${API}/admin/marketing/generate/outreach-suggest`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ templateType: activeTab }),
+      });
+      const data = await r.json() as { name: string; company: string; role: string; industry: string };
+      if (data.name) setName(data.name);
+      if (data.company) setCompany(data.company);
+      if (data.role) setRole(data.role);
+      if (data.industry) setIndustry(data.industry);
+    } finally { setSuggesting(false); }
   };
 
   const save = async () => {
@@ -1057,6 +1074,10 @@ function OutreachAutomationSection({ fetchWithAuth }: { fetchWithAuth: (url: str
                 </button>
               ))}
             </div>
+            <button onClick={() => { void suggestProspect(); }} disabled={suggesting}
+              className="text-xs px-3 py-1.5 rounded-lg border border-[#0078D4]/40 text-[#58A6FF] hover:bg-[#0078D4]/10 disabled:opacity-40 transition-colors flex items-center gap-1">
+              {suggesting ? <><div className="w-3 h-3 border border-[#58A6FF] border-t-transparent rounded-full animate-spin" />Suggesting…</> : "✦ Suggest"}
+            </button>
             {campaigns.length > 0 && (
               <select
                 value={tagCampaignId ?? ""}
@@ -1171,6 +1192,7 @@ function ContentHubSection({ fetchWithAuth }: { fetchWithAuth: (url: string, opt
   const [keywords, setKeywords] = useState("");
   const [content, setContent] = useState("");
   const [generating, setGenerating] = useState(false);
+  const [suggesting, setSuggesting] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [savedAssets, setSavedAssets] = useState<CampaignAsset[]>([]);
@@ -1188,6 +1210,26 @@ function ContentHubSection({ fetchWithAuth }: { fetchWithAuth: (url: string, opt
   }, [fetchWithAuth]);
 
   useEffect(() => { void loadAssets(activeTab); }, [activeTab, loadAssets]);
+
+  const suggestContentIdea = async () => {
+    setSuggesting(true);
+    try {
+      const r = await fetchWithAuth(`${API}/admin/marketing/generate/content-suggest`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ contentType: activeTab }),
+      });
+      const data = await r.json() as { topic: string; tone: string; keywords: string };
+      if (data.topic) setTopic(data.topic);
+      if (data.tone) setTone(data.tone);
+      if (data.keywords) setKeywords(data.keywords);
+    } finally { setSuggesting(false); }
+  };
+
+  const deleteAsset = async (id: number) => {
+    await fetchWithAuth(`${API}/admin/marketing/campaign-assets/${id}`, { method: "DELETE" });
+    setSavedAssets(prev => prev.filter(a => a.id !== id));
+  };
 
   const generate = async () => {
     if (!topic.trim()) return;
@@ -1246,7 +1288,13 @@ function ContentHubSection({ fetchWithAuth }: { fetchWithAuth: (url: string, opt
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
           <div className="md:col-span-1 space-y-3">
             <div>
-              <label className="text-[10px] text-[#7D8590] uppercase tracking-wide">Topic *</label>
+              <div className="flex items-center justify-between mb-1">
+                <label className="text-[10px] text-[#7D8590] uppercase tracking-wide">Topic *</label>
+                <button onClick={() => { void suggestContentIdea(); }} disabled={suggesting}
+                  className="text-[10px] px-2 py-0.5 rounded border border-[#0078D4]/40 text-[#58A6FF] hover:bg-[#0078D4]/10 disabled:opacity-40 transition-colors flex items-center gap-1">
+                  {suggesting ? <><div className="w-2.5 h-2.5 border border-[#58A6FF] border-t-transparent rounded-full animate-spin" />…</> : "✦ Suggest"}
+                </button>
+              </div>
               <input value={topic} onChange={e => setTopic(e.target.value)} placeholder="e.g. Microsoft Copilot for Teams…"
                 className="mt-1 w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-sm text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60" />
             </div>
@@ -1314,6 +1362,8 @@ function ContentHubSection({ fetchWithAuth }: { fetchWithAuth: (url: string, opt
                     <Badge text={TAB_LABEL[asset.assetType] ?? asset.assetType} color="blue" />
                     <span className="text-[10px] text-[#484F58]">{new Date(asset.createdAt).toLocaleDateString()}</span>
                     <span className="text-[#484F58] text-xs">{expandedId === asset.id ? "▲" : "▼"}</span>
+                    <button onClick={e => { e.stopPropagation(); void deleteAsset(asset.id); }}
+                      className="text-[#484F58] hover:text-red-400 transition-colors text-[10px] leading-none">✕</button>
                   </div>
                 </button>
                 {expandedId === asset.id && (
@@ -1921,6 +1971,7 @@ function MarketingTasksKanban({ fetchWithAuth }: { fetchWithAuth: (url: string, 
   const [newDesc, setNewDesc] = useState("");
   const [adding, setAdding] = useState(false);
   const [showForm, setShowForm] = useState(false);
+  const [aiSuggesting, setAiSuggesting] = useState(false);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
@@ -2001,11 +2052,32 @@ function MarketingTasksKanban({ fetchWithAuth }: { fetchWithAuth: (url: string, 
     setTasks(prev => prev.filter(t => t.id !== id));
   };
 
+  const aiSuggestTasks = async () => {
+    setAiSuggesting(true);
+    try {
+      const r = await fetchWithAuth(`${API}/admin/marketing/generate/task-suggestions`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      });
+      const newTasks = await r.json() as MarketingTask[];
+      if (Array.isArray(newTasks)) {
+        setTasks(prev => [...newTasks, ...prev]);
+      }
+    } finally { setAiSuggesting(false); }
+  };
+
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-2">
         <h2 className="text-lg font-semibold text-[#E6EDF3]">Marketing Tasks</h2>
-        <button onClick={() => setShowForm(f => !f)} className="text-xs px-3 py-1.5 rounded-lg bg-[#0078D4] text-white hover:bg-[#0078D4]/80 transition-colors">+ Add Task</button>
+        <div className="flex items-center gap-2">
+          <button onClick={() => { void aiSuggestTasks(); }} disabled={aiSuggesting}
+            className="text-xs px-3 py-1.5 rounded-lg border border-[#0078D4]/40 text-[#58A6FF] hover:bg-[#0078D4]/10 disabled:opacity-40 transition-colors flex items-center gap-1">
+            {aiSuggesting ? <><div className="w-3 h-3 border border-[#58A6FF] border-t-transparent rounded-full animate-spin" />Generating…</> : "✦ AI Suggest Tasks"}
+          </button>
+          <button onClick={() => setShowForm(f => !f)} className="text-xs px-3 py-1.5 rounded-lg bg-[#0078D4] text-white hover:bg-[#0078D4]/80 transition-colors">+ Add Task</button>
+        </div>
       </div>
 
       {showForm && (
@@ -2149,6 +2221,7 @@ function CampaignBuilderWizard({ fetchWithAuth }: { fetchWithAuth: (url: string,
   const [audience, setAudience] = useState("");
   const [offer, setOffer] = useState("");
   const [name, setName] = useState("");
+  const [aiFillingField, setAiFillingField] = useState<"goal" | "audience" | "offer" | null>(null);
   const [previewing, setPreviewing] = useState(false);
   const [previewAssets, setPreviewAssets] = useState<PreviewAsset[]>([]);
   const [saving, setSaving] = useState(false);
@@ -2160,6 +2233,23 @@ function CampaignBuilderWizard({ fetchWithAuth }: { fetchWithAuth: (url: string,
   useEffect(() => {
     fetchWithAuth(`${API}/admin/marketing/campaigns`).then(r => r.json()).then(d => setCampaigns(d as Campaign[])).catch(() => null).finally(() => setLoadingCampaigns(false));
   }, [fetchWithAuth]);
+
+  const aiFillField = async (field: "goal" | "audience" | "offer") => {
+    setAiFillingField(field);
+    try {
+      const r = await fetchWithAuth(`${API}/admin/marketing/generate/campaign-suggest`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ field, name, goal, audience }),
+      });
+      const data = await r.json() as { value: string };
+      if (data.value) {
+        if (field === "goal") setGoal(data.value);
+        else if (field === "audience") setAudience(data.value);
+        else if (field === "offer") setOffer(data.value);
+      }
+    } finally { setAiFillingField(null); }
+  };
 
   const previewAssetGeneration = async () => {
     setPreviewing(true);
@@ -2237,7 +2327,13 @@ function CampaignBuilderWizard({ fetchWithAuth }: { fetchWithAuth: (url: string,
                   className="mt-1 w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-sm text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60" />
               </div>
               <div>
-                <label className="text-xs font-semibold text-[#E6EDF3]">Campaign Goal *</label>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-xs font-semibold text-[#E6EDF3]">Campaign Goal *</label>
+                  <button onClick={() => { void aiFillField("goal"); }} disabled={aiFillingField !== null}
+                    className="text-[10px] px-2 py-0.5 rounded border border-[#0078D4]/40 text-[#58A6FF] hover:bg-[#0078D4]/10 disabled:opacity-40 transition-colors flex items-center gap-1">
+                    {aiFillingField === "goal" ? <><div className="w-2.5 h-2.5 border border-[#58A6FF] border-t-transparent rounded-full animate-spin" />Filling…</> : "✦ AI Fill"}
+                  </button>
+                </div>
                 <textarea value={goal} onChange={e => setGoal(e.target.value)} rows={3} placeholder="e.g. Generate 20 qualified leads for Microsoft Copilot workshops…"
                   className="mt-1 w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-sm text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60 resize-none" />
               </div>
@@ -2249,7 +2345,13 @@ function CampaignBuilderWizard({ fetchWithAuth }: { fetchWithAuth: (url: string,
           {step === 2 && (
             <div className="space-y-3">
               <div>
-                <label className="text-xs font-semibold text-[#E6EDF3]">Target Audience *</label>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-xs font-semibold text-[#E6EDF3]">Target Audience *</label>
+                  <button onClick={() => { void aiFillField("audience"); }} disabled={aiFillingField !== null}
+                    className="text-[10px] px-2 py-0.5 rounded border border-[#0078D4]/40 text-[#58A6FF] hover:bg-[#0078D4]/10 disabled:opacity-40 transition-colors flex items-center gap-1">
+                    {aiFillingField === "audience" ? <><div className="w-2.5 h-2.5 border border-[#58A6FF] border-t-transparent rounded-full animate-spin" />Filling…</> : "✦ AI Fill"}
+                  </button>
+                </div>
                 <textarea value={audience} onChange={e => setAudience(e.target.value)} rows={3} placeholder="e.g. IT Directors and CTOs at mid-market companies (100-500 employees) using Microsoft 365…"
                   className="mt-1 w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-sm text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60 resize-none" />
               </div>
@@ -2264,7 +2366,13 @@ function CampaignBuilderWizard({ fetchWithAuth }: { fetchWithAuth: (url: string,
           {step === 3 && (
             <div className="space-y-3">
               <div>
-                <label className="text-xs font-semibold text-[#E6EDF3]">Your Offer *</label>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-xs font-semibold text-[#E6EDF3]">Your Offer *</label>
+                  <button onClick={() => { void aiFillField("offer"); }} disabled={aiFillingField !== null}
+                    className="text-[10px] px-2 py-0.5 rounded border border-[#0078D4]/40 text-[#58A6FF] hover:bg-[#0078D4]/10 disabled:opacity-40 transition-colors flex items-center gap-1">
+                    {aiFillingField === "offer" ? <><div className="w-2.5 h-2.5 border border-[#58A6FF] border-t-transparent rounded-full animate-spin" />Filling…</> : "✦ AI Fill"}
+                  </button>
+                </div>
                 <textarea value={offer} onChange={e => setOffer(e.target.value)} rows={3} placeholder="e.g. Free 30-min Microsoft Copilot Readiness Assessment ($297 value)…"
                   className="mt-1 w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-sm text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60 resize-none" />
               </div>
