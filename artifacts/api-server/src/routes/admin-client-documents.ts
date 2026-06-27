@@ -74,10 +74,10 @@ router.post("/admin/clients/:clientId/documents", requireAdmin, async (req: Requ
     return;
   }
 
-  const validCategories = ["contracts", "reports", "proposals", "sows", "assessments", "other"] as const;
+  const validCategories = ["contracts", "reports", "proposals", "deliverables", "assessments", "misc"] as const;
   const safeCategory = validCategories.includes(category as typeof validCategories[number])
     ? (category as typeof validCategories[number])
-    : "other";
+    : "misc";
 
   try {
     const [doc] = await db

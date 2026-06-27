@@ -553,7 +553,7 @@ router.patch("/leads/:id", requireAdmin, async (req: Request, res: Response) => 
 
 // GET /api/leads/:id/qualifications — score history for a lead
 router.get("/leads/:id/qualifications", requireAdmin, async (req: Request, res: Response) => {
-  const id = parseInt(req.params.id, 10);
+  const id = parseInt(req.params["id"] as string, 10);
   if (isNaN(id)) { res.status(400).json({ error: "Invalid lead id" }); return; }
 
   const rows = await db
