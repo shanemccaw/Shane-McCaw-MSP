@@ -222,8 +222,20 @@ function ScriptFormModal({
     setForm(f => ({ ...f, appRegPermissions: f.appRegPermissions.filter((_, idx) => idx !== i) }));
 
   const handleSave = async () => {
-    if (!form.name.trim() || !form.runbookName.trim()) {
-      toast({ title: "Name and Runbook Name are required", variant: "destructive" });
+    if (!form.name.trim()) {
+      toast({ title: "Script name is required", variant: "destructive" });
+      return;
+    }
+    if (!form.runbookName.trim()) {
+      toast({
+        title: azureConfigured ? "Please select a runbook" : "Runbook name is required",
+        description: azureConfigured
+          ? runbooks.length === 0
+            ? "No runbooks were found in your Azure Automation account."
+            : "Choose a runbook from the dropdown before saving."
+          : undefined,
+        variant: "destructive",
+      });
       return;
     }
     setSaving(true);
@@ -331,9 +343,15 @@ function ScriptFormModal({
                     </option>
                   )}
                 </select>
-                <p className="text-[10px] text-[#484F58] mt-1">
-                  Populated from your Azure Automation account — {runbooks.length} runbook{runbooks.length === 1 ? "" : "s"} available
-                </p>
+                {runbooks.length === 0 ? (
+                  <p className="text-[10px] text-amber-500/70 mt-1">
+                    No runbooks found in your Azure Automation account. Create a runbook in Azure first, then refresh.
+                  </p>
+                ) : (
+                  <p className="text-[10px] text-[#484F58] mt-1">
+                    Populated from your Azure Automation account — {runbooks.length} runbook{runbooks.length === 1 ? "" : "s"} available
+                  </p>
+                )}
               </>
             ) : (
               <>
@@ -406,7 +424,8 @@ function ScriptFormModal({
           </button>
           <button
             onClick={() => void handleSave()}
-            disabled={saving}
+            disabled={saving || loadingRunbooks}
+            title={loadingRunbooks ? "Waiting for runbooks to load…" : undefined}
             className="flex items-center gap-2 bg-[#0078D4] hover:bg-[#006CBE] text-white text-sm font-semibold px-4 py-2 rounded-lg transition-colors disabled:opacity-50"
           >
             {saving && <Loader2 className="w-4 h-4 animate-spin" />}
