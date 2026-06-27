@@ -27,6 +27,7 @@ interface PsScriptDetail extends PsScriptListItem {
 }
 
 interface ScriptModuleItem {
+  id?: string;
   filename: string;
   description: string | null;
   content: string;
@@ -997,18 +998,55 @@ function GeneratorTab({
 
 // ─── Library Tab ──────────────────────────────────────────────────────────────
 
+interface EditableModule {
+  id?: string;
+  filename: string;
+  description: string;
+  content: string;
+  isNew?: boolean;
+}
+
 function PackageRow({
   pkg,
   token,
   onDeleted,
+  onUpdated,
 }: {
   pkg: ScriptPackageListItem;
   token: string;
   onDeleted: (id: string) => void;
+  onUpdated: (pkg: ScriptPackageListItem) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [editMode, setEditMode] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [editTitle, setEditTitle] = useState(pkg.title);
+  const [editCategory, setEditCategory] = useState(pkg.category);
+  const [editModules, setEditModules] = useState<EditableModule[]>([]);
+  const [expandedModuleIdx, setExpandedModuleIdx] = useState<number | null>(null);
   const { toast } = useToast();
+
+  const enterEditMode = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setEditTitle(pkg.title);
+    setEditCategory(pkg.category);
+    setEditModules(pkg.modules.map((m) => ({
+      id: m.id,
+      filename: m.filename,
+      description: m.description ?? "",
+      content: m.content,
+    })));
+    setExpandedModuleIdx(null);
+    setEditMode(true);
+    setExpanded(true);
+  };
+
+  const cancelEditMode = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setEditMode(false);
+    setExpandedModuleIdx(null);
+  };
 
   const handleDelete = async (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -1023,48 +1061,219 @@ function PackageRow({
     }
   };
 
+  const updateModule = (idx: number, field: keyof EditableModule, value: string) => {
+    setEditModules((prev) => prev.map((m, i) => i === idx ? { ...m, [field]: value } : m));
+  };
+
+  const addModule = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    const newIdx = editModules.length;
+    setEditModules((prev) => [...prev, { filename: "NewModule.ps1", description: "", content: "# New module\n", isNew: true }]);
+    setExpandedModuleIdx(newIdx);
+  };
+
+  const removeModule = (idx: number) => {
+    setEditModules((prev) => prev.filter((_, i) => i !== idx));
+    setExpandedModuleIdx((prev) => {
+      if (prev === null) return null;
+      if (prev === idx) return null;
+      return prev > idx ? prev - 1 : prev;
+    });
+  };
+
+  const moveModule = (idx: number, direction: "up" | "down", e: React.MouseEvent) => {
+    e.stopPropagation();
+    const swapIdx = direction === "up" ? idx - 1 : idx + 1;
+    setEditModules((prev) => {
+      if (swapIdx < 0 || swapIdx >= prev.length) return prev;
+      const arr = [...prev];
+      [arr[idx], arr[swapIdx]] = [arr[swapIdx]!, arr[idx]!];
+      return arr;
+    });
+    setExpandedModuleIdx((prev) => {
+      if (swapIdx < 0 || swapIdx >= editModules.length) return prev;
+      if (prev === idx) return swapIdx;
+      if (prev === swapIdx) return idx;
+      return prev;
+    });
+  };
+
+  const handleSave = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setSaving(true);
+    try {
+      const basePromises: Promise<unknown>[] = [];
+
+      if (editTitle.trim() !== pkg.title || editCategory !== pkg.category) {
+        basePromises.push(apiFetch(`/admin/ps-scripts/packages/${pkg.id}`, token, {
+          method: "PATCH",
+          body: JSON.stringify({ title: editTitle.trim(), category: editCategory }),
+        }));
+      }
+
+      const deletedModules = pkg.modules.filter((om) => om.id && !editModules.some((em) => em.id === om.id));
+      for (const dm of deletedModules) {
+        if (dm.id) {
+          basePromises.push(apiFetch(`/admin/ps-scripts/modules/${dm.id}`, token, { method: "DELETE" }));
+        }
+      }
+
+      for (let i = 0; i < editModules.length; i++) {
+        const m = editModules[i];
+        if (!m || m.isNew) continue;
+        if (m.id) {
+          const orig = pkg.modules.find((om) => om.id === m.id);
+          const origIdx = pkg.modules.findIndex((om) => om.id === m.id);
+          const contentChanged = orig && (m.filename !== orig.filename || m.description !== (orig.description ?? "") || m.content !== orig.content);
+          const orderChanged = origIdx !== i;
+          if (contentChanged || orderChanged) {
+            basePromises.push(apiFetch(`/admin/ps-scripts/modules/${m.id}`, token, {
+              method: "PUT",
+              body: JSON.stringify({ filename: m.filename, description: m.description || null, content: m.content, sortOrder: i }),
+            }));
+          }
+        }
+      }
+
+      await Promise.all(basePromises);
+
+      const savedModules: ScriptModuleItem[] = [];
+      for (let i = 0; i < editModules.length; i++) {
+        const m = editModules[i]!;
+        if (m.isNew) {
+          const created = await apiFetch(`/admin/ps-scripts/packages/${pkg.id}/modules`, token, {
+            method: "POST",
+            body: JSON.stringify({ filename: m.filename, description: m.description || null, content: m.content, sortOrder: i }),
+          }) as { id: string; filename: string; description: string | null; content: string };
+          savedModules.push({ id: created.id, filename: created.filename, description: created.description, content: created.content });
+        } else {
+          savedModules.push({ id: m.id, filename: m.filename, description: m.description || null, content: m.content });
+        }
+      }
+
+      const updatedPkg: ScriptPackageListItem = {
+        ...pkg,
+        title: editTitle.trim(),
+        category: editCategory,
+        modules: savedModules,
+      };
+      onUpdated(updatedPkg);
+      setEditMode(false);
+      setExpandedModuleIdx(null);
+      toast({ title: "Package saved" });
+    } catch (err) {
+      toast({ title: err instanceof Error ? err.message : "Failed to save package", variant: "destructive" });
+    } finally {
+      setSaving(false);
+    }
+  };
+
   return (
     <div className="border-b border-[#21262D] last:border-b-0">
       <div
-        className="flex items-center px-4 py-3 hover:bg-[#1C2128] transition-colors cursor-pointer"
-        onClick={() => setExpanded((v) => !v)}
+        className={`flex items-center px-4 py-3 transition-colors ${editMode ? "bg-[#1C2128]" : "hover:bg-[#1C2128] cursor-pointer"}`}
+        onClick={editMode ? undefined : () => setExpanded((v) => !v)}
       >
-        <svg className={`w-3.5 h-3.5 text-[#484F58] flex-shrink-0 mr-2 transition-transform ${expanded ? "rotate-90" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-          <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
-        </svg>
+        {!editMode && (
+          <svg className={`w-3.5 h-3.5 text-[#484F58] flex-shrink-0 mr-2 transition-transform ${expanded ? "rotate-90" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+          </svg>
+        )}
+        {editMode && <div className="w-5 flex-shrink-0 mr-2" />}
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2">
-            <p className="font-medium text-[#E6EDF3] truncate max-w-xs">{pkg.title}</p>
-            <PackageBadge />
+          {editMode ? (
+            <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+              <input
+                value={editTitle}
+                onChange={(e) => setEditTitle(e.target.value)}
+                className="flex-1 bg-[#0D1117] border border-[#30363D] rounded-lg px-2 py-1 text-sm font-medium text-[#E6EDF3] outline-none focus:border-[#0078D4]/60 transition-colors"
+                placeholder="Package title"
+              />
+              <select
+                value={editCategory}
+                onChange={(e) => setEditCategory(e.target.value)}
+                className="bg-[#0D1117] border border-[#30363D] rounded-lg px-2 py-1 text-xs text-[#E6EDF3] outline-none focus:border-[#0078D4]/60 transition-colors"
+              >
+                {CATEGORIES.map((c) => (
+                  <option key={c.value} value={c.value}>{c.label}</option>
+                ))}
+              </select>
+            </div>
+          ) : (
+            <>
+              <div className="flex items-center gap-2">
+                <p className="font-medium text-[#E6EDF3] truncate max-w-xs">{pkg.title}</p>
+                <PackageBadge />
+              </div>
+              <p className="text-xs text-[#7D8590] mt-0.5">{pkg.modules.length} modules</p>
+            </>
+          )}
+        </div>
+        {!editMode && (
+          <div className="hidden md:block px-4">
+            <CategoryBadge category={pkg.category} />
           </div>
-          <p className="text-xs text-[#7D8590] mt-0.5">{pkg.modules.length} modules</p>
-        </div>
-        <div className="hidden md:block px-4">
-          <CategoryBadge category={pkg.category} />
-        </div>
-        <div className="hidden lg:block px-4 text-xs text-[#7D8590] whitespace-nowrap">
-          {formatDate(pkg.createdAt)}
-        </div>
+        )}
+        {!editMode && (
+          <div className="hidden lg:block px-4 text-xs text-[#7D8590] whitespace-nowrap">
+            {formatDate(pkg.createdAt)}
+          </div>
+        )}
         <div className="flex items-center gap-1 pl-2" onClick={(e) => e.stopPropagation()}>
-          <button
-            onClick={(e) => { e.stopPropagation(); downloadAllModulesAsZip(pkg.modules, pkg.title); }}
-            title="Download all modules as .zip"
-            className="p-1.5 text-[#7D8590] hover:text-purple-400 hover:bg-purple-400/10 rounded-lg transition-colors"
-          >
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
-          </button>
-          <button
-            onClick={handleDelete}
-            disabled={deleting}
-            title="Delete package"
-            className="p-1.5 text-[#7D8590] hover:text-red-400 hover:bg-red-400/10 rounded-lg transition-colors"
-          >
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
-          </button>
+          {editMode ? (
+            <>
+              <button
+                onClick={handleSave}
+                disabled={saving}
+                title="Save changes"
+                className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium bg-[#0078D4]/15 text-[#58A6FF] border border-[#0078D4]/25 rounded-lg hover:bg-[#0078D4]/25 transition-colors disabled:opacity-50"
+              >
+                {saving ? (
+                  <div className="w-3 h-3 border border-[#58A6FF] border-t-transparent rounded-full animate-spin" />
+                ) : (
+                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
+                )}
+                Save
+              </button>
+              <button
+                onClick={cancelEditMode}
+                disabled={saving}
+                title="Cancel"
+                className="flex items-center gap-1 px-2 py-1.5 text-xs text-[#7D8590] hover:text-[#E6EDF3] rounded-lg transition-colors disabled:opacity-50"
+              >
+                Cancel
+              </button>
+            </>
+          ) : (
+            <>
+              <button
+                onClick={enterEditMode}
+                title="Edit package"
+                className="p-1.5 text-[#7D8590] hover:text-[#58A6FF] hover:bg-[#0078D4]/10 rounded-lg transition-colors"
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
+              </button>
+              <button
+                onClick={(e) => { e.stopPropagation(); downloadAllModulesAsZip(pkg.modules, pkg.title); }}
+                title="Download all modules as .zip"
+                className="p-1.5 text-[#7D8590] hover:text-purple-400 hover:bg-purple-400/10 rounded-lg transition-colors"
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
+              </button>
+              <button
+                onClick={handleDelete}
+                disabled={deleting}
+                title="Delete package"
+                className="p-1.5 text-[#7D8590] hover:text-red-400 hover:bg-red-400/10 rounded-lg transition-colors"
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+              </button>
+            </>
+          )}
         </div>
       </div>
 
-      {expanded && (
+      {expanded && !editMode && (
         <div className="bg-[#0D1117] border-t border-[#21262D] px-10 py-3 space-y-2">
           {pkg.modules.map((m, i) => (
             <div key={i} className="flex items-center justify-between py-1.5 px-3 rounded-lg hover:bg-[#161B22] group transition-colors">
@@ -1084,6 +1293,86 @@ function PackageRow({
           ))}
         </div>
       )}
+
+      {editMode && (
+        <div className="bg-[#0D1117] border-t border-[#21262D] px-4 py-4 space-y-2">
+          {editModules.map((m, i) => (
+            <div key={i} className="border border-[#21262D] rounded-lg overflow-hidden">
+              <div
+                className="flex items-center gap-2 px-3 py-2 bg-[#161B22] cursor-pointer hover:bg-[#1C2128] transition-colors"
+                onClick={() => setExpandedModuleIdx(expandedModuleIdx === i ? null : i)}
+              >
+                <svg className={`w-3 h-3 text-[#484F58] flex-shrink-0 transition-transform ${expandedModuleIdx === i ? "rotate-90" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" /></svg>
+                <div className="flex flex-col gap-0.5 flex-shrink-0" onClick={(e) => e.stopPropagation()}>
+                  <button
+                    onClick={(e) => moveModule(i, "up", e)}
+                    disabled={i === 0}
+                    title="Move up"
+                    className="p-0.5 text-[#484F58] hover:text-[#E6EDF3] disabled:opacity-20 rounded transition-colors"
+                  >
+                    <svg className="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M5 15l7-7 7 7" /></svg>
+                  </button>
+                  <button
+                    onClick={(e) => moveModule(i, "down", e)}
+                    disabled={i === editModules.length - 1}
+                    title="Move down"
+                    className="p-0.5 text-[#484F58] hover:text-[#E6EDF3] disabled:opacity-20 rounded transition-colors"
+                  >
+                    <svg className="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" /></svg>
+                  </button>
+                </div>
+                <input
+                  value={m.filename}
+                  onChange={(e) => { e.stopPropagation(); updateModule(i, "filename", e.target.value); }}
+                  onClick={(e) => e.stopPropagation()}
+                  className="flex-1 bg-transparent text-xs font-mono text-[#C9D1D9] outline-none border-b border-transparent focus:border-[#0078D4]/40 transition-colors"
+                  placeholder="filename.ps1"
+                />
+                <input
+                  value={m.description}
+                  onChange={(e) => { e.stopPropagation(); updateModule(i, "description", e.target.value); }}
+                  onClick={(e) => e.stopPropagation()}
+                  className="flex-1 bg-transparent text-xs text-[#7D8590] outline-none border-b border-transparent focus:border-[#0078D4]/40 transition-colors hidden sm:block"
+                  placeholder="Short description…"
+                />
+                {m.isNew && <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-green-500/15 text-green-400 border border-green-500/20">new</span>}
+                <button
+                  onClick={(e) => { e.stopPropagation(); removeModule(i); }}
+                  title="Remove module"
+                  className="p-1 text-[#484F58] hover:text-red-400 rounded transition-colors flex-shrink-0"
+                >
+                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+                </button>
+              </div>
+              {expandedModuleIdx === i && (
+                <div className="p-3 space-y-2">
+                  <input
+                    value={m.description}
+                    onChange={(e) => updateModule(i, "description", e.target.value)}
+                    className="w-full bg-[#161B22] border border-[#30363D] rounded-lg px-3 py-1.5 text-xs text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60 transition-colors sm:hidden"
+                    placeholder="Short description…"
+                  />
+                  <textarea
+                    value={m.content}
+                    onChange={(e) => updateModule(i, "content", e.target.value)}
+                    rows={16}
+                    spellCheck={false}
+                    className="w-full bg-[#161B22] border border-[#30363D] rounded-lg px-3 py-2 text-xs font-mono text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60 resize-y transition-colors"
+                    placeholder="# PowerShell content…"
+                  />
+                </div>
+              )}
+            </div>
+          ))}
+          <button
+            onClick={addModule}
+            className="flex items-center gap-2 w-full px-3 py-2 border border-dashed border-[#30363D] rounded-lg text-xs text-[#7D8590] hover:text-[#E6EDF3] hover:border-[#484F58] transition-colors"
+          >
+            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" /></svg>
+            Add module
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -1096,6 +1385,7 @@ function LibraryTab({
   onOpenScript,
   onDeleteScript,
   onDeletePackage,
+  onUpdatePackage,
 }: {
   token: string;
   scripts: PsScriptListItem[];
@@ -1104,6 +1394,7 @@ function LibraryTab({
   onOpenScript: (id: string) => void;
   onDeleteScript: (id: string) => void;
   onDeletePackage: (id: string) => void;
+  onUpdatePackage: (pkg: ScriptPackageListItem) => void;
 }) {
   const [search, setSearch] = useState("");
   const [catFilter, setCatFilter] = useState("all");
@@ -1171,7 +1462,7 @@ function LibraryTab({
               <h3 className="text-xs font-semibold text-[#7D8590] uppercase tracking-wide mb-2">Script Packages</h3>
               <div className="bg-[#161B22] border border-[#30363D] rounded-xl overflow-hidden">
                 {filteredPackages.map((pkg) => (
-                  <PackageRow key={pkg.id} pkg={pkg} token={token} onDeleted={onDeletePackage} />
+                  <PackageRow key={pkg.id} pkg={pkg} token={token} onDeleted={onDeletePackage} onUpdated={onUpdatePackage} />
                 ))}
               </div>
             </div>
@@ -1313,6 +1604,10 @@ export default function ScriptGeneratorPage() {
     setLibraryLoaded(true);
   };
 
+  const handlePackageUpdated = (p: ScriptPackageListItem) => {
+    setPackages((prev) => prev.map((existing) => (existing.id === p.id ? p : existing)));
+  };
+
   const handleDeleteScript = async (id: string) => {
     if (!confirm("Delete this script? This cannot be undone.")) return;
     try {
@@ -1400,6 +1695,7 @@ export default function ScriptGeneratorPage() {
           onOpenScript={handleOpenScriptId}
           onDeleteScript={handleDeleteScript}
           onDeletePackage={handleDeletePackage}
+          onUpdatePackage={handlePackageUpdated}
         />
       )}
 

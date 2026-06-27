@@ -297,6 +297,31 @@ router.get("/admin/ps-scripts/packages", requireAdmin, async (_req: Request, res
   }
 });
 
+// ─── PATCH /api/admin/ps-scripts/packages/:id ────────────────────────────────
+
+router.patch("/admin/ps-scripts/packages/:id", requireAdmin, async (req: Request, res: Response) => {
+  const pkgId = String(req.params["id"] ?? "");
+  if (!UUID_RE.test(pkgId)) { res.status(400).json({ error: "Invalid id" }); return; }
+
+  const { title, category } = req.body as { title?: string; category?: string };
+
+  try {
+    const [updated] = await db
+      .update(scriptPackagesTable)
+      .set({
+        ...(title !== undefined && { title: title.trim() }),
+        ...(category !== undefined && { category }),
+      })
+      .where(eq(scriptPackagesTable.id, pkgId))
+      .returning();
+    if (!updated) { res.status(404).json({ error: "Package not found" }); return; }
+    res.json(updated);
+  } catch (err) {
+    logger.error({ err }, "Failed to update script package");
+    res.status(500).json({ error: "Failed to update package" });
+  }
+});
+
 // ─── DELETE /api/admin/ps-scripts/packages/:id ───────────────────────────────
 // NOTE: must be registered BEFORE /admin/ps-scripts/:id
 
@@ -309,6 +334,92 @@ router.delete("/admin/ps-scripts/packages/:id", requireAdmin, async (req: Reques
   } catch (err) {
     logger.error({ err }, "Failed to delete script package");
     res.status(500).json({ error: "Failed to delete package" });
+  }
+});
+
+// ─── POST /api/admin/ps-scripts/packages/:id/modules ─────────────────────────
+
+router.post("/admin/ps-scripts/packages/:id/modules", requireAdmin, async (req: Request, res: Response) => {
+  const pkgId = String(req.params["id"] ?? "");
+  if (!UUID_RE.test(pkgId)) { res.status(400).json({ error: "Invalid id" }); return; }
+
+  const { filename, description, content, sortOrder } = req.body as {
+    filename?: string;
+    description?: string;
+    content?: string;
+    sortOrder?: number;
+  };
+
+  if (!filename || typeof filename !== "string" || filename.trim().length === 0) {
+    res.status(400).json({ error: "filename is required" });
+    return;
+  }
+  if (typeof content !== "string") {
+    res.status(400).json({ error: "content is required" });
+    return;
+  }
+
+  try {
+    const [created] = await db
+      .insert(scriptModulesTable)
+      .values({
+        packageId: pkgId,
+        filename: filename.trim(),
+        description: description?.trim() ?? null,
+        content,
+        sortOrder: typeof sortOrder === "number" ? sortOrder : 999,
+      })
+      .returning();
+    res.status(201).json(created);
+  } catch (err) {
+    logger.error({ err }, "Failed to add module to package");
+    res.status(500).json({ error: "Failed to add module" });
+  }
+});
+
+// ─── PUT /api/admin/ps-scripts/modules/:id ───────────────────────────────────
+
+router.put("/admin/ps-scripts/modules/:id", requireAdmin, async (req: Request, res: Response) => {
+  const moduleId = String(req.params["id"] ?? "");
+  if (!UUID_RE.test(moduleId)) { res.status(400).json({ error: "Invalid id" }); return; }
+
+  const { filename, description, content, sortOrder } = req.body as {
+    filename?: string;
+    description?: string;
+    content?: string;
+    sortOrder?: number;
+  };
+
+  try {
+    const [updated] = await db
+      .update(scriptModulesTable)
+      .set({
+        ...(filename !== undefined && { filename: filename.trim() }),
+        ...(description !== undefined && { description: description?.trim() ?? null }),
+        ...(content !== undefined && { content }),
+        ...(sortOrder !== undefined && { sortOrder }),
+      })
+      .where(eq(scriptModulesTable.id, moduleId))
+      .returning();
+    if (!updated) { res.status(404).json({ error: "Module not found" }); return; }
+    res.json(updated);
+  } catch (err) {
+    logger.error({ err }, "Failed to update script module");
+    res.status(500).json({ error: "Failed to update module" });
+  }
+});
+
+// ─── DELETE /api/admin/ps-scripts/modules/:id ────────────────────────────────
+
+router.delete("/admin/ps-scripts/modules/:id", requireAdmin, async (req: Request, res: Response) => {
+  const moduleId = String(req.params["id"] ?? "");
+  if (!UUID_RE.test(moduleId)) { res.status(400).json({ error: "Invalid id" }); return; }
+  try {
+    await db.delete(scriptModulesTable).where(eq(scriptModulesTable.id, moduleId));
+    res.status(204).end();
+  } catch (err) {
+    logger.error({ err }, "Failed to delete script module");
+    res.status(500).json({ error: "Failed to delete module" });
   }
 });
 
