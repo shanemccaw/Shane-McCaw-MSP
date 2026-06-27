@@ -672,9 +672,13 @@ Respond with a JSON array only (no markdown):
 
 // ─── AI Suggest: Campaign Field ───────────────────────────────────────────────
 
-router.post("/admin/marketing/generate/campaign-topics", requireAdmin, async (_req: Request, res: Response) => {
+router.post("/admin/marketing/generate/campaign-topics", requireAdmin, async (req: Request, res: Response) => {
   try {
+    const { exclude } = req.body as { exclude?: string[] };
     const icpContext = await buildICPContext();
+    const exclusionLine = Array.isArray(exclude) && exclude.length > 0
+      ? `\nDo NOT suggest any of these (already shown): ${exclude.map(t => `"${t}"`).join(", ")}. Generate 5 completely different topics.`
+      : "";
 
     const message = await anthropic.messages.create({
       model: "claude-haiku-4-5",
@@ -685,7 +689,7 @@ router.post("/admin/marketing/generate/campaign-topics", requireAdmin, async (_r
 
 ${icpContext}
 
-Generate exactly 5 short campaign topic ideas relevant to Microsoft 365 consulting. Each topic should be 2-6 words, punchy, and specific (e.g. "Microsoft Copilot Adoption", "Teams Governance Rollout", "SharePoint Intranet Launch").
+Generate exactly 5 short campaign topic ideas relevant to Microsoft 365 consulting. Each topic should be 2-6 words, punchy, and specific (e.g. "Microsoft Copilot Adoption", "Teams Governance Rollout", "SharePoint Intranet Launch").${exclusionLine}
 
 Respond with JSON only (no markdown): {"topics":["Topic One","Topic Two","Topic Three","Topic Four","Topic Five"]}`,
       }],
@@ -748,8 +752,11 @@ router.post("/admin/marketing/generate/campaign-suggest", requireAdmin, async (r
 
 router.post("/admin/marketing/generate/audience-topics", requireAdmin, async (req: Request, res: Response) => {
   try {
-    const { goal } = req.body as { goal?: string };
+    const { goal, exclude } = req.body as { goal?: string; exclude?: string[] };
     const icpContext = await buildICPContext();
+    const exclusionLine = Array.isArray(exclude) && exclude.length > 0
+      ? `\nDo NOT suggest any of these (already shown): ${exclude.map(t => `"${t}"`).join(", ")}. Generate 5 completely different audience segments.`
+      : "";
 
     const message = await anthropic.messages.create({
       model: "claude-haiku-4-5",
@@ -762,7 +769,7 @@ ${icpContext}
 
 Campaign goal: "${goal ?? "generate leads for Microsoft 365 consulting"}"
 
-Generate exactly 5 short target audience segment labels relevant to this campaign. Each should be 3-7 words, specific and job-role focused (e.g. "IT Directors — Healthcare", "CTOs at Mid-Market SaaS", "Government IT Managers").
+Generate exactly 5 short target audience segment labels relevant to this campaign. Each should be 3-7 words, specific and job-role focused (e.g. "IT Directors — Healthcare", "CTOs at Mid-Market SaaS", "Government IT Managers").${exclusionLine}
 
 Respond with JSON only (no markdown): {"topics":["Audience One","Audience Two","Audience Three","Audience Four","Audience Five"]}`,
       }],
@@ -780,8 +787,11 @@ Respond with JSON only (no markdown): {"topics":["Audience One","Audience Two","
 
 router.post("/admin/marketing/generate/offer-topics", requireAdmin, async (req: Request, res: Response) => {
   try {
-    const { goal, audience } = req.body as { goal?: string; audience?: string };
+    const { goal, audience, exclude } = req.body as { goal?: string; audience?: string; exclude?: string[] };
     const icpContext = await buildICPContext();
+    const exclusionLine = Array.isArray(exclude) && exclude.length > 0
+      ? `\nDo NOT suggest any of these (already shown): ${exclude.map(t => `"${t}"`).join(", ")}. Generate 5 completely different offer ideas.`
+      : "";
 
     const message = await anthropic.messages.create({
       model: "claude-haiku-4-5",
@@ -795,7 +805,7 @@ ${icpContext}
 Campaign goal: "${goal ?? "generate leads"}"
 Target audience: "${audience ?? "IT decision-makers"}"
 
-Generate exactly 5 short offer idea labels for this campaign. Each should be 3-7 words, compelling and specific (e.g. "Free Copilot Assessment", "30-Day M365 Audit", "SharePoint Quick-Start Package").
+Generate exactly 5 short offer idea labels for this campaign. Each should be 3-7 words, compelling and specific (e.g. "Free Copilot Assessment", "30-Day M365 Audit", "SharePoint Quick-Start Package").${exclusionLine}
 
 Respond with JSON only (no markdown): {"topics":["Offer One","Offer Two","Offer Three","Offer Four","Offer Five"]}`,
       }],

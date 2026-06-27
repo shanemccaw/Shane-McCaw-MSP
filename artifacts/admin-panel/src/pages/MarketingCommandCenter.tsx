@@ -6093,13 +6093,14 @@ function CampaignBuilderWizard({ fetchWithAuth }: { fetchWithAuth: (url: string,
 
   const fetchTopics = async () => {
     setLoadingTopics(true);
+    const previousTopics = topicSuggestions ?? [];
     setTopicSuggestions(null);
     setSelectedTopic(null);
     try {
       const r = await fetchWithAuth(`${API}/admin/marketing/generate/campaign-topics`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: "{}",
+        body: JSON.stringify({ exclude: previousTopics }),
       });
       const data = await r.json() as { topics?: string[] };
       if (Array.isArray(data.topics)) setTopicSuggestions(data.topics);
@@ -6113,13 +6114,14 @@ function CampaignBuilderWizard({ fetchWithAuth }: { fetchWithAuth: (url: string,
 
   const fetchAudienceTopics = async () => {
     setLoadingAudienceTopics(true);
+    const previousAudiences = audienceSuggestions ?? [];
     setAudienceSuggestions(null);
     setSelectedAudience(null);
     try {
       const r = await fetchWithAuth(`${API}/admin/marketing/generate/audience-topics`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ goal }),
+        body: JSON.stringify({ goal, exclude: previousAudiences }),
       });
       const data = await r.json() as { topics?: string[] };
       if (Array.isArray(data.topics)) setAudienceSuggestions(data.topics);
@@ -6133,13 +6135,14 @@ function CampaignBuilderWizard({ fetchWithAuth }: { fetchWithAuth: (url: string,
 
   const fetchOfferTopics = async () => {
     setLoadingOfferTopics(true);
+    const previousOffers = offerSuggestions ?? [];
     setOfferSuggestions(null);
     setSelectedOffer(null);
     try {
       const r = await fetchWithAuth(`${API}/admin/marketing/generate/offer-topics`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ goal, audience }),
+        body: JSON.stringify({ goal, audience, exclude: previousOffers }),
       });
       const data = await r.json() as { topics?: string[] };
       if (Array.isArray(data.topics)) setOfferSuggestions(data.topics);
