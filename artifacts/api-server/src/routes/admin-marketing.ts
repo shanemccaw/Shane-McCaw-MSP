@@ -2198,25 +2198,40 @@ router.post("/admin/marketing/generate/landing-page", requireAdmin, async (req: 
       ? `\nEXISTING LANDING PAGE COPY (use this as your primary source — extract and structure the headline, value propositions, social proof, and CTA directly from this text; do NOT invent new content):\n---\n${body.copy.trim()}\n---`
       : "";
 
-    const prompt = `You are a conversion copywriter for a Microsoft 365 consulting firm.
+    const prompt = `You are generating a landing page for a PAID professional Microsoft 365 service.
 ${icpCtx}
 ${offerCtx}${copySection}
-Topic: ${body.topic ?? "Microsoft 365 Copilot adoption"}
+Topic: ${body.topic ?? "Microsoft 365 Consulting"}
 Target audience: ${body.audience ?? "IT decision-makers"}
-CTA: ${body.cta ?? "Book a discovery call"}
+CTA: ${body.cta ?? "Book Your Paid Assessment"}
 
-Generate a landing page in JSON:
+Match the exact tone, structure, and authority of a senior enterprise Microsoft 365 architect's real consulting pages.
+
+RULES:
+- DO NOT use generic marketing language, hype, fluff, or emojis.
+- DO NOT write long paragraphs. Keep it concise and enterprise-grade.
+- Never imply the offer is free.
+- The headline must be risk-first (e.g. "Your M365 Tenant Is a Compliance Risk").
+- The subheadline must frame the core problem the prospect faces right now.
+- Produce exactly 3 valuePropBlocks using these pillars (rewritten for the specific topic):
+  1. Clear Visibility Into Data Exposure
+  2. Prioritised Remediation Roadmap
+  3. Confidence for Copilot Deployment
+- Each valuePropBlock body must be 1–2 concise, authoritative sentences. No guessing — data-driven.
+- Leave "icon" as an empty string — do not use emojis.
+- socialProof must always be an empty array — do not fabricate testimonials.
+- The CTA buttonText should reinforce "Paid Assessment" (e.g. "Book Your Paid Assessment").
+
+Generate a landing page as JSON — output ONLY valid JSON, no prose, no markdown fences:
 {
-  "title": "page title",
-  "headline": "main headline (<10 words, benefit-driven)",
-  "subheadline": "supporting sentence expanding on headline",
+  "title": "page title (service name — concise)",
+  "headline": "risk-first headline",
+  "subheadline": "one sentence framing the core problem",
   "valuePropBlocks": [
-    { "icon": "🚀", "heading": "heading", "body": "2-sentence body" }
+    { "icon": "", "heading": "pillar heading", "body": "1–2 authoritative sentences" }
   ],
-  "socialProof": [
-    { "quote": "testimonial quote", "author": "First Last", "role": "Title at Company" }
-  ],
-  "cta": { "buttonText": "button label", "href": "/contact", "subtext": "optional subtext under button" }
+  "socialProof": [],
+  "cta": { "buttonText": "Book Your Paid Assessment", "href": "/contact", "subtext": "Fixed price. Senior-level delivery." }
 }`;
     const msg = await anthropic.messages.create({ model: "claude-haiku-4-5", max_tokens: 2000, messages: [{ role: "user", content: prompt }] });
     const raw = msg.content[0]?.type === "text" ? msg.content[0].text : "{}";
@@ -2259,26 +2274,69 @@ router.post("/admin/marketing/generate/landing-copy", requireAdmin, async (req: 
       outcomes.length > 0 ? `Outcomes / results: ${outcomes.join(", ")}` : "",
     ].filter(Boolean).join("\n");
 
-    const prompt = `You are a conversion copywriter for a Microsoft 365 consulting firm.
+    const deliverablesBullets = deliverables.length > 0
+      ? deliverables.map(d => `• ${d}`).join("\n")
+      : "• Full tenant configuration assessment\n• Prioritised findings document\n• Executive summary with remediation roadmap";
+    const outcomesBullets = outcomes.length > 0
+      ? outcomes.map(o => `• ${o}`).join("\n")
+      : "• Eliminates blind spots before governance modernisation\n• Provides a clear remediation roadmap\n• Enables confident Copilot deployment";
+
+    const prompt = `You are generating a landing page for a PAID professional Microsoft 365 service.
 ${icpCtx}
 Campaign: ${body.campaignName ?? "Microsoft 365 Consulting"}
 Goal: ${body.goal ?? "Generate qualified leads"}
 Target audience: ${body.audience ?? "IT decision-makers"}
 ${offerSection}
 
-Write plain-text landing page copy with the following structure (no JSON, no markdown — just text):
+Match the exact tone, structure, and authority of a senior enterprise Microsoft 365 architect's real consulting pages.
 
-1. Headline — a single punchy benefit-driven headline (under 10 words)
-2. Hook — 2–3 sentences that speak directly to the audience's pain and promise the transformation
-3. Three benefit bullets — each starting with "•" followed by a bold feature and its outcome
-4. Social proof line — one sentence quoting or paraphrasing a client result
-5. CTA sentence — one compelling call-to-action sentence
+RULES:
+- DO NOT use generic marketing language.
+- DO NOT use hype, fluff, emojis, or "free audit" language.
+- DO NOT write long paragraphs. Keep it concise and enterprise-grade.
+- Never imply the offer is free.
+- Output ONLY the landing page content using exactly the structure below (plain text, no JSON, no markdown).
 
-Keep the tone authoritative, specific, and outcome-focused. Avoid generic phrases like "unlock the power of" or "take your business to the next level".`;
+HERO
+Headline: [risk-first headline, e.g. "Your M365 Tenant Is a Compliance Risk"]
+Subheadline: [one sentence framing the core problem the prospect faces right now]
+CTA: Book Your Paid Assessment
+
+WHY THIS MATTERS
+[One short paragraph explaining why this engagement is critical BEFORE Copilot deployment, governance modernisation, or an upcoming audit. Match this tone: "Before you deploy Copilot, modernise governance, or face an audit, you need to know exactly what you're working with."]
+
+VALUE PILLARS
+Pillar 1 — Clear Visibility Into Data Exposure
+[1–2 authoritative sentences. No guessing — a data-driven map of the actual tenant state.]
+
+Pillar 2 — Prioritised Remediation Roadmap
+[1–2 authoritative sentences explaining what the prioritised findings enable the client to act on.]
+
+Pillar 3 — Confidence for Copilot Deployment
+[1–2 authoritative sentences explaining how this engagement unlocks a safe, governed Copilot rollout.]
+
+WHAT YOU GET
+${deliverablesBullets}
+
+WHAT THIS SOLVES
+${outcomesBullets}
+
+AUTHORITY
+Built at NASA Scale. Available to You.
+Shane McCaw is NASA's Lead Microsoft 365 Architect — 30 years inside the Microsoft ecosystem. Senior-level delivery only. No junior staff. No handoffs. Mission-critical compliance experience: FedRAMP, FISMA, ITAR, GCC High.
+
+PROCESS
+01 — Discovery Call: A 30-minute call to understand your environment. No pitch. No obligation.
+02 — Scoped Engagement: Fixed-price, clearly defined deliverables. No open-ended fees. No scope creep.
+03 — Actionable Results: A documented, immediately executable output delivered personally by Shane.
+
+FINAL CTA
+[One closing sentence reinforcing: paid assessment, fixed price, senior-level delivery, readiness score within two weeks.]
+CTA: Book Your Paid Assessment`;
 
     const msg = await anthropic.messages.create({
       model: "claude-haiku-4-5",
-      max_tokens: 800,
+      max_tokens: 1400,
       messages: [{ role: "user", content: prompt }],
     });
 
