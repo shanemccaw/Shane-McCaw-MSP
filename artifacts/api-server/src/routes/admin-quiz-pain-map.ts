@@ -77,7 +77,7 @@ router.put("/admin/quiz-pain-map", requireAdmin, async (req, res) => {
   try {
     // Upsert: update row id=1 if it exists, else insert.
     await db.execute(sql`
-      INSERT INTO quiz_pain_mappings (id, quiz_type_pain_map, category_pain_map, updated_at)
+      INSERT INTO quiz_pain_signal_config (id, quiz_type_pain_map, category_pain_map, updated_at)
       VALUES (1, ${JSON.stringify(quizTypePainMap)}::jsonb, ${JSON.stringify(categoryPainMap)}::jsonb, now())
       ON CONFLICT (id) DO UPDATE
         SET quiz_type_pain_map = EXCLUDED.quiz_type_pain_map,
@@ -94,7 +94,7 @@ router.put("/admin/quiz-pain-map", requireAdmin, async (req, res) => {
 // DELETE /api/admin/quiz-pain-map — resets to defaults by clearing the saved row
 router.delete("/admin/quiz-pain-map", requireAdmin, async (req, res) => {
   try {
-    await db.execute(sql`DELETE FROM quiz_pain_mappings WHERE id = 1`);
+    await db.execute(sql`DELETE FROM quiz_pain_signal_config WHERE id = 1`);
     return res.json({
       ok: true,
       quizTypePainMap: DEFAULT_QUIZ_TYPE_PAIN_MAP,
