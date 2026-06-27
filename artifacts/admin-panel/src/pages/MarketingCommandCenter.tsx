@@ -69,6 +69,7 @@ interface Campaign {
   status: "draft" | "active" | "paused" | "completed";
   leadsGenerated: number;
   emailsSent: number;
+  emailsSentAuto: number;
   revenueAttributed: string;
   createdAt: string;
 }
@@ -1667,6 +1668,9 @@ function CampaignMetricsPanel({ campaign, fetchWithAuth, onUpdated }: {
   fetchWithAuth: (url: string, opts?: RequestInit) => Promise<Response>;
   onUpdated: (updated: Campaign) => void;
 }) {
+  const autoCount = campaign.emailsSentAuto ?? 0;
+  const hasAutoData = autoCount > 0;
+
   const [leads, setLeads] = useState(String(campaign.leadsGenerated ?? 0));
   const [emails, setEmails] = useState(String(campaign.emailsSent ?? 0));
   const [revenue, setRevenue] = useState(String(Number(campaign.revenueAttributed ?? 0).toFixed(2)));
@@ -1686,7 +1690,7 @@ function CampaignMetricsPanel({ campaign, fetchWithAuth, onUpdated }: {
         }),
       });
       const updated = await r.json() as Campaign;
-      onUpdated(updated);
+      onUpdated({ ...updated, emailsSentAuto: campaign.emailsSentAuto });
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
     } finally { setSaving(false); }
@@ -1705,7 +1709,14 @@ function CampaignMetricsPanel({ campaign, fetchWithAuth, onUpdated }: {
         </div>
         <div className="bg-[#0D1117] rounded-lg p-3 text-center">
           <p className="text-[10px] text-[#7D8590] mb-1">Emails Sent</p>
-          <p className="text-lg font-bold text-[#58A6FF]">{campaign.emailsSent ?? 0}</p>
+          <p className="text-lg font-bold text-[#58A6FF]">
+            {hasAutoData ? autoCount : (campaign.emailsSent ?? 0)}
+          </p>
+          {hasAutoData ? (
+            <span className="inline-block mt-0.5 text-[9px] bg-[#0078D4]/20 text-[#58A6FF] px-1.5 py-0.5 rounded-full">auto-tracked</span>
+          ) : campaign.emailsSent > 0 ? (
+            <span className="inline-block mt-0.5 text-[9px] bg-[#30363D] text-[#7D8590] px-1.5 py-0.5 rounded-full">manual</span>
+          ) : null}
         </div>
         <div className="bg-[#0D1117] rounded-lg p-3 text-center">
           <p className="text-[10px] text-[#7D8590] mb-1">Revenue</p>
@@ -1713,7 +1724,12 @@ function CampaignMetricsPanel({ campaign, fetchWithAuth, onUpdated }: {
         </div>
       </div>
       <div className="space-y-2 pt-1 border-t border-[#30363D]">
-        <p className="text-[10px] font-semibold text-[#7D8590] uppercase tracking-wide">Update Metrics</p>
+        <div className="flex items-center justify-between">
+          <p className="text-[10px] font-semibold text-[#7D8590] uppercase tracking-wide">Update Metrics</p>
+          {hasAutoData && (
+            <span className="text-[9px] text-[#58A6FF]">Emails auto-tracked · override below if needed</span>
+          )}
+        </div>
         <div className="grid grid-cols-3 gap-2">
           <div>
             <label className="text-[10px] text-[#7D8590]">Leads</label>
@@ -1721,9 +1737,9 @@ function CampaignMetricsPanel({ campaign, fetchWithAuth, onUpdated }: {
               className="mt-0.5 w-full bg-[#0D1117] border border-[#30363D] rounded px-2 py-1 text-xs text-[#E6EDF3] outline-none focus:border-[#0078D4]/60" />
           </div>
           <div>
-            <label className="text-[10px] text-[#7D8590]">Emails Sent</label>
+            <label className="text-[10px] text-[#7D8590]">{hasAutoData ? "Emails (override)" : "Emails Sent"}</label>
             <input type="number" min="0" value={emails} onChange={e => setEmails(e.target.value)}
-              className="mt-0.5 w-full bg-[#0D1117] border border-[#30363D] rounded px-2 py-1 text-xs text-[#E6EDF3] outline-none focus:border-[#0078D4]/60" />
+              className={`mt-0.5 w-full bg-[#0D1117] border rounded px-2 py-1 text-xs text-[#E6EDF3] outline-none focus:border-[#0078D4]/60 ${hasAutoData ? "border-[#0078D4]/30" : "border-[#30363D]"}`} />
           </div>
           <div>
             <label className="text-[10px] text-[#7D8590]">Revenue ($)</label>

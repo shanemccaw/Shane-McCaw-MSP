@@ -463,6 +463,13 @@
       "when": 1751212800000,
       "tag": "0063_add_campaign_performance_metrics",
       "breakpoints": true
+    },
+    {
+      "idx": 64,
+      "version": "7",
+      "when": 1751299200000,
+      "tag": "0064_add_campaign_id_to_email_events",
+      "breakpoints": true
     }
   ]
 }

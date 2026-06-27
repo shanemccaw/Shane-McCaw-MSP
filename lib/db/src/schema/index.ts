@@ -1177,6 +1177,7 @@ export const emailEventsTable = pgTable("email_events", {
   subject: text("subject"),
   occurredAt: timestamp("occurred_at").notNull().defaultNow(),
   metadata: jsonb("metadata").$type<Record<string, unknown>>().default({}),
+  campaignId: integer("campaign_id").references(() => campaignsTable.id, { onDelete: "set null" }),
 });
 
 export type InsertEmailEvent = typeof emailEventsTable.$inferInsert;

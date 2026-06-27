@@ -585,7 +585,33 @@ router.delete("/admin/marketing/tasks/:id", requireAdmin, async (req: Request, r
 
 router.get("/admin/marketing/campaigns", requireAdmin, async (_req: Request, res: Response) => {
   try {
-    const rows = await db.select().from(campaignsTable).orderBy(desc(campaignsTable.createdAt));
+    const rows = await db
+      .select({
+        id: campaignsTable.id,
+        name: campaignsTable.name,
+        goal: campaignsTable.goal,
+        audience: campaignsTable.audience,
+        offer: campaignsTable.offer,
+        status: campaignsTable.status,
+        startDate: campaignsTable.startDate,
+        endDate: campaignsTable.endDate,
+        leadsGenerated: campaignsTable.leadsGenerated,
+        emailsSent: campaignsTable.emailsSent,
+        revenueAttributed: campaignsTable.revenueAttributed,
+        createdAt: campaignsTable.createdAt,
+        updatedAt: campaignsTable.updatedAt,
+        emailsSentAuto: count(emailEventsTable.id),
+      })
+      .from(campaignsTable)
+      .leftJoin(
+        emailEventsTable,
+        and(
+          eq(emailEventsTable.campaignId, campaignsTable.id),
+          eq(emailEventsTable.eventType, "sent"),
+        )
+      )
+      .groupBy(campaignsTable.id)
+      .orderBy(desc(campaignsTable.createdAt));
     res.json(rows);
   } catch (e) {
     res.status(500).json({ error: String(e) });
@@ -752,6 +778,7 @@ const sendOutreachSchema = z.object({
   subject: z.string().min(1, "Subject is required"),
   body: z.string().min(1, "Body is required"),
   leadId: z.number().optional(),
+  campaignId: z.number().optional(),
   bodyType: z.enum(["text", "html"]).optional().default("text"),
 });
 
@@ -783,6 +810,7 @@ router.post("/admin/marketing/send-outreach", requireAdmin, async (req: Request,
       eventType: "sent",
       recipient: parsed.to,
       subject: parsed.subject,
+      campaignId: parsed.campaignId ?? null,
       metadata: { source: "outreach" },
     }).catch((err: unknown) => req.log.warn({ err }, "Failed to record email_event for outreach send"));
 
