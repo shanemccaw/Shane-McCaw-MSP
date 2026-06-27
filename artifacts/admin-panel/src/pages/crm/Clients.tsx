@@ -45,6 +45,8 @@ interface EnrichedClient {
   aiRiskLevel: "high" | "medium" | "low" | null;
   aiOpportunityLevel: "high" | "medium" | "low" | null;
   onboardingWizardCompletedAt: string | null;
+  appRegStatus: "pending" | "submitted" | "verified" | null;
+  hasM365Profile: boolean;
 }
 
 interface EmailRow {
@@ -620,8 +622,8 @@ export default function ClientsPage() {
     if (filterAiRisk !== "all") result = result.filter(c => c.aiRiskLevel === filterAiRisk);
     if (filterAiOpp !== "all") result = result.filter(c => c.aiOpportunityLevel === filterAiOpp);
     if (filterIndustry !== "all") result = result.filter(c => c.industry === filterIndustry);
-    if (filterOnboarding === "complete") result = result.filter(c => c.onboardingWizardCompletedAt !== null);
-    if (filterOnboarding === "pending") result = result.filter(c => c.onboardingWizardCompletedAt === null);
+    if (filterOnboarding === "complete") result = result.filter(c => c.appRegStatus === "verified" && c.hasM365Profile);
+    if (filterOnboarding === "pending") result = result.filter(c => c.appRegStatus !== "verified" || !c.hasM365Profile);
 
     return [...result].sort((a, b) => {
       let aVal: string | number, bVal: string | number;
@@ -934,15 +936,19 @@ export default function ClientsPage() {
                 </div>
                 <div className="flex justify-between text-[10px]">
                   <span className="text-muted-foreground">Setup done</span>
-                  <span className="text-emerald-400 font-semibold">{clients.filter(c => c.onboardingWizardCompletedAt !== null).length}</span>
+                  <span className="text-emerald-400 font-semibold">{clients.filter(c => c.appRegStatus === "verified" && c.hasM365Profile).length}</span>
                 </div>
                 <div className="flex justify-between text-[10px]">
                   <span className="text-muted-foreground">Pending setup</span>
-                  <span className="text-amber-400 font-semibold">{clients.filter(c => c.onboardingWizardCompletedAt === null).length}</span>
+                  <span className="text-amber-400 font-semibold">{clients.filter(c => c.appRegStatus !== "verified" || !c.hasM365Profile).length}</span>
                 </div>
                 <div className="flex justify-between text-[10px]">
-                  <span className="text-muted-foreground">With M365</span>
-                  <span className="text-[#E6EDF3] font-semibold">{clients.filter(c => c.quizScore !== null).length}</span>
+                  <span className="text-muted-foreground">App Reg verified</span>
+                  <span className="text-emerald-400 font-semibold">{clients.filter(c => c.appRegStatus === "verified").length}</span>
+                </div>
+                <div className="flex justify-between text-[10px]">
+                  <span className="text-muted-foreground">M365 profile filled</span>
+                  <span className="text-[#E6EDF3] font-semibold">{clients.filter(c => c.hasM365Profile).length}</span>
                 </div>
               </div>
             </div>
@@ -1012,7 +1018,10 @@ export default function ClientsPage() {
                     </button>
                   </th>
                   <th className="text-center px-3 py-3 hidden lg:table-cell">
-                    <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Setup</span>
+                    <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">App Reg</span>
+                  </th>
+                  <th className="text-center px-3 py-3 hidden lg:table-cell">
+                    <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">M365</span>
                   </th>
                   <th className="px-4 py-3" />
                 </tr>
@@ -1020,7 +1029,7 @@ export default function ClientsPage() {
               <tbody>
                 {sortedFilteredClients.length === 0 ? (
                   <tr>
-                    <td colSpan={12} className="px-5 py-8 text-center text-muted-foreground text-sm">
+                    <td colSpan={13} className="px-5 py-8 text-center text-muted-foreground text-sm">
                       No clients match your filters.
                     </td>
                   </tr>
@@ -1135,20 +1144,39 @@ export default function ClientsPage() {
                           ) : <span className="text-xs text-[#484F58]">—</span>}
                         </td>
 
-                        {/* Setup / Onboarding status */}
+                        {/* App Registration status */}
                         <td className="px-3 py-3.5 text-center hidden lg:table-cell">
-                          {c.onboardingWizardCompletedAt !== null ? (
-                            <span
-                              className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full border bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
-                              title={`Completed ${new Date(c.onboardingWizardCompletedAt).toLocaleString()}`}
-                            >
+                          {c.appRegStatus === "verified" ? (
+                            <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full border bg-emerald-500/10 text-emerald-400 border-emerald-500/20">
+                              <svg className="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
+                              Verified
+                            </span>
+                          ) : c.appRegStatus === "submitted" ? (
+                            <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full border bg-amber-500/10 text-amber-400 border-amber-500/20">
+                              <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+                              Submitted
+                            </span>
+                          ) : c.appRegStatus === "pending" ? (
+                            <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full border bg-red-500/10 text-red-400 border-red-500/20">
+                              <span className="w-1.5 h-1.5 rounded-full bg-red-500" />
+                              Pending
+                            </span>
+                          ) : (
+                            <span className="text-xs text-[#484F58]">—</span>
+                          )}
+                        </td>
+
+                        {/* M365 Profile status */}
+                        <td className="px-3 py-3.5 text-center hidden lg:table-cell">
+                          {c.hasM365Profile ? (
+                            <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full border bg-emerald-500/10 text-emerald-400 border-emerald-500/20">
                               <svg className="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
                               Done
                             </span>
                           ) : (
-                            <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full border bg-amber-500/10 text-amber-400 border-amber-500/20">
-                              <svg className="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-                              Pending
+                            <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full border bg-[#30363D] text-[#7D8590] border-border">
+                              <span className="w-1.5 h-1.5 rounded-full bg-[#484F58]" />
+                              None
                             </span>
                           )}
                         </td>

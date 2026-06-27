@@ -6,6 +6,7 @@ import {
   kanbanTasksTable,
   emailsTable,
   clientM365ProfilesTable,
+  clientAppRegistrationsTable,
   quizLeadsTable,
 } from "@workspace/db";
 import { eq, and, desc, count, inArray, sql, isNotNull } from "drizzle-orm";
@@ -32,7 +33,7 @@ router.get("/admin/clients/enriched", requireAdmin, async (_req: Request, res: R
     const clientIds = clients.map(c => c.id).filter((id): id is number => id !== null);
     const clientEmails = clients.map(c => c.email);
 
-    const [projectRows, taskRows, quizRows, m365Rows, lastEmailRows, lastTaskRows] = await Promise.all([
+    const [projectRows, taskRows, quizRows, m365Rows, lastEmailRows, lastTaskRows, appRegRows] = await Promise.all([
       db
         .select({
           clientUserId: projectsTable.clientUserId,
@@ -97,6 +98,14 @@ router.get("/admin/clients/enriched", requireAdmin, async (_req: Request, res: R
         .innerJoin(projectsTable, eq(kanbanTasksTable.projectId, projectsTable.id))
         .where(inArray(projectsTable.clientUserId, clientIds))
         .groupBy(projectsTable.clientUserId),
+
+      db
+        .select({
+          clientUserId: clientAppRegistrationsTable.clientUserId,
+          status: clientAppRegistrationsTable.status,
+        })
+        .from(clientAppRegistrationsTable)
+        .where(inArray(clientAppRegistrationsTable.clientUserId, clientIds)),
     ]);
 
     const projectMap = new Map(projectRows.map(p => [p.clientUserId, p]));
@@ -108,12 +117,15 @@ router.get("/admin/clients/enriched", requireAdmin, async (_req: Request, res: R
     const m365Map = new Map(m365Rows.map(r => [r.clientId, r.profile as Record<string, unknown>]));
     const lastEmailMap = new Map(lastEmailRows.map(r => [r.linkedUserId, r.lastAt]));
     const lastTaskMap = new Map(lastTaskRows.map(r => [r.clientUserId, r.lastAt]));
+    const appRegMap = new Map(appRegRows.map(r => [r.clientUserId, r.status as "pending" | "submitted" | "verified"]));
 
     const enriched = clients.map(c => {
       const proj = projectMap.get(c.id);
       const tasks = taskMap.get(c.id);
       const quiz = quizMap.get(c.email);
       const mp = m365Map.get(c.id) ?? {};
+      const appRegStatus = appRegMap.get(c.id) ?? null;
+      const hasM365Profile = m365Map.has(c.id);
       const cs = (quiz?.categoryScores ?? {}) as Record<string, number>;
 
       // Compute seven scores from quiz category scores + m365 profile
@@ -176,6 +188,8 @@ router.get("/admin/clients/enriched", requireAdmin, async (_req: Request, res: R
         lastActivityAt,
         aiRiskLevel,
         aiOpportunityLevel,
+        appRegStatus,
+        hasM365Profile,
       };
     });
 
