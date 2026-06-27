@@ -14,6 +14,10 @@ export interface ManualScriptRecord {
   instructions: string;
   /** Filename for the .ps1 download (e.g. "My_Script.ps1") */
   filename: string;
+  /** AI-analyzed findings from the uploaded JSON output */
+  findings?: string[];
+  /** AI-generated recommendations from the uploaded JSON output */
+  recommendations?: string[];
 }
 
 interface Props {
@@ -54,6 +58,8 @@ function StatusChip({ status }: { status: "awaiting_upload" | "completed" | "pro
 export function ManualScriptUploadCard({ script, projectId, onCompleted }: Props) {
   const { fetchWithAuth } = useAuth();
   const [status, setStatus] = useState<"awaiting_upload" | "completed" | "processing">(script.status);
+  const [findings, setFindings] = useState<string[]>(script.findings ?? []);
+  const [recommendations, setRecommendations] = useState<string[]>(script.recommendations ?? []);
   const [instructionsOpen, setInstructionsOpen] = useState(false);
   const [dragOver, setDragOver] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -130,6 +136,15 @@ export function ManualScriptUploadCard({ script, projectId, onCompleted }: Props
         return;
       }
 
+      const result = await res.json() as {
+        runResultId: number;
+        status: string;
+        findings?: string[];
+        recommendations?: string[];
+      };
+      if (result.findings && result.findings.length > 0) setFindings(result.findings);
+      if (result.recommendations && result.recommendations.length > 0) setRecommendations(result.recommendations);
+
       setStatus("completed");
       onCompleted();
     } catch {
@@ -203,18 +218,61 @@ export function ManualScriptUploadCard({ script, projectId, onCompleted }: Props
 
         {/* Completed state */}
         {status === "completed" && (
-          <div className="flex items-center gap-3 bg-green-50 border border-green-200 rounded-lg px-4 py-3">
-            <svg className="w-5 h-5 text-green-600 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-            <div>
-              <p className="text-sm font-semibold text-green-800">Results received — thank you!</p>
-              {script.uploadedAt && (
-                <p className="text-xs text-green-600 mt-0.5">
-                  Uploaded {new Date(script.uploadedAt).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}
-                </p>
-              )}
+          <div className="space-y-3">
+            <div className="flex items-center gap-3 bg-green-50 border border-green-200 rounded-lg px-4 py-3">
+              <svg className="w-5 h-5 text-green-600 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              <div>
+                <p className="text-sm font-semibold text-green-800">Results received — thank you!</p>
+                {script.uploadedAt && (
+                  <p className="text-xs text-green-600 mt-0.5">
+                    Uploaded {new Date(script.uploadedAt).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}
+                  </p>
+                )}
+              </div>
             </div>
+
+            {(findings.length > 0 || recommendations.length > 0) && (
+              <div className="rounded-lg border border-[#0078D4]/20 bg-[#F7F9FC] divide-y divide-[#0078D4]/10 overflow-hidden">
+                {findings.length > 0 && (
+                  <div className="px-4 py-3">
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-[#0078D4] mb-2 flex items-center gap-1.5">
+                      <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M9.75 9.75l4.5 4.5m0-4.5l-4.5 4.5M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                      Findings
+                    </p>
+                    <ul className="space-y-1">
+                      {findings.map((f, i) => (
+                        <li key={i} className="text-xs text-[#0A2540] flex items-start gap-1.5">
+                          <span className="text-[#0078D4] mt-0.5 flex-shrink-0">•</span>
+                          {f}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                {recommendations.length > 0 && (
+                  <div className="px-4 py-3">
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-green-600 mb-2 flex items-center gap-1.5">
+                      <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M12 18v-5.25m0 0a6.01 6.01 0 001.5-.189m-1.5.189a6.01 6.01 0 01-1.5-.189m3.75 7.478a12.06 12.06 0 01-4.5 0m3.75 2.383a14.406 14.406 0 01-3 0M14.25 18v-.192c0-.983.658-1.823 1.508-2.316a7.5 7.5 0 10-7.517 0c.85.493 1.509 1.333 1.509 2.316V18" />
+                      </svg>
+                      Next Steps
+                    </p>
+                    <ul className="space-y-1">
+                      {recommendations.map((r, i) => (
+                        <li key={i} className="text-xs text-[#0A2540] flex items-start gap-1.5">
+                          <span className="text-green-600 mt-0.5 flex-shrink-0">→</span>
+                          {r}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         )}
 

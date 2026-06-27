@@ -7491,6 +7491,8 @@ router.get("/portal/projects/:projectId/manual-scripts", requireAuth, async (req
         status: scriptRunResultsTable.status,
         createdAt: scriptRunResultsTable.createdAt,
         uploadedAt: scriptRunResultsTable.uploadedAt,
+        parsedFindings: scriptRunResultsTable.parsedFindings,
+        recommendations: scriptRunResultsTable.recommendations,
         scriptName: scriptCatalogTable.name,
         description: scriptCatalogTable.description,
         manualRequirements: scriptCatalogTable.manualRequirements,
@@ -7547,6 +7549,8 @@ router.get("/portal/projects/:projectId/manual-scripts", requireAuth, async (req
         manualRequirements: Array.isArray(row.manualRequirements) ? row.manualRequirements as string[] : [],
         filename: pkg.filename,
         instructions: pkg.instructions,
+        findings: Array.isArray(row.parsedFindings) ? row.parsedFindings as string[] : [],
+        recommendations: Array.isArray(row.recommendations) ? row.recommendations as string[] : [],
       };
     });
 
@@ -7675,7 +7679,12 @@ router.post("/portal/manual-scripts/:scriptRunId/upload", requireAuth, async (re
     const result = await processManualScriptUpload(scriptRunId, data, uploadedBy);
 
     logger.info({ scriptRunId, userId }, "portal: manual script upload processed");
-    res.json({ runResultId: result.runResultId, status: result.status });
+    res.json({
+      runResultId: result.runResultId,
+      status: result.status,
+      findings: result.findings,
+      recommendations: result.recommendations,
+    });
   } catch (err) {
     const { UploadError } = await import("../lib/manual-script-upload");
     if (err instanceof UploadError) {
