@@ -162,8 +162,8 @@ function parseSubjectFromContent(content: string): string {
 
 // ─── Send Email Modal ─────────────────────────────────────────────────────────
 
-function SendEmailModal({ initialTo, initialSubject, initialBody, leadId, onClose, fetchWithAuth }: {
-  initialTo: string; initialSubject: string; initialBody: string; leadId?: number; onClose: () => void;
+function SendEmailModal({ initialTo, initialSubject, initialBody, leadId, campaignId, onClose, fetchWithAuth }: {
+  initialTo: string; initialSubject: string; initialBody: string; leadId?: number; campaignId?: number; onClose: () => void;
   fetchWithAuth: (url: string, opts?: RequestInit) => Promise<Response>;
 }) {
   const [to, setTo] = useState(initialTo);
@@ -180,7 +180,7 @@ function SendEmailModal({ initialTo, initialSubject, initialBody, leadId, onClos
       const r = await fetchWithAuth(`${API}/admin/marketing/send-outreach`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ to, subject, body, leadId, bodyType: "text" }),
+        body: JSON.stringify({ to, subject, body, leadId, campaignId, bodyType: "text" }),
       });
       if (r.ok) {
         setResult("success");
@@ -798,7 +798,7 @@ function LeadFinderSection({ fetchWithAuth }: { fetchWithAuth: (url: string, opt
 
 // ─── Section 3: Outreach Automation ───────────────────────────────────────────
 
-function OutreachAutomationSection({ fetchWithAuth }: { fetchWithAuth: (url: string, opts?: RequestInit) => Promise<Response> }) {
+function OutreachAutomationSection({ fetchWithAuth }: { fetchWithAuth: (url: string, opts?: RequestInit) => Promise<Response>; }) {
   const [activeTab, setActiveTab] = useState<"cold_email" | "linkedin" | "followup" | "cold_call">("cold_email");
   const [content, setContent] = useState("");
   const [generating, setGenerating] = useState(false);
@@ -809,10 +809,15 @@ function OutreachAutomationSection({ fetchWithAuth }: { fetchWithAuth: (url: str
   const [templates, setTemplates] = useState<Array<{ id: number; name: string; templateType: string; body: string }>>([]);
   const [saving, setSaving] = useState(false);
   const [saveName, setSaveName] = useState("");
-  const [sendDialog, setSendDialog] = useState<{ to: string; subject: string; body: string } | null>(null);
+  const [sendDialog, setSendDialog] = useState<{ to: string; subject: string; body: string; campaignId?: number } | null>(null);
+  const [campaigns, setCampaigns] = useState<Array<{ id: number; name: string }>>([]);
+  const [tagCampaignId, setTagCampaignId] = useState<number | null>(null);
 
   useEffect(() => {
     fetchWithAuth(`${API}/admin/marketing/outreach-templates`).then(r => r.json()).then(d => setTemplates(d as typeof templates)).catch(() => null);
+    fetchWithAuth(`${API}/admin/marketing/campaigns`).then(r => r.json()).then(d => {
+      if (Array.isArray(d)) setCampaigns(d as Array<{ id: number; name: string }>);
+    }).catch(() => null);
   }, [fetchWithAuth]);
 
   const generate = async () => {
@@ -860,13 +865,28 @@ function OutreachAutomationSection({ fetchWithAuth }: { fetchWithAuth: (url: str
       <h2 className="text-lg font-semibold text-[#E6EDF3]">Outreach Automation</h2>
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
         <div className="lg:col-span-3 bg-[#161B22] border border-[#30363D] rounded-xl p-4 space-y-4">
-          <div className="flex flex-wrap gap-1">
-            {tabs.map(t => (
-              <button key={t.id} onClick={() => { setActiveTab(t.id); setContent(""); }}
-                className={`text-xs px-3 py-1.5 rounded-lg border transition-colors ${activeTab === t.id ? "bg-[#0078D4]/20 border-[#0078D4]/40 text-[#58A6FF]" : "border-[#30363D] text-[#7D8590] hover:text-[#E6EDF3]"}`}>
-                {t.label}
-              </button>
-            ))}
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="flex flex-wrap gap-1">
+              {tabs.map(t => (
+                <button key={t.id} onClick={() => { setActiveTab(t.id); setContent(""); }}
+                  className={`text-xs px-3 py-1.5 rounded-lg border transition-colors ${activeTab === t.id ? "bg-[#0078D4]/20 border-[#0078D4]/40 text-[#58A6FF]" : "border-[#30363D] text-[#7D8590] hover:text-[#E6EDF3]"}`}>
+                  {t.label}
+                </button>
+              ))}
+            </div>
+            {campaigns.length > 0 && (
+              <select
+                value={tagCampaignId ?? ""}
+                onChange={e => setTagCampaignId(e.target.value ? Number(e.target.value) : null)}
+                className="ml-auto text-[11px] bg-[#0D1117] border border-[#30363D] rounded px-2 py-1 text-[#7D8590] outline-none focus:border-[#0078D4]/60"
+                title="Tag outreach emails to a campaign for auto-tracking"
+              >
+                <option value="">No campaign tag</option>
+                {campaigns.map(c => (
+                  <option key={c.id} value={c.id}>{c.name}</option>
+                ))}
+              </select>
+            )}
           </div>
           <div className="grid grid-cols-2 gap-2">
             {([["Name", name, setName], ["Company", company, setCompany], ["Role", role, setRole], ["Industry", industry, setIndustry]] as [string, string, (v: string) => void][]).map(([label, val, setter]) => (
@@ -896,7 +916,7 @@ function OutreachAutomationSection({ fetchWithAuth }: { fetchWithAuth: (url: str
                   {saving ? "Saving…" : "Save"}
                 </button>
                 {EMAIL_TYPES.has(activeTab) && (
-                  <button onClick={() => setSendDialog({ to: "", subject: parseSubjectFromContent(content), body: content })}
+                  <button onClick={() => setSendDialog({ to: "", subject: parseSubjectFromContent(content), body: content, campaignId: tagCampaignId ?? undefined })}
                     className="text-xs px-3 py-1.5 rounded-lg bg-[#0078D4]/20 text-[#58A6FF] hover:bg-[#0078D4]/30 transition-colors">
                     Send Email
                   </button>
@@ -924,7 +944,7 @@ function OutreachAutomationSection({ fetchWithAuth }: { fetchWithAuth: (url: str
                   <div className="flex gap-1">
                     <CopyButton text={t.body} />
                     {EMAIL_TYPES.has(t.templateType) && (
-                      <button onClick={() => setSendDialog({ to: "", subject: parseSubjectFromContent(t.body), body: t.body })}
+                      <button onClick={() => setSendDialog({ to: "", subject: parseSubjectFromContent(t.body), body: t.body, campaignId: tagCampaignId ?? undefined })}
                         className="text-xs px-2 py-1 rounded bg-[#0078D4]/20 text-[#58A6FF] hover:bg-[#0078D4]/30 transition-colors">
                         Send
                       </button>
@@ -941,6 +961,7 @@ function OutreachAutomationSection({ fetchWithAuth }: { fetchWithAuth: (url: str
           initialTo={sendDialog.to}
           initialSubject={sendDialog.subject}
           initialBody={sendDialog.body}
+          campaignId={sendDialog.campaignId}
           onClose={() => setSendDialog(null)}
           fetchWithAuth={fetchWithAuth}
         />
@@ -1669,7 +1690,10 @@ function CampaignMetricsPanel({ campaign, fetchWithAuth, onUpdated }: {
   onUpdated: (updated: Campaign) => void;
 }) {
   const autoCount = campaign.emailsSentAuto ?? 0;
-  const hasAutoData = autoCount > 0;
+  const manualCount = campaign.emailsSent ?? 0;
+  const hasManualOverride = manualCount > 0;
+  const hasAutoData = autoCount > 0 && !hasManualOverride;
+  const displayedEmailCount = hasManualOverride ? manualCount : autoCount;
 
   const [leads, setLeads] = useState(String(campaign.leadsGenerated ?? 0));
   const [emails, setEmails] = useState(String(campaign.emailsSent ?? 0));
@@ -1709,13 +1733,13 @@ function CampaignMetricsPanel({ campaign, fetchWithAuth, onUpdated }: {
         </div>
         <div className="bg-[#0D1117] rounded-lg p-3 text-center">
           <p className="text-[10px] text-[#7D8590] mb-1">Emails Sent</p>
-          <p className="text-lg font-bold text-[#58A6FF]">
-            {hasAutoData ? autoCount : (campaign.emailsSent ?? 0)}
-          </p>
-          {hasAutoData ? (
-            <span className="inline-block mt-0.5 text-[9px] bg-[#0078D4]/20 text-[#58A6FF] px-1.5 py-0.5 rounded-full">auto-tracked</span>
-          ) : campaign.emailsSent > 0 ? (
+          <p className="text-lg font-bold text-[#58A6FF]">{displayedEmailCount}</p>
+          {hasManualOverride && autoCount > 0 ? (
+            <span className="inline-block mt-0.5 text-[9px] bg-amber-500/20 text-amber-400 px-1.5 py-0.5 rounded-full">override ({autoCount} auto)</span>
+          ) : hasManualOverride ? (
             <span className="inline-block mt-0.5 text-[9px] bg-[#30363D] text-[#7D8590] px-1.5 py-0.5 rounded-full">manual</span>
+          ) : hasAutoData ? (
+            <span className="inline-block mt-0.5 text-[9px] bg-[#0078D4]/20 text-[#58A6FF] px-1.5 py-0.5 rounded-full">auto-tracked</span>
           ) : null}
         </div>
         <div className="bg-[#0D1117] rounded-lg p-3 text-center">
@@ -1726,8 +1750,8 @@ function CampaignMetricsPanel({ campaign, fetchWithAuth, onUpdated }: {
       <div className="space-y-2 pt-1 border-t border-[#30363D]">
         <div className="flex items-center justify-between">
           <p className="text-[10px] font-semibold text-[#7D8590] uppercase tracking-wide">Update Metrics</p>
-          {hasAutoData && (
-            <span className="text-[9px] text-[#58A6FF]">Emails auto-tracked · override below if needed</span>
+          {autoCount > 0 && (
+            <span className="text-[9px] text-[#58A6FF]">{hasManualOverride ? `Auto: ${autoCount} · overridden` : "Auto-tracked · set override below"}</span>
           )}
         </div>
         <div className="grid grid-cols-3 gap-2">
@@ -1737,9 +1761,9 @@ function CampaignMetricsPanel({ campaign, fetchWithAuth, onUpdated }: {
               className="mt-0.5 w-full bg-[#0D1117] border border-[#30363D] rounded px-2 py-1 text-xs text-[#E6EDF3] outline-none focus:border-[#0078D4]/60" />
           </div>
           <div>
-            <label className="text-[10px] text-[#7D8590]">{hasAutoData ? "Emails (override)" : "Emails Sent"}</label>
+            <label className="text-[10px] text-[#7D8590]">{autoCount > 0 ? "Emails (manual override)" : "Emails Sent"}</label>
             <input type="number" min="0" value={emails} onChange={e => setEmails(e.target.value)}
-              className={`mt-0.5 w-full bg-[#0D1117] border rounded px-2 py-1 text-xs text-[#E6EDF3] outline-none focus:border-[#0078D4]/60 ${hasAutoData ? "border-[#0078D4]/30" : "border-[#30363D]"}`} />
+              className={`mt-0.5 w-full bg-[#0D1117] border rounded px-2 py-1 text-xs text-[#E6EDF3] outline-none focus:border-[#0078D4]/60 ${autoCount > 0 ? "border-[#0078D4]/30" : "border-[#30363D]"}`} />
           </div>
           <div>
             <label className="text-[10px] text-[#7D8590]">Revenue ($)</label>
