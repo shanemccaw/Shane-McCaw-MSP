@@ -7039,38 +7039,323 @@ function AdLibrarySection({
   );
 }
 
+// ─── Marketing Dashboard ──────────────────────────────────────────────────────
+
+function MarketingDashboard({ fetchWithAuth, onNavigate }: {
+  fetchWithAuth: (url: string, opts?: RequestInit) => Promise<Response>;
+  onNavigate: (section: string) => void;
+}) {
+  const [kpi, setKpi] = useState<KPI | null>(null);
+  const [leads, setLeads] = useState<RecommendedLead[]>([]);
+  const [tasks, setTasks] = useState<MarketingTask[]>([]);
+  const [campaigns, setCampaigns] = useState<Campaign[]>([]);
+  const [analytics, setAnalytics] = useState<AnalyticsData | null>(null);
+  const [seoRankings, setSeoRankings] = useState<SeoRanking[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    setLoading(true);
+    Promise.all([
+      fetchWithAuth(`${API}/admin/marketing/kpi`).then(r => r.json()).catch(() => null),
+      fetchWithAuth(`${API}/admin/marketing/recommended-leads`).then(r => r.json()).catch(() => []),
+      fetchWithAuth(`${API}/admin/marketing/tasks`).then(r => r.json()).catch(() => []),
+      fetchWithAuth(`${API}/admin/marketing/campaigns`).then(r => r.json()).catch(() => []),
+      fetchWithAuth(`${API}/admin/marketing/analytics`).then(r => r.json()).catch(() => null),
+      fetchWithAuth(`${API}/admin/marketing/seo-rankings`).then(r => r.json()).catch(() => []),
+    ]).then(([k, l, t, c, a, s]) => {
+      setKpi(k as KPI | null);
+      setLeads(Array.isArray(l) ? (l as RecommendedLead[]).filter(x => x.status === "pending").slice(0, 6) : []);
+      setTasks(Array.isArray(t) ? (t as MarketingTask[]) : []);
+      setCampaigns(Array.isArray(c) ? (c as Campaign[]) : []);
+      setAnalytics(a as AnalyticsData | null);
+      setSeoRankings(Array.isArray(s) ? (s as SeoRanking[]).slice(0, 5) : []);
+    }).finally(() => setLoading(false));
+  }, [fetchWithAuth]);
+
+  const dueTasks = tasks.filter(t =>
+    t.status !== "completed" && t.dueDate && new Date(t.dueDate) <= new Date(Date.now() + 24 * 60 * 60 * 1000)
+  ).slice(0, 5);
+  const allPendingTasks = tasks.filter(t => t.status !== "completed").slice(0, 5);
+  const activeCampaigns = campaigns.filter(c => c.status === "active").slice(0, 3);
+  const trafficData = analytics?.dailyVisitors?.slice(-7) ?? [];
+
+  const kpiTiles = [
+    {
+      label: "AI Leads Pending",
+      value: loading ? "—" : String(leads.length),
+      sub: "Awaiting action",
+      icon: "🤖",
+      color: "from-[#0078D4]/20 to-[#0078D4]/5",
+      border: "border-[#0078D4]/30",
+      action: () => onNavigate("recommendations"),
+    },
+    {
+      label: "Active Campaigns",
+      value: loading ? "—" : String(kpi?.activeCampaigns ?? activeCampaigns.length),
+      sub: "Running now",
+      icon: "📣",
+      color: "from-violet-500/20 to-violet-500/5",
+      border: "border-violet-500/30",
+      action: () => onNavigate("campaigns"),
+    },
+    {
+      label: "Hot Leads",
+      value: loading ? "—" : String(kpi?.hotLeadsCount ?? "—"),
+      sub: "Score ≥ 70",
+      icon: "🔥",
+      color: "from-red-500/20 to-red-500/5",
+      border: "border-red-500/30",
+      action: () => onNavigate("lead-finder"),
+    },
+    {
+      label: "Revenue Opportunity",
+      value: loading ? "—" : (kpi ? `$${kpi.revenueOpportunity.toLocaleString()}` : "—"),
+      sub: "Pipeline estimate",
+      icon: "💰",
+      color: "from-emerald-500/20 to-emerald-500/5",
+      border: "border-emerald-500/30",
+      action: () => onNavigate("analytics"),
+    },
+  ];
+
+  return (
+    <div className="space-y-6">
+      {/* KPI Tile Row */}
+      <div className="grid grid-cols-2 xl:grid-cols-4 gap-4">
+        {kpiTiles.map(tile => (
+          <button key={tile.label} onClick={tile.action}
+            className={`bg-gradient-to-br ${tile.color} border ${tile.border} rounded-xl p-4 text-left hover:brightness-110 transition-all`}>
+            <div className="flex items-center justify-between mb-3">
+              <span className="text-2xl">{tile.icon}</span>
+              {loading
+                ? <div className="w-16 h-7 bg-[#30363D] rounded animate-pulse" />
+                : <span className="text-2xl font-bold text-[#E6EDF3]">{tile.value}</span>}
+            </div>
+            <p className="text-xs font-semibold text-[#E6EDF3]">{tile.label}</p>
+            <p className="text-[10px] text-[#7D8590] mt-0.5">{tile.sub}</p>
+          </button>
+        ))}
+      </div>
+
+      {/* Main Two-Column Grid */}
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+        {/* Left: Priority Actions */}
+        <div className="space-y-4">
+          {/* AI Leads Needing Action */}
+          <div className="bg-[#161B22] border border-[#30363D] rounded-xl overflow-hidden">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-[#30363D]">
+              <p className="text-sm font-semibold text-[#E6EDF3]">🤖 AI Leads Needing Action</p>
+              <button onClick={() => onNavigate("recommendations")}
+                className="text-[10px] text-[#58A6FF] hover:underline">View all →</button>
+            </div>
+            {loading ? (
+              <div className="p-4 space-y-2"><SkeletonCard count={3} /></div>
+            ) : leads.length === 0 ? (
+              <div className="px-4 py-6 text-center text-[#7D8590] text-xs">No pending AI leads — generate some in AI Leads</div>
+            ) : (
+              <div className="divide-y divide-[#30363D]">
+                {leads.map(lead => (
+                  <button key={lead.id} onClick={() => onNavigate("recommendations")}
+                    className="w-full flex items-center justify-between px-4 py-3 hover:bg-[#1C2128] transition-colors text-left group">
+                    <div className="min-w-0">
+                      <p className="text-xs font-medium text-[#E6EDF3] truncate">{lead.name}</p>
+                      <p className="text-[10px] text-[#7D8590] truncate">{lead.role}{lead.company ? ` · ${lead.company}` : ""}</p>
+                    </div>
+                    <div className="flex items-center gap-2 flex-shrink-0 ml-3">
+                      <Badge text={`${lead.confidence}%`} color={lead.confidence >= 80 ? "green" : lead.confidence >= 60 ? "yellow" : "gray"} />
+                      <span className="text-[#30363D] group-hover:text-[#7D8590] text-xs transition-colors">→</span>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Tasks Due */}
+          <div className="bg-[#161B22] border border-[#30363D] rounded-xl overflow-hidden">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-[#30363D]">
+              <p className="text-sm font-semibold text-[#E6EDF3]">📋 Tasks</p>
+              <button onClick={() => onNavigate("tasks")}
+                className="text-[10px] text-[#58A6FF] hover:underline">View board →</button>
+            </div>
+            {loading ? (
+              <div className="p-4 space-y-2"><SkeletonCard count={2} /></div>
+            ) : allPendingTasks.length === 0 ? (
+              <div className="px-4 py-6 text-center text-[#7D8590] text-xs">No open tasks</div>
+            ) : (
+              <div className="divide-y divide-[#30363D]">
+                {allPendingTasks.map(task => (
+                  <button key={task.id} onClick={() => onNavigate("tasks")}
+                    className="w-full flex items-center justify-between px-4 py-3 hover:bg-[#1C2128] transition-colors text-left group">
+                    <div className="min-w-0 flex-1">
+                      <p className="text-xs font-medium text-[#E6EDF3] truncate">{task.title}</p>
+                      {task.dueDate && (
+                        <p className="text-[10px] text-[#7D8590]">Due {new Date(task.dueDate).toLocaleDateString()}</p>
+                      )}
+                    </div>
+                    <Badge text={task.status.replace("_", " ")} color={task.status === "in_progress" ? "blue" : task.status === "money_task" ? "green" : "gray"} />
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Right: Insights */}
+        <div className="space-y-4">
+          {/* Traffic Snapshot */}
+          <div className="bg-[#161B22] border border-[#30363D] rounded-xl overflow-hidden">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-[#30363D]">
+              <p className="text-sm font-semibold text-[#E6EDF3]">📈 Traffic (7 Days)</p>
+              <button onClick={() => onNavigate("analytics")}
+                className="text-[10px] text-[#58A6FF] hover:underline">Full analytics →</button>
+            </div>
+            <div className="p-4">
+              {loading || trafficData.length === 0 ? (
+                <div className="h-24 flex items-center justify-center text-[#7D8590] text-xs">
+                  {loading ? <div className="w-4 h-4 border-2 border-[#0078D4] border-t-transparent rounded-full animate-spin" /> : "No traffic data yet"}
+                </div>
+              ) : (
+                <ResponsiveContainer width="100%" height={90}>
+                  <LineChart data={trafficData} margin={{ top: 2, right: 4, bottom: 2, left: 0 }}>
+                    <XAxis dataKey="day" tick={{ fontSize: 9, fill: "#7D8590" }} tickLine={false} axisLine={false} />
+                    <YAxis hide />
+                    <Tooltip contentStyle={{ background: "#161B22", border: "1px solid #30363D", borderRadius: 8, fontSize: 11 }} labelStyle={{ color: "#E6EDF3" }} />
+                    <Line type="monotone" dataKey="visitors" stroke="#0078D4" strokeWidth={2} dot={false} />
+                  </LineChart>
+                </ResponsiveContainer>
+              )}
+              {kpi && (
+                <div className="flex gap-4 mt-2">
+                  <div><p className="text-[10px] text-[#7D8590]">Visitors Today</p><p className="text-sm font-bold text-[#E6EDF3]">{kpi.visitorsToday}</p></div>
+                  <div><p className="text-[10px] text-[#7D8590]">Conversion</p><p className="text-sm font-bold text-[#E6EDF3]">{kpi.conversionRate}%</p></div>
+                  <div><p className="text-[10px] text-[#7D8590]">Intent Today</p><p className="text-sm font-bold text-[#E6EDF3]">{kpi.intentSignalsToday}</p></div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Campaign Performance */}
+          <div className="bg-[#161B22] border border-[#30363D] rounded-xl overflow-hidden">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-[#30363D]">
+              <p className="text-sm font-semibold text-[#E6EDF3]">📣 Campaign Performance</p>
+              <button onClick={() => onNavigate("campaigns")}
+                className="text-[10px] text-[#58A6FF] hover:underline">Manage →</button>
+            </div>
+            {loading ? (
+              <div className="p-4 space-y-2"><SkeletonCard count={2} /></div>
+            ) : activeCampaigns.length === 0 ? (
+              <div className="px-4 py-6 text-center text-[#7D8590] text-xs">No active campaigns</div>
+            ) : (
+              <div className="divide-y divide-[#30363D]">
+                {activeCampaigns.map(c => (
+                  <div key={c.id} className="px-4 py-3 flex items-center justify-between">
+                    <div className="min-w-0">
+                      <p className="text-xs font-medium text-[#E6EDF3] truncate">{c.name}</p>
+                      <p className="text-[10px] text-[#7D8590]">{c.leadsGenerated} leads · {c.emailsSent} emails</p>
+                    </div>
+                    <span className="text-xs font-bold text-amber-400 flex-shrink-0 ml-3">${Number(c.revenueAttributed ?? 0).toLocaleString()}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* SEO Snapshot */}
+          {seoRankings.length > 0 && (
+            <div className="bg-[#161B22] border border-[#30363D] rounded-xl overflow-hidden">
+              <div className="flex items-center justify-between px-4 py-3 border-b border-[#30363D]">
+                <p className="text-sm font-semibold text-[#E6EDF3]">🔍 SEO Rankings</p>
+                <button onClick={() => onNavigate("analytics")}
+                  className="text-[10px] text-[#58A6FF] hover:underline">All rankings →</button>
+              </div>
+              <div className="divide-y divide-[#30363D]">
+                {seoRankings.map(r => (
+                  <div key={r.id} className="px-4 py-2.5 flex items-center justify-between">
+                    <p className="text-xs text-[#E6EDF3] truncate flex-1 mr-3">{r.keyword}</p>
+                    <div className="flex items-center gap-2 flex-shrink-0">
+                      {r.previousPosition !== null && r.previousPosition !== r.position && (
+                        <span className={`text-[10px] font-semibold ${r.position < r.previousPosition ? "text-emerald-400" : "text-red-400"}`}>
+                          {r.position < r.previousPosition ? "↑" : "↓"}
+                        </span>
+                      )}
+                      <span className="text-xs font-bold text-[#E6EDF3]">#{r.position}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Quick Action Bar */}
+      <div className="bg-[#161B22] border border-[#30363D] rounded-xl p-4">
+        <p className="text-xs font-semibold text-[#7D8590] uppercase tracking-wide mb-3">Quick Actions</p>
+        <div className="flex flex-wrap gap-2">
+          {[
+            { label: "Generate AI Leads", icon: "🤖", section: "recommendations" },
+            { label: "Write Outreach", icon: "✉️", section: "outreach" },
+            { label: "Create Content", icon: "📝", section: "content" },
+            { label: "Build Campaign", icon: "📣", section: "campaigns" },
+            { label: "View Analytics", icon: "📊", section: "analytics" },
+            { label: "Manage Tasks", icon: "✅", section: "tasks" },
+          ].map(a => (
+            <button key={a.section} onClick={() => onNavigate(a.section)}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-[#0D1117] border border-[#30363D] text-xs text-[#7D8590] hover:text-[#E6EDF3] hover:border-[#58A6FF]/40 transition-colors font-medium">
+              <span>{a.icon}</span>{a.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Revenue Command Center (collapsed by default on dashboard) */}
+      <DailyCommandPanel fetchWithAuth={fetchWithAuth} onNavigate={onNavigate} />
+    </div>
+  );
+}
+
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
-const SECTIONS = [
-  { id: "command", label: "🚀 Command" },
-  { id: "recommendations", label: "AI Leads" },
-  { id: "kpi", label: "KPIs" },
-  { id: "lead-finder", label: "Lead Finder" },
-  { id: "outreach", label: "Outreach" },
-  { id: "content", label: "Content" },
-  { id: "follow-ups", label: "Follow-Ups" },
-  { id: "analytics", label: "Analytics" },
-  { id: "tasks", label: "Tasks" },
-  { id: "campaigns", label: "Campaigns" },
-  { id: "ad-library", label: "Ad Library" },
+const NAV_ITEMS = [
+  { id: "dashboard",       label: "Dashboard",    icon: "⊞" },
+  { id: "recommendations", label: "AI Leads",     icon: "🤖" },
+  { id: "lead-finder",     label: "Lead Finder",  icon: "🔍" },
+  { id: "outreach",        label: "Outreach",     icon: "✉️" },
+  { id: "content",         label: "Content Hub",  icon: "📝" },
+  { id: "campaigns",       label: "Campaigns",    icon: "📣" },
+  { id: "tasks",           label: "Tasks",        icon: "✅" },
+  { id: "analytics",       label: "Analytics",    icon: "📊" },
+  { id: "settings",        label: "Settings",     icon: "⚙️" },
 ];
 
-const VALID_TABS = new Set(["command", "recommendations", "kpi", "lead-finder", "outreach", "content", "follow-ups", "analytics", "tasks", "campaigns", "ad-library"]);
+const VALID_TABS = new Set(NAV_ITEMS.map(n => n.id));
+
+// Legacy tab aliases — redirect old ?tab= values to new IDs
+const TAB_ALIASES: Record<string, string> = {
+  command: "dashboard",
+  kpi: "dashboard",
+  "follow-ups": "dashboard",
+  "ad-library": "campaigns",
+};
 
 function getTabFromSearch(): string {
   const params = new URLSearchParams(window.location.search);
-  const tab = params.get("tab") ?? "";
-  return VALID_TABS.has(tab) ? tab : "command";
+  const raw = params.get("tab") ?? "";
+  const tab = TAB_ALIASES[raw] ?? raw;
+  return VALID_TABS.has(tab) ? tab : "dashboard";
 }
 
 export default function MarketingCommandCenter() {
   const { fetchWithAuth } = useAuth();
   const [activeSection, setActiveSection] = useState<string>(getTabFromSearch);
+  const [navCollapsed, setNavCollapsed] = useState(false);
 
   const navigate = useCallback((section: string) => {
-    const tab = VALID_TABS.has(section) ? section : "command";
+    const resolved = TAB_ALIASES[section] ?? section;
+    const tab = VALID_TABS.has(resolved) ? resolved : "dashboard";
     const url = new URL(window.location.href);
-    if (tab === "command") {
+    if (tab === "dashboard") {
       url.searchParams.delete("tab");
     } else {
       url.searchParams.set("tab", tab);
@@ -7080,38 +7365,106 @@ export default function MarketingCommandCenter() {
   }, []);
 
   useEffect(() => {
-    const onPopState = () => {
-      setActiveSection(getTabFromSearch());
-    };
+    const onPopState = () => setActiveSection(getTabFromSearch());
     window.addEventListener("popstate", onPopState);
     return () => window.removeEventListener("popstate", onPopState);
   }, []);
 
+  const activeNav = NAV_ITEMS.find(n => n.id === activeSection);
+
   return (
-    <div className="flex flex-col h-full overflow-hidden">
-      <div className="flex-shrink-0 bg-[#161B22] border-b border-[#30363D] px-4 overflow-x-auto">
-        <div className="flex gap-1 py-1">
-          {SECTIONS.map(s => (
-            <button key={s.id} onClick={() => navigate(s.id)}
-              className={`flex-shrink-0 text-xs px-3 py-2 rounded-lg font-medium transition-colors ${activeSection === s.id ? "bg-[#0078D4]/20 text-[#58A6FF]" : "text-[#7D8590] hover:text-[#E6EDF3] hover:bg-[#1C2128]"}`}>
-              {s.label}
-            </button>
-          ))}
+    <div className="flex h-full overflow-hidden bg-[#0D1117]">
+      {/* ── Left Navigation ── */}
+      <div className={`flex-shrink-0 flex flex-col bg-[#161B22] border-r border-[#30363D] transition-all duration-200 ${navCollapsed ? "w-12" : "w-52"}`}>
+        {/* Nav header */}
+        <div className={`flex items-center border-b border-[#30363D] h-11 flex-shrink-0 ${navCollapsed ? "justify-center px-0" : "justify-between px-3"}`}>
+          {!navCollapsed && (
+            <span className="text-[11px] font-bold text-[#7D8590] uppercase tracking-widest">Marketing</span>
+          )}
+          <button
+            onClick={() => setNavCollapsed(c => !c)}
+            className="text-[#7D8590] hover:text-[#E6EDF3] transition-colors p-1 rounded"
+            title={navCollapsed ? "Expand nav" : "Collapse nav"}
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              {navCollapsed
+                ? <path strokeLinecap="round" strokeLinejoin="round" d="M9 18l6-6-6-6" />
+                : <path strokeLinecap="round" strokeLinejoin="round" d="M15 18l-6-6 6-6" />}
+            </svg>
+          </button>
         </div>
+
+        {/* Nav items */}
+        <nav className="flex-1 overflow-y-auto py-2 space-y-0.5 px-1">
+          {NAV_ITEMS.map(item => {
+            const isActive = activeSection === item.id;
+            return (
+              <button
+                key={item.id}
+                onClick={() => navigate(item.id)}
+                title={navCollapsed ? item.label : undefined}
+                className={`w-full flex items-center gap-2.5 rounded-lg px-2 py-2 text-xs font-medium transition-colors ${
+                  isActive
+                    ? "bg-[#0078D4]/20 text-[#58A6FF]"
+                    : "text-[#7D8590] hover:text-[#E6EDF3] hover:bg-[#1C2128]"
+                } ${navCollapsed ? "justify-center" : ""}`}
+              >
+                <span className="text-base leading-none flex-shrink-0">{item.icon}</span>
+                {!navCollapsed && <span className="truncate">{item.label}</span>}
+              </button>
+            );
+          })}
+        </nav>
       </div>
-      <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-8">
-        <DailyCommandPanel fetchWithAuth={fetchWithAuth} onNavigate={navigate} />
-        {activeSection === "command" && null}
-        {activeSection === "recommendations" && <RecommendedLeadsSection fetchWithAuth={fetchWithAuth} />}
-        {activeSection === "kpi" && <KPIStrip fetchWithAuth={fetchWithAuth} />}
-        {activeSection === "lead-finder" && <LeadFinderSection fetchWithAuth={fetchWithAuth} />}
-        {activeSection === "outreach" && <OutreachAutomationSection fetchWithAuth={fetchWithAuth} />}
-        {activeSection === "content" && <ContentHubSection fetchWithAuth={fetchWithAuth} />}
-        {activeSection === "follow-ups" && <FollowUpsSection fetchWithAuth={fetchWithAuth} />}
-        {activeSection === "analytics" && <TrafficAnalyticsSection fetchWithAuth={fetchWithAuth} />}
-        {activeSection === "tasks" && <MarketingTasksKanban fetchWithAuth={fetchWithAuth} onSectionNavigate={navigate} />}
-        {activeSection === "campaigns" && <CampaignsHubSection fetchWithAuth={fetchWithAuth} />}
-        {activeSection === "ad-library" && <AdLibrarySection fetchWithAuth={fetchWithAuth} onNavigate={navigate} />}
+
+      {/* ── Main Content ── */}
+      <div className="flex-1 flex flex-col overflow-hidden">
+        {/* Top bar */}
+        <div className="flex-shrink-0 h-11 flex items-center justify-between px-5 bg-[#161B22] border-b border-[#30363D]">
+          <h1 className="text-sm font-semibold text-[#E6EDF3]">
+            {activeNav?.icon} {activeNav?.label ?? "Marketing"}
+          </h1>
+        </div>
+
+        {/* Scrollable section content */}
+        <div className="flex-1 overflow-y-auto p-4 md:p-6">
+          {activeSection === "dashboard" && (
+            <MarketingDashboard fetchWithAuth={fetchWithAuth} onNavigate={navigate} />
+          )}
+          {activeSection === "recommendations" && (
+            <RecommendedLeadsSection fetchWithAuth={fetchWithAuth} />
+          )}
+          {activeSection === "lead-finder" && (
+            <LeadFinderSection fetchWithAuth={fetchWithAuth} />
+          )}
+          {activeSection === "outreach" && (
+            <OutreachAutomationSection fetchWithAuth={fetchWithAuth} />
+          )}
+          {activeSection === "content" && (
+            <ContentHubSection fetchWithAuth={fetchWithAuth} />
+          )}
+          {activeSection === "campaigns" && (
+            <div className="space-y-8">
+              <CampaignsHubSection fetchWithAuth={fetchWithAuth} />
+              <div className="border-t border-[#30363D] pt-8">
+                <AdLibrarySection fetchWithAuth={fetchWithAuth} onNavigate={navigate} />
+              </div>
+            </div>
+          )}
+          {activeSection === "tasks" && (
+            <MarketingTasksKanban fetchWithAuth={fetchWithAuth} onSectionNavigate={navigate} />
+          )}
+          {activeSection === "analytics" && (
+            <TrafficAnalyticsSection fetchWithAuth={fetchWithAuth} />
+          )}
+          {activeSection === "settings" && (
+            <div className="flex flex-col items-center justify-center h-64 gap-3 text-center">
+              <span className="text-4xl">⚙️</span>
+              <p className="text-sm font-semibold text-[#E6EDF3]">Marketing Settings</p>
+              <p className="text-xs text-[#7D8590] max-w-xs">Configure ICP, target industries, value proposition, and other marketing preferences. Coming soon.</p>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
