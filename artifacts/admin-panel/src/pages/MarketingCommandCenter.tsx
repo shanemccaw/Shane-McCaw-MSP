@@ -4507,9 +4507,17 @@ function CampaignWorkspace({
   const generatePage = async () => {
     setGeneratingPage(true); setPageDraft(null);
     try {
+      const allDeliverables = linkedOffers.flatMap(o => o.deliverables);
+      const allOutcomes = linkedOffers.flatMap(o => o.outcomes);
       const r = await fetchWithAuth(`${API}/admin/marketing/generate/landing-page`, {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ topic: pageTopic, audience: pageAudience, cta: pageCta }),
+        body: JSON.stringify({
+          topic: pageTopic,
+          audience: pageAudience,
+          cta: pageCta,
+          deliverables: allDeliverables,
+          outcomes: allOutcomes,
+        }),
       });
       const data = await r.json() as Partial<LandingPage>;
       setPageDraft(data);
@@ -5712,6 +5720,8 @@ function LandingCopyPanel({
     setGenError(null);
     setGenSuccess(false);
     try {
+      const allDeliverables = offers.flatMap(o => o.deliverables);
+      const allOutcomes = offers.flatMap(o => o.outcomes);
       const genRes = await fetchWithAuth(`${API}/admin/marketing/generate/landing-page`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -5720,6 +5730,8 @@ function LandingCopyPanel({
           audience: campaign.audience,
           cta: campaign.offer,
           copy: liveContent,
+          deliverables: allDeliverables,
+          outcomes: allOutcomes,
         }),
       });
       if (!genRes.ok) throw new Error("Generation failed");

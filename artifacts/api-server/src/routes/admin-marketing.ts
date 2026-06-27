@@ -2191,17 +2191,43 @@ Respond with ONLY a raw JSON array — no prose, no markdown fences. Schema:
 
 router.post("/admin/marketing/generate/landing-page", requireAdmin, async (req: Request, res: Response) => {
   try {
-    const body = req.body as { offerId?: number; topic?: string; audience?: string; cta?: string; copy?: string };
-    let offerCtx = "";
-    if (body.offerId) {
-      const [offer] = await db.select().from(offersTable).where(eq(offersTable.id, body.offerId)).limit(1);
-      if (offer) offerCtx = `Offer: ${offer.name} — ${offer.goal}. Deliverables: ${offer.deliverables.join(", ")}. Outcomes: ${offer.outcomes.join(", ")}.`;
-    }
+    const body = req.body as {
+      offerId?: number;
+      topic?: string;
+      audience?: string;
+      cta?: string;
+      copy?: string;
+      deliverables?: string[];
+      outcomes?: string[];
+    };
+
     const icpCtx = await buildICPContext();
 
-    // When existing copy is supplied, instruct the AI to STRUCTURE that copy rather than invent new content
+    // Collect offer context: inline deliverables/outcomes take precedence; fall back to offerId DB lookup
+    let offerCtx = "";
+    const inlineDeliverables = (body.deliverables ?? []).filter(Boolean);
+    const inlineOutcomes = (body.outcomes ?? []).filter(Boolean);
+
+    if (inlineDeliverables.length > 0 || inlineOutcomes.length > 0) {
+      const parts: string[] = [];
+      if (inlineDeliverables.length > 0) parts.push(`Deliverables: ${inlineDeliverables.join("; ")}`);
+      if (inlineOutcomes.length > 0) parts.push(`Outcomes: ${inlineOutcomes.join("; ")}`);
+      offerCtx = parts.join("\n");
+    } else if (body.offerId) {
+      const [offer] = await db.select().from(offersTable).where(eq(offersTable.id, body.offerId)).limit(1);
+      if (offer) offerCtx = `Offer: ${offer.name} — ${offer.goal}. Deliverables: ${offer.deliverables.join("; ")}. Outcomes: ${offer.outcomes.join("; ")}.`;
+    }
+
+    const deliverablesBullets = inlineDeliverables.length > 0
+      ? inlineDeliverables.map(d => `• ${d}`).join("\n")
+      : "• Full tenant configuration assessment\n• Prioritised findings document\n• Executive summary";
+    const outcomesBullets = inlineOutcomes.length > 0
+      ? inlineOutcomes.map(o => `• ${o}`).join("\n")
+      : "• Clear remediation roadmap\n• Confidence for Copilot deployment\n• Eliminates blind spots before audits";
+
+    // When existing copy is supplied, use it as the primary source for headline/subheadline
     const copySection = body.copy?.trim()
-      ? `\nEXISTING LANDING PAGE COPY (use this as your primary source — extract and structure the headline, value propositions, social proof, and CTA directly from this text; do NOT invent new content):\n---\n${body.copy.trim()}\n---`
+      ? `\nEXISTING LANDING PAGE COPY — use this as your primary source for the headline and subheadline. Extract tone and framing from it. Supplement with the offer deliverables and outcomes below for the valuePropBlocks:\n---\n${body.copy.trim()}\n---`
       : "";
 
     const prompt = `You are generating a landing page for a PAID professional Microsoft 365 service.
@@ -2214,19 +2240,25 @@ CTA: ${body.cta ?? "Book Your Paid Assessment"}
 Match the exact tone, structure, and authority of a senior enterprise Microsoft 365 architect's real consulting pages.
 
 RULES:
-- DO NOT use generic marketing language, hype, fluff, or emojis.
+- DO NOT use generic marketing language, hype, or "free audit" language.
 - DO NOT write long paragraphs. Keep it concise and enterprise-grade.
 - Never imply the offer is free.
 - The headline must be risk-first (e.g. "Your M365 Tenant Is a Compliance Risk").
 - The subheadline must frame the core problem the prospect faces right now.
-- Produce exactly 3 valuePropBlocks using these pillars (rewritten for the specific topic):
-  1. Clear Visibility Into Data Exposure
-  2. Prioritised Remediation Roadmap
-  3. Confidence for Copilot Deployment
-- Each valuePropBlock body must be 1–2 concise, authoritative sentences. No guessing — data-driven.
-- Leave "icon" as an empty string — do not use emojis.
+- Produce exactly 3 valuePropBlocks drawn from the offer deliverables and outcomes above:
+  1. Clear Visibility Into Data Exposure — rewritten for this specific offer
+  2. Prioritised Remediation Roadmap — grounded in the specific deliverables
+  3. Confidence for Copilot Deployment — tied to the specific outcomes
+- Each valuePropBlock body must be 1–2 concise, authoritative sentences referencing the actual offer scope.
+- Each valuePropBlock icon must be a single relevant emoji (e.g. 🔍 📋 🚀 🛡️ ⚡ 📊).
 - socialProof must always be an empty array — do not fabricate testimonials.
 - The CTA buttonText should reinforce "Paid Assessment" (e.g. "Book Your Paid Assessment").
+
+OFFER DELIVERABLES TO USE IN valuePropBlocks:
+${deliverablesBullets}
+
+OFFER OUTCOMES TO USE IN valuePropBlocks:
+${outcomesBullets}
 
 Generate a landing page as JSON — output ONLY valid JSON, no prose, no markdown fences:
 {
@@ -2234,7 +2266,7 @@ Generate a landing page as JSON — output ONLY valid JSON, no prose, no markdow
   "headline": "risk-first headline",
   "subheadline": "one sentence framing the core problem",
   "valuePropBlocks": [
-    { "icon": "", "heading": "pillar heading", "body": "1–2 authoritative sentences" }
+    { "icon": "🔍", "heading": "pillar heading grounded in the offer", "body": "1–2 authoritative sentences using actual deliverables/outcomes" }
   ],
   "socialProof": [],
   "cta": { "buttonText": "Book Your Paid Assessment", "href": "/contact", "subtext": "Fixed price. Senior-level delivery." }
