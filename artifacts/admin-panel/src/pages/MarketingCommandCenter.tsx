@@ -1530,10 +1530,43 @@ function SeoRankingsCard({ fetchWithAuth }: { fetchWithAuth: (url: string, opts?
 function TrafficAnalyticsSection({ fetchWithAuth }: { fetchWithAuth: (url: string, opts?: RequestInit) => Promise<Response> }) {
   const [analytics, setAnalytics] = useState<AnalyticsData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [editLeads, setEditLeads] = useState("");
+  const [editRevenue, setEditRevenue] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  const loadAnalytics = useCallback(async () => {
+    const r = await fetchWithAuth(`${API}/admin/marketing/analytics`);
+    setAnalytics(await r.json() as AnalyticsData);
+  }, [fetchWithAuth]);
 
   useEffect(() => {
-    fetchWithAuth(`${API}/admin/marketing/analytics`).then(r => r.json()).then(d => setAnalytics(d as AnalyticsData)).catch(() => null).finally(() => setLoading(false));
-  }, [fetchWithAuth]);
+    loadAnalytics().catch(() => null).finally(() => setLoading(false));
+  }, [loadAnalytics]);
+
+  const startEdit = (c: CampaignPerf) => {
+    setEditingId(c.id);
+    setEditLeads(String(c.leadsGenerated));
+    setEditRevenue(String(c.revenueAttributed));
+  };
+
+  const saveEdit = async (id: number) => {
+    setSaving(true);
+    try {
+      await fetchWithAuth(`${API}/admin/marketing/campaigns/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          leadsGenerated: Math.max(0, parseInt(editLeads, 10) || 0),
+          revenueAttributed: Math.max(0, parseFloat(editRevenue) || 0),
+        }),
+      });
+      await loadAnalytics();
+      setEditingId(null);
+    } finally {
+      setSaving(false);
+    }
+  };
 
   if (loading) return (
     <div className="space-y-4">
@@ -1611,28 +1644,87 @@ function TrafficAnalyticsSection({ fetchWithAuth }: { fetchWithAuth: (url: strin
                 {sorted.map(c => {
                   const isTop = c.id === topId && c.revenuePerLead !== null;
                   const barPct = maxRpl > 0 && c.revenuePerLead !== null ? (c.revenuePerLead / maxRpl) * 100 : 0;
+                  const isEditing = editingId === c.id;
                   return (
-                    <div key={c.id} className={`rounded-lg px-3 py-2.5 ${isTop ? "bg-[#0D1117] ring-1 ring-[#0078D4]/50" : "bg-[#0D1117]"}`}>
-                      <div className="flex items-center justify-between mb-1.5">
-                        <div className="flex items-center gap-2 min-w-0">
-                          <p className="text-sm text-[#E6EDF3] truncate font-medium">{c.name}</p>
-                          {isTop && <span className="text-[10px] font-bold text-[#0078D4] bg-[#0078D4]/10 border border-[#0078D4]/30 rounded-full px-2 py-0.5 flex-shrink-0">★ Top</span>}
-                          <Badge text={c.status} color={c.status === "active" ? "green" : "gray"} />
+                    <div key={c.id} className={`rounded-lg px-3 py-2.5 ${isTop && !isEditing ? "bg-[#0D1117] ring-1 ring-[#0078D4]/50" : "bg-[#0D1117]"}`}>
+                      {isEditing ? (
+                        <div>
+                          <p className="text-sm text-[#E6EDF3] font-medium mb-2 truncate">{c.name}</p>
+                          <div className="flex gap-2 mb-2">
+                            <div className="flex-1">
+                              <label className="text-[10px] text-[#7D8590] uppercase tracking-wider block mb-1">Leads Generated</label>
+                              <input
+                                type="number"
+                                min="0"
+                                value={editLeads}
+                                onChange={e => setEditLeads(e.target.value)}
+                                className="w-full bg-[#21262D] border border-[#30363D] rounded-md px-2 py-1.5 text-sm text-[#E6EDF3] focus:outline-none focus:border-[#0078D4]"
+                                placeholder="0"
+                                autoFocus
+                              />
+                            </div>
+                            <div className="flex-1">
+                              <label className="text-[10px] text-[#7D8590] uppercase tracking-wider block mb-1">Revenue Attributed ($)</label>
+                              <input
+                                type="number"
+                                min="0"
+                                step="0.01"
+                                value={editRevenue}
+                                onChange={e => setEditRevenue(e.target.value)}
+                                className="w-full bg-[#21262D] border border-[#30363D] rounded-md px-2 py-1.5 text-sm text-[#E6EDF3] focus:outline-none focus:border-[#0078D4]"
+                                placeholder="0"
+                              />
+                            </div>
+                          </div>
+                          <div className="flex gap-2 justify-end">
+                            <button
+                              onClick={() => setEditingId(null)}
+                              className="text-xs text-[#7D8590] hover:text-[#E6EDF3] px-3 py-1.5 rounded-md border border-[#30363D] hover:border-[#484F58] transition-colors"
+                            >
+                              Cancel
+                            </button>
+                            <button
+                              onClick={() => void saveEdit(c.id)}
+                              disabled={saving}
+                              className="text-xs text-white bg-[#0078D4] hover:bg-[#0078D4]/80 disabled:opacity-50 px-3 py-1.5 rounded-md transition-colors font-medium"
+                            >
+                              {saving ? "Saving…" : "Save"}
+                            </button>
+                          </div>
                         </div>
-                        <div className="text-right flex-shrink-0 ml-3">
-                          {c.revenuePerLead !== null
-                            ? <span className="text-sm font-bold text-[#E6EDF3]">${c.revenuePerLead.toLocaleString("en-US", { maximumFractionDigits: 0 })}<span className="text-[#7D8590] font-normal text-xs">/lead</span></span>
-                            : <span className="text-[#484F58] text-sm">—</span>
-                          }
-                        </div>
-                      </div>
-                      <div className="h-1.5 rounded-full bg-[#21262D] overflow-hidden">
-                        <div className={`h-full rounded-full transition-all ${isTop ? "bg-[#0078D4]" : "bg-[#30363D]"}`} style={{ width: `${barPct}%` }} />
-                      </div>
-                      <div className="flex gap-3 mt-1.5">
-                        <span className="text-[10px] text-[#7D8590]">{c.leadsGenerated} lead{c.leadsGenerated !== 1 ? "s" : ""}</span>
-                        <span className="text-[10px] text-[#7D8590]">${c.revenueAttributed.toLocaleString("en-US", { maximumFractionDigits: 0 })} revenue</span>
-                      </div>
+                      ) : (
+                        <>
+                          <div className="flex items-center justify-between mb-1.5">
+                            <div className="flex items-center gap-2 min-w-0">
+                              <p className="text-sm text-[#E6EDF3] truncate font-medium">{c.name}</p>
+                              {isTop && <span className="text-[10px] font-bold text-[#0078D4] bg-[#0078D4]/10 border border-[#0078D4]/30 rounded-full px-2 py-0.5 flex-shrink-0">★ Top</span>}
+                              <Badge text={c.status} color={c.status === "active" ? "green" : "gray"} />
+                            </div>
+                            <div className="flex items-center gap-2 flex-shrink-0 ml-3">
+                              {c.revenuePerLead !== null
+                                ? <span className="text-sm font-bold text-[#E6EDF3]">${c.revenuePerLead.toLocaleString("en-US", { maximumFractionDigits: 0 })}<span className="text-[#7D8590] font-normal text-xs">/lead</span></span>
+                                : <span className="text-[#484F58] text-sm">—</span>
+                              }
+                              <button
+                                onClick={() => startEdit(c)}
+                                title="Edit leads & revenue"
+                                className="text-[#484F58] hover:text-[#7D8590] transition-colors p-0.5 rounded"
+                              >
+                                <svg width="13" height="13" viewBox="0 0 16 16" fill="currentColor">
+                                  <path d="M11.013 1.427a1.75 1.75 0 0 1 2.474 0l1.086 1.086a1.75 1.75 0 0 1 0 2.474l-8.61 8.61c-.21.21-.47.364-.756.445l-3.251.93a.75.75 0 0 1-.927-.928l.929-3.25c.081-.286.235-.547.445-.758l8.61-8.61Zm.176 4.823L9.75 4.81l-6.286 6.287a.253.253 0 0 0-.064.108l-.558 1.953 1.953-.558a.253.253 0 0 0 .108-.064Zm1.238-3.763a.25.25 0 0 0-.354 0L10.811 3.75l1.439 1.44 1.263-1.263a.25.25 0 0 0 0-.354Z"/>
+                                </svg>
+                              </button>
+                            </div>
+                          </div>
+                          <div className="h-1.5 rounded-full bg-[#21262D] overflow-hidden">
+                            <div className={`h-full rounded-full transition-all ${isTop ? "bg-[#0078D4]" : "bg-[#30363D]"}`} style={{ width: `${barPct}%` }} />
+                          </div>
+                          <div className="flex gap-3 mt-1.5">
+                            <span className="text-[10px] text-[#7D8590]">{c.leadsGenerated} lead{c.leadsGenerated !== 1 ? "s" : ""}</span>
+                            <span className="text-[10px] text-[#7D8590]">${c.revenueAttributed.toLocaleString("en-US", { maximumFractionDigits: 0 })} revenue</span>
+                          </div>
+                        </>
+                      )}
                     </div>
                   );
                 })}
