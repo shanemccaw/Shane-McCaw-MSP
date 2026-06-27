@@ -1850,6 +1850,38 @@ router.post("/admin/marketing/offers/generate", requireAdmin, (req: Request, res
   (router as unknown as { handle(req: Request, res: Response, cb: () => void): void }).handle(req, res, () => res.status(404).json({ error: "Not found" }));
 });
 
+// ─── AI Suggest: Offer fields ─────────────────────────────────────────────────
+
+router.post("/admin/marketing/suggest/offer", requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const icpCtx = await buildICPContext();
+    const prompt = `You are a B2B offer strategist for a Microsoft 365 consulting firm.
+${icpCtx}
+
+Generate exactly 3 distinct offer angle suggestions, each covering a different service line or buyer persona. Each should have a specific goal, a well-defined audience, and a realistic price point for consulting services.
+
+Respond with ONLY a raw JSON array — no prose, no markdown fences. Schema:
+[{"goal":"string","audience":"string","pricePoint":"string"}]`;
+
+    const msg = await anthropic.messages.create({
+      model: "claude-haiku-4-5",
+      max_tokens: 400,
+      messages: [
+        { role: "user", content: prompt },
+        { role: "assistant", content: "[" },
+      ],
+    });
+    const continuation = msg.content[0]?.type === "text" ? msg.content[0].text : "]";
+    const raw = "[" + continuation;
+    const schema = z.array(z.object({ goal: z.string(), audience: z.string(), pricePoint: z.string() }));
+    res.json(parseAiJson(raw, schema));
+  } catch (e) {
+    req.log.error({ err: e }, "POST /admin/marketing/suggest/offer failed");
+    const status = e instanceof AiResponseError ? 422 : 500;
+    res.status(status).json({ error: String(e) });
+  }
+});
+
 // ─── Landing Page Generator ───────────────────────────────────────────────────
 
 router.post("/admin/marketing/generate/landing-page", requireAdmin, async (req: Request, res: Response) => {
@@ -1957,6 +1989,38 @@ router.get("/landing-pages/:slug", async (req: Request, res: Response) => {
     res.json(page);
   } catch (e) {
     res.status(500).json({ error: String(e) });
+  }
+});
+
+// ─── AI Suggest: Landing Page fields ─────────────────────────────────────────
+
+router.post("/admin/marketing/suggest/landing-page", requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const icpCtx = await buildICPContext();
+    const prompt = `You are a conversion copywriter for a Microsoft 365 consulting firm.
+${icpCtx}
+
+Generate exactly 3 distinct landing page suggestions, each focused on a different service offering or micro-offer package. Each should have a specific topic, a well-defined audience, and a compelling call-to-action phrase.
+
+Respond with ONLY a raw JSON array — no prose, no markdown fences. Schema:
+[{"topic":"string","audience":"string","cta":"string"}]`;
+
+    const msg = await anthropic.messages.create({
+      model: "claude-haiku-4-5",
+      max_tokens: 400,
+      messages: [
+        { role: "user", content: prompt },
+        { role: "assistant", content: "[" },
+      ],
+    });
+    const continuation = msg.content[0]?.type === "text" ? msg.content[0].text : "]";
+    const raw = "[" + continuation;
+    const schema = z.array(z.object({ topic: z.string(), audience: z.string(), cta: z.string() }));
+    res.json(parseAiJson(raw, schema));
+  } catch (e) {
+    req.log.error({ err: e }, "POST /admin/marketing/suggest/landing-page failed");
+    const status = e instanceof AiResponseError ? 422 : 500;
+    res.status(status).json({ error: String(e) });
   }
 });
 

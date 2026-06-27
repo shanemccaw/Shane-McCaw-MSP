@@ -2728,6 +2728,8 @@ function AiInsightsCard({ fetchWithAuth }: { fetchWithAuth: (url: string, opts?:
 
 // ─── Offer Builder Panel ──────────────────────────────────────────────────────
 
+interface OfferSuggestion { goal: string; audience: string; pricePoint: string }
+
 function OfferBuilderPanel({ fetchWithAuth }: { fetchWithAuth: (url: string, opts?: RequestInit) => Promise<Response> }) {
   const [offers, setOffers] = useState<Offer[]>([]);
   const [loading, setLoading] = useState(true);
@@ -2738,10 +2740,44 @@ function OfferBuilderPanel({ fetchWithAuth }: { fetchWithAuth: (url: string, opt
   const [pricePoint, setPricePoint] = useState("");
   const [draft, setDraft] = useState<Omit<Offer, "id" | "createdAt"> | null>(null);
   const [expandedId, setExpandedId] = useState<number | null>(null);
+  const [suggestions, setSuggestions] = useState<OfferSuggestion[]>([]);
+  const [suggestionIdx, setSuggestionIdx] = useState(0);
+  const [loadingSuggestions, setLoadingSuggestions] = useState(false);
+  const [suggestError, setSuggestError] = useState<string | null>(null);
 
   useEffect(() => {
     fetchWithAuth(`${API}/admin/marketing/offers`).then(r => r.json()).then(d => setOffers(Array.isArray(d) ? d as Offer[] : [])).catch(() => null).finally(() => setLoading(false));
   }, [fetchWithAuth]);
+
+  const fetchSuggestions = async (force = false) => {
+    if (suggestions.length > 0 && !force) {
+      const next = (suggestionIdx + 1) % suggestions.length;
+      setSuggestionIdx(next);
+      const s = suggestions[next];
+      if (s) { setGoal(s.goal); setAudience(s.audience); setPricePoint(s.pricePoint); }
+      return;
+    }
+    setLoadingSuggestions(true); setSuggestError(null);
+    try {
+      const r = await fetchWithAuth(`${API}/admin/marketing/suggest/offer`, { method: "POST" });
+      const data = await r.json() as unknown;
+      if (!r.ok) { setSuggestError((data as { error?: string })?.error ?? "Suggest failed"); return; }
+      const list = Array.isArray(data) ? data as OfferSuggestion[] : [];
+      if (list.length === 0) { setSuggestError("No suggestions returned"); return; }
+      setSuggestions(list); setSuggestionIdx(0);
+      const s = list[0];
+      if (s) { setGoal(s.goal); setAudience(s.audience); setPricePoint(s.pricePoint); }
+    } catch { setSuggestError("Network error"); }
+    finally { setLoadingSuggestions(false); }
+  };
+
+  const cycleSuggestion = (dir: 1 | -1) => {
+    if (suggestions.length === 0) return;
+    const next = (suggestionIdx + dir + suggestions.length) % suggestions.length;
+    setSuggestionIdx(next);
+    const s = suggestions[next];
+    if (s) { setGoal(s.goal); setAudience(s.audience); setPricePoint(s.pricePoint); }
+  };
 
   const generate = async () => {
     setGenerating(true); setDraft(null);
@@ -2771,6 +2807,27 @@ function OfferBuilderPanel({ fetchWithAuth }: { fetchWithAuth: (url: string, opt
     <div className="space-y-4">
       <h3 className="text-sm font-semibold text-[#E6EDF3]">💡 Offer Builder</h3>
       <div className="bg-[#161B22] border border-[#30363D] rounded-xl p-4 space-y-4">
+        {/* Suggest Fields bar */}
+        <div className="flex items-center gap-2 flex-wrap">
+          <button
+            onClick={() => { void fetchSuggestions(false); }}
+            disabled={loadingSuggestions}
+            className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border border-violet-500/40 text-violet-300 hover:bg-violet-500/10 disabled:opacity-40 transition-colors"
+          >
+            {loadingSuggestions
+              ? <><div className="w-3 h-3 border border-violet-300 border-t-transparent rounded-full animate-spin" />Suggesting…</>
+              : "✦ Suggest Fields"}
+          </button>
+          {suggestions.length > 0 && (
+            <div className="flex items-center gap-1">
+              <button onClick={() => cycleSuggestion(-1)} className="w-6 h-6 flex items-center justify-center rounded border border-[#30363D] text-[#7D8590] hover:text-[#E6EDF3] hover:border-[#7D8590] text-xs transition-colors">‹</button>
+              <span className="text-[10px] text-[#7D8590]">{suggestionIdx + 1}/{suggestions.length}</span>
+              <button onClick={() => cycleSuggestion(1)} className="w-6 h-6 flex items-center justify-center rounded border border-[#30363D] text-[#7D8590] hover:text-[#E6EDF3] hover:border-[#7D8590] text-xs transition-colors">›</button>
+              <button onClick={() => { void fetchSuggestions(true); }} title="Refresh suggestions" className="w-6 h-6 flex items-center justify-center rounded border border-[#30363D] text-[#484F58] hover:text-[#7D8590] text-xs transition-colors">↺</button>
+            </div>
+          )}
+          {suggestError && <span className="text-xs text-red-400">{suggestError}</span>}
+        </div>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
           <div>
             <label className="text-[10px] text-[#7D8590] uppercase tracking-wide">Goal</label>
@@ -2858,6 +2915,8 @@ function OfferBuilderPanel({ fetchWithAuth }: { fetchWithAuth: (url: string, opt
 
 // ─── Landing Pages Panel ──────────────────────────────────────────────────────
 
+interface LandingPageSuggestion { topic: string; audience: string; cta: string }
+
 function LandingPagesPanel({ fetchWithAuth }: { fetchWithAuth: (url: string, opts?: RequestInit) => Promise<Response> }) {
   const [pages, setPages] = useState<LandingPage[]>([]);
   const [loading, setLoading] = useState(true);
@@ -2870,10 +2929,44 @@ function LandingPagesPanel({ fetchWithAuth }: { fetchWithAuth: (url: string, opt
   const [slugInput, setSlugInput] = useState("");
   const [expandedId, setExpandedId] = useState<number | null>(null);
   const [slugError, setSlugError] = useState<string | null>(null);
+  const [suggestions, setSuggestions] = useState<LandingPageSuggestion[]>([]);
+  const [suggestionIdx, setSuggestionIdx] = useState(0);
+  const [loadingSuggestions, setLoadingSuggestions] = useState(false);
+  const [suggestError, setSuggestError] = useState<string | null>(null);
 
   useEffect(() => {
     fetchWithAuth(`${API}/admin/marketing/landing-pages`).then(r => r.json()).then(d => setPages(Array.isArray(d) ? d as LandingPage[] : [])).catch(() => null).finally(() => setLoading(false));
   }, [fetchWithAuth]);
+
+  const fetchSuggestions = async (force = false) => {
+    if (suggestions.length > 0 && !force) {
+      const next = (suggestionIdx + 1) % suggestions.length;
+      setSuggestionIdx(next);
+      const s = suggestions[next];
+      if (s) { setTopic(s.topic); setAudience(s.audience); setCta(s.cta); }
+      return;
+    }
+    setLoadingSuggestions(true); setSuggestError(null);
+    try {
+      const r = await fetchWithAuth(`${API}/admin/marketing/suggest/landing-page`, { method: "POST" });
+      const data = await r.json() as unknown;
+      if (!r.ok) { setSuggestError((data as { error?: string })?.error ?? "Suggest failed"); return; }
+      const list = Array.isArray(data) ? data as LandingPageSuggestion[] : [];
+      if (list.length === 0) { setSuggestError("No suggestions returned"); return; }
+      setSuggestions(list); setSuggestionIdx(0);
+      const s = list[0];
+      if (s) { setTopic(s.topic); setAudience(s.audience); setCta(s.cta); }
+    } catch { setSuggestError("Network error"); }
+    finally { setLoadingSuggestions(false); }
+  };
+
+  const cycleSuggestion = (dir: 1 | -1) => {
+    if (suggestions.length === 0) return;
+    const next = (suggestionIdx + dir + suggestions.length) % suggestions.length;
+    setSuggestionIdx(next);
+    const s = suggestions[next];
+    if (s) { setTopic(s.topic); setAudience(s.audience); setCta(s.cta); }
+  };
 
   const generate = async () => {
     setGenerating(true); setDraft(null);
@@ -2920,6 +3013,27 @@ function LandingPagesPanel({ fetchWithAuth }: { fetchWithAuth: (url: string, opt
     <div className="space-y-4">
       <h3 className="text-sm font-semibold text-[#E6EDF3]">🌐 Landing Pages</h3>
       <div className="bg-[#161B22] border border-[#30363D] rounded-xl p-4 space-y-4">
+        {/* Suggest Fields bar */}
+        <div className="flex items-center gap-2 flex-wrap">
+          <button
+            onClick={() => { void fetchSuggestions(false); }}
+            disabled={loadingSuggestions}
+            className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border border-violet-500/40 text-violet-300 hover:bg-violet-500/10 disabled:opacity-40 transition-colors"
+          >
+            {loadingSuggestions
+              ? <><div className="w-3 h-3 border border-violet-300 border-t-transparent rounded-full animate-spin" />Suggesting…</>
+              : "✦ Suggest Fields"}
+          </button>
+          {suggestions.length > 0 && (
+            <div className="flex items-center gap-1">
+              <button onClick={() => cycleSuggestion(-1)} className="w-6 h-6 flex items-center justify-center rounded border border-[#30363D] text-[#7D8590] hover:text-[#E6EDF3] hover:border-[#7D8590] text-xs transition-colors">‹</button>
+              <span className="text-[10px] text-[#7D8590]">{suggestionIdx + 1}/{suggestions.length}</span>
+              <button onClick={() => cycleSuggestion(1)} className="w-6 h-6 flex items-center justify-center rounded border border-[#30363D] text-[#7D8590] hover:text-[#E6EDF3] hover:border-[#7D8590] text-xs transition-colors">›</button>
+              <button onClick={() => { void fetchSuggestions(true); }} title="Refresh suggestions" className="w-6 h-6 flex items-center justify-center rounded border border-[#30363D] text-[#484F58] hover:text-[#7D8590] text-xs transition-colors">↺</button>
+            </div>
+          )}
+          {suggestError && <span className="text-xs text-red-400">{suggestError}</span>}
+        </div>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
           <div>
             <label className="text-[10px] text-[#7D8590] uppercase tracking-wide">Topic / Offer</label>
