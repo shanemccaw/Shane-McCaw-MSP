@@ -5834,6 +5834,7 @@ function CampaignDetailView({
   onGenerateMoreAssets: (campaign: Campaign) => void;
   onDelete?: () => void;
 }) {
+  const { accessToken } = useAuth();
   const [data, setData] = useState<CampaignDetailData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -6109,11 +6110,28 @@ function CampaignDetailView({
                   <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-semibold ${lp.published ? "bg-emerald-500/20 text-emerald-400" : "bg-[#30363D] text-[#7D8590]"}`}>
                     {lp.published ? "Live" : "Draft"}
                   </span>
+                  {!lp.published && accessToken && (
+                    <a
+                      href={`${window.location.origin}/lp/${lp.slug}?preview=${encodeURIComponent(accessToken)}`}
+                      target="_blank" rel="noopener noreferrer"
+                      className="text-[9px] px-2 py-0.5 rounded border border-amber-500/40 text-amber-400 hover:bg-amber-500/10 transition-colors"
+                      title="Preview draft page">
+                      🔍 Preview
+                    </a>
+                  )}
                   {lp.published && (
-                    <button onClick={() => { void navigator.clipboard.writeText(`${window.location.origin}/lp/${lp.slug}`); }}
-                      className="text-[9px] px-2 py-0.5 rounded border border-[#30363D] text-[#7D8590] hover:text-[#E6EDF3] hover:border-[#58A6FF]/40 transition-colors">
-                      Copy URL
-                    </button>
+                    <>
+                      <a
+                        href={`${window.location.origin}/lp/${lp.slug}`}
+                        target="_blank" rel="noopener noreferrer"
+                        className="text-[9px] px-2 py-0.5 rounded border border-[#30363D] text-[#7D8590] hover:text-[#E6EDF3] hover:border-[#58A6FF]/40 transition-colors">
+                        View
+                      </a>
+                      <button onClick={() => { void navigator.clipboard.writeText(`${window.location.origin}/lp/${lp.slug}`); }}
+                        className="text-[9px] px-2 py-0.5 rounded border border-[#30363D] text-[#7D8590] hover:text-[#E6EDF3] hover:border-[#58A6FF]/40 transition-colors">
+                        Copy URL
+                      </button>
+                    </>
                   )}
                 </div>
               </div>
