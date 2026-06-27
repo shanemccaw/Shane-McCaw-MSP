@@ -1145,6 +1145,7 @@ const generateAdsSchema = z.object({
   offer: z.string().optional().default(""),
   angle: z.string().optional().default(""),
   audience: z.string().optional().default(""),
+  destinationPath: z.string().optional(),
 });
 
 const adVariationSchema = z.object({
@@ -1180,16 +1181,17 @@ function getPublicSiteBase(): string {
   return "https://shanemccaw.com";
 }
 
-function buildUtmUrl(adType: string, campaignSlug: string, variationIdx: number): string {
+function buildUtmUrl(adType: string, campaignSlug: string, variationIdx: number, destinationPath?: string): string {
   const base = getPublicSiteBase();
   const { source, medium, page } = AD_TYPE_UTM[adType] ?? { source: "paid", medium: "cpc", page: "/contact" };
+  const effectivePage = destinationPath ?? page;
   const params = new URLSearchParams({
     utm_source: source,
     utm_medium: medium,
     utm_campaign: campaignSlug,
     utm_content: `var-${variationIdx + 1}`,
   });
-  return `${base}${page}?${params.toString()}`;
+  return `${base}${effectivePage}?${params.toString()}`;
 }
 
 router.post("/admin/marketing/campaigns/generate-ads", requireAdmin, async (req: Request, res: Response) => {
@@ -1340,7 +1342,7 @@ Respond ONLY with valid JSON, no prose:
     const campaignSlug = slugifyForUtm(body.topic);
     const variations = parsed.variations.map((v, idx) => ({
       ...v,
-      url: buildUtmUrl(body.adType, campaignSlug, idx),
+      url: buildUtmUrl(body.adType, campaignSlug, idx, body.destinationPath),
     }));
 
     res.json({ adType: body.adType, variations });

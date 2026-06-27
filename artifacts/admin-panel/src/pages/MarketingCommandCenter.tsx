@@ -4282,6 +4282,7 @@ interface AdSectionState {
   offer: string;
   angle: string;
   audience: string;
+  destinationPath: string;
   variations: AdVariation[];
   generating: boolean;
   suggesting: boolean;
@@ -4289,6 +4290,30 @@ interface AdSectionState {
   saved: boolean;
   error: string | null;
   open: boolean;
+}
+
+const DESTINATION_OPTIONS: { path: string; label: string }[] = [
+  { path: "/contact",                    label: "Contact (/contact)" },
+  { path: "/book",                       label: "Book a Call (/book)" },
+  { path: "/pricing",                    label: "Pricing (/pricing)" },
+  { path: "/services/microsoft-365",     label: "M365 Services (/services/microsoft-365)" },
+  { path: "/services/copilot-ai",        label: "Copilot AI (/services/copilot-ai)" },
+  { path: "/services/sharepoint",        label: "SharePoint (/services/sharepoint)" },
+  { path: "/services/power-platform",    label: "Power Platform (/services/power-platform)" },
+  { path: "/services/governance",        label: "Governance (/services/governance)" },
+  { path: "/services/cloud-migration",   label: "Cloud Migration (/services/cloud-migration)" },
+  { path: "/micro-offers",               label: "Micro-Offers (/micro-offers)" },
+  { path: "/",                           label: "Home (/)" },
+];
+
+function rebuildVariationUrl(existingUrl: string, newPath: string): string {
+  try {
+    const u = new URL(existingUrl);
+    u.pathname = newPath;
+    return u.toString();
+  } catch {
+    return existingUrl;
+  }
 }
 
 type AdType = "ad_google" | "ad_linkedin" | "ad_retargeting" | "ad_creative" | "landing_page";
@@ -4317,6 +4342,7 @@ function CampaignAdAssetsStep({
     offer: campaignOffer.slice(0, 120),
     angle: "benefit-focused",
     audience: campaignAudience.slice(0, 120),
+    destinationPath: type === "landing_page" ? "/" : "/contact",
     variations: [],
     generating: false,
     suggesting: false,
@@ -4364,6 +4390,7 @@ function CampaignAdAssetsStep({
           offer: sections[type].offer,
           angle: sections[type].angle,
           audience: sections[type].audience,
+          destinationPath: sections[type].destinationPath,
         }),
       });
       const data = await r.json() as { variations?: AdVariation[]; error?: string } | AiErrorShape;
@@ -4519,6 +4546,29 @@ function CampaignAdAssetsStep({
                         placeholder="e.g. IT Directors at 100-500 employee firms"
                         className="mt-1 w-full bg-[#161B22] border border-[#30363D] rounded-lg px-3 py-2 text-xs text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60"
                       />
+                    </div>
+                    <div className="sm:col-span-2">
+                      <label className="text-[10px] text-[#7D8590] uppercase tracking-wide">Landing Page Destination</label>
+                      <select
+                        value={s.destinationPath}
+                        onChange={e => {
+                          const newPath = e.target.value;
+                          patchSection(type, {
+                            destinationPath: newPath,
+                            ...(s.variations.length > 0 && {
+                              variations: s.variations.map(v => ({
+                                ...v,
+                                url: v.url ? rebuildVariationUrl(v.url, newPath) : v.url,
+                              })),
+                            }),
+                          });
+                        }}
+                        className="mt-1 w-full bg-[#161B22] border border-[#30363D] rounded-lg px-3 py-2 text-xs text-[#E6EDF3] outline-none focus:border-[#0078D4]/60"
+                      >
+                        {DESTINATION_OPTIONS.map(opt => (
+                          <option key={opt.path} value={opt.path}>{opt.label}</option>
+                        ))}
+                      </select>
                     </div>
                   </div>
 
