@@ -28,6 +28,9 @@ interface Script {
   runbookName: string;
   appRegPermissions: AppRegPermission[];
   aiInstructions: string | null;
+  executionMode: "automated" | "manual";
+  manualRequirements: string[];
+  psScriptBody: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -45,7 +48,37 @@ interface PackageScript {
     runbookName: string;
     appRegPermissions: AppRegPermission[];
     aiInstructions: string | null;
+    executionMode: "automated" | "manual";
+    manualRequirements: string[];
   };
+}
+
+interface PackageRunScriptResult {
+  scriptId: number;
+  scriptName: string;
+  runOrder: number;
+  runResultId: number;
+  jobId: string | null;
+  status: string;
+  executionMode: "automated" | "manual";
+  findings: string[];
+  recommendations: string[];
+  scoreImpact: Record<string, number>;
+  psContent?: string;
+  instructions?: string;
+  filename?: string;
+  uploadUrl?: string;
+}
+
+interface PackageRunResult {
+  packageId: number;
+  customerId: number | null;
+  totalScripts: number;
+  completedCount: number;
+  failedCount: number;
+  awaitingUploadCount?: number;
+  requiresManualExecution?: boolean;
+  results: PackageRunScriptResult[];
 }
 
 interface Service {
@@ -141,6 +174,9 @@ const EMPTY_FORM = {
   runbookName: "",
   appRegPermissions: [] as AppRegPermission[],
   aiInstructions: "",
+  executionMode: "automated" as "automated" | "manual",
+  manualRequirements: "",
+  psScriptBody: "",
 };
 
 function ScriptFormModal({
@@ -162,6 +198,9 @@ function ScriptFormModal({
           runbookName: script.runbookName,
           appRegPermissions: script.appRegPermissions,
           aiInstructions: script.aiInstructions ?? "",
+          executionMode: script.executionMode ?? "automated" as "automated" | "manual",
+          manualRequirements: (script.manualRequirements ?? []).join("\n"),
+          psScriptBody: script.psScriptBody ?? "",
         }
       : { ...EMPTY_FORM, appRegPermissions: [] as AppRegPermission[] }
   );
@@ -264,8 +303,15 @@ function ScriptFormModal({
           name: form.name.trim(),
           description: form.description.trim() || undefined,
           runbookName: form.runbookName.trim(),
-          appRegPermissions: form.appRegPermissions.filter(p => p.permission.trim()),
+          appRegPermissions: form.executionMode === "manual" ? [] : form.appRegPermissions.filter(p => p.permission.trim()),
           aiInstructions: form.aiInstructions.trim() || undefined,
+          executionMode: form.executionMode,
+          manualRequirements: form.manualRequirements.trim()
+            ? form.manualRequirements.split("\n").map(l => l.trim()).filter(Boolean)
+            : [],
+          psScriptBody: form.executionMode === "manual" && form.psScriptBody.trim()
+            ? form.psScriptBody.trim()
+            : undefined,
         }),
       });
       if (!res.ok) {
@@ -385,36 +431,92 @@ function ScriptFormModal({
           </div>
 
           <div>
-            <div className="flex items-center justify-between mb-2">
-              <label className={`${labelCls} mb-0`}>App Registration Permissions</label>
-              <button
-                onClick={addPerm}
-                className="flex items-center gap-1 text-[10px] font-semibold text-[#0078D4] hover:text-[#1A90E0] transition-colors"
-              >
-                <Plus className="w-3 h-3" />Add permission
-              </button>
+            <label className={labelCls}>Execution Mode</label>
+            <div className="flex gap-2">
+              {(["automated", "manual"] as const).map(mode => (
+                <button
+                  key={mode}
+                  type="button"
+                  onClick={() => setForm(f => ({ ...f, executionMode: mode }))}
+                  className={`flex-1 py-2 px-3 rounded-lg text-xs font-semibold border transition-colors ${
+                    form.executionMode === mode
+                      ? mode === "automated"
+                        ? "bg-[#0078D4]/20 border-[#0078D4]/50 text-[#0078D4]"
+                        : "bg-amber-500/20 border-amber-500/40 text-amber-400"
+                      : "bg-[#1C2128] border-[#30363D] text-[#484F58] hover:text-[#7D8590]"
+                  }`}
+                >
+                  {mode === "automated" ? "⚡ Automated" : "📋 Manual (Delegated Auth)"}
+                </button>
+              ))}
             </div>
-            {form.appRegPermissions.length === 0 ? (
-              <p className="text-xs text-[#484F58] italic py-2">No permissions defined yet.</p>
-            ) : (
-              <div className="space-y-2">
-                <div className="grid grid-cols-[1fr_130px_1fr_28px] gap-2 mb-1">
-                  <span className="text-[10px] font-bold uppercase text-[#484F58]">Permission</span>
-                  <span className="text-[10px] font-bold uppercase text-[#484F58]">Type</span>
-                  <span className="text-[10px] font-bold uppercase text-[#484F58]">Reason</span>
-                  <span />
-                </div>
-                {form.appRegPermissions.map((p, i) => (
-                  <PermissionRow
-                    key={i}
-                    perm={p}
-                    onChange={updated => updatePerm(i, updated)}
-                    onRemove={() => removePerm(i)}
-                  />
-                ))}
-              </div>
-            )}
+            <p className="text-[10px] text-[#484F58] mt-1">
+              {form.executionMode === "automated"
+                ? "Runs unattended via Azure Automation using application credentials from Key Vault"
+                : "Requires delegated (interactive) auth — generates a downloadable .ps1 + instruction doc for the customer to run locally"}
+            </p>
           </div>
+
+          {form.executionMode === "manual" && (
+            <>
+              <div>
+                <label className={labelCls}>Why Manual? (Requirements)</label>
+                <textarea
+                  placeholder={"One requirement per line, e.g.:\nRequires MFA-capable account\nNeeds Exchange Admin role\nMust run in customer tenant interactively"}
+                  value={form.manualRequirements}
+                  onChange={e => setForm(f => ({ ...f, manualRequirements: e.target.value }))}
+                  rows={4}
+                  className={`${inputCls} resize-y`}
+                />
+                <p className="text-[10px] text-[#484F58] mt-1">Each line becomes a bullet in the generated instruction document</p>
+              </div>
+              <div>
+                <label className={labelCls}>PowerShell Script Body <span className="text-[#484F58] font-normal">(optional)</span></label>
+                <textarea
+                  placeholder={"# Data collection logic that will be embedded in the downloadable .ps1\n# Use $TenantId and $UserPrincipalName — they are injected by the wrapper.\n# Assign collected data to $data (hashtable) before this block ends.\n$data = @{\n    users = (Get-MgUser -All | Select-Object Id, DisplayName, UserPrincipalName)\n}"}
+                  value={form.psScriptBody}
+                  onChange={e => setForm(f => ({ ...f, psScriptBody: e.target.value }))}
+                  rows={8}
+                  className={`${inputCls} resize-y font-mono text-[11px]`}
+                />
+                <p className="text-[10px] text-[#484F58] mt-1">Embedded verbatim into the generated .ps1 — leave blank to include a placeholder comment</p>
+              </div>
+            </>
+          )}
+
+          {form.executionMode === "automated" && (
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <label className={`${labelCls} mb-0`}>App Registration Permissions</label>
+                <button
+                  onClick={addPerm}
+                  className="flex items-center gap-1 text-[10px] font-semibold text-[#0078D4] hover:text-[#1A90E0] transition-colors"
+                >
+                  <Plus className="w-3 h-3" />Add permission
+                </button>
+              </div>
+              {form.appRegPermissions.length === 0 ? (
+                <p className="text-xs text-[#484F58] italic py-2">No permissions defined yet.</p>
+              ) : (
+                <div className="space-y-2">
+                  <div className="grid grid-cols-[1fr_130px_1fr_28px] gap-2 mb-1">
+                    <span className="text-[10px] font-bold uppercase text-[#484F58]">Permission</span>
+                    <span className="text-[10px] font-bold uppercase text-[#484F58]">Type</span>
+                    <span className="text-[10px] font-bold uppercase text-[#484F58]">Reason</span>
+                    <span />
+                  </div>
+                  {form.appRegPermissions.map((p, i) => (
+                    <PermissionRow
+                      key={i}
+                      perm={p}
+                      onChange={updated => updatePerm(i, updated)}
+                      onRemove={() => removePerm(i)}
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
 
           <div>
             <label className={labelCls}>AI Instructions</label>
@@ -519,6 +621,196 @@ function AppRegRequirementsPanel({ packageId }: { packageId: number }) {
   );
 }
 
+// ── Manual Script Card (per-script result for manual execution mode) ───────────
+
+function ManualScriptResultCard({
+  result,
+  onUploaded,
+}: {
+  result: PackageRunScriptResult;
+  onUploaded: (runResultId: number) => void;
+}) {
+  const { fetchWithAuth } = useAuth();
+  const { toast } = useToast();
+  const [uploading, setUploading] = useState(false);
+  const [status, setStatus] = useState<string>(result.status);
+  const [uploadedFindings, setUploadedFindings] = useState<string[]>([]);
+
+  const handleDownloadPs1 = () => {
+    if (!result.psContent) return;
+    const blob = new Blob([result.psContent], { type: "text/plain" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = result.filename ?? `${result.scriptName}.ps1`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleDownloadInstructions = () => {
+    if (!result.instructions) return;
+    const blob = new Blob([result.instructions], { type: "text/plain" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${result.scriptName}_instructions.txt`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploading(true);
+    try {
+      const text = await file.text();
+      let jsonData: Record<string, unknown>;
+      try {
+        jsonData = JSON.parse(text) as Record<string, unknown>;
+      } catch {
+        toast({ title: "Invalid JSON file", description: "The file must be a valid JSON file produced by the PowerShell script", variant: "destructive" });
+        return;
+      }
+      const res = await fetchWithAuth(`/api/admin/manual-scripts/${result.runResultId}/upload`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ jsonData }),
+      });
+      const body = await res.json() as { status?: string; findings?: string[]; error?: string };
+      if (!res.ok) {
+        toast({ title: body.error ?? "Upload failed", variant: "destructive" });
+        return;
+      }
+      setStatus("completed");
+      setUploadedFindings(body.findings ?? []);
+      toast({ title: "Results uploaded", description: "AI analysis complete — findings and recommendations saved" });
+      onUploaded(result.runResultId);
+    } catch {
+      toast({ title: "Upload failed", description: "Could not process the file", variant: "destructive" });
+    } finally {
+      setUploading(false);
+      e.target.value = "";
+    }
+  };
+
+  return (
+    <div className="bg-[#1C2128] border border-amber-500/30 rounded-xl p-3 space-y-3">
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-xs font-semibold text-[#E6EDF3] truncate">{result.scriptName}</span>
+            <span className="flex-shrink-0 text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full bg-amber-500/20 text-amber-400 border border-amber-500/30">
+              Manual
+            </span>
+            <span className={`flex-shrink-0 text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full ${
+              status === "completed"
+                ? "bg-emerald-500/20 text-emerald-400"
+                : "bg-[#30363D] text-[#7D8590]"
+            }`}>
+              {status === "completed" ? "Completed" : "Awaiting Upload"}
+            </span>
+          </div>
+          <p className="text-[10px] text-[#484F58] mt-0.5">Run result #{result.runResultId}</p>
+        </div>
+        <span className="flex-shrink-0 text-[10px] text-[#484F58]">#{result.runOrder + 1}</span>
+      </div>
+
+      {status !== "completed" && (
+        <div className="space-y-2">
+          <div className="flex gap-2">
+            <button
+              onClick={handleDownloadPs1}
+              disabled={!result.psContent}
+              className="flex items-center gap-1.5 text-[10px] font-semibold text-[#0078D4] border border-[#0078D4]/30 bg-[#0078D4]/10 hover:bg-[#0078D4]/20 disabled:opacity-40 px-2.5 py-1.5 rounded-lg transition-colors"
+            >
+              <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+              </svg>
+              Download .ps1
+            </button>
+            <button
+              onClick={handleDownloadInstructions}
+              disabled={!result.instructions}
+              className="flex items-center gap-1.5 text-[10px] font-semibold text-[#7D8590] border border-[#30363D] bg-[#161B22] hover:bg-[#1C2128] disabled:opacity-40 px-2.5 py-1.5 rounded-lg transition-colors"
+            >
+              <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
+              Instructions
+            </button>
+          </div>
+          <label className="flex items-center gap-1.5 text-[10px] font-semibold text-emerald-400 border border-emerald-500/30 bg-emerald-500/10 hover:bg-emerald-500/20 px-2.5 py-1.5 rounded-lg transition-colors cursor-pointer w-fit">
+            {uploading ? (
+              <>
+                <Loader2 className="w-3 h-3 animate-spin" />
+                Uploading…
+              </>
+            ) : (
+              <>
+                <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l4-4m0 0l4 4m-4-4v12" />
+                </svg>
+                Upload Results (JSON)
+              </>
+            )}
+            <input type="file" accept=".json,application/json" className="hidden" onChange={e => void handleFileUpload(e)} disabled={uploading} />
+          </label>
+          <p className="text-[10px] text-[#484F58]">Run the .ps1 script locally, then upload the JSON output for AI analysis</p>
+        </div>
+      )}
+
+      {status === "completed" && uploadedFindings.length > 0 && (
+        <div className="space-y-1">
+          <p className="text-[10px] font-bold uppercase tracking-wider text-emerald-400">Findings</p>
+          {uploadedFindings.slice(0, 3).map((f, i) => (
+            <p key={i} className="text-[10px] text-[#E6EDF3]/80 leading-relaxed">• {f}</p>
+          ))}
+          {uploadedFindings.length > 3 && (
+            <p className="text-[10px] text-[#484F58]">+{uploadedFindings.length - 3} more</p>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Automated Script Result Card ───────────────────────────────────────────────
+
+function AutomatedScriptResultCard({ result }: { result: PackageRunScriptResult }) {
+  const statusCfg = {
+    completed: { cls: "bg-emerald-500/20 text-emerald-400", label: "Completed" },
+    failed: { cls: "bg-red-500/20 text-red-400", label: "Failed" },
+    running: { cls: "bg-yellow-500/20 text-yellow-400 animate-pulse", label: "Running" },
+  }[result.status] ?? { cls: "bg-[#30363D] text-[#7D8590]", label: result.status };
+
+  return (
+    <div className="bg-[#1C2128] border border-[#30363D] rounded-xl p-3 space-y-2">
+      <div className="flex items-start justify-between gap-2">
+        <div className="flex items-center gap-2 flex-wrap min-w-0">
+          <span className="text-xs font-semibold text-[#E6EDF3] truncate">{result.scriptName}</span>
+          <span className="flex-shrink-0 text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full bg-[#0078D4]/15 text-[#0078D4] border border-[#0078D4]/20">
+            Auto
+          </span>
+          <span className={`flex-shrink-0 text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full ${statusCfg.cls}`}>
+            {statusCfg.label}
+          </span>
+        </div>
+        <span className="flex-shrink-0 text-[10px] text-[#484F58]">#{result.runOrder + 1}</span>
+      </div>
+      {result.findings.length > 0 && (
+        <div>
+          {result.findings.slice(0, 2).map((f, i) => (
+            <p key={i} className="text-[10px] text-[#E6EDF3]/70 leading-relaxed">• {f}</p>
+          ))}
+          {result.findings.length > 2 && (
+            <p className="text-[10px] text-[#484F58]">+{result.findings.length - 2} more findings</p>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Run Package Card ──────────────────────────────────────────────────────────
 
 function RunPackageCard({
@@ -538,6 +830,7 @@ function RunPackageCard({
   const [loadingCreds, setLoadingCreds] = useState(true);
   const [selectedCredId, setSelectedCredId] = useState<number | "">("");
   const [running, setRunning] = useState(false);
+  const [runResult, setRunResult] = useState<PackageRunResult | null>(null);
 
   useEffect(() => {
     fetchWithAuth("/api/admin/azure-credentials")
@@ -553,6 +846,7 @@ function RunPackageCard({
   const handleRun = async () => {
     if (!selectedCredId) return;
     setRunning(true);
+    setRunResult(null);
     try {
       const body: Record<string, unknown> = { packageId, credentialId: selectedCredId };
       if (selectedCred?.clientUserId) body.customerId = selectedCred.clientUserId;
@@ -561,13 +855,21 @@ function RunPackageCard({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       });
-      const data = await res.json() as { completedCount?: number; failedCount?: number; error?: string };
+      const data = await res.json() as PackageRunResult & { error?: string };
       if (!res.ok) {
-        toast({ title: data.error ?? "Package run failed", variant: "destructive" });
+        toast({ title: (data as unknown as { error?: string }).error ?? "Package run failed", variant: "destructive" });
       } else {
+        setRunResult(data);
+        const automated = data.completedCount ?? 0;
+        const failed = data.failedCount ?? 0;
+        const manual = data.awaitingUploadCount ?? 0;
+        const parts = [];
+        if (automated > 0) parts.push(`${automated} completed`);
+        if (failed > 0) parts.push(`${failed} failed`);
+        if (manual > 0) parts.push(`${manual} awaiting manual upload`);
         toast({
-          title: `Package run complete`,
-          description: `${data.completedCount ?? 0} completed, ${data.failedCount ?? 0} failed`,
+          title: manual > 0 ? "Package run started — manual scripts need action" : "Package run complete",
+          description: parts.join(", "),
         });
         onRunComplete();
       }
@@ -578,17 +880,33 @@ function RunPackageCard({
     }
   };
 
+  const handleManualUploaded = (runResultId: number) => {
+    setRunResult(prev => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        results: prev.results.map(r =>
+          r.runResultId === runResultId ? { ...r, status: "completed" } : r
+        ),
+        completedCount: prev.completedCount + 1,
+        awaitingUploadCount: (prev.awaitingUploadCount ?? 1) - 1,
+      };
+    });
+  };
+
   return (
-    <div className="bg-[#0D1117] border border-[#0078D4]/25 rounded-xl p-4 mt-4">
-      <p className="text-xs font-bold text-[#E6EDF3] mb-1">Run Package</p>
-      <p className="text-[10px] text-[#7D8590] mb-3">
-        Execute all {scriptCount} script{scriptCount !== 1 ? "s" : ""} in <span className="text-[#E6EDF3] font-medium">{packageName}</span> in order against a selected client.
-      </p>
+    <div className="bg-[#0D1117] border border-[#0078D4]/25 rounded-xl p-4 mt-4 space-y-4">
+      <div>
+        <p className="text-xs font-bold text-[#E6EDF3] mb-1">Run Package</p>
+        <p className="text-[10px] text-[#7D8590]">
+          Execute all {scriptCount} script{scriptCount !== 1 ? "s" : ""} in <span className="text-[#E6EDF3] font-medium">{packageName}</span> in order against a selected client.
+        </p>
+      </div>
 
       {loadingCreds ? (
-        <div className="h-9 bg-[#1C2128] rounded-lg animate-pulse mb-3" />
+        <div className="h-9 bg-[#1C2128] rounded-lg animate-pulse" />
       ) : (
-        <div className="mb-3">
+        <div>
           <label className={labelCls}>Client</label>
           <select
             className={inputCls}
@@ -604,7 +922,7 @@ function RunPackageCard({
       )}
 
       {selectedCred && (
-        <div className="mb-3 text-[10px] text-[#7D8590] font-mono bg-[#1C2128] border border-[#30363D] rounded-lg px-3 py-2">
+        <div className="text-[10px] text-[#7D8590] font-mono bg-[#1C2128] border border-[#30363D] rounded-lg px-3 py-2">
           <span className="font-sans font-semibold text-[#484F58] mr-1">Tenant:</span>{selectedCred.tenantId}
           <span className="mx-2">·</span>
           <span className="font-sans font-semibold text-[#484F58] mr-1">App:</span>{selectedCred.clientId}
@@ -635,7 +953,32 @@ function RunPackageCard({
         )}
       </button>
       {scriptCount === 0 && (
-        <p className="text-[10px] text-amber-400 mt-2 text-center">Add scripts to this package before running</p>
+        <p className="text-[10px] text-amber-400 text-center">Add scripts to this package before running</p>
+      )}
+
+      {/* Per-script result cards */}
+      {runResult && runResult.results.length > 0 && (
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <p className="text-[10px] font-bold uppercase tracking-wider text-[#7D8590]">Script Results</p>
+            <div className="flex items-center gap-2">
+              {runResult.completedCount > 0 && (
+                <span className="text-[9px] font-semibold text-emerald-400">{runResult.completedCount} completed</span>
+              )}
+              {runResult.failedCount > 0 && (
+                <span className="text-[9px] font-semibold text-red-400">{runResult.failedCount} failed</span>
+              )}
+              {(runResult.awaitingUploadCount ?? 0) > 0 && (
+                <span className="text-[9px] font-semibold text-amber-400">{runResult.awaitingUploadCount} awaiting upload</span>
+              )}
+            </div>
+          </div>
+          {runResult.results.map(r => (
+            r.executionMode === "manual"
+              ? <ManualScriptResultCard key={r.runResultId} result={r} onUploaded={handleManualUploaded} />
+              : <AutomatedScriptResultCard key={r.runResultId} result={r} />
+          ))}
+        </div>
       )}
     </div>
   );

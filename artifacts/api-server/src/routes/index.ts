@@ -49,6 +49,7 @@ import adminFinanceRouter from "./admin-finance";
 import adminMarketingRouter from "./admin-marketing";
 import adminM365ScriptsRouter from "./admin-m365-scripts";
 import adminM365RunRouter from "./admin-m365-run";
+import adminManualScriptsRouter from "./admin-manual-scripts";
 
 const router: IRouter = Router();
 
@@ -102,5 +103,6 @@ router.use(adminFinanceRouter);
 router.use(adminMarketingRouter);
 router.use(adminM365ScriptsRouter);
 router.use(adminM365RunRouter);
+router.use(adminManualScriptsRouter);
 
 export default router;

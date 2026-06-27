@@ -1292,6 +1292,9 @@ export const scriptCatalogTable = pgTable("script_catalog", {
   runbookName: text("runbook_name").notNull(),
   appRegPermissions: jsonb("app_reg_permissions").$type<Array<{ permission: string; type: "Application" | "Delegated"; reason: string }>>().notNull().default([]),
   aiInstructions: text("ai_instructions"),
+  executionMode: text("execution_mode", { enum: ["automated", "manual"] }).notNull().default("automated"),
+  manualRequirements: jsonb("manual_requirements").$type<string[]>().notNull().default([]),
+  psScriptBody: text("ps_script_body"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
@@ -1325,7 +1328,10 @@ export const scriptRunResultsTable = pgTable("script_run_results", {
   recommendations: jsonb("recommendations").$type<string[]>().notNull().default([]),
   scoreImpact: jsonb("score_impact").$type<Record<string, number>>().notNull().default({}),
   profileUpdates: jsonb("profile_updates").$type<Record<string, unknown>>().notNull().default({}),
-  status: text("status", { enum: ["running", "completed", "failed"] }).notNull().default("running"),
+  status: text("status", { enum: ["running", "completed", "failed", "awaiting_upload"] }).notNull().default("running"),
+  executionSource: text("execution_source", { enum: ["automated", "manual"] }).notNull().default("automated"),
+  uploadedBy: text("uploaded_by"),
+  uploadedAt: timestamp("uploaded_at", { withTimezone: true }),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 

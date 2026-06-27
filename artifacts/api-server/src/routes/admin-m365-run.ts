@@ -28,6 +28,8 @@ import { logger } from "../lib/logger";
 import { createRunbookJob, getJobStatus, getJobOutput, isTerminalStatus } from "../lib/azure-automation";
 import { runAiAnalyzer } from "../lib/ai-analyzer";
 import { getSecretValue } from "../lib/azure-keyvault";
+import { classifyScripts } from "../lib/classify-scripts";
+import { generateManualScriptPackage } from "../lib/manual-script-package";
 
 const router: IRouter = Router();
 
@@ -55,7 +57,7 @@ const runScriptSchema = z.union([
 const runPackageSchema = z.union([
   z.object({
     packageId: z.number().int().positive(),
-    credentialId: z.number().int().positive(),
+    credentialId: z.number().int().positive().optional(),
     customerId: z.number().int().positive().optional(),
     packageContext: z.string().optional(),
   }),
@@ -401,40 +403,7 @@ router.post("/admin/run-package", requireAdmin, async (req: Request, res: Respon
 
   const { packageId, customerId, packageContext } = parsed.data;
 
-  // Resolve credentials — either from credentialId (Key Vault) or raw fields
-  let tenantId: string;
-  let clientId: string;
-  let clientSecret: string;
-
-  if ("credentialId" in parsed.data && parsed.data.credentialId) {
-    const [cred] = await db
-      .select()
-      .from(azureTenantCredentialsTable)
-      .where(eq(azureTenantCredentialsTable.id, parsed.data.credentialId))
-      .limit(1);
-    if (!cred) {
-      res.status(404).json({ error: "Credential not found" });
-      return;
-    }
-    try {
-      clientSecret = await getSecretValue(cred.keyVaultSecretName);
-    } catch (err) {
-      logger.error({ err, credentialId: parsed.data.credentialId }, "admin-m365-run: failed to fetch secret from Key Vault");
-      res.status(502).json({ error: "Failed to retrieve client secret from Key Vault" });
-      return;
-    }
-    tenantId = cred.tenantId;
-    clientId = cred.clientId;
-  } else if ("tenantId" in parsed.data) {
-    tenantId = parsed.data.tenantId;
-    clientId = parsed.data.clientId;
-    clientSecret = parsed.data.clientSecret;
-  } else {
-    res.status(400).json({ error: "Either credentialId or tenantId/clientId/clientSecret must be provided" });
-    return;
-  }
-
-  // Fetch scripts for this package, sorted by run_order
+  // Fetch scripts first so we know whether any automated scripts need credentials
   const packageScripts = await db
     .select({
       mappingId: packageScriptsTable.id,
@@ -451,6 +420,59 @@ router.post("/admin/run-package", requireAdmin, async (req: Request, res: Respon
     return;
   }
 
+  // Classify scripts into automated vs manual
+  const classified = classifyScripts(packageScripts.map(ps => ({
+    ...ps.script,
+    _runOrder: ps.runOrder,
+    _mappingId: ps.mappingId,
+  })));
+
+  const hasAutomatedScripts = classified.automated.length > 0;
+
+  // Resolve Azure credentials only when there are automated scripts to run
+  let tenantId = "";
+  let clientId = "";
+  let clientSecret = "";
+
+  if (hasAutomatedScripts) {
+    if ("credentialId" in parsed.data && parsed.data.credentialId) {
+      const [cred] = await db
+        .select()
+        .from(azureTenantCredentialsTable)
+        .where(eq(azureTenantCredentialsTable.id, parsed.data.credentialId))
+        .limit(1);
+      if (!cred) {
+        res.status(404).json({ error: "Credential not found" });
+        return;
+      }
+      try {
+        clientSecret = await getSecretValue(cred.keyVaultSecretName);
+      } catch (err) {
+        logger.error({ err, credentialId: parsed.data.credentialId }, "admin-m365-run: failed to fetch secret from Key Vault");
+        res.status(502).json({ error: "Failed to retrieve client secret from Key Vault" });
+        return;
+      }
+      tenantId = cred.tenantId;
+      clientId = cred.clientId;
+    } else if ("tenantId" in parsed.data) {
+      tenantId = parsed.data.tenantId;
+      clientId = parsed.data.clientId;
+      clientSecret = parsed.data.clientSecret;
+    } else {
+      res.status(400).json({ error: "This package contains automated scripts — either credentialId or tenantId/clientId/clientSecret must be provided" });
+      return;
+    }
+  }
+
+  const uploadBaseUrl = (() => {
+    const domains = process.env.REPLIT_DOMAINS;
+    if (domains) {
+      const primary = domains.split(",")[0]?.trim();
+      if (primary) return `https://${primary}`;
+    }
+    return process.env.REPLIT_DEV_DOMAIN ? `https://${process.env.REPLIT_DEV_DOMAIN}` : "http://localhost:8080";
+  })();
+
   const results: Array<{
     scriptId: number;
     scriptName: string;
@@ -458,15 +480,20 @@ router.post("/admin/run-package", requireAdmin, async (req: Request, res: Respon
     runResultId: number;
     jobId: string | null;
     status: string;
+    executionMode: "automated" | "manual";
     findings: string[];
     recommendations: string[];
     scoreImpact: Record<string, number>;
+    psContent?: string;
+    instructions?: string;
+    filename?: string;
+    uploadUrl?: string;
   }> = [];
 
-  for (const { script, runOrder } of packageScripts) {
-    logger.info({ scriptId: script.id, runOrder, packageId }, "admin-m365-run: executing package script");
+  // ── Automated scripts — run via Azure Automation ──────────────────────────
+  for (const { script, runOrder } of packageScripts.filter(ps => ps.script.executionMode !== "manual")) {
+    logger.info({ scriptId: script.id, runOrder, packageId }, "admin-m365-run: executing automated package script");
 
-    // Create placeholder
     const [resultRow] = await db
       .insert(scriptRunResultsTable)
       .values({
@@ -474,6 +501,7 @@ router.post("/admin/run-package", requireAdmin, async (req: Request, res: Respon
         scriptId: script.id,
         packageId,
         status: "running",
+        executionSource: "automated",
       })
       .returning({ id: scriptRunResultsTable.id });
 
@@ -486,7 +514,6 @@ router.post("/admin/run-package", requireAdmin, async (req: Request, res: Respon
     let finalStatus: "completed" | "failed" = "failed";
 
     try {
-      // Trigger runbook
       const job = await createRunbookJob({
         runbookName: script.runbookName,
         parameters: {
@@ -502,11 +529,9 @@ router.post("/admin/run-package", requireAdmin, async (req: Request, res: Respon
         .set({ jobId })
         .where(eq(scriptRunResultsTable.id, runResultId));
 
-      // Wait for completion
       const { status: jobStatus, output: jobOutput } = await waitForJobCompletion(jobId);
       finalStatus = jobStatus === "Completed" ? "completed" : "failed";
 
-      // AI analysis
       if (jobOutput.trim()) {
         try {
           const aiResult = await runAiAnalyzer({
@@ -523,7 +548,6 @@ router.post("/admin/run-package", requireAdmin, async (req: Request, res: Respon
         }
       }
 
-      // Persist
       await db
         .update(scriptRunResultsTable)
         .set({
@@ -536,7 +560,6 @@ router.post("/admin/run-package", requireAdmin, async (req: Request, res: Respon
         })
         .where(eq(scriptRunResultsTable.id, runResultId));
 
-      // Apply to client
       if (customerId) {
         try {
           await applyScoreImpact(customerId, scriptScoreImpact);
@@ -550,7 +573,7 @@ router.post("/admin/run-package", requireAdmin, async (req: Request, res: Respon
         }
       }
     } catch (err) {
-      logger.error({ err, scriptId: script.id, runOrder }, "admin-m365-run: package script execution failed");
+      logger.error({ err, scriptId: script.id, runOrder }, "admin-m365-run: automated package script execution failed");
       finalStatus = "failed";
       await db
         .update(scriptRunResultsTable)
@@ -565,14 +588,73 @@ router.post("/admin/run-package", requireAdmin, async (req: Request, res: Respon
       runResultId,
       jobId,
       status: finalStatus,
+      executionMode: "automated",
       findings: scriptFindings,
       recommendations: scriptRecommendations,
       scoreImpact: scriptScoreImpact,
     });
   }
 
+  // ── Manual scripts — generate .ps1 package and enter awaiting_upload ────────
+  for (const { script, runOrder } of packageScripts.filter(ps => ps.script.executionMode === "manual")) {
+    logger.info({ scriptId: script.id, runOrder, packageId }, "admin-m365-run: creating manual script placeholder");
+
+    let customerDisplayName: string | undefined;
+    if (customerId) {
+      try {
+        const [user] = await db.select({ name: usersTable.name }).from(usersTable).where(eq(usersTable.id, customerId)).limit(1);
+        customerDisplayName = user?.name ?? undefined;
+      } catch (_) { /* non-fatal */ }
+    }
+
+    const [resultRow] = await db
+      .insert(scriptRunResultsTable)
+      .values({
+        customerId: customerId ?? null,
+        scriptId: script.id,
+        packageId,
+        status: "awaiting_upload",
+        executionSource: "manual",
+      })
+      .returning({ id: scriptRunResultsTable.id });
+
+    const runResultId = resultRow.id;
+
+    const pkg = generateManualScriptPackage({
+      scriptId: script.id,
+      scriptName: script.name,
+      description: script.description,
+      manualRequirements: Array.isArray(script.manualRequirements) ? script.manualRequirements as string[] : [],
+      psScriptBody: script.psScriptBody ?? null,
+      runResultId,
+      customerDisplayName,
+      uploadBaseUrl,
+    });
+
+    results.push({
+      scriptId: script.id,
+      scriptName: script.name,
+      runOrder,
+      runResultId,
+      jobId: null,
+      status: "awaiting_upload",
+      executionMode: "manual",
+      findings: [],
+      recommendations: [],
+      scoreImpact: {},
+      psContent: pkg.psContent,
+      instructions: pkg.instructions,
+      filename: pkg.filename,
+      uploadUrl: `${uploadBaseUrl}/api/admin/manual-scripts/${runResultId}/upload`,
+    });
+  }
+
+  // Sort all results by runOrder to preserve original ordering
+  results.sort((a, b) => a.runOrder - b.runOrder);
+
   const completedCount = results.filter(r => r.status === "completed").length;
   const failedCount = results.filter(r => r.status === "failed").length;
+  const awaitingUploadCount = results.filter(r => r.status === "awaiting_upload").length;
 
   res.json({
     packageId,
@@ -580,6 +662,8 @@ router.post("/admin/run-package", requireAdmin, async (req: Request, res: Respon
     totalScripts: results.length,
     completedCount,
     failedCount,
+    awaitingUploadCount,
+    requiresManualExecution: classified.requiresManualExecution,
     results,
   });
 });

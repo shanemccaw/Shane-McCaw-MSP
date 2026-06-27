@@ -40,6 +40,9 @@ const createScriptSchema = z.object({
   runbookName: z.string().min(1).max(200),
   appRegPermissions: z.array(appRegPermissionSchema).default([]),
   aiInstructions: z.string().optional(),
+  executionMode: z.enum(["automated", "manual"]).default("automated"),
+  manualRequirements: z.array(z.string()).default([]),
+  psScriptBody: z.string().optional(),
 });
 
 const updateScriptSchema = createScriptSchema.partial();
@@ -82,6 +85,9 @@ router.post("/admin/scripts", requireAdmin, async (req: Request, res: Response) 
         runbookName: parsed.data.runbookName,
         appRegPermissions: parsed.data.appRegPermissions,
         aiInstructions: parsed.data.aiInstructions ?? null,
+        executionMode: parsed.data.executionMode ?? "automated",
+        manualRequirements: parsed.data.manualRequirements ?? [],
+        psScriptBody: parsed.data.psScriptBody ?? null,
       })
       .returning();
 

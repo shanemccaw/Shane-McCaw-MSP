@@ -188,6 +188,16 @@ const legacyMigrations = [
     name: "0008_email_events_lead_id",
     sql: `ALTER TABLE "email_events" ADD COLUMN IF NOT EXISTS "lead_id" integer REFERENCES "leads"("id") ON DELETE SET NULL;`,
   },
+  {
+    name: "0009_manual_script_execution",
+    sql: `
+      ALTER TABLE "script_catalog" ADD COLUMN IF NOT EXISTS "execution_mode" text NOT NULL DEFAULT 'automated';
+      ALTER TABLE "script_catalog" ADD COLUMN IF NOT EXISTS "manual_requirements" jsonb NOT NULL DEFAULT '[]'::jsonb;
+      ALTER TABLE "script_run_results" ADD COLUMN IF NOT EXISTS "execution_source" text NOT NULL DEFAULT 'automated';
+      ALTER TABLE "script_run_results" ADD COLUMN IF NOT EXISTS "uploaded_by" text;
+      ALTER TABLE "script_run_results" ADD COLUMN IF NOT EXISTS "uploaded_at" timestamptz;
+    `,
+  },
 ];
 
 // ---------------------------------------------------------------------------
