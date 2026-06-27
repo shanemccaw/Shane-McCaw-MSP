@@ -2,6 +2,8 @@ import { useState, useCallback, useEffect } from "react";
 import { useLocation } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
 
+type OpportunityState = "new" | "contacted" | "qualified" | "converted" | "archived";
+
 interface OpportunityLead {
   id: number;
   name: string;
@@ -21,6 +23,7 @@ interface Opportunity {
   evidence: string[];
   recommendedNextStep: string | null;
   workflowType: string | null;
+  state: OpportunityState;
   createdAt: string;
   lead: OpportunityLead | null;
   taskCount: number;
@@ -69,6 +72,23 @@ const WORKFLOW_LABELS: Record<string, string> = {
   ProposalPrep: "Proposal Preparation",
 };
 
+const STATE_PILLS: { value: OpportunityState | "all"; label: string }[] = [
+  { value: "all", label: "All" },
+  { value: "new", label: "New" },
+  { value: "contacted", label: "Contacted" },
+  { value: "qualified", label: "Qualified" },
+  { value: "converted", label: "Converted" },
+  { value: "archived", label: "Archived" },
+];
+
+const STATE_BADGE: Record<OpportunityState, string> = {
+  new: "bg-sky-500/15 text-sky-400 border border-sky-500/20",
+  contacted: "bg-amber-500/15 text-amber-400 border border-amber-500/20",
+  qualified: "bg-emerald-500/15 text-emerald-400 border border-emerald-500/20",
+  converted: "bg-purple-500/15 text-purple-400 border border-purple-500/20",
+  archived: "bg-[#30363D] text-[#7D8590] border border-[#30363D]",
+};
+
 export default function OpportunitiesPage() {
   const { fetchWithAuth } = useAuth();
   const [, navigate] = useLocation();
@@ -76,12 +96,14 @@ export default function OpportunitiesPage() {
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(false);
   const [page, setPage] = useState(1);
+  const [filterState, setFilterState] = useState<OpportunityState | "all">("all");
   const LIMIT = 20;
 
-  const fetchOpportunities = useCallback(async (p = 1) => {
+  const fetchOpportunities = useCallback(async (p = 1, state: OpportunityState | "all" = "all") => {
     setLoading(true);
     try {
       const params = new URLSearchParams({ page: String(p), limit: String(LIMIT) });
+      if (state !== "all") params.set("state", state);
       const res = await fetchWithAuth(`/api/opportunities?${params.toString()}`);
       if (res.ok) {
         const data = await res.json() as OpportunityList;
@@ -94,16 +116,43 @@ export default function OpportunitiesPage() {
   }, [fetchWithAuth]);
 
   useEffect(() => {
-    void fetchOpportunities(1);
-  }, [fetchOpportunities]);
+    void fetchOpportunities(1, filterState);
+  }, [fetchOpportunities, filterState]);
+
+  const handleFilterChange = (state: OpportunityState | "all") => {
+    setFilterState(state);
+    setPage(1);
+  };
 
   const totalPages = Math.ceil(total / LIMIT);
 
   return (
     <div className="p-4 sm:p-6 max-w-[1200px]">
-      <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
-        <h1 className="text-xl font-bold text-[#E6EDF3]">Opportunities</h1>
-        <p className="text-sm text-muted-foreground mt-0.5">Qualified leads converted to opportunities with workflow tasks.</p>
+      <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-xl font-bold text-[#E6EDF3]">Opportunities</h1>
+          <p className="text-sm text-muted-foreground mt-0.5">Qualified leads converted to opportunities with workflow tasks.</p>
+        </div>
+      </div>
+
+      {/* State filter pills */}
+      <div className="flex flex-wrap gap-2 mb-5">
+        {STATE_PILLS.map(pill => (
+          <button
+            key={pill.value}
+            onClick={() => handleFilterChange(pill.value)}
+            className={`px-3 py-1 rounded-full text-xs font-semibold transition-colors border ${
+              filterState === pill.value
+                ? "bg-[#0078D4] text-white border-[#0078D4]"
+                : "bg-transparent text-[#7D8590] border-[#30363D] hover:border-[#0078D4]/50 hover:text-[#E6EDF3]"
+            }`}
+          >
+            {pill.label}
+          </button>
+        ))}
+        {total > 0 && (
+          <span className="ml-auto text-xs text-muted-foreground self-center">{total} total</span>
+        )}
       </div>
 
       {loading ? (
@@ -115,8 +164,14 @@ export default function OpportunitiesPage() {
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} className="w-10 h-10 mx-auto text-muted-foreground/30 mb-3">
             <path strokeLinecap="round" strokeLinejoin="round" d="M11.48 3.499a.562.562 0 011.04 0l2.125 5.111a.563.563 0 00.475.345l5.518.442c.499.04.701.663.321.988l-4.204 3.602a.563.563 0 00-.182.557l1.285 5.385a.562.562 0 01-.84.61l-4.725-2.885a.563.563 0 00-.586 0L6.982 20.54a.562.562 0 01-.84-.61l1.285-5.386a.562.562 0 00-.182-.557l-4.204-3.602a.562.562 0 01.321-.988l5.518-.442a.563.563 0 00.475-.345L11.48 3.5z" />
           </svg>
-          <p className="text-sm font-medium text-muted-foreground">No opportunities yet</p>
-          <p className="text-xs text-muted-foreground/60 mt-1">Opportunities are created when you approve a lead qualification. Edit a lead's profile to trigger scoring.</p>
+          <p className="text-sm font-medium text-muted-foreground">
+            {filterState === "all" ? "No opportunities yet" : `No ${filterState} opportunities`}
+          </p>
+          <p className="text-xs text-muted-foreground/60 mt-1">
+            {filterState === "all"
+              ? "Opportunities are created when you approve a lead qualification. Edit a lead's profile to trigger scoring."
+              : "Try selecting a different filter above."}
+          </p>
         </div>
       ) : (
         <div className="space-y-4">
@@ -136,6 +191,9 @@ export default function OpportunitiesPage() {
                     {op.lead?.company && (
                       <span className="text-sm text-muted-foreground">{op.lead.company}</span>
                     )}
+                    <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full capitalize ${STATE_BADGE[op.state]}`}>
+                      {op.state}
+                    </span>
                   </div>
                   {op.recommendedNextStep && (
                     <div className="flex items-center gap-1.5 mt-1">
@@ -189,12 +247,12 @@ export default function OpportunitiesPage() {
           </p>
           <div className="flex gap-2">
             <button disabled={page <= 1}
-              onClick={() => { const p = page - 1; setPage(p); void fetchOpportunities(p); }}
+              onClick={() => { const p = page - 1; setPage(p); void fetchOpportunities(p, filterState); }}
               className="px-3 py-1.5 border border-border rounded-lg text-xs font-medium disabled:opacity-40 hover:bg-[#1C2128] transition-colors">
               Prev
             </button>
             <button disabled={page >= totalPages}
-              onClick={() => { const p = page + 1; setPage(p); void fetchOpportunities(p); }}
+              onClick={() => { const p = page + 1; setPage(p); void fetchOpportunities(p, filterState); }}
               className="px-3 py-1.5 border border-border rounded-lg text-xs font-medium disabled:opacity-40 hover:bg-[#1C2128] transition-colors">
               Next
             </button>

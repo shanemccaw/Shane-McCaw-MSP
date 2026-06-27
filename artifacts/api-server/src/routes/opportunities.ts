@@ -178,16 +178,25 @@ router.post("/leads/qualification/:id/snooze", requireAdmin, async (req: Request
   res.json({ ok: true, snoozedUntil });
 });
 
+const VALID_OPPORTUNITY_STATES = ["new", "contacted", "qualified", "converted", "archived"] as const;
+type OpportunityState = typeof VALID_OPPORTUNITY_STATES[number];
+
 // ── GET /api/opportunities ────────────────────────────────────────────────────
 router.get("/opportunities", requireAdmin, async (req: Request, res: Response) => {
   const page = Math.max(1, parseInt(String(req.query.page ?? "1"), 10));
   const limit = Math.min(50, Math.max(1, parseInt(String(req.query.limit ?? "20"), 10)));
   const offset = (page - 1) * limit;
 
-  const [totalRow] = await db.select({ count: count() }).from(opportunitiesTable);
+  const stateParam = typeof req.query.state === "string" && (VALID_OPPORTUNITY_STATES as readonly string[]).includes(req.query.state)
+    ? req.query.state as OpportunityState
+    : null;
+  const stateFilter = stateParam ? eq(opportunitiesTable.state, stateParam) : undefined;
+
+  const [totalRow] = await db.select({ count: count() }).from(opportunitiesTable).where(stateFilter);
   const opportunities = await db
     .select()
     .from(opportunitiesTable)
+    .where(stateFilter)
     .orderBy(desc(opportunitiesTable.createdAt))
     .limit(limit)
     .offset(offset);
@@ -234,6 +243,27 @@ router.get("/opportunities/:id", requireAdmin, async (req: Request, res: Respons
     .orderBy(opportunityTasksTable.createdAt);
 
   res.json({ ...op, lead: lead ?? null, tasks });
+});
+
+// ── PATCH /api/opportunities/:id ──────────────────────────────────────────────
+router.patch("/opportunities/:id", requireAdmin, async (req: Request, res: Response) => {
+  const id = parseInt(String(req.params.id ?? ""), 10);
+  if (isNaN(id)) { res.status(400).json({ error: "Invalid opportunity ID" }); return; }
+
+  const { state } = req.body as { state?: string };
+  if (!state || !(VALID_OPPORTUNITY_STATES as readonly string[]).includes(state)) {
+    res.status(400).json({ error: `Invalid state. Must be one of: ${VALID_OPPORTUNITY_STATES.join(", ")}` });
+    return;
+  }
+
+  const [updated] = await db
+    .update(opportunitiesTable)
+    .set({ state: state as OpportunityState })
+    .where(eq(opportunitiesTable.id, id))
+    .returning();
+
+  if (!updated) { res.status(404).json({ error: "Opportunity not found" }); return; }
+  res.json(updated);
 });
 
 // ── PATCH /api/opportunities/:id/tasks/:taskId ────────────────────────────────

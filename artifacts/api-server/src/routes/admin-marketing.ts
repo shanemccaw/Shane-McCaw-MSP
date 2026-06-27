@@ -71,6 +71,14 @@ function aiErrorResponse(e: unknown): { _aiError: true; error: string; message: 
   return { _aiError: true, error: msg, message: msg };
 }
 
+// ─── ARCHITECTURE NOTE — Archived opportunities exclusion rule ────────────────
+// Any future query against opportunitiesTable in this file (for AI context or
+// prompts) MUST include a ne(opportunitiesTable.state, 'archived') filter so
+// archived deals do not skew targeting, scoring, or AI recommendations.
+// opportunitiesTable is not currently queried here; if you add a query, apply
+// the exclusion above.  Example: .where(ne(opportunitiesTable.state, 'archived'))
+// ─────────────────────────────────────────────────────────────────────────────
+
 // ─── ICP context helper — sources from DB ─────────────────────────────────────
 
 async function buildICPContext(): Promise<string> {

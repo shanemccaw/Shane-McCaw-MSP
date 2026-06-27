@@ -133,4 +133,13 @@ app.listen(port, (err) => {
   }).catch((err: unknown) => {
     logger.warn({ err }, "Migration: client_health_history table failed (non-fatal)");
   });
+
+  pool.query(`
+    ALTER TABLE opportunities
+    ADD COLUMN IF NOT EXISTS state TEXT NOT NULL DEFAULT 'new'
+  `).then(() => {
+    logger.info("Migration: opportunities.state column ensured");
+  }).catch((err: unknown) => {
+    logger.warn({ err }, "Migration: opportunities.state column failed (non-fatal)");
+  });
 });

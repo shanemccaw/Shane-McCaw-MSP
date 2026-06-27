@@ -944,6 +944,7 @@ export const opportunitiesTable = pgTable("opportunities", {
   evidence: jsonb("evidence").$type<string[]>().notNull().default([]),
   recommendedNextStep: text("recommended_next_step"),
   workflowType: text("workflow_type"),
+  state: text("state", { enum: ["new", "contacted", "qualified", "converted", "archived"] }).notNull().default("new"),
   projectId: integer("project_id").references(() => projectsTable.id, { onDelete: "set null" }),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });

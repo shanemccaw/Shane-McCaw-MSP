@@ -14,6 +14,16 @@ interface OpportunityTask {
   createdAt: string;
 }
 
+type OpportunityState = "new" | "contacted" | "qualified" | "converted" | "archived";
+
+const STATE_OPTIONS: { value: OpportunityState; label: string; color: string }[] = [
+  { value: "new",       label: "New",       color: "bg-sky-500/15 text-sky-400 border-sky-500/30" },
+  { value: "contacted", label: "Contacted", color: "bg-amber-500/15 text-amber-400 border-amber-500/30" },
+  { value: "qualified", label: "Qualified", color: "bg-emerald-500/15 text-emerald-400 border-emerald-500/30" },
+  { value: "converted", label: "Converted", color: "bg-purple-500/15 text-purple-400 border-purple-500/30" },
+  { value: "archived",  label: "Archived",  color: "bg-[#30363D] text-[#7D8590] border-[#30363D]" },
+];
+
 interface OpportunityDetail {
   id: number;
   leadId: number;
@@ -26,6 +36,7 @@ interface OpportunityDetail {
   evidence: string[];
   recommendedNextStep: string | null;
   workflowType: string | null;
+  state: OpportunityState;
   createdAt: string;
   lead: {
     id: number;
@@ -76,6 +87,7 @@ export default function OpportunityDetailPage({ params }: { params: { id: string
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
   const [updatingTask, setUpdatingTask] = useState<number | null>(null);
+  const [updatingState, setUpdatingState] = useState(false);
 
   const loadOpportunity = useCallback(async () => {
     try {
@@ -94,6 +106,23 @@ export default function OpportunityDetailPage({ params }: { params: { id: string
     setLoading(true);
     void loadOpportunity().finally(() => setLoading(false));
   }, [oppId, loadOpportunity]);
+
+  const updateOpportunityState = async (state: OpportunityState) => {
+    if (!opportunity || updatingState) return;
+    setUpdatingState(true);
+    try {
+      const res = await fetchWithAuth(`/api/opportunities/${oppId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ state }),
+      });
+      if (res.ok) {
+        setOpportunity(prev => prev ? { ...prev, state } : prev);
+      }
+    } finally {
+      setUpdatingState(false);
+    }
+  };
 
   const updateTaskStatus = async (taskId: number, status: "todo" | "in_progress" | "done") => {
     if (!opportunity) return;
@@ -175,7 +204,24 @@ export default function OpportunityDetailPage({ params }: { params: { id: string
               </button>
             )}
           </div>
-          <div className="flex items-center gap-3 shrink-0">
+          <div className="flex items-center gap-3 shrink-0 flex-wrap">
+            {/* State button group */}
+            <div className="flex items-center gap-1 flex-wrap">
+              {STATE_OPTIONS.map(opt => (
+                <button
+                  key={opt.value}
+                  onClick={() => void updateOpportunityState(opt.value)}
+                  disabled={updatingState}
+                  className={`text-[10px] font-semibold px-2 py-0.5 rounded border transition-all disabled:opacity-50 ${
+                    opportunity.state === opt.value
+                      ? opt.color
+                      : "bg-transparent text-[#7D8590] border-[#30363D] hover:border-[#58A6FF]/50 hover:text-[#E6EDF3]"
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
             <span className={`text-2xl font-black ${scoreColor}`}>
               {opportunity.scoreSnapshot}<span className="text-sm font-normal text-muted-foreground">/100</span>
             </span>
