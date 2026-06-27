@@ -3922,6 +3922,7 @@ interface AdVariation {
   headline: string;
   description: string;
   cta?: string;
+  url?: string;
 }
 
 interface AdSectionState {
@@ -4205,9 +4206,9 @@ function CampaignAdAssetsStep({
                             <div className="flex items-start justify-between gap-2">
                               <span className="text-[10px] text-[#484F58] font-semibold uppercase tracking-wide">Variation {idx + 1}</span>
                               <div className="flex gap-1 flex-wrap justify-end">
-                                <CopyButton text={`${v.headline}\n${v.description}${v.cta ? `\nCTA: ${v.cta}` : ""}`} />
+                                <CopyButton text={`${v.headline}\n${v.description}${v.cta ? `\nCTA: ${v.cta}` : ""}${v.url ? `\nURL: ${v.url}` : ""}`} />
                                 <button
-                                  onClick={() => setAddTaskModal({ title: `Ad: ${v.headline}`, description: `${label} Ad\n\nHeadline: ${v.headline}\nDescription: ${v.description}${v.cta ? `\nCTA: ${v.cta}` : ""}` })}
+                                  onClick={() => setAddTaskModal({ title: `Ad: ${v.headline}`, description: `${label} Ad\n\nHeadline: ${v.headline}\nDescription: ${v.description}${v.cta ? `\nCTA: ${v.cta}` : ""}${v.url ? `\nURL: ${v.url}` : ""}` })}
                                   className="text-[10px] px-2 py-1 rounded bg-amber-500/20 text-amber-400 hover:bg-amber-500/30 transition-colors"
                                 >+ Task</button>
                                 <button
@@ -4250,6 +4251,22 @@ function CampaignAdAssetsStep({
                                   className="mt-0.5 w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-1.5 text-[10px] text-[#58A6FF] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60"
                                 />
                               </div>
+                              {v.url !== undefined && (
+                                <div>
+                                  <label className="text-[10px] text-[#7D8590] uppercase tracking-wide flex items-center gap-1">
+                                    UTM-Tagged URL
+                                    <span className="normal-case text-[9px] text-[#484F58]">(auto-generated · editable)</span>
+                                  </label>
+                                  <div className="mt-0.5 flex gap-1">
+                                    <input
+                                      value={v.url}
+                                      onChange={e => patchVariation(type, idx, { url: e.target.value })}
+                                      className="flex-1 min-w-0 bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-1.5 text-[10px] text-emerald-400 font-mono placeholder-[#484F58] outline-none focus:border-emerald-500/40"
+                                    />
+                                    <CopyButton text={v.url} />
+                                  </div>
+                                </div>
+                              )}
                             </div>
                           </div>
                         );

@@ -1068,7 +1068,46 @@ const adVariationSchema = z.object({
   headline: z.string(),
   description: z.string(),
   cta: z.string().optional(),
+  url: z.string().optional(),
 });
+
+// ─── UTM helpers ──────────────────────────────────────────────────────────────
+
+const AD_TYPE_UTM: Record<string, { source: string; medium: string; page: string }> = {
+  ad_google:      { source: "google",   medium: "cpc",        page: "/contact" },
+  ad_linkedin:    { source: "linkedin", medium: "paid-social", page: "/contact" },
+  ad_retargeting: { source: "google",   medium: "display",    page: "/contact" },
+  ad_creative:    { source: "display",  medium: "banner",     page: "/contact" },
+  landing_page:   { source: "paid",     medium: "cpc",        page: "/" },
+};
+
+function slugifyForUtm(text: string): string {
+  return text.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 50);
+}
+
+function getPublicSiteBase(): string {
+  const domains = (process.env.REPLIT_DOMAINS ?? "")
+    .split(",").map((d) => d.trim()).filter(Boolean);
+  const custom = domains.find((d) => !d.includes("replit."));
+  if (custom) return `https://${custom}`;
+  const app = domains.find((d) => d.endsWith(".replit.app"));
+  if (app) return `https://${app}`;
+  const dev = domains.find((d) => d.endsWith(".replit.dev")) ?? process.env.REPLIT_DEV_DOMAIN;
+  if (dev) return `https://${dev}`;
+  return "https://shanemccaw.com";
+}
+
+function buildUtmUrl(adType: string, campaignSlug: string, variationIdx: number): string {
+  const base = getPublicSiteBase();
+  const { source, medium, page } = AD_TYPE_UTM[adType] ?? { source: "paid", medium: "cpc", page: "/contact" };
+  const params = new URLSearchParams({
+    utm_source: source,
+    utm_medium: medium,
+    utm_campaign: campaignSlug,
+    utm_content: `var-${variationIdx + 1}`,
+  });
+  return `${base}${page}?${params.toString()}`;
+}
 
 router.post("/admin/marketing/campaigns/generate-ads", requireAdmin, async (req: Request, res: Response) => {
   try {
@@ -1213,7 +1252,13 @@ Respond ONLY with valid JSON, no prose:
     const raw = message.content[0]?.type === "text" ? message.content[0].text : "{}";
     const parsed = parseAiJson(raw, z.object({ variations: z.array(adVariationSchema) }));
 
-    res.json({ adType: body.adType, variations: parsed.variations });
+    const campaignSlug = slugifyForUtm(body.topic);
+    const variations = parsed.variations.map((v, idx) => ({
+      ...v,
+      url: buildUtmUrl(body.adType, campaignSlug, idx),
+    }));
+
+    res.json({ adType: body.adType, variations });
   } catch (e) {
     const status = e instanceof AiResponseError ? 422 : 500;
     res.status(status).json({ error: e instanceof Error ? e.message : String(e) });
