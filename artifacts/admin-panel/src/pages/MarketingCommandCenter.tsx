@@ -4866,45 +4866,51 @@ function EmailPreview({ asset }: { asset: CampaignAsset }) {
   const subject = parseSubjectFromContent(asset.content);
   const body = subject ? asset.content.replace(/^SUBJECT:\s*.+\r?\n?/im, "").trim() : asset.content;
   return (
-    <div className="bg-[#0D1117] border border-[#30363D] rounded-xl overflow-hidden">
-      <div className="bg-[#1C2128] px-4 py-2 border-b border-[#30363D] space-y-1">
-        <div className="flex items-start gap-2 text-[10px]">
-          <span className="text-[#484F58] uppercase tracking-wide w-14 flex-shrink-0 mt-px">From</span>
-          <span className="text-[#C9D1D9]">Shane McCaw &lt;shane@shanemccaw.com&gt;</span>
+    <div className="space-y-3">
+      <div className="bg-[#0D1117] border border-[#30363D] rounded-xl overflow-hidden">
+        <div className="bg-[#1C2128] px-4 py-2 border-b border-[#30363D] space-y-1">
+          <div className="flex items-start gap-2 text-[10px]">
+            <span className="text-[#484F58] uppercase tracking-wide w-14 flex-shrink-0 mt-px">From</span>
+            <span className="text-[#C9D1D9]">Shane McCaw &lt;shane@shanemccaw.com&gt;</span>
+          </div>
+          <div className="flex items-start gap-2 text-[10px]">
+            <span className="text-[#484F58] uppercase tracking-wide w-14 flex-shrink-0 mt-px">Subject</span>
+            <span className="text-[#E6EDF3] font-semibold">{subject || asset.title}</span>
+          </div>
         </div>
-        <div className="flex items-start gap-2 text-[10px]">
-          <span className="text-[#484F58] uppercase tracking-wide w-14 flex-shrink-0 mt-px">Subject</span>
-          <span className="text-[#E6EDF3] font-semibold">{subject || asset.title}</span>
+        <div className="p-4">
+          <pre className="text-xs text-[#C9D1D9] whitespace-pre-wrap font-sans leading-relaxed">{body}</pre>
+        </div>
+        <div className="px-4 py-2 border-t border-[#30363D] flex items-center justify-between">
+          <p className="text-[9px] text-[#484F58]">Unsubscribe · View in browser</p>
+          <CopyButton text={asset.content} />
         </div>
       </div>
-      <div className="p-4">
-        <pre className="text-xs text-[#C9D1D9] whitespace-pre-wrap font-sans leading-relaxed">{body}</pre>
-      </div>
-      <div className="px-4 py-2 border-t border-[#30363D] flex items-center justify-between">
-        <p className="text-[9px] text-[#484F58]">Unsubscribe · View in browser</p>
-        <CopyButton text={asset.content} />
-      </div>
+      <RawToggle content={asset.content} />
     </div>
   );
 }
 
 function SocialPostPreview({ asset, handle = "@shanemccaw" }: { asset: CampaignAsset; handle?: string }) {
   return (
-    <div className="bg-[#0D1117] border border-[#30363D] rounded-xl p-4 space-y-3">
-      <div className="flex items-center gap-2">
-        <div className="w-9 h-9 rounded-full bg-[#0078D4] flex items-center justify-center text-white text-xs font-bold flex-shrink-0">SM</div>
-        <div>
-          <p className="text-xs font-semibold text-[#E6EDF3]">Shane McCaw</p>
-          <p className="text-[10px] text-[#484F58]">{handle}</p>
+    <div className="space-y-3">
+      <div className="bg-[#0D1117] border border-[#30363D] rounded-xl p-4 space-y-3">
+        <div className="flex items-center gap-2">
+          <div className="w-9 h-9 rounded-full bg-[#0078D4] flex items-center justify-center text-white text-xs font-bold flex-shrink-0">SM</div>
+          <div>
+            <p className="text-xs font-semibold text-[#E6EDF3]">Shane McCaw</p>
+            <p className="text-[10px] text-[#484F58]">{handle}</p>
+          </div>
         </div>
+        <p className="text-xs text-[#C9D1D9] leading-relaxed whitespace-pre-wrap">{asset.content}</p>
+        <div className="flex items-center gap-4 pt-2 border-t border-[#30363D] text-[10px] text-[#484F58]">
+          <span>👍 Like</span>
+          <span>💬 Comment</span>
+          <span>↗ Share</span>
+        </div>
+        <div className="flex justify-end"><CopyButton text={asset.content} /></div>
       </div>
-      <p className="text-xs text-[#C9D1D9] leading-relaxed whitespace-pre-wrap">{asset.content}</p>
-      <div className="flex items-center gap-4 pt-2 border-t border-[#30363D] text-[10px] text-[#484F58]">
-        <span>👍 Like</span>
-        <span>💬 Comment</span>
-        <span>↗ Share</span>
-      </div>
-      <div className="flex justify-end"><CopyButton text={asset.content} /></div>
+      <RawToggle content={asset.content} />
     </div>
   );
 }
@@ -4914,28 +4920,97 @@ function BlogPostPreview({ asset }: { asset: CampaignAsset }) {
   const title = lines[0]?.replace(/^#+\s*/, "") ?? asset.title;
   const excerpt = lines.slice(1, 5).join(" ").slice(0, 320);
   return (
-    <div className="bg-[#0D1117] border border-[#30363D] rounded-xl p-5 space-y-3">
-      <div className="space-y-1">
-        <p className="text-[10px] text-[#58A6FF] uppercase tracking-wide font-semibold">Blog Post</p>
-        <h3 className="text-base font-bold text-[#E6EDF3] leading-snug">{title}</h3>
+    <div className="space-y-3">
+      <div className="bg-[#0D1117] border border-[#30363D] rounded-xl p-5 space-y-3">
+        <div className="space-y-1">
+          <p className="text-[10px] text-[#58A6FF] uppercase tracking-wide font-semibold">Blog Post</p>
+          <h3 className="text-base font-bold text-[#E6EDF3] leading-snug">{title}</h3>
+        </div>
+        <p className="text-xs text-[#8B949E] leading-relaxed">{excerpt}{excerpt.length >= 320 ? "…" : ""}</p>
+        <div className="flex items-center justify-between pt-2 border-t border-[#30363D]">
+          <p className="text-[10px] text-[#484F58]">Shane McCaw · shanemccaw.com</p>
+          <CopyButton text={asset.content} />
+        </div>
       </div>
-      <p className="text-xs text-[#8B949E] leading-relaxed">{excerpt}{excerpt.length >= 320 ? "…" : ""}</p>
-      <div className="flex items-center justify-between pt-2 border-t border-[#30363D]">
-        <p className="text-[10px] text-[#484F58]">Shane McCaw · shanemccaw.com</p>
-        <CopyButton text={asset.content} />
-      </div>
+      <RawToggle content={asset.content} />
     </div>
   );
 }
 
 function GenericAssetPreview({ asset }: { asset: CampaignAsset }) {
   return (
-    <div className="bg-[#0D1117] border border-[#30363D] rounded-xl p-4">
-      <div className="flex items-center justify-between mb-3">
-        <p className="text-[10px] text-[#484F58] uppercase tracking-wide font-semibold">{ASSET_TYPE_LABELS[asset.assetType] ?? asset.assetType}</p>
-        <CopyButton text={asset.content} />
+    <div className="space-y-3">
+      <div className="bg-[#0D1117] border border-[#30363D] rounded-xl p-4">
+        <div className="flex items-center justify-between mb-3">
+          <p className="text-[10px] text-[#484F58] uppercase tracking-wide font-semibold">{ASSET_TYPE_LABELS[asset.assetType] ?? asset.assetType}</p>
+          <CopyButton text={asset.content} />
+        </div>
+        <pre className="text-xs text-[#8B949E] whitespace-pre-wrap font-sans leading-relaxed">{asset.content}</pre>
       </div>
-      <pre className="text-xs text-[#8B949E] whitespace-pre-wrap font-sans leading-relaxed">{asset.content}</pre>
+      <RawToggle content={asset.content} />
+    </div>
+  );
+}
+
+function LandingPagePreview({ asset }: { asset: CampaignAsset }) {
+  const variations = asset.metadata?.variations ?? [];
+  if (variations.length === 0) return <GenericAssetPreview asset={asset} />;
+  return (
+    <div className="space-y-4">
+      {variations.map((v, i) => (
+        <div key={i} className="bg-[#0D1117] border border-[#30363D] rounded-xl overflow-hidden">
+          <div className="bg-[#1C2128] px-3 py-1.5 flex items-center gap-2 border-b border-[#30363D]">
+            <div className="flex gap-1">
+              <div className="w-2 h-2 rounded-full bg-red-500/50" />
+              <div className="w-2 h-2 rounded-full bg-amber-500/50" />
+              <div className="w-2 h-2 rounded-full bg-emerald-500/50" />
+            </div>
+            <div className="flex-1 bg-[#0D1117] rounded px-2 py-0.5 text-[9px] text-[#484F58] font-mono truncate">
+              shanemccaw.com/lp
+            </div>
+          </div>
+          <div className="p-5 space-y-3 text-center">
+            <p className="text-lg font-bold text-[#E6EDF3] leading-tight">{v.headline}</p>
+            {v.description && <p className="text-xs text-[#8B949E] leading-relaxed">{v.description}</p>}
+            {v.cta && (
+              <div className="mt-2">
+                <span className="inline-block px-5 py-2.5 rounded-lg bg-[#0078D4] text-white text-xs font-bold">{v.cta}</span>
+              </div>
+            )}
+          </div>
+          {v.url && <div className="px-5 pb-3 text-center"><p className="text-[9px] text-emerald-600 font-mono truncate">{v.url}</p></div>}
+          <div className="px-5 pb-3 flex justify-end">
+            <CopyButton text={`${v.headline}${v.description ? `\n${v.description}` : ""}${v.cta ? `\nCTA: ${v.cta}` : ""}${v.url ? `\nURL: ${v.url}` : ""}`} />
+          </div>
+        </div>
+      ))}
+      <RawToggle content={asset.content} />
+    </div>
+  );
+}
+
+function TaskCardPreview({ asset }: { asset: CampaignAsset }) {
+  const lines = asset.content.split("\n").filter(l => l.trim());
+  return (
+    <div className="space-y-3">
+      <div className="space-y-2">
+        {lines.map((line, i) => {
+          const isChecked = /^-\s*\[x\]/i.test(line);
+          const isCheckbox = /^-\s*\[.\]/.test(line);
+          const text = isCheckbox
+            ? line.replace(/^-\s*\[.\]\s*/, "")
+            : line.replace(/^[-*•]\s*/, "");
+          return (
+            <div key={i} className="bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 flex items-start gap-2">
+              <div className={`mt-0.5 w-4 h-4 rounded border flex-shrink-0 flex items-center justify-center text-[9px] font-bold ${isChecked ? "bg-emerald-500/20 border-emerald-500/40 text-emerald-400" : "border-[#484F58]"}`}>
+                {isChecked && "✓"}
+              </div>
+              <p className={`text-xs leading-relaxed flex-1 ${isChecked ? "line-through text-[#484F58]" : "text-[#C9D1D9]"}`}>{text || line}</p>
+            </div>
+          );
+        })}
+      </div>
+      <RawToggle content={asset.content} />
     </div>
   );
 }
@@ -4953,7 +5028,7 @@ function CampaignAssetTabPanel({ asset }: { asset: CampaignAsset }) {
     case "ad_linkedin": return <LinkedInAdPreview asset={asset} />;
     case "ad_retargeting": return <AdVariationPreview asset={asset} label="Retargeting" />;
     case "ad_creative": return <AdVariationPreview asset={asset} label="Creative" />;
-    case "landing_page": return <AdVariationPreview asset={asset} label="Landing Page" />;
+    case "landing_page": return <LandingPagePreview asset={asset} />;
     case "email_sequence":
     case "cold_email":
     case "followup":
@@ -4961,8 +5036,61 @@ function CampaignAssetTabPanel({ asset }: { asset: CampaignAsset }) {
     case "social_post": return <SocialPostPreview asset={asset} />;
     case "linkedin_post": return <SocialPostPreview asset={asset} handle="Shane McCaw on LinkedIn" />;
     case "blog_post": return <BlogPostPreview asset={asset} />;
+    case "follow_up_task": return <TaskCardPreview asset={asset} />;
+    case "lead_magnet": return <GenericAssetPreview asset={asset} />;
     default: return <GenericAssetPreview asset={asset} />;
   }
+}
+
+function CampaignDeleteDialog({
+  campaign,
+  onConfirm,
+  onCancel,
+  isDeleting,
+}: {
+  campaign: Campaign;
+  onConfirm: () => void;
+  onCancel: () => void;
+  isDeleting: boolean;
+}) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+      <div className="bg-[#161B22] border border-[#30363D] rounded-2xl p-6 max-w-sm w-full mx-4 shadow-2xl">
+        <div className="flex items-start gap-3 mb-4">
+          <div className="w-10 h-10 rounded-full bg-red-500/20 border border-red-500/30 flex items-center justify-center flex-shrink-0 text-lg">
+            🗑
+          </div>
+          <div>
+            <p className="text-sm font-bold text-[#E6EDF3]">Delete Campaign</p>
+            <p className="text-[10px] text-[#7D8590] mt-0.5">This cannot be undone</p>
+          </div>
+        </div>
+        <p className="text-xs text-[#C9D1D9] mb-1 leading-relaxed">
+          Are you sure you want to delete{" "}
+          <span className="font-bold text-[#E6EDF3]">&ldquo;{campaign.name}&rdquo;</span>?
+        </p>
+        <p className="text-[10px] text-[#7D8590] mb-5 leading-relaxed">
+          All assets, ad variations, and metrics associated with this campaign will be permanently removed.
+        </p>
+        <div className="flex gap-2 justify-end">
+          <button
+            onClick={onCancel}
+            disabled={isDeleting}
+            className="px-4 py-2 rounded-lg text-xs border border-[#30363D] text-[#C9D1D9] hover:text-[#E6EDF3] hover:border-[#484F58] transition-colors disabled:opacity-40"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={onConfirm}
+            disabled={isDeleting}
+            className="px-4 py-2 rounded-lg text-xs bg-red-500 text-white font-semibold hover:bg-red-600 transition-colors disabled:opacity-40"
+          >
+            {isDeleting ? "Deleting…" : "Delete Campaign"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function CampaignAssetTabs({ assets }: { assets: CampaignAsset[] }) {
@@ -5068,7 +5196,7 @@ function CampaignDetailView({
   const [statusSaving, setStatusSaving] = useState(false);
 
   // Delete
-  const [deleteConfirm, setDeleteConfirm] = useState(false);
+  const [deleteDialog, setDeleteDialog] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
   // Brief expand
@@ -5175,6 +5303,14 @@ function CampaignDetailView({
 
   return (
     <div className="space-y-5">
+      {deleteDialog && data && (
+        <CampaignDeleteDialog
+          campaign={data.campaign}
+          onConfirm={() => { void handleDelete(); }}
+          onCancel={() => setDeleteDialog(false)}
+          isDeleting={deleting}
+        />
+      )}
       {/* Header */}
       <div className="flex items-start justify-between gap-3">
         <div className="flex items-start gap-3 min-w-0">
@@ -5205,32 +5341,13 @@ function CampaignDetailView({
           >
             + Generate Assets
           </button>
-          {!deleteConfirm ? (
-            <button
-              onClick={() => setDeleteConfirm(true)}
-              className="text-[10px] px-2.5 py-1.5 rounded-lg border border-red-500/30 text-red-400 hover:bg-red-500/10 transition-colors"
-              title="Delete campaign"
-            >
-              🗑
-            </button>
-          ) : (
-            <div className="flex items-center gap-1.5 bg-red-500/10 border border-red-500/30 rounded-lg px-2 py-1">
-              <span className="text-[10px] text-red-400 font-semibold">Delete?</span>
-              <button
-                onClick={() => { void handleDelete(); }}
-                disabled={deleting}
-                className="text-[10px] px-2 py-0.5 rounded bg-red-500 text-white font-semibold hover:bg-red-600 transition-colors disabled:opacity-40"
-              >
-                {deleting ? "…" : "Yes"}
-              </button>
-              <button
-                onClick={() => setDeleteConfirm(false)}
-                className="text-[10px] px-2 py-0.5 rounded border border-[#30363D] text-[#7D8590] hover:text-[#E6EDF3] transition-colors"
-              >
-                No
-              </button>
-            </div>
-          )}
+          <button
+            onClick={() => setDeleteDialog(true)}
+            className="text-[10px] px-2.5 py-1.5 rounded-lg border border-red-500/30 text-red-400 hover:bg-red-500/10 transition-colors"
+            title="Delete campaign"
+          >
+            🗑
+          </button>
         </div>
       </div>
 
@@ -5407,7 +5524,7 @@ function CampaignBuilderWizard({ fetchWithAuth }: { fetchWithAuth: (url: string,
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [loadingCampaigns, setLoadingCampaigns] = useState(true);
   const [detailCampaignId, setDetailCampaignId] = useState<number | null>(null);
-  const [deletingCampaignId, setDeletingCampaignId] = useState<number | null>(null);
+  const [deleteDialogCampaign, setDeleteDialogCampaign] = useState<Campaign | null>(null);
   const [deletingInProgress, setDeletingInProgress] = useState(false);
 
   useEffect(() => {
@@ -5487,13 +5604,14 @@ function CampaignBuilderWizard({ fetchWithAuth }: { fetchWithAuth: (url: string,
     setCampaigns(prev => prev.filter(c => c.id !== id));
   };
 
-  const handleListDelete = async (id: number) => {
+  const handleListDelete = async () => {
+    if (!deleteDialogCampaign) return;
     setDeletingInProgress(true);
     try {
-      await fetchWithAuth(`${API}/admin/marketing/campaigns/${id}`, { method: "DELETE" });
-      setCampaigns(prev => prev.filter(c => c.id !== id));
+      await fetchWithAuth(`${API}/admin/marketing/campaigns/${deleteDialogCampaign.id}`, { method: "DELETE" });
+      setCampaigns(prev => prev.filter(c => c.id !== deleteDialogCampaign.id));
     } finally {
-      setDeletingCampaignId(null);
+      setDeleteDialogCampaign(null);
       setDeletingInProgress(false);
     }
   };
@@ -5527,6 +5645,14 @@ function CampaignBuilderWizard({ fetchWithAuth }: { fetchWithAuth: (url: string,
 
   return (
     <div className="space-y-4">
+      {deleteDialogCampaign && (
+        <CampaignDeleteDialog
+          campaign={deleteDialogCampaign}
+          onConfirm={() => { void handleListDelete(); }}
+          onCancel={() => setDeleteDialogCampaign(null)}
+          isDeleting={deletingInProgress}
+        />
+      )}
       <h2 className="text-lg font-semibold text-[#E6EDF3]">Campaign Builder</h2>
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         <div className="lg:col-span-2 bg-[#161B22] border border-[#30363D] rounded-xl p-4 space-y-4">
@@ -5726,31 +5852,13 @@ function CampaignBuilderWizard({ fetchWithAuth }: { fetchWithAuth: (url: string,
                         </div>
                       </button>
                       <div className="flex-shrink-0 pt-2 pr-1">
-                        {deletingCampaignId === c.id ? (
-                          <div className="flex items-center gap-1">
-                            <button
-                              onClick={() => { void handleListDelete(c.id); }}
-                              disabled={deletingInProgress}
-                              className="text-[9px] px-1.5 py-0.5 rounded bg-red-500 text-white font-semibold hover:bg-red-600 transition-colors disabled:opacity-40"
-                            >
-                              {deletingInProgress ? "…" : "Yes"}
-                            </button>
-                            <button
-                              onClick={() => setDeletingCampaignId(null)}
-                              className="text-[9px] px-1.5 py-0.5 rounded border border-[#30363D] text-[#7D8590] hover:text-[#E6EDF3] transition-colors"
-                            >
-                              No
-                            </button>
-                          </div>
-                        ) : (
-                          <button
-                            onClick={e => { e.stopPropagation(); setDeletingCampaignId(c.id); }}
-                            className="text-[11px] text-[#484F58] hover:text-red-400 transition-colors p-0.5"
-                            title="Delete campaign"
-                          >
-                            🗑
-                          </button>
-                        )}
+                        <button
+                          onClick={e => { e.stopPropagation(); setDeleteDialogCampaign(c); }}
+                          className="text-[11px] text-[#484F58] hover:text-red-400 transition-colors p-0.5"
+                          title="Delete campaign"
+                        >
+                          🗑
+                        </button>
                       </div>
                     </div>
                     <CampaignWorkspace campaign={c} fetchWithAuth={fetchWithAuth} />
