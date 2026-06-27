@@ -18,6 +18,10 @@ function parseId(params: Request["params"], key: string): number {
   return parseInt(String(params[key] ?? ""), 10);
 }
 
+function stripFences(text: string): string {
+  return text.replace(/^```(?:json)?\s*/i, "").replace(/\s*```\s*$/, "").trim();
+}
+
 // ─── ICP context helper — sources from DB ─────────────────────────────────────
 
 async function buildICPContext(): Promise<string> {
@@ -210,8 +214,7 @@ Respond with a JSON array (no markdown):
 
     let leads: Array<Record<string, unknown>>;
     try {
-      const rawText = content.text.replace(/^```(?:json)?\s*/i, "").replace(/\s*```\s*$/, "").trim();
-      leads = JSON.parse(rawText) as Array<Record<string, unknown>>;
+      leads = JSON.parse(stripFences(content.text)) as Array<Record<string, unknown>>;
     }
     catch { throw new Error("Failed to parse AI response as JSON"); }
 
@@ -464,7 +467,7 @@ Generate complete campaign assets. Respond with JSON only (no markdown):
     if (textContent?.type !== "text") throw new Error("Unexpected response type");
 
     let assets: Record<string, { title: string; content: string }>;
-    try { assets = JSON.parse(textContent.text) as Record<string, { title: string; content: string }>; }
+    try { assets = JSON.parse(stripFences(textContent.text)) as Record<string, { title: string; content: string }>; }
     catch { throw new Error("Failed to parse AI campaign assets"); }
 
     type AssetType = "landing_copy" | "email_sequence" | "social_post" | "follow_up_task";
@@ -511,8 +514,7 @@ Respond with JSON only (no markdown):
 
     const content = message.content[0];
     if (content?.type !== "text") throw new Error("Unexpected response type");
-    const rawText = content.text.replace(/^```(?:json)?\s*/i, "").replace(/\s*```\s*$/, "").trim();
-    const prospect = JSON.parse(rawText) as { name: string; company: string; role: string; industry: string };
+    const prospect = JSON.parse(stripFences(content.text)) as { name: string; company: string; role: string; industry: string };
     res.json(prospect);
   } catch (e) {
     res.status(500).json({ error: String(e) });
@@ -543,8 +545,7 @@ Respond with JSON only (no markdown):
 
     const content = message.content[0];
     if (content?.type !== "text") throw new Error("Unexpected response type");
-    const rawText = content.text.replace(/^```(?:json)?\s*/i, "").replace(/\s*```\s*$/, "").trim();
-    const idea = JSON.parse(rawText) as { topic: string; tone: string; keywords: string };
+    const idea = JSON.parse(stripFences(content.text)) as { topic: string; tone: string; keywords: string };
     res.json(idea);
   } catch (e) {
     res.status(500).json({ error: String(e) });
@@ -574,8 +575,7 @@ Respond with a JSON array only (no markdown):
 
     const content = message.content[0];
     if (content?.type !== "text") throw new Error("Unexpected response type");
-    const rawText = content.text.replace(/^```(?:json)?\s*/i, "").replace(/\s*```\s*$/, "").trim();
-    const suggestions = JSON.parse(rawText) as Array<{ title: string; description: string }>;
+    const suggestions = JSON.parse(stripFences(content.text)) as Array<{ title: string; description: string }>;
 
     res.json(suggestions);
   } catch (e) {
@@ -615,8 +615,7 @@ router.post("/admin/marketing/generate/campaign-suggest", requireAdmin, async (r
 
     const content = message.content[0];
     if (content?.type !== "text") throw new Error("Unexpected response type");
-    const rawText = content.text.replace(/^```(?:json)?\s*/i, "").replace(/\s*```\s*$/, "").trim();
-    const result = JSON.parse(rawText) as { value: string };
+    const result = JSON.parse(stripFences(content.text)) as { value: string };
     res.json(result);
   } catch (e) {
     res.status(500).json({ error: String(e) });
