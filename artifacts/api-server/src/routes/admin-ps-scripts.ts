@@ -265,6 +265,53 @@ router.post("/admin/ps-scripts", requireAdmin, async (req: Request, res: Respons
   }
 });
 
+// ─── GET /api/admin/ps-scripts/packages ──────────────────────────────────────
+// NOTE: must be registered BEFORE /:id to prevent "packages" being treated as an id
+
+router.get("/admin/ps-scripts/packages", requireAdmin, async (_req: Request, res: Response) => {
+  try {
+    const packages = await db
+      .select()
+      .from(scriptPackagesTable)
+      .orderBy(desc(scriptPackagesTable.createdAt));
+
+    const pkgIds = packages.map((p) => p.id);
+    let allModules: ScriptModule[] = [];
+    if (pkgIds.length > 0) {
+      allModules = await db
+        .select()
+        .from(scriptModulesTable)
+        .where(inArray(scriptModulesTable.packageId, pkgIds))
+        .orderBy(asc(scriptModulesTable.sortOrder));
+    }
+
+    const result = packages.map((pkg) => ({
+      ...pkg,
+      modules: allModules.filter((m) => m.packageId === pkg.id),
+    }));
+
+    res.json(result);
+  } catch (err) {
+    logger.error({ err }, "Failed to list script packages");
+    res.status(500).json({ error: "Failed to list packages" });
+  }
+});
+
+// ─── DELETE /api/admin/ps-scripts/packages/:id ───────────────────────────────
+// NOTE: must be registered BEFORE /admin/ps-scripts/:id
+
+router.delete("/admin/ps-scripts/packages/:id", requireAdmin, async (req: Request, res: Response) => {
+  const pkgId = String(req.params["id"] ?? "");
+  if (!UUID_RE.test(pkgId)) { res.status(400).json({ error: "Invalid id" }); return; }
+  try {
+    await db.delete(scriptPackagesTable).where(eq(scriptPackagesTable.id, pkgId));
+    res.status(204).end();
+  } catch (err) {
+    logger.error({ err }, "Failed to delete script package");
+    res.status(500).json({ error: "Failed to delete package" });
+  }
+});
+
 // ─── GET /api/admin/ps-scripts/:id ───────────────────────────────────────────
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -536,51 +583,6 @@ Rules:
   } catch (err) {
     logger.error({ err }, "PS script modularize failed");
     res.status(500).json({ error: err instanceof Error ? err.message : "Modularization failed" });
-  }
-});
-
-// ─── GET /api/admin/ps-scripts/packages ──────────────────────────────────────
-
-router.get("/admin/ps-scripts/packages", requireAdmin, async (_req: Request, res: Response) => {
-  try {
-    const packages = await db
-      .select()
-      .from(scriptPackagesTable)
-      .orderBy(desc(scriptPackagesTable.createdAt));
-
-    const pkgIds = packages.map((p) => p.id);
-    let allModules: ScriptModule[] = [];
-    if (pkgIds.length > 0) {
-      allModules = await db
-        .select()
-        .from(scriptModulesTable)
-        .where(inArray(scriptModulesTable.packageId, pkgIds))
-        .orderBy(asc(scriptModulesTable.sortOrder));
-    }
-
-    const result = packages.map((pkg) => ({
-      ...pkg,
-      modules: allModules.filter((m) => m.packageId === pkg.id),
-    }));
-
-    res.json(result);
-  } catch (err) {
-    logger.error({ err }, "Failed to list script packages");
-    res.status(500).json({ error: "Failed to list packages" });
-  }
-});
-
-// ─── DELETE /api/admin/ps-scripts/packages/:id ───────────────────────────────
-
-router.delete("/admin/ps-scripts/packages/:id", requireAdmin, async (req: Request, res: Response) => {
-  const id = String(req.params["id"] ?? "");
-  if (!UUID_RE.test(id)) { res.status(400).json({ error: "Invalid id" }); return; }
-  try {
-    await db.delete(scriptPackagesTable).where(eq(scriptPackagesTable.id, id));
-    res.status(204).end();
-  } catch (err) {
-    logger.error({ err }, "Failed to delete script package");
-    res.status(500).json({ error: "Failed to delete package" });
   }
 });
 

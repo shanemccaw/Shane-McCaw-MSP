@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
+import { zipSync, strToU8 } from "fflate";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -98,10 +99,20 @@ function downloadFile(content: string, filename: string) {
   URL.revokeObjectURL(url);
 }
 
-function downloadAllModules(modules: ScriptModuleItem[]) {
-  modules.forEach((m, i) => {
-    setTimeout(() => downloadFile(m.content, m.filename), i * 150);
-  });
+function downloadAllModulesAsZip(modules: ScriptModuleItem[], packageTitle: string) {
+  const files: Record<string, Uint8Array> = {};
+  for (const m of modules) {
+    files[m.filename] = strToU8(m.content);
+  }
+  const zipped = zipSync(files, { level: 6 });
+  const slug = packageTitle.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "") || "package";
+  const blob = new Blob([zipped], { type: "application/zip" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `${slug}.zip`;
+  a.click();
+  URL.revokeObjectURL(url);
 }
 
 function copyToClipboard(text: string) {
@@ -458,9 +469,11 @@ function ScriptDrawer({
 
 function ModulePackageView({
   modules,
+  packageTitle,
   onBack,
 }: {
   modules: ScriptModuleItem[];
+  packageTitle: string;
   onBack: () => void;
 }) {
   const [activeIdx, setActiveIdx] = useState(0);
@@ -483,11 +496,11 @@ function ModulePackageView({
         </div>
         <div className="flex items-center gap-2">
           <button
-            onClick={() => downloadAllModules(modules)}
+            onClick={() => downloadAllModulesAsZip(modules, packageTitle)}
             className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg bg-purple-500/15 border border-purple-500/30 text-purple-400 hover:bg-purple-500/25 transition-colors"
           >
             <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
-            Download All (.ps1)
+            Download All (.zip)
           </button>
           <button
             onClick={onBack}
@@ -811,7 +824,7 @@ function GeneratorTab({
 
           {/* Package view or single script view */}
           {modules.length > 0 ? (
-            <ModulePackageView modules={modules} onBack={() => setModules([])} />
+            <ModulePackageView modules={modules} packageTitle={prompt.trim() || "package"} onBack={() => setModules([])} />
           ) : (
             <>
               {/* Script editor */}
@@ -996,8 +1009,8 @@ function PackageRow({
         </div>
         <div className="flex items-center gap-1 pl-2" onClick={(e) => e.stopPropagation()}>
           <button
-            onClick={(e) => { e.stopPropagation(); downloadAllModules(pkg.modules); }}
-            title="Download all modules"
+            onClick={(e) => { e.stopPropagation(); downloadAllModulesAsZip(pkg.modules, pkg.title); }}
+            title="Download all modules as .zip"
             className="p-1.5 text-[#7D8590] hover:text-purple-400 hover:bg-purple-400/10 rounded-lg transition-colors"
           >
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
