@@ -58,6 +58,8 @@ The command center renders a horizontal tab bar. Each tab maps to a React sectio
 
 The active tab is stored in local `useState`. Only the active section renders — others are unmounted, so each section re-fetches its data on mount.
 
+> **Note:** KPIs (live count tiles) and Analytics (charts & email stats) are two distinct tabs in the current implementation. KPIs is a lightweight strip showing four real-time numbers; Analytics is a full chart dashboard. They are not combined into a single "Dashboard" view.
+
 ---
 
 ## Section 0 — AI Leads
@@ -403,7 +405,11 @@ See [SEO Rankings](#seo-rankings) under the API Reference for endpoint details.
 
 **Add / Edit Keyword:** Collapsible inline form: Keyword (required), Position 1–100 (required), Monthly Volume (optional), Ranking URL (optional). Submits `POST` to create or `PATCH /{id}` to update. On `PATCH`, the server stores the old position as `previousPosition` before updating.
 
-**↻ Sync Search Console:** Calls `POST /api/admin/marketing/seo-rankings/sync-search-console`. The server calls the Google Search Console API (service account via `GOOGLE_SEARCH_CONSOLE_KEY_JSON`) to pull the top 100 queries for the last 28 days, then upserts each into `seo_rankings`. On upsert, the `notes` field is set to "Last synced from Search Console (N clicks, M impressions)". Returns `{ synced, inserted, updated }`. The UI shows a green success banner for 6 seconds. If either `GOOGLE_SEARCH_CONSOLE_KEY_JSON` or `GOOGLE_SEARCH_CONSOLE_SITE_URL` is missing, the response is `400` with an error message naming the missing secret.
+**↻ Sync Search Console:** Calls `POST /api/admin/marketing/seo-rankings/sync-search-console`. The server calls the Google Search Console API (service account via `GOOGLE_SEARCH_CONSOLE_KEY_JSON`) to pull the top 100 queries for the last 28 days, then upserts each into `seo_rankings`. On upsert, the `notes` field is set to "Last synced from Search Console (N clicks, M impressions)". Returns `{ synced, inserted, updated }`. The UI shows a green success banner for 6 seconds.
+
+Error behavior:
+- If `GOOGLE_SEARCH_CONSOLE_SITE_URL` is missing → explicit `400 Bad Request` with `{ error: "GOOGLE_SEARCH_CONSOLE_SITE_URL is not configured" }`.
+- If `GOOGLE_SEARCH_CONSOLE_KEY_JSON` is missing or invalid → the error is thrown inside `fetchTopQueries` and surfaces as `500 Internal Server Error` (no named-secret message).
 
 ---
 
@@ -426,7 +432,11 @@ A Kanban board for planning and tracking marketing activities via drag-and-drop 
 
 ### Drag-and-Drop
 
-Implemented with `@dnd-kit/core` (`DndContext`, `PointerSensor`, `KeyboardSensor`) and `@dnd-kit/sortable` (`SortableContext`, `useSortable`). Each column is a `DroppableColumn` using `useDroppable`. Dropping a card into a different column calls `PATCH /api/admin/marketing/tasks/{id}` with the new `status`. Reordering within a column uses `arrayMove` on the local state and patches the `order` field.
+Implemented with `@dnd-kit/core` (`DndContext`, `PointerSensor`, `KeyboardSensor`) and `@dnd-kit/sortable` (`SortableContext`, `useSortable`). Each column is a `DroppableColumn` using `useDroppable`.
+
+The `handleDragEnd` handler:
+- **Cross-column drop**: sets the task's `status` to the destination column, then calls `PATCH /api/admin/marketing/tasks/{id}` with `{ status: newStatus }`.
+- **Same-column reorder**: updates local state with `arrayMove` to reflect the new visual order, then still calls `PATCH /api/admin/marketing/tasks/{id}` with `{ status: newStatus }` (the same status). **The `order` field is not sent** — the visual reorder within a column is client-side only and is not persisted to the database.
 
 ### Status Dropdown
 
@@ -517,7 +527,7 @@ The Emails Sent tile has three display modes based on the data:
 
 ### Starting a New Campaign
 
-A **+ New Campaign** button (shown on step 5) resets all wizard state (`step`, `goal`, `audience`, `offer`, `name`, `previewAssets`, `savedCampaignId`) and returns to step 1.
+A **Create Another Campaign** button (shown on step 5) resets all wizard state (`step`, `goal`, `audience`, `offer`, `name`, `previewAssets`, `savedCampaignId`) and returns to step 1.
 
 ---
 
