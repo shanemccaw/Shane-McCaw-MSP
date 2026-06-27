@@ -4291,7 +4291,7 @@ function CampaignWorkspace({
       const linkedPageIds = new Set(linkedPgs.map(p => p.id));
       setLinkedOffers(linked);
       setLinkedPages(linkedPgs);
-      setStandaloneOffers((Array.isArray(ao) ? ao as Offer[] : []).filter(o => !o.campaignId || linkedIds.has(o.id)));
+      setStandaloneOffers(Array.isArray(ao) ? ao as Offer[] : []);
       setStandalonePages((Array.isArray(ap) ? ap as LandingPage[] : []).filter(p => !p.campaignId || linkedPageIds.has(p.id)));
     } finally { setLoading(false); }
   }, [campaign.id, fetchWithAuth]);
