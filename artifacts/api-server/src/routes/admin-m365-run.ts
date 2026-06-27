@@ -18,35 +18,56 @@ import {
   scriptRunResultsTable,
   clientScoresTable,
   clientM365ProfilesTable,
+  azureTenantCredentialsTable,
+  usersTable,
+  servicesTable,
 } from "@workspace/db";
-import { eq, asc } from "drizzle-orm";
+import { eq, asc, desc } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/requireAuth";
 import { logger } from "../lib/logger";
 import { createRunbookJob, getJobStatus, getJobOutput, isTerminalStatus } from "../lib/azure-automation";
 import { runAiAnalyzer } from "../lib/ai-analyzer";
+import { getSecretValue } from "../lib/azure-keyvault";
 
 const router: IRouter = Router();
 
 // ── Zod schemas ────────────────────────────────────────────────────────────────
 
-const runScriptSchema = z.object({
-  scriptId: z.number().int().positive(),
-  customerId: z.number().int().positive().optional(),
-  tenantId: z.string().min(1),
-  clientId: z.string().min(1),
-  clientSecret: z.string().min(1),
-  packageId: z.number().int().positive().optional(),
-  packageContext: z.string().optional(),
-});
+const runScriptSchema = z.union([
+  z.object({
+    scriptId: z.number().int().positive(),
+    customerId: z.number().int().positive().optional(),
+    credentialId: z.number().int().positive(),
+    packageId: z.number().int().positive().optional(),
+    packageContext: z.string().optional(),
+  }),
+  z.object({
+    scriptId: z.number().int().positive(),
+    customerId: z.number().int().positive().optional(),
+    tenantId: z.string().min(1),
+    clientId: z.string().min(1),
+    clientSecret: z.string().min(1),
+    packageId: z.number().int().positive().optional(),
+    packageContext: z.string().optional(),
+  }),
+]);
 
-const runPackageSchema = z.object({
-  packageId: z.number().int().positive(),
-  customerId: z.number().int().positive().optional(),
-  tenantId: z.string().min(1),
-  clientId: z.string().min(1),
-  clientSecret: z.string().min(1),
-  packageContext: z.string().optional(),
-});
+const runPackageSchema = z.union([
+  z.object({
+    packageId: z.number().int().positive(),
+    credentialId: z.number().int().positive(),
+    customerId: z.number().int().positive().optional(),
+    packageContext: z.string().optional(),
+  }),
+  z.object({
+    packageId: z.number().int().positive(),
+    tenantId: z.string().min(1),
+    clientId: z.string().min(1),
+    clientSecret: z.string().min(1),
+    customerId: z.number().int().positive().optional(),
+    packageContext: z.string().optional(),
+  }),
+]);
 
 const updateScoresSchema = z.object({
   clientId: z.number().int().positive(),
@@ -166,7 +187,42 @@ router.post("/admin/run-script", requireAdmin, async (req: Request, res: Respons
     return;
   }
 
-  const { scriptId, customerId, tenantId, clientId, clientSecret, packageId, packageContext } = parsed.data;
+  const { scriptId, packageId, packageContext } = parsed.data;
+
+  // Resolve credentials — either from credentialId (Key Vault) or raw fields
+  let tenantId: string;
+  let clientId: string;
+  let clientSecret: string;
+  let customerId: number | undefined = parsed.data.customerId;
+
+  if ("credentialId" in parsed.data) {
+    const [cred] = await db
+      .select()
+      .from(azureTenantCredentialsTable)
+      .where(eq(azureTenantCredentialsTable.id, parsed.data.credentialId))
+      .limit(1);
+    if (!cred) {
+      res.status(404).json({ error: "Credential not found" });
+      return;
+    }
+    // Derive customerId from the credential's linked user if not explicitly provided
+    if (!customerId && cred.clientUserId) {
+      customerId = cred.clientUserId;
+    }
+    try {
+      clientSecret = await getSecretValue(cred.keyVaultSecretName);
+    } catch (err) {
+      logger.error({ err, credentialId: parsed.data.credentialId }, "admin-m365-run: failed to fetch secret from Key Vault");
+      res.status(502).json({ error: "Failed to retrieve client secret from Key Vault" });
+      return;
+    }
+    tenantId = cred.tenantId;
+    clientId = cred.clientId;
+  } else {
+    tenantId = parsed.data.tenantId;
+    clientId = parsed.data.clientId;
+    clientSecret = parsed.data.clientSecret;
+  }
 
   // Fetch script
   const [script] = await db
@@ -296,6 +352,44 @@ router.post("/admin/run-script", requireAdmin, async (req: Request, res: Respons
   });
 });
 
+// ── GET /api/admin/script-run-results ────────────────────────────────────────
+
+router.get("/admin/script-run-results", requireAdmin, async (req: Request, res: Response) => {
+  const limit = Math.min(parseInt(String(req.query.limit ?? "200")), 500);
+
+  try {
+    const rows = await db
+      .select({
+        id: scriptRunResultsTable.id,
+        customerId: scriptRunResultsTable.customerId,
+        scriptId: scriptRunResultsTable.scriptId,
+        packageId: scriptRunResultsTable.packageId,
+        jobId: scriptRunResultsTable.jobId,
+        rawOutput: scriptRunResultsTable.rawOutput,
+        parsedFindings: scriptRunResultsTable.parsedFindings,
+        recommendations: scriptRunResultsTable.recommendations,
+        scoreImpact: scriptRunResultsTable.scoreImpact,
+        profileUpdates: scriptRunResultsTable.profileUpdates,
+        status: scriptRunResultsTable.status,
+        createdAt: scriptRunResultsTable.createdAt,
+        scriptName: scriptCatalogTable.name,
+        clientName: usersTable.name,
+        packageName: servicesTable.name,
+      })
+      .from(scriptRunResultsTable)
+      .leftJoin(scriptCatalogTable, eq(scriptRunResultsTable.scriptId, scriptCatalogTable.id))
+      .leftJoin(usersTable, eq(scriptRunResultsTable.customerId, usersTable.id))
+      .leftJoin(servicesTable, eq(scriptRunResultsTable.packageId, servicesTable.id))
+      .orderBy(desc(scriptRunResultsTable.createdAt))
+      .limit(limit);
+
+    res.json(rows);
+  } catch (err) {
+    logger.error({ err }, "admin-m365-run: failed to list script run results");
+    res.status(500).json({ error: "Failed to list script run results" });
+  }
+});
+
 // ── POST /api/admin/run-package ───────────────────────────────────────────────
 
 router.post("/admin/run-package", requireAdmin, async (req: Request, res: Response) => {
@@ -305,7 +399,40 @@ router.post("/admin/run-package", requireAdmin, async (req: Request, res: Respon
     return;
   }
 
-  const { packageId, customerId, tenantId, clientId, clientSecret, packageContext } = parsed.data;
+  const { packageId, customerId, packageContext } = parsed.data;
+
+  // Resolve credentials — either from credentialId (Key Vault) or raw fields
+  let tenantId: string;
+  let clientId: string;
+  let clientSecret: string;
+
+  if ("credentialId" in parsed.data && parsed.data.credentialId) {
+    const [cred] = await db
+      .select()
+      .from(azureTenantCredentialsTable)
+      .where(eq(azureTenantCredentialsTable.id, parsed.data.credentialId))
+      .limit(1);
+    if (!cred) {
+      res.status(404).json({ error: "Credential not found" });
+      return;
+    }
+    try {
+      clientSecret = await getSecretValue(cred.keyVaultSecretName);
+    } catch (err) {
+      logger.error({ err, credentialId: parsed.data.credentialId }, "admin-m365-run: failed to fetch secret from Key Vault");
+      res.status(502).json({ error: "Failed to retrieve client secret from Key Vault" });
+      return;
+    }
+    tenantId = cred.tenantId;
+    clientId = cred.clientId;
+  } else if ("tenantId" in parsed.data) {
+    tenantId = parsed.data.tenantId;
+    clientId = parsed.data.clientId;
+    clientSecret = parsed.data.clientSecret;
+  } else {
+    res.status(400).json({ error: "Either credentialId or tenantId/clientId/clientSecret must be provided" });
+    return;
+  }
 
   // Fetch scripts for this package, sorted by run_order
   const packageScripts = await db

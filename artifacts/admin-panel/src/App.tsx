@@ -48,6 +48,8 @@ import EmailTemplatesPage from "@/pages/EmailTemplates";
 import CouponsPage from "@/pages/Coupons";
 import ServicePageTriggersPage from "@/pages/ServicePageTriggers";
 import ScriptRunnerPage from "@/pages/ScriptRunner";
+import M365ScriptCatalogPage from "@/pages/M365ScriptCatalog";
+import M365RunResultsPage from "@/pages/M365RunResults";
 import AdminSecurity from "@/pages/AdminSecurity";
 import MarketingCommandCenterPage from "@/pages/MarketingCommandCenter";
 import type { ReactNode } from "react";
@@ -253,6 +255,12 @@ function Router() {
       </Route>
       <Route path="/script-runner">
         <RequireAdmin><DashboardShell><ScriptRunnerPage /></DashboardShell></RequireAdmin>
+      </Route>
+      <Route path="/m365-scripts">
+        <RequireAdmin><DashboardShell><M365ScriptCatalogPage /></DashboardShell></RequireAdmin>
+      </Route>
+      <Route path="/m365-run-results">
+        <RequireAdmin><DashboardShell><M365RunResultsPage /></DashboardShell></RequireAdmin>
       </Route>
 
       {/* Marketing Command Center */}

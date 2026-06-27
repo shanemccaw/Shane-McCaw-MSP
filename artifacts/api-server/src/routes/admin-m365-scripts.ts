@@ -252,6 +252,50 @@ router.post("/admin/package-scripts", requireAdmin, async (req: Request, res: Re
   }
 });
 
+// ── PUT /api/admin/package-scripts/reorder ───────────────────────────────────
+// Accepts { packageId, orderedIds: number[] } and reassigns run_order atomically.
+// Uses a two-phase approach (temp negative values → final values) to avoid the
+// unique (packageId, runOrder) constraint conflict that a direct swap would cause.
+
+router.put("/admin/package-scripts/reorder", requireAdmin, async (req: Request, res: Response) => {
+  const reorderSchema = z.object({
+    packageId: z.number().int().positive(),
+    orderedIds: z.array(z.number().int().positive()).min(1).max(500),
+  });
+
+  const parsed = reorderSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: "Validation failed", issues: parsed.error.issues });
+    return;
+  }
+
+  const { packageId, orderedIds } = parsed.data;
+
+  try {
+    // Phase 1: set every mapping to a unique negative run_order to clear any
+    // value collisions — using -(id) guarantees no two rows share the same temp value.
+    for (const id of orderedIds) {
+      await db
+        .update(packageScriptsTable)
+        .set({ runOrder: -id })
+        .where(and(eq(packageScriptsTable.id, id), eq(packageScriptsTable.packageId, packageId)));
+    }
+
+    // Phase 2: assign the desired sequential positions (0-based).
+    for (let i = 0; i < orderedIds.length; i++) {
+      await db
+        .update(packageScriptsTable)
+        .set({ runOrder: i })
+        .where(and(eq(packageScriptsTable.id, orderedIds[i]), eq(packageScriptsTable.packageId, packageId)));
+    }
+
+    res.json({ reordered: orderedIds.length });
+  } catch (err) {
+    logger.error({ err, packageId }, "admin-m365-scripts: failed to bulk reorder package scripts");
+    res.status(500).json({ error: "Failed to reorder package scripts" });
+  }
+});
+
 router.put("/admin/package-scripts/:id", requireAdmin, async (req: Request, res: Response) => {
   const id = parseInt(String(req.params.id));
   if (isNaN(id)) {
