@@ -3,7 +3,7 @@ import {
   db, leadsTable, emailsTable, servicesTable, quizLeadsTable,
   leadQualificationsTable,
 } from "@workspace/db";
-import { eq, desc, count, gte, and, ilike, or, type SQL, lt } from "drizzle-orm";
+import { eq, desc, count, gte, and, ilike, or, ne, type SQL, lt } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/requireAuth";
 import { deriveSignalsFromQuiz, loadQuizPainConfig } from "../lib/derive-quiz-signals";
 import {
@@ -212,6 +212,9 @@ router.get("/leads", requireAdmin, async (req: Request, res: Response) => {
   const validStatuses = ["new", "contacted", "qualified", "converted", "archived"];
   if (req.query.status && validStatuses.includes(req.query.status as string)) {
     conditions.push(eq(leadsTable.status, req.query.status as "new" | "contacted" | "qualified" | "converted" | "archived"));
+  } else {
+    // No status filter supplied — exclude archived by default
+    conditions.push(ne(leadsTable.status, "archived"));
   }
 
   const validSources = ["contact_form", "lead_magnet"];

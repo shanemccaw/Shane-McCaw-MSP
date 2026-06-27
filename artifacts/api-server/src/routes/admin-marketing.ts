@@ -199,8 +199,13 @@ router.get("/admin/marketing/kpi", requireAdmin, async (_req: Request, res: Resp
 
 router.get("/admin/marketing/recommended-leads", requireAdmin, async (_req: Request, res: Response) => {
   try {
-    const rows = await db.select().from(recommendedLeadsTable).orderBy(desc(recommendedLeadsTable.generatedAt)).limit(40);
-    res.json(rows);
+    const [rows, archivedLeads] = await Promise.all([
+      db.select().from(recommendedLeadsTable).orderBy(desc(recommendedLeadsTable.generatedAt)).limit(40),
+      db.select({ email: leadsTable.email }).from(leadsTable).where(eq(leadsTable.status, "archived")),
+    ]);
+    const archivedEmails = new Set(archivedLeads.map(l => l.email.toLowerCase()));
+    const filtered = rows.filter(r => !r.email || !archivedEmails.has(r.email.toLowerCase()));
+    res.json(filtered);
   } catch (e) {
     res.status(500).json({ error: String(e) });
   }

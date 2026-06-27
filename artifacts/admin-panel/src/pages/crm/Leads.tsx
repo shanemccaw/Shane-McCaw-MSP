@@ -70,7 +70,7 @@ export default function LeadsPage() {
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(false);
   const [page, setPage] = useState(1);
-  const [statusFilter, setStatusFilter] = useState("all");
+  const [statusFilter, setStatusFilter] = useState("active");
   const [sourceFilter, setSourceFilter] = useState("all");
   const LIMIT = 20;
 
@@ -83,7 +83,7 @@ export default function LeadsPage() {
     setLoading(true);
     try {
       const params = new URLSearchParams({ page: String(p), limit: String(LIMIT) });
-      if (status !== "all") params.set("status", status);
+      if (status !== "all" && status !== "active") params.set("status", status);
       if (source !== "all") params.set("source", source);
       const res = await fetchWithAuth(`/api/leads?${params.toString()}`);
       if (res.ok) {
@@ -97,7 +97,7 @@ export default function LeadsPage() {
   }, [fetchWithAuth]);
 
   useEffect(() => {
-    void Promise.all([fetchStats(), fetchLeads(1, "all", "all")]);
+    void Promise.all([fetchStats(), fetchLeads(1, "active", "all")]);
   }, [fetchStats, fetchLeads]);
 
   const handleFilterChange = (newStatus: string) => {
@@ -115,7 +115,7 @@ export default function LeadsPage() {
   const totalPages = Math.ceil(total / LIMIT);
 
   const STATUS_TABS = [
-    { key: "all", label: "All" },
+    { key: "active", label: "Active" },
     { key: "new", label: "New" },
     { key: "contacted", label: "Contacted" },
     { key: "qualified", label: "Qualified" },
