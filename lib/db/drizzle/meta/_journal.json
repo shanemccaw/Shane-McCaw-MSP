@@ -561,6 +561,13 @@
       "when": 1751051400000,
       "tag": "0077_add_connection_tested_at",
       "breakpoints": true
+    },
+    {
+      "idx": 78,
+      "version": "7",
+      "when": 1751112000000,
+      "tag": "0078_m365_command_center_tables",
+      "breakpoints": true
     }
   ]
 }

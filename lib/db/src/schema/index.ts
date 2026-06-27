@@ -1,4 +1,4 @@
-import { pgTable, serial, text, timestamp, integer, boolean, numeric, jsonb, bigint } from "drizzle-orm/pg-core";
+import { pgTable, serial, text, timestamp, integer, boolean, numeric, jsonb, bigint, uniqueIndex } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 
 export interface WizardOption {
@@ -1281,3 +1281,68 @@ export const landingPagesTable = pgTable("landing_pages", {
 
 export type InsertLandingPage = typeof landingPagesTable.$inferInsert;
 export type LandingPage = typeof landingPagesTable.$inferSelect;
+
+// ── M365 Command Center Script Catalog ───────────────────────────────────────
+
+// Script Catalog — reusable runbook definitions with AI instructions
+export const scriptCatalogTable = pgTable("script_catalog", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  description: text("description"),
+  runbookName: text("runbook_name").notNull(),
+  appRegPermissions: jsonb("app_reg_permissions").$type<Array<{ permission: string; type: "Application" | "Delegated"; reason: string }>>().notNull().default([]),
+  aiInstructions: text("ai_instructions"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export type InsertScriptCatalog = typeof scriptCatalogTable.$inferInsert;
+export type ScriptCatalog = typeof scriptCatalogTable.$inferSelect;
+
+// Package Scripts — maps services (Quick Win packages) to script_catalog entries with run order
+export const packageScriptsTable = pgTable("package_scripts", {
+  id: serial("id").primaryKey(),
+  packageId: integer("package_id").notNull().references(() => servicesTable.id, { onDelete: "cascade" }),
+  scriptId: integer("script_id").notNull().references(() => scriptCatalogTable.id, { onDelete: "cascade" }),
+  runOrder: integer("run_order").notNull().default(0),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (t) => ({
+  uniquePackageRunOrder: uniqueIndex("package_scripts_package_id_run_order_unique").on(t.packageId, t.runOrder),
+}));
+
+export type InsertPackageScript = typeof packageScriptsTable.$inferInsert;
+export type PackageScript = typeof packageScriptsTable.$inferSelect;
+
+// Script Run Results — persisted results for every script execution
+export const scriptRunResultsTable = pgTable("script_run_results", {
+  id: serial("id").primaryKey(),
+  customerId: integer("customer_id").references(() => usersTable.id, { onDelete: "set null" }),
+  scriptId: integer("script_id").notNull().references(() => scriptCatalogTable.id, { onDelete: "cascade" }),
+  packageId: integer("package_id").references(() => servicesTable.id, { onDelete: "set null" }),
+  jobId: text("job_id"),
+  rawOutput: jsonb("raw_output").$type<Record<string, unknown>>().notNull().default({}),
+  parsedFindings: jsonb("parsed_findings").$type<string[]>().notNull().default([]),
+  recommendations: jsonb("recommendations").$type<string[]>().notNull().default([]),
+  scoreImpact: jsonb("score_impact").$type<Record<string, number>>().notNull().default({}),
+  profileUpdates: jsonb("profile_updates").$type<Record<string, unknown>>().notNull().default({}),
+  status: text("status", { enum: ["running", "completed", "failed"] }).notNull().default("running"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export type InsertScriptRunResult = typeof scriptRunResultsTable.$inferInsert;
+export type ScriptRunResult = typeof scriptRunResultsTable.$inferSelect;
+
+// Client Scores — upsert table tracking M365 health scores per client
+export const clientScoresTable = pgTable("client_scores", {
+  id: serial("id").primaryKey(),
+  clientId: integer("client_id").notNull().unique().references(() => usersTable.id, { onDelete: "cascade" }),
+  identity: integer("identity").notNull().default(0),
+  security: integer("security").notNull().default(0),
+  collaboration: integer("collaboration").notNull().default(0),
+  compliance: integer("compliance").notNull().default(0),
+  copilotReadiness: integer("copilot_readiness").notNull().default(0),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export type InsertClientScore = typeof clientScoresTable.$inferInsert;
+export type ClientScore = typeof clientScoresTable.$inferSelect;

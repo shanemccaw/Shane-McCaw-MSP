@@ -47,6 +47,8 @@ import analyticsForecastRouter from "./analytics-forecast";
 import clientHealthTrendsRouter from "./client-health-trends";
 import adminFinanceRouter from "./admin-finance";
 import adminMarketingRouter from "./admin-marketing";
+import adminM365ScriptsRouter from "./admin-m365-scripts";
+import adminM365RunRouter from "./admin-m365-run";
 
 const router: IRouter = Router();
 
@@ -98,5 +100,7 @@ router.use(analyticsForecastRouter);
 router.use(clientHealthTrendsRouter);
 router.use(adminFinanceRouter);
 router.use(adminMarketingRouter);
+router.use(adminM365ScriptsRouter);
+router.use(adminM365RunRouter);
 
 export default router;
