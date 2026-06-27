@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useAuth } from "@/contexts/AuthContext";
-import { ClipboardList, ChevronDown, ChevronUp, RefreshCw } from "lucide-react";
+import { ClipboardList, ChevronDown, ChevronUp, RefreshCw, Download, Upload, X } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -15,7 +16,9 @@ interface RunResult {
   recommendations: string[];
   scoreImpact: Record<string, number>;
   profileUpdates: Record<string, unknown>;
-  status: "running" | "completed" | "failed";
+  status: "running" | "completed" | "failed" | "awaiting_upload";
+  executionSource: "automated" | "manual";
+  uploadedAt: string | null;
   createdAt: string;
   scriptName: string | null;
   clientName: string | null;
@@ -50,9 +53,10 @@ function formatRelative(d: string): string {
 }
 
 const STATUS_CFG: Record<string, { cls: string; label: string }> = {
-  running:   { cls: "bg-yellow-500/15 text-yellow-400 border-yellow-500/25",  label: "Running"   },
-  completed: { cls: "bg-green-500/15 text-green-400 border-green-500/25",     label: "Completed" },
-  failed:    { cls: "bg-red-500/15 text-red-400 border-red-500/25",           label: "Failed"    },
+  running:         { cls: "bg-yellow-500/15 text-yellow-400 border-yellow-500/25",  label: "Running"         },
+  completed:       { cls: "bg-green-500/15 text-green-400 border-green-500/25",     label: "Completed"       },
+  failed:          { cls: "bg-red-500/15 text-red-400 border-red-500/25",           label: "Failed"          },
+  awaiting_upload: { cls: "bg-amber-500/15 text-amber-400 border-amber-500/25",     label: "Awaiting Upload" },
 };
 
 function StatusBadge({ status }: { status: string }) {
@@ -60,6 +64,7 @@ function StatusBadge({ status }: { status: string }) {
   return (
     <span className={`inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full border ${cfg.cls}`}>
       {status === "running" && <span className="w-1.5 h-1.5 rounded-full bg-yellow-400 animate-pulse" />}
+      {status === "awaiting_upload" && <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />}
       {cfg.label}
     </span>
   );
@@ -105,10 +110,167 @@ function ScoreImpactChart({ scoreImpact }: { scoreImpact: Record<string, number>
   );
 }
 
+// ── Awaiting Upload Panel ─────────────────────────────────────────────────────
+
+function AwaitingUploadPanel({
+  result,
+  onUploaded,
+}: {
+  result: RunResult;
+  onUploaded: (id: number) => void;
+}) {
+  const { fetchWithAuth } = useAuth();
+  const { toast } = useToast();
+  const [downloading, setDownloading] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [showUploadForm, setShowUploadForm] = useState(false);
+  const [jsonText, setJsonText] = useState("");
+
+  const handleDownload = async () => {
+    setDownloading(true);
+    try {
+      const res = await fetchWithAuth(`/api/admin/manual-scripts/${result.id}/download`);
+      if (!res.ok) {
+        toast({ title: "Failed to download script — please try again", variant: "destructive" });
+        return;
+      }
+      const blob = await res.blob();
+      const disposition = res.headers.get("Content-Disposition") ?? "";
+      const match = /filename="([^"]+)"/.exec(disposition);
+      const filename = match?.[1] ?? `script_run_${result.id}.ps1`;
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch {
+      toast({ title: "Download failed — please try again", variant: "destructive" });
+    } finally {
+      setDownloading(false);
+    }
+  };
+
+  const handleUpload = async () => {
+    let parsed: Record<string, unknown>;
+    try {
+      parsed = JSON.parse(jsonText) as Record<string, unknown>;
+    } catch {
+      toast({ title: "Invalid JSON — please check the format and try again", variant: "destructive" });
+      return;
+    }
+
+    setUploading(true);
+    try {
+      const res = await fetchWithAuth(`/api/admin/manual-scripts/${result.id}/upload`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ jsonData: parsed }),
+      });
+      if (!res.ok) {
+        const err = await res.json() as { error?: string };
+        toast({ title: err.error ?? "Upload failed", variant: "destructive" });
+        return;
+      }
+      toast({ title: "Results uploaded and processed successfully" });
+      setShowUploadForm(false);
+      setJsonText("");
+      onUploaded(result.id);
+    } catch {
+      toast({ title: "Upload failed — please try again", variant: "destructive" });
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  return (
+    <div className="px-4 pb-4 pt-3 bg-[#0D1117] border-t border-[#21262D] space-y-4">
+      <div className="flex items-start gap-3 p-3 bg-amber-500/8 border border-amber-500/20 rounded-lg">
+        <span className="text-amber-400 text-lg leading-none mt-0.5">📋</span>
+        <div className="flex-1 min-w-0">
+          <p className="text-xs font-semibold text-amber-300">Awaiting manual execution &amp; upload</p>
+          <p className="text-[11px] text-[#7D8590] mt-0.5">
+            Download the generated .ps1 script, run it in the customer's tenant, then upload the resulting JSON output here.
+          </p>
+        </div>
+      </div>
+
+      <div className="flex gap-2">
+        <button
+          onClick={() => void handleDownload()}
+          disabled={downloading}
+          className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-[#0078D4] border border-[#0078D4]/30 hover:border-[#0078D4] hover:bg-[#0078D4]/10 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          {downloading
+            ? <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+            : <Download className="w-3.5 h-3.5" />
+          }
+          {downloading ? "Downloading…" : "Download .ps1"}
+        </button>
+        <button
+          onClick={() => setShowUploadForm(v => !v)}
+          className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-amber-400 border border-amber-500/30 hover:border-amber-500 hover:bg-amber-500/10 rounded-lg transition-colors"
+        >
+          <Upload className="w-3.5 h-3.5" />
+          Upload JSON Results
+        </button>
+      </div>
+
+      {showUploadForm && (
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <p className="text-[10px] font-bold uppercase tracking-wider text-[#7D8590]">
+              Paste JSON output from the script
+            </p>
+            <button
+              onClick={() => { setShowUploadForm(false); setJsonText(""); }}
+              className="text-[#484F58] hover:text-[#7D8590] transition-colors"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+          <textarea
+            value={jsonText}
+            onChange={e => setJsonText(e.target.value)}
+            placeholder={'{\n  "data": {\n    "users": [...]\n  }\n}'}
+            rows={8}
+            className="w-full border border-[#30363D] rounded-lg px-3 py-2 text-xs text-[#E6EDF3] bg-[#161B22] font-mono focus:outline-none focus:ring-2 focus:ring-amber-500/30 placeholder-[#484F58] resize-y"
+          />
+          <div className="flex justify-end">
+            <button
+              onClick={() => void handleUpload()}
+              disabled={uploading || !jsonText.trim()}
+              className="flex items-center gap-1.5 px-4 py-1.5 text-xs font-semibold text-white bg-amber-600 hover:bg-amber-500 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg transition-colors"
+            >
+              {uploading ? (
+                <>
+                  <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                  Processing…
+                </>
+              ) : (
+                <>
+                  <Upload className="w-3.5 h-3.5" />
+                  Submit &amp; Analyze
+                </>
+              )}
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Expanded Row ──────────────────────────────────────────────────────────────
 
-function ExpandedRow({ result }: { result: RunResult }) {
+function ExpandedRow({ result, onUploaded }: { result: RunResult; onUploaded: (id: number) => void }) {
   const [subTab, setSubTab] = useState<"raw" | "findings">("findings");
+
+  if (result.status === "awaiting_upload") {
+    return <AwaitingUploadPanel result={result} onUploaded={onUploaded} />;
+  }
 
   const rawOutput = typeof result.rawOutput?.output === "string"
     ? result.rawOutput.output
@@ -120,6 +282,20 @@ function ExpandedRow({ result }: { result: RunResult }) {
 
   return (
     <div className="px-4 pb-4 pt-2 bg-[#0D1117] border-t border-[#21262D]">
+      {/* Manual source label */}
+      {result.executionSource === "manual" && (
+        <div className="flex items-center gap-2 mb-3">
+          <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full border bg-amber-500/10 text-amber-400 border-amber-500/20">
+            📋 Manual Execution
+          </span>
+          {result.uploadedAt && (
+            <span className="text-[10px] text-[#484F58]">
+              Uploaded {formatRelative(result.uploadedAt)}
+            </span>
+          )}
+        </div>
+      )}
+
       {/* Sub-tabs */}
       <div className="flex gap-1 mb-4">
         {(["findings", "raw"] as const).map(t => (
@@ -251,6 +427,12 @@ export default function M365RunResultsPage() {
 
   useEffect(() => { void load(); }, [load]);
 
+  const handleUploaded = (id: number) => {
+    setResults(prev =>
+      prev.map(r => r.id === id ? { ...r, status: "completed" as const, uploadedAt: new Date().toISOString() } : r)
+    );
+  };
+
   // Filtered results
   const filtered = results.filter(r => {
     if (filters.clientId && String(r.customerId) !== filters.clientId) return false;
@@ -338,6 +520,7 @@ export default function M365RunResultsPage() {
               <option value="running">Running</option>
               <option value="completed">Completed</option>
               <option value="failed">Failed</option>
+              <option value="awaiting_upload">Awaiting Upload</option>
             </select>
           </div>
           <div>
@@ -413,7 +596,14 @@ export default function M365RunResultsPage() {
                       </span>
                     </td>
                     <td className="px-4 py-3">
-                      <span className="text-[#C9D1D9]">{r.scriptName ?? `Script #${r.scriptId}`}</span>
+                      <div className="flex flex-col gap-0.5">
+                        <span className="text-[#C9D1D9]">{r.scriptName ?? `Script #${r.scriptId}`}</span>
+                        {r.executionSource === "manual" && (
+                          <span className="inline-flex items-center gap-1 text-[9px] font-bold uppercase tracking-wider text-amber-500/70 w-fit">
+                            📋 Manual
+                          </span>
+                        )}
+                      </div>
                     </td>
                     <td className="px-4 py-3 hidden md:table-cell">
                       <span className="text-xs text-[#7D8590]">
@@ -438,7 +628,7 @@ export default function M365RunResultsPage() {
                   isExpanded && (
                     <tr key={`${r.id}-expanded`}>
                       <td colSpan={6} className="p-0">
-                        <ExpandedRow result={r} />
+                        <ExpandedRow result={r} onUploaded={handleUploaded} />
                       </td>
                     </tr>
                   ),

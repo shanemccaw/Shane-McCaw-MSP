@@ -373,6 +373,8 @@ router.get("/admin/script-run-results", requireAdmin, async (req: Request, res: 
         scoreImpact: scriptRunResultsTable.scoreImpact,
         profileUpdates: scriptRunResultsTable.profileUpdates,
         status: scriptRunResultsTable.status,
+        executionSource: scriptRunResultsTable.executionSource,
+        uploadedAt: scriptRunResultsTable.uploadedAt,
         createdAt: scriptRunResultsTable.createdAt,
         scriptName: scriptCatalogTable.name,
         clientName: usersTable.name,
