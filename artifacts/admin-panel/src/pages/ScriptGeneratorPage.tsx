@@ -54,6 +54,31 @@ interface ScriptPackageListItem {
   modules: ScriptModuleItem[];
 }
 
+interface ServiceListItem {
+  id: number;
+  name: string;
+  description: string | null;
+  category: string | null;
+  workflowTemplateId: number | null;
+  deliverables: string[];
+  inclusions: string[];
+}
+
+interface WorkflowTemplateStep {
+  id: number;
+  title: string;
+  description: string | null;
+  order: number;
+  tasks: Array<{ id: number; title: string; description: string | null }>;
+}
+
+interface WorkflowTemplateDetail {
+  id: number;
+  name: string;
+  description: string | null;
+  steps: WorkflowTemplateStep[];
+}
+
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const CATEGORIES = [
@@ -1529,6 +1554,276 @@ function PermissionsSidebarPanel({ permissions }: { permissions: PsScriptPermiss
 
 type BottomTab = "prompt" | "bugfix" | "instructions";
 
+// ─── Generate from Service Dialog ────────────────────────────────────────────
+
+function GenerateFromServiceDialog({
+  token,
+  baseInstructions,
+  onClose,
+  onScriptGenerated,
+  onPackageGenerated,
+}: {
+  token: string;
+  baseInstructions: string;
+  onClose: () => void;
+  onScriptGenerated: (title: string, script: string, permissions: PsScriptPermissions) => void;
+  onPackageGenerated: (packageId: string, title: string, modules: ScriptModuleItem[]) => void;
+}) {
+  const { toast } = useToast();
+  const [services, setServices] = useState<ServiceListItem[]>([]);
+  const [loadingServices, setLoadingServices] = useState(true);
+  const [selectedServiceId, setSelectedServiceId] = useState<number | null>(null);
+  const [workflowTemplate, setWorkflowTemplate] = useState<WorkflowTemplateDetail | null>(null);
+  const [loadingWorkflow, setLoadingWorkflow] = useState(false);
+  const [customInstructions, setCustomInstructions] = useState("");
+  const [generating, setGenerating] = useState(false);
+  const [humanOnlyTasks, setHumanOnlyTasks] = useState<string[]>([]);
+
+  useEffect(() => {
+    apiFetch("/admin/services", token)
+      .then((data) => setServices(data as ServiceListItem[]))
+      .catch(() => toast({ title: "Failed to load services", variant: "destructive" }))
+      .finally(() => setLoadingServices(false));
+  }, [token]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const selectedService = services.find((s) => s.id === selectedServiceId) ?? null;
+
+  useEffect(() => {
+    if (!selectedService?.workflowTemplateId) {
+      setWorkflowTemplate(null);
+      return;
+    }
+    setLoadingWorkflow(true);
+    apiFetch(`/admin/workflow-templates/${selectedService.workflowTemplateId}`, token)
+      .then((data) => setWorkflowTemplate(data as WorkflowTemplateDetail))
+      .catch(() => toast({ title: "Failed to load workflow template", variant: "destructive" }))
+      .finally(() => setLoadingWorkflow(false));
+  }, [selectedService?.workflowTemplateId, token]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const hasContext =
+    selectedService &&
+    (selectedService.workflowTemplateId ||
+      (selectedService.deliverables?.length ?? 0) > 0 ||
+      (selectedService.inclusions?.length ?? 0) > 0);
+
+  const handleGenerate = async () => {
+    if (!selectedServiceId) return;
+    setGenerating(true);
+    try {
+      type GenResult = {
+        type: "single" | "package";
+        title: string;
+        script?: string;
+        packageId?: string;
+        modules?: ScriptModuleItem[];
+        humanOnlyTasks: string[];
+        permissions: PsScriptPermissions;
+      };
+      const result = (await apiFetch("/admin/ps-scripts/generate-from-service", token, {
+        method: "POST",
+        body: JSON.stringify({
+          serviceId: selectedServiceId,
+          customInstructions: customInstructions.trim() || undefined,
+          baseInstructions: baseInstructions.trim() || undefined,
+        }),
+      })) as GenResult;
+
+      if (result.humanOnlyTasks?.length > 0) {
+        setHumanOnlyTasks(result.humanOnlyTasks);
+      }
+
+      if (result.type === "package" && result.packageId && result.modules) {
+        onPackageGenerated(result.packageId, result.title, result.modules);
+        onClose();
+      } else if (result.type === "single" && result.script) {
+        onScriptGenerated(result.title, result.script, result.permissions);
+        onClose();
+      } else {
+        toast({ title: "Generation returned unexpected format", variant: "destructive" });
+      }
+    } catch (e) {
+      toast({
+        title: "Generation failed",
+        description: e instanceof Error ? e.message : "Unknown error",
+        variant: "destructive",
+      });
+    } finally {
+      setGenerating(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70">
+      <div className="w-full max-w-2xl mx-4 bg-[#161B22] border border-[#30363D] rounded-xl shadow-2xl flex flex-col max-h-[85vh]">
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 py-3.5 border-b border-[#21262D] flex-shrink-0">
+          <div className="flex items-center gap-2.5">
+            <div className="w-7 h-7 rounded-lg bg-teal-500/15 border border-teal-500/30 flex items-center justify-center flex-shrink-0">
+              <svg className="w-3.5 h-3.5 text-teal-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+              </svg>
+            </div>
+            <div>
+              <h2 className="text-sm font-semibold text-[#E6EDF3]">Generate from Service</h2>
+              <p className="text-[10px] text-[#7D8590]">AI classifies workflow tasks and generates PowerShell automation for M365/Azure steps</p>
+            </div>
+          </div>
+          <button onClick={onClose} className="p-1.5 text-[#484F58] hover:text-[#E6EDF3] rounded transition-colors">
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+          </button>
+        </div>
+
+        {/* Body */}
+        <div className="flex-1 min-h-0 overflow-y-auto p-5 space-y-4">
+          {/* Service picker */}
+          <div>
+            <label className="block text-[10px] font-medium text-[#7D8590] mb-1.5 uppercase tracking-wide">Select Service</label>
+            {loadingServices ? (
+              <div className="flex items-center gap-2 text-xs text-[#7D8590] py-2">
+                <div className="w-3.5 h-3.5 border border-[#484F58] border-t-[#8B949E] rounded-full animate-spin" />
+                Loading services…
+              </div>
+            ) : services.length === 0 ? (
+              <p className="text-xs text-[#7D8590]">No services found. Create services in the Service Management page first.</p>
+            ) : (
+              <select
+                value={selectedServiceId ?? ""}
+                onChange={(e) => {
+                  setSelectedServiceId(e.target.value ? Number(e.target.value) : null);
+                  setHumanOnlyTasks([]);
+                }}
+                className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-xs text-[#E6EDF3] outline-none focus:border-[#0078D4]/60 transition-colors"
+              >
+                <option value="">— Choose a service —</option>
+                {services.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.name}
+                    {!s.workflowTemplateId ? " · no workflow" : ""}
+                  </option>
+                ))}
+              </select>
+            )}
+          </div>
+
+          {/* Selected service context */}
+          {selectedService && (
+            <div className="space-y-3">
+              {selectedService.description && (
+                <p className="text-[11px] text-[#8B949E] leading-relaxed bg-[#0D1117] border border-[#21262D] rounded-lg px-3 py-2.5">
+                  {selectedService.description}
+                </p>
+              )}
+
+              {!selectedService.workflowTemplateId && (
+                <div className="flex items-start gap-2 bg-amber-500/10 border border-amber-500/30 rounded-lg px-3 py-2.5">
+                  <svg className="w-3.5 h-3.5 text-amber-400 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" /></svg>
+                  <p className="text-[11px] text-amber-300/80">No workflow template linked. Generation will use service description and deliverables only. For richer results, link a workflow template in Service Management.</p>
+                </div>
+              )}
+
+              {loadingWorkflow && (
+                <div className="flex items-center gap-2 text-xs text-[#7D8590]">
+                  <div className="w-3.5 h-3.5 border border-[#484F58] border-t-[#8B949E] rounded-full animate-spin" />
+                  Loading workflow…
+                </div>
+              )}
+
+              {workflowTemplate && workflowTemplate.steps.length > 0 && (
+                <div>
+                  <p className="text-[10px] font-medium text-[#7D8590] uppercase tracking-wide mb-1.5">
+                    Workflow: {workflowTemplate.name}
+                  </p>
+                  <div className="space-y-1.5 max-h-52 overflow-y-auto pr-1">
+                    {workflowTemplate.steps.map((step) => (
+                      <div key={step.id} className="bg-[#0D1117] border border-[#21262D] rounded-lg px-3 py-2">
+                        <p className="text-xs font-medium text-[#E6EDF3] mb-1">{step.title}</p>
+                        {step.tasks.length > 0 && (
+                          <div className="space-y-0.5">
+                            {step.tasks.map((task) => (
+                              <div key={task.id} className="flex items-start gap-1.5">
+                                <span className="text-[#484F58] text-xs mt-px">·</span>
+                                <span className="text-[11px] text-[#7D8590]">{task.title}</span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Custom instructions */}
+          <div>
+            <label className="block text-[10px] font-medium text-[#7D8590] mb-1.5 uppercase tracking-wide">
+              Custom Instructions <span className="normal-case text-[#484F58] font-normal">(optional)</span>
+            </label>
+            <textarea
+              value={customInstructions}
+              onChange={(e) => setCustomInstructions(e.target.value)}
+              rows={2}
+              placeholder="e.g. Use PnP PowerShell module. Client uses a hybrid setup. Always include verbose logging…"
+              className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-xs text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60 transition-colors resize-none"
+            />
+          </div>
+
+          {/* Human-only tasks result (shown after generation attempt if any) */}
+          {humanOnlyTasks.length > 0 && (
+            <div className="bg-[#0D1117] border border-[#21262D] rounded-lg px-3 py-2.5">
+              <p className="text-[10px] font-semibold text-[#7D8590] uppercase tracking-wide mb-1.5">
+                Human-only tasks (not automated)
+              </p>
+              <div className="space-y-0.5">
+                {humanOnlyTasks.map((t, i) => (
+                  <div key={i} className="flex items-start gap-1.5">
+                    <svg className="w-3 h-3 text-[#484F58] flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>
+                    <span className="text-[11px] text-[#7D8590]">{t}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="flex items-center justify-between px-5 py-3.5 border-t border-[#21262D] flex-shrink-0 gap-3">
+          <p className="text-[10px] text-[#484F58] leading-relaxed">
+            AI classifies M365/Azure-automatable tasks and generates production-ready scripts. Human-only tasks are listed but not automated.
+          </p>
+          <div className="flex items-center gap-2 flex-shrink-0">
+            <button onClick={onClose} className="px-3 py-1.5 text-xs text-[#7D8590] hover:text-[#E6EDF3] rounded border border-[#30363D] hover:bg-[#21262D] transition-colors">
+              Cancel
+            </button>
+            <button
+              onClick={handleGenerate}
+              disabled={!selectedServiceId || !hasContext || generating}
+              className="flex items-center gap-1.5 px-4 py-1.5 text-xs font-semibold bg-teal-600/20 border border-teal-500/40 text-teal-400 hover:bg-teal-600/30 disabled:opacity-50 disabled:cursor-not-allowed rounded transition-colors"
+            >
+              {generating ? (
+                <>
+                  <div className="w-3.5 h-3.5 border-2 border-teal-400/40 border-t-teal-400 rounded-full animate-spin" />
+                  Generating…
+                </>
+              ) : (
+                <>
+                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                  </svg>
+                  Generate Scripts
+                </>
+              )}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Bottom Panel ─────────────────────────────────────────────────────────────
+
 function BottomPanel({
   category,
   onCategoryChange,
@@ -1550,6 +1845,7 @@ function BottomPanel({
   onDismissFixSummary,
   activeTab,
   onActiveTabChange,
+  onOpenGenerateFromService,
 }: {
   category: string;
   onCategoryChange: (v: string) => void;
@@ -1571,6 +1867,7 @@ function BottomPanel({
   onDismissFixSummary: () => void;
   activeTab: BottomTab;
   onActiveTabChange: (t: BottomTab) => void;
+  onOpenGenerateFromService: () => void;
 }) {
   const setActiveTab = onActiveTabChange;
 
@@ -1636,9 +1933,22 @@ function BottomPanel({
                 className="w-full bg-[#161B22] border border-[#30363D] rounded px-2.5 py-2 text-xs text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60 transition-colors resize-none"
               />
             </div>
-            <button onClick={onGenerate} disabled={generating} className="flex items-center gap-2 bg-[#0078D4] hover:bg-[#0086EF] disabled:opacity-50 text-white text-xs font-semibold py-1.5 px-4 rounded transition-colors">
-              {generating ? <><div className="w-3.5 h-3.5 border-2 border-white/40 border-t-white rounded-full animate-spin" />Generating…</> : <><svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>Generate Script</>}
-            </button>
+            <div className="flex items-center gap-2">
+              <button onClick={onGenerate} disabled={generating} className="flex items-center gap-2 bg-[#0078D4] hover:bg-[#0086EF] disabled:opacity-50 text-white text-xs font-semibold py-1.5 px-4 rounded transition-colors">
+                {generating ? <><div className="w-3.5 h-3.5 border-2 border-white/40 border-t-white rounded-full animate-spin" />Generating…</> : <><svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>Generate Script</>}
+              </button>
+              <button
+                onClick={onOpenGenerateFromService}
+                disabled={generating}
+                title="Generate from a service workflow — AI classifies and automates M365/Azure tasks"
+                className="flex items-center gap-1.5 bg-teal-600/20 border border-teal-500/40 text-teal-400 hover:bg-teal-600/30 disabled:opacity-50 text-xs font-semibold py-1.5 px-3 rounded transition-colors"
+              >
+                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                </svg>
+                From Service
+              </button>
+            </div>
           </>
         )}
 
@@ -1730,6 +2040,7 @@ export default function ScriptGeneratorPage() {
   const [summaryError, setSummaryError] = useState<"generate" | "fix" | null>(null);
   const [modules, setModules] = useState<ScriptModuleItem[]>([]);
   const [editorScript, setEditorScript] = useState<PsScriptDetail | null>(null);
+  const [generateFromServiceOpen, setGenerateFromServiceOpen] = useState(false);
 
   // ── Library state ───────────────────────────────────────────────────────────
   const [scripts, setScripts] = useState<PsScriptListItem[]>([]);
@@ -2310,6 +2621,7 @@ export default function ScriptGeneratorPage() {
               onDismissFixSummary={() => setFixSummary("")}
               activeTab={bottomActiveTab}
               onActiveTabChange={setBottomActiveTab}
+              onOpenGenerateFromService={() => setGenerateFromServiceOpen(true)}
             />
           </div>
         </div>
@@ -2341,6 +2653,41 @@ export default function ScriptGeneratorPage() {
       </div>
 
       {/* ── Modals & Drawers ──────────────────────────────────────────────── */}
+      {generateFromServiceOpen && (
+        <GenerateFromServiceDialog
+          token={token}
+          baseInstructions={baseInstructions}
+          onClose={() => setGenerateFromServiceOpen(false)}
+          onScriptGenerated={(title, script, perms) => {
+            setScriptBody(script);
+            cleanBodyRef.current = script;
+            setPermissions(perms);
+            setEditorScript(null);
+            setModules([]);
+            setFixSummary("");
+            setSummaryError(null);
+            toast({ title: "Script generated", description: title });
+          }}
+          onPackageGenerated={(packageId, title, mods) => {
+            const pkg: ScriptPackageListItem = {
+              id: packageId,
+              title,
+              category: "m365",
+              permissions: { appPermissions: [], delegatedPermissions: [], notes: "" },
+              tags: [],
+              createdAt: new Date().toISOString(),
+              modules: mods,
+            };
+            setPackages((prev) => [pkg, ...prev]);
+            setModules(mods);
+            setEditorScript(null);
+            setFixSummary("");
+            setSummaryError(null);
+            toast({ title: "Package generated", description: title });
+          }}
+        />
+      )}
+
       {showSaveModal && (
         <SaveModal
           scriptBody={scriptBody}

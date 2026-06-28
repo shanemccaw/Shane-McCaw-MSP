@@ -6,6 +6,10 @@ import {
   powershellScriptsTable,
   scriptPackagesTable,
   scriptModulesTable,
+  servicesTable,
+  workflowTemplatesTable,
+  workflowTemplateStepsTable,
+  workflowTemplateStepTasksTable,
   type PsScriptPermissions,
   type ScriptModule,
 } from "@workspace/db";
@@ -257,6 +261,285 @@ Write the complete PowerShell script followed by the permissions JSON block.`,
     logger.error({ err }, "PS script generation failed");
     const msg = err instanceof Error ? err.message : "AI generation failed";
     res.status(500).json({ error: msg });
+  }
+});
+
+// ─── POST /api/admin/ps-scripts/generate-from-service ────────────────────────
+
+const GENERATE_FROM_SERVICE_SYSTEM = `You are an expert Microsoft 365 PowerShell script engineer with 20+ years of experience across Azure, Exchange Online, SharePoint, Teams, Intune, Defender, Entra ID, and related services.
+
+You will receive a consulting service definition and its delivery workflow (phases + tasks).
+
+STEP 1 — CLASSIFY every task as one of:
+  AUTOMATABLE — executable as PowerShell against M365/Azure APIs:
+    • Data queries / reporting (Graph API, Exchange cmdlets, SharePoint CSOM/PnP)
+    • Configuration changes (mailbox settings, Teams policies, SharePoint site provisioning, Intune profiles, Conditional Access, Sensitivity Labels, DLP rules, Retention policies, Defender settings)
+    • User/group/license management via Entra ID / Exchange
+    • Azure resource provisioning or querying
+  HUMAN_ONLY — requires a human by nature:
+    • Client calls, kickoff meetings, status updates, emails, document review
+    • Business decisions, approvals, sign-off, risk acceptance
+    • Physical / in-person tasks, vendor negotiations
+
+STEP 2 — For every AUTOMATABLE task, write a complete production-ready PowerShell script:
+  - [CmdletBinding()] attribute + param() block with typed, documented parameters (-TenantId, -ClientId, -ClientSecret where applicable)
+  - $ErrorActionPreference = "Stop"
+  - Structured try/catch/finally error handling
+  - Write-Host / Write-Error / Write-Warning logging
+  - Inline comments explaining each logical section
+  - CSV export where applicable
+
+STEP 3 — Choose output shape:
+  - ONE automatable phase (or all tasks belong to a single phase) → type "single": one consolidated script
+  - MULTIPLE distinct automatable phases → type "package": one focused module per phase + a Main.ps1 orchestrator that dot-sources them all
+
+Return ONLY a JSON object in a \`\`\`json fence. No prose before or after the fence.
+
+Single script shape:
+\`\`\`json
+{
+  "type": "single",
+  "title": "Brief script title (max 60 chars)",
+  "scriptBody": "# Complete PowerShell script",
+  "humanOnlyTasks": ["human task description 1", "human task description 2"],
+  "permissions": {
+    "appPermissions": ["e.g. User.Read.All (Microsoft Graph Application)"],
+    "delegatedPermissions": [],
+    "notes": "Brief note on consent requirements"
+  }
+}
+\`\`\`
+
+Package shape:
+\`\`\`json
+{
+  "type": "package",
+  "title": "Package title (max 80 chars)",
+  "modules": [
+    { "filename": "01-Phase.ps1", "description": "One-line description", "content": "# full script" },
+    { "filename": "Main.ps1", "description": "Orchestrator — dot-sources all modules and runs the workflow", "content": "# Main.ps1" }
+  ],
+  "humanOnlyTasks": ["human task description 1"],
+  "permissions": {
+    "appPermissions": ["e.g. User.Read.All (Microsoft Graph Application)"],
+    "delegatedPermissions": [],
+    "notes": "Brief note on consent requirements"
+  }
+}
+\`\`\`
+
+Rules:
+- All filenames must end in .ps1; Main.ps1 must be the LAST module entry
+- Include HUMAN_ONLY tasks in "humanOnlyTasks" for documentation — never generate code for them
+- Be specific about permission scopes (e.g. "Group.Read.All (Microsoft Graph Application)" not just "Group.Read.All")
+- Distinguish Application permissions (service principal / app-only) from Delegated (signed-in user)`;
+
+router.post("/admin/ps-scripts/generate-from-service", requireAdmin, async (req: Request, res: Response) => {
+  const { serviceId, customInstructions, baseInstructions } = req.body as {
+    serviceId?: number;
+    customInstructions?: string;
+    baseInstructions?: string;
+  };
+
+  if (!serviceId || typeof serviceId !== "number") {
+    res.status(400).json({ error: "serviceId is required and must be a number" });
+    return;
+  }
+
+  try {
+    const [service] = await db.select().from(servicesTable).where(eq(servicesTable.id, serviceId)).limit(1);
+    if (!service) {
+      res.status(404).json({ error: "Service not found" });
+      return;
+    }
+
+    let workflowContext = "";
+    if (service.workflowTemplateId) {
+      const [template] = await db
+        .select()
+        .from(workflowTemplatesTable)
+        .where(eq(workflowTemplatesTable.id, service.workflowTemplateId))
+        .limit(1);
+
+      if (template) {
+        const steps = await db
+          .select()
+          .from(workflowTemplateStepsTable)
+          .where(eq(workflowTemplateStepsTable.workflowTemplateId, template.id))
+          .orderBy(asc(workflowTemplateStepsTable.order));
+
+        const stepIds = steps.map((s) => s.id);
+        const allTasks =
+          stepIds.length > 0
+            ? await db
+                .select()
+                .from(workflowTemplateStepTasksTable)
+                .where(inArray(workflowTemplateStepTasksTable.workflowTemplateStepId, stepIds))
+                .orderBy(asc(workflowTemplateStepTasksTable.order))
+            : [];
+
+        workflowContext = `\n\nWORKFLOW TEMPLATE: "${template.name}"`;
+        if (template.description) workflowContext += `\n${template.description}`;
+
+        for (const step of steps) {
+          const tasks = allTasks.filter((t) => t.workflowTemplateStepId === step.id);
+          workflowContext += `\n\nPhase: ${step.title}`;
+          if (step.description) workflowContext += `\n  ${step.description}`;
+          for (const task of tasks) {
+            workflowContext += `\n  - [TASK] ${task.title}`;
+            if (task.description) workflowContext += `: ${task.description}`;
+          }
+        }
+      }
+    }
+
+    const deliverables = Array.isArray(service.deliverables) ? (service.deliverables as string[]) : [];
+    const inclusions = Array.isArray(service.inclusions) ? (service.inclusions as string[]) : [];
+    const features = Array.isArray(service.features) ? (service.features as string[]) : [];
+
+    if (!workflowContext && deliverables.length === 0 && inclusions.length === 0 && features.length === 0) {
+      res.status(400).json({
+        error:
+          "This service has no workflow template or deliverables to generate scripts from. Link a workflow template to the service first.",
+      });
+      return;
+    }
+
+    let serviceContext = `SERVICE: ${service.name}`;
+    if (service.description) serviceContext += `\nDescription: ${service.description}`;
+    if (service.category) serviceContext += `\nCategory: ${service.category}`;
+    if (service.tagline) serviceContext += `\nTagline: ${service.tagline}`;
+    if (deliverables.length > 0)
+      serviceContext += `\nDeliverables:\n${deliverables.map((d) => `  - ${d}`).join("\n")}`;
+    if (inclusions.length > 0)
+      serviceContext += `\nInclusions:\n${inclusions.map((i) => `  - ${i}`).join("\n")}`;
+    if (features.length > 0)
+      serviceContext += `\nFeatures:\n${features.map((f) => `  - ${f}`).join("\n")}`;
+
+    const baseBlock = baseInstructions?.trim()
+      ? `\n\nBase instructions (always apply):\n${baseInstructions.trim()}`
+      : "";
+    const customBlock = customInstructions?.trim()
+      ? `\n\nAdditional instructions:\n${customInstructions.trim()}`
+      : "";
+
+    const userMessage = `${serviceContext}${workflowContext}${baseBlock}${customBlock}
+
+Classify each task and generate PowerShell automation scripts for all M365/Azure-automatable tasks. Return the JSON response exactly as instructed.`;
+
+    const aiMsg = await anthropic.messages.create({
+      model: "claude-haiku-4-5",
+      max_tokens: 16000,
+      messages: [{ role: "user", content: `${GENERATE_FROM_SERVICE_SYSTEM}\n\n${userMessage}` }],
+    });
+
+    const aiBlock = aiMsg.content[0];
+    if (aiBlock.type !== "text") {
+      res.status(500).json({ error: "Unexpected AI response format" });
+      return;
+    }
+
+    const rawJson = extractJson(aiBlock.text);
+    if (!rawJson || typeof rawJson !== "object" || Array.isArray(rawJson)) {
+      logger.warn(
+        { textPrefix: aiBlock.text.slice(0, 600) },
+        "generate-from-service: failed to parse JSON from AI response",
+      );
+      res.status(500).json({ error: "AI returned an unstructured response. Please try again." });
+      return;
+    }
+
+    const parsed = rawJson as Record<string, unknown>;
+    const type = typeof parsed["type"] === "string" ? parsed["type"] : "single";
+    const humanOnlyTasks = Array.isArray(parsed["humanOnlyTasks"]) ? (parsed["humanOnlyTasks"] as string[]) : [];
+
+    const rawPerms = parsed["permissions"];
+    let permissions: PsScriptPermissions = { appPermissions: [], delegatedPermissions: [], notes: "" };
+    if (rawPerms && typeof rawPerms === "object" && !Array.isArray(rawPerms)) {
+      const p = rawPerms as Record<string, unknown>;
+      permissions = {
+        appPermissions: Array.isArray(p["appPermissions"]) ? (p["appPermissions"] as string[]) : [],
+        delegatedPermissions: Array.isArray(p["delegatedPermissions"]) ? (p["delegatedPermissions"] as string[]) : [],
+        notes: typeof p["notes"] === "string" ? p["notes"] : "",
+      };
+    }
+
+    if (type === "package") {
+      const rawModules = parsed["modules"];
+      if (!Array.isArray(rawModules) || rawModules.length === 0) {
+        res.status(500).json({ error: "AI returned a package with no modules. Please try again." });
+        return;
+      }
+
+      const validModules = (rawModules as unknown[])
+        .filter((m): m is Record<string, unknown> => m !== null && typeof m === "object" && !Array.isArray(m))
+        .filter((m) => typeof m["filename"] === "string" && typeof m["content"] === "string")
+        .map((m) => ({
+          filename: String(m["filename"]),
+          description: typeof m["description"] === "string" ? m["description"] : null,
+          content: String(m["content"]),
+        }));
+
+      if (validModules.length === 0) {
+        res.status(500).json({ error: "AI returned no valid modules. Please try again." });
+        return;
+      }
+
+      if (validModules.some((m) => !hasPsKeywords(m.content))) {
+        logger.error(
+          { moduleCount: validModules.length },
+          "generate-from-service: one or more modules contain no PS keywords — refusing to send",
+        );
+        res.status(500).json({ error: "AI returned a description instead of a script. Please try again." });
+        return;
+      }
+
+      const packageTitle =
+        (typeof parsed["title"] === "string" ? parsed["title"].trim() : null) || service.name;
+
+      const [pkg] = await db
+        .insert(scriptPackagesTable)
+        .values({ title: packageTitle, category: "m365" })
+        .returning();
+
+      await db.insert(scriptModulesTable).values(
+        validModules.map((m, i) => ({
+          packageId: pkg.id,
+          filename: m.filename,
+          description: m.description,
+          content: m.content,
+          sortOrder: i,
+        })),
+      );
+
+      logger.info(
+        { packageId: pkg.id, moduleCount: validModules.length, service: service.name },
+        "generate-from-service: saved package",
+      );
+      res.json({ type: "package", packageId: pkg.id, title: packageTitle, modules: validModules, humanOnlyTasks, permissions });
+      return;
+    }
+
+    // type === "single"
+    const scriptBody =
+      typeof parsed["scriptBody"] === "string" ? parsed["scriptBody"].trim() : "";
+
+    if (scriptBody.length < 20 || !hasPsKeywords(scriptBody)) {
+      logger.error(
+        { scriptBodyPrefix: scriptBody.slice(0, 300) },
+        "generate-from-service: scriptBody is empty or contains no PS keywords",
+      );
+      res.status(500).json({ error: "AI returned an unreadable script. Please try again." });
+      return;
+    }
+
+    const title =
+      (typeof parsed["title"] === "string" ? parsed["title"].trim() : null) || service.name;
+
+    res.json({ type: "single", title, script: scriptBody, humanOnlyTasks, permissions });
+  } catch (err) {
+    logger.error({ err }, "generate-from-service failed");
+    res.status(500).json({ error: err instanceof Error ? err.message : "Generation failed" });
   }
 });
 
