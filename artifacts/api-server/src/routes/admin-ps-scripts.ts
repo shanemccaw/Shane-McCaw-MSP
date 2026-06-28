@@ -50,58 +50,69 @@ const router = Router();
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function extractJson(text: string): unknown {
-  // 1. Require the explicit ```json fence — most reliable since the prompt mandates it.
-  const jsonFence = text.match(/```json\s*([\s\S]*?)```/i);
-  if (jsonFence) {
-    try { return JSON.parse(jsonFence[1].trim()); } catch { /* fall through */ }
+  // 1. ```json … ``` — use indexOf/lastIndexOf so embedded backtick sequences
+  //    inside module content strings don't prematurely terminate the match.
+  const jsonTagPos = text.indexOf("```json");
+  if (jsonTagPos !== -1) {
+    const bodyStart = jsonTagPos + 7; // skip "```json"
+    const afterNewline = text[bodyStart] === "\n" ? bodyStart + 1 : bodyStart;
+    const closingPos = text.lastIndexOf("```");
+    if (closingPos > afterNewline) {
+      try { return JSON.parse(text.slice(afterNewline, closingPos).trim()); } catch { /* fall through */ }
+    }
   }
 
-  // 2. Try every fenced block in document order; pick the first that parses as a
-  //    plain JSON object (not an array or primitive). This handles the case where
-  //    the model omits the "json" language tag.
-  const anyFenceRe = /```[^\n`]*\n?([\s\S]*?)```/g;
-  let m: RegExpExecArray | null;
-  while ((m = anyFenceRe.exec(text)) !== null) {
-    try {
-      const v = JSON.parse(m[1].trim());
-      if (v !== null && typeof v === "object" && !Array.isArray(v)) return v;
-    } catch { /* continue */ }
+  // 2. Any fenced block (no language tag): first opening to LAST closing.
+  const anyOpen = text.indexOf("```");
+  if (anyOpen !== -1) {
+    const afterTag = text.indexOf("\n", anyOpen);
+    const closingPos = text.lastIndexOf("```");
+    if (afterTag !== -1 && closingPos > afterTag) {
+      try {
+        const v = JSON.parse(text.slice(afterTag + 1, closingPos).trim());
+        if (v !== null && typeof v === "object" && !Array.isArray(v)) return v;
+      } catch { /* fall through */ }
+    }
   }
 
-  // 3. Last-resort backward scan: find the last '}' and walk left looking for the
-  //    matching opening '{'. Scanning from the END increases the chance of finding
-  //    the permissions JSON (which appears after the script in Claude's output)
-  //    rather than a PowerShell block.
-  let end = text.lastIndexOf("}");
-  while (end !== -1) {
-    const start = text.lastIndexOf("{", end);
-    if (start === -1) break;
-    const slice = text.slice(start, end + 1);
+  // 3. Last-resort: first '{' to last '}' — JSON.parse validates the whole structure.
+  const start = text.indexOf("{");
+  const end = text.lastIndexOf("}");
+  if (start !== -1 && end > start) {
     try {
-      const v = JSON.parse(slice);
+      const v = JSON.parse(text.slice(start, end + 1));
       if (v !== null && typeof v === "object" && !Array.isArray(v)) return v;
-    } catch { /* keep scanning */ }
-    end = text.lastIndexOf("}", start - 1);
+    } catch { /* nothing */ }
   }
 
   return null;
 }
 
 function extractJsonArray(text: string): unknown[] | null {
-  const jsonFence = text.match(/```json\s*([\s\S]*?)```/i);
-  if (jsonFence) {
-    try {
-      const v = JSON.parse(jsonFence[1].trim());
-      if (Array.isArray(v)) return v;
-    } catch { /* fall through */ }
+  // Use indexOf/lastIndexOf so embedded backtick sequences inside content strings
+  // don't prematurely terminate the fence match.
+  const jsonTagPos = text.indexOf("```json");
+  if (jsonTagPos !== -1) {
+    const bodyStart = jsonTagPos + 7;
+    const afterNewline = text[bodyStart] === "\n" ? bodyStart + 1 : bodyStart;
+    const closingPos = text.lastIndexOf("```");
+    if (closingPos > afterNewline) {
+      try {
+        const v = JSON.parse(text.slice(afterNewline, closingPos).trim());
+        if (Array.isArray(v)) return v;
+      } catch { /* fall through */ }
+    }
   }
-  const anyFenceRe = /```[^\n`]*\n?([\s\S]*?)```/g;
-  let m: RegExpExecArray | null;
-  while ((m = anyFenceRe.exec(text)) !== null) {
-    try {
-      const v = JSON.parse(m[1].trim());
-      if (Array.isArray(v)) return v;
-    } catch { /* continue */ }
+  const anyOpen = text.indexOf("```");
+  if (anyOpen !== -1) {
+    const afterTag = text.indexOf("\n", anyOpen);
+    const closingPos = text.lastIndexOf("```");
+    if (afterTag !== -1 && closingPos > afterTag) {
+      try {
+        const v = JSON.parse(text.slice(afterTag + 1, closingPos).trim());
+        if (Array.isArray(v)) return v;
+      } catch { /* fall through */ }
+    }
   }
   const start = text.indexOf("[");
   const end = text.lastIndexOf("]");
