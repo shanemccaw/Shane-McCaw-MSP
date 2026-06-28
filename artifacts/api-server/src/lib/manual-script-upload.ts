@@ -16,6 +16,7 @@ import {
 import { eq } from "drizzle-orm";
 import { logger } from "./logger";
 import { runAiAnalyzer } from "./ai-analyzer";
+import { parseM365ScriptOutput, normaliseProfileUpdates } from "./parse-m365-script-output";
 import { completeManualScriptKanbanCard } from "./manual-script-kanban";
 
 function clampScore(current: number, delta: number): number {
@@ -81,17 +82,20 @@ async function applyProfileUpdates(
 ): Promise<void> {
   if (Object.keys(profileUpdates).length === 0) return;
 
+  // Normalise: convert legacy authMethod string → authMethods array
+  const normalised = normaliseProfileUpdates(profileUpdates);
+
   const [existing] = await db
     .select()
     .from(clientM365ProfilesTable)
     .where(eq(clientM365ProfilesTable.clientId, clientId))
     .limit(1);
 
+  const existingProfile = (existing?.profile as Record<string, unknown>) ?? {};
+  const normalisedExisting = normaliseProfileUpdates(existingProfile);
+  const merged = { ...normalisedExisting, ...normalised };
+
   if (existing) {
-    const merged = {
-      ...((existing.profile as Record<string, unknown>) ?? {}),
-      ...profileUpdates,
-    };
     await db
       .update(clientM365ProfilesTable)
       .set({ profile: merged, updatedAt: new Date() })
@@ -99,7 +103,7 @@ async function applyProfileUpdates(
   } else {
     await db
       .insert(clientM365ProfilesTable)
-      .values({ clientId, profile: profileUpdates });
+      .values({ clientId, profile: merged });
   }
 }
 
@@ -151,6 +155,9 @@ export async function processManualScriptUpload(
 
   const scriptOutput = JSON.stringify(jsonData, null, 2);
 
+  // Deterministic extraction — runs before AI so known fields are always captured
+  const deterministicUpdates = parseM365ScriptOutput(jsonData);
+
   let aiResult = {
     findings: [] as string[],
     recommendations: [] as string[],
@@ -173,6 +180,9 @@ export async function processManualScriptUpload(
     );
   }
 
+  // Deterministic fields override AI guesses for the same keys
+  const mergedProfileUpdates = { ...aiResult.profileUpdates, ...deterministicUpdates };
+
   await db
     .update(scriptRunResultsTable)
     .set({
@@ -180,7 +190,7 @@ export async function processManualScriptUpload(
       parsedFindings: aiResult.findings,
       recommendations: aiResult.recommendations,
       scoreImpact: aiResult.scoreImpact,
-      profileUpdates: aiResult.profileUpdates,
+      profileUpdates: mergedProfileUpdates,
       status: "completed",
       uploadedBy,
       uploadedAt: new Date(),
@@ -197,7 +207,7 @@ export async function processManualScriptUpload(
       );
     }
     try {
-      await applyProfileUpdates(runResult.customerId, aiResult.profileUpdates);
+      await applyProfileUpdates(runResult.customerId, mergedProfileUpdates);
     } catch (err) {
       logger.warn(
         { err, customerId: runResult.customerId },

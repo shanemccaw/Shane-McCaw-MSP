@@ -1,5 +1,13 @@
 import { PDFDocument, rgb, StandardFonts } from "pdf-lib";
 
+const AUTH_LABEL_MAP: Record<string, string> = {
+  password:           "Password only",
+  mfa:                "MFA (per-user)",
+  sso_saml:           "SSO / SAML",
+  entra_id:           "Entra ID (Azure AD)",
+  conditional_access: "Conditional Access policies",
+};
+
 const navy  = rgb(0.039, 0.145, 0.251);
 const blue  = rgb(0,     0.471, 0.831);
 const teal  = rgb(0,     0.706, 0.847);
@@ -68,7 +76,7 @@ export async function generateM365ProfilePdf(data: M365ProfilePdfData): Promise<
         ["SharePoint Sites",  val(p.sharepointSiteCount)],
         ["Teams",             val(p.teamCount)],
         ["Security Groups",   val(p.securityGroupCount)],
-        ["Auth Method",       val(p.authMethod)],
+        ["Auth Method(s)",    Array.isArray(p.authMethods) && (p.authMethods as string[]).length > 0 ? (p.authMethods as string[]).map(m => AUTH_LABEL_MAP[String(m)] ?? String(m)).join(", ") : val(p.authMethod)],
         ["External Sharing",  yn(p.externalSharingEnabled)],
         ["Guest Users",       yn(p.guestUsersPresent)],
         ["Hybrid",            yn(p.isHybrid)],

@@ -47,7 +47,7 @@ Analyze the script output and return a JSON object with exactly these fields:
     "copilotReadiness": <integer -20 to +20, 0 if not applicable>
   },
   "profileUpdates": {
-    "<profileFieldName>": <value — only include fields you can directly infer from the output>
+    "<exactFieldName>": <value>
   }
 }
 
@@ -55,7 +55,42 @@ Rules:
 - findings: 2–6 specific, evidence-backed observations from the output
 - recommendations: 2–5 actionable next steps for the M365 administrator
 - scoreImpact: use positive values for good findings, negative for risks; 0 for unrelated categories
-- profileUpdates: JSONB key/value pairs to merge into the client's M365 profile (e.g. mfaEnabled, conditionalAccessPoliciesCount, guestUserCount); omit if nothing can be inferred
+- profileUpdates: Only include fields where you have direct evidence. Use EXACTLY these field names and types:
+    tenantDomain (string, e.g. "contoso.onmicrosoft.com")
+    activeUserPercent (number 0–100)
+    securityGroupCount (number)
+    licensedUserCount (number)
+    sharepointSiteCount (number)
+    teamCount (number)
+    guestUserCount (number)
+    conditionalAccessPoliciesCount (number)
+    usesExchange (boolean)
+    usesTeams (boolean)
+    usesSharePoint (boolean)
+    usesOneDrive (boolean)
+    usesYammer (boolean)
+    mfaEnforced (boolean)
+    conditionalAccessEnabled (boolean)
+    intuneEnabled (boolean)
+    hasAADP1orP2 (boolean)
+    hasDefender (boolean)
+    hasDLP (boolean)
+    usesComplianceCenter (boolean)
+    sensitivityLabelsConfigured (boolean)
+    hasRetentionPolicies (boolean)
+    hasInsiderRisk (boolean)
+    externalSharingEnabled (boolean)
+    guestUsersPresent (boolean)
+    isHybrid (boolean)
+    hasOnPremExchange (boolean)
+    usesAADConnect (boolean)
+    isMicrosoftPartner (boolean)
+    allUsersLicensed (boolean)
+    hasCopilotLicenses (boolean)
+    copilotLicenseCount (string containing the number, e.g. "25")
+    licenseSKUs (string[] — use friendly names inferred from context, e.g. "Office 365 E3" for ENTERPRISEPACK, "M365 E5" for SPE_E5, "M365 Business Premium" for SPB; unknown identifiers pass through verbatim)
+    authMethods (string[] — one or more of: "password", "mfa", "sso_saml", "entra_id", "conditional_access")
+  Do NOT invent other field names. Do NOT return authMethod (singular) — always use authMethods (plural array).
 - Return ONLY the JSON object — no markdown fences, no preamble, no trailing text`;
 
 export async function runAiAnalyzer(input: AiAnalyzerInput): Promise<AiAnalyzerResult> {

@@ -35,7 +35,7 @@ interface M365Profile {
   securityGroupCount: string;
   externalSharingEnabled: boolean | undefined;
   guestUsersPresent: boolean | undefined;
-  authMethod: string;
+  authMethods: string[];
   isHybrid: boolean | undefined;
   hasOnPremExchange: boolean | undefined;
   usesAADConnect: boolean | undefined;
@@ -74,7 +74,7 @@ const EMPTY_PROFILE: M365Profile = {
   usesExchange: undefined, usesTeams: undefined, usesSharePoint: undefined,
   usesOneDrive: undefined, usesYammer: undefined,
   sharepointSiteCount: "", teamCount: "", securityGroupCount: "",
-  externalSharingEnabled: undefined, guestUsersPresent: undefined, authMethod: "",
+  externalSharingEnabled: undefined, guestUsersPresent: undefined, authMethods: [],
   isHybrid: undefined, hasOnPremExchange: undefined, usesAADConnect: undefined,
   mfaEnforced: undefined, conditionalAccessEnabled: undefined, intuneEnabled: undefined,
   hasAADP1orP2: undefined, hasDefender: undefined, hasDLP: undefined,
@@ -267,6 +267,103 @@ function MultiSelect({ value, onChange, options }: { value: string[]; onChange: 
   );
 }
 
+// ── Auth method value → display label ─────────────────────────────────────────
+const AUTH_LABELS: Record<string, string> = {
+  password:           "Password only",
+  mfa:                "MFA (per-user)",
+  sso_saml:           "SSO / SAML",
+  entra_id:           "Entra ID (Azure AD)",
+  conditional_access: "Conditional Access policies",
+};
+
+/** MultiSelect variant that stores value keys but renders labels. */
+function MultiSelectWithLabels({
+  value,
+  onChange,
+  options,
+}: {
+  value: string[];
+  onChange: (v: string[]) => void;
+  options: Array<{ value: string; label: string }>;
+}) {
+  return (
+    <div className="flex flex-wrap gap-2 pt-1">
+      {options.map(opt => {
+        const sel = value.includes(opt.value);
+        return (
+          <button
+            key={opt.value}
+            type="button"
+            onClick={() =>
+              onChange(sel ? value.filter(v => v !== opt.value) : [...value, opt.value])
+            }
+            className={`text-xs font-semibold px-2.5 py-1 rounded-full border transition-colors ${
+              sel
+                ? "bg-[#0078D4] text-white border-[#0078D4]"
+                : "bg-[#1C2128] text-[#E6EDF3] border-border hover:border-[#0078D4]"
+            }`}
+          >
+            {opt.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+/** Free-form tag input for license SKUs — stores whatever strings come from the script. */
+function SkuTagInput({ value, onChange }: { value: string[]; onChange: (v: string[]) => void }) {
+  const [input, setInput] = useState("");
+  const addTag = (raw: string) => {
+    const tag = raw.trim();
+    if (tag && !value.includes(tag)) onChange([...value, tag]);
+    setInput("");
+  };
+  return (
+    <div className="space-y-2">
+      {value.length > 0 && (
+        <div className="flex flex-wrap gap-1.5">
+          {value.map(sku => (
+            <span
+              key={sku}
+              className="inline-flex items-center gap-1 text-xs font-medium bg-[#0078D4]/15 text-[#0078D4] border border-[#0078D4]/30 px-2 py-0.5 rounded-full"
+            >
+              {sku}
+              <button
+                type="button"
+                onClick={() => onChange(value.filter(s => s !== sku))}
+                className="ml-0.5 text-[#0078D4]/70 hover:text-[#0078D4] leading-none"
+                aria-label={`Remove ${sku}`}
+              >
+                ×
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
+      <input
+        type="text"
+        value={input}
+        onChange={e => setInput(e.target.value)}
+        onKeyDown={e => {
+          if (e.key === "Enter" || e.key === ",") {
+            e.preventDefault();
+            addTag(input);
+          } else if (e.key === "Backspace" && !input && value.length > 0) {
+            onChange(value.slice(0, -1));
+          }
+        }}
+        onBlur={() => { if (input.trim()) addTag(input); }}
+        placeholder={value.length === 0 ? "Type a SKU or friendly name, press Enter…" : "Add another…"}
+        className={inputCls}
+      />
+      <p className="text-[10px] text-muted-foreground">
+        Populated automatically when a discovery script runs. You can also add/remove entries manually.
+      </p>
+    </div>
+  );
+}
+
 function SectionTitle({ children }: { children: React.ReactNode }) {
   return <p className="text-[10px] font-bold uppercase tracking-widest text-[#E6EDF3]/50 mt-4 mb-1 first:mt-0">{children}</p>;
 }
@@ -315,11 +412,10 @@ function Step1({ p, set, errors, pf }: { p: M365Profile; set: (k: keyof M365Prof
 }
 
 function Step2({ p, set, errors, pf }: { p: M365Profile; set: (k: keyof M365Profile, v: unknown) => void; errors: Record<string, string>; pf: Set<string> }) {
-  const skus = ["M365 Business Basic", "M365 Business Standard", "M365 Business Premium", "Office 365 E1", "M365 E3", "M365 E5", "M365 F1", "M365 F3"];
   return (
     <div className="space-y-3">
-      <FieldRow label="License SKU(s)">
-        <MultiSelect value={p.licenseSKUs} onChange={v => set("licenseSKUs", v)} options={skus} />
+      <FieldRow label="License SKU(s)" prefilled={pf.has("licenseSKUs")}>
+        <SkuTagInput value={p.licenseSKUs} onChange={v => set("licenseSKUs", v)} />
       </FieldRow>
       <FieldRow label="Active User %" error={errors.activeUserPercent}>
         <NumberInput value={p.activeUserPercent} onChange={v => set("activeUserPercent", v)} placeholder="85" error={errors.activeUserPercent} />
@@ -356,8 +452,8 @@ function Step3({ p, set, errors, pf }: { p: M365Profile; set: (k: keyof M365Prof
       <FieldRow label="Security Groups" error={errors.securityGroupCount}>
         <NumberInput value={p.securityGroupCount} onChange={v => set("securityGroupCount", v)} placeholder="25" error={errors.securityGroupCount} />
       </FieldRow>
-      <FieldRow label="Primary Auth Method">
-        <SelectInput value={p.authMethod} onChange={v => set("authMethod", v)} options={authOptions} />
+      <FieldRow label="Auth Method(s)" prefilled={pf.has("authMethods")}>
+        <MultiSelectWithLabels value={p.authMethods} onChange={v => set("authMethods", v)} options={authOptions} />
       </FieldRow>
       <div className="bg-[#1C2128] border border-border rounded-xl px-4 pt-3 pb-1 mt-1">
         <SectionTitle>Configuration Flags</SectionTitle>
@@ -495,7 +591,7 @@ function Step7({ p, onJump, onDownloadPdf, downloading }: { p: M365Profile; onJu
         ["SharePoint Sites", p.sharepointSiteCount || "—"],
         ["Teams", p.teamCount || "—"],
         ["Security Groups", p.securityGroupCount || "—"],
-        ["Auth Method", p.authMethod || "—"],
+        ["Auth Method", p.authMethods.length ? p.authMethods.map(m => AUTH_LABELS[m] ?? m).join(", ") : "—"],
         ["External Sharing", yn(p.externalSharingEnabled)],
         ["Guest Users", yn(p.guestUsersPresent)],
         ["Hybrid", yn(p.isHybrid)],
@@ -677,8 +773,16 @@ export function M365ProfileWizard({
       fetchWithAuth(`/api/admin/clients/${clientId}/m365-profile`)
         .then(async res => {
           if (res.ok) {
-            const data = await res.json() as { profile: Partial<M365Profile> | null };
-            if (data.profile) setProfileLoaded({ ...EMPTY_PROFILE, ...data.profile });
+            const data = await res.json() as { profile: (Partial<M365Profile> & { authMethod?: string }) | null };
+            if (data.profile) {
+              const raw = data.profile;
+              const merged = { ...EMPTY_PROFILE, ...raw };
+              // Backward compat: migrate legacy authMethod string → authMethods array
+              if (typeof raw.authMethod === "string" && raw.authMethod.trim() && merged.authMethods.length === 0) {
+                merged.authMethods = [raw.authMethod.trim()];
+              }
+              setProfileLoaded(merged);
+            }
           }
         })
         .catch(() => {}),

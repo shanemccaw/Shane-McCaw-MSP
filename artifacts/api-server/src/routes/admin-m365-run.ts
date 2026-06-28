@@ -29,6 +29,7 @@ import { requireAdmin } from "../middlewares/requireAuth";
 import { logger } from "../lib/logger";
 import { createRunbookJob, getJobStatus, getJobOutput, isTerminalStatus } from "../lib/azure-automation";
 import { runAiAnalyzer } from "../lib/ai-analyzer";
+import { parseM365ScriptOutput, normaliseProfileUpdates } from "../lib/parse-m365-script-output";
 import { getSecretValue } from "../lib/azure-keyvault";
 
 const router: IRouter = Router();
@@ -177,14 +178,22 @@ async function applyProfileUpdates(
 ): Promise<void> {
   if (Object.keys(profileUpdates).length === 0) return;
 
+  // Normalise: convert legacy authMethod string → authMethods array
+  const normalised = normaliseProfileUpdates(profileUpdates);
+
   const [existing] = await db
     .select()
     .from(clientM365ProfilesTable)
     .where(eq(clientM365ProfilesTable.clientId, clientId))
     .limit(1);
 
+  const existingProfile = (existing?.profile as Record<string, unknown>) ?? {};
+  // Also normalise the existing stored profile (backward compat)
+  const normalisedExisting = normaliseProfileUpdates(existingProfile);
+
+  const merged = { ...normalisedExisting, ...normalised };
+
   if (existing) {
-    const merged = { ...(existing.profile as Record<string, unknown> ?? {}), ...profileUpdates };
     await db
       .update(clientM365ProfilesTable)
       .set({ profile: merged, updatedAt: new Date() })
@@ -192,7 +201,7 @@ async function applyProfileUpdates(
   } else {
     await db
       .insert(clientM365ProfilesTable)
-      .values({ clientId, profile: profileUpdates });
+      .values({ clientId, profile: merged });
   }
 }
 
@@ -231,6 +240,9 @@ async function processRunInBackground(
 
   const finalStatus: "completed" | "failed" = jobStatus === "Completed" ? "completed" : "failed";
 
+  // Deterministic extraction — runs before AI so known fields are always captured
+  const deterministicUpdates = parseM365ScriptOutput(jobOutput);
+
   let aiResult = { findings: [] as string[], recommendations: [] as string[], scoreImpact: {} as Record<string, number>, profileUpdates: {} as Record<string, unknown> };
   if (jobOutput.trim()) {
     try {
@@ -244,6 +256,9 @@ async function processRunInBackground(
     }
   }
 
+  // Deterministic fields override AI guesses for the same keys
+  const mergedProfileUpdates = { ...aiResult.profileUpdates, ...deterministicUpdates };
+
   await db
     .update(scriptRunResultsTable)
     .set({
@@ -251,7 +266,7 @@ async function processRunInBackground(
       parsedFindings: aiResult.findings,
       recommendations: aiResult.recommendations,
       scoreImpact: aiResult.scoreImpact,
-      profileUpdates: aiResult.profileUpdates,
+      profileUpdates: mergedProfileUpdates,
       status: finalStatus,
     })
     .where(eq(scriptRunResultsTable.id, runResultId));
@@ -263,7 +278,7 @@ async function processRunInBackground(
       logger.warn({ err, customerId }, "admin-m365-run: failed to apply score impact (non-fatal)");
     }
     try {
-      await applyProfileUpdates(customerId, aiResult.profileUpdates);
+      await applyProfileUpdates(customerId, mergedProfileUpdates);
     } catch (err) {
       logger.warn({ err, customerId }, "admin-m365-run: failed to apply profile updates (non-fatal)");
     }
