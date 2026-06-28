@@ -1,97 +1,11 @@
 import { useEffect, useState } from "react";
 import { Link } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
-
-interface M365Profile {
-  orgName?: string;
-  industry?: string;
-  employeeCount?: string;
-  licensedUserCount?: string;
-  itContactName?: string;
-  itContactEmail?: string;
-  tenantDomain?: string;
-  isMicrosoftPartner?: boolean;
-  licenseSKUs?: string[];
-  allUsersLicensed?: boolean;
-  activeUserPercent?: string;
-  usesExchange?: boolean;
-  usesTeams?: boolean;
-  usesSharePoint?: boolean;
-  usesOneDrive?: boolean;
-  usesYammer?: boolean;
-  mfaEnforced?: boolean;
-  conditionalAccessEnabled?: boolean;
-  intuneEnabled?: boolean;
-  hasCopilotLicenses?: boolean;
-  copilotReadinessScore?: string;
-  copilotUseCase?: string;
-  currentAITools?: string;
-  dataGovernanceConcerns?: string;
-  businessGoals?: string;
-  engagementType?: string;
-  engagementStartDate?: string;
-  estimatedDuration?: string;
-  budgetRange?: string;
-  decisionMakerName?: string;
-  decisionMakerEmail?: string;
-  sharepointSiteCount?: string;
-  teamCount?: string;
-  securityGroupCount?: string;
-  authMethod?: string;
-  isHybrid?: boolean;
-  externalSharingEnabled?: boolean;
-  guestUsersPresent?: boolean;
-  referralSource?: string;
-  copilotBlockedBy?: string;
-  copilotLicenseCount?: string;
-}
-
-// ── Completion logic (mirrors PortalM365Profile.tsx) ─────────────────────────
-const STRING_FIELDS: (keyof M365Profile)[] = [
-  "orgName", "industry", "employeeCount", "licensedUserCount",
-  "itContactName", "itContactEmail", "tenantDomain",
-  "activeUserPercent", "sharepointSiteCount", "teamCount",
-  "securityGroupCount", "authMethod",
-  "copilotUseCase", "currentAITools", "dataGovernanceConcerns",
-  "engagementType", "engagementStartDate", "estimatedDuration",
-  "budgetRange", "decisionMakerName", "decisionMakerEmail",
-  "businessGoals", "referralSource",
-];
-
-const BOOL_FIELDS: (keyof M365Profile)[] = [
-  "isMicrosoftPartner", "allUsersLicensed", "usesExchange", "usesTeams",
-  "usesSharePoint", "usesOneDrive", "externalSharingEnabled",
-  "guestUsersPresent", "isHybrid", "mfaEnforced", "conditionalAccessEnabled",
-  "intuneEnabled", "hasCopilotLicenses",
-];
-
-const TOTAL_FIELDS = STRING_FIELDS.length + BOOL_FIELDS.length + 1; // +1 for licenseSKUs
-
-function computeCompletion(profile: M365Profile): number {
-  let filled = 0;
-  for (const k of STRING_FIELDS) {
-    const v = profile[k];
-    if (typeof v === "string" && v.trim() !== "") filled++;
-  }
-  for (const k of BOOL_FIELDS) {
-    if (profile[k] !== undefined) filled++;
-  }
-  if ((profile.licenseSKUs ?? []).length > 0) filled++;
-  return Math.round((filled / TOTAL_FIELDS) * 100);
-}
-
-// ── Workload helpers ──────────────────────────────────────────────────────────
-const WORKLOAD_LABELS: { key: keyof M365Profile; label: string; icon: string }[] = [
-  { key: "usesTeams",      label: "Teams",      icon: "💬" },
-  { key: "usesExchange",   label: "Exchange",   icon: "📧" },
-  { key: "usesSharePoint", label: "SharePoint", icon: "🗂️" },
-  { key: "usesOneDrive",   label: "OneDrive",   icon: "☁️" },
-  { key: "usesYammer",     label: "Viva Engage", icon: "👥" },
-];
-
-function activeWorkloads(profile: M365Profile) {
-  return WORKLOAD_LABELS.filter(w => profile[w.key] === true).slice(0, 3);
-}
+import {
+  type M365Profile,
+  computeCompletion,
+  activeWorkloadLabels,
+} from "@/lib/m365-scoring";
 
 // ── Copilot readiness colour ──────────────────────────────────────────────────
 function copilotColor(score: string | undefined): string {
@@ -139,7 +53,7 @@ export default function M365ProfileSummaryCard() {
   if (!profile || !profile.orgName) return null;
 
   const completion = computeCompletion(profile);
-  const workloads = activeWorkloads(profile);
+  const workloads = activeWorkloadLabels(profile);
   const isLow = completion < 60;
   const copilotScore = profile.copilotReadinessScore
     ? `${profile.copilotReadinessScore} / 5`

@@ -1,100 +1,15 @@
 import { useState, useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import PortalLayout from "@/components/PortalLayout";
-
-// ── Profile type ───────────────────────────────────────────────────────────────
-
-interface M365Profile {
-  orgName?: string;
-  industry?: string;
-  employeeCount?: string;
-  licensedUserCount?: string;
-  tenantDomain?: string;
-  itContactName?: string;
-  itContactEmail?: string;
-  isMicrosoftPartner?: boolean;
-  licenseSKUs?: string[];
-  activeUserPercent?: string;
-  allUsersLicensed?: boolean;
-  usesExchange?: boolean;
-  usesTeams?: boolean;
-  usesSharePoint?: boolean;
-  usesOneDrive?: boolean;
-  usesYammer?: boolean;
-  sharepointSiteCount?: string;
-  teamCount?: string;
-  securityGroupCount?: string;
-  authMethod?: string;
-  externalSharingEnabled?: boolean;
-  guestUsersPresent?: boolean;
-  isHybrid?: boolean;
-  hasOnPremExchange?: boolean;
-  usesAADConnect?: boolean;
-  mfaEnforced?: boolean;
-  conditionalAccessEnabled?: boolean;
-  hasAADP1orP2?: boolean;
-  intuneEnabled?: boolean;
-  hasDefender?: boolean;
-  hasDLP?: boolean;
-  usesComplianceCenter?: boolean;
-  sensitivityLabelsConfigured?: boolean;
-  hasRetentionPolicies?: boolean;
-  hasInsiderRisk?: boolean;
-  hasCopilotLicenses?: boolean;
-  copilotLicenseCount?: string;
-  copilotUseCase?: string;
-  currentAITools?: string;
-  dataGovernanceConcerns?: string;
-  copilotReadinessScore?: string;
-  copilotBlockedBy?: string;
-}
-
-// ── Score calculations (same logic as old Scorecards tab) ─────────────────────
-
-function boolScore(fields: (boolean | undefined)[]): number {
-  const answered = fields.filter(f => f !== undefined);
-  if (answered.length === 0) return 0;
-  return Math.round((fields.filter(f => f === true).length / fields.length) * 100);
-}
-
-function computeScores(v: M365Profile) {
-  const secScore    = boolScore([v.mfaEnforced, v.conditionalAccessEnabled, v.intuneEnabled, v.hasAADP1orP2, v.hasDefender, v.hasDLP, v.usesComplianceCenter, v.sensitivityLabelsConfigured, v.hasRetentionPolicies]);
-  const compScore   = boolScore([v.hasDLP, v.usesComplianceCenter, v.sensitivityLabelsConfigured, v.hasRetentionPolicies, v.hasInsiderRisk]);
-  const copScore    = boolScore([v.hasCopilotLicenses, v.mfaEnforced, v.sensitivityLabelsConfigured, v.hasDLP, v.hasRetentionPolicies]);
-  const govScore    = boolScore([v.hasRetentionPolicies, v.sensitivityLabelsConfigured, v.usesComplianceCenter, v.conditionalAccessEnabled]);
-  const pct         = parseInt(v.activeUserPercent ?? "0", 10);
-  const adoptionScore = Math.min((isNaN(pct) ? 60 : pct) + (v.allUsersLicensed ? 10 : 0), 100);
-  return { secScore, compScore, copScore, govScore, adoptionScore };
-}
-
-// ── Alerts & Kudos derivation ─────────────────────────────────────────────────
-
-interface Alert { level: "critical" | "warning"; headline: string; why: string; }
-interface Kudo  { headline: string; }
-
-function deriveAlerts(v: M365Profile): Alert[] {
-  const alerts: Alert[] = [];
-  if (v.mfaEnforced === false)              alerts.push({ level: "critical", headline: "MFA is not enforced", why: "Without multi-factor authentication, a single stolen password gives attackers full tenant access." });
-  if (v.conditionalAccessEnabled === false) alerts.push({ level: "critical", headline: "No Conditional Access policies", why: "Conditional Access is the primary control that limits where, how, and from which devices users can sign in." });
-  if (v.hasDLP === false)                   alerts.push({ level: "critical", headline: "No Data Loss Prevention policies", why: "Sensitive data such as financials or PII can leave the organisation via email or Teams with no automated safeguards." });
-  if (v.hasDefender === false)              alerts.push({ level: "warning",  headline: "Microsoft Defender not active", why: "Defender provides anti-phishing, malware, and Safe Links protection for email and collaboration." });
-  if (v.sensitivityLabelsConfigured === false) alerts.push({ level: "warning", headline: "Sensitivity labels not configured", why: "Labelling is a prerequisite for Copilot data governance and regulatory compliance frameworks." });
-  if (v.hasRetentionPolicies === false)     alerts.push({ level: "warning",  headline: "No retention policies in place", why: "Without retention policies, business-critical data may be permanently deleted or retained indefinitely, creating compliance risk." });
-  return alerts;
-}
-
-function deriveKudos(v: M365Profile): Kudo[] {
-  const kudos: Kudo[] = [];
-  if (v.mfaEnforced === true)                   kudos.push({ headline: "MFA enforced — accounts are protected" });
-  if (v.hasDefender === true)                    kudos.push({ headline: "Microsoft Defender is active" });
-  if (v.sensitivityLabelsConfigured === true)    kudos.push({ headline: "Sensitivity labels are configured" });
-  if (v.conditionalAccessEnabled === true)       kudos.push({ headline: "Conditional Access policies in place" });
-  if (v.hasDLP === true)                         kudos.push({ headline: "DLP policies protecting data" });
-  if (v.usesComplianceCenter === true)           kudos.push({ headline: "Microsoft Purview in use" });
-  if (v.hasCopilotLicenses === true)             kudos.push({ headline: "Copilot for M365 licensed and ready" });
-  if (v.hasRetentionPolicies === true)           kudos.push({ headline: "Retention policies configured" });
-  return kudos;
-}
+import {
+  type M365Profile,
+  type Alert,
+  type Kudo,
+  computeScores,
+  deriveAlerts,
+  deriveKudos,
+  WORKLOADS,
+} from "@/lib/m365-scoring";
 
 // ── Small UI helpers ──────────────────────────────────────────────────────────
 
@@ -191,16 +106,6 @@ function authLabel(v: string | undefined): string | undefined {
   return map[v] ?? v;
 }
 
-// ── Workloads ─────────────────────────────────────────────────────────────────
-
-const WORKLOADS: { key: keyof M365Profile; label: string }[] = [
-  { key: "usesExchange",   label: "Exchange Online" },
-  { key: "usesTeams",      label: "Microsoft Teams" },
-  { key: "usesSharePoint", label: "SharePoint Online" },
-  { key: "usesOneDrive",   label: "OneDrive for Business" },
-  { key: "usesYammer",     label: "Viva Engage" },
-];
-
 // ── Page component ────────────────────────────────────────────────────────────
 
 export default function PortalM365Profile() {
@@ -216,7 +121,7 @@ export default function PortalM365Profile() {
     setLoadError(false);
     Promise.all([
       fetchWithAuth("/api/portal/m365-profile").then(r => r.json() as Promise<M365Profile>),
-      fetchWithAuth("/api/portal/profile").then(r => r.ok ? r.json() as Promise<{ company?: string | null }> : Promise.resolve({})),
+      fetchWithAuth("/api/portal/profile").then(r => r.ok ? r.json() as Promise<{ company?: string | null }> : Promise.resolve({} as { company?: string | null })),
     ])
       .then(([m365, base]) => {
         const merged = { ...m365 };

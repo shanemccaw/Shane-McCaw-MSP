@@ -5,6 +5,7 @@ import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis,
 } from "recharts";
+import { type M365Profile, computeScores } from "@/lib/m365-scoring";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -35,24 +36,6 @@ interface Invoice {
   paidAt: string | null;
 }
 
-interface M365Data {
-  mfaEnforced?: boolean;
-  conditionalAccessEnabled?: boolean;
-  intuneEnabled?: boolean;
-  hasAADP1orP2?: boolean;
-  hasDefender?: boolean;
-  hasDLP?: boolean;
-  usesComplianceCenter?: boolean;
-  sensitivityLabelsConfigured?: boolean;
-  hasRetentionPolicies?: boolean;
-  hasInsiderRisk?: boolean;
-  hasCopilotLicenses?: boolean;
-  allUsersLicensed?: boolean;
-  activeUserPercent?: string;
-  usesTeams?: boolean;
-  usesSharePoint?: boolean;
-  usesOneDrive?: boolean;
-}
 
 interface ProjectDetail {
   tasks: KanbanTask[];
@@ -129,54 +112,6 @@ function InsightCard({ icon, title, body, variant = "default" }: { icon: React.R
   );
 }
 
-// ── Score computations ────────────────────────────────────────────────────────
-
-function computeSecurityScore(m365: M365Data): number {
-  const checks = [
-    m365.mfaEnforced,
-    m365.conditionalAccessEnabled,
-    m365.intuneEnabled,
-    m365.hasAADP1orP2,
-    m365.hasDefender,
-    m365.hasDLP,
-    m365.usesComplianceCenter,
-    m365.sensitivityLabelsConfigured,
-    m365.hasRetentionPolicies,
-  ];
-  const answered = checks.filter(c => c !== undefined);
-  if (answered.length === 0) return 0;
-  const yes = checks.filter(c => c === true).length;
-  return Math.round((yes / checks.length) * 100);
-}
-
-function computeComplianceScore(m365: M365Data): number {
-  const checks = [m365.hasDLP, m365.usesComplianceCenter, m365.sensitivityLabelsConfigured, m365.hasRetentionPolicies, m365.hasInsiderRisk];
-  const answered = checks.filter(c => c !== undefined);
-  if (answered.length === 0) return 0;
-  return Math.round((checks.filter(c => c === true).length / checks.length) * 100);
-}
-
-function computeGovScore(m365: M365Data): number {
-  const checks = [m365.hasRetentionPolicies, m365.sensitivityLabelsConfigured, m365.usesComplianceCenter, m365.conditionalAccessEnabled];
-  const answered = checks.filter(c => c !== undefined);
-  if (answered.length === 0) return 0;
-  return Math.round((checks.filter(c => c === true).length / checks.length) * 100);
-}
-
-function computeCopilotScore(m365: M365Data): number {
-  const checks = [m365.hasCopilotLicenses, m365.mfaEnforced, m365.sensitivityLabelsConfigured, m365.hasDLP, m365.hasRetentionPolicies];
-  const answered = checks.filter(c => c !== undefined);
-  if (answered.length === 0) return 0;
-  return Math.round((checks.filter(c => c === true).length / checks.length) * 100);
-}
-
-function computeLicensingScore(m365: M365Data): number {
-  const pct = parseInt(m365.activeUserPercent ?? "0", 10);
-  const base = isNaN(pct) ? 60 : Math.min(pct, 100);
-  const bonus = m365.allUsersLicensed ? 10 : 0;
-  return Math.min(base + bonus, 100);
-}
-
 // ── Responsiveness score ──────────────────────────────────────────────────────
 
 function computeResponsivenessScore(projects: Project[]): number {
@@ -192,7 +127,7 @@ export default function PortalInsights() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [allProjects, setAllProjects] = useState<Project[]>([]);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
-  const [m365, setM365] = useState<M365Data>({});
+  const [m365, setM365] = useState<M365Profile>({});
   const [details, setDetails] = useState<Map<number, ProjectDetail>>(new Map());
   const [loading, setLoading] = useState(true);
 
@@ -207,7 +142,7 @@ export default function PortalInsights() {
         setAllProjects(allPs);
         setProjects(allPs.filter((p: Project) => p.status !== "completed"));
         setInvoices(invs as Invoice[]);
-        setM365(m365data as M365Data);
+        setM365(m365data as M365Profile);
         // Load detail for each active project (tasks) — fire and forget
         const activePs = allPs.filter((p: Project) => p.status !== "completed").slice(0, 5);
         Promise.all(
@@ -226,11 +161,7 @@ export default function PortalInsights() {
       .finally(() => setLoading(false));
   }, [fetchWithAuth]);
 
-  const secScore = useMemo(() => computeSecurityScore(m365), [m365]);
-  const compScore = useMemo(() => computeComplianceScore(m365), [m365]);
-  const govScore = useMemo(() => computeGovScore(m365), [m365]);
-  const copScore = useMemo(() => computeCopilotScore(m365), [m365]);
-  const licScore = useMemo(() => computeLicensingScore(m365), [m365]);
+  const { secScore, compScore, copScore, govScore, adoptionScore: licScore } = useMemo(() => computeScores(m365), [m365]);
   const responsivenessScore = useMemo(() => computeResponsivenessScore(projects), [projects]);
 
   const waitingTasks = useMemo(() => {
