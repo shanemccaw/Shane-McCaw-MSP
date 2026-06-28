@@ -314,7 +314,12 @@ function RawOutputTab({ result }: { result: RunResult }) {
       try { value = JSON.parse(value); } catch { /* keep as string */ }
     }
     let plain = typeof value === "string" ? value : (JSON.stringify(value, null, 2) ?? "");
-    // Normalise Windows/old-Mac line endings so each line renders on its own row
+    // Unescape JSON-encoded newlines: when JSON.stringify re-serialises an object whose
+    // string values contain actual newlines, those newlines become literal \r\n / \n / \r
+    // escape sequences (4- or 2-char) in the output text. Replace them with real newlines
+    // so the <pre> block can break on them.
+    plain = plain.replace(/\\r\\n/g, "\n").replace(/\\n/g, "\n").replace(/\\r/g, "\n");
+    // Normalise any remaining actual Windows/old-Mac line endings
     plain = plain.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
     const lines = plain ? plain.split("\n").length : 0;
     const bytes = new TextEncoder().encode(plain).length;
