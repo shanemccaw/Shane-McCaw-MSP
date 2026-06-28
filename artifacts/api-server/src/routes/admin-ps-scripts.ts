@@ -13,7 +13,7 @@ import {
   type PsScriptPermissions,
   type ScriptModule,
 } from "@workspace/db";
-import { eq, desc, asc, inArray } from "drizzle-orm";
+import { eq, desc, asc, inArray, and } from "drizzle-orm";
 import { logger } from "../lib/logger.ts";
 import { hasPsKeywords, hasPsKeywordsFullText } from "../lib/ps-guard.ts";
 import { isAzureConfigured, pushScriptToAzure } from "../lib/azure-automation.ts";
@@ -1012,6 +1012,50 @@ router.post("/admin/ps-scripts/:id/push-to-azure", requireAdmin, async (req: Req
     logger.error({ err, id }, "admin-ps-scripts: push-to-azure failed");
     const msg = err instanceof Error ? err.message : "Push to Azure failed";
     res.status(500).json({ error: msg });
+  }
+});
+
+// ─── POST /api/admin/ps-scripts/packages/:packageId/push-module ──────────────
+// Pushes a single module by filename — used by the client to sequence pushes
+// one-at-a-time so it can show real per-module progress in the dialog.
+
+router.post("/admin/ps-scripts/packages/:packageId/push-module", requireAdmin, async (req: Request, res: Response) => {
+  const packageId = String(req.params["packageId"] ?? "");
+  const { filename } = req.body as { filename?: string };
+
+  if (!UUID_RE.test(packageId)) { res.status(400).json({ error: "Invalid packageId" }); return; }
+  if (!filename || typeof filename !== "string") { res.status(400).json({ error: "filename required" }); return; }
+
+  if (!isAzureConfigured()) {
+    res.json({ ok: false, warning: "Azure Automation is not configured on this server" });
+    return;
+  }
+
+  try {
+    const [mod] = await db
+      .select()
+      .from(scriptModulesTable)
+      .where(and(eq(scriptModulesTable.packageId, packageId), eq(scriptModulesTable.filename, filename)))
+      .limit(1);
+
+    if (!mod) { res.status(404).json({ error: "Module not found" }); return; }
+
+    const content = mod.content?.trim() ?? "";
+    if (!content) { res.status(400).json({ error: "Module has no content" }); return; }
+
+    const runbookName = filename
+      .replace(/\.ps1$/i, "")
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, 63) || "script";
+
+    await pushScriptToAzure(runbookName, content);
+    res.json({ ok: true, filename, runbookName });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "Push failed";
+    logger.error({ err, packageId, filename }, "admin-ps-scripts: push-module failed");
+    res.status(500).json({ ok: false, filename, error: msg });
   }
 });
 
