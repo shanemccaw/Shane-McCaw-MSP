@@ -112,6 +112,24 @@ export default function LeadsPage() {
     void fetchLeads(1, statusFilter, newSource);
   };
 
+  const [deletingId, setDeletingId] = useState<number | null>(null);
+
+  const handleDelete = async (e: React.MouseEvent, lead: Lead) => {
+    e.stopPropagation();
+    if (!confirm(`Delete "${lead.name}" and all associated data? This cannot be undone.`)) return;
+    setDeletingId(lead.id);
+    try {
+      const res = await fetchWithAuth(`/api/leads/${lead.id}`, { method: "DELETE" });
+      if (!res.ok) throw new Error("Failed");
+      setLeads(prev => prev.filter(l => l.id !== lead.id));
+      setTotal(prev => prev - 1);
+    } catch {
+      alert("Failed to delete lead. Please try again.");
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
   const totalPages = Math.ceil(total / LIMIT);
 
   const STATUS_TABS = [
@@ -188,12 +206,13 @@ export default function LeadsPage() {
                     <th className="text-left px-5 py-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Source</th>
                     <th className="text-left px-5 py-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Status</th>
                     <th className="text-left px-5 py-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground hidden lg:table-cell">Date</th>
+                    <th className="w-10" />
                   </tr>
                 </thead>
                 <tbody>
                   {leads.map(lead => (
                     <tr key={lead.id} onClick={() => navigate(`/crm/leads/${lead.id}`)}
-                      className="border-b border-border last:border-0 hover:bg-[#1C2128] cursor-pointer transition-colors">
+                      className="border-b border-border last:border-0 hover:bg-[#1C2128] cursor-pointer transition-colors group">
                       <td className="px-5 py-3.5 font-semibold text-[#E6EDF3]">{lead.name}</td>
                       <td className="px-5 py-3.5 text-muted-foreground">{lead.email}</td>
                       <td className="px-5 py-3.5 text-muted-foreground hidden md:table-cell">{lead.company ?? "—"}</td>
@@ -209,6 +228,19 @@ export default function LeadsPage() {
                       </td>
                       <td className="px-5 py-3.5 text-muted-foreground text-xs hidden lg:table-cell">
                         {new Date(lead.createdAt).toLocaleDateString()}
+                      </td>
+                      <td className="px-2 py-3.5 text-right">
+                        <button
+                          onClick={(e) => void handleDelete(e, lead)}
+                          disabled={deletingId === lead.id}
+                          title="Delete lead"
+                          className="opacity-0 group-hover:opacity-100 p-1.5 rounded text-[#484F58] hover:text-red-400 hover:bg-red-500/10 transition-all disabled:opacity-50"
+                        >
+                          {deletingId === lead.id
+                            ? <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg>
+                            : <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                          }
+                        </button>
                       </td>
                     </tr>
                   ))}
@@ -229,6 +261,17 @@ export default function LeadsPage() {
                       {lead.source === "contact_form" ? "Form" : "Magnet"}
                     </span>
                   </div>
+                  <button
+                    onClick={(e) => void handleDelete(e, lead)}
+                    disabled={deletingId === lead.id}
+                    title="Delete lead"
+                    className="ml-1 p-1.5 rounded text-[#484F58] hover:text-red-400 hover:bg-red-500/10 transition-all disabled:opacity-50 flex-shrink-0"
+                  >
+                    {deletingId === lead.id
+                      ? <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg>
+                      : <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                    }
+                  </button>
                 </div>
               ))}
             </div>

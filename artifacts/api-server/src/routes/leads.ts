@@ -364,6 +364,25 @@ router.get("/leads/:id/emails", requireAdmin, async (req: Request, res: Response
   res.json(emails);
 });
 
+router.delete("/leads/:id", requireAdmin, async (req: Request, res: Response) => {
+  const id = parseInt(String(req.params.id ?? ""), 10);
+  if (isNaN(id)) {
+    res.status(400).json({ error: "Invalid lead ID" });
+    return;
+  }
+  try {
+    const deleted = await db.delete(leadsTable).where(eq(leadsTable.id, id)).returning({ id: leadsTable.id });
+    if (deleted.length === 0) {
+      res.status(404).json({ error: "Lead not found" });
+      return;
+    }
+    void createAuditLog({ actorName: "admin", actorRole: "admin", actionType: "lead.deleted", entityType: "lead", entityId: String(id) });
+    res.json({ ok: true });
+  } catch {
+    res.status(500).json({ error: "Failed to delete lead" });
+  }
+});
+
 router.patch("/leads/:id", requireAdmin, async (req: Request, res: Response) => {
   const id = parseInt(String(req.params.id ?? ""), 10);
   if (isNaN(id)) {
