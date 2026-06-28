@@ -69,6 +69,8 @@ export const leadsTable = pgTable("leads", {
   phone: text("phone"),
   location: text("location"),
   notes: text("notes"),
+  // Soft-delete: when set, this lead is hidden from all stats and list queries
+  deletedAt: timestamp("deleted_at"),
 });
 
 export const insertLeadSchema = createInsertSchema(leadsTable).omit({ id: true, createdAt: true, updatedAt: true });

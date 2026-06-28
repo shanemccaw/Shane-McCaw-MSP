@@ -3,7 +3,7 @@ import {
   db, leadsTable, emailsTable, servicesTable, quizLeadsTable,
   leadQualificationsTable, opportunitiesTable, opportunityTasksTable, kanbanTasksTable,
 } from "@workspace/db";
-import { eq, desc, count, gte, and, ilike, or, ne, type SQL, lt, inArray } from "drizzle-orm";
+import { eq, desc, count, gte, and, ilike, or, ne, isNull, type SQL, lt, inArray } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/requireAuth.ts";
 import { deriveSignalsFromQuiz, loadQuizPainConfig } from "../lib/derive-quiz-signals.ts";
 import {
@@ -186,15 +186,16 @@ router.post("/leads", async (req: Request, res: Response) => {
 
 router.get("/leads/stats", requireAdmin, async (_req: Request, res: Response) => {
   const notArchived = ne(leadsTable.status, "archived");
+  const notDeleted = isNull(leadsTable.deletedAt);
 
-  const [totalRow] = await db.select({ count: count() }).from(leadsTable).where(notArchived);
+  const [totalRow] = await db.select({ count: count() }).from(leadsTable).where(and(notArchived, notDeleted));
 
   const weekAgo = new Date();
   weekAgo.setDate(weekAgo.getDate() - 7);
-  const [weekRow] = await db.select({ count: count() }).from(leadsTable).where(and(notArchived, gte(leadsTable.createdAt, weekAgo)));
+  const [weekRow] = await db.select({ count: count() }).from(leadsTable).where(and(notArchived, notDeleted, gte(leadsTable.createdAt, weekAgo)));
 
-  const [contactRow] = await db.select({ count: count() }).from(leadsTable).where(and(notArchived, eq(leadsTable.source, "contact_form")));
-  const [magnetRow] = await db.select({ count: count() }).from(leadsTable).where(and(notArchived, eq(leadsTable.source, "lead_magnet")));
+  const [contactRow] = await db.select({ count: count() }).from(leadsTable).where(and(notArchived, notDeleted, eq(leadsTable.source, "contact_form")));
+  const [magnetRow] = await db.select({ count: count() }).from(leadsTable).where(and(notArchived, notDeleted, eq(leadsTable.source, "lead_magnet")));
 
   res.json({
     total: totalRow?.count ?? 0,

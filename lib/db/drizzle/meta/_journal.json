@@ -673,6 +673,13 @@
       "when": 1782683866011,
       "tag": "0093_add_script_run_kanban_task",
       "breakpoints": true
+    },
+    {
+      "idx": 94,
+      "version": "7",
+      "when": 1782857600000,
+      "tag": "0094_add_lead_soft_delete",
+      "breakpoints": true
     }
   ]
 }
