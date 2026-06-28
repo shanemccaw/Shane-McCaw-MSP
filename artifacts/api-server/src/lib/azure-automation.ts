@@ -16,7 +16,7 @@
 
 import { AutomationClient } from "@azure/arm-automation";
 import { ClientSecretCredential } from "@azure/identity";
-import { logger } from "./logger";
+import { logger } from "./logger.ts";
 
 function getAzureConfig() {
   const tenantId = process.env.AZURE_TENANT_ID;

@@ -817,6 +817,19 @@ Rules:
       return;
     }
 
+    // Heuristic guard: if any module's content contains no recognisable
+    // PowerShell keyword, the AI returned prose instead of actual scripts.
+    // Serving that to the client would overwrite the editor with non-PS text.
+    const hasProseOnly = validModules.some((m) => !hasPsKeywords(m.content));
+    if (hasProseOnly) {
+      logger.error(
+        { moduleCount: validModules.length },
+        "modularize endpoint: one or more modules contain no PS keywords — AI returned prose only; refusing to overwrite editor",
+      );
+      res.status(500).json({ error: "AI returned a summary instead of a script. Please try again." });
+      return;
+    }
+
     const packageTitle = title?.trim() || "Modular Package";
     const [pkg] = await db
       .insert(scriptPackagesTable)
