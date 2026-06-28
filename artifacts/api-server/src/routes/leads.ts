@@ -1,9 +1,9 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import {
   db, leadsTable, emailsTable, servicesTable, quizLeadsTable,
-  leadQualificationsTable,
+  leadQualificationsTable, opportunitiesTable, opportunityTasksTable, kanbanTasksTable,
 } from "@workspace/db";
-import { eq, desc, count, gte, and, ilike, or, ne, type SQL, lt } from "drizzle-orm";
+import { eq, desc, count, gte, and, ilike, or, ne, type SQL, lt, inArray } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/requireAuth.ts";
 import { deriveSignalsFromQuiz, loadQuizPainConfig } from "../lib/derive-quiz-signals.ts";
 import {
@@ -464,6 +464,33 @@ router.patch("/leads/:id", requireAdmin, async (req: Request, res: Response) => 
     });
   }
 
+  // ── Kanban task cleanup on conversion ─────────────────────────────────────
+  // When a lead is converted to a client its opportunity workflow tasks are no
+  // longer relevant to the kanban board.  Collect every kanban_task linked to
+  // this lead's opportunities and hard-delete them so they don't appear as
+  // ghost cards.
+  if (status === "converted") {
+    const opIds = await db
+      .select({ id: opportunitiesTable.id })
+      .from(opportunitiesTable)
+      .where(eq(opportunitiesTable.leadId, id));
+
+    if (opIds.length > 0) {
+      const linkedKanban = await db
+        .select({ kanbanTaskId: opportunityTasksTable.kanbanTaskId })
+        .from(opportunityTasksTable)
+        .where(inArray(opportunityTasksTable.opportunityId, opIds.map(r => r.id)));
+
+      const kanbanIds = linkedKanban
+        .map(r => r.kanbanTaskId)
+        .filter((kId): kId is number => kId != null);
+
+      if (kanbanIds.length > 0) {
+        await db.delete(kanbanTasksTable).where(inArray(kanbanTasksTable.id, kanbanIds));
+      }
+    }
+  }
+
   // ── Qualification scoring ──────────────────────────────────────────────────
   // Only score if qualifying profile fields changed
   const qualFieldsChanged = (
@@ -587,6 +614,77 @@ router.get("/leads/:id/qualifications", requireAdmin, async (req: Request, res: 
     .orderBy(desc(leadQualificationsTable.createdAt));
 
   res.json(rows);
+});
+
+// POST /api/leads/:id/merge
+// Merges the source lead into a target lead.  Before archiving the source,
+// all kanban_tasks linked to its opportunities are deleted so they don't
+// appear as ghost cards on the kanban board.
+// Body: { targetLeadId: number }
+router.post("/leads/:id/merge", requireAdmin, async (req: Request, res: Response) => {
+  const sourceId = parseInt(String(req.params.id ?? ""), 10);
+  if (isNaN(sourceId)) {
+    res.status(400).json({ error: "Invalid source lead ID" });
+    return;
+  }
+
+  const { targetLeadId } = req.body as { targetLeadId?: number };
+  if (!targetLeadId || isNaN(Number(targetLeadId))) {
+    res.status(400).json({ error: "targetLeadId is required" });
+    return;
+  }
+  const targetId = Number(targetLeadId);
+
+  if (sourceId === targetId) {
+    res.status(400).json({ error: "Cannot merge a lead into itself" });
+    return;
+  }
+
+  const [source] = await db.select().from(leadsTable).where(eq(leadsTable.id, sourceId)).limit(1);
+  if (!source) { res.status(404).json({ error: "Source lead not found" }); return; }
+
+  const [target] = await db.select().from(leadsTable).where(eq(leadsTable.id, targetId)).limit(1);
+  if (!target) { res.status(404).json({ error: "Target lead not found" }); return; }
+
+  // ── Clean up kanban tasks linked to the source lead's opportunities ────────
+  const sourceOpIds = await db
+    .select({ id: opportunitiesTable.id })
+    .from(opportunitiesTable)
+    .where(eq(opportunitiesTable.leadId, sourceId));
+
+  if (sourceOpIds.length > 0) {
+    const linkedKanban = await db
+      .select({ kanbanTaskId: opportunityTasksTable.kanbanTaskId })
+      .from(opportunityTasksTable)
+      .where(inArray(opportunityTasksTable.opportunityId, sourceOpIds.map(r => r.id)));
+
+    const kanbanIds = linkedKanban
+      .map(r => r.kanbanTaskId)
+      .filter((kId): kId is number => kId != null);
+
+    if (kanbanIds.length > 0) {
+      await db.delete(kanbanTasksTable).where(inArray(kanbanTasksTable.id, kanbanIds));
+    }
+  }
+
+  // ── Archive the source lead ───────────────────────────────────────────────
+  const [archived] = await db
+    .update(leadsTable)
+    .set({ status: "archived", updatedAt: new Date() })
+    .where(eq(leadsTable.id, sourceId))
+    .returning();
+
+  void createAuditLog({
+    actorName: req.user?.name ?? req.user?.email ?? "admin",
+    actorRole: "admin",
+    actionType: "lead.merged",
+    entityType: "lead",
+    entityId: String(sourceId),
+    entityLabel: source.name,
+    metadata: { mergedIntoLeadId: targetId, mergedIntoLeadName: target.name },
+  });
+
+  res.json({ ok: true, source: archived, target });
 });
 
 export default router;
