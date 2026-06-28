@@ -335,8 +335,8 @@ function ScriptDrawer({
 }) {
   const [script, setScript] = useState<PsScriptDetail | null>(null);
   const [loading, setLoading] = useState(true);
-  const [deleting, setDeleting] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -954,24 +954,26 @@ function PackageDrawer({
 function ModulePackageView({
   modules,
   packageTitle,
-  packageId,
   token,
   onBack,
-  onDeleted,
+  loadedPkg,
+  onEdit,
+  onDelete,
 }: {
   modules: ScriptModuleItem[];
   packageTitle: string;
-  packageId: string | null;
   token: string;
   onBack: () => void;
-  onDeleted?: (id: string) => void;
+  loadedPkg?: ScriptPackageListItem | null;
+  onEdit?: () => void;
+  onDelete?: () => void;
 }) {
   const { toast } = useToast();
   const [activeIdx, setActiveIdx] = useState(0);
   const [copiedIdx, setCopiedIdx] = useState<number | null>(null);
-  const [deleting, setDeleting] = useState(false);
   const [pushDialogOpen, setPushDialogOpen] = useState(false);
   const activeModule = modules[activeIdx];
+  const packageId = loadedPkg?.id ?? null;
 
   const handleCopy = (idx: number) => {
     copyToClipboard(modules[idx]!.content);
@@ -979,20 +981,6 @@ function ModulePackageView({
     setTimeout(() => setCopiedIdx(null), 2000);
   };
 
-  const handleDelete = async () => {
-    if (!packageId) return;
-    if (!confirm(`Delete package "${packageTitle}" and all its modules? This cannot be undone.`)) return;
-    setDeleting(true);
-    try {
-      await apiFetch(`/admin/ps-scripts/packages/${packageId}`, token, { method: "DELETE" });
-      toast({ title: "Package deleted" });
-      onDeleted?.(packageId);
-      onBack();
-    } catch (e) {
-      toast({ title: "Delete failed", description: e instanceof Error ? e.message : "Unknown error", variant: "destructive" });
-      setDeleting(false);
-    }
-  };
 
 
   return (
@@ -1004,7 +992,27 @@ function ModulePackageView({
           <span className="text-xs text-[#7D8590]">— {modules.length} modules</span>
         </div>
         <div className="flex items-center gap-2">
-          {packageId && (
+          {loadedPkg && onEdit && (
+            <button
+              onClick={onEdit}
+              className="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg border border-[#30363D] text-[#8B949E] hover:text-[#E6EDF3] hover:bg-[#21262D] transition-colors"
+              title="Edit this package"
+            >
+              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
+              Edit
+            </button>
+          )}
+          {loadedPkg && onDelete && (
+            <button
+              onClick={onDelete}
+              className="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg border border-red-500/30 text-red-400 hover:bg-red-500/10 transition-colors"
+              title="Delete this package"
+            >
+              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+              Delete
+            </button>
+          )}
+          {loadedPkg && (
             <button
               onClick={() => setPushDialogOpen(true)}
               className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg bg-[#0078D4]/15 border border-[#0078D4]/35 text-[#58A6FF] hover:bg-[#0078D4]/25 transition-colors"
@@ -1018,19 +1026,7 @@ function ModulePackageView({
             <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
             Download All (.zip)
           </button>
-          {packageId && (
-            <button
-              onClick={handleDelete}
-              disabled={deleting}
-              className="p-1.5 text-[#7D8590] hover:text-red-400 hover:bg-red-400/10 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-              title="Delete this package"
-            >
-              {deleting
-                ? <div className="w-4 h-4 border-2 border-red-400/40 border-t-red-400 rounded-full animate-spin" />
-                : <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
-              }
-            </button>
-          )}
+
           <button onClick={onBack} className="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg border border-[#30363D] text-[#7D8590] hover:text-[#E6EDF3] hover:bg-[#21262D] transition-colors">
             <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M10 19l-7-7m0 0l7-7m-7 7h18" /></svg>
             Back to editor
@@ -2510,7 +2506,7 @@ export default function ScriptGeneratorPage() {
   const [openDrawerScriptId, setOpenDrawerScriptId] = useState<string | null>(null);
   const [openDrawerPackage, setOpenDrawerPackage] = useState<ScriptPackageListItem | null>(null);
   const [loadedPackageTitle, setLoadedPackageTitle] = useState<string | null>(null);
-  const [loadedPackageId, setLoadedPackageId] = useState<string | null>(null);
+  const [loadedPackage, setLoadedPackage] = useState<ScriptPackageListItem | null>(null);
 
   // ── Run result detail state ──────────────────────────────────────────────────
   const [selectedResult, setSelectedResult] = useState<RunResult | null>(null);
@@ -2657,6 +2653,8 @@ export default function ScriptGeneratorPage() {
     if (!prompt.trim()) { toast({ title: "Enter a description first", variant: "destructive" }); return; }
     setGenerating(true);
     setModules([]);
+    setLoadedPackage(null);
+    setLoadedPackageTitle(null);
     setFixSummary("");
     setSummaryError(null);
     try {
@@ -2718,6 +2716,8 @@ export default function ScriptGeneratorPage() {
       setModules(result.modules);
       const pkg: ScriptPackageListItem = { id: result.packageId, title: result.title, category, permissions, tags: [], createdAt: new Date().toISOString(), modules: result.modules };
       setPackages((prev) => [pkg, ...prev]);
+      setLoadedPackage(pkg);
+      setLoadedPackageTitle(result.title);
       setLibraryLoaded(true);
       toast({ title: "Package created and saved to Library" });
     } catch (e) {
@@ -2807,6 +2807,8 @@ export default function ScriptGeneratorPage() {
       cleanBodyRef.current = detail.scriptBody;
       setPermissions(detail.permissions);
       setModules([]);
+      setLoadedPackage(null);
+      setLoadedPackageTitle(null);
       setFixSummary("");
       setSummaryError(null);
     } catch {
@@ -2838,6 +2840,11 @@ export default function ScriptGeneratorPage() {
   const handleDeletePackage = (id: string) => {
     setPackages((prev) => prev.filter((p) => p.id !== id));
     if (openDrawerPackage?.id === id) setOpenDrawerPackage(null);
+    if (loadedPackage?.id === id) {
+      setLoadedPackage(null);
+      setLoadedPackageTitle(null);
+      setModules([]);
+    }
     toast({ title: "Package deleted" });
   };
 
@@ -2845,9 +2852,20 @@ export default function ScriptGeneratorPage() {
     setOpenDrawerPackage(null);
     setModules(pkg.modules);
     setLoadedPackageTitle(pkg.title);
-    setLoadedPackageId(pkg.id);
+    setLoadedPackage(pkg);
     setEditorScript(null);
     setSelectedResult(null);
+  };
+
+  const handleCenterPaneDeletePackage = async () => {
+    if (!loadedPackage) return;
+    if (!confirm(`Delete package "${loadedPackage.title}" and all its modules? This cannot be undone.`)) return;
+    try {
+      await apiFetch(`/admin/ps-scripts/packages/${loadedPackage.id}`, token, { method: "DELETE" });
+      handleDeletePackage(loadedPackage.id);
+    } catch {
+      toast({ title: "Failed to delete package", variant: "destructive" });
+    }
   };
 
   const handleLoadInEditor = (script: PsScriptDetail) => {
@@ -2958,7 +2976,7 @@ export default function ScriptGeneratorPage() {
                 {isUnsaved && <span className="w-1.5 h-1.5 rounded-full bg-[#E6EDF3]/50 flex-shrink-0" title="Unsaved changes" />}
                 {editorScript && (
                   <button
-                    onClick={() => { setEditorScript(null); setScriptBody(""); cleanBodyRef.current = ""; setPermissions({ appPermissions: [], delegatedPermissions: [], notes: "" }); setModules([]); }}
+                    onClick={() => { setEditorScript(null); setScriptBody(""); cleanBodyRef.current = ""; setPermissions({ appPermissions: [], delegatedPermissions: [], notes: "" }); setModules([]); setLoadedPackage(null); setLoadedPackageTitle(null); }}
                     title="Clear — start a new script"
                     className="p-0.5 text-[#484F58] hover:text-[#E6EDF3] rounded transition-colors flex-shrink-0"
                   >
@@ -3048,15 +3066,11 @@ export default function ScriptGeneratorPage() {
               <ModulePackageView
                 modules={modules}
                 packageTitle={loadedPackageTitle ?? (prompt.trim() || "package")}
-                packageId={loadedPackageId}
                 token={token}
-                onBack={() => { setModules([]); setLoadedPackageTitle(null); setLoadedPackageId(null); }}
-                onDeleted={(id) => {
-                  setPackages((prev) => prev.filter((p) => p.id !== id));
-                  setModules([]);
-                  setLoadedPackageTitle(null);
-                  setLoadedPackageId(null);
-                }}
+                onBack={() => { setModules([]); setLoadedPackageTitle(null); setLoadedPackage(null); }}
+                loadedPkg={loadedPackage}
+                onEdit={loadedPackage ? () => setOpenDrawerPackage(loadedPackage) : undefined}
+                onDelete={loadedPackage ? handleCenterPaneDeletePackage : undefined}
               />
             ) : (
               <div className="flex-1 min-h-0 relative">
@@ -3170,6 +3184,8 @@ export default function ScriptGeneratorPage() {
             setPermissions(perms);
             setEditorScript(null);
             setModules([]);
+            setLoadedPackage(null);
+            setLoadedPackageTitle(null);
             setFixSummary("");
             setSummaryError(null);
             toast({ title: "Script generated", description: title });
@@ -3186,6 +3202,8 @@ export default function ScriptGeneratorPage() {
             };
             setPackages((prev) => [pkg, ...prev]);
             setModules(mods);
+            setLoadedPackage(pkg);
+            setLoadedPackageTitle(title);
             setPermissions(perms);
             setEditorScript(null);
             setFixSummary("");
@@ -3231,6 +3249,11 @@ export default function ScriptGeneratorPage() {
           onUpdated={(updated) => {
             setPackages((prev) => prev.map((p) => (p.id === updated.id ? updated : p)));
             setOpenDrawerPackage(updated);
+            if (loadedPackage?.id === updated.id) {
+              setLoadedPackage(updated);
+              setLoadedPackageTitle(updated.title);
+              setModules(updated.modules);
+            }
           }}
         />
       )}
