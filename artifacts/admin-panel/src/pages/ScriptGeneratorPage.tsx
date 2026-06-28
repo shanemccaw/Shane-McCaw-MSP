@@ -2845,6 +2845,8 @@ export default function ScriptGeneratorPage() {
 
   // ── Library event handlers ────────────────────────────────────────────────────
   const handleSidebarScriptClick = async (id: string) => {
+    const isDirty = scriptBody.length > 0 && scriptBody !== cleanBodyRef.current;
+    if (isDirty && !confirm("You have unsaved changes. Switch script and discard them?")) return;
     setLoadingScriptId(id);
     try {
       const detail = await apiFetch(`/admin/ps-scripts/${id}`, token) as PsScriptDetail;
@@ -2866,6 +2868,8 @@ export default function ScriptGeneratorPage() {
   };
 
   const handleSidebarModuleClick = (module: ScriptModuleItem, pkg: ScriptPackageListItem) => {
+    const isDirty = scriptBody.length > 0 && scriptBody !== cleanBodyRef.current;
+    if (isDirty && !confirm("You have unsaved changes. Switch module and discard them?")) return;
     const syntheticScript: PsScriptDetail = {
       id: module.id ?? `mod-${module.filename}`,
       title: module.filename,
