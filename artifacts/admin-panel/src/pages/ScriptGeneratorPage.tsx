@@ -2820,6 +2820,8 @@ export default function ScriptGeneratorPage() {
   const [rightVisible, setRightVisible] = useState(() => lsGet(IDE_RIGHT_VISIBLE_KEY, "true") === "true");
   const [leftMode, setLeftMode] = useState<"library" | "results">(() => {
     const stored = lsGet(IDE_LEFT_MODE_KEY, "library");
+    // Guard against stale values (e.g. "catalog") from before the catalog was removed
+    if (stored !== "library" && stored !== "results") { lsSet(IDE_LEFT_MODE_KEY, "library"); return "library"; }
     return (stored === "results" ? "results" : "library") as "library" | "results";
   });
   const [isFullscreen, setIsFullscreen] = useState(false);
