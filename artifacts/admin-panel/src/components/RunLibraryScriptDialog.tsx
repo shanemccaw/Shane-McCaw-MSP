@@ -45,8 +45,8 @@ export default function RunLibraryScriptDialog({ scriptId, moduleId, scriptTitle
     setLoadingClients(true);
     fetchWithAuth("/api/admin/clients/with-credentials")
       .then(r => r.json())
-      .then((data: ClientEntry[]) => {
-        setClients(data ?? []);
+      .then((data: unknown) => {
+        setClients(Array.isArray(data) ? (data as ClientEntry[]) : []);
       })
       .catch(() => {
         toast({ title: "Failed to load clients", variant: "destructive" });
