@@ -12,7 +12,6 @@ import {
 } from "lucide-react";
 import { useServices, formatPriceDisplay, useServiceHasPdf } from "@/hooks/useServices";
 import { FollowOnProjects } from "@/components/FollowOnProjects";
-import { useServicePageTriggerKeys } from "@/hooks/useServicePageTriggerKeys";
 import FixedPriceOfferCard from "@/components/FixedPriceOfferCard";
 import { EngagementProjectCard } from "@/components/EngagementProjectCard";
 import { useEngagementProjects } from "@/hooks/useEngagementProjects";
@@ -94,7 +93,6 @@ const WHY_SHANE = [
 export default function CopilotAI() {
   const { services, loading } = useServices();
   const { services: retainerServices, loading: retainerLoading } = useServices("retainer");
-  const { triggerKeys: copilotTriggerKeys } = useServicePageTriggerKeys("copilot-ai");
   const assessmentSvc = services.find((s) => s.slug === "copilot-for-m365-readiness-assessment");
   const govSvc = services.find((s) => s.slug === "governance-foundations-package");
   const skeleton = <span className="inline-block w-28 h-4 bg-gray-200 rounded animate-pulse align-middle" />;
@@ -284,7 +282,7 @@ export default function CopilotAI() {
           </div>
 
           <div className="max-w-4xl mx-auto mb-2">
-            <FollowOnProjects triggerKeys={copilotTriggerKeys} />
+            <FollowOnProjects pageSlug="copilot-ai" />
           </div>
 
           {/* Retainers */}
