@@ -2681,6 +2681,8 @@ export default function ScriptGeneratorPage() {
   const [summaryError, setSummaryError] = useState<"generate" | "fix" | null>(null);
   const [summaryAiResponse, setSummaryAiResponse] = useState<string | null>(null);
   const [editingModuleId, setEditingModuleId] = useState<string | null>(null);
+  const [editingPackageId, setEditingPackageId] = useState<string | null>(null);
+  const [modulePushOpen, setModulePushOpen] = useState(false);
   const [modules, setModules] = useState<ScriptModuleItem[]>([]);
   const [editorScript, setEditorScript] = useState<PsScriptDetail | null>(null);
   const [generateFromServiceOpen, setGenerateFromServiceOpen] = useState(false);
@@ -2981,6 +2983,12 @@ export default function ScriptGeneratorPage() {
   const pushToAzure = async () => {
     if (!editorScript?.id) return;
 
+    // Module from a package — use the package push dialog for this single module
+    if (editingModuleId && editingPackageId) {
+      setModulePushOpen(true);
+      return;
+    }
+
     setAzurePushDialog({ open: true, stepStatus: ["running", "idle", "idle"], error: null });
 
     const scriptId = editorScript.id;
@@ -3027,6 +3035,7 @@ export default function ScriptGeneratorPage() {
         const detail = await apiFetch(`/admin/ps-scripts/${id}`, token) as PsScriptDetail;
         setEditorScript(detail);
         setEditingModuleId(null);
+        setEditingPackageId(null);
         setScriptBody(detail.scriptBody);
         cleanBodyRef.current = detail.scriptBody;
         setPermissions(detail.permissions);
@@ -3071,6 +3080,7 @@ export default function ScriptGeneratorPage() {
       };
       setEditorScript(syntheticScript);
       setEditingModuleId(module.id ?? null);
+      setEditingPackageId(pkg.id);
       setScriptBody(module.content);
       cleanBodyRef.current = module.content;
       setPermissions(pkg.permissions);
@@ -3104,7 +3114,7 @@ export default function ScriptGeneratorPage() {
       try {
         await apiFetch(`/admin/ps-scripts/${id}`, token, { method: "DELETE" });
         setScripts((prev) => prev.filter((s) => s.id !== id));
-        if (editorScript?.id === id) { setEditorScript(null); setEditingModuleId(null); }
+        if (editorScript?.id === id) { setEditorScript(null); setEditingModuleId(null); setEditingPackageId(null); }
         toast({ title: "Script deleted" });
       } catch {
         toast({ title: "Failed to delete script", variant: "destructive" });
@@ -3130,6 +3140,7 @@ export default function ScriptGeneratorPage() {
     setLoadedPackage(pkg);
     setEditorScript(null);
     setEditingModuleId(null);
+    setEditingPackageId(null);
     setActivePackageTitle(null);
     setSelectedResult(null);
   };
@@ -3154,6 +3165,7 @@ export default function ScriptGeneratorPage() {
   const handleLoadInEditor = (script: PsScriptDetail) => {
     setEditorScript(script);
     setEditingModuleId(null);
+    setEditingPackageId(null);
     setScriptBody(script.scriptBody);
     cleanBodyRef.current = script.scriptBody;
     setPermissions(script.permissions);
@@ -3263,7 +3275,7 @@ export default function ScriptGeneratorPage() {
                 {isUnsaved && <span className="w-1.5 h-1.5 rounded-full bg-[#E6EDF3]/50 flex-shrink-0" title="Unsaved changes" />}
                 {editorScript && (
                   <button
-                    onClick={() => { setEditorScript(null); setEditingModuleId(null); setScriptBody(""); cleanBodyRef.current = ""; setPermissions({ appPermissions: [], delegatedPermissions: [], notes: "" }); setModules([]); setLoadedPackage(null); setLoadedPackageTitle(null); }}
+                    onClick={() => { setEditorScript(null); setEditingModuleId(null); setEditingPackageId(null); setScriptBody(""); cleanBodyRef.current = ""; setPermissions({ appPermissions: [], delegatedPermissions: [], notes: "" }); setModules([]); setLoadedPackage(null); setLoadedPackageTitle(null); }}
                     title="Clear — start a new script"
                     className="p-0.5 text-[#484F58] hover:text-[#E6EDF3] rounded transition-colors flex-shrink-0"
                   >
@@ -3303,7 +3315,7 @@ export default function ScriptGeneratorPage() {
                     </button>
                   )}
                   {editorScript?.id && (
-                    <button onClick={pushToAzure} disabled={azurePushDialog.open} title="Push to Azure Automation" className="flex items-center gap-1 text-[11px] px-2 py-1 rounded border border-[#0078D4]/30 bg-[#0078D4]/10 text-[#58A6FF] hover:bg-[#0078D4]/20 disabled:opacity-50 disabled:cursor-not-allowed transition-colors">
+                    <button onClick={pushToAzure} disabled={azurePushDialog.open || modulePushOpen} title="Push to Azure Automation" className="flex items-center gap-1 text-[11px] px-2 py-1 rounded border border-[#0078D4]/30 bg-[#0078D4]/10 text-[#58A6FF] hover:bg-[#0078D4]/20 disabled:opacity-50 disabled:cursor-not-allowed transition-colors">
                       <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" /></svg>
                       Azure
                     </button>
@@ -3472,6 +3484,7 @@ export default function ScriptGeneratorPage() {
             setPermissions(perms);
             setEditorScript(null);
             setEditingModuleId(null);
+            setEditingPackageId(null);
             setModules([]);
             setLoadedPackage(null);
             setLoadedPackageTitle(null);
@@ -3496,6 +3509,7 @@ export default function ScriptGeneratorPage() {
             setPermissions(perms);
             setEditorScript(null);
             setEditingModuleId(null);
+            setEditingPackageId(null);
             setFixSummary("");
             setSummaryError(null);
             toast({ title: "Package generated", description: title });
@@ -3552,6 +3566,16 @@ export default function ScriptGeneratorPage() {
         state={azurePushDialog}
         onClose={() => setAzurePushDialog(prev => ({ ...prev, open: false }))}
       />
+
+      {editingModuleId && editingPackageId && editorScript && (
+        <PackagePushProgressDialog
+          open={modulePushOpen}
+          packageId={editingPackageId}
+          modules={[{ filename: editorScript.title, description: editorScript.description }]}
+          token={token}
+          onClose={() => setModulePushOpen(false)}
+        />
+      )}
 
       <ConfirmDialog
         open={confirmState.open}
