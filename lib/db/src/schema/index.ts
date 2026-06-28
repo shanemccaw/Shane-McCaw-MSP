@@ -1389,6 +1389,24 @@ export const serviceScriptSetsTable = pgTable("service_script_sets", {
 export type InsertServiceScriptSet = typeof serviceScriptSetsTable.$inferInsert;
 export type ServiceScriptSet = typeof serviceScriptSetsTable.$inferSelect;
 
+// ─── Client Automation Runs — tracks sequential script package execution ──────
+export const clientAutomationRunsTable = pgTable("client_automation_runs", {
+  id: serial("id").primaryKey(),
+  clientUserId: integer("client_user_id").notNull().references(() => usersTable.id, { onDelete: "cascade" }),
+  triggeredAt: timestamp("triggered_at").notNull().defaultNow(),
+  status: text("status", { enum: ["pending", "running", "completed", "failed"] }).notNull().default("pending"),
+  currentPackageId: uuid("current_package_id"),
+  currentModuleId: uuid("current_module_id"),
+  modulesCompleted: integer("modules_completed").notNull().default(0),
+  modulesTotal: integer("modules_total").notNull().default(0),
+  lastLogSnippet: text("last_log_snippet"),
+  errorMessage: text("error_message"),
+  finishedAt: timestamp("finished_at"),
+});
+
+export type InsertClientAutomationRun = typeof clientAutomationRunsTable.$inferInsert;
+export type ClientAutomationRun = typeof clientAutomationRunsTable.$inferSelect;
+
 // ─── AI Prompts — centralised, DB-backed prompt management ────────────────────
 export const aiPromptsTable = pgTable("ai_prompts", {
   id: serial("id").primaryKey(),

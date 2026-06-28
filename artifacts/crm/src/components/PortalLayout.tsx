@@ -4,6 +4,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import PortalTour, { useTour } from "@/components/PortalTour";
 import { useAssistantChat } from "@/hooks/useAssistantChat";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import AutomationProgressBanner from "@/components/AutomationProgressBanner";
 
 interface NavItem {
   label: string;
@@ -756,6 +757,7 @@ export default function PortalLayout({ children, unreadNotifications = 0, unread
       <div className={`flex w-full min-h-screen ${isImpersonating ? "pt-[42px]" : ""}`}>
         <ClientSidebar unreadNotifications={unreadNotifications} unreadMessages={unreadMessages} hasArchivedProjects={hasArchivedProjects} appRegPending={appRegPending} />
         <main className="flex-1 overflow-auto min-w-0 pb-16 md:pb-0">
+          <AutomationProgressBanner />
           {children}
         </main>
         <MobileBottomNav unreadMessages={unreadMessages} hasArchivedProjects={hasArchivedProjects} appRegPending={appRegPending} />

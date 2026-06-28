@@ -1,5 +1,5 @@
 import { Router, type IRouter, type Request, type Response } from "express";
-import { db, projectsTable, clientServicesTable, servicesTable, workflowStepsTable, kanbanTasksTable, documentsTable, reportsTable, invoicesTable, messagesTable, notificationsTable, projectUpdatesTable, usersTable, contractsTable, passwordResetTokensTable, workflowTemplateStepsTable, workflowTemplateStepTasksTable, contractTemplatesTable, impersonationTokensTable, statusReportsTable, deviceTokensTable, projectClosuresTable, auditLogsTable, instructionSetsTable, checklistsTable, artifactSetsTable, deliverableSetsTable, emailsTable, emailDomainRulesTable, clientM365ProfilesTable, couponsTable, clientAppRegistrationsTable, accountSetupTokensTable, mfaEnrollmentsTable, mfaChallengesTable, webauthnCredentialsTable, webauthnChallengesTable, clientHealthHistoryTable, quizLeadsTable, scriptRunResultsTable, powershellScriptsTable, clientScoresTable } from "@workspace/db";
+import { db, projectsTable, clientServicesTable, servicesTable, workflowStepsTable, kanbanTasksTable, documentsTable, reportsTable, invoicesTable, messagesTable, notificationsTable, projectUpdatesTable, usersTable, contractsTable, passwordResetTokensTable, workflowTemplateStepsTable, workflowTemplateStepTasksTable, contractTemplatesTable, impersonationTokensTable, statusReportsTable, deviceTokensTable, projectClosuresTable, auditLogsTable, instructionSetsTable, checklistsTable, artifactSetsTable, deliverableSetsTable, emailsTable, emailDomainRulesTable, clientM365ProfilesTable, couponsTable, clientAppRegistrationsTable, accountSetupTokensTable, mfaEnrollmentsTable, mfaChallengesTable, webauthnCredentialsTable, webauthnChallengesTable, clientHealthHistoryTable, quizLeadsTable, scriptRunResultsTable, powershellScriptsTable, clientScoresTable, clientAutomationRunsTable } from "@workspace/db";
 import { eq, and, desc, asc, count, sql, inArray, gte, isNotNull, isNull, or, lt } from "drizzle-orm";
 import { requireAuth, requireAdmin } from "../middlewares/requireAuth";
 import jwt from "jsonwebtoken";
@@ -11,6 +11,7 @@ import { getStripeKey } from "../lib/stripe";
 import { listDriveItems, graphCredentialsPresent, createProjectFolder, uploadFileToClientContracts, getDriveItemDownloadUrl } from "../lib/graph";
 import { setSecretValue, getSecretValue, getSecretMetadata } from "../lib/azure-keyvault";
 import { testClientCredentials } from "../lib/azure-credentials";
+import { runClientScriptSequence } from "../lib/client-script-sequence";
 import { uploadInvoiceToSharePoint } from "../lib/invoice-sharepoint";
 import { getPortalBaseUrl } from "../lib/portal-url";
 import { generateM365ProfilePdf } from "../lib/m365-profile-pdf";
@@ -585,6 +586,43 @@ router.put("/portal/app-registration", requireAuth, async (req: Request, res: Re
     submittedAt: now,
     verifiedAt: now,
     connectionTestedAt: now,
+  });
+
+  // ── Step 4: Fire-and-forget sequential script run ─────────────────────────
+  // Insert a run record first so the progress endpoint has something to show
+  // before the sequence starts.
+  db.insert(clientAutomationRunsTable)
+    .values({ clientUserId: userId, status: "pending" })
+    .returning({ id: clientAutomationRunsTable.id })
+    .then(([run]) => {
+      if (!run) return;
+      runClientScriptSequence(userId, run.id).catch(err => {
+        req.log.error({ err, userId, runId: run.id }, "portal/app-registration: script sequence error");
+      });
+    })
+    .catch(err => {
+      req.log.error({ err, userId }, "portal/app-registration: failed to insert automation run record");
+    });
+});
+
+// ─── Client: Automation progress ──────────────────────────────────────────────
+router.get("/portal/automation-progress", requireAuth, async (req: Request, res: Response) => {
+  const userId = req.user!.id;
+  const [run] = await db.select()
+    .from(clientAutomationRunsTable)
+    .where(eq(clientAutomationRunsTable.clientUserId, userId))
+    .orderBy(desc(clientAutomationRunsTable.triggeredAt))
+    .limit(1);
+  if (!run) { res.json(null); return; }
+  res.json({
+    id: run.id,
+    status: run.status,
+    modulesCompleted: run.modulesCompleted,
+    modulesTotal: run.modulesTotal,
+    lastLogSnippet: run.lastLogSnippet,
+    errorMessage: run.errorMessage,
+    triggeredAt: run.triggeredAt,
+    finishedAt: run.finishedAt,
   });
 });
 
