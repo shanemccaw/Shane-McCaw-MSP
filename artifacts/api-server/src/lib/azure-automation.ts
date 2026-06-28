@@ -265,3 +265,83 @@ const TERMINAL_STATUSES = new Set<string>(["Completed", "Failed", "Stopped", "Su
 export function isTerminalStatus(status: string): boolean {
   return TERMINAL_STATUSES.has(status);
 }
+
+/**
+ * Returns true when all required Azure env vars are present.
+ * Use this before calling any Azure helper to skip gracefully when not configured.
+ */
+export function isAzureConfigured(): boolean {
+  return !!(
+    process.env.AZURE_TENANT_ID &&
+    process.env.AZURE_CLIENT_ID &&
+    process.env.AZURE_CLIENT_SECRET &&
+    process.env.AZURE_SUBSCRIPTION_ID &&
+    process.env.AZURE_AUTOMATION_RESOURCE_GROUP &&
+    process.env.AZURE_AUTOMATION_ACCOUNT_NAME
+  );
+}
+
+/**
+ * Create or update a PowerShell runbook in Azure Automation and upload the
+ * provided script content to its draft slot, ready for publishing.
+ *
+ * - If the runbook does not exist it is created with type "PowerShell".
+ * - If the runbook already exists, `createOrUpdate` updates only metadata
+ *   and the content is replaced via `runbookDraft.replaceContent`.
+ */
+export async function upsertRunbookContent(name: string, psCode: string): Promise<void> {
+  const { client, cfg } = buildClient();
+
+  // Step 1: ensure the runbook record exists (creates if new, updates metadata if existing)
+  await client.runbook.createOrUpdate(cfg.resourceGroup, cfg.accountName, name, {
+    name,
+    runbookType: "PowerShell",
+    description: "Managed by Shane McCaw Consulting admin panel",
+    logVerbose: false,
+    logProgress: false,
+    // draft: {} signals to Azure that this runbook starts in an editable draft state
+    draft: {},
+  });
+
+  // Step 2: upload script content to the draft slot
+  // replaceContent accepts msRest.HttpRequestBody (string | Buffer | stream)
+  const contentBuffer = Buffer.from(psCode, "utf-8");
+  await (client.runbookDraft as unknown as {
+    replaceContent: (rg: string, acct: string, name: string, content: Buffer) => Promise<unknown>;
+  }).replaceContent(cfg.resourceGroup, cfg.accountName, name, contentBuffer);
+
+  logger.info({ runbookName: name }, "azure-automation: runbook content upserted");
+}
+
+/**
+ * Publish the draft slot of the named runbook so it becomes immediately executable.
+ * Uses beginPublish (LRO) and polls until completion.
+ */
+export async function publishRunbook(name: string): Promise<void> {
+  const { client, cfg } = buildClient();
+
+  const draft = client.runbookDraft as unknown as {
+    beginPublish?: (rg: string, acct: string, name: string) => Promise<{ pollUntilFinished?: () => Promise<void> }>;
+    publish?: (rg: string, acct: string, name: string) => Promise<void>;
+  };
+
+  if (typeof draft.beginPublish === "function") {
+    const poller = await draft.beginPublish(cfg.resourceGroup, cfg.accountName, name);
+    if (poller && typeof poller.pollUntilFinished === "function") {
+      await poller.pollUntilFinished();
+    }
+  } else if (typeof draft.publish === "function") {
+    await draft.publish(cfg.resourceGroup, cfg.accountName, name);
+  }
+
+  logger.info({ runbookName: name }, "azure-automation: runbook published");
+}
+
+/**
+ * Convenience helper: upsert content then publish in one call.
+ * Throws if Azure is not configured — callers should guard with isAzureConfigured().
+ */
+export async function pushScriptToAzure(runbookName: string, psCode: string): Promise<void> {
+  await upsertRunbookContent(runbookName, psCode);
+  await publishRunbook(runbookName);
+}

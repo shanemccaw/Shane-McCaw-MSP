@@ -1308,6 +1308,7 @@ export const scriptCatalogTable = pgTable("script_catalog", {
     required?: string[];
     properties?: Record<string, { type: "string" | "number" | "boolean" | "array" | "object" }>;
   } | null>(),
+  azureSyncedAt: timestamp("azure_synced_at", { withTimezone: true }),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
@@ -1405,6 +1406,8 @@ export const powershellScriptsTable = pgTable("powershell_scripts", {
   scriptBody: text("script_body").notNull(),
   permissions: jsonb("permissions").$type<PsScriptPermissions>().notNull().default({ appPermissions: [], delegatedPermissions: [], notes: "" }),
   tags: text("tags").array().notNull().default([]),
+  azureRunbookName: text("azure_runbook_name"),
+  azureSyncedAt: timestamp("azure_synced_at", { withTimezone: true }),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });

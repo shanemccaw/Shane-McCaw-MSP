@@ -12,6 +12,34 @@ import {
 import { eq, desc, asc, inArray } from "drizzle-orm";
 import { logger } from "../lib/logger.ts";
 import { hasPsKeywords } from "../lib/ps-guard.ts";
+import { isAzureConfigured, pushScriptToAzure } from "../lib/azure-automation.ts";
+
+// ─── Runbook name helpers ─────────────────────────────────────────────────────
+
+function titleToRunbookName(title: string): string {
+  return title
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 63) || "script";
+}
+
+async function tryPushPsScriptToAzure(scriptId: string, runbookName: string, psCode: string): Promise<void> {
+  if (!isAzureConfigured()) {
+    logger.warn({ scriptId }, "admin-ps-scripts: Azure not configured — skipping push to Azure Automation");
+    return;
+  }
+  try {
+    await pushScriptToAzure(runbookName, psCode);
+    await db
+      .update(powershellScriptsTable)
+      .set({ azureSyncedAt: new Date() })
+      .where(eq(powershellScriptsTable.id, scriptId));
+    logger.info({ scriptId, runbookName }, "admin-ps-scripts: pushed to Azure Automation and stamped azureSyncedAt");
+  } catch (err) {
+    logger.warn({ err, scriptId, runbookName }, "admin-ps-scripts: push to Azure failed (non-fatal)");
+  }
+}
 
 const router = Router();
 
@@ -243,6 +271,8 @@ router.get("/admin/ps-scripts", requireAdmin, async (_req: Request, res: Respons
         description: powershellScriptsTable.description,
         category: powershellScriptsTable.category,
         tags: powershellScriptsTable.tags,
+        azureRunbookName: powershellScriptsTable.azureRunbookName,
+        azureSyncedAt: powershellScriptsTable.azureSyncedAt,
         createdAt: powershellScriptsTable.createdAt,
         updatedAt: powershellScriptsTable.updatedAt,
       })
@@ -276,6 +306,8 @@ router.post("/admin/ps-scripts", requireAdmin, async (req: Request, res: Respons
     return;
   }
 
+  const runbookName = titleToRunbookName(title.trim());
+
   try {
     const [created] = await db.insert(powershellScriptsTable).values({
       title: title.trim(),
@@ -284,7 +316,12 @@ router.post("/admin/ps-scripts", requireAdmin, async (req: Request, res: Respons
       scriptBody: scriptBody.trim(),
       permissions: permissions ?? { appPermissions: [], delegatedPermissions: [], notes: "" },
       tags: tags ?? [],
+      azureRunbookName: runbookName,
     }).returning();
+
+    // Fire-and-forget push to Azure Automation
+    void tryPushPsScriptToAzure(created.id, runbookName, scriptBody.trim());
+
     res.status(201).json(created);
   } catch (err) {
     logger.error({ err }, "Failed to save PS script");
@@ -497,10 +534,60 @@ router.put("/admin/ps-scripts/:id", requireAdmin, async (req: Request, res: Resp
       .where(eq(powershellScriptsTable.id, id))
       .returning();
     if (!updated) { res.status(404).json({ error: "Script not found" }); return; }
+
+    // Re-push to Azure when script body changed and a runbook name is set
+    const bodyToSync = scriptBody?.trim() ?? updated.scriptBody;
+    if (updated.azureRunbookName && bodyToSync) {
+      void tryPushPsScriptToAzure(id, updated.azureRunbookName, bodyToSync);
+    }
+
     res.json(updated);
   } catch (err) {
     logger.error({ err }, "Failed to update PS script");
     res.status(500).json({ error: "Failed to update script" });
+  }
+});
+
+// ─── POST /api/admin/ps-scripts/:id/push-to-azure ─────────────────────────────
+
+router.post("/admin/ps-scripts/:id/push-to-azure", requireAdmin, async (req: Request, res: Response) => {
+  const id = String(req.params["id"] ?? "");
+  if (!UUID_RE.test(id)) { res.status(400).json({ error: "Invalid id" }); return; }
+
+  if (!isAzureConfigured()) {
+    res.status(503).json({ error: "Azure Automation is not configured on this server" });
+    return;
+  }
+
+  try {
+    const [script] = await db
+      .select()
+      .from(powershellScriptsTable)
+      .where(eq(powershellScriptsTable.id, id))
+      .limit(1);
+
+    if (!script) { res.status(404).json({ error: "Script not found" }); return; }
+
+    if (!script.scriptBody?.trim()) {
+      res.status(400).json({ error: "Script has no body to push" });
+      return;
+    }
+
+    const runbookName = script.azureRunbookName ?? titleToRunbookName(script.title);
+
+    await pushScriptToAzure(runbookName, script.scriptBody.trim());
+
+    const [updatedRows] = await db
+      .update(powershellScriptsTable)
+      .set({ azureRunbookName: runbookName, azureSyncedAt: new Date() })
+      .where(eq(powershellScriptsTable.id, id))
+      .returning({ azureRunbookName: powershellScriptsTable.azureRunbookName, azureSyncedAt: powershellScriptsTable.azureSyncedAt });
+
+    res.json({ ok: true, ...updatedRows });
+  } catch (err) {
+    logger.error({ err, id }, "admin-ps-scripts: push-to-azure failed");
+    const msg = err instanceof Error ? err.message : "Push to Azure failed";
+    res.status(500).json({ error: msg });
   }
 });
 

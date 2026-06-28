@@ -23,6 +23,26 @@ import { db, scriptCatalogTable, packageScriptsTable, scriptCatalogCategoriesTab
 import { eq, and, asc, inArray } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/requireAuth";
 import { logger } from "../lib/logger";
+import { isAzureConfigured, pushScriptToAzure } from "../lib/azure-automation";
+
+// ── Azure push helper (fire-and-forget) ───────────────────────────────────────
+
+async function tryPushCatalogScriptToAzure(scriptId: number, runbookName: string, psCode: string): Promise<void> {
+  if (!isAzureConfigured()) {
+    logger.warn({ scriptId }, "admin-m365-scripts: Azure not configured — skipping push to Azure Automation");
+    return;
+  }
+  try {
+    await pushScriptToAzure(runbookName, psCode);
+    await db
+      .update(scriptCatalogTable)
+      .set({ azureSyncedAt: new Date() })
+      .where(eq(scriptCatalogTable.id, scriptId));
+    logger.info({ scriptId, runbookName }, "admin-m365-scripts: pushed to Azure Automation and stamped azureSyncedAt");
+  } catch (err) {
+    logger.warn({ err, scriptId, runbookName }, "admin-m365-scripts: push to Azure failed (non-fatal) — DB record unchanged");
+  }
+}
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
@@ -132,6 +152,11 @@ router.post("/admin/scripts", requireAdmin, async (req: Request, res: Response) 
     const categoryIds = parsed.data.categoryIds ?? [];
     await syncScriptCategories(row.id, categoryIds);
 
+    // Fire-and-forget push to Azure Automation when script body is provided
+    if (parsed.data.psScriptBody?.trim()) {
+      void tryPushCatalogScriptToAzure(row.id, row.runbookName, parsed.data.psScriptBody.trim());
+    }
+
     res.status(201).json({ ...row, categoryIds });
   } catch (err) {
     logger.error({ err }, "admin-m365-scripts: failed to create script");
@@ -203,10 +228,63 @@ router.put("/admin/scripts/:id", requireAdmin, async (req: Request, res: Respons
       ? categoryIds
       : ((await getScriptCategoryIds([id])).get(id) ?? []);
 
+    // Fire-and-forget re-sync when psScriptBody is part of this update
+    const newPsBody = parsed.data.psScriptBody ?? row.psScriptBody;
+    if (newPsBody?.trim()) {
+      void tryPushCatalogScriptToAzure(id, row.runbookName, newPsBody.trim());
+    }
+
     res.json({ ...row, categoryIds: finalCategoryIds });
   } catch (err) {
     logger.error({ err, id }, "admin-m365-scripts: failed to update script");
     res.status(500).json({ error: "Failed to update script" });
+  }
+});
+
+// ── POST /api/admin/scripts/:id/push-to-azure ─────────────────────────────────
+
+router.post("/admin/scripts/:id/push-to-azure", requireAdmin, async (req: Request, res: Response) => {
+  const id = parseInt(String(req.params.id));
+  if (isNaN(id)) {
+    res.status(400).json({ error: "Invalid script id" });
+    return;
+  }
+
+  if (!isAzureConfigured()) {
+    res.status(503).json({ error: "Azure Automation is not configured on this server" });
+    return;
+  }
+
+  try {
+    const [script] = await db
+      .select()
+      .from(scriptCatalogTable)
+      .where(eq(scriptCatalogTable.id, id))
+      .limit(1);
+
+    if (!script) {
+      res.status(404).json({ error: "Script not found" });
+      return;
+    }
+
+    if (!script.psScriptBody?.trim()) {
+      res.status(400).json({ error: "This script has no PowerShell body to push" });
+      return;
+    }
+
+    await pushScriptToAzure(script.runbookName, script.psScriptBody.trim());
+
+    const [updated] = await db
+      .update(scriptCatalogTable)
+      .set({ azureSyncedAt: new Date() })
+      .where(eq(scriptCatalogTable.id, id))
+      .returning();
+
+    res.json({ ok: true, azureSyncedAt: updated.azureSyncedAt });
+  } catch (err) {
+    logger.error({ err, id }, "admin-m365-scripts: push-to-azure failed");
+    const msg = err instanceof Error ? err.message : "Push to Azure failed";
+    res.status(500).json({ error: msg });
   }
 });
 

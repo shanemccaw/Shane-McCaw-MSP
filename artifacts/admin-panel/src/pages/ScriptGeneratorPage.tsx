@@ -17,6 +17,8 @@ interface PsScriptListItem {
   description: string | null;
   category: string;
   tags: string[];
+  azureRunbookName: string | null;
+  azureSyncedAt: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -1391,6 +1393,117 @@ function PackageRow({
   );
 }
 
+// ── PsScriptRow — individual library script row with Azure sync badge ─────────
+
+function PsScriptRow({
+  s,
+  token,
+  onOpenScript,
+  onDeleteScript,
+}: {
+  s: PsScriptListItem;
+  token: string;
+  onOpenScript: (id: string) => void;
+  onDeleteScript: (id: string) => void;
+}) {
+  const { toast } = useToast();
+  const [pushing, setPushing] = useState(false);
+  const [syncedAt, setSyncedAt] = useState<string | null>(s.azureSyncedAt ?? null);
+
+  const handlePush = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setPushing(true);
+    try {
+      const res = await apiFetch(`/admin/ps-scripts/${s.id}/push-to-azure`, token, { method: "POST" }) as Response;
+      if (!res.ok) {
+        const err = await res.json() as { error?: string };
+        toast({ title: err.error ?? "Push failed", variant: "destructive" });
+        return;
+      }
+      const data = await res.json() as { azureSyncedAt?: string };
+      setSyncedAt(data.azureSyncedAt ?? new Date().toISOString());
+      toast({ title: "Pushed to Azure Automation" });
+    } catch {
+      toast({ title: "Network error pushing to Azure", variant: "destructive" });
+    } finally {
+      setPushing(false);
+    }
+  };
+
+  return (
+    <tr
+      className="hover:bg-[#1C2128] transition-colors cursor-pointer"
+      onClick={() => onOpenScript(s.id)}
+    >
+      <td className="px-4 py-3">
+        <p className="font-medium text-[#E6EDF3] truncate max-w-xs">{s.title}</p>
+        {s.description && (
+          <p className="text-xs text-[#7D8590] truncate max-w-xs mt-0.5">{s.description}</p>
+        )}
+        {s.tags.length > 0 && (
+          <div className="flex flex-wrap gap-1 mt-1">
+            {s.tags.slice(0, 3).map((t) => (
+              <span key={t} className="text-[9px] px-1.5 py-0.5 rounded-full bg-[#21262D] text-[#8B949E] border border-[#30363D]">{t}</span>
+            ))}
+            {s.tags.length > 3 && <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-[#21262D] text-[#484F58]">+{s.tags.length - 3}</span>}
+          </div>
+        )}
+      </td>
+      <td className="px-4 py-3 hidden md:table-cell">
+        <CategoryBadge category={s.category} />
+      </td>
+      <td className="px-4 py-3 hidden lg:table-cell" onClick={(e) => e.stopPropagation()}>
+        {syncedAt ? (
+          <span
+            className="inline-flex items-center gap-1 text-[9px] font-medium px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"
+            title={`Synced ${new Date(syncedAt).toLocaleString()}`}
+          >
+            <svg className="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
+            Synced
+          </span>
+        ) : (
+          <button
+            onClick={(e) => void handlePush(e)}
+            disabled={pushing}
+            className="inline-flex items-center gap-1 text-[9px] font-medium px-2 py-0.5 rounded-full bg-[#0078D4]/10 text-[#58A6FF] border border-[#0078D4]/25 hover:bg-[#0078D4]/20 disabled:opacity-50 transition-colors"
+            title="Push to Azure Automation"
+          >
+            {pushing ? (
+              <svg className="w-2.5 h-2.5 animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" /></svg>
+            ) : (
+              <svg className="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" /></svg>
+            )}
+            {pushing ? "Pushing…" : "Push"}
+          </button>
+        )}
+      </td>
+      <td className="px-4 py-3 text-xs text-[#7D8590] hidden lg:table-cell whitespace-nowrap">
+        {formatDate(s.createdAt)}
+      </td>
+      <td className="px-4 py-3 text-right">
+        <div className="flex items-center gap-1 justify-end" onClick={(e) => e.stopPropagation()}>
+          <button
+            onClick={() => onOpenScript(s.id)}
+            className="p-1.5 text-[#7D8590] hover:text-[#58A6FF] hover:bg-[#0078D4]/10 rounded-lg transition-colors"
+            title="Open"
+          >
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
+          </button>
+          <button
+            onClick={() => onDeleteScript(s.id)}
+            className="p-1.5 text-[#7D8590] hover:text-red-400 hover:bg-red-400/10 rounded-lg transition-colors"
+            title="Delete"
+          >
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+          </button>
+        </div>
+      </td>
+    </tr>
+  );
+}
+
+// ── LibraryTab ────────────────────────────────────────────────────────────────
+
 function LibraryTab({
   token,
   scripts,
@@ -1494,56 +1607,20 @@ function LibraryTab({
                     <tr className="border-b border-[#30363D] bg-[#1C2128]">
                       <th className="text-left px-4 py-2.5 text-xs font-semibold text-[#7D8590] uppercase tracking-wide">Title</th>
                       <th className="text-left px-4 py-2.5 text-xs font-semibold text-[#7D8590] uppercase tracking-wide hidden md:table-cell">Category</th>
+                      <th className="text-left px-4 py-2.5 text-xs font-semibold text-[#7D8590] uppercase tracking-wide hidden lg:table-cell">Azure</th>
                       <th className="text-left px-4 py-2.5 text-xs font-semibold text-[#7D8590] uppercase tracking-wide hidden lg:table-cell">Saved</th>
                       <th className="px-4 py-2.5" />
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-[#21262D]">
                     {filtered.map((s) => (
-                      <tr
+                      <PsScriptRow
                         key={s.id}
-                        className="hover:bg-[#1C2128] transition-colors cursor-pointer"
-                        onClick={() => onOpenScript(s.id)}
-                      >
-                        <td className="px-4 py-3">
-                          <p className="font-medium text-[#E6EDF3] truncate max-w-xs">{s.title}</p>
-                          {s.description && (
-                            <p className="text-xs text-[#7D8590] truncate max-w-xs mt-0.5">{s.description}</p>
-                          )}
-                          {s.tags.length > 0 && (
-                            <div className="flex flex-wrap gap-1 mt-1">
-                              {s.tags.slice(0, 3).map((t) => (
-                                <span key={t} className="text-[9px] px-1.5 py-0.5 rounded-full bg-[#21262D] text-[#8B949E] border border-[#30363D]">{t}</span>
-                              ))}
-                              {s.tags.length > 3 && <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-[#21262D] text-[#484F58]">+{s.tags.length - 3}</span>}
-                            </div>
-                          )}
-                        </td>
-                        <td className="px-4 py-3 hidden md:table-cell">
-                          <CategoryBadge category={s.category} />
-                        </td>
-                        <td className="px-4 py-3 text-xs text-[#7D8590] hidden lg:table-cell whitespace-nowrap">
-                          {formatDate(s.createdAt)}
-                        </td>
-                        <td className="px-4 py-3 text-right">
-                          <div className="flex items-center gap-1 justify-end" onClick={(e) => e.stopPropagation()}>
-                            <button
-                              onClick={() => onOpenScript(s.id)}
-                              className="p-1.5 text-[#7D8590] hover:text-[#58A6FF] hover:bg-[#0078D4]/10 rounded-lg transition-colors"
-                              title="Open"
-                            >
-                              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
-                            </button>
-                            <button
-                              onClick={() => onDeleteScript(s.id)}
-                              className="p-1.5 text-[#7D8590] hover:text-red-400 hover:bg-red-400/10 rounded-lg transition-colors"
-                              title="Delete"
-                            >
-                              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
+                        s={s}
+                        token={token}
+                        onOpenScript={onOpenScript}
+                        onDeleteScript={onDeleteScript}
+                      />
                     ))}
                   </tbody>
                 </table>

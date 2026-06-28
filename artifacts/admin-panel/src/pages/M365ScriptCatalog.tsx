@@ -34,6 +34,7 @@ interface Script {
   name: string;
   description: string | null;
   runbookName: string;
+  azureSyncedAt: string | null;
   appRegPermissions: AppRegPermission[];
   aiInstructions: string | null;
   executionMode: "automated" | "manual";
@@ -1673,6 +1674,31 @@ function ScriptRow({
   onDelete: (s: Script) => void;
   onRun: (s: Script) => void;
 }) {
+  const { fetchWithAuth } = useAuth();
+  const { toast } = useToast();
+  const [pushing, setPushing] = useState(false);
+  const [syncedAt, setSyncedAt] = useState<string | null>(s.azureSyncedAt ?? null);
+
+  const handlePush = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setPushing(true);
+    try {
+      const res = await fetchWithAuth(`/api/admin/scripts/${s.id}/push-to-azure`, { method: "POST" });
+      if (!res.ok) {
+        const err = await res.json() as { error?: string };
+        toast({ title: err.error ?? "Push to Azure failed", variant: "destructive" });
+        return;
+      }
+      const data = await res.json() as { azureSyncedAt?: string };
+      setSyncedAt(data.azureSyncedAt ?? new Date().toISOString());
+      toast({ title: "Pushed to Azure Automation" });
+    } catch {
+      toast({ title: "Network error pushing to Azure", variant: "destructive" });
+    } finally {
+      setPushing(false);
+    }
+  };
+
   return (
     <tr className="hover:bg-[#1C2128] transition-colors group">
       <td className="px-4 py-3">
@@ -1682,7 +1708,32 @@ function ScriptRow({
         )}
       </td>
       <td className="px-4 py-3 hidden md:table-cell">
-        <span className="font-mono text-xs text-[#7D8590]">{s.runbookName}</span>
+        <div className="flex items-center gap-2">
+          <span className="font-mono text-xs text-[#7D8590]">{s.runbookName}</span>
+          {syncedAt ? (
+            <span
+              className="inline-flex items-center gap-0.5 text-[9px] font-medium px-1.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 whitespace-nowrap"
+              title={`Synced to Azure ${new Date(syncedAt).toLocaleString()}`}
+            >
+              <svg className="w-2 h-2" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
+              Synced
+            </span>
+          ) : (
+            <button
+              onClick={(e) => void handlePush(e)}
+              disabled={pushing}
+              className="inline-flex items-center gap-0.5 text-[9px] font-medium px-1.5 py-0.5 rounded-full bg-[#0078D4]/10 text-[#58A6FF] border border-[#0078D4]/25 hover:bg-[#0078D4]/20 disabled:opacity-50 transition-colors"
+              title="Push to Azure Automation"
+            >
+              {pushing ? (
+                <svg className="w-2 h-2 animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg>
+              ) : (
+                <svg className="w-2 h-2" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" /></svg>
+              )}
+              {pushing ? "Pushing…" : "Push"}
+            </button>
+          )}
+        </div>
       </td>
       <td className="px-4 py-3 hidden lg:table-cell">
         <span className="text-xs text-[#7D8590]">
