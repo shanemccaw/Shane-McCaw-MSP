@@ -43,7 +43,7 @@ export default function RunLibraryScriptDialog({ scriptId, moduleId, scriptTitle
   // Load clients with credentials
   useEffect(() => {
     setLoadingClients(true);
-    fetchWithAuth("/api/admin/clients/with-credentials")
+    fetchWithAuth("/api/admin/clients/with-azure-credentials")
       .then(r => r.json())
       .then((data: unknown) => {
         setClients(Array.isArray(data) ? (data as ClientEntry[]) : []);
