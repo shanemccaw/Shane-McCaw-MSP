@@ -7211,6 +7211,44 @@ router.get("/admin/purchases/:id", requireAdmin, async (req: Request, res: Respo
   });
 });
 
+// ─── ADMIN: Delete purchase ────────────────────────────────────────────────
+router.delete("/admin/purchases/:id", requireAdmin, async (req: Request, res: Response) => {
+  const rawId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+  const id = parseInt(rawId, 10);
+  if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
+
+  await db.transaction(async (tx) => {
+    const [inv] = await tx
+      .select({ id: invoicesTable.id, stripeSessionId: invoicesTable.stripeSessionId, projectId: invoicesTable.projectId })
+      .from(invoicesTable)
+      .where(eq(invoicesTable.id, id))
+      .limit(1);
+
+    if (!inv) {
+      res.status(404).json({ error: "Purchase not found" });
+      return;
+    }
+
+    // Delete linked contracts (matched by stripeSessionId or projectId)
+    if (inv.stripeSessionId) {
+      await tx.delete(contractsTable).where(eq(contractsTable.stripeSessionId, inv.stripeSessionId));
+    }
+    if (inv.projectId) {
+      // Also delete any contracts linked only by projectId (non-first invoices)
+      await tx.delete(contractsTable).where(eq(contractsTable.projectId, inv.projectId));
+      // Delete related client_services rows
+      await tx.delete(clientServicesTable).where(eq(clientServicesTable.projectId, inv.projectId));
+    }
+
+    // Delete the invoice row
+    await tx.delete(invoicesTable).where(eq(invoicesTable.id, id));
+  });
+
+  if (!res.headersSent) {
+    res.status(204).end();
+  }
+});
+
 // ─── PUBLIC: Testimonials ────────────────────────────────────────────────────
 router.get("/public/testimonials", async (_req: Request, res: Response) => {
   const rows = await db

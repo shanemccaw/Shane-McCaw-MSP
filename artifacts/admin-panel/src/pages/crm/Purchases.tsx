@@ -1,6 +1,18 @@
 import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
+import { Trash2 } from "lucide-react";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { useToast } from "@/hooks/use-toast";
 
 interface Purchase {
   id: number;
@@ -20,8 +32,11 @@ interface Purchase {
 export default function PurchasesPage() {
   const { fetchWithAuth } = useAuth();
   const [, navigate] = useLocation();
+  const { toast } = useToast();
   const [purchases, setPurchases] = useState<Purchase[]>([]);
   const [loading, setLoading] = useState(true);
+  const [deleteTarget, setDeleteTarget] = useState<Purchase | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     fetchWithAuth("/api/admin/purchases")
@@ -29,6 +44,22 @@ export default function PurchasesPage() {
       .then(data => { setPurchases(data); setLoading(false); })
       .catch(() => setLoading(false));
   }, [fetchWithAuth]);
+
+  async function handleDelete() {
+    if (!deleteTarget) return;
+    setDeleting(true);
+    try {
+      const res = await fetchWithAuth(`/api/admin/purchases/${deleteTarget.id}`, { method: "DELETE" });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      setPurchases(prev => prev.filter(p => p.id !== deleteTarget.id));
+      toast({ title: "Purchase deleted", description: `${deleteTarget.invoiceNumber} has been removed.` });
+    } catch {
+      toast({ title: "Delete failed", description: "Could not delete the purchase. Please try again.", variant: "destructive" });
+    } finally {
+      setDeleting(false);
+      setDeleteTarget(null);
+    }
+  }
 
   return (
     <div className="p-4 sm:p-6 max-w-[1200px]">
@@ -57,23 +88,33 @@ export default function PurchasesPage() {
                   <th className="text-left px-5 py-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Amount</th>
                   <th className="text-left px-5 py-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Status</th>
                   <th className="text-left px-5 py-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground hidden lg:table-cell">Date</th>
+                  <th className="px-5 py-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground w-12" />
                 </tr>
               </thead>
               <tbody>
                 {purchases.map(p => (
-                  <tr key={p.id} className="border-b border-border last:border-0 hover:bg-[#1C2128] transition-colors cursor-pointer" onClick={() => navigate(`/crm/purchases/${p.id}`)}>
-                    <td className="px-5 py-3.5">
+                  <tr key={p.id} className="border-b border-border last:border-0 hover:bg-[#1C2128] transition-colors">
+                    <td className="px-5 py-3.5 cursor-pointer" onClick={() => navigate(`/crm/purchases/${p.id}`)}>
                       <p className="font-semibold text-[#E6EDF3]">{p.clientName ?? p.clientEmail ?? "—"}</p>
                       <p className="text-xs text-muted-foreground">{p.clientEmail}</p>
                     </td>
-                    <td className="px-5 py-3.5 text-muted-foreground hidden md:table-cell">{p.description ?? p.invoiceNumber}</td>
-                    <td className="px-5 py-3.5 font-bold text-[#E6EDF3]">${parseFloat(p.amount).toFixed(2)}</td>
-                    <td className="px-5 py-3.5">
+                    <td className="px-5 py-3.5 text-muted-foreground hidden md:table-cell cursor-pointer" onClick={() => navigate(`/crm/purchases/${p.id}`)}>{p.description ?? p.invoiceNumber}</td>
+                    <td className="px-5 py-3.5 font-bold text-[#E6EDF3] cursor-pointer" onClick={() => navigate(`/crm/purchases/${p.id}`)}>${parseFloat(p.amount).toFixed(2)}</td>
+                    <td className="px-5 py-3.5 cursor-pointer" onClick={() => navigate(`/crm/purchases/${p.id}`)}>
                       <span className={`text-xs font-semibold px-2.5 py-1 rounded-full capitalize ${p.status === "paid" ? "bg-green-500/15 text-green-400" : "bg-yellow-500/15 text-yellow-400"}`}>
                         {p.status}
                       </span>
                     </td>
-                    <td className="px-5 py-3.5 text-muted-foreground text-xs hidden lg:table-cell">{new Date(p.createdAt).toLocaleDateString()}</td>
+                    <td className="px-5 py-3.5 text-muted-foreground text-xs hidden lg:table-cell cursor-pointer" onClick={() => navigate(`/crm/purchases/${p.id}`)}>{new Date(p.createdAt).toLocaleDateString()}</td>
+                    <td className="px-3 py-3.5 text-right">
+                      <button
+                        onClick={(e) => { e.stopPropagation(); setDeleteTarget(p); }}
+                        className="p-1.5 rounded text-muted-foreground hover:text-red-400 hover:bg-red-500/10 transition-colors"
+                        title="Delete purchase"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -81,6 +122,32 @@ export default function PurchasesPage() {
           </div>
         </div>
       )}
+
+      <AlertDialog open={!!deleteTarget} onOpenChange={(open) => { if (!open) setDeleteTarget(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete this purchase?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will also remove linked contracts and client services. This cannot be undone.
+              {deleteTarget?.stripeSessionId && (
+                <span className="block mt-2 text-xs text-muted-foreground">
+                  The linked Stripe session will not be modified — only the local record is deleted.
+                </span>
+              )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDelete}
+              disabled={deleting}
+              className="bg-red-600 hover:bg-red-700 focus:ring-red-600"
+            >
+              {deleting ? "Deleting…" : "Delete"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

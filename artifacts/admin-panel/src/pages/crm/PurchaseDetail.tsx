@@ -1,6 +1,18 @@
 import { useEffect, useState } from "react";
 import { useRoute, useLocation } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
+import { Trash2 } from "lucide-react";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { useToast } from "@/hooks/use-toast";
 
 interface WizardOption {
   id: string;
@@ -93,9 +105,12 @@ export default function PurchaseDetailPage() {
   const [, params] = useRoute("/crm/purchases/:id");
   const [, navigate] = useLocation();
   const { fetchWithAuth } = useAuth();
+  const { toast } = useToast();
   const [detail, setDetail] = useState<PurchaseDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   const id = params?.id;
 
@@ -110,6 +125,21 @@ export default function PurchaseDetailPage() {
       .then(data => { setDetail(data); setLoading(false); })
       .catch(err => { setError(String(err)); setLoading(false); });
   }, [id, fetchWithAuth]);
+
+  async function handleDelete() {
+    if (!detail) return;
+    setDeleting(true);
+    try {
+      const res = await fetchWithAuth(`/api/admin/purchases/${detail.id}`, { method: "DELETE" });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      toast({ title: "Purchase deleted", description: `${detail.invoiceNumber} has been removed.` });
+      navigate("/crm/purchases");
+    } catch {
+      toast({ title: "Delete failed", description: "Could not delete the purchase. Please try again.", variant: "destructive" });
+      setDeleting(false);
+      setShowDeleteDialog(false);
+    }
+  }
 
   if (loading) {
     return (
@@ -150,9 +180,18 @@ export default function PurchaseDetailPage() {
         >
           ← Purchases
         </button>
-        <div className="flex items-center gap-3 flex-wrap">
-          <h1 className="text-xl font-bold text-[#E6EDF3]">{detail.invoiceNumber}</h1>
-          <span className={statusBadge(detail.status)}>{detail.status}</span>
+        <div className="flex items-center gap-3 flex-wrap justify-between">
+          <div className="flex items-center gap-3 flex-wrap">
+            <h1 className="text-xl font-bold text-[#E6EDF3]">{detail.invoiceNumber}</h1>
+            <span className={statusBadge(detail.status)}>{detail.status}</span>
+          </div>
+          <button
+            onClick={() => setShowDeleteDialog(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm text-red-400 border border-red-500/30 hover:bg-red-500/10 transition-colors"
+          >
+            <Trash2 className="w-4 h-4" />
+            Delete
+          </button>
         </div>
       </div>
 
@@ -243,6 +282,32 @@ export default function PurchaseDetailPage() {
           />
         </Card>
       )}
+
+      <AlertDialog open={showDeleteDialog} onOpenChange={(open) => { if (!open && !deleting) setShowDeleteDialog(false); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete this purchase?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will also remove linked contracts and client services. This cannot be undone.
+              {detail.stripeSessionId && (
+                <span className="block mt-2 text-xs text-muted-foreground">
+                  The linked Stripe session will not be modified — only the local record is deleted.
+                </span>
+              )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDelete}
+              disabled={deleting}
+              className="bg-red-600 hover:bg-red-700 focus:ring-red-600"
+            >
+              {deleting ? "Deleting…" : "Delete"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
