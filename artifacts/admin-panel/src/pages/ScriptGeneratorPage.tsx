@@ -1027,9 +1027,14 @@ const INLINE_JOB_COLORS: Record<string, string> = {
   "Suspended": "text-orange-400",
 };
 
+const ADHOC_SENTINEL = "__adhoc__";
+const ADHOC_RUNBOOK_NAME = "IDE-AdHoc";
+
 function InlineScriptRunner({
+  scriptBody,
   editorScript,
 }: {
+  scriptBody: string;
   editorScript: PsScriptDetail | null;
 }) {
   const { fetchWithAuth } = useAuth();
@@ -1105,17 +1110,25 @@ function InlineScriptRunner({
 
   const handleRun = async () => {
     if (!credId || !selectedRunbook) return;
+    const isAdHoc = selectedRunbook === ADHOC_SENTINEL;
+    if (isAdHoc && !scriptBody.trim()) return;
+    const actualRunbook = isAdHoc
+      ? (editorScript?.azureRunbookName ?? ADHOC_RUNBOOK_NAME)
+      : selectedRunbook;
+
     setRunning(true);
-    setLogLines(["[Starting job…]"]);
+    setLogLines(isAdHoc ? ["[Uploading current script to Azure…]"] : ["[Starting job…]"]);
     setJobStatus("New");
     setAiAnalysis(null);
     setAiError(null);
 
     try {
+      const body: Record<string, unknown> = { credentialId: credId, runbookName: actualRunbook };
+      if (isAdHoc) body["adHocContent"] = scriptBody;
       const res = await fetchWithAuth("/api/admin/runbook-jobs", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ credentialId: credId, runbookName: selectedRunbook }),
+        body: JSON.stringify(body),
       });
       if (!res.ok) {
         const err = await res.json() as { error?: string };
@@ -1178,9 +1191,11 @@ function InlineScriptRunner({
   };
 
   const isTerminal = ["Completed", "Failed", "Stopped", "Suspended"].includes(jobStatus);
-  const canRun = !!credId && !!selectedRunbook && !running;
+  const isAdHocSelected = selectedRunbook === ADHOC_SENTINEL;
+  const canRun = !!credId && selectedRunbook !== "" && !running && !(isAdHocSelected && !scriptBody.trim());
   const statusColor = INLINE_JOB_COLORS[jobStatus] ?? "text-[#7D8590]";
   const currentRunbookName = editorScript?.azureRunbookName ?? null;
+  const hasEditorContent = scriptBody.trim().length > 0;
 
   if (azureConfigured === false) {
     return (
@@ -1230,8 +1245,13 @@ function InlineScriptRunner({
                 className="w-full bg-[#161B22] border border-[#30363D] rounded px-2 py-1.5 text-xs text-[#E6EDF3] outline-none focus:border-[#0078D4]/50 transition-colors"
               >
                 <option value="">Select runbook…</option>
+                {hasEditorContent && (
+                  <option value={ADHOC_SENTINEL}>
+                    ▶ Run current script{currentRunbookName ? ` → ${currentRunbookName}` : ` → ${ADHOC_RUNBOOK_NAME}`}
+                  </option>
+                )}
                 {currentRunbookName && (
-                  <option value={currentRunbookName}>★ {currentRunbookName} (current script)</option>
+                  <option value={currentRunbookName}>★ {currentRunbookName} (saved runbook)</option>
                 )}
                 {runbooks
                   .filter(r => r.name !== currentRunbookName)
@@ -1358,9 +1378,6 @@ function RightPanel({
   scriptBody: string;
   editorScript: PsScriptDetail | null;
 }) {
-  // scriptBody is passed through for future use (e.g. ad-hoc content runs)
-  void scriptBody;
-
   const [activeTab, setActiveTab] = useState<"runner" | "permissions">(() =>
     (lsGet(IDE_RIGHT_TAB_KEY, "runner") as "runner" | "permissions")
   );
@@ -1388,7 +1405,7 @@ function RightPanel({
       {/* Panel content */}
       <div className="flex-1 min-h-0 overflow-hidden flex flex-col">
         {activeTab === "runner" ? (
-          <InlineScriptRunner editorScript={editorScript} />
+          <InlineScriptRunner scriptBody={scriptBody} editorScript={editorScript} />
         ) : (
           <PermissionsSidebarPanel permissions={scriptLoaded ? permissions : null} />
         )}

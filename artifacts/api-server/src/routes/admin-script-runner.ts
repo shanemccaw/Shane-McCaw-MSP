@@ -22,6 +22,8 @@ import {
   getJobStatus,
   getJobOutput,
   isTerminalStatus,
+  pushScriptToAzure,
+  isAzureConfigured,
 } from "../lib/azure-automation";
 import { logger } from "../lib/logger";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
@@ -64,15 +66,34 @@ interface CreateJobBody {
   runbookName: string;
   kanbanTaskId?: number;
   governanceAreas?: string[];
+  /** When provided, pushes this PowerShell content to Azure as the runbook draft before starting the job (ad-hoc IDE run). */
+  adHocContent?: string;
 }
 
 router.post("/admin/runbook-jobs", requireAdmin, async (req: Request, res: Response) => {
   try {
-    const { credentialId, runbookName, kanbanTaskId, governanceAreas } = req.body as CreateJobBody;
+    const { credentialId, runbookName, kanbanTaskId, governanceAreas, adHocContent } = req.body as CreateJobBody;
 
     if (!credentialId || !runbookName) {
       res.status(400).json({ error: "credentialId and runbookName are required" });
       return;
+    }
+
+    // Ad-hoc run: push the editor content to Azure as the runbook draft before starting
+    if (adHocContent?.trim()) {
+      if (!isAzureConfigured()) {
+        res.status(503).json({ error: "Azure Automation is not configured — cannot push ad-hoc script" });
+        return;
+      }
+      try {
+        await pushScriptToAzure(runbookName, adHocContent.trim());
+        logger.info({ runbookName }, "admin-script-runner: pushed ad-hoc script content to Azure");
+      } catch (pushErr) {
+        const msg = pushErr instanceof Error ? pushErr.message : String(pushErr);
+        logger.error({ pushErr, runbookName }, "admin-script-runner: failed to push ad-hoc content");
+        res.status(502).json({ error: `Failed to upload script to Azure: ${msg}` });
+        return;
+      }
     }
 
     const [cred] = await db
