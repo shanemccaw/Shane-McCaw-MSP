@@ -11,10 +11,13 @@ import {
   workflowTemplatesTable,
   workflowTemplateStepsTable,
   workflowTemplateStepTasksTable,
+  kanbanTasksTable,
+  clientServicesTable,
+  scriptRunResultsTable,
   type PsScriptPermissions,
   type ScriptModule,
 } from "@workspace/db";
-import { eq, desc, asc, inArray, and, sql } from "drizzle-orm";
+import { eq, desc, asc, inArray, and, sql, isNotNull } from "drizzle-orm";
 import { logger } from "../lib/logger.ts";
 import { hasPsKeywordsFullText } from "../lib/ps-guard.ts";
 import { isAzureConfigured, pushScriptToAzure } from "../lib/azure-automation.ts";
@@ -48,6 +51,82 @@ async function tryPushPsScriptToAzure(scriptId: string, runbookName: string, psC
 }
 
 const router = Router();
+
+// ─── Script-task Kanban association helpers ───────────────────────────────────
+
+function titleToWords(s: string): Set<string> {
+  return new Set(
+    s.toLowerCase()
+      .replace(/\.ps1$/i, "")
+      .replace(/^\d+-/, "")
+      .replace(/[^a-z0-9]+/g, " ")
+      .trim()
+      .split(" ")
+      .filter((w) => w.length > 2),
+  );
+}
+
+function jaccardSimilarity(a: Set<string>, b: Set<string>): number {
+  if (a.size === 0 && b.size === 0) return 1;
+  const intersection = [...a].filter((x) => b.has(x)).length;
+  const union = new Set([...a, ...b]).size;
+  return union === 0 ? 0 : intersection / union;
+}
+
+function findBestModuleForTask(
+  taskTitle: string,
+  modules: Array<{ filename: string; description: string | null; content: string }>,
+): { module: (typeof modules)[0]; score: number } | null {
+  if (modules.length === 0) return null;
+  const taskWords = titleToWords(taskTitle);
+  let best: { module: (typeof modules)[0]; score: number } = { module: modules[0]!, score: -1 };
+  for (const mod of modules) {
+    const modWords = titleToWords(mod.filename);
+    const score = jaccardSimilarity(taskWords, modWords);
+    if (score > best.score) best = { module: mod, score };
+  }
+  return best;
+}
+
+function makeStubModule(
+  taskTitle: string,
+  index: number,
+): { filename: string; description: string | null; content: string } {
+  const slug = taskTitle
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 50) || "script";
+  const filename = `${String(index).padStart(2, "0")}-${slug}-stub.ps1`;
+  const content = `# file: ${filename}
+# ─── STUB MODULE ────────────────────────────────────────────────────────────
+# This stub was added automatically because the AI did not produce a dedicated
+# module for this task. Implement the PowerShell logic below before running.
+# Task: ${taskTitle}
+# ─────────────────────────────────────────────────────────────────────────────
+[CmdletBinding()]
+param(
+    [Parameter(Mandatory = $true)]
+    [string]$TenantId,
+
+    [Parameter(Mandatory = $true)]
+    [string]$ClientId,
+
+    [Parameter(Mandatory = $true)]
+    [string]$ClientSecret
+)
+
+$ErrorActionPreference = "Stop"
+
+try {
+    # TODO: Implement automation for: ${taskTitle}
+    Write-Output "Stub module for: ${taskTitle}"
+    Write-Output "Replace this placeholder with the real PowerShell logic."
+} catch {
+    Write-Error "Error in '${taskTitle}' stub: \$_"
+}`;
+  return { filename, description: `[STUB] ${taskTitle} — requires implementation`, content };
+}
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -510,6 +589,9 @@ router.post("/admin/ps-scripts/generate-from-service", requireAdmin, async (req:
       return;
     }
 
+    // Script-type template tasks — populated below; used for per-task stub enforcement and Kanban association.
+    let scriptTypeTasks: Array<typeof workflowTemplateStepTasksTable.$inferSelect> = [];
+
     let workflowContext = "";
     if (service.workflowTemplateId) {
       const [template] = await db
@@ -534,6 +616,11 @@ router.post("/admin/ps-scripts/generate-from-service", requireAdmin, async (req:
                 .where(inArray(workflowTemplateStepTasksTable.workflowTemplateStepId, stepIds))
                 .orderBy(asc(workflowTemplateStepTasksTable.order))
             : [];
+
+        // Collect script-type tasks for enforced per-task module generation.
+        scriptTypeTasks = allTasks.filter(
+          (t) => t.taskType === "script" || t.taskType === "manualScript",
+        );
 
         workflowContext = `\n\nWORKFLOW TEMPLATE: "${template.name}"`;
         if (template.description) workflowContext += `\n${template.description}`;
@@ -560,6 +647,15 @@ router.post("/admin/ps-scripts/generate-from-service", requireAdmin, async (req:
             if (taskDeliverables?.length)
               workflowContext += `\n    Client deliverables: ${taskDeliverables.join(", ")}`;
           }
+        }
+
+        // Add an explicit per-task requirement block so the AI doesn't merge or skip script-type tasks.
+        if (scriptTypeTasks.length > 0) {
+          workflowContext += `\n\nMANDATORY MODULES — each entry below is tagged "script" or "manualScript" and MUST produce its own dedicated PowerShell module. Do NOT merge two of these tasks into one module, and do NOT omit any of them:`;
+          scriptTypeTasks.forEach((t, i) => {
+            const suffix = t.taskType === "manualScript" ? " [manual — no app credentials]" : " [automated — app credentials OK]";
+            workflowContext += `\n  ${i + 1}. "${t.title}"${suffix}`;
+          });
         }
       }
     }
@@ -695,6 +791,34 @@ Classify each task and generate PowerShell automation scripts for all M365/Azure
         return;
       }
 
+      // ── Stub enforcement ──────────────────────────────────────────────────────
+      // For every script-type template task that has no matching AI-generated module,
+      // insert a stub so the association step always has something to link.
+      if (scriptTypeTasks.length > 0) {
+        const existingFilenames = new Set(validModules.map((m) => m.filename.toLowerCase()));
+        const coveredTaskIndices = new Set<number>();
+        // Mark which template tasks are already covered (score ≥ 0.20 match).
+        for (let ti = 0; ti < scriptTypeTasks.length; ti++) {
+          const tt = scriptTypeTasks[ti]!;
+          const match = findBestModuleForTask(tt.title, validModules);
+          if (match && match.score >= 0.20) coveredTaskIndices.add(ti);
+        }
+        // Append stubs for uncovered tasks.
+        const stubStartIndex = validModules.length + 1;
+        let stubOffset = 0;
+        for (let ti = 0; ti < scriptTypeTasks.length; ti++) {
+          if (coveredTaskIndices.has(ti)) continue;
+          const tt = scriptTypeTasks[ti]!;
+          const stub = makeStubModule(tt.title, stubStartIndex + stubOffset);
+          // Avoid duplicate filenames just in case.
+          if (!existingFilenames.has(stub.filename.toLowerCase())) {
+            validModules.push(stub);
+            existingFilenames.add(stub.filename.toLowerCase());
+          }
+          stubOffset++;
+        }
+      }
+
       const packageTitle =
         (typeof parsed["title"] === "string" ? parsed["title"].trim() : null) || service.name;
 
@@ -728,7 +852,146 @@ Classify each task and generate PowerShell automation scripts for all M365/Azure
         { packageId: pkg.id, moduleCount: validModules.length, service: service.name },
         "generate-from-service: saved package",
       );
-      res.json({ type: "package", packageId: pkg.id, title: packageTitle, modules: validModules, humanOnlyTasks, permissions });
+
+      // ── Kanban association (best-effort, non-fatal) ───────────────────────────
+      // After the package is saved, match each script-type template task to its
+      // generated module and write-back to the matching Kanban task cards across
+      // all client projects linked to this service.
+      interface TaskAssociationResult {
+        taskTitle: string;
+        taskType: string;
+        moduleFilename: string;
+        associationStatus: "linked" | "stub";
+        kanbanTasksUpdated: number;
+      }
+      const taskAssociations: TaskAssociationResult[] = [];
+
+      try {
+        if (scriptTypeTasks.length > 0) {
+          // Find all client projects linked to this service.
+          const linkedServices = await db
+            .select({ projectId: clientServicesTable.projectId, clientUserId: clientServicesTable.clientUserId })
+            .from(clientServicesTable)
+            .where(and(eq(clientServicesTable.serviceId, serviceId), isNotNull(clientServicesTable.projectId)));
+
+          const projectIds = linkedServices
+            .map((s) => s.projectId)
+            .filter((id): id is number => id !== null);
+
+          // Load all script-type kanban tasks across these projects.
+          const allKanbanTasks =
+            projectIds.length > 0
+              ? await db
+                  .select()
+                  .from(kanbanTasksTable)
+                  .where(
+                    and(
+                      inArray(kanbanTasksTable.projectId, projectIds),
+                      inArray(kanbanTasksTable.taskType, ["script", "manualScript"]),
+                    ),
+                  )
+              : [];
+
+          // For each script-type template task, find the best module and matching kanban cards.
+          for (const templateTask of scriptTypeTasks) {
+            const match = findBestModuleForTask(templateTask.title, validModules);
+            if (!match) continue;
+
+            const isStub = match.module.filename.includes("-stub.ps1");
+            // The runbook name used by the admin "Run Runbook" button.
+            const runbookName = titleToRunbookName(
+              match.module.filename.replace(/\.ps1$/i, "").replace(/^\d+-/, ""),
+            );
+
+            // Find kanban tasks whose title is similar to this template task's title.
+            const templateWords = titleToWords(templateTask.title);
+            const matchingKanban = allKanbanTasks.filter((kt) => {
+              const ktWords = titleToWords(kt.title);
+              return jaccardSimilarity(templateWords, ktWords) >= 0.20;
+            });
+
+            let kanbanTasksUpdated = 0;
+
+            for (const kanbanTask of matchingKanban) {
+              const meta = (kanbanTask.taskMetadata ?? {}) as Record<string, unknown>;
+
+              if (kanbanTask.taskType === "script") {
+                // Automated: write runbookName so "Run Runbook" button appears.
+                await db
+                  .update(kanbanTasksTable)
+                  .set({ taskMetadata: { ...meta, runbookName }, updatedAt: new Date() })
+                  .where(eq(kanbanTasksTable.id, kanbanTask.id));
+                kanbanTasksUpdated++;
+              } else if (kanbanTask.taskType === "manualScript") {
+                // Manual: skip if already linked (idempotent).
+                if (meta["scriptRunResultId"]) continue;
+
+                // Save a standalone library script so the download endpoint can serve it.
+                const libTitle = `${packageTitle}: ${match.module.filename.replace(/^\d+-/, "").replace(/\.ps1$/i, "")}`;
+                const [libScript] = await db
+                  .insert(powershellScriptsTable)
+                  .values({
+                    title: libTitle,
+                    category: "m365",
+                    scriptBody: match.module.content,
+                    permissions,
+                    tags: ["manual", "from-package"],
+                  })
+                  .returning({ id: powershellScriptsTable.id });
+
+                if (!libScript) continue;
+
+                // Resolve the customerId from the project's linked service row.
+                const projSvc = linkedServices.find((s) => s.projectId === kanbanTask.projectId);
+                const customerId = projSvc?.clientUserId ?? null;
+
+                const [runResult] = await db
+                  .insert(scriptRunResultsTable)
+                  .values({
+                    customerId,
+                    libraryScriptId: libScript.id,
+                    status: "awaiting_upload",
+                    executionSource: "manual",
+                  })
+                  .returning({ id: scriptRunResultsTable.id });
+
+                if (!runResult) continue;
+
+                await db
+                  .update(kanbanTasksTable)
+                  .set({
+                    taskMetadata: {
+                      ...meta,
+                      scriptRunResultId: runResult.id,
+                      projectId: kanbanTask.projectId,
+                    },
+                    updatedAt: new Date(),
+                  })
+                  .where(eq(kanbanTasksTable.id, kanbanTask.id));
+                kanbanTasksUpdated++;
+              }
+            }
+
+            taskAssociations.push({
+              taskTitle: templateTask.title,
+              taskType: templateTask.taskType ?? "script",
+              moduleFilename: match.module.filename,
+              associationStatus: isStub ? "stub" : "linked",
+              kanbanTasksUpdated,
+            });
+          }
+
+          logger.info(
+            { serviceId, taskAssociations },
+            "generate-from-service: completed Kanban association",
+          );
+        }
+      } catch (assocErr) {
+        // Non-fatal: log but do not fail the whole generation.
+        logger.warn({ assocErr }, "generate-from-service: Kanban association step failed (non-fatal)");
+      }
+
+      res.json({ type: "package", packageId: pkg.id, title: packageTitle, modules: validModules, humanOnlyTasks, permissions, taskAssociations });
       return;
     }
 

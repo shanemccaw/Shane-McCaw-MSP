@@ -2245,11 +2245,19 @@ function GenerateFromServiceDialog({
   const [humanOnlyTasks, setHumanOnlyTasks] = useState<string[]>([]);
   const [humanOnlyExplanation, setHumanOnlyExplanation] = useState<string | null>(null);
 
+  type TaskAssociation = {
+    taskTitle: string;
+    taskType: string;
+    moduleFilename: string;
+    associationStatus: "linked" | "stub";
+    kanbanTasksUpdated: number;
+  };
   type PackageResult = {
     packageId: string;
     title: string;
     modules: ScriptModuleItem[];
     permissions: PsScriptPermissions;
+    taskAssociations: TaskAssociation[];
   };
   const [packageResult, setPackageResult] = useState<PackageResult | null>(null);
   const [pushDialogOpen, setPushDialogOpen] = useState(false);
@@ -2303,6 +2311,7 @@ function GenerateFromServiceDialog({
         savedScript?: PsScriptDetail;
         humanOnlyTasks: string[];
         permissions?: PsScriptPermissions;
+        taskAssociations?: TaskAssociation[];
       };
       const result = (await apiFetch("/admin/ps-scripts/generate-from-service", token, {
         method: "POST",
@@ -2323,7 +2332,7 @@ function GenerateFromServiceDialog({
         toast({ title: result.title ?? "No automation possible", description: "See details below." });
       } else if (result.type === "package" && result.packageId && result.modules) {
         const pkgPerms: PsScriptPermissions = result.permissions ?? { appPermissions: [], delegatedPermissions: [], notes: "" };
-        setPackageResult({ packageId: result.packageId, title: result.title, modules: result.modules, permissions: pkgPerms });
+        setPackageResult({ packageId: result.packageId, title: result.title, modules: result.modules, permissions: pkgPerms, taskAssociations: result.taskAssociations ?? [] });
       } else if (result.type === "manual" && result.savedScript) {
         onManualScriptGenerated(result.savedScript);
         toast({
@@ -2528,21 +2537,62 @@ function GenerateFromServiceDialog({
 
           {/* Package result panel — shown after successful package generation */}
           {packageResult && (
-            <div className="bg-[#0D1117] border border-[#0078D4]/40 rounded-lg overflow-hidden">
-              <div className="flex items-center gap-2 px-3 py-2 border-b border-[#21262D] bg-[#0078D4]/10">
-                <svg className="w-3.5 h-3.5 text-[#58A6FF] flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8l1 12a2 2 0 002 2h8a2 2 0 002-2l1-12M10 12v4m4-4v4" /></svg>
-                <p className="text-[11px] font-semibold text-[#58A6FF] flex-1">Package generated — {packageResult.modules.length} module{packageResult.modules.length !== 1 ? "s" : ""}</p>
-                <span className="text-[10px] text-[#7D8590] truncate max-w-[180px]">{packageResult.title}</span>
+            <div className="space-y-3">
+              {/* Module list */}
+              <div className="bg-[#0D1117] border border-[#0078D4]/40 rounded-lg overflow-hidden">
+                <div className="flex items-center gap-2 px-3 py-2 border-b border-[#21262D] bg-[#0078D4]/10">
+                  <svg className="w-3.5 h-3.5 text-[#58A6FF] flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8l1 12a2 2 0 002 2h8a2 2 0 002-2l1-12M10 12v4m4-4v4" /></svg>
+                  <p className="text-[11px] font-semibold text-[#58A6FF] flex-1">Package generated — {packageResult.modules.length} module{packageResult.modules.length !== 1 ? "s" : ""}</p>
+                  <span className="text-[10px] text-[#7D8590] truncate max-w-[180px]">{packageResult.title}</span>
+                </div>
+                <div className="divide-y divide-[#21262D]">
+                  {packageResult.modules.map((m) => (
+                    <div key={m.filename} className="flex items-center gap-2.5 px-3 py-2">
+                      <div className="w-3.5 h-3.5 rounded-full border border-[#30363D] flex-shrink-0" />
+                      <span className="text-[11px] font-mono text-[#E6EDF3] flex-1">{m.filename}</span>
+                      {m.description && <span className="text-[10px] text-[#7D8590] truncate max-w-[200px]">{m.description}</span>}
+                    </div>
+                  ))}
+                </div>
               </div>
-              <div className="divide-y divide-[#21262D]">
-                {packageResult.modules.map((m) => (
-                  <div key={m.filename} className="flex items-center gap-2.5 px-3 py-2">
-                    <div className="w-3.5 h-3.5 rounded-full border border-[#30363D] flex-shrink-0" />
-                    <span className="text-[11px] font-mono text-[#E6EDF3] flex-1">{m.filename}</span>
-                    {m.description && <span className="text-[10px] text-[#7D8590] truncate max-w-[200px]">{m.description}</span>}
+
+              {/* Task → module association summary */}
+              {packageResult.taskAssociations.length > 0 && (
+                <div className="bg-[#0D1117] border border-[#21262D] rounded-lg overflow-hidden">
+                  <div className="flex items-center gap-2 px-3 py-2 border-b border-[#21262D]">
+                    <svg className="w-3.5 h-3.5 text-teal-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" /></svg>
+                    <p className="text-[11px] font-semibold text-teal-400">Kanban task associations</p>
                   </div>
-                ))}
-              </div>
+                  <div className="divide-y divide-[#21262D]">
+                    {packageResult.taskAssociations.map((assoc, i) => (
+                      <div key={i} className="px-3 py-2 flex items-start gap-2.5">
+                        <div className={`w-1.5 h-1.5 rounded-full mt-1.5 flex-shrink-0 ${assoc.associationStatus === "linked" ? "bg-teal-400" : "bg-amber-400"}`} />
+                        <div className="flex-1 min-w-0 space-y-0.5">
+                          <p className="text-[11px] font-medium text-[#E6EDF3] truncate">{assoc.taskTitle}</p>
+                          <p className="text-[10px] font-mono text-[#7D8590] truncate">→ {assoc.moduleFilename}</p>
+                        </div>
+                        <div className="flex items-center gap-1.5 flex-shrink-0">
+                          <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wide ${
+                            assoc.taskType === "manualScript"
+                              ? "bg-cyan-500/15 text-cyan-400 border border-cyan-500/30"
+                              : "bg-violet-500/15 text-violet-400 border border-violet-500/30"
+                          }`}>
+                            {assoc.taskType === "manualScript" ? "manual" : "auto"}
+                          </span>
+                          {assoc.associationStatus === "stub" && (
+                            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wide bg-amber-500/15 text-amber-400 border border-amber-500/30">stub</span>
+                          )}
+                          {assoc.kanbanTasksUpdated > 0 ? (
+                            <span className="text-[9px] text-teal-400">{assoc.kanbanTasksUpdated} card{assoc.kanbanTasksUpdated !== 1 ? "s" : ""} linked</span>
+                          ) : (
+                            <span className="text-[9px] text-[#484F58]">no cards yet</span>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
