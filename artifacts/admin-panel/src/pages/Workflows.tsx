@@ -79,6 +79,7 @@ interface StepTask {
   checklistId: number | null;
   artifactsId: number | null;
   deliverablesId: number | null;
+  requiresManualRun: boolean | null;
 }
 
 interface WorkflowStep {
@@ -950,6 +951,11 @@ function SortableTaskRow({
                 🏷 {TASK_TYPE_LABELS[task.taskType] ?? task.taskType}
               </span>
             )}
+            {task.taskType === "script" && task.requiresManualRun && (
+              <span className="text-[9px] bg-orange-50 text-orange-700 border border-orange-200 px-1.5 py-0.5 rounded font-semibold">
+                👤 Customer Run
+              </span>
+            )}
             {task.instructionSetId && (() => {
               const name = instructionSets.find(a => a.id === task.instructionSetId)?.title ?? `#${task.instructionSetId}`;
               return (
@@ -1310,6 +1316,13 @@ export default function WorkflowsPage() {
   const [bulkOpen, setBulkOpen] = useState(false);
   const [jsonImportOpen, setJsonImportOpen] = useState(false);
 
+  // AI Generate
+  const [aiGenerateOpen, setAiGenerateOpen] = useState(false);
+  const [aiGenerateMode, setAiGenerateMode] = useState<"append" | "replace">("replace");
+  const [aiGenerating, setAiGenerating] = useState(false);
+  const [aiGenerateResult, setAiGenerateResult] = useState<{ stepsCreated: number; tasksCreated: number } | null>(null);
+  const [aiGenerateError, setAiGenerateError] = useState<string | null>(null);
+
   // AI asset generation
   const [generateDialogOpen, setGenerateDialogOpen] = useState(false);
 
@@ -1618,6 +1631,33 @@ export default function WorkflowsPage() {
       )
     );
     await refreshSelected();
+  }
+
+  // ── Bulk Tools: AI Generate ────────────────────────────────────────────────
+
+  async function runAiGenerate() {
+    if (!selected) return;
+    setAiGenerating(true);
+    setAiGenerateResult(null);
+    setAiGenerateError(null);
+    try {
+      const res = await fetchWithAuth(`/api/admin/workflow-templates/${selected.id}/ai-generate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mode: aiGenerateMode }),
+      });
+      const data = await res.json() as { stepsCreated?: number; tasksCreated?: number; error?: string };
+      if (!res.ok) {
+        setAiGenerateError(data.error ?? "Generation failed");
+        return;
+      }
+      setAiGenerateResult({ stepsCreated: data.stepsCreated ?? 0, tasksCreated: data.tasksCreated ?? 0 });
+      await refreshSelected();
+    } catch {
+      setAiGenerateError("Network error — please try again");
+    } finally {
+      setAiGenerating(false);
+    }
   }
 
   // ── Bulk Tools: JSON import ────────────────────────────────────────────────
@@ -2227,7 +2267,7 @@ export default function WorkflowsPage() {
                         Export JSON
                       </button>
                       <button
-                        onClick={() => { setEngImportOpen(v => !v); setJsonImportOpen(false); setEngImportText(""); }}
+                        onClick={() => { setEngImportOpen(v => !v); setJsonImportOpen(false); setAiGenerateOpen(false); setEngImportText(""); }}
                         className="w-full flex items-center gap-1.5 text-xs text-purple-600 hover:text-purple-800 px-2 py-1.5 rounded hover:bg-purple-50"
                       >
                         <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -2236,7 +2276,7 @@ export default function WorkflowsPage() {
                         Import Engineer Fields
                       </button>
                       <button
-                        onClick={() => { setJsonImportOpen(v => !v); setEngImportOpen(false); setJsonImportText(""); }}
+                        onClick={() => { setJsonImportOpen(v => !v); setEngImportOpen(false); setAiGenerateOpen(false); setJsonImportText(""); }}
                         className="w-full flex items-center gap-1.5 text-xs text-[#00B4D8] hover:text-[#0097B5] px-2 py-1.5 rounded hover:bg-cyan-50"
                       >
                         <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -2244,6 +2284,97 @@ export default function WorkflowsPage() {
                         </svg>
                         Import from JSON
                       </button>
+
+                      {/* AI Generate */}
+                      <button
+                        onClick={() => {
+                          if (!selected?.serviceId) return;
+                          setAiGenerateOpen(v => !v);
+                          setJsonImportOpen(false);
+                          setEngImportOpen(false);
+                          setAiGenerateResult(null);
+                          setAiGenerateError(null);
+                        }}
+                        disabled={!selected?.serviceId}
+                        title={!selected?.serviceId ? "Link a service to this template first" : "Generate steps and tasks from the linked service using AI"}
+                        className={`w-full flex items-center gap-1.5 text-xs px-2 py-1.5 rounded transition-colors ${
+                          !selected?.serviceId
+                            ? "text-[#484F58] cursor-not-allowed"
+                            : "text-violet-400 hover:text-violet-300 hover:bg-violet-900/20"
+                        }`}
+                      >
+                        <svg className="w-3 h-3 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                        </svg>
+                        AI Generate
+                      </button>
+
+                      {/* AI Generate panel */}
+                      {aiGenerateOpen && selected?.serviceId && (
+                        <div className="mt-2 rounded-lg border border-violet-500/30 bg-violet-900/10 p-3 space-y-3">
+                          <p className="text-[10px] text-violet-300 leading-snug">
+                            Claude will read the linked service definition and generate a complete set of workflow steps and engineer tasks.
+                          </p>
+
+                          {/* Mode toggle */}
+                          <div>
+                            <p className="text-[10px] font-bold text-[#7D8590] uppercase tracking-wide mb-1.5">Mode</p>
+                            <div className="flex gap-1.5">
+                              {(["replace", "append"] as const).map(m => (
+                                <button
+                                  key={m}
+                                  onClick={() => setAiGenerateMode(m)}
+                                  className={`flex-1 text-[10px] font-semibold py-1 rounded border transition-colors capitalize ${
+                                    aiGenerateMode === m
+                                      ? "bg-violet-600 text-white border-violet-500"
+                                      : "text-[#7D8590] border-[#30363D] hover:border-violet-500/50 hover:text-violet-300"
+                                  }`}
+                                >
+                                  {m}
+                                </button>
+                              ))}
+                            </div>
+                            <p className="text-[9px] text-[#7D8590] mt-1">
+                              {aiGenerateMode === "replace"
+                                ? "⚠ Clears all existing steps and tasks first"
+                                : "Appends new steps after existing ones"}
+                            </p>
+                          </div>
+
+                          {aiGenerateError && (
+                            <p className="text-[10px] text-red-400 bg-red-900/10 border border-red-500/20 rounded px-2 py-1.5">{aiGenerateError}</p>
+                          )}
+
+                          {aiGenerateResult && (
+                            <p className="text-[10px] text-green-400 bg-green-900/10 border border-green-500/20 rounded px-2 py-1.5">
+                              ✓ Created {aiGenerateResult.stepsCreated} step{aiGenerateResult.stepsCreated !== 1 ? "s" : ""} and {aiGenerateResult.tasksCreated} task{aiGenerateResult.tasksCreated !== 1 ? "s" : ""}
+                            </p>
+                          )}
+
+                          <button
+                            onClick={() => void runAiGenerate()}
+                            disabled={aiGenerating}
+                            className="w-full flex items-center justify-center gap-1.5 text-xs font-semibold bg-violet-600 hover:bg-violet-500 disabled:opacity-50 disabled:cursor-not-allowed text-white py-2 rounded-lg transition-colors"
+                          >
+                            {aiGenerating ? (
+                              <>
+                                <svg className="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24">
+                                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                                </svg>
+                                Generating…
+                              </>
+                            ) : (
+                              <>
+                                <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                  <path strokeLinecap="round" strokeLinejoin="round" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                                </svg>
+                                Generate Workflow
+                              </>
+                            )}
+                          </button>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>

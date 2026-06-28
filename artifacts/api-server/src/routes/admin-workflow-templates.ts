@@ -11,6 +11,7 @@ import {
   assetLibraryCategoriesTable,
   scriptPackagesTable,
   scriptModulesTable,
+  servicesTable,
 } from "@workspace/db";
 import { eq, asc, inArray, desc } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/requireAuth";
@@ -906,5 +907,199 @@ router.post(
     }
   }
 );
+
+// ─── AI Generate Workflow Steps + Tasks from linked service ──────────────────
+
+function extractJsonArrayFromText(text: string): unknown[] | null {
+  const jsonTagPos = text.indexOf("```json");
+  if (jsonTagPos !== -1) {
+    const bodyStart = jsonTagPos + 7;
+    const afterNewline = text[bodyStart] === "\n" ? bodyStart + 1 : bodyStart;
+    const closingPos = text.lastIndexOf("```");
+    if (closingPos > afterNewline) {
+      try {
+        const v = JSON.parse(text.slice(afterNewline, closingPos).trim()) as unknown;
+        if (Array.isArray(v)) return v;
+      } catch { /* fall through */ }
+    }
+  }
+  const anyOpen = text.indexOf("```");
+  if (anyOpen !== -1) {
+    const afterTag = text.indexOf("\n", anyOpen);
+    const closingPos = text.lastIndexOf("```");
+    if (afterTag !== -1 && closingPos > afterTag) {
+      try {
+        const v = JSON.parse(text.slice(afterTag + 1, closingPos).trim()) as unknown;
+        if (Array.isArray(v)) return v;
+      } catch { /* fall through */ }
+    }
+  }
+  const start = text.indexOf("[");
+  const end = text.lastIndexOf("]");
+  if (start !== -1 && end > start) {
+    try {
+      const v = JSON.parse(text.slice(start, end + 1)) as unknown;
+      if (Array.isArray(v)) return v;
+    } catch { /* fall through */ }
+  }
+  return null;
+}
+
+const VALID_TASK_TYPES = new Set([
+  "discovery", "environmentHealthCheck", "governanceSetup",
+  "automationBuild", "training", "documentDelivery", "script",
+]);
+const VALID_GROUP_NAMES = new Set(["Engineer Tasks", "Artifacts Produced", "Client Deliverables"]);
+
+router.post("/admin/workflow-templates/:id/ai-generate", requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const id = Number(req.params.id);
+    if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
+    const { mode = "append" } = req.body as { mode?: "replace" | "append" };
+
+    const [template] = await db
+      .select()
+      .from(workflowTemplatesTable)
+      .where(eq(workflowTemplatesTable.id, id))
+      .limit(1);
+    if (!template) { res.status(404).json({ error: "Template not found" }); return; }
+    if (!template.serviceId) {
+      res.status(400).json({ error: "This workflow template has no linked service. Link a service first." });
+      return;
+    }
+
+    const [service] = await db
+      .select({
+        name: servicesTable.name,
+        description: servicesTable.description,
+        category: servicesTable.category,
+        deliverables: servicesTable.deliverables,
+        inclusions: servicesTable.inclusions,
+        features: servicesTable.features,
+      })
+      .from(servicesTable)
+      .where(eq(servicesTable.id, template.serviceId))
+      .limit(1);
+    if (!service) { res.status(404).json({ error: "Linked service not found" }); return; }
+
+    const serviceContext = [
+      `Service: ${service.name}`,
+      service.description ? `Description: ${service.description}` : "",
+      service.category ? `Category: ${service.category}` : "",
+      service.deliverables?.length ? `Deliverables:\n${service.deliverables.map(d => `  - ${d}`).join("\n")}` : "",
+      service.inclusions?.length ? `Inclusions:\n${service.inclusions.map(i => `  - ${i}`).join("\n")}` : "",
+      service.features?.length ? `Features:\n${service.features.map(f => `  - ${f}`).join("\n")}` : "",
+    ].filter(Boolean).join("\n");
+
+    const msg = await anthropic.messages.create({
+      model: "claude-haiku-4-5",
+      max_tokens: 4096,
+      system: `You are an expert Microsoft 365 consulting workflow designer for Shane McCaw Consulting.
+Your job is to generate a complete delivery workflow for a consulting service.
+Respond with a JSON array ONLY — no preamble, no explanation, no markdown prose outside the JSON block.
+
+Output format:
+[
+  {
+    "title": "Step title (e.g. Discovery & Assessment)",
+    "description": "Brief description of what this phase covers",
+    "tasks": [
+      {
+        "title": "Task title",
+        "taskType": "one of: discovery | environmentHealthCheck | governanceSetup | automationBuild | training | documentDelivery | script",
+        "groupName": "one of: Engineer Tasks | Artifacts Produced | Client Deliverables",
+        "requiresManualRun": false
+      }
+    ]
+  }
+]
+
+Rules:
+- Generate 4-8 delivery steps covering discovery → configuration → validation → handoff
+- Each step should have 3-8 tasks
+- Use taskType "script" for tasks that involve running PowerShell runbooks or automated scripts; set requiresManualRun: true for script tasks that the customer must trigger themselves (e.g. user-run consent flows, client-side script executions)
+- Spread tasks across groupName values: "Engineer Tasks" for internal work, "Artifacts Produced" for outputs the engineer creates, "Client Deliverables" for what the customer receives
+- Be specific to this exact service — use details from the service description, deliverables, and features
+- Task titles should be action-oriented (e.g. "Audit existing SharePoint structure", "Deploy Teams governance policy")`,
+      messages: [{
+        role: "user",
+        content: `Generate a complete workflow for this consulting service:\n\n${serviceContext}`,
+      }],
+    });
+
+    const block = msg.content[0];
+    if (!block || block.type !== "text") {
+      res.status(500).json({ error: "AI returned no response" }); return;
+    }
+
+    const rawSteps = extractJsonArrayFromText(block.text);
+    if (!rawSteps) {
+      logger.warn({ text: block.text.slice(0, 500) }, "ai-generate: could not extract JSON array from response");
+      res.status(500).json({ error: "AI response could not be parsed as a step array" }); return;
+    }
+
+    if (mode === "replace") {
+      await db.delete(workflowTemplateStepsTable).where(eq(workflowTemplateStepsTable.workflowTemplateId, id));
+    }
+
+    const existingSteps = await db
+      .select({ order: workflowTemplateStepsTable.order })
+      .from(workflowTemplateStepsTable)
+      .where(eq(workflowTemplateStepsTable.workflowTemplateId, id));
+    let stepOrder = existingSteps.length > 0
+      ? Math.max(...existingSteps.map(s => s.order)) + 1
+      : 0;
+
+    let stepsCreated = 0;
+    let tasksCreated = 0;
+
+    for (const rawStep of rawSteps) {
+      if (!rawStep || typeof rawStep !== "object") continue;
+      const s = rawStep as Record<string, unknown>;
+      const stepTitle = typeof s.title === "string" ? s.title.trim() : null;
+      if (!stepTitle) continue;
+      const stepDescription = typeof s.description === "string" ? s.description.trim() : null;
+
+      const [insertedStep] = await db
+        .insert(workflowTemplateStepsTable)
+        .values({
+          workflowTemplateId: id,
+          title: stepTitle,
+          description: stepDescription ?? null,
+          order: stepOrder++,
+        })
+        .returning();
+      if (!insertedStep) continue;
+      stepsCreated++;
+
+      const tasks = Array.isArray(s.tasks) ? s.tasks : [];
+      let taskOrder = 0;
+      for (const rawTask of tasks) {
+        if (!rawTask || typeof rawTask !== "object") continue;
+        const t = rawTask as Record<string, unknown>;
+        const taskTitle = typeof t.title === "string" ? t.title.trim() : null;
+        if (!taskTitle) continue;
+        const taskType = typeof t.taskType === "string" && VALID_TASK_TYPES.has(t.taskType) ? t.taskType : null;
+        const groupName = typeof t.groupName === "string" && VALID_GROUP_NAMES.has(t.groupName) ? t.groupName : "Engineer Tasks";
+        const requiresManualRun = t.requiresManualRun === true;
+
+        await db.insert(workflowTemplateStepTasksTable).values({
+          workflowTemplateStepId: insertedStep.id,
+          title: taskTitle,
+          taskType: taskType ?? null,
+          groupName,
+          requiresManualRun,
+          order: taskOrder++,
+        });
+        tasksCreated++;
+      }
+    }
+
+    res.json({ stepsCreated, tasksCreated, mode });
+  } catch (err) {
+    logger.error({ err }, "ai-generate: endpoint failed");
+    res.status(500).json({ error: "Failed to generate workflow" });
+  }
+});
 
 export default router;
