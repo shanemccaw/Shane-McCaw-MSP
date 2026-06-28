@@ -17,13 +17,14 @@ interface RunStatus {
 }
 
 interface Props {
-  scriptId: string;
+  scriptId?: string;
+  moduleId?: string;
   scriptTitle: string;
-  azureRunbookName: string | null;
+  azureRunbookName?: string | null;
   onClose: () => void;
 }
 
-export default function RunLibraryScriptDialog({ scriptId, scriptTitle, azureRunbookName, onClose }: Props) {
+export default function RunLibraryScriptDialog({ scriptId, moduleId, scriptTitle, azureRunbookName, onClose }: Props) {
   const { fetchWithAuth } = useAuth();
   const { toast } = useToast();
 
@@ -95,7 +96,7 @@ export default function RunLibraryScriptDialog({ scriptId, scriptTitle, azureRun
   }, [fetchWithAuth, stopPolling]);
 
   const handleRun = async () => {
-    if (!azureRunbookName) {
+    if (!moduleId && !azureRunbookName) {
       toast({ title: "Script not pushed to Azure", description: "Push this script to Azure Automation first", variant: "destructive" });
       return;
     }
@@ -106,7 +107,9 @@ export default function RunLibraryScriptDialog({ scriptId, scriptTitle, azureRun
     setRunning(true);
     setRunStatus(null);
     try {
-      const body: Record<string, unknown> = { libraryScriptId: scriptId };
+      const body: Record<string, unknown> = moduleId
+        ? { libraryModuleId: moduleId }
+        : { libraryScriptId: scriptId };
       if (credentialId) body.credentialId = credentialId;
       if (selectedClientId) body.customerId = selectedClientId;
 

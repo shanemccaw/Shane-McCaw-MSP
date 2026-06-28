@@ -15,6 +15,7 @@ import {
   db,
   powershellScriptsTable,
   scriptRunResultsTable,
+  scriptModulesTable,
   clientScoresTable,
   clientM365ProfilesTable,
   clientHealthHistoryTable,
@@ -42,6 +43,20 @@ const runScriptSchema = z.union([
   }),
   z.object({
     libraryScriptId: z.string().uuid(),
+    customerId: z.number().int().positive().optional(),
+    tenantId: z.string().min(1),
+    clientId: z.string().min(1),
+    clientSecret: z.string().min(1),
+    packageContext: z.string().optional(),
+  }),
+  z.object({
+    libraryModuleId: z.string().uuid(),
+    customerId: z.number().int().positive().optional(),
+    credentialId: z.number().int().positive(),
+    packageContext: z.string().optional(),
+  }),
+  z.object({
+    libraryModuleId: z.string().uuid(),
     customerId: z.number().int().positive().optional(),
     tenantId: z.string().min(1),
     clientId: z.string().min(1),
@@ -251,7 +266,7 @@ router.post("/admin/run-script", requireAdmin, async (req: Request, res: Respons
     return;
   }
 
-  const { libraryScriptId, packageContext } = parsed.data;
+  const packageContext = "packageContext" in parsed.data ? (parsed.data.packageContext ?? "") : "";
 
   // Resolve credentials — either from credentialId (Key Vault) or raw fields
   let tenantId: string;
@@ -287,21 +302,46 @@ router.post("/admin/run-script", requireAdmin, async (req: Request, res: Respons
     clientSecret = parsed.data.clientSecret;
   }
 
-  // Fetch library script
-  const [script] = await db
-    .select()
-    .from(powershellScriptsTable)
-    .where(eq(powershellScriptsTable.id, libraryScriptId))
-    .limit(1);
+  // Resolve what to run — either a standalone library script or a package module
+  let resolvedRunbookName: string;
+  let resolvedLibraryScriptId: string | null = null;
 
-  if (!script) {
-    res.status(404).json({ error: `Library script ${libraryScriptId} not found` });
-    return;
-  }
-
-  if (!script.azureRunbookName) {
-    res.status(400).json({ error: "This script has not been pushed to Azure Automation yet — push it first from the Library editor" });
-    return;
+  if ("libraryModuleId" in parsed.data) {
+    // Running a module from a script set
+    const moduleId = parsed.data.libraryModuleId;
+    const [mod] = await db
+      .select()
+      .from(scriptModulesTable)
+      .where(eq(scriptModulesTable.id, moduleId))
+      .limit(1);
+    if (!mod) {
+      res.status(404).json({ error: `Module ${moduleId} not found` });
+      return;
+    }
+    resolvedRunbookName = mod.filename
+      .replace(/\.ps1$/i, "")
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, 63) || "script";
+  } else {
+    // Running a standalone library script
+    const libraryScriptId = parsed.data.libraryScriptId;
+    const [script] = await db
+      .select()
+      .from(powershellScriptsTable)
+      .where(eq(powershellScriptsTable.id, libraryScriptId))
+      .limit(1);
+    if (!script) {
+      res.status(404).json({ error: `Library script ${libraryScriptId} not found` });
+      return;
+    }
+    if (!script.azureRunbookName) {
+      res.status(400).json({ error: "This script has not been pushed to Azure Automation yet — push it first from the Library editor" });
+      return;
+    }
+    resolvedRunbookName = script.azureRunbookName;
+    resolvedLibraryScriptId = libraryScriptId;
   }
 
   // Create a placeholder run result row
@@ -311,13 +351,13 @@ router.post("/admin/run-script", requireAdmin, async (req: Request, res: Respons
       .insert(scriptRunResultsTable)
       .values({
         customerId: customerId ?? null,
-        libraryScriptId,
+        libraryScriptId: resolvedLibraryScriptId,
         status: "running",
       })
       .returning({ id: scriptRunResultsTable.id });
     runResultId = row.id;
   } catch (err) {
-    logger.error({ err, libraryScriptId }, "admin-m365-run: failed to create run result placeholder");
+    logger.error({ err, resolvedLibraryScriptId }, "admin-m365-run: failed to create run result placeholder");
     res.status(500).json({ error: "Failed to initialize run result" });
     return;
   }
@@ -326,7 +366,7 @@ router.post("/admin/run-script", requireAdmin, async (req: Request, res: Respons
   let jobId: string;
   try {
     const job = await createRunbookJob({
-      runbookName: script.azureRunbookName,
+      runbookName: resolvedRunbookName,
       parameters: {
         TenantId: tenantId,
         ClientId: clientId,
@@ -335,7 +375,7 @@ router.post("/admin/run-script", requireAdmin, async (req: Request, res: Respons
     });
     jobId = job.jobId;
   } catch (err) {
-    logger.error({ err, runbookName: script.azureRunbookName }, "admin-m365-run: runbook job creation failed");
+    logger.error({ err, runbookName: resolvedRunbookName }, "admin-m365-run: runbook job creation failed");
     await db
       .update(scriptRunResultsTable)
       .set({ status: "failed", rawOutput: { error: String(err) } })
@@ -354,13 +394,13 @@ router.post("/admin/run-script", requireAdmin, async (req: Request, res: Respons
   void processRunInBackground(
     runResultId,
     jobId,
-    libraryScriptId,
+    resolvedLibraryScriptId ?? "",
     customerId,
-    packageContext ?? "",
+    packageContext,
     "",
   );
 
-  res.json({ jobRef: jobId, resultId: runResultId, libraryScriptId, status: "running" });
+  res.json({ jobRef: jobId, resultId: runResultId, libraryScriptId: resolvedLibraryScriptId, status: "running" });
 });
 
 // ── GET /api/admin/run-script/:jobRef/status ──────────────────────────────────

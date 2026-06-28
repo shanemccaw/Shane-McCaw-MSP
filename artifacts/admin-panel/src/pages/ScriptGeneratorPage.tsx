@@ -1180,6 +1180,7 @@ function LibrarySidebar({
   onOpenModule,
   loadingScriptId,
   onRunScript,
+  onRunModule,
 }: {
   scripts: PsScriptListItem[];
   packages: ScriptPackageListItem[];
@@ -1189,6 +1190,7 @@ function LibrarySidebar({
   onOpenModule: (module: ScriptModuleItem, pkg: ScriptPackageListItem) => void;
   loadingScriptId: string | null;
   onRunScript?: (script: PsScriptListItem) => void;
+  onRunModule?: (module: ScriptModuleItem) => void;
 }) {
   const [search, setSearch] = useState("");
   const [collapsedCats, setCollapsedCats] = useState<Set<string>>(new Set());
@@ -1361,6 +1363,15 @@ function LibrarySidebar({
                               </svg>
                               <span className="flex-1 text-xs text-[#8B949E] group-hover:text-[#C9D1D9] truncate min-w-0 font-mono">{mod.filename}</span>
                             </button>
+                            {onRunModule && mod.id && (
+                              <button
+                                onClick={(e) => { e.stopPropagation(); onRunModule(mod); }}
+                                title="Run module"
+                                className="flex-shrink-0 opacity-0 group-hover:opacity-100 px-1.5 py-1 text-[#484F58] hover:text-green-400 transition-all"
+                              >
+                                <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z" /></svg>
+                              </button>
+                            )}
                           </div>
                         );
                       })}
@@ -2829,6 +2840,7 @@ export default function ScriptGeneratorPage() {
     (lsGet(IDE_RIGHT_TAB_KEY, "runner") as "runner" | "permissions")
   );
   const [runLibraryScriptTarget, setRunLibraryScriptTarget] = useState<PsScriptListItem | null>(null);
+  const [runLibraryModuleTarget, setRunLibraryModuleTarget] = useState<ScriptModuleItem | null>(null);
 
   // Drag state refs
   const isDraggingLeft = useRef(false);
@@ -3375,6 +3387,7 @@ export default function ScriptGeneratorPage() {
                     onOpenModule={handleSidebarModuleClick}
                     loadingScriptId={loadingScriptId}
                     onRunScript={setRunLibraryScriptTarget}
+                    onRunModule={setRunLibraryModuleTarget}
                   />
                 )}
                 {leftMode === "results" && (
@@ -3725,6 +3738,14 @@ export default function ScriptGeneratorPage() {
           scriptTitle={runLibraryScriptTarget.title}
           azureRunbookName={runLibraryScriptTarget.azureRunbookName}
           onClose={() => setRunLibraryScriptTarget(null)}
+        />
+      )}
+
+      {runLibraryModuleTarget && runLibraryModuleTarget.id && (
+        <RunLibraryScriptDialog
+          moduleId={runLibraryModuleTarget.id}
+          scriptTitle={runLibraryModuleTarget.filename}
+          onClose={() => setRunLibraryModuleTarget(null)}
         />
       )}
 
