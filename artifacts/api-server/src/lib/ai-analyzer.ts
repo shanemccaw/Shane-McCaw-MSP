@@ -8,6 +8,7 @@
 
 import { anthropic } from "@workspace/integrations-anthropic-ai";
 import { logger } from "./logger";
+import { getPrompt } from "./prompt-loader";
 
 export interface AiAnalyzerInput {
   scriptOutput: string;
@@ -24,15 +25,14 @@ export interface AiAnalyzerResult {
 
 const SCORE_KEYS = ["identity", "security", "collaboration", "compliance", "copilotReadiness"] as const;
 
-function buildPrompt(input: AiAnalyzerInput): string {
-  return `You are a Microsoft 365 security and governance expert analyzing PowerShell runbook output for a consulting client.
+const ANALYZER_TEMPLATE_DEFAULT = `You are a Microsoft 365 security and governance expert analyzing PowerShell runbook output for a consulting client.
 
-Package Context: ${input.packageContext || "General M365 analysis"}
+Package Context: {{packageContext}}
 
-Script-specific Instructions: ${input.aiInstructions || "Analyze the output for security, governance, and compliance findings."}
+Script-specific Instructions: {{aiInstructions}}
 
 === SCRIPT OUTPUT ===
-${input.scriptOutput.slice(0, 8000)}
+{{scriptOutput}}
 === END OUTPUT ===
 
 Analyze the script output and return a JSON object with exactly these fields:
@@ -57,10 +57,13 @@ Rules:
 - scoreImpact: use positive values for good findings, negative for risks; 0 for unrelated categories
 - profileUpdates: JSONB key/value pairs to merge into the client's M365 profile (e.g. mfaEnabled, conditionalAccessPoliciesCount, guestUserCount); omit if nothing can be inferred
 - Return ONLY the JSON object — no markdown fences, no preamble, no trailing text`;
-}
 
 export async function runAiAnalyzer(input: AiAnalyzerInput): Promise<AiAnalyzerResult> {
-  const prompt = buildPrompt(input);
+  const template = await getPrompt("m365-ai-analyzer", ANALYZER_TEMPLATE_DEFAULT);
+  const prompt = template
+    .replace("{{packageContext}}", input.packageContext || "General M365 analysis")
+    .replace("{{aiInstructions}}", input.aiInstructions || "Analyze the output for security, governance, and compliance findings.")
+    .replace("{{scriptOutput}}", input.scriptOutput.slice(0, 8000));
 
   let raw: string;
   try {

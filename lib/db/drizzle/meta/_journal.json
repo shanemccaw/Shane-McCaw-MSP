@@ -631,6 +631,13 @@
       "when": 1782990000000,
       "tag": "0087_remove_catalog_add_service_script_sets",
       "breakpoints": true
+    },
+    {
+      "idx": 88,
+      "version": "7",
+      "when": 1782671284449,
+      "tag": "0088_add_ai_prompts",
+      "breakpoints": true
     }
   ]
 }

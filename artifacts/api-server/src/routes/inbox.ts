@@ -13,6 +13,7 @@ import {
 import { generateWorkflowTasks, daysFromNow } from "../lib/workflow-tasks";
 import { eq, desc, and, or, isNotNull } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/requireAuth";
+import { getPrompt } from "../lib/prompt-loader.ts";
 import { graphCredentialsPresent } from "../lib/graph";
 import {
   listMessages,
@@ -461,7 +462,8 @@ router.post("/inbox/ai", requireAdmin, async (req: Request, res: Response) => {
     ? `\nCRM Context: Lead=${crmContext.leadName ?? "unknown"}, Company=${crmContext.leadCompany ?? "unknown"}, Score=${crmContext.leadScore ?? 0}, Stage=${crmContext.opportunityStage ?? "none"}`
     : "";
 
-  const persona = `You are Shane McCaw, a senior Microsoft 365 consultant. Be concise and professional.`;
+  const INBOX_PERSONA_DEFAULT = `You are Shane McCaw, a senior Microsoft 365 consultant. Be concise and professional.`;
+  const persona = await getPrompt("inbox-persona", INBOX_PERSONA_DEFAULT);
 
   try {
     let prompt = "";

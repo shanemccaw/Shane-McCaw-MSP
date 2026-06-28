@@ -60,6 +60,28 @@ export default function PromptCenterEdit({ params }: { params: { id?: string } }
   const isDirty = prompt ? body !== prompt.promptBody : false;
   const isModifiedFromDefault = prompt ? prompt.promptBody !== prompt.defaultBody : false;
 
+  useEffect(() => {
+    if (!isDirty) return;
+    const handler = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = "";
+    };
+    window.addEventListener("beforeunload", handler);
+    return () => window.removeEventListener("beforeunload", handler);
+  }, [isDirty]);
+
+  const handleBackClick = useCallback(
+    (e: React.MouseEvent) => {
+      if (isDirty) {
+        e.preventDefault();
+        if (window.confirm("You have unsaved changes. Discard and go back?")) {
+          navigate("/prompt-center");
+        }
+      }
+    },
+    [isDirty, navigate],
+  );
+
   const handleSave = useCallback(async () => {
     if (!prompt) return;
     setSaving(true);
@@ -146,7 +168,7 @@ export default function PromptCenterEdit({ params }: { params: { id?: string } }
   return (
     <div className="p-6 max-w-4xl mx-auto space-y-5" onKeyDown={handleKeyDown}>
       <div className="flex items-center gap-3">
-        <Link href="/prompt-center">
+        <Link href="/prompt-center" onClick={handleBackClick}>
           <span className="inline-flex items-center gap-1.5 text-sm text-[#7D8590] hover:text-[#C9D1D9] cursor-pointer">
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />

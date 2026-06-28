@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
 
@@ -39,7 +39,7 @@ export default function PromptCenter() {
   const [search, setSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
 
-  useState(() => {
+  useEffect(() => {
     void (async () => {
       try {
         const res = await fetchWithAuth("/api/admin/ai-prompts");
@@ -52,7 +52,7 @@ export default function PromptCenter() {
         setLoading(false);
       }
     })();
-  });
+  }, [fetchWithAuth]);
 
   const filtered = prompts.filter((p) => {
     const matchesCategory = categoryFilter === "all" || p.category === categoryFilter;

@@ -526,6 +526,16 @@ Classify the task as exactly one of:
 Reply with ONLY one word: AUTOMATABLE, USER_ACCOUNT_REQUIRED, or HUMAN_ONLY`,
   },
   {
+    key: "inbox-persona",
+    name: "Inbox — Shane's Persona",
+    description: "Persona and writing style instruction prepended to every inbox AI action (draft reply, summarize, extract tasks, detect opportunity, detect lead signals, etc.).",
+    category: "inbox",
+    featureArea: "Inbox",
+    featureRoute: "/inbox",
+    model: "claude-haiku-4-5",
+    body: `You are Shane McCaw, a senior Microsoft 365 consultant. Be concise and professional.`,
+  },
+  {
     key: "artifact-generator",
     name: "Project Artifact Generator",
     description: "Generates a professional project artifact document in Markdown from completed project tasks and client context. Used in the Generate Artifacts feature.",

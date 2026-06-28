@@ -7,8 +7,43 @@ import {
 } from "@workspace/db";
 import { eq, isNull, desc, and, gte, inArray } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/requireAuth";
+import { getPrompt } from "../lib/prompt-loader.ts";
 
 const router = Router();
+
+const NBA_GLOBAL_DEFAULT = `You are Shane McCaw's AI business advisor. Based on the consulting business data below, generate the top 5 most impactful next best actions Shane should take TODAY or THIS WEEK to grow revenue, retain clients, and advance projects.
+
+For each action, determine which entity it relates to (client, project, lead, opportunity, or general business), provide a confidence score (1-100), and suggest an admin panel link path (e.g. /crm/clients/1, /crm/projects/2, /crm/leads/3, /overview).
+
+Return ONLY a JSON array in this exact format, nothing else:
+[
+  {
+    "entityType": "client|project|lead|opportunity|general",
+    "entityId": <number or null>,
+    "entityName": <string or null>,
+    "action": "<30-60 word action description>",
+    "rationale": "<20-40 word rationale explaining why this is the priority>",
+    "confidence": <50-99>,
+    "linkPath": "<path or null>"
+  }
+]`;
+
+const NBA_ENTITY_DEFAULT = `You are Shane McCaw's AI business advisor. Based on the data below for a specific {{entityType}}, generate the 3–5 most impactful next best actions Shane should take in the next 1–2 weeks for this {{entityType}}.
+
+Be specific and actionable. Reference the actual project/client data. Include confidence (50–99) and a link path if applicable.
+
+Return ONLY a JSON array, nothing else:
+[
+  {
+    "entityType": "{{entityType}}",
+    "entityId": {{entityId}},
+    "entityName": "{{entityName}}",
+    "action": "<25-50 word specific action>",
+    "rationale": "<15-30 word rationale>",
+    "confidence": <50-99>,
+    "linkPath": <path or null>
+  }
+]`;
 
 interface NbaRow {
   entityType: "client" | "project" | "lead" | "opportunity" | "general";
@@ -113,22 +148,7 @@ ${forecastNarrative}
       messages: [
         {
           role: "user",
-          content: `You are Shane McCaw's AI business advisor. Based on the consulting business data below, generate the top 5 most impactful next best actions Shane should take TODAY or THIS WEEK to grow revenue, retain clients, and advance projects.
-
-For each action, determine which entity it relates to (client, project, lead, opportunity, or general business), provide a confidence score (1-100), and suggest an admin panel link path (e.g. /crm/clients/1, /crm/projects/2, /crm/leads/3, /overview).
-
-Return ONLY a JSON array in this exact format, nothing else:
-[
-  {
-    "entityType": "client|project|lead|opportunity|general",
-    "entityId": <number or null>,
-    "entityName": <string or null>,
-    "action": "<30-60 word action description>",
-    "rationale": "<20-40 word rationale explaining why this is the priority>",
-    "confidence": <50-99>,
-    "linkPath": "<path or null>"
-  }
-]
+          content: `${await getPrompt("nba-global", NBA_GLOBAL_DEFAULT)}
 
 BUSINESS DATA:
 ${context}
@@ -255,22 +275,10 @@ router.post("/ai/next-best-actions", requireAdmin, async (req: Request, res: Res
       max_tokens: 4096,
       messages: [{
         role: "user",
-        content: `You are Shane McCaw's AI business advisor. Based on the data below for a specific ${entityType}, generate the 3–5 most impactful next best actions Shane should take in the next 1–2 weeks for this ${entityType}.
-
-Be specific and actionable. Reference the actual project/client data. Include confidence (50–99) and a link path if applicable.
-
-Return ONLY a JSON array, nothing else:
-[
-  {
-    "entityType": "${entityType}",
-    "entityId": ${entityId},
-    "entityName": "${entityName}",
-    "action": "<25-50 word specific action>",
-    "rationale": "<15-30 word rationale>",
-    "confidence": <50-99>,
-    "linkPath": <"/${entityType === "client" ? `crm/clients/${entityId}` : `crm/projects/${entityId}`}" or null>
-  }
-]
+        content: `${(await getPrompt("nba-entity", NBA_ENTITY_DEFAULT))
+  .replace(/\{\{entityType\}\}/g, entityType)
+  .replace(/\{\{entityId\}\}/g, String(entityId ?? "null"))
+  .replace(/\{\{entityName\}\}/g, entityName)}
 
 ${entityType.toUpperCase()} DATA:
 ${context}
