@@ -704,8 +704,12 @@ Connect-MgGraph -TenantId $TenantId …`}</pre>
 
 export default function CatalogSidebarPanel({
   onRunScript,
+  pendingEntry,
+  onPendingConsumed,
 }: {
   onRunScript: (runbookName: string) => void;
+  pendingEntry?: AnalyzeResult | null;
+  onPendingConsumed?: () => void;
 }) {
   const { fetchWithAuth } = useAuth();
   const { toast } = useToast();
@@ -722,6 +726,14 @@ export default function CatalogSidebarPanel({
   const [deleting, setDeleting] = useState(false);
   const [runScriptTarget, setRunScriptTarget] = useState<Script | null>(null);
   const initDone = useRef(false);
+
+  useEffect(() => {
+    if (!pendingEntry) return;
+    setEditScript(null);
+    setFormInitialValues(pendingEntry);
+    setShowForm(true);
+    onPendingConsumed?.();
+  }, [pendingEntry]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const loadAll = useCallback(async () => {
     setLoading(true);

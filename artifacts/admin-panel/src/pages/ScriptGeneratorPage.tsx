@@ -48,6 +48,17 @@ interface PsScriptDetail extends PsScriptListItem {
   permissions: PsScriptPermissions;
 }
 
+interface CatalogAnalyzeResult {
+  name?: string;
+  runbookName?: string;
+  description?: string;
+  aiInstructions?: string;
+  executionMode?: "automated" | "manual";
+  manualRequirements?: string[];
+  appRegPermissions?: { permission: string; type: "Application" | "Delegated"; reason: string }[];
+  psScriptBody?: string;
+}
+
 interface ScriptModuleItem {
   id?: string;
   filename: string;
@@ -1178,6 +1189,8 @@ function LibrarySidebar({
   onOpenPackage,
   onOpenModule,
   loadingScriptId,
+  onPublishToCatalog,
+  publishingScriptId,
 }: {
   scripts: PsScriptListItem[];
   packages: ScriptPackageListItem[];
@@ -1186,6 +1199,8 @@ function LibrarySidebar({
   onOpenPackage: (pkg: ScriptPackageListItem) => void;
   onOpenModule: (module: ScriptModuleItem, pkg: ScriptPackageListItem) => void;
   loadingScriptId: string | null;
+  onPublishToCatalog?: (id: string) => void;
+  publishingScriptId?: string | null;
 }) {
   const [search, setSearch] = useState("");
   const [collapsedCats, setCollapsedCats] = useState<Set<string>>(new Set());
@@ -1279,23 +1294,42 @@ function LibrarySidebar({
                 if (entry.type === "script") {
                   const s = entry.item;
                   const isLoading = loadingScriptId === s.id;
+                  const isPublishing = publishingScriptId === s.id;
                   return (
-                    <button
+                    <div
                       key={`s-${s.id}`}
-                      onClick={() => onOpenScript(s.id)}
-                      className="w-full flex items-center gap-2 pl-7 pr-3 py-1 hover:bg-[#161B22] transition-colors group text-left"
-                      title={s.title}
+                      className="flex items-center hover:bg-[#161B22] transition-colors group"
                     >
-                      {isLoading ? (
-                        <div className="w-3 h-3 border border-[#0078D4] border-t-transparent rounded-full animate-spin flex-shrink-0" />
-                      ) : (
-                        <svg className="w-3 h-3 text-[#484F58] group-hover:text-[#58A6FF] flex-shrink-0 transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+                      <button
+                        onClick={() => onOpenScript(s.id)}
+                        className="flex-1 flex items-center gap-2 pl-7 pr-1 py-1 text-left min-w-0"
+                        title={s.title}
+                      >
+                        {isLoading ? (
+                          <div className="w-3 h-3 border border-[#0078D4] border-t-transparent rounded-full animate-spin flex-shrink-0" />
+                        ) : (
+                          <svg className="w-3 h-3 text-[#484F58] group-hover:text-[#58A6FF] flex-shrink-0 transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+                        )}
+                        <span className="flex-1 text-xs text-[#C9D1D9] truncate">{s.title}</span>
+                        {s.tags?.includes("manual") && (
+                          <span className="flex-shrink-0 text-[8px] font-semibold px-1 py-0.5 rounded bg-yellow-500/20 border border-yellow-500/40 text-yellow-400 uppercase tracking-wide">Manual</span>
+                        )}
+                      </button>
+                      {onPublishToCatalog && (
+                        <button
+                          onClick={(e) => { e.stopPropagation(); onPublishToCatalog(s.id); }}
+                          disabled={!!publishingScriptId}
+                          title="Publish to Catalog"
+                          className="flex-shrink-0 opacity-0 group-hover:opacity-100 pr-2 py-1 text-[#484F58] hover:text-[#0078D4] disabled:opacity-30 transition-all"
+                        >
+                          {isPublishing ? (
+                            <svg className="w-3 h-3 animate-spin text-[#0078D4]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
+                          ) : (
+                            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" /></svg>
+                          )}
+                        </button>
                       )}
-                      <span className="flex-1 text-xs text-[#C9D1D9] truncate">{s.title}</span>
-                      {s.tags?.includes("manual") && (
-                        <span className="flex-shrink-0 text-[8px] font-semibold px-1 py-0.5 rounded bg-yellow-500/20 border border-yellow-500/40 text-yellow-400 uppercase tracking-wide">Manual</span>
-                      )}
-                    </button>
+                    </div>
                   );
                 } else {
                   const p = entry.item;
@@ -2815,6 +2849,8 @@ export default function ScriptGeneratorPage() {
     (lsGet(IDE_RIGHT_TAB_KEY, "runner") as "runner" | "permissions")
   );
   const [catalogPresetRunbook, setCatalogPresetRunbook] = useState<string | null>(null);
+  const [pendingCatalogEntry, setPendingCatalogEntry] = useState<CatalogAnalyzeResult | null>(null);
+  const [publishingScriptId, setPublishingScriptId] = useState<string | null>(null);
 
   // Drag state refs
   const isDraggingLeft = useRef(false);
@@ -2928,6 +2964,39 @@ export default function ScriptGeneratorPage() {
     if (!rightVisible) {
       setRightVisible(true);
       lsSet(IDE_RIGHT_VISIBLE_KEY, "true");
+    }
+  };
+
+  const handlePublishToCatalog = async (scriptId: string) => {
+    if (publishingScriptId) return;
+    setPublishingScriptId(scriptId);
+    try {
+      const detailRes = await apiFetch(`/admin/ps-scripts/${scriptId}`, token) as PsScriptDetail;
+      if (!detailRes?.scriptBody) {
+        toast({ title: "Could not load script body", variant: "destructive" });
+        return;
+      }
+      const analyzeRes = await fetch(`${import.meta.env.BASE_URL}api/admin/scripts/analyze`.replace(/\/+/g, "/").replace(":/", "://"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ psScriptBody: detailRes.scriptBody }),
+      });
+      const analyzed = await analyzeRes.json() as CatalogAnalyzeResult & { error?: string };
+      if (!analyzeRes.ok) {
+        toast({ title: analyzed.error ?? "AI analysis failed", variant: "destructive" });
+        return;
+      }
+      if (!analyzed.name) analyzed.name = detailRes.title;
+      if (!analyzed.runbookName && detailRes.azureRunbookName) analyzed.runbookName = detailRes.azureRunbookName;
+      analyzed.psScriptBody = detailRes.scriptBody;
+      setPendingCatalogEntry(analyzed);
+      setLeftMode("catalog");
+      lsSet(IDE_LEFT_MODE_KEY, "catalog");
+      if (leftCollapsed) { setLeftCollapsed(false); lsSet(IDE_LEFT_COLLAPSED_KEY, "false"); }
+    } catch {
+      toast({ title: "Network error — please try again", variant: "destructive" });
+    } finally {
+      setPublishingScriptId(null);
     }
   };
 
@@ -3369,10 +3438,16 @@ export default function ScriptGeneratorPage() {
                     onOpenPackage={handleSidebarPackageClick}
                     onOpenModule={handleSidebarModuleClick}
                     loadingScriptId={loadingScriptId}
+                    onPublishToCatalog={(id) => void handlePublishToCatalog(id)}
+                    publishingScriptId={publishingScriptId}
                   />
                 )}
                 {leftMode === "catalog" && (
-                  <CatalogSidebarPanel onRunScript={handleCatalogRunScript} />
+                  <CatalogSidebarPanel
+                    onRunScript={handleCatalogRunScript}
+                    pendingEntry={pendingCatalogEntry}
+                    onPendingConsumed={() => setPendingCatalogEntry(null)}
+                  />
                 )}
                 {leftMode === "results" && (
                   <RunResultsSidebarPanel
