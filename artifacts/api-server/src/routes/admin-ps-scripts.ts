@@ -33,6 +33,15 @@ function titleToRunbookName(title: string): string {
     .slice(0, 63) || "script";
 }
 
+/** Derives the Azure Automation runbook name from a module filename.
+ *  Strips the .ps1 extension then applies the same sanitization as
+ *  titleToRunbookName — numeric sort prefixes (e.g. "01-") are KEPT so
+ *  the name matches what the push-to-azure endpoints register in Azure.
+ */
+function filenameToRunbookName(filename: string): string {
+  return titleToRunbookName(filename.replace(/\.ps1$/i, ""));
+}
+
 async function tryPushPsScriptToAzure(scriptId: string, runbookName: string, psCode: string): Promise<void> {
   if (!isAzureConfigured()) {
     logger.warn({ scriptId }, "admin-ps-scripts: Azure not configured — skipping push to Azure Automation");
@@ -915,10 +924,9 @@ Classify each task and generate PowerShell automation scripts for all M365/Azure
             const assignedModule = validModules[assignedMi]!;
 
             const isStub = assignedModule.filename.includes("-stub.ps1");
-            // The runbook name used by the admin "Run Runbook" button.
-            const runbookName = titleToRunbookName(
-              assignedModule.filename.replace(/\.ps1$/i, "").replace(/^\d+-/, ""),
-            );
+            // Derive runbook name using the same formula as the push-to-azure endpoints,
+            // so the name written to Kanban metadata exactly matches the Azure runbook name.
+            const runbookName = filenameToRunbookName(assignedModule.filename);
 
             // Find kanban cards that resemble this template task, excluding already-processed cards.
             const templateWords = titleToWords(templateTask.title);
@@ -1569,16 +1577,7 @@ router.post("/admin/ps-scripts/packages/:packageId/push-to-azure", requireAdmin,
       return;
     }
 
-    function filenameToRunbookName(filename: string): string {
-      // Strip .ps1 extension then sanitize like titleToRunbookName
-      return filename
-        .replace(/\.ps1$/i, "")
-        .toLowerCase()
-        .replace(/[^a-z0-9]+/g, "-")
-        .replace(/^-+|-+$/g, "")
-        .slice(0, 63) || "script";
-    }
-
+    // filenameToRunbookName is defined at module scope — reuse it here.
     type ModuleResult = { filename: string; runbookName: string; ok: boolean; error?: string };
     const results: ModuleResult[] = [];
 
