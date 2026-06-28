@@ -1679,7 +1679,7 @@ function ScriptRow({
   const [pushing, setPushing] = useState(false);
   const [syncedAt, setSyncedAt] = useState<string | null>(s.azureSyncedAt ?? null);
 
-  const handlePush = async (e: React.MouseEvent) => {
+  const handlePush = async (e: { stopPropagation: () => void }) => {
     e.stopPropagation();
     setPushing(true);
     try {
