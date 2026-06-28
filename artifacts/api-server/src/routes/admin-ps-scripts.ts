@@ -49,6 +49,35 @@ const router = Router();
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
+// LLMs sometimes emit literal (unescaped) newlines / tabs inside JSON string
+// values, making the payload invalid JSON. Walk the raw text and escape any
+// control characters that appear inside a string token.
+function repairJsonStrings(raw: string): string {
+  let out = "";
+  let inStr = false;
+  let esc = false;
+  for (let i = 0; i < raw.length; i++) {
+    const ch = raw[i];
+    if (esc) { out += ch; esc = false; continue; }
+    if (ch === "\\") { out += ch; esc = true; continue; }
+    if (ch === '"') { out += ch; inStr = !inStr; continue; }
+    if (inStr) {
+      if (ch === "\n") { out += "\\n"; continue; }
+      if (ch === "\r") { out += "\\r"; continue; }
+      if (ch === "\t") { out += "\\t"; continue; }
+    }
+    out += ch;
+  }
+  return out;
+}
+
+// Try JSON.parse; if it fails, repair control-char escaping and retry.
+function jsonParse(candidate: string): unknown {
+  try { return JSON.parse(candidate); } catch { /* fall through */ }
+  try { return JSON.parse(repairJsonStrings(candidate)); } catch { /* fall through */ }
+  return null;
+}
+
 function extractJson(text: string): unknown {
   // 1. ```json … ``` — use indexOf/lastIndexOf so embedded backtick sequences
   //    inside module content strings don't prematurely terminate the match.
@@ -58,7 +87,8 @@ function extractJson(text: string): unknown {
     const afterNewline = text[bodyStart] === "\n" ? bodyStart + 1 : bodyStart;
     const closingPos = text.lastIndexOf("```");
     if (closingPos > afterNewline) {
-      try { return JSON.parse(text.slice(afterNewline, closingPos).trim()); } catch { /* fall through */ }
+      const v = jsonParse(text.slice(afterNewline, closingPos).trim());
+      if (v !== null && typeof v === "object" && !Array.isArray(v)) return v;
     }
   }
 
@@ -68,21 +98,17 @@ function extractJson(text: string): unknown {
     const afterTag = text.indexOf("\n", anyOpen);
     const closingPos = text.lastIndexOf("```");
     if (afterTag !== -1 && closingPos > afterTag) {
-      try {
-        const v = JSON.parse(text.slice(afterTag + 1, closingPos).trim());
-        if (v !== null && typeof v === "object" && !Array.isArray(v)) return v;
-      } catch { /* fall through */ }
+      const v = jsonParse(text.slice(afterTag + 1, closingPos).trim());
+      if (v !== null && typeof v === "object" && !Array.isArray(v)) return v;
     }
   }
 
-  // 3. Last-resort: first '{' to last '}' — JSON.parse validates the whole structure.
+  // 3. Last-resort: first '{' to last '}'.
   const start = text.indexOf("{");
   const end = text.lastIndexOf("}");
   if (start !== -1 && end > start) {
-    try {
-      const v = JSON.parse(text.slice(start, end + 1));
-      if (v !== null && typeof v === "object" && !Array.isArray(v)) return v;
-    } catch { /* nothing */ }
+    const v = jsonParse(text.slice(start, end + 1));
+    if (v !== null && typeof v === "object" && !Array.isArray(v)) return v;
   }
 
   return null;
@@ -97,10 +123,8 @@ function extractJsonArray(text: string): unknown[] | null {
     const afterNewline = text[bodyStart] === "\n" ? bodyStart + 1 : bodyStart;
     const closingPos = text.lastIndexOf("```");
     if (closingPos > afterNewline) {
-      try {
-        const v = JSON.parse(text.slice(afterNewline, closingPos).trim());
-        if (Array.isArray(v)) return v;
-      } catch { /* fall through */ }
+      const v = jsonParse(text.slice(afterNewline, closingPos).trim());
+      if (Array.isArray(v)) return v;
     }
   }
   const anyOpen = text.indexOf("```");
@@ -108,19 +132,15 @@ function extractJsonArray(text: string): unknown[] | null {
     const afterTag = text.indexOf("\n", anyOpen);
     const closingPos = text.lastIndexOf("```");
     if (afterTag !== -1 && closingPos > afterTag) {
-      try {
-        const v = JSON.parse(text.slice(afterTag + 1, closingPos).trim());
-        if (Array.isArray(v)) return v;
-      } catch { /* fall through */ }
+      const v = jsonParse(text.slice(afterTag + 1, closingPos).trim());
+      if (Array.isArray(v)) return v;
     }
   }
   const start = text.indexOf("[");
   const end = text.lastIndexOf("]");
   if (start !== -1 && end > start) {
-    try {
-      const v = JSON.parse(text.slice(start, end + 1));
-      if (Array.isArray(v)) return v;
-    } catch { /* nothing */ }
+    const v = jsonParse(text.slice(start, end + 1));
+    if (Array.isArray(v)) return v;
   }
   return null;
 }
