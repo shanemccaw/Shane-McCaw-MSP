@@ -1259,7 +1259,7 @@ function TaskDrawer({
                   <select
                     value={form.groupName}
                     onChange={e => setForm(p => ({ ...p, groupName: e.target.value }))}
-                    className="w-full border border-[#30363D] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4]"
+                    className="w-full border border-[#30363D] bg-[#0D1117] text-[#E6EDF3] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4]"
                   >
                     <option value="">No group</option>
                     {GROUP_OPTIONS.map(o => <option key={o} value={o}>{o}</option>)}
@@ -1270,7 +1270,7 @@ function TaskDrawer({
                   <select
                     value={form.taskType}
                     onChange={e => setForm(p => ({ ...p, taskType: e.target.value }))}
-                    className="w-full border border-[#30363D] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4]"
+                    className="w-full border border-[#30363D] bg-[#0D1117] text-[#E6EDF3] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4]"
                   >
                     <option value="">No type</option>
                     {TASK_TYPE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
@@ -1284,7 +1284,7 @@ function TaskDrawer({
                   placeholder="Optional description…"
                   rows={4}
                   onChange={e => setForm(p => ({ ...p, description: e.target.value }))}
-                  className="w-full border border-[#30363D] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4] resize-none"
+                  className="w-full border border-[#30363D] bg-[#0D1117] text-[#E6EDF3] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4] resize-none"
                 />
               </div>
               <div className={`flex items-start gap-3 rounded-lg border px-3 py-3 cursor-pointer select-none transition-colors ${

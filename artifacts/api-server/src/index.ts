@@ -207,6 +207,30 @@ app.listen(port, (err) => {
   });
 
   pool.query(`
+    DO $$ BEGIN
+      -- Drop FK constraints (both possible names) so we can change the column
+      -- from uuid to text — it now stores Azure Automation runbook names.
+      ALTER TABLE workflow_template_step_tasks
+        DROP CONSTRAINT IF EXISTS workflow_template_step_tasks_runbook_id_fkey;
+      ALTER TABLE workflow_template_step_tasks
+        DROP CONSTRAINT IF EXISTS workflow_template_step_tasks_runbook_id_powershell_scripts_id_fk;
+      -- Only alter if still uuid (idempotent)
+      IF (SELECT data_type FROM information_schema.columns
+            WHERE table_name = 'workflow_template_step_tasks'
+              AND column_name = 'runbook_id') = 'uuid' THEN
+        ALTER TABLE workflow_template_step_tasks
+          ALTER COLUMN runbook_id TYPE text USING runbook_id::text;
+      END IF;
+    EXCEPTION WHEN others THEN
+      RAISE WARNING 'runbook_id migration skipped: %', SQLERRM;
+    END$$;
+  `).then(() => {
+    logger.info("Migration: workflow_template_step_tasks.runbook_id widened to text");
+  }).catch((err: unknown) => {
+    logger.warn({ err }, "Migration: runbook_id type change failed (non-fatal)");
+  });
+
+  pool.query(`
     CREATE TABLE IF NOT EXISTS client_scores (
       id SERIAL PRIMARY KEY,
       client_id INTEGER NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,

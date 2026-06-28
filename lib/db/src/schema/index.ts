@@ -473,7 +473,7 @@ export const workflowTemplateStepTasksTable = pgTable("workflow_template_step_ta
   taskType: text("task_type"),
   requiresManualRun: boolean("requires_manual_run").default(false),
   isCustomerTask: boolean("is_customer_task").default(false),
-  runbookId: uuid("runbook_id").references(() => powershellScriptsTable.id, { onDelete: "set null" }),
+  runbookId: text("runbook_id"),
 });
 
 export type InsertWorkflowTemplateStepTask = typeof workflowTemplateStepTasksTable.$inferInsert;
