@@ -40,44 +40,52 @@ export default function AutomationProgressBanner() {
   const { fetchWithAuth } = useAuth();
   const [run, setRun] = useState<AutomationRun | null>(null);
   const [dismissed, setDismissed] = useState(false);
-  const [lastSeenId, setLastSeenId] = useState<number | null>(null);
+  const lastSeenIdRef = useRef<number | null>(null);
   const autoHideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const dismissedRunIdRef = useRef<number | null>(null);
 
   const poll = useCallback(async () => {
     try {
       const res = await fetchWithAuth("/api/portal/automation-progress");
       if (!res.ok) return;
       const data = await res.json() as ProgressResponse | null;
+
       if (!data || data.status === "idle") return;
 
-      if (data.id !== lastSeenId) {
-        setLastSeenId(data.id);
-        setDismissed(false);
+      const incomingRun = data as AutomationRun;
+
+      // New run detected — reset dismissed state for this run
+      if (incomingRun.id !== lastSeenIdRef.current) {
+        lastSeenIdRef.current = incomingRun.id;
+        if (dismissedRunIdRef.current !== incomingRun.id) {
+          setDismissed(false);
+        }
         if (autoHideTimerRef.current) clearTimeout(autoHideTimerRef.current);
       }
-      setRun(data as AutomationRun);
 
-      if (data.status === "completed" || data.status === "failed") {
+      setRun(incomingRun);
+
+      if (incomingRun.status === "completed" || incomingRun.status === "failed") {
         if (autoHideTimerRef.current) clearTimeout(autoHideTimerRef.current);
-        autoHideTimerRef.current = setTimeout(() => setDismissed(true), AUTO_HIDE_AFTER_TERMINAL_MS);
+        autoHideTimerRef.current = setTimeout(() => {
+          dismissedRunIdRef.current = incomingRun.id;
+          setDismissed(true);
+        }, AUTO_HIDE_AFTER_TERMINAL_MS);
       }
     } catch {
+      // network error — silently ignore, retry next tick
     }
-  }, [fetchWithAuth, lastSeenId]);
+  }, [fetchWithAuth]);
 
+  // Always poll every 3s while mounted — catches idle→running transition
   useEffect(() => {
     void poll();
+    const timer = setInterval(() => { void poll(); }, POLL_INTERVAL_MS);
     return () => {
+      clearInterval(timer);
       if (autoHideTimerRef.current) clearTimeout(autoHideTimerRef.current);
     };
-  }, []);
-
-  useEffect(() => {
-    if (!run) return;
-    if (run.status === "completed" || run.status === "failed") return;
-    const timer = setInterval(() => { void poll(); }, POLL_INTERVAL_MS);
-    return () => clearInterval(timer);
-  }, [run?.status, poll]);
+  }, [poll]);
 
   if (!run || dismissed) return null;
 
@@ -96,7 +104,7 @@ export default function AutomationProgressBanner() {
 
   const titleText =
     run.status === "completed" ? "Automation scripts completed" :
-    run.status === "failed" ? "Automation scripts failed" :
+    run.status === "failed" ? "Setup paused — Shane has been notified" :
     run.currentPackageName
       ? `Running: ${run.currentPackageName}`
       : "Running automation scripts";
@@ -134,6 +142,7 @@ export default function AutomationProgressBanner() {
         <button
           onClick={() => {
             if (autoHideTimerRef.current) clearTimeout(autoHideTimerRef.current);
+            if (run) dismissedRunIdRef.current = run.id;
             setDismissed(true);
           }}
           className="flex-shrink-0 w-6 h-6 rounded-full hover:bg-white/20 flex items-center justify-center transition-colors ml-1"

@@ -122,9 +122,16 @@ export async function runClientScriptSequence(clientUserId: number, runId: numbe
 
     const packageMap = new Map(packages.map(p => [p.id, p]));
 
+    // De-duplicate packages preserving first-seen order (same package can appear
+    // in multiple active service→script-set rows but should only run once).
+    const seenPkgIds = new Set<string>();
     const orderedPackages = scriptSets
       .map(s => packageMap.get(s.scriptPackageId))
-      .filter((p): p is typeof packages[0] => p !== undefined);
+      .filter((p): p is typeof packages[0] => {
+        if (!p || seenPkgIds.has(p.id)) return false;
+        seenPkgIds.add(p.id);
+        return true;
+      });
 
     const allModules = await db.select().from(scriptModulesTable)
       .where(inArray(scriptModulesTable.packageId, packageIds))
