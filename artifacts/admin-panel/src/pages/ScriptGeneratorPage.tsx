@@ -2976,6 +2976,11 @@ export default function ScriptGeneratorPage() {
   const [pushValidating,   setPushValidating]   = useState(false);
   const [pushSyntaxErrors, setPushSyntaxErrors] = useState<Array<{ line: number; column: number; message: string }>>([]);
 
+  // ── Link existing runbook state ───────────────────────────────────────────────
+  const [linkRunbookOpen, setLinkRunbookOpen] = useState(false);
+  const [linkRunbookValue, setLinkRunbookValue] = useState("");
+  const [linkRunbookSaving, setLinkRunbookSaving] = useState(false);
+
   // ── Confirm dialog state ─────────────────────────────────────────────────────
   const [confirmState, setConfirmState] = useState<{
     open: boolean;
@@ -3255,6 +3260,26 @@ export default function ScriptGeneratorPage() {
       toast({ title: "Update failed", description: e instanceof Error ? e.message : "Unknown error", variant: "destructive" });
     } finally {
       setUpdating(false);
+    }
+  };
+
+  const linkExistingRunbook = async () => {
+    if (!editorScript?.id || !linkRunbookValue.trim()) return;
+    setLinkRunbookSaving(true);
+    try {
+      const updated = await apiFetch(`/admin/ps-scripts/${editorScript.id}`, token, {
+        method: "PUT",
+        body: JSON.stringify({ azureRunbookName: linkRunbookValue.trim() }),
+      }) as PsScriptDetail;
+      setEditorScript(prev => prev ? { ...prev, azureRunbookName: updated.azureRunbookName } : prev);
+      setScripts(prev => prev.map(s => s.id === updated.id ? { ...s, azureRunbookName: updated.azureRunbookName } : s));
+      setLinkRunbookOpen(false);
+      setLinkRunbookValue("");
+      toast({ title: "Runbook linked", description: `Script is now linked to "${updated.azureRunbookName}" in Azure Automation.` });
+    } catch (e) {
+      toast({ title: "Failed to link runbook", description: e instanceof Error ? e.message : "Unknown error", variant: "destructive" });
+    } finally {
+      setLinkRunbookSaving(false);
     }
   };
 
@@ -3559,6 +3584,33 @@ export default function ScriptGeneratorPage() {
                 )}
                 {pushValidating ? "Validating…" : "Azure"}
               </button>
+            )}
+            {editorScript?.id && !editingModuleId && (
+              linkRunbookOpen ? (
+                <span className="flex items-center gap-1">
+                  <input
+                    autoFocus
+                    value={linkRunbookValue}
+                    onChange={e => setLinkRunbookValue(e.target.value)}
+                    onKeyDown={e => { if (e.key === "Enter") void linkExistingRunbook(); if (e.key === "Escape") { setLinkRunbookOpen(false); setLinkRunbookValue(""); } }}
+                    placeholder={editorScript.azureRunbookName ?? "runbook-name-in-azure"}
+                    className="text-[11px] px-2 py-1 rounded border border-[#30363D] bg-[#0D1117] text-[#E6EDF3] placeholder-[#484F58] focus:outline-none focus:border-[#0078D4] w-48"
+                  />
+                  <button onClick={() => void linkExistingRunbook()} disabled={linkRunbookSaving || !linkRunbookValue.trim()} className="text-[11px] px-2 py-1 rounded bg-[#0078D4]/20 border border-[#0078D4]/40 text-[#58A6FF] hover:bg-[#0078D4]/30 disabled:opacity-50 transition-colors">
+                    {linkRunbookSaving ? "…" : "Link"}
+                  </button>
+                  <button onClick={() => { setLinkRunbookOpen(false); setLinkRunbookValue(""); }} className="text-[11px] px-1 py-1 text-[#484F58] hover:text-[#8B949E]">✕</button>
+                </span>
+              ) : (
+                <button
+                  onClick={() => { setLinkRunbookOpen(true); setLinkRunbookValue(editorScript.azureRunbookName ?? ""); }}
+                  title={editorScript.azureRunbookName ? `Linked: ${editorScript.azureRunbookName} — click to change` : "Link an existing Azure runbook name to this script"}
+                  className="flex items-center gap-1 text-[11px] px-2 py-1 rounded border border-[#30363D] bg-transparent text-[#484F58] hover:text-[#8B949E] hover:border-[#484F58] transition-colors"
+                >
+                  <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" /></svg>
+                  {editorScript.azureRunbookName ? editorScript.azureRunbookName : "Link runbook"}
+                </button>
+              )
             )}
             <button onClick={() => setShowSaveModal(true)} className="flex items-center gap-1 text-[11px] px-2 py-1 rounded bg-[#0078D4]/15 border border-[#0078D4]/30 text-[#58A6FF] hover:bg-[#0078D4]/25 transition-colors">
               <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4" /></svg>

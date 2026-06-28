@@ -1541,13 +1541,14 @@ router.put("/admin/ps-scripts/:id", requireAdmin, async (req: Request, res: Resp
   const id = String(req.params["id"] ?? "");
   if (!UUID_RE.test(id)) { res.status(400).json({ error: "Invalid id" }); return; }
 
-  const { title, description, category, scriptBody, permissions, tags } = req.body as {
+  const { title, description, category, scriptBody, permissions, tags, azureRunbookName } = req.body as {
     title?: string;
     description?: string;
     category?: string;
     scriptBody?: string;
     permissions?: PsScriptPermissions;
     tags?: string[];
+    azureRunbookName?: string | null;
   };
 
   try {
@@ -1560,6 +1561,7 @@ router.put("/admin/ps-scripts/:id", requireAdmin, async (req: Request, res: Resp
         ...(scriptBody !== undefined && { scriptBody: scriptBody.trim() }),
         ...(permissions !== undefined && { permissions }),
         ...(tags !== undefined && { tags }),
+        ...(azureRunbookName !== undefined && { azureRunbookName: azureRunbookName?.trim() || null }),
         updatedAt: new Date(),
       })
       .where(eq(powershellScriptsTable.id, id))
