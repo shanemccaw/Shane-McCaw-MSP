@@ -492,6 +492,89 @@ router.post("/admin/script-run-results/:id/apply-to-client", requireAdmin, async
   }
 });
 
+// ── POST /api/admin/script-run-results/:id/apply-raw-to-profile ──────────────
+// Parses the raw script output as JSON and merges the fields directly into the
+// client's M365 profile — no AI intermediary.
+
+router.post("/admin/script-run-results/:id/apply-raw-to-profile", requireAdmin, async (req: Request, res: Response) => {
+  const id = parseInt(String(req.params.id));
+  if (isNaN(id)) {
+    res.status(400).json({ error: "Invalid id" });
+    return;
+  }
+
+  try {
+    const [row] = await db
+      .select({
+        customerId: scriptRunResultsTable.customerId,
+        rawOutput: scriptRunResultsTable.rawOutput,
+        status: scriptRunResultsTable.status,
+      })
+      .from(scriptRunResultsTable)
+      .where(eq(scriptRunResultsTable.id, id))
+      .limit(1);
+
+    if (!row) {
+      res.status(404).json({ error: "Script run result not found" });
+      return;
+    }
+
+    if (!row.customerId) {
+      res.status(400).json({ error: "This result has no client linked — cannot update profile" });
+      return;
+    }
+
+    // Extract the raw output string or object
+    const rawOutput = row.rawOutput as Record<string, unknown> | null;
+    if (!rawOutput) {
+      res.status(400).json({ error: "No raw output to apply" });
+      return;
+    }
+
+    // The raw output is stored as { output: "<string>", jobStatus: "..." }.
+    // Try to parse the inner output string as JSON first; fall back to using
+    // the rawOutput object itself if it already looks like profile data.
+    let profileData: Record<string, unknown>;
+    const outputStr = rawOutput.output;
+    if (typeof outputStr === "string") {
+      try {
+        const parsed = JSON.parse(outputStr) as unknown;
+        if (typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)) {
+          profileData = parsed as Record<string, unknown>;
+        } else {
+          res.status(400).json({ error: "Raw output is not a JSON object — cannot apply to profile" });
+          return;
+        }
+      } catch {
+        res.status(400).json({ error: "Raw output is not valid JSON — cannot apply to profile" });
+        return;
+      }
+    } else if (typeof rawOutput === "object") {
+      // rawOutput itself is already the profile object (manual upload path)
+      const { output: _o, jobStatus: _j, ...rest } = rawOutput;
+      if (Object.keys(rest).length === 0) {
+        res.status(400).json({ error: "No profile fields found in raw output" });
+        return;
+      }
+      profileData = rest;
+    } else {
+      res.status(400).json({ error: "Unexpected raw output format" });
+      return;
+    }
+
+    await applyProfileUpdates(row.customerId, profileData);
+
+    res.json({
+      ok: true,
+      appliedProfileFields: Object.keys(profileData).length,
+      fields: Object.keys(profileData),
+    });
+  } catch (err) {
+    logger.error({ err }, "admin-m365-run: failed to apply raw output to profile");
+    res.status(500).json({ error: "Failed to apply raw output to profile" });
+  }
+});
+
 // ── POST /api/admin/run-package ───────────────────────────────────────────────
 
 router.post("/admin/run-package", requireAdmin, async (req: Request, res: Response) => {

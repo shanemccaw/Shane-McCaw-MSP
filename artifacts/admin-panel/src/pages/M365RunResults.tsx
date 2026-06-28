@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, Fragment } from "react";
 import { useAuth } from "@/contexts/AuthContext";
-import { ClipboardList, ChevronDown, ChevronUp, RefreshCw, Download, Upload, X, CheckCircle, Eye, Clock, User, Zap } from "lucide-react";
+import { ClipboardList, ChevronDown, ChevronUp, RefreshCw, Download, Upload, X, CheckCircle, Eye, Clock, User, Zap, DatabaseZap } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -272,10 +272,48 @@ function ExpandedRow({ result, onUploaded }: { result: RunResult; onUploaded: (i
   const { toast } = useToast();
   const [subTab, setSubTab] = useState<"raw" | "findings">("findings");
   const [applying, setApplying] = useState(false);
+  const [applyingRaw, setApplyingRaw] = useState(false);
 
   const hasImpact =
     Object.keys(result.scoreImpact ?? {}).length > 0 ||
     Object.keys(result.profileUpdates ?? {}).length > 0;
+
+  // Determine whether raw output parses as a JSON object (for "Update M365 Profile" button)
+  const rawJsonProfile = (() => {
+    const outputStr = result.rawOutput?.output;
+    if (typeof outputStr !== "string") return null;
+    try {
+      const parsed = JSON.parse(outputStr) as unknown;
+      if (typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)) {
+        return parsed as Record<string, unknown>;
+      }
+    } catch { /* not JSON */ }
+    return null;
+  })();
+
+  const handleApplyRawToProfile = async () => {
+    if (!result.customerId) return;
+    setApplyingRaw(true);
+    try {
+      const res = await fetchWithAuth(`/api/admin/script-run-results/${result.id}/apply-raw-to-profile`, {
+        method: "POST",
+      });
+      if (!res.ok) {
+        const err = await res.json() as { error?: string };
+        toast({ title: err.error ?? "Failed to update M365 profile", variant: "destructive" });
+        return;
+      }
+      const data = await res.json() as { appliedProfileFields: number; fields: string[] };
+      toast({
+        title: "M365 Profile updated",
+        description: `${data.appliedProfileFields} field${data.appliedProfileFields === 1 ? "" : "s"} written to profile: ${data.fields.slice(0, 4).join(", ")}${data.fields.length > 4 ? ` +${data.fields.length - 4} more` : ""}.`,
+      });
+    } catch {
+      toast({ title: "Failed to update M365 profile", variant: "destructive" });
+    } finally {
+      setApplyingRaw(false);
+    }
+  };
 
   const handleApplyToClient = async () => {
     if (!result.customerId) return;
@@ -407,17 +445,32 @@ function ExpandedRow({ result, onUploaded }: { result: RunResult; onUploaded: (i
         </div>
       )}
 
-      {/* Apply to client */}
-      {result.customerId && hasImpact && result.status === "completed" && (
-        <div className="mt-4 pt-3 border-t border-[#21262D] flex justify-end">
-          <button
-            onClick={() => void handleApplyToClient()}
-            disabled={applying}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-[#0078D4] border border-[#0078D4]/30 hover:border-[#0078D4] hover:bg-[#0078D4]/10 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {applying ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Zap className="w-3.5 h-3.5" />}
-            {applying ? "Applying…" : "Apply Scores to Client"}
-          </button>
+      {/* Action bar */}
+      {result.customerId && result.status === "completed" && (hasImpact || rawJsonProfile) && (
+        <div className="mt-4 pt-3 border-t border-[#21262D] flex items-center justify-end gap-2">
+          {/* Apply AI scores + profile updates */}
+          {hasImpact && (
+            <button
+              onClick={() => void handleApplyToClient()}
+              disabled={applying}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-[#0078D4] border border-[#0078D4]/30 hover:border-[#0078D4] hover:bg-[#0078D4]/10 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {applying ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Zap className="w-3.5 h-3.5" />}
+              {applying ? "Applying…" : "Apply Scores to Client"}
+            </button>
+          )}
+          {/* Apply raw JSON output directly to M365 profile */}
+          {rawJsonProfile && (
+            <button
+              onClick={() => void handleApplyRawToProfile()}
+              disabled={applyingRaw}
+              title={`Write ${Object.keys(rawJsonProfile).length} fields from raw output directly to this client's M365 profile`}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-emerald-400 border border-emerald-500/30 hover:border-emerald-400 hover:bg-emerald-500/10 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {applyingRaw ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <DatabaseZap className="w-3.5 h-3.5" />}
+              {applyingRaw ? "Updating…" : `Update M365 Profile (${Object.keys(rawJsonProfile).length} fields)`}
+            </button>
+          )}
         </div>
       )}
     </div>
