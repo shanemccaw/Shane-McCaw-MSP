@@ -1708,30 +1708,43 @@ function ScriptRow({
         )}
       </td>
       <td className="px-4 py-3 hidden md:table-cell">
-        <div className="flex items-center gap-2">
+        <div className="flex flex-col gap-1">
           <span className="font-mono text-xs text-[#7D8590]">{s.runbookName}</span>
           {syncedAt ? (
-            <span
-              className="inline-flex items-center gap-0.5 text-[9px] font-medium px-1.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 whitespace-nowrap"
-              title={`Synced to Azure ${new Date(syncedAt).toLocaleString()}`}
-            >
-              <svg className="w-2 h-2" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
-              Synced
-            </span>
+            <div className="flex items-center gap-1">
+              <span className="inline-flex items-center gap-0.5 text-[9px] font-medium px-1.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 whitespace-nowrap">
+                <svg className="w-2 h-2" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
+                Synced to Azure ✓
+              </span>
+              <button
+                onClick={(e) => void handlePush(e)}
+                disabled={pushing}
+                className="p-0.5 text-[#484F58] hover:text-[#58A6FF] disabled:opacity-40 transition-colors"
+                title={`Re-sync runbook (last synced ${new Date(syncedAt).toLocaleString()})`}
+              >
+                {pushing
+                  ? <svg className="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg>
+                  : <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
+                }
+              </button>
+            </div>
           ) : (
-            <button
-              onClick={(e) => void handlePush(e)}
-              disabled={pushing}
-              className="inline-flex items-center gap-0.5 text-[9px] font-medium px-1.5 py-0.5 rounded-full bg-[#0078D4]/10 text-[#58A6FF] border border-[#0078D4]/25 hover:bg-[#0078D4]/20 disabled:opacity-50 transition-colors"
-              title="Push to Azure Automation"
-            >
-              {pushing ? (
-                <svg className="w-2 h-2 animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg>
-              ) : (
-                <svg className="w-2 h-2" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" /></svg>
-              )}
-              {pushing ? "Pushing…" : "Push"}
-            </button>
+            <div className="flex items-center gap-1">
+              <span className="text-[9px] text-[#484F58] italic">Not pushed</span>
+              <button
+                onClick={(e) => void handlePush(e)}
+                disabled={pushing}
+                className="inline-flex items-center gap-0.5 text-[9px] font-medium px-1.5 py-0.5 rounded-full bg-[#0078D4]/10 text-[#58A6FF] border border-[#0078D4]/25 hover:bg-[#0078D4]/20 disabled:opacity-50 transition-colors"
+                title="Push to Azure Automation"
+              >
+                {pushing ? (
+                  <svg className="w-2 h-2 animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg>
+                ) : (
+                  <svg className="w-2 h-2" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" /></svg>
+                )}
+                {pushing ? "Pushing…" : "Push to Azure"}
+              </button>
+            </div>
           )}
         </div>
       </td>
