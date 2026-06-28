@@ -385,6 +385,14 @@ function ScriptFormModal({
 
 // ── Run Script Modal ──────────────────────────────────────────────────────────
 
+interface PollStatus {
+  status: string;
+  outputLines: string[];
+  findings?: string[];
+  scoreImpact?: Record<string, number>;
+  error?: string;
+}
+
 function RunScriptModal({ script, onClose }: { script: Script; onClose: () => void }) {
   const { fetchWithAuth } = useAuth();
   const { toast } = useToast();
@@ -394,6 +402,12 @@ function RunScriptModal({ script, onClose }: { script: Script; onClose: () => vo
   const [running, setRunning] = useState(false);
   const [done, setDone] = useState(false);
   const [findings, setFindings] = useState<string[]>([]);
+  // Streaming state
+  const [jobRef, setJobRef] = useState<string | null>(null);
+  const [outputLines, setOutputLines] = useState<string[]>([]);
+  const [streaming, setStreaming] = useState(false);
+  const terminalRef = useRef<HTMLDivElement>(null);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
     fetchWithAuth("/api/admin/clients/with-azure-credentials")
@@ -402,6 +416,47 @@ function RunScriptModal({ script, onClose }: { script: Script; onClose: () => vo
       .catch(() => {})
       .finally(() => setLoadingCreds(false));
   // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Auto-scroll terminal to bottom when new lines arrive
+  useEffect(() => {
+    if (terminalRef.current) {
+      terminalRef.current.scrollTop = terminalRef.current.scrollHeight;
+    }
+  }, [outputLines]);
+
+  // Polling loop
+  useEffect(() => {
+    if (!jobRef || !streaming) return;
+    const poll = async () => {
+      try {
+        const res = await fetchWithAuth(`/api/admin/run-script/${encodeURIComponent(jobRef)}/status`);
+        if (!res.ok) return;
+        const data = await res.json() as PollStatus;
+        setOutputLines(data.outputLines ?? []);
+        if (["completed", "failed", "stopped", "suspended"].includes(data.status.toLowerCase())) {
+          setStreaming(false);
+          setFindings(data.findings ?? []);
+          setDone(true);
+          if (pollRef.current) clearInterval(pollRef.current);
+          toast({
+            title: `Script run ${data.status.toLowerCase()}`,
+            description: (data.findings?.length ?? 0) > 0
+              ? `${data.findings!.length} finding${data.findings!.length !== 1 ? "s" : ""} — check Run Results`
+              : "No findings — see Run Results for details",
+          });
+        }
+      } catch { /* non-fatal — keep polling */ }
+    };
+    pollRef.current = setInterval(() => { void poll(); }, 3000);
+    void poll();
+    return () => { if (pollRef.current) clearInterval(pollRef.current); };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [jobRef, streaming]);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => { if (pollRef.current) clearInterval(pollRef.current); };
   }, []);
 
   const selectedClient = clients.find(c => c.id === selectedClientId);
@@ -419,16 +474,24 @@ function RunScriptModal({ script, onClose }: { script: Script; onClose: () => vo
           customerId: selectedClient.id,
         }),
       });
-      const data = await res.json() as { status?: string; findings?: string[]; error?: string };
+      const data = await res.json() as { jobRef?: string; resultId?: number; status?: string; findings?: string[]; error?: string };
       if (!res.ok) {
         toast({ title: data.error ?? "Script run failed", variant: "destructive" });
+        return;
+      }
+      if (data.jobRef) {
+        // Async path — start streaming
+        setJobRef(data.jobRef);
+        setOutputLines([]);
+        setStreaming(true);
       } else {
+        // Legacy sync response (manual/awaiting_upload)
         setFindings(data.findings ?? []);
         setDone(true);
         toast({
           title: `Script run ${data.status ?? "complete"}`,
-          description: data.findings?.length
-            ? `${data.findings.length} finding${data.findings.length !== 1 ? "s" : ""} — check Run Results`
+          description: (data.findings?.length ?? 0) > 0
+            ? `${data.findings!.length} finding${data.findings!.length !== 1 ? "s" : ""} — check Run Results`
             : "No findings — see Run Results for details",
         });
       }
@@ -441,7 +504,7 @@ function RunScriptModal({ script, onClose }: { script: Script; onClose: () => vo
 
   return (
     <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-      <div className="bg-[#161B22] border border-[#30363D] rounded-xl shadow-2xl w-full max-w-md">
+      <div className="bg-[#161B22] border border-[#30363D] rounded-xl shadow-2xl w-full max-w-lg">
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-[#30363D]">
           <div className="min-w-0 flex-1">
@@ -455,14 +518,37 @@ function RunScriptModal({ script, onClose }: { script: Script; onClose: () => vo
 
         {/* Body */}
         <div className="px-5 py-4 space-y-4">
-          {done ? (
-            <div className="space-y-3">
+          {/* Streaming terminal */}
+          {(streaming || (done && outputLines.length > 0)) && (
+            <div className="space-y-2">
               <div className="flex items-center gap-2">
-                <div className="w-2 h-2 rounded-full bg-green-400" />
-                <p className="text-sm font-semibold text-green-400">Run complete</p>
+                {streaming ? (
+                  <><span className="w-2 h-2 rounded-full bg-yellow-400 animate-pulse" /><p className="text-xs font-semibold text-yellow-400">Running…</p></>
+                ) : (
+                  <><span className="w-2 h-2 rounded-full bg-green-400" /><p className="text-xs font-semibold text-green-400">Complete</p></>
+                )}
               </div>
+              <div
+                ref={terminalRef}
+                className="bg-[#0D1117] border border-[#30363D] rounded-lg p-3 h-52 overflow-y-auto"
+                style={{ fontFamily: "'Cascadia Code','Fira Code','Consolas',monospace", fontSize: "11px", lineHeight: "1.6" }}
+              >
+                {outputLines.length === 0 ? (
+                  <span className="text-[#484F58]">Waiting for output…</span>
+                ) : (
+                  outputLines.map((line, i) => (
+                    <div key={i} className="text-[#C9D1D9] whitespace-pre-wrap break-all">{line}</div>
+                  ))
+                )}
+              </div>
+            </div>
+          )}
+
+          {done && (
+            <div className="space-y-2">
+              <p className="text-xs font-bold uppercase tracking-wider text-[#7D8590]">AI Findings</p>
               {findings.length > 0 ? (
-                <div className="bg-[#1C2128] border border-[#30363D] rounded-lg p-3 space-y-1.5 max-h-48 overflow-y-auto">
+                <div className="bg-[#1C2128] border border-[#30363D] rounded-lg p-3 space-y-1.5 max-h-36 overflow-y-auto">
                   {findings.map((f, i) => (
                     <p key={i} className="text-xs text-[#C9D1D9] leading-relaxed flex gap-2">
                       <span className="text-[#0078D4] flex-shrink-0 mt-0.5">•</span>
@@ -474,7 +560,9 @@ function RunScriptModal({ script, onClose }: { script: Script; onClose: () => vo
                 <p className="text-xs text-[#7D8590] italic">No findings — check Run Results for full output.</p>
               )}
             </div>
-          ) : (
+          )}
+
+          {!streaming && !done && (
             <>
               <div>
                 <label className={labelCls}>Client</label>
@@ -523,14 +611,14 @@ function RunScriptModal({ script, onClose }: { script: Script; onClose: () => vo
           >
             {done ? "Close" : "Cancel"}
           </button>
-          {!done && (
+          {!done && !streaming && (
             <button
               onClick={() => void handleRun()}
               disabled={!selectedClientId || running || loadingCreds}
               className="flex items-center gap-2 bg-[#0078D4] hover:bg-[#006CBE] disabled:opacity-50 text-white text-sm font-semibold px-4 py-2 rounded-lg transition-colors"
             >
               {running ? (
-                <><Loader2 className="w-4 h-4 animate-spin" />Running…</>
+                <><Loader2 className="w-4 h-4 animate-spin" />Starting…</>
               ) : (
                 <><Play className="w-4 h-4" />Run Script</>
               )}

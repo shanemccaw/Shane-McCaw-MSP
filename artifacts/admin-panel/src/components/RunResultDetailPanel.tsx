@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import { RefreshCw, CheckCircle, Zap, Download, Upload, X, ArrowLeft } from "lucide-react";
@@ -35,11 +35,12 @@ function StatusBadge({ status }: { status: string }) {
 
 // ── Tabs ──────────────────────────────────────────────────────────────────────
 
-type Tab = "findings" | "score-impact" | "raw-output";
+type Tab = "findings" | "score-impact" | "m365-score" | "raw-output";
 
 const TABS: { id: Tab; label: string }[] = [
   { id: "findings",     label: "AI Findings"  },
   { id: "score-impact", label: "Score Impact" },
+  { id: "m365-score",   label: "M365 Score"   },
   { id: "raw-output",   label: "Raw Output"   },
 ];
 
@@ -144,6 +145,133 @@ function ScoreImpactTab({ result }: { result: RunResult }) {
   );
 }
 
+// ── M365 Score Before/After Tab ───────────────────────────────────────────────
+
+interface ClientScores {
+  identity: number;
+  security: number;
+  collaboration: number;
+  compliance: number;
+  copilotReadiness: number;
+}
+
+const SCORE_KEYS: Array<{ key: keyof ClientScores; label: string }> = [
+  { key: "identity",         label: "Identity"          },
+  { key: "security",         label: "Security"          },
+  { key: "collaboration",    label: "Collaboration"     },
+  { key: "compliance",       label: "Compliance"        },
+  { key: "copilotReadiness", label: "Copilot Readiness" },
+];
+
+function M365ScoreTab({ result }: { result: RunResult }) {
+  const { fetchWithAuth } = useAuth();
+  const [scores, setScores] = useState<ClientScores | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const deltas = result.scoreImpact as Record<string, number>;
+  const hasDeltas = Object.keys(deltas).length > 0 && Object.values(deltas).some(v => v !== 0);
+
+  useEffect(() => {
+    if (!result.customerId) return;
+    setLoading(true);
+    setError(null);
+    fetchWithAuth(`/api/admin/clients/${result.customerId}/scores`)
+      .then(async r => {
+        if (!r.ok) { setError("Could not load client scores"); return; }
+        const data = await r.json() as ClientScores;
+        setScores(data);
+      })
+      .catch(() => setError("Network error loading scores"))
+      .finally(() => setLoading(false));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [result.customerId]);
+
+  if (!result.customerId) {
+    return (
+      <div className="flex flex-col items-center justify-center py-16 text-center">
+        <svg className="w-10 h-10 text-[#21262D] mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+        </svg>
+        <p className="text-sm text-[#484F58]">No client linked to this run</p>
+      </div>
+    );
+  }
+
+  if (!hasDeltas) {
+    return (
+      <div className="flex flex-col items-center justify-center py-16 text-center">
+        <svg className="w-10 h-10 text-[#21262D] mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+        </svg>
+        <p className="text-sm text-[#484F58]">No score deltas for this run</p>
+      </div>
+    );
+  }
+
+  if (loading) {
+    return (
+      <div className="space-y-3 animate-pulse">
+        {SCORE_KEYS.map(({ key }) => (
+          <div key={key} className="h-14 bg-[#161B22] rounded-lg border border-[#21262D]" />
+        ))}
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex flex-col items-center justify-center py-16 text-center">
+        <p className="text-sm text-red-400">{error}</p>
+      </div>
+    );
+  }
+
+  const base: ClientScores = scores ?? { identity: 0, security: 0, collaboration: 0, compliance: 0, copilotReadiness: 0 };
+
+  return (
+    <div className="space-y-3">
+      <div className="grid grid-cols-3 text-[10px] font-bold uppercase tracking-wider text-[#484F58] px-1 mb-1">
+        <span>Category</span>
+        <span className="text-center">Current</span>
+        <span className="text-center">After Script</span>
+      </div>
+      {SCORE_KEYS.filter(({ key }) => deltas[key] !== undefined && deltas[key] !== 0).map(({ key, label }) => {
+        const current = base[key];
+        const delta = deltas[key] ?? 0;
+        const after = Math.max(0, Math.min(100, current + delta));
+        const isPos = delta > 0;
+        const arrowColor = isPos ? "text-green-400" : "text-red-400";
+        const deltaText = isPos ? `+${delta}` : String(delta);
+        return (
+          <div key={key} className="grid grid-cols-3 items-center bg-[#161B22] border border-[#21262D] rounded-lg px-3 py-3 gap-2">
+            <span className="text-xs text-[#C9D1D9] font-medium">{label}</span>
+            <div className="flex flex-col items-center">
+              <span className="text-sm font-bold text-[#E6EDF3] tabular-nums">{current}</span>
+              <div className="w-full h-1 bg-[#21262D] rounded-full mt-1">
+                <div className="h-full bg-[#0078D4] rounded-full" style={{ width: `${current}%` }} />
+              </div>
+            </div>
+            <div className="flex flex-col items-center">
+              <div className="flex items-center gap-1">
+                <span className={`text-[10px] font-bold ${arrowColor}`}>{isPos ? "▲" : "▼"}</span>
+                <span className="text-sm font-bold text-[#E6EDF3] tabular-nums">{after}</span>
+                <span className={`text-[10px] font-semibold ${arrowColor}`}>({deltaText})</span>
+              </div>
+              <div className="w-full h-1 bg-[#21262D] rounded-full mt-1">
+                <div
+                  className={`h-full rounded-full ${isPos ? "bg-green-500" : "bg-red-500"}`}
+                  style={{ width: `${after}%` }}
+                />
+              </div>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 // ── Raw Output Tab ────────────────────────────────────────────────────────────
 
 /** Escape HTML entities to prevent XSS in dangerouslySetInnerHTML output */
@@ -185,7 +313,9 @@ function RawOutputTab({ result }: { result: RunResult }) {
     if (typeof value === "string") {
       try { value = JSON.parse(value); } catch { /* keep as string */ }
     }
-    const plain = typeof value === "string" ? value : (JSON.stringify(value, null, 2) ?? "");
+    let plain = typeof value === "string" ? value : (JSON.stringify(value, null, 2) ?? "");
+    // Normalise Windows/old-Mac line endings so each line renders on its own row
+    plain = plain.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
     const lines = plain ? plain.split("\n").length : 0;
     const bytes = new TextEncoder().encode(plain).length;
     return {
@@ -484,6 +614,7 @@ export default function RunResultDetailPanel({ result, onClose, onMarkReviewed, 
       <div className={`flex-1 min-h-0 overflow-y-auto px-5 py-4 ${activeTab === "raw-output" ? "flex flex-col" : ""}`}>
         {activeTab === "findings" && <FindingsTab result={result} />}
         {activeTab === "score-impact" && <ScoreImpactTab result={result} />}
+        {activeTab === "m365-score" && <M365ScoreTab result={result} />}
         {activeTab === "raw-output" && <RawOutputTab result={result} />}
       </div>
 
@@ -501,14 +632,18 @@ export default function RunResultDetailPanel({ result, onClose, onMarkReviewed, 
             </button>
           )}
           {!result.reviewedAt && (
-            <button
-              onClick={() => void handleMarkReviewed()}
-              disabled={marking}
-              className="flex items-center gap-1.5 px-3 py-2 text-sm font-semibold text-green-400 border border-green-500/30 hover:border-green-500 hover:bg-green-500/10 rounded-lg transition-colors disabled:opacity-50 ml-auto"
-            >
-              {marking ? <RefreshCw className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />}
-              Mark Reviewed
-            </button>
+            <div className="ml-auto flex flex-col items-end gap-0.5">
+              <button
+                onClick={() => void handleMarkReviewed()}
+                disabled={marking}
+                title="Flags this result as acknowledged — no further action needed."
+                className="flex items-center gap-1.5 px-3 py-2 text-sm font-semibold text-green-400 border border-green-500/30 hover:border-green-500 hover:bg-green-500/10 rounded-lg transition-colors disabled:opacity-50"
+              >
+                {marking ? <RefreshCw className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />}
+                Mark Reviewed
+              </button>
+              <p className="text-[10px] text-[#484F58] pr-0.5">Flags this result as acknowledged — no further action needed.</p>
+            </div>
           )}
         </div>
       )}

@@ -201,6 +201,72 @@ async function applyProfileUpdates(
   }
 }
 
+// ── Background job processor (detached — no await) ────────────────────────────
+
+async function processRunInBackground(
+  runResultId: number,
+  jobId: string,
+  scriptId: number,
+  customerId: number | undefined,
+  packageContext: string,
+  aiInstructions: string,
+): Promise<void> {
+  let jobOutput: string;
+  let jobStatus: string;
+  try {
+    ({ status: jobStatus, output: jobOutput } = await waitForJobCompletion(jobId));
+  } catch (err) {
+    logger.error({ err, jobId }, "admin-m365-run: background job polling timed out or failed");
+    await db
+      .update(scriptRunResultsTable)
+      .set({ status: "failed", rawOutput: { error: String(err) } })
+      .where(eq(scriptRunResultsTable.id, runResultId));
+    return;
+  }
+
+  const finalStatus: "completed" | "failed" = jobStatus === "Completed" ? "completed" : "failed";
+
+  let aiResult = { findings: [] as string[], recommendations: [] as string[], scoreImpact: {} as Record<string, number>, profileUpdates: {} as Record<string, unknown> };
+  if (jobOutput.trim()) {
+    try {
+      aiResult = await runAiAnalyzer({
+        scriptOutput: jobOutput,
+        aiInstructions,
+        packageContext,
+      });
+    } catch (err) {
+      logger.warn({ err, scriptId, jobId }, "admin-m365-run: AI analysis failed (non-fatal)");
+    }
+  }
+
+  await db
+    .update(scriptRunResultsTable)
+    .set({
+      rawOutput: { output: jobOutput, jobStatus },
+      parsedFindings: aiResult.findings,
+      recommendations: aiResult.recommendations,
+      scoreImpact: aiResult.scoreImpact,
+      profileUpdates: aiResult.profileUpdates,
+      status: finalStatus,
+    })
+    .where(eq(scriptRunResultsTable.id, runResultId));
+
+  if (customerId) {
+    try {
+      await applyScoreImpact(customerId, aiResult.scoreImpact);
+    } catch (err) {
+      logger.warn({ err, customerId }, "admin-m365-run: failed to apply score impact (non-fatal)");
+    }
+    try {
+      await applyProfileUpdates(customerId, aiResult.profileUpdates);
+    } catch (err) {
+      logger.warn({ err, customerId }, "admin-m365-run: failed to apply profile updates (non-fatal)");
+    }
+  }
+
+  logger.info({ runResultId, jobId, finalStatus }, "admin-m365-run: background job processing complete");
+}
+
 // ── POST /api/admin/run-script ────────────────────────────────────────────────
 
 router.post("/admin/run-script", requireAdmin, async (req: Request, res: Response) => {
@@ -306,73 +372,110 @@ router.post("/admin/run-script", requireAdmin, async (req: Request, res: Respons
     .set({ jobId })
     .where(eq(scriptRunResultsTable.id, runResultId));
 
-  // Wait for completion
-  let jobOutput: string;
-  let jobStatus: string;
-  try {
-    ({ status: jobStatus, output: jobOutput } = await waitForJobCompletion(jobId));
-  } catch (err) {
-    logger.error({ err, jobId }, "admin-m365-run: job polling timed out or failed");
-    await db
-      .update(scriptRunResultsTable)
-      .set({ status: "failed", rawOutput: { error: String(err) } })
-      .where(eq(scriptRunResultsTable.id, runResultId));
-    res.status(504).json({ error: `Job polling failed: ${err instanceof Error ? err.message : String(err)}` });
-    return;
-  }
-
-  const finalStatus: "completed" | "failed" = jobStatus === "Completed" ? "completed" : "failed";
-
-  // Run AI analysis
-  let aiResult = { findings: [] as string[], recommendations: [] as string[], scoreImpact: {} as Record<string, number>, profileUpdates: {} as Record<string, unknown> };
-  if (jobOutput.trim()) {
-    try {
-      aiResult = await runAiAnalyzer({
-        scriptOutput: jobOutput,
-        aiInstructions: script.aiInstructions ?? "",
-        packageContext: packageContext ?? "",
-      });
-    } catch (err) {
-      logger.warn({ err, scriptId, jobId }, "admin-m365-run: AI analysis failed (non-fatal)");
-    }
-  }
-
-  // Persist final result
-  await db
-    .update(scriptRunResultsTable)
-    .set({
-      rawOutput: { output: jobOutput, jobStatus },
-      parsedFindings: aiResult.findings,
-      recommendations: aiResult.recommendations,
-      scoreImpact: aiResult.scoreImpact,
-      profileUpdates: aiResult.profileUpdates,
-      status: finalStatus,
-    })
-    .where(eq(scriptRunResultsTable.id, runResultId));
-
-  // Apply score and profile updates if customerId is provided
-  if (customerId) {
-    try {
-      await applyScoreImpact(customerId, aiResult.scoreImpact);
-    } catch (err) {
-      logger.warn({ err, customerId }, "admin-m365-run: failed to apply score impact (non-fatal)");
-    }
-    try {
-      await applyProfileUpdates(customerId, aiResult.profileUpdates);
-    } catch (err) {
-      logger.warn({ err, customerId }, "admin-m365-run: failed to apply profile updates (non-fatal)");
-    }
-  }
-
-  res.json({
+  // Kick off background processing (detached — do NOT await)
+  void processRunInBackground(
     runResultId,
     jobId,
     scriptId,
-    status: finalStatus,
-    findings: aiResult.findings,
-    recommendations: aiResult.recommendations,
-    scoreImpact: aiResult.scoreImpact,
-  });
+    customerId,
+    packageContext ?? "",
+    script.aiInstructions ?? "",
+  );
+
+  // Return immediately so the client can start polling
+  res.json({ jobRef: jobId, resultId: runResultId, scriptId, status: "running" });
+});
+
+// ── GET /api/admin/run-script/:jobRef/status ──────────────────────────────────
+
+router.get("/admin/run-script/:jobRef/status", requireAdmin, async (req: Request, res: Response) => {
+  const jobRef = String(req.params.jobRef ?? "");
+  if (!jobRef) {
+    res.status(400).json({ error: "Missing jobRef" });
+    return;
+  }
+
+  try {
+    const [row] = await db
+      .select({
+        id: scriptRunResultsTable.id,
+        status: scriptRunResultsTable.status,
+        parsedFindings: scriptRunResultsTable.parsedFindings,
+        recommendations: scriptRunResultsTable.recommendations,
+        scoreImpact: scriptRunResultsTable.scoreImpact,
+        rawOutput: scriptRunResultsTable.rawOutput,
+      })
+      .from(scriptRunResultsTable)
+      .where(eq(scriptRunResultsTable.jobId, jobRef))
+      .limit(1);
+
+    if (!row) {
+      res.status(404).json({ error: "Job not found" });
+      return;
+    }
+
+    // Fetch live output lines from Azure while still running
+    let outputLines: string[] = [];
+    if (row.status === "running") {
+      try {
+        const lines = await getJobOutput(jobRef);
+        outputLines = lines.map(l => l.text).filter(Boolean);
+      } catch (err) {
+        logger.warn({ err, jobRef }, "admin-m365-run: failed to fetch job output during polling (non-fatal)");
+      }
+    } else {
+      // Job is terminal — serve output from the stored rawOutput
+      const raw = row.rawOutput as Record<string, unknown> | null;
+      const stored = typeof raw?.output === "string" ? raw.output : "";
+      if (stored) {
+        outputLines = stored
+          .replace(/\r\n/g, "\n")
+          .replace(/\r/g, "\n")
+          .split("\n")
+          .filter(Boolean);
+      }
+    }
+
+    res.json({
+      status: row.status,
+      outputLines,
+      findings: row.parsedFindings ?? [],
+      recommendations: row.recommendations ?? [],
+      scoreImpact: row.scoreImpact ?? {},
+    });
+  } catch (err) {
+    logger.error({ err, jobRef }, "admin-m365-run: failed to get job status");
+    res.status(500).json({ error: "Failed to get job status" });
+  }
+});
+
+// ── GET /api/admin/clients/:id/scores ─────────────────────────────────────────
+
+router.get("/admin/clients/:id/scores", requireAdmin, async (req: Request, res: Response) => {
+  const id = parseInt(String(req.params.id));
+  if (isNaN(id)) {
+    res.status(400).json({ error: "Invalid client id" });
+    return;
+  }
+
+  try {
+    const [row] = await db
+      .select()
+      .from(clientScoresTable)
+      .where(eq(clientScoresTable.clientId, id))
+      .limit(1);
+
+    res.json({
+      identity:         row?.identity         ?? 0,
+      security:         row?.security         ?? 0,
+      collaboration:    row?.collaboration    ?? 0,
+      compliance:       row?.compliance       ?? 0,
+      copilotReadiness: row?.copilotReadiness ?? 0,
+    });
+  } catch (err) {
+    logger.error({ err, clientId: id }, "admin-m365-run: failed to fetch client scores");
+    res.status(500).json({ error: "Failed to fetch client scores" });
+  }
 });
 
 // ── GET /api/admin/script-run-results ────────────────────────────────────────
