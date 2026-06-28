@@ -9,8 +9,10 @@ import {
   artifactSetsTable,
   deliverableSetsTable,
   assetLibraryCategoriesTable,
+  scriptPackagesTable,
+  scriptModulesTable,
 } from "@workspace/db";
-import { eq, asc, inArray } from "drizzle-orm";
+import { eq, asc, inArray, desc } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/requireAuth";
 import { classifyAndUpdateTask } from "../lib/classify-task-type";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
@@ -662,5 +664,267 @@ router.post("/admin/workflow-templates/:id/generate-asset-sets", requireAdmin, a
     }
   }
 });
+
+// ─── PS Script generation helpers ─────────────────────────────────────────────
+
+const STEP_SCRIPTS_SYSTEM_PROMPT = `You are an expert Microsoft 365 PowerShell script engineer with 20+ years of experience across Azure, Exchange Online, SharePoint, Teams, Intune, Defender, and related services.
+
+When asked to produce a PowerShell script, you MUST:
+
+1. Write a complete, production-ready script with:
+   - [CmdletBinding()] attribute
+   - A param() block with typed, documented parameters (include -TenantId, -ClientId, -ClientSecret where applicable)
+   - Structured error handling via try/catch/finally blocks
+   - Write-Output (NOT Write-Host) for all console output
+   - Inline comments explaining each logical section
+   - Clear output (export to CSV where applicable, structured objects, or console summary)
+   - $ErrorActionPreference = "Stop" at the top
+
+IMPORTANT: Never use Write-Host. Always use Write-Output for any status messages or console output.
+
+2. After the script, output a JSON block (inside a \`\`\`json fence) with the EXACT permissions required:
+{
+  "appPermissions": ["<e.g. User.Read.All (Microsoft Graph Application)>"],
+  "delegatedPermissions": [],
+  "notes": "<Brief note about which permissions are required>"
+}`;
+
+function toScriptFilename(title: string): string {
+  return (
+    title
+      .replace(/[^a-zA-Z0-9\s-]/g, "")
+      .trim()
+      .replace(/\s+/g, "-")
+      .replace(/-+/g, "-") + ".ps1"
+  );
+}
+
+// ─── POST /api/admin/workflow-templates/:id/steps/:stepId/generate-scripts ───
+
+router.post(
+  "/admin/workflow-templates/:id/steps/:stepId/generate-scripts",
+  requireAdmin,
+  async (req: Request, res: Response) => {
+    const templateId = parseInt(req.params.id as string, 10);
+    const stepId = parseInt(req.params.stepId as string, 10);
+    if (isNaN(templateId) || isNaN(stepId)) {
+      res.status(400).json({ error: "Invalid template or step ID" });
+      return;
+    }
+
+    const { mode = "append" } = req.body as { mode?: "replace" | "append" };
+    const acceptsSSE = req.headers.accept?.includes("text/event-stream");
+
+    function sendSSE(data: unknown) {
+      res.write(`data: ${JSON.stringify(data)}\n\n`);
+    }
+
+    try {
+      // 1. Verify step belongs to template
+      const [step] = await db
+        .select()
+        .from(workflowTemplateStepsTable)
+        .where(eq(workflowTemplateStepsTable.id, stepId))
+        .limit(1);
+
+      if (!step || step.workflowTemplateId !== templateId) {
+        res.status(404).json({ error: "Step not found" });
+        return;
+      }
+
+      // 2. Fetch tasks
+      const tasks = await db
+        .select()
+        .from(workflowTemplateStepTasksTable)
+        .where(eq(workflowTemplateStepTasksTable.workflowTemplateStepId, stepId))
+        .orderBy(asc(workflowTemplateStepTasksTable.order));
+
+      if (tasks.length === 0) {
+        if (acceptsSSE) {
+          res.setHeader("Content-Type", "text/event-stream");
+          res.setHeader("Cache-Control", "no-cache");
+          res.setHeader("Connection", "keep-alive");
+          res.flushHeaders();
+          sendSSE({ type: "done", packageId: null, packageTitle: null, generated: 0, skipped: 0, failed: 0 });
+          res.end();
+        } else {
+          res.json({ generated: 0, skipped: 0, failed: 0 });
+        }
+        return;
+      }
+
+      // 3. Set up SSE
+      if (acceptsSSE) {
+        res.setHeader("Content-Type", "text/event-stream");
+        res.setHeader("Cache-Control", "no-cache");
+        res.setHeader("Connection", "keep-alive");
+        res.flushHeaders();
+      }
+
+      // 4. Find or create package
+      const packageTitle = `${step.title} Scripts`;
+      const existingPkgs = await db
+        .select()
+        .from(scriptPackagesTable)
+        .where(eq(scriptPackagesTable.title, packageTitle))
+        .orderBy(desc(scriptPackagesTable.createdAt))
+        .limit(1);
+
+      let packageId: string;
+
+      if (existingPkgs.length > 0 && mode === "replace") {
+        packageId = existingPkgs[0]!.id;
+        await db.delete(scriptModulesTable).where(eq(scriptModulesTable.packageId, packageId));
+      } else if (existingPkgs.length > 0 && mode === "append") {
+        packageId = existingPkgs[0]!.id;
+      } else {
+        const [pkg] = await db
+          .insert(scriptPackagesTable)
+          .values({ title: packageTitle, category: "other", permissions: { appPermissions: [], delegatedPermissions: [], notes: "" }, tags: [] })
+          .returning();
+        packageId = pkg!.id;
+      }
+
+      // 5. Get existing module count (for sort order in append mode)
+      let baseModuleCount = 0;
+      if (mode === "append" && existingPkgs.length > 0) {
+        const existingMods = await db
+          .select({ id: scriptModulesTable.id })
+          .from(scriptModulesTable)
+          .where(eq(scriptModulesTable.packageId, packageId));
+        baseModuleCount = existingMods.length;
+      }
+
+      let generated = 0;
+      let skipped = 0;
+      let failed = 0;
+      const total = tasks.length;
+
+      // 6. Process each task
+      for (let i = 0; i < tasks.length; i++) {
+        const task = tasks[i]!;
+
+        // Classify
+        if (acceptsSSE) {
+          sendSSE({ type: "progress", current: i, total, taskTitle: task.title, status: "classifying" });
+        }
+
+        let classification: "AUTOMATABLE" | "HUMAN_ONLY" = "HUMAN_ONLY";
+        try {
+          const classMsg = await anthropic.messages.create({
+            model: "claude-haiku-4-5",
+            max_tokens: 20,
+            messages: [
+              {
+                role: "user",
+                content: `Classify this Microsoft 365 workflow task. Reply with ONLY one word: AUTOMATABLE or HUMAN_ONLY.
+AUTOMATABLE = can be done or assisted by a PowerShell script (provisioning, config, bulk ops, reports, policy enforcement, account setup).
+HUMAN_ONLY = inherently human: meetings, training sessions, approvals requiring judgment, writing docs, stakeholder comms, decisions.
+
+Task: "${task.title}"${task.description ? `\nDescription: ${task.description}` : ""}`,
+              },
+            ],
+          });
+          const block = classMsg.content[0];
+          const text = block?.type === "text" ? block.text.trim().toUpperCase() : "";
+          classification = text.includes("AUTOMATABLE") ? "AUTOMATABLE" : "HUMAN_ONLY";
+        } catch (err) {
+          logger.warn({ err, taskTitle: task.title }, "generate-scripts: classification failed, defaulting to HUMAN_ONLY");
+        }
+
+        if (classification === "HUMAN_ONLY") {
+          skipped++;
+          if (acceptsSSE) {
+            sendSSE({ type: "task_done", current: i + 1, total, taskTitle: task.title, classification, saved: false, skipped: true });
+          }
+          continue;
+        }
+
+        // Generate PS script
+        if (acceptsSSE) {
+          sendSSE({ type: "progress", current: i, total, taskTitle: task.title, status: "generating" });
+        }
+
+        try {
+          const contextParts: string[] = [];
+          if (task.description) contextParts.push(`Context: ${task.description}`);
+          if (Array.isArray(task.instructions) && (task.instructions as string[]).length > 0) {
+            contextParts.push(`Instructions:\n${(task.instructions as string[]).join("\n")}`);
+          }
+          const userPrompt = `${STEP_SCRIPTS_SYSTEM_PROMPT}\n\nTask description: ${task.title}${contextParts.length > 0 ? "\n\n" + contextParts.join("\n\n") : ""}\n\nWrite the complete PowerShell script followed by the permissions JSON block.`;
+
+          const genMsg = await anthropic.messages.create({
+            model: "claude-haiku-4-5",
+            max_tokens: 8192,
+            messages: [{ role: "user", content: userPrompt }],
+          });
+
+          const block = genMsg.content[0];
+          if (!block || block.type !== "text") {
+            failed++;
+            if (acceptsSSE) {
+              sendSSE({ type: "task_done", current: i + 1, total, taskTitle: task.title, classification, saved: false, skipped: false });
+            }
+            continue;
+          }
+
+          const fullText = block.text;
+
+          // Extract script body (everything before the ```json block)
+          const jsonFenceIdx = fullText.search(/```json/i);
+          let scriptBody =
+            jsonFenceIdx > 0
+              ? fullText.slice(0, jsonFenceIdx).replace(/```powershell\s*/i, "").replace(/```\s*$/, "").trim()
+              : fullText.replace(/```(?:powershell)?\s*/gi, "").replace(/```\s*/g, "").trim();
+
+          if (scriptBody.length < 20) {
+            const jsonBlockRe = /```json[\s\S]*?```/gi;
+            scriptBody = fullText
+              .replace(jsonBlockRe, "")
+              .replace(/```(?:powershell)?\s*/gi, "")
+              .replace(/```\s*$/gm, "")
+              .trim();
+          }
+
+          const filename = toScriptFilename(task.title);
+
+          await db.insert(scriptModulesTable).values({
+            packageId,
+            filename,
+            description: task.description ?? task.title,
+            content: scriptBody,
+            sortOrder: baseModuleCount + generated,
+          });
+
+          generated++;
+          if (acceptsSSE) {
+            sendSSE({ type: "task_done", current: i + 1, total, taskTitle: task.title, classification, saved: true, skipped: false });
+          }
+        } catch (err) {
+          logger.error({ err, taskTitle: task.title }, "generate-scripts: script generation failed");
+          failed++;
+          if (acceptsSSE) {
+            sendSSE({ type: "task_done", current: i + 1, total, taskTitle: task.title, classification, saved: false, skipped: false });
+          }
+        }
+      }
+
+      if (acceptsSSE) {
+        sendSSE({ type: "done", packageId, packageTitle, generated, skipped, failed });
+        res.end();
+      } else {
+        res.json({ packageId, packageTitle, generated, skipped, failed });
+      }
+    } catch (err) {
+      logger.error({ err }, "generate-scripts: endpoint failed");
+      if (acceptsSSE) {
+        sendSSE({ type: "error", message: "Failed to generate scripts" });
+        res.end();
+      } else {
+        res.status(500).json({ error: "Failed to generate scripts" });
+      }
+    }
+  }
+);
 
 export default router;

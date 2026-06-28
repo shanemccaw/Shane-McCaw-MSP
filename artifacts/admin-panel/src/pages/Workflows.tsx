@@ -269,6 +269,7 @@ function SortableStepCard({
   onMoveDown,
   onDelete,
   onEditTitle,
+  onGenerateScripts,
 }: {
   step: WorkflowStep;
   idx: number;
@@ -280,6 +281,7 @@ function SortableStepCard({
   onMoveDown: () => void;
   onDelete: () => void;
   onEditTitle: (id: number, title: string) => void;
+  onGenerateScripts: () => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: step.id });
   const [editing, setEditing] = useState(false);
@@ -414,6 +416,16 @@ function SortableStepCard({
           </svg>
         </button>
         <button
+          onClick={e => { e.stopPropagation(); onGenerateScripts(); }}
+          disabled={(step.tasks?.length ?? 0) === 0}
+          className="p-1 text-[#484F58] hover:text-[#00B4D8] disabled:opacity-20 rounded"
+          title={taskCount === 0 ? "No tasks to generate scripts for" : "Generate PowerShell scripts for this step's tasks"}
+        >
+          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
+          </svg>
+        </button>
+        <button
           onClick={e => { e.stopPropagation(); onMoveUp(); }}
           disabled={idx === 0}
           className="p-1 text-[#484F58] hover:text-[#7D8590] disabled:opacity-20 rounded"
@@ -442,6 +454,374 @@ function SortableStepCard({
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
           </svg>
         </button>
+      </div>
+    </div>
+  );
+}
+
+// ─── Generate Step Scripts Dialog ──────────────────────────────────────────────
+
+type ScriptGenPhase = "confirm" | "running" | "done" | "error";
+type ScriptGenMode = "replace" | "append";
+
+interface ScriptGenLogEntry {
+  taskTitle: string;
+  classification: string;
+  saved: boolean;
+  skipped: boolean;
+}
+
+interface ScriptGenState {
+  phase: ScriptGenPhase;
+  mode: ScriptGenMode;
+  total: number;
+  current: number;
+  currentTaskTitle: string;
+  currentStatus: "classifying" | "generating" | null;
+  log: ScriptGenLogEntry[];
+  summary: { packageId: string; packageTitle: string; generated: number; skipped: number; failed: number } | null;
+  errorMsg: string | null;
+}
+
+const SCRIPT_GEN_INITIAL: ScriptGenState = {
+  phase: "confirm",
+  mode: "replace",
+  total: 0,
+  current: 0,
+  currentTaskTitle: "",
+  currentStatus: null,
+  log: [],
+  summary: null,
+  errorMsg: null,
+};
+
+function GenerateStepScriptsDialog({
+  templateId,
+  step,
+  open,
+  onClose,
+}: {
+  templateId: number;
+  step: WorkflowStep | null;
+  open: boolean;
+  onClose: () => void;
+}) {
+  const { fetchWithAuth } = useAuth();
+  const [state, setState] = useState<ScriptGenState>(SCRIPT_GEN_INITIAL);
+  const logRef = useRef<HTMLDivElement>(null);
+  const readerRef = useRef<ReadableStreamDefaultReader<Uint8Array> | null>(null);
+
+  useEffect(() => {
+    if (open) setState(SCRIPT_GEN_INITIAL);
+  }, [open]);
+
+  useEffect(() => {
+    if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight;
+  }, [state.log]);
+
+  function handleClose() {
+    if (readerRef.current) {
+      readerRef.current.cancel().catch(() => { /* ignore */ });
+      readerRef.current = null;
+    }
+    onClose();
+  }
+
+  async function startGeneration() {
+    if (!step) return;
+    setState(s => ({ ...s, phase: "running", log: [], current: 0, total: 0 }));
+
+    try {
+      const res = await fetchWithAuth(
+        `/api/admin/workflow-templates/${templateId}/steps/${step.id}/generate-scripts`,
+        {
+          method: "POST",
+          headers: { Accept: "text/event-stream", "Content-Type": "application/json" },
+          body: JSON.stringify({ mode: state.mode }),
+        }
+      );
+
+      if (!res.ok || !res.body) {
+        setState(s => ({ ...s, phase: "error", errorMsg: "Server returned an error. Please try again." }));
+        return;
+      }
+
+      const reader = res.body.getReader();
+      readerRef.current = reader;
+      const decoder = new TextDecoder();
+      let buffer = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() ?? "";
+
+        for (const line of lines) {
+          if (!line.startsWith("data: ")) continue;
+          let evt: Record<string, unknown>;
+          try { evt = JSON.parse(line.slice(6)) as Record<string, unknown>; } catch { continue; }
+
+          if (evt.type === "progress") {
+            setState(s => ({
+              ...s,
+              total: (evt.total as number) ?? s.total,
+              current: (evt.current as number) ?? s.current,
+              currentTaskTitle: (evt.taskTitle as string) ?? s.currentTaskTitle,
+              currentStatus: (evt.status as "classifying" | "generating") ?? null,
+            }));
+          } else if (evt.type === "task_done") {
+            setState(s => ({
+              ...s,
+              total: (evt.total as number) ?? s.total,
+              current: (evt.current as number) ?? s.current,
+              log: [
+                ...s.log,
+                {
+                  taskTitle: evt.taskTitle as string,
+                  classification: evt.classification as string,
+                  saved: Boolean(evt.saved),
+                  skipped: Boolean(evt.skipped),
+                },
+              ],
+            }));
+          } else if (evt.type === "done") {
+            setState(s => ({
+              ...s,
+              phase: "done",
+              summary: {
+                packageId: evt.packageId as string,
+                packageTitle: evt.packageTitle as string,
+                generated: evt.generated as number,
+                skipped: evt.skipped as number,
+                failed: evt.failed as number,
+              },
+            }));
+          } else if (evt.type === "error") {
+            setState(s => ({ ...s, phase: "error", errorMsg: evt.message as string }));
+          }
+        }
+      }
+    } catch {
+      setState(s => ({ ...s, phase: "error", errorMsg: "Connection lost. Please try again." }));
+    }
+  }
+
+  if (!open || !step) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center">
+      <div className="absolute inset-0 bg-black/50" onClick={state.phase === "running" ? undefined : handleClose} />
+      <div className="relative bg-[#161B22] border border-[#30363D] rounded-xl shadow-2xl w-[520px] max-h-[80vh] flex flex-col">
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 py-4 border-b border-[#30363D] flex-shrink-0">
+          <div>
+            <h3 className="font-semibold text-[#E6EDF3] text-sm">Generate Scripts</h3>
+            <p className="text-xs text-[#7D8590] mt-0.5 truncate max-w-[380px]">{step.title}</p>
+          </div>
+          {state.phase !== "running" && (
+            <button onClick={handleClose} className="p-1.5 text-[#7D8590] hover:text-[#C9D1D9] rounded">
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          )}
+        </div>
+
+        {/* Body */}
+        <div className="flex-1 overflow-y-auto p-5 space-y-4">
+          {state.phase === "confirm" && (
+            <>
+              <p className="text-sm text-[#C9D1D9]">
+                AI will classify each task in <span className="font-semibold text-[#E6EDF3]">"{step.title}"</span>,
+                skip human-only tasks, and generate a PowerShell script for each automatable task.
+                Results are saved as a Script Package named{" "}
+                <span className="font-semibold text-[#00B4D8]">"{step.title} Scripts"</span>.
+              </p>
+              <div className="text-xs text-[#7D8590] bg-[#1C2128] rounded-lg px-3 py-2">
+                <span className="font-semibold text-[#E6EDF3]">{step.tasks?.length ?? 0}</span> task
+                {(step.tasks?.length ?? 0) !== 1 ? "s" : ""} will be classified
+              </div>
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-wide text-[#7D8590] mb-2">
+                  If a package named "{step.title} Scripts" already exists:
+                </p>
+                <div className="space-y-1.5">
+                  {(["replace", "append"] as ScriptGenMode[]).map(m => (
+                    <label key={m} className="flex items-start gap-2.5 cursor-pointer">
+                      <input
+                        type="radio"
+                        name="script-gen-mode"
+                        value={m}
+                        checked={state.mode === m}
+                        onChange={() => setState(s => ({ ...s, mode: m }))}
+                        className="mt-0.5 accent-[#0078D4]"
+                      />
+                      <span className="text-sm text-[#C9D1D9]">
+                        {m === "replace" ? (
+                          <><span className="font-semibold text-[#E6EDF3]">Replace</span> — delete existing scripts and write fresh ones</>
+                        ) : (
+                          <><span className="font-semibold text-[#E6EDF3]">Append</span> — add new scripts to the existing package</>
+                        )}
+                      </span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            </>
+          )}
+
+          {state.phase === "running" && (
+            <>
+              {/* Current task */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-[#7D8590]">
+                    {state.currentStatus === "classifying"
+                      ? "Classifying…"
+                      : state.currentStatus === "generating"
+                      ? "Generating script…"
+                      : "Processing…"}
+                  </span>
+                  <span className="text-[#7D8590]">{state.current}/{state.total}</span>
+                </div>
+                <div className="w-full bg-[#30363D] rounded-full h-1.5">
+                  <div
+                    className="h-1.5 rounded-full bg-[#00B4D8] transition-all duration-500"
+                    style={{ width: state.total > 0 ? `${(state.current / state.total) * 100}%` : "0%" }}
+                  />
+                </div>
+                {state.currentTaskTitle && (
+                  <p className="text-xs text-[#C9D1D9] truncate">{state.currentTaskTitle}</p>
+                )}
+              </div>
+
+              {/* Log */}
+              {state.log.length > 0 && (
+                <div ref={logRef} className="space-y-1 max-h-52 overflow-y-auto">
+                  {state.log.map((entry, i) => (
+                    <div key={i} className="flex items-center gap-2 text-xs py-0.5">
+                      {entry.skipped ? (
+                        <span className="w-4 h-4 flex-shrink-0 flex items-center justify-center text-[#7D8590]">—</span>
+                      ) : entry.saved ? (
+                        <svg className="w-4 h-4 flex-shrink-0 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                        </svg>
+                      ) : (
+                        <svg className="w-4 h-4 flex-shrink-0 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                      )}
+                      <span className={`truncate ${entry.skipped ? "text-[#484F58]" : entry.saved ? "text-[#C9D1D9]" : "text-red-400"}`}>
+                        {entry.taskTitle}
+                      </span>
+                      <span className="flex-shrink-0 text-[9px] text-[#7D8590]">
+                        {entry.skipped ? "skipped" : entry.saved ? "saved" : "failed"}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </>
+          )}
+
+          {state.phase === "done" && state.summary && (
+            <div className="space-y-4">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-full bg-green-500/15 flex items-center justify-center flex-shrink-0">
+                  <svg className="w-5 h-5 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                  </svg>
+                </div>
+                <div>
+                  <p className="text-sm font-semibold text-[#E6EDF3]">Scripts generated</p>
+                  <p className="text-xs text-[#7D8590] mt-0.5">Saved to "{state.summary.packageTitle}"</p>
+                </div>
+              </div>
+              <div className="grid grid-cols-3 gap-3">
+                <div className="bg-green-500/10 border border-green-500/20 rounded-lg px-3 py-2 text-center">
+                  <p className="text-lg font-bold text-green-400">{state.summary.generated}</p>
+                  <p className="text-[10px] text-[#7D8590] mt-0.5">Generated</p>
+                </div>
+                <div className="bg-[#1C2128] border border-[#30363D] rounded-lg px-3 py-2 text-center">
+                  <p className="text-lg font-bold text-[#7D8590]">{state.summary.skipped}</p>
+                  <p className="text-[10px] text-[#7D8590] mt-0.5">Skipped</p>
+                </div>
+                <div className={`rounded-lg px-3 py-2 text-center border ${state.summary.failed > 0 ? "bg-red-500/10 border-red-500/20" : "bg-[#1C2128] border-[#30363D]"}`}>
+                  <p className={`text-lg font-bold ${state.summary.failed > 0 ? "text-red-400" : "text-[#7D8590]"}`}>{state.summary.failed}</p>
+                  <p className="text-[10px] text-[#7D8590] mt-0.5">Failed</p>
+                </div>
+              </div>
+              {/* Log */}
+              {state.log.length > 0 && (
+                <div ref={logRef} className="space-y-1 max-h-36 overflow-y-auto bg-[#1C2128] rounded-lg p-2">
+                  {state.log.map((entry, i) => (
+                    <div key={i} className="flex items-center gap-2 text-xs py-0.5">
+                      {entry.skipped ? (
+                        <span className="w-4 h-4 flex-shrink-0 flex items-center justify-center text-[#7D8590]">—</span>
+                      ) : entry.saved ? (
+                        <svg className="w-4 h-4 flex-shrink-0 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                        </svg>
+                      ) : (
+                        <svg className="w-4 h-4 flex-shrink-0 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                      )}
+                      <span className={`truncate ${entry.skipped ? "text-[#484F58]" : entry.saved ? "text-[#C9D1D9]" : "text-red-400"}`}>
+                        {entry.taskTitle}
+                      </span>
+                      <span className="flex-shrink-0 text-[9px] text-[#7D8590]">
+                        {entry.skipped ? "skipped" : entry.saved ? "saved" : "failed"}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {state.phase === "error" && (
+            <div className="flex flex-col items-center gap-3 py-4 text-center">
+              <svg className="w-10 h-10 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+              </svg>
+              <p className="text-sm text-red-400">{state.errorMsg ?? "An unexpected error occurred."}</p>
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="flex items-center justify-end gap-2 px-5 py-3 border-t border-[#30363D] flex-shrink-0">
+          {state.phase === "confirm" && (
+            <>
+              <button onClick={handleClose} className="text-xs text-[#7D8590] hover:text-[#C9D1D9] px-3 py-1.5 rounded hover:bg-[#1C2128]">
+                Cancel
+              </button>
+              <button
+                onClick={() => void startGeneration()}
+                className="flex items-center gap-1.5 bg-[#00B4D8] text-white text-xs font-semibold px-4 py-1.5 rounded-lg hover:bg-[#0097B5] transition-colors"
+              >
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                </svg>
+                Generate Scripts
+              </button>
+            </>
+          )}
+          {state.phase === "running" && (
+            <p className="text-xs text-[#7D8590] italic">Generating… please wait</p>
+          )}
+          {(state.phase === "done" || state.phase === "error") && (
+            <button
+              onClick={handleClose}
+              className="bg-[#0078D4] text-white text-xs font-semibold px-4 py-1.5 rounded-lg hover:bg-[#006CBE] transition-colors"
+            >
+              Done
+            </button>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -891,6 +1271,9 @@ export default function WorkflowsPage() {
 
   // AI asset generation
   const [generateDialogOpen, setGenerateDialogOpen] = useState(false);
+
+  // Generate step scripts dialog
+  const [generateScriptsStep, setGenerateScriptsStep] = useState<WorkflowStep | null>(null);
   const [jsonImportText, setJsonImportText] = useState("");
   const [jsonImporting, setJsonImporting] = useState(false);
   const [engImportOpen, setEngImportOpen] = useState(false);
@@ -1633,6 +2016,7 @@ export default function WorkflowsPage() {
                         onMoveDown={() => void moveStep(step, "down")}
                         onDelete={() => void deleteStep(step.id)}
                         onEditTitle={(id, title) => void saveStepTitle(id, title)}
+                        onGenerateScripts={() => setGenerateScriptsStep(step)}
                       />
                     ))}
                   </SortableContext>
@@ -1952,6 +2336,16 @@ export default function WorkflowsPage() {
           templateId={selected.id}
           open={generateDialogOpen}
           onClose={() => void handleGenerateDialogClose()}
+        />
+      )}
+
+      {/* ── Generate step scripts dialog ─────────────────────────────────────── */}
+      {selected && (
+        <GenerateStepScriptsDialog
+          templateId={selected.id}
+          step={generateScriptsStep}
+          open={generateScriptsStep !== null}
+          onClose={() => setGenerateScriptsStep(null)}
         />
       )}
     </div>
