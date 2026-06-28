@@ -151,6 +151,7 @@ export default function MoreScreen() {
     {
       title: "Intelligence",
       items: [
+        { icon: "shield", label: "Tenant Health", route: "/(tabs)/more/tenant-health", description: "M365 security & readiness scores" },
         { icon: "terminal", label: "Script Runner", route: "/(tabs)/more/script-runner", description: "Run PowerShell runbooks" },
         { icon: "bar-chart-2", label: "Analytics", route: "/(tabs)/more/analytics", description: "Website & engagement metrics" },
         { icon: "trending-up", label: "Revenue Forecast", route: "/(tabs)/more/forecast", description: "12-month projection" },
