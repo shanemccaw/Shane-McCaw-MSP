@@ -2359,6 +2359,7 @@ export default function ScriptGeneratorPage() {
   const [loadingScriptId, setLoadingScriptId] = useState<string | null>(null);
   const [openDrawerScriptId, setOpenDrawerScriptId] = useState<string | null>(null);
   const [openDrawerPackage, setOpenDrawerPackage] = useState<ScriptPackageListItem | null>(null);
+  const [loadedPackageTitle, setLoadedPackageTitle] = useState<string | null>(null);
 
   // ── Run result detail state ──────────────────────────────────────────────────
   const [selectedResult, setSelectedResult] = useState<RunResult | null>(null);
@@ -2689,6 +2690,14 @@ export default function ScriptGeneratorPage() {
     toast({ title: "Package deleted" });
   };
 
+  const handleSidebarPackageClick = (pkg: ScriptPackageListItem) => {
+    setOpenDrawerPackage(null);
+    setModules(pkg.modules);
+    setLoadedPackageTitle(pkg.title);
+    setEditorScript(null);
+    setSelectedResult(null);
+  };
+
   const handleLoadInEditor = (script: PsScriptDetail) => {
     setEditorScript(script);
     setScriptBody(script.scriptBody);
@@ -2756,7 +2765,7 @@ export default function ScriptGeneratorPage() {
                     packages={packages}
                     loading={libraryLoading}
                     onOpenScript={handleSidebarScriptClick}
-                    onOpenPackage={(pkg) => setOpenDrawerPackage(pkg)}
+                    onOpenPackage={handleSidebarPackageClick}
                     loadingScriptId={loadingScriptId}
                   />
                 )}
@@ -2884,7 +2893,7 @@ export default function ScriptGeneratorPage() {
                 }
               />
             ) : modules.length > 0 ? (
-              <ModulePackageView modules={modules} packageTitle={prompt.trim() || "package"} onBack={() => setModules([])} />
+              <ModulePackageView modules={modules} packageTitle={loadedPackageTitle ?? (prompt.trim() || "package")} onBack={() => { setModules([]); setLoadedPackageTitle(null); }} />
             ) : (
               <div className="flex-1 min-h-0 relative">
                 {(generating || modularizing) && (
