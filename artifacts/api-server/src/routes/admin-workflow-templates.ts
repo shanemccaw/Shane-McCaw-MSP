@@ -951,6 +951,37 @@ const VALID_TASK_TYPES = new Set([
 ]);
 const VALID_GROUP_NAMES = new Set(["Engineer Tasks", "Artifacts Produced", "Client Deliverables"]);
 
+// ─── Service Link ─────────────────────────────────────────────────────────────
+// `services.workflowTemplateId` is the authoritative one-to-one link.
+// This endpoint clears the old link and sets the new one atomically.
+
+router.put("/admin/workflow-templates/:id/service-link", requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const id = Number(req.params.id);
+    if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
+    const { serviceId } = req.body as { serviceId?: number | null };
+
+    // Clear any existing service that points to this template
+    await db
+      .update(servicesTable)
+      .set({ workflowTemplateId: null })
+      .where(eq(servicesTable.workflowTemplateId, id));
+
+    // Set new link
+    if (serviceId) {
+      await db
+        .update(servicesTable)
+        .set({ workflowTemplateId: id })
+        .where(eq(servicesTable.id, serviceId));
+    }
+
+    res.json({ ok: true });
+  } catch (err) {
+    logger.error({ err }, "service-link: failed to update service link");
+    res.status(500).json({ error: "Failed to update service link" });
+  }
+});
+
 router.post("/admin/workflow-templates/:id/ai-generate", requireAdmin, async (req: Request, res: Response) => {
   try {
     const id = Number(req.params.id);
@@ -963,11 +994,8 @@ router.post("/admin/workflow-templates/:id/ai-generate", requireAdmin, async (re
       .where(eq(workflowTemplatesTable.id, id))
       .limit(1);
     if (!template) { res.status(404).json({ error: "Template not found" }); return; }
-    if (!template.serviceId) {
-      res.status(400).json({ error: "This workflow template has no linked service. Link a service first." });
-      return;
-    }
 
+    // Use services.workflowTemplateId as the authoritative link (reverse-lookup)
     const [service] = await db
       .select({
         name: servicesTable.name,
@@ -978,9 +1006,12 @@ router.post("/admin/workflow-templates/:id/ai-generate", requireAdmin, async (re
         features: servicesTable.features,
       })
       .from(servicesTable)
-      .where(eq(servicesTable.id, template.serviceId))
+      .where(eq(servicesTable.workflowTemplateId, id))
       .limit(1);
-    if (!service) { res.status(404).json({ error: "Linked service not found" }); return; }
+    if (!service) {
+      res.status(400).json({ error: "This workflow template has no linked service. Link a service first." });
+      return;
+    }
 
     const serviceContext = [
       `Service: ${service.name}`,

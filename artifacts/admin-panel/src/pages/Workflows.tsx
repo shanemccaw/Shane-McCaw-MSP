@@ -99,7 +99,7 @@ interface WorkflowTemplate {
   steps?: WorkflowStep[];
 }
 
-interface Service { id: number; name: string; category?: string; }
+interface Service { id: number; name: string; category?: string; workflowTemplateId?: number | null; }
 
 interface EditingTaskForm {
   title: string;
@@ -1322,8 +1322,9 @@ export default function WorkflowsPage() {
   const [aiGenerating, setAiGenerating] = useState(false);
   const [aiGenerateResult, setAiGenerateResult] = useState<{ stepsCreated: number; tasksCreated: number } | null>(null);
   const [aiGenerateError, setAiGenerateError] = useState<string | null>(null);
-  const aiGenerateService = aiGenerateOpen && selected?.serviceId
-    ? (services.find(s => s.id === selected.serviceId) ?? null)
+  // Derive linked service from the authoritative reverse-lookup (services.workflowTemplateId)
+  const aiGenerateService = aiGenerateOpen && selected
+    ? (services.find(s => s.workflowTemplateId === selected.id) ?? null)
     : null;
 
   // AI asset generation
@@ -1380,13 +1381,23 @@ export default function WorkflowsPage() {
     void fetchAssetLibrary();
   }, [fetchTemplates, fetchServices, fetchAssetLibrary]);
 
+  // Sync the "Default Service" dropdown with the authoritative reverse-lookup.
+  // services.workflowTemplateId is the source of truth; we derive the linked
+  // service for the selected template by scanning the services list.
+  useEffect(() => {
+    if (!selected) return;
+    const linkedId = services.find(s => s.workflowTemplateId === selected.id)?.id ?? null;
+    setDetailForm(p => ({ ...p, serviceId: linkedId }));
+  }, [selected?.id, services]);
+
   const selectTemplate = useCallback(async (t: WorkflowTemplate) => {
     try {
       const res = await fetchWithAuth(`/api/admin/workflow-templates/${t.id}`);
       if (!res.ok) return;
       const data = await res.json() as WorkflowTemplate;
       setSelected(data);
-      setDetailForm({ name: data.name, description: data.description ?? "", serviceId: data.serviceId });
+      // serviceId is synced via useEffect below using the authoritative services reverse-lookup
+      setDetailForm({ name: data.name, description: data.description ?? "", serviceId: null });
       setSelectedStepId(null);
       setDrawerOpen(false);
       setAddingStep(false);
@@ -1430,13 +1441,21 @@ export default function WorkflowsPage() {
     if (!selected) return;
     setSaving(true);
     try {
+      // Save name + description on the template (serviceId is no longer stored here)
       const res = await fetchWithAuth(`/api/admin/workflow-templates/${selected.id}`, {
         method: "PUT",
-        body: JSON.stringify({ name: detailForm.name, description: detailForm.description || null, serviceId: detailForm.serviceId }),
+        body: JSON.stringify({ name: detailForm.name, description: detailForm.description || null }),
       });
       if (!res.ok) { toast({ title: "Failed to save", variant: "destructive" }); return; }
+
+      // Update the service link via services.workflowTemplateId (authoritative)
+      await fetchWithAuth(`/api/admin/workflow-templates/${selected.id}/service-link`, {
+        method: "PUT",
+        body: JSON.stringify({ serviceId: detailForm.serviceId }),
+      });
+
       toast({ title: "Template saved" });
-      await fetchTemplates();
+      await Promise.all([fetchTemplates(), fetchServices()]);
     } finally { setSaving(false); }
   }
 
@@ -1969,11 +1988,12 @@ export default function WorkflowsPage() {
                 }`}
               >
                 <p className="font-medium text-sm text-[#E6EDF3] leading-snug truncate">{t.name}</p>
-                {t.serviceId && (
-                  <p className="text-xs text-[#7D8590] mt-0.5 truncate">
-                    {services.find(s => s.id === t.serviceId)?.name ?? "Linked to service"}
-                  </p>
-                )}
+                {(() => {
+                  const linkedSvc = services.find(s => s.workflowTemplateId === t.id);
+                  return linkedSvc ? (
+                    <p className="text-xs text-[#7D8590] mt-0.5 truncate">{linkedSvc.name}</p>
+                  ) : null;
+                })()}
               </button>
             ))}
           </div>
@@ -2291,31 +2311,36 @@ export default function WorkflowsPage() {
                       </button>
 
                       {/* AI Generate */}
-                      <button
-                        onClick={() => {
-                          if (!selected?.serviceId) return;
-                          setAiGenerateOpen(v => !v);
-                          setJsonImportOpen(false);
-                          setEngImportOpen(false);
-                          setAiGenerateResult(null);
-                          setAiGenerateError(null);
-                        }}
-                        disabled={!selected?.serviceId}
-                        title={!selected?.serviceId ? "Link a service to this template first" : "Generate steps and tasks from the linked service using AI"}
-                        className={`w-full flex items-center gap-1.5 text-xs px-2 py-1.5 rounded transition-colors ${
-                          !selected?.serviceId
-                            ? "text-[#484F58] cursor-not-allowed"
-                            : "text-violet-400 hover:text-violet-300 hover:bg-violet-900/20"
-                        }`}
-                      >
-                        <svg className="w-3 h-3 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
-                        </svg>
-                        AI Generate
-                      </button>
+                      {(() => {
+                        const hasLinkedService = selected ? services.some(s => s.workflowTemplateId === selected.id) : false;
+                        return (
+                          <button
+                            onClick={() => {
+                              if (!hasLinkedService) return;
+                              setAiGenerateOpen(v => !v);
+                              setJsonImportOpen(false);
+                              setEngImportOpen(false);
+                              setAiGenerateResult(null);
+                              setAiGenerateError(null);
+                            }}
+                            disabled={!hasLinkedService}
+                            title={!hasLinkedService ? "Link a service to this template first" : "Generate steps and tasks from the linked service using AI"}
+                            className={`w-full flex items-center gap-1.5 text-xs px-2 py-1.5 rounded transition-colors ${
+                              !hasLinkedService
+                                ? "text-[#484F58] cursor-not-allowed"
+                                : "text-violet-400 hover:text-violet-300 hover:bg-violet-900/20"
+                            }`}
+                          >
+                            <svg className="w-3 h-3 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                            </svg>
+                            AI Generate
+                          </button>
+                        );
+                      })()}
 
                       {/* AI Generate panel */}
-                      {aiGenerateOpen && selected?.serviceId && (
+                      {aiGenerateOpen && services.some(s => selected && s.workflowTemplateId === selected.id) && (
                         <div className="mt-2 rounded-lg border border-violet-500/30 bg-violet-900/10 p-3 space-y-3">
                           {aiGenerateService && (
                             <div className="rounded bg-violet-900/20 border border-violet-500/20 px-2 py-1.5">
