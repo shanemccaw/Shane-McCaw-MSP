@@ -4865,6 +4865,29 @@ router.patch("/admin/workflow-steps/:id", requireAdmin, async (req: Request, res
   res.json(updated);
 });
 
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function deepMerge(target: Record<string, unknown>, source: Record<string, unknown>): Record<string, unknown> {
+  const result = { ...target };
+  for (const key of Object.keys(source)) {
+    const srcVal = source[key];
+    const tgtVal = result[key];
+    if (
+      srcVal !== null &&
+      typeof srcVal === "object" &&
+      !Array.isArray(srcVal) &&
+      tgtVal !== null &&
+      typeof tgtVal === "object" &&
+      !Array.isArray(tgtVal)
+    ) {
+      result[key] = deepMerge(tgtVal as Record<string, unknown>, srcVal as Record<string, unknown>);
+    } else {
+      result[key] = srcVal;
+    }
+  }
+  return result;
+}
+
 // ─── ADMIN: Kanban Tasks ─────────────────────────────────────────────────────
 router.get("/admin/kanban-tasks", requireAdmin, async (req: Request, res: Response) => {
   const projectId = req.query.projectId ? parseInt(String(req.query.projectId), 10) : null;
@@ -4956,7 +4979,14 @@ router.patch("/admin/kanban-tasks/:id", requireAdmin, async (req: Request, res: 
   if (completionNotes !== undefined) updates.completionNotes = completionNotes ?? null;
   if (priority !== undefined) updates.priority = priority ?? "medium";
   if (taskType !== undefined) updates.taskType = taskType ?? null;
-  if (taskMetadata !== undefined) updates.taskMetadata = taskMetadata ?? null;
+  if (taskMetadata !== undefined) {
+    if (taskMetadata === null) {
+      updates.taskMetadata = null;
+    } else {
+      const existing = (existingTask.taskMetadata as Record<string, unknown>) ?? {};
+      updates.taskMetadata = deepMerge(existing, taskMetadata);
+    }
+  }
 
   const [updated] = await db.update(kanbanTasksTable).set(updates).where(eq(kanbanTasksTable.id, id)).returning();
   if (!updated) { res.status(404).json({ error: "Task not found" }); return; }

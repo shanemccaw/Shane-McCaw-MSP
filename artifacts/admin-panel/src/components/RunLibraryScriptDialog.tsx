@@ -38,6 +38,8 @@ export default function RunLibraryScriptDialog({ scriptId, moduleId, scriptTitle
   const [running, setRunning] = useState(false);
   const [jobRef, setJobRef] = useState<string | null>(null);
   const [runStatus, setRunStatus] = useState<RunStatus | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
 
   const terminalRef = useRef<HTMLDivElement>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -72,6 +74,11 @@ export default function RunLibraryScriptDialog({ scriptId, moduleId, scriptTitle
       terminalRef.current.scrollTop = terminalRef.current.scrollHeight;
     }
   }, [runStatus?.outputLines]);
+
+  // Reset saved state when a new run starts
+  useEffect(() => {
+    if (running) setSaved(false);
+  }, [running]);
 
   const stopPolling = useCallback(() => {
     if (pollRef.current) {
@@ -162,8 +169,60 @@ export default function RunLibraryScriptDialog({ scriptId, moduleId, scriptTitle
     }
   };
 
+  const handleSaveToCard = async () => {
+    if (!kanbanTaskId || !runStatus || runStatus.status === "running") return;
+    const { findings, recommendations, scoreImpact } = runStatus;
+
+    const top3Findings = findings.slice(0, 3);
+    const top3Recs = recommendations.slice(0, 3);
+    const findingsSummary = top3Findings.length > 0
+      ? "Findings:\n" + top3Findings.map((f, i) => `${i + 1}. ${f}`).join("\n")
+      : "";
+    const recsSummary = top3Recs.length > 0
+      ? "Recommendations:\n" + top3Recs.map((r, i) => `${i + 1}. ${r}`).join("\n")
+      : "";
+    const completionNotes = [findingsSummary, recsSummary].filter(Boolean).join("\n\n") ||
+      `Script '${scriptTitle}' completed with no AI findings.`;
+
+    const lastRunResult = {
+      savedAt: new Date().toISOString(),
+      jobRef: jobRef ?? "",
+      scriptTitle,
+      findings,
+      recommendations,
+      scoreImpact,
+    };
+
+    setSaving(true);
+    try {
+      const res = await fetchWithAuth(`/api/admin/kanban-tasks/${kanbanTaskId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          taskMetadata: { lastRunResult },
+          completionNotes,
+        }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({})) as { error?: string };
+        throw new Error(err.error ?? "Failed to save");
+      }
+      setSaved(true);
+      toast({ title: "Results saved to card" });
+    } catch (err) {
+      toast({ title: err instanceof Error ? err.message : "Failed to save results", variant: "destructive" });
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const statusColor = runStatus?.status === "completed" ? "text-green-400" : runStatus?.status === "failed" ? "text-red-400" : "text-yellow-400";
   const statusLabel = runStatus?.status === "completed" ? "Completed" : runStatus?.status === "failed" ? "Failed" : "Running…";
+
+  const aiDone = runStatus && runStatus.status !== "running" &&
+    (runStatus.findings.length > 0 || runStatus.recommendations.length > 0);
+  const showSaveButton = !!kanbanTaskId && !!runStatus && runStatus.status !== "running";
+  const saveEnabled = !saving && !saved && !!aiDone;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
@@ -282,9 +341,50 @@ export default function RunLibraryScriptDialog({ scriptId, moduleId, scriptTitle
                   ))}
                 </div>
               )}
+
+              {runStatus.status !== "running" && !aiDone && (
+                <p className="text-xs text-[#484F58] italic">No AI findings generated for this run.</p>
+              )}
             </div>
           )}
         </div>
+
+        {/* Footer — Save to Card */}
+        {showSaveButton && (
+          <div className="flex items-center justify-between px-5 py-3 border-t border-[#21262D] bg-[#0D1117]/60">
+            <p className="text-xs text-[#484F58]">
+              {saved ? (
+                <span className="text-green-400 font-medium">✓ Saved to card</span>
+              ) : (
+                "Persist AI findings to the linked Kanban card"
+              )}
+            </p>
+            <button
+              onClick={() => void handleSaveToCard()}
+              disabled={!saveEnabled}
+              title={!aiDone && !saved ? "Waiting for AI analysis before saving" : undefined}
+              className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg border transition-colors disabled:opacity-50 disabled:cursor-not-allowed border-[#0078D4]/40 text-[#0078D4] hover:bg-[#0078D4]/10 hover:border-[#0078D4]"
+            >
+              {saving ? (
+                <><div className="w-3 h-3 border border-[#0078D4]/40 border-t-[#0078D4] rounded-full animate-spin" /> Saving…</>
+              ) : saved ? (
+                <>
+                  <svg className="w-3.5 h-3.5 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                  </svg>
+                  Saved
+                </>
+              ) : (
+                <>
+                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4" />
+                  </svg>
+                  Save to Card
+                </>
+              )}
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );
