@@ -1302,7 +1302,7 @@ function LibrarySidebar({
                           <span className="flex-shrink-0 text-[8px] font-semibold px-1 py-0.5 rounded bg-yellow-500/20 border border-yellow-500/40 text-yellow-400 uppercase tracking-wide">M</span>
                         )}
                       </button>
-                      {onRunScript && s.azureRunbookName && (
+                      {onRunScript && (
                         <button
                           onClick={(e) => { e.stopPropagation(); onRunScript(s); }}
                           title="Run script"
