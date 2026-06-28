@@ -1,4 +1,12 @@
 import { useState, useCallback, useEffect, useRef } from "react";
+import {
+  AlertDialog,
+  AlertDialogContent,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogDescription,
+  AlertDialogFooter,
+} from "@/components/ui/alert-dialog";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { AzurePushDialog, type AzurePushDialogState } from "@/components/AzurePushDialog";
 import { useAuth } from "@/contexts/AuthContext";
@@ -252,6 +260,55 @@ function PermissionBadge({ text }: { text: string }) {
   );
 }
 
+// ─── Confirm dialog ───────────────────────────────────────────────────────────
+
+function ConfirmDialog({
+  open,
+  title,
+  description,
+  confirmLabel = "Delete",
+  destructive = true,
+  onConfirm,
+  onCancel,
+}: {
+  open: boolean;
+  title: string;
+  description: string;
+  confirmLabel?: string;
+  destructive?: boolean;
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  return (
+    <AlertDialog open={open} onOpenChange={(o) => { if (!o) onCancel(); }}>
+      <AlertDialogContent className="bg-[#0D1117] border border-[#30363D] text-[#E6EDF3] shadow-2xl max-w-sm">
+        <AlertDialogHeader>
+          <AlertDialogTitle className="text-[#E6EDF3] text-base font-semibold">{title}</AlertDialogTitle>
+          <AlertDialogDescription className="text-[#8B949E] text-sm leading-relaxed">{description}</AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter className="gap-2 sm:gap-2">
+          <button
+            onClick={onCancel}
+            className="px-3 py-1.5 text-sm font-medium text-[#C9D1D9] bg-[#21262D] border border-[#30363D] rounded-lg hover:bg-[#30363D] transition-colors"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={onConfirm}
+            className={`px-3 py-1.5 text-sm font-semibold rounded-lg transition-colors ${
+              destructive
+                ? "bg-red-500/15 border border-red-500/30 text-red-400 hover:bg-red-500/25"
+                : "bg-[#0078D4]/15 border border-[#0078D4]/30 text-[#58A6FF] hover:bg-[#0078D4]/25"
+            }`}
+          >
+            {confirmLabel}
+          </button>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  );
+}
+
 // ─── Save-to-Library modal ────────────────────────────────────────────────────
 
 function SaveModal({
@@ -346,6 +403,7 @@ function ScriptDrawer({
   const [loading, setLoading] = useState(true);
   const [copied, setCopied] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -371,8 +429,14 @@ function ScriptDrawer({
     downloadFile(script.scriptBody, `${slugify(script.title)}.ps1`);
   };
 
-  const handleDelete = async () => {
-    if (!script || !confirm(`Delete "${script.title}"? This cannot be undone.`)) return;
+  const handleDelete = () => {
+    if (!script) return;
+    setDeleteConfirmOpen(true);
+  };
+
+  const handleDeleteConfirmed = async () => {
+    if (!script) return;
+    setDeleteConfirmOpen(false);
     setDeleting(true);
     try {
       await apiFetch(`/admin/ps-scripts/${script.id}`, token, { method: "DELETE" });
@@ -452,6 +516,14 @@ function ScriptDrawer({
           </div>
         )}
       </div>
+      <ConfirmDialog
+        open={deleteConfirmOpen}
+        title="Delete script?"
+        description={script ? `Delete "${script.title}"? This cannot be undone.` : "Delete this script? This cannot be undone."}
+        confirmLabel="Delete"
+        onConfirm={handleDeleteConfirmed}
+        onCancel={() => setDeleteConfirmOpen(false)}
+      />
     </div>
   );
 }
@@ -630,6 +702,7 @@ function PackageDrawer({
 }) {
   const { toast } = useToast();
   const [deleting, setDeleting] = useState(false);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [activeModuleIdx, setActiveModuleIdx] = useState(0);
 
   // ── Edit mode state ──────────────────────────────────────────────────────
@@ -754,8 +827,12 @@ function PackageDrawer({
   };
 
   // ── Delete package ───────────────────────────────────────────────────────
-  const handleDelete = async () => {
-    if (!confirm(`Delete package "${pkg.title}" and all its modules? This cannot be undone.`)) return;
+  const handleDelete = () => {
+    setDeleteConfirmOpen(true);
+  };
+
+  const handleDeleteConfirmed = async () => {
+    setDeleteConfirmOpen(false);
     setDeleting(true);
     try {
       await apiFetch(`/admin/ps-scripts/packages/${pkg.id}`, token, { method: "DELETE" });
@@ -954,6 +1031,14 @@ function PackageDrawer({
           )}
         </div>
       </div>
+      <ConfirmDialog
+        open={deleteConfirmOpen}
+        title="Delete package?"
+        description={`Delete package "${pkg.title}" and all its modules? This cannot be undone.`}
+        confirmLabel="Delete"
+        onConfirm={handleDeleteConfirmed}
+        onCancel={() => setDeleteConfirmOpen(false)}
+      />
     </div>
   );
 }
@@ -2614,6 +2699,18 @@ export default function ScriptGeneratorPage() {
   // ── Run result detail state ──────────────────────────────────────────────────
   const [selectedResult, setSelectedResult] = useState<RunResult | null>(null);
 
+  // ── Confirm dialog state ─────────────────────────────────────────────────────
+  const [confirmState, setConfirmState] = useState<{
+    open: boolean;
+    title: string;
+    description: string;
+    onConfirm: () => void;
+  }>({ open: false, title: "", description: "", onConfirm: () => {} });
+
+  const showConfirm = useCallback((title: string, description: string, onConfirm: () => void) => {
+    setConfirmState({ open: true, title, description, onConfirm });
+  }, []);
+
   // ── IDE panel layout state ───────────────────────────────────────────────────
   const leftPanel = useResize(IDE_LEFT_WIDTH_KEY, 240, 140, 400);
   const rightPanel = useResize(IDE_RIGHT_WIDTH_KEY, 260, 160, 420);
@@ -2905,55 +3002,75 @@ export default function ScriptGeneratorPage() {
   };
 
   // ── Library event handlers ────────────────────────────────────────────────────
-  const handleSidebarScriptClick = async (id: string) => {
+  const handleSidebarScriptClick = (id: string) => {
     const isDirty = scriptBody.length > 0 && scriptBody !== cleanBodyRef.current;
-    if (isDirty && !confirm("You have unsaved changes. Switch script and discard them?")) return;
-    setLoadingScriptId(id);
-    try {
-      const detail = await apiFetch(`/admin/ps-scripts/${id}`, token) as PsScriptDetail;
-      setEditorScript(detail);
-      setScriptBody(detail.scriptBody);
-      cleanBodyRef.current = detail.scriptBody;
-      setPermissions(detail.permissions);
-      setModules([]);
-      setLoadedPackage(null);
-      setLoadedPackageTitle(null);
-      setActivePackageTitle(null);
-      setFixSummary("");
-      setSummaryError(null);
-    } catch {
-      toast({ title: "Failed to load script", variant: "destructive" });
-    } finally {
-      setLoadingScriptId(null);
+    const doLoad = async () => {
+      setLoadingScriptId(id);
+      try {
+        const detail = await apiFetch(`/admin/ps-scripts/${id}`, token) as PsScriptDetail;
+        setEditorScript(detail);
+        setScriptBody(detail.scriptBody);
+        cleanBodyRef.current = detail.scriptBody;
+        setPermissions(detail.permissions);
+        setModules([]);
+        setLoadedPackage(null);
+        setLoadedPackageTitle(null);
+        setActivePackageTitle(null);
+        setFixSummary("");
+        setSummaryError(null);
+      } catch {
+        toast({ title: "Failed to load script", variant: "destructive" });
+      } finally {
+        setLoadingScriptId(null);
+      }
+    };
+    if (isDirty) {
+      showConfirm(
+        "Discard unsaved changes?",
+        "You have unsaved changes. Switch script and discard them?",
+        () => void doLoad(),
+      );
+      return;
     }
+    void doLoad();
   };
 
   const handleSidebarModuleClick = (module: ScriptModuleItem, pkg: ScriptPackageListItem) => {
     const isDirty = scriptBody.length > 0 && scriptBody !== cleanBodyRef.current;
-    if (isDirty && !confirm("You have unsaved changes. Switch module and discard them?")) return;
-    const syntheticScript: PsScriptDetail = {
-      id: module.id ?? `mod-${module.filename}`,
-      title: module.filename,
-      description: module.description,
-      category: pkg.category,
-      tags: pkg.tags,
-      azureRunbookName: null,
-      azureSyncedAt: null,
-      createdAt: pkg.createdAt,
-      updatedAt: pkg.createdAt,
-      scriptBody: module.content,
-      permissions: pkg.permissions,
+    const doSwitch = () => {
+      const syntheticScript: PsScriptDetail = {
+        id: module.id ?? `mod-${module.filename}`,
+        title: module.filename,
+        description: module.description,
+        category: pkg.category,
+        tags: pkg.tags,
+        azureRunbookName: null,
+        azureSyncedAt: null,
+        createdAt: pkg.createdAt,
+        updatedAt: pkg.createdAt,
+        scriptBody: module.content,
+        permissions: pkg.permissions,
+      };
+      setEditorScript(syntheticScript);
+      setScriptBody(module.content);
+      cleanBodyRef.current = module.content;
+      setPermissions(pkg.permissions);
+      setModules([]);
+      setLoadedPackage(null);
+      setLoadedPackageTitle(null);
+      setActivePackageTitle(pkg.title);
+      setFixSummary("");
+      setSummaryError(null);
     };
-    setEditorScript(syntheticScript);
-    setScriptBody(module.content);
-    cleanBodyRef.current = module.content;
-    setPermissions(pkg.permissions);
-    setModules([]);
-    setLoadedPackage(null);
-    setLoadedPackageTitle(null);
-    setActivePackageTitle(pkg.title);
-    setFixSummary("");
-    setSummaryError(null);
+    if (isDirty) {
+      showConfirm(
+        "Discard unsaved changes?",
+        "You have unsaved changes. Switch module and discard them?",
+        doSwitch,
+      );
+      return;
+    }
+    doSwitch();
   };
 
   const handleScriptSaved = (s: PsScriptListItem) => {
@@ -2963,16 +3080,17 @@ export default function ScriptGeneratorPage() {
     toast({ title: "Script saved to library" });
   };
 
-  const handleDeleteScript = async (id: string) => {
-    if (!confirm("Delete this script? This cannot be undone.")) return;
-    try {
-      await apiFetch(`/admin/ps-scripts/${id}`, token, { method: "DELETE" });
-      setScripts((prev) => prev.filter((s) => s.id !== id));
-      if (editorScript?.id === id) { setEditorScript(null); }
-      toast({ title: "Script deleted" });
-    } catch {
-      toast({ title: "Failed to delete script", variant: "destructive" });
-    }
+  const handleDeleteScript = (id: string) => {
+    showConfirm("Delete script?", "Delete this script? This cannot be undone.", async () => {
+      try {
+        await apiFetch(`/admin/ps-scripts/${id}`, token, { method: "DELETE" });
+        setScripts((prev) => prev.filter((s) => s.id !== id));
+        if (editorScript?.id === id) { setEditorScript(null); }
+        toast({ title: "Script deleted" });
+      } catch {
+        toast({ title: "Failed to delete script", variant: "destructive" });
+      }
+    });
   };
 
   const handleDeletePackage = (id: string) => {
@@ -2996,15 +3114,21 @@ export default function ScriptGeneratorPage() {
     setSelectedResult(null);
   };
 
-  const handleCenterPaneDeletePackage = async () => {
+  const handleCenterPaneDeletePackage = () => {
     if (!loadedPackage) return;
-    if (!confirm(`Delete package "${loadedPackage.title}" and all its modules? This cannot be undone.`)) return;
-    try {
-      await apiFetch(`/admin/ps-scripts/packages/${loadedPackage.id}`, token, { method: "DELETE" });
-      handleDeletePackage(loadedPackage.id);
-    } catch {
-      toast({ title: "Failed to delete package", variant: "destructive" });
-    }
+    const pkg = loadedPackage;
+    showConfirm(
+      "Delete package?",
+      `Delete package "${pkg.title}" and all its modules? This cannot be undone.`,
+      async () => {
+        try {
+          await apiFetch(`/admin/ps-scripts/packages/${pkg.id}`, token, { method: "DELETE" });
+          handleDeletePackage(pkg.id);
+        } catch {
+          toast({ title: "Failed to delete package", variant: "destructive" });
+        }
+      },
+    );
   };
 
   const handleLoadInEditor = (script: PsScriptDetail) => {
@@ -3404,6 +3528,19 @@ export default function ScriptGeneratorPage() {
       <AzurePushDialog
         state={azurePushDialog}
         onClose={() => setAzurePushDialog(prev => ({ ...prev, open: false }))}
+      />
+
+      <ConfirmDialog
+        open={confirmState.open}
+        title={confirmState.title}
+        description={confirmState.description}
+        confirmLabel={confirmState.title.startsWith("Discard") ? "Discard changes" : "Delete"}
+        destructive={!confirmState.title.startsWith("Discard")}
+        onConfirm={() => {
+          setConfirmState((s) => ({ ...s, open: false }));
+          confirmState.onConfirm();
+        }}
+        onCancel={() => setConfirmState((s) => ({ ...s, open: false }))}
       />
     </div>
   );
