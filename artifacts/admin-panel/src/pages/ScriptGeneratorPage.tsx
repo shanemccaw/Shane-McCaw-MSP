@@ -2465,7 +2465,7 @@ export default function ScriptGeneratorPage() {
   const isUnsaved = scriptBody.length > 0 && scriptBody !== cleanBodyRef.current;
   const effectiveLeftWidth = leftCollapsed ? 40 : leftPanel.size;
   // Show permissions only when a script is loaded/typed (not "empty canvas" state)
-  const scriptLoaded = scriptBody.length > 0;
+  const scriptLoaded = scriptBody.length > 0 || modules.length > 0;
 
   return (
     <div className={`flex flex-col overflow-hidden bg-[#0D1117] ${isFullscreen ? "fixed inset-0 z-[100]" : "h-full"}`}>
