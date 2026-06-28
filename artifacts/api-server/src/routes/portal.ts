@@ -139,7 +139,7 @@ async function resolveTemplateTaskMetadata(
     linkedDelIds.length > 0 ? db.select().from(deliverableSetsTable).where(inArray(deliverableSetsTable.id, linkedDelIds)) : Promise.resolve([]),
     linkedRunbookIds.length > 0
       ? db.select({ id: powershellScriptsTable.id, title: powershellScriptsTable.title, azureRunbookName: powershellScriptsTable.azureRunbookName })
-          .from(powershellScriptsTable).where(inArray(powershellScriptsTable.id, linkedRunbookIds))
+          .from(powershellScriptsTable).where(inArray(powershellScriptsTable.azureRunbookName, linkedRunbookIds))
       : Promise.resolve([]),
   ]);
 
@@ -147,7 +147,8 @@ async function resolveTemplateTaskMetadata(
   const clMap = new Map(clRows.map(r => [r.id, r.items as Array<{ id: string; label: string }>]));
   const artMap = new Map(artRows.map(r => [r.id, r.artifacts as string[]]));
   const delMap = new Map(delRows.map(r => [r.id, r.deliverables as string[]]));
-  const runbookMap = new Map(runbookRows.map(r => [r.id, r]));
+  // runbookId column now stores the Azure runbook name (text), so key the map by azureRunbookName
+  const runbookMap = new Map(runbookRows.map(r => [r.azureRunbookName, r]));
 
   return templateTasks.map(t => {
     const runbook = t.runbookId ? runbookMap.get(t.runbookId) : undefined;
