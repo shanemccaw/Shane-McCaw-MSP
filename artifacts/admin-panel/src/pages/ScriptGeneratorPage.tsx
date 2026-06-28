@@ -3339,7 +3339,11 @@ export default function ScriptGeneratorPage() {
     <div className={`flex flex-col overflow-hidden bg-[#0D1117] ${isFullscreen ? "fixed inset-0 z-[100]" : "h-full"}`}>
 
       {/* ── Top action bar ────────────────────────────────────────────────── */}
-      <div className="flex-shrink-0 flex items-center gap-1.5 px-4 bg-[#161B22] border-b border-[#21262D]" style={{ minHeight: 42 }}>
+      {/* flex-shrink-0 keeps the bar fixed-height in the flex column so the IDE body
+          below always fills the remaining space. overflow-x-auto prevents the bar from
+          growing taller (and clipping the IDE) when many buttons are visible on a
+          narrow viewport — buttons scroll horizontally instead of wrapping. */}
+      <div className="flex-shrink-0 flex flex-nowrap items-center gap-1.5 px-4 bg-[#161B22] border-b border-[#21262D] min-h-[42px] overflow-x-auto">
         {scriptBody ? (
           <>
             <button onClick={handleCopy} title="Copy to clipboard" className="flex items-center gap-1 text-[11px] px-2 py-1 rounded border border-[#30363D] text-[#8B949E] hover:text-[#E6EDF3] hover:bg-[#21262D] transition-colors">
