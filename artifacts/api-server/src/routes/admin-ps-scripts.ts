@@ -791,31 +791,43 @@ Classify each task and generate PowerShell automation scripts for all M365/Azure
         return;
       }
 
-      // ── Stub enforcement ──────────────────────────────────────────────────────
-      // For every script-type template task that has no matching AI-generated module,
-      // insert a stub so the association step always has something to link.
+      // ── Bijective stub enforcement ────────────────────────────────────────────
+      // Build a one-to-one mapping: each script-type template task is paired with
+      // exactly one module using greedy Jaccard matching (each module can be
+      // claimed by at most one task). Tasks that get no qualifying unclaimed module
+      // receive a newly inserted stub module.
+      //
+      // bijectiveAssignment: scriptTypeTasks index → validModules index
+      const bijectiveAssignment = new Map<number, number>();
       if (scriptTypeTasks.length > 0) {
+        const claimedModuleIndices = new Set<number>();
         const existingFilenames = new Set(validModules.map((m) => m.filename.toLowerCase()));
-        const coveredTaskIndices = new Set<number>();
-        // Mark which template tasks are already covered (score ≥ 0.20 match).
+
         for (let ti = 0; ti < scriptTypeTasks.length; ti++) {
           const tt = scriptTypeTasks[ti]!;
-          const match = findBestModuleForTask(tt.title, validModules);
-          if (match && match.score >= 0.20) coveredTaskIndices.add(ti);
-        }
-        // Append stubs for uncovered tasks.
-        const stubStartIndex = validModules.length + 1;
-        let stubOffset = 0;
-        for (let ti = 0; ti < scriptTypeTasks.length; ti++) {
-          if (coveredTaskIndices.has(ti)) continue;
-          const tt = scriptTypeTasks[ti]!;
-          const stub = makeStubModule(tt.title, stubStartIndex + stubOffset);
-          // Avoid duplicate filenames just in case.
-          if (!existingFilenames.has(stub.filename.toLowerCase())) {
-            validModules.push(stub);
-            existingFilenames.add(stub.filename.toLowerCase());
+          const taskWords = titleToWords(tt.title);
+          let bestScore = -1;
+          let bestMi = -1;
+
+          for (let mi = 0; mi < validModules.length; mi++) {
+            if (claimedModuleIndices.has(mi)) continue; // already claimed by another task
+            const score = jaccardSimilarity(taskWords, titleToWords(validModules[mi]!.filename));
+            if (score > bestScore) { bestScore = score; bestMi = mi; }
           }
-          stubOffset++;
+
+          if (bestMi >= 0 && bestScore >= 0.20) {
+            // Claim this module for task ti.
+            bijectiveAssignment.set(ti, bestMi);
+            claimedModuleIndices.add(bestMi);
+          } else {
+            // No unclaimed module qualifies — insert a stub and claim it.
+            const stub = makeStubModule(tt.title, validModules.length + 1);
+            if (!existingFilenames.has(stub.filename.toLowerCase())) {
+              validModules.push(stub);
+              existingFilenames.add(stub.filename.toLowerCase());
+            }
+            bijectiveAssignment.set(ti, validModules.length - 1);
+          }
         }
       }
 
@@ -854,9 +866,10 @@ Classify each task and generate PowerShell automation scripts for all M365/Azure
       );
 
       // ── Kanban association (best-effort, non-fatal) ───────────────────────────
-      // After the package is saved, match each script-type template task to its
-      // generated module and write-back to the matching Kanban task cards across
-      // all client projects linked to this service.
+      // Use the bijectiveAssignment map (task index → module index) to write back
+      // to Kanban cards. A global processedKanbanCardIds set ensures each card is
+      // updated exactly once across all template-task iterations, preventing
+      // duplicate powershell_scripts / script_run_results inserts.
       interface TaskAssociationResult {
         taskTitle: string;
         taskType: string;
@@ -867,7 +880,7 @@ Classify each task and generate PowerShell automation scripts for all M365/Azure
       const taskAssociations: TaskAssociationResult[] = [];
 
       try {
-        if (scriptTypeTasks.length > 0) {
+        if (bijectiveAssignment.size > 0) {
           // Find all client projects linked to this service.
           const linkedServices = await db
             .select({ projectId: clientServicesTable.projectId, clientUserId: clientServicesTable.clientUserId })
@@ -892,28 +905,41 @@ Classify each task and generate PowerShell automation scripts for all M365/Azure
                   )
               : [];
 
-          // For each script-type template task, find the best module and matching kanban cards.
-          for (const templateTask of scriptTypeTasks) {
-            const match = findBestModuleForTask(templateTask.title, validModules);
-            if (!match) continue;
+          // Each Kanban card is processed at most once across all task iterations.
+          const processedKanbanCardIds = new Set<number>();
 
-            const isStub = match.module.filename.includes("-stub.ps1");
+          for (let ti = 0; ti < scriptTypeTasks.length; ti++) {
+            const templateTask = scriptTypeTasks[ti]!;
+            const assignedMi = bijectiveAssignment.get(ti);
+            if (assignedMi === undefined) continue;
+            const assignedModule = validModules[assignedMi]!;
+
+            const isStub = assignedModule.filename.includes("-stub.ps1");
             // The runbook name used by the admin "Run Runbook" button.
             const runbookName = titleToRunbookName(
-              match.module.filename.replace(/\.ps1$/i, "").replace(/^\d+-/, ""),
+              assignedModule.filename.replace(/\.ps1$/i, "").replace(/^\d+-/, ""),
             );
 
-            // Find kanban tasks whose title is similar to this template task's title.
+            // Find kanban cards that resemble this template task, excluding already-processed cards.
             const templateWords = titleToWords(templateTask.title);
             const matchingKanban = allKanbanTasks.filter((kt) => {
-              const ktWords = titleToWords(kt.title);
-              return jaccardSimilarity(templateWords, ktWords) >= 0.20;
+              if (processedKanbanCardIds.has(kt.id)) return false;
+              return jaccardSimilarity(templateWords, titleToWords(kt.title)) >= 0.20;
             });
 
             let kanbanTasksUpdated = 0;
 
             for (const kanbanTask of matchingKanban) {
-              const meta = (kanbanTask.taskMetadata ?? {}) as Record<string, unknown>;
+              // Claim this card before any awaits to prevent double-processing.
+              processedKanbanCardIds.add(kanbanTask.id);
+
+              // Re-read current metadata from DB to avoid stale in-memory snapshot.
+              const [freshCard] = await db
+                .select({ taskMetadata: kanbanTasksTable.taskMetadata })
+                .from(kanbanTasksTable)
+                .where(eq(kanbanTasksTable.id, kanbanTask.id))
+                .limit(1);
+              const meta = ((freshCard?.taskMetadata ?? kanbanTask.taskMetadata ?? {}) as Record<string, unknown>);
 
               if (kanbanTask.taskType === "script") {
                 // Automated: write runbookName so "Run Runbook" button appears.
@@ -923,17 +949,17 @@ Classify each task and generate PowerShell automation scripts for all M365/Azure
                   .where(eq(kanbanTasksTable.id, kanbanTask.id));
                 kanbanTasksUpdated++;
               } else if (kanbanTask.taskType === "manualScript") {
-                // Manual: skip if already linked (idempotent).
+                // Skip if already linked (idempotent guard on the fresh metadata).
                 if (meta["scriptRunResultId"]) continue;
 
                 // Save a standalone library script so the download endpoint can serve it.
-                const libTitle = `${packageTitle}: ${match.module.filename.replace(/^\d+-/, "").replace(/\.ps1$/i, "")}`;
+                const libTitle = `${packageTitle}: ${assignedModule.filename.replace(/^\d+-/, "").replace(/\.ps1$/i, "")}`;
                 const [libScript] = await db
                   .insert(powershellScriptsTable)
                   .values({
                     title: libTitle,
                     category: "m365",
-                    scriptBody: match.module.content,
+                    scriptBody: assignedModule.content,
                     permissions,
                     tags: ["manual", "from-package"],
                   })
@@ -975,7 +1001,7 @@ Classify each task and generate PowerShell automation scripts for all M365/Azure
             taskAssociations.push({
               taskTitle: templateTask.title,
               taskType: templateTask.taskType ?? "script",
-              moduleFilename: match.module.filename,
+              moduleFilename: assignedModule.filename,
               associationStatus: isStub ? "stub" : "linked",
               kanbanTasksUpdated,
             });
