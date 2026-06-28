@@ -235,10 +235,71 @@ function extractFields(data: Record<string, unknown>): Record<string, unknown> {
   return out;
 }
 
+// ── PowerShell property-bag parser ───────────────────────────────────────────
+
+/**
+ * Parse PowerShell property-bag output, e.g.:
+ *   tenantDomain  : mccawsoft.com
+ *   usesTeams     : True
+ *   licenseSKUs   : {ENTERPRISEPACK, FLOW_FREE}
+ *   teamCount     : 18
+ *
+ * Returns null if fewer than 3 key:value pairs are found (probably not PS output).
+ */
+function parsePowerShellPropertyBag(text: string): Record<string, unknown> | null {
+  const result: Record<string, unknown> = {};
+  let found = 0;
+
+  for (const rawLine of text.split(/\r?\n/)) {
+    const line = rawLine.trim();
+    // Match "identifierChars : rest" — the key must start with a letter
+    const m = line.match(/^([A-Za-z][A-Za-z0-9_]*)\s*:\s*(.+)$/);
+    if (!m) continue;
+
+    const key = m[1];
+    const val = m[2].trim();
+
+    // PS array literal: {item1, item2, ...}
+    if (val.startsWith("{") && val.endsWith("}")) {
+      const inner = val.slice(1, -1).trim();
+      result[key] = inner
+        ? inner.split(",").map(s => s.trim()).filter(Boolean)
+        : [];
+      found++;
+      continue;
+    }
+
+    // Boolean literals
+    if (val === "True")  { result[key] = true;  found++; continue; }
+    if (val === "False") { result[key] = false; found++; continue; }
+
+    // Numeric
+    const num = Number(val);
+    if (val !== "" && !isNaN(num) && isFinite(num)) {
+      result[key] = num;
+      found++;
+      continue;
+    }
+
+    // String fallthrough
+    result[key] = val;
+    found++;
+  }
+
+  return found >= 3 ? result : null;
+}
+
+// ── Core entry point ──────────────────────────────────────────────────────────
+
 /**
  * Parse M365 discovery script output (string or pre-parsed object) and return
  * a deterministic profile update map. Fields present in the output are extracted
  * directly — no AI inference involved.
+ *
+ * Handles:
+ *  1. JSON string / pre-parsed JSON object
+ *  2. JSON object embedded somewhere inside a larger string
+ *  3. PowerShell property-bag output (key : value, True/False, {a, b} arrays)
  *
  * Returns an empty object if no recognisable fields are found.
  */
@@ -247,7 +308,8 @@ export function parseM365ScriptOutput(rawOutput: unknown): Record<string, unknow
 
   if (typeof rawOutput === "string") {
     const text = rawOutput.trim();
-    // First try parsing the whole string as JSON
+
+    // 1. Try the whole string as JSON
     try {
       const parsed = JSON.parse(text);
       if (typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)) {
@@ -256,18 +318,29 @@ export function parseM365ScriptOutput(rawOutput: unknown): Record<string, unknow
         return {};
       }
     } catch {
-      // Try to extract the first JSON object found in the text
-      const match = text.match(/\{[\s\S]*\}/);
-      if (!match) return {};
-      try {
-        const parsed = JSON.parse(match[0]);
-        if (typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)) {
-          data = parsed as Record<string, unknown>;
-        } else {
-          return {};
+      // 2. Try to extract the first balanced JSON object from the text.
+      //    Use a stricter pattern (must start with `{"`) to avoid matching
+      //    PowerShell array literals like {ENTERPRISEPACK, FLOW_FREE}.
+      const jsonMatch = text.match(/\{"[\s\S]*\}/);
+      let parsedFromJson: Record<string, unknown> | null = null;
+      if (jsonMatch) {
+        try {
+          const parsed = JSON.parse(jsonMatch[0]);
+          if (typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)) {
+            parsedFromJson = parsed as Record<string, unknown>;
+          }
+        } catch {
+          // not valid JSON — fall through to PowerShell parser
         }
-      } catch {
-        return {};
+      }
+
+      if (parsedFromJson) {
+        data = parsedFromJson;
+      } else {
+        // 3. Try PowerShell property-bag format
+        const psData = parsePowerShellPropertyBag(text);
+        if (!psData) return {};
+        data = psData;
       }
     }
   } else if (typeof rawOutput === "object" && rawOutput !== null && !Array.isArray(rawOutput)) {
@@ -276,7 +349,7 @@ export function parseM365ScriptOutput(rawOutput: unknown): Record<string, unknow
     return {};
   }
 
-  // Unwrap common wrapper keys
+  // Unwrap common wrapper keys (JSON convention: { data: {...} } etc.)
   const inner =
     (data.data && typeof data.data === "object" && !Array.isArray(data.data) ? data.data : null) ??
     (data.result && typeof data.result === "object" && !Array.isArray(data.result) ? data.result : null) ??
