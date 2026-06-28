@@ -28,6 +28,7 @@ import {
 import { logger } from "../lib/logger";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
 import { sendAdminSms } from "../lib/sms";
+import { validatePsSyntax } from "../lib/ps-guard";
 
 const router: IRouter = Router();
 
@@ -409,6 +410,27 @@ router.get("/admin/runbook-jobs/:jobId/replay", requireAdmin, async (req: Reques
     logger.error({ err, jobId }, "admin-script-runner: failed to replay job output");
     res.status(500).json({ error: "Failed to replay job output" });
   }
+});
+
+/**
+ * POST /api/admin/scripts/validate-syntax
+ *
+ * Validates PowerShell syntax by spawning pwsh on the server.
+ * Returns { valid: true } on success, { valid: false, errors: [...] } on parse
+ * errors, or { valid: true, skipped: true } when pwsh is not available.
+ *
+ * Body: { content: string }
+ */
+router.post("/admin/scripts/validate-syntax", requireAdmin, async (req: Request, res: Response) => {
+  const { content } = req.body as { content?: string };
+
+  if (!content || typeof content !== "string") {
+    res.status(400).json({ error: "content is required" });
+    return;
+  }
+
+  const result = await validatePsSyntax(content);
+  res.json(result);
 });
 
 /**

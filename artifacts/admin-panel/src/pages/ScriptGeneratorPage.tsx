@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from "react";
+import SyntaxErrorAlert from "@/components/SyntaxErrorAlert";
 import {
   AlertDialog,
   AlertDialogContent,
@@ -1418,6 +1419,9 @@ function InlineScriptRunner({
   const [aiTab,          setAiTab]          = useState<keyof InlineAIAnalysis>("summary");
   const [copiedConsole,  setCopiedConsole]  = useState(false);
 
+  const [validating,    setValidating]    = useState(false);
+  const [syntaxErrors,  setSyntaxErrors]  = useState<Array<{ line: number; column: number; message: string }>>([]);
+
   // Mark component as unmounted so polling stops cleanly
   useEffect(() => () => { abortedRef.current = true; }, []);
 
@@ -1491,6 +1495,31 @@ function InlineScriptRunner({
     const actualRunbook = isAdHoc
       ? (editorScript?.azureRunbookName ?? ADHOC_RUNBOOK_NAME)
       : selectedRunbook;
+
+    // Pre-flight: validate PowerShell syntax for ad-hoc runs (local script body)
+    if (isAdHoc && scriptBody.trim()) {
+      setSyntaxErrors([]);
+      setValidating(true);
+      try {
+        const valRes = await fetchWithAuth("/api/admin/scripts/validate-syntax", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ content: scriptBody }),
+        });
+        if (valRes.ok) {
+          const valData = await valRes.json() as { valid: boolean; skipped?: boolean; errors?: Array<{ line: number; column: number; message: string }> };
+          if (!valData.valid && valData.errors && valData.errors.length > 0) {
+            setSyntaxErrors(valData.errors);
+            setValidating(false);
+            return;
+          }
+        }
+      } catch {
+        // validation request failed — proceed anyway so a network hiccup doesn't block the run
+      } finally {
+        setValidating(false);
+      }
+    }
 
     setRunning(true);
     setLogLines(isAdHoc ? ["[Uploading current script to Azure…]"] : ["[Starting job…]"]);
@@ -1680,10 +1709,12 @@ function InlineScriptRunner({
         <div className="flex items-center gap-2">
           <button
             onClick={() => void handleRun()}
-            disabled={!canRun}
+            disabled={!canRun || validating}
             className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg bg-green-500/15 border border-green-500/30 text-green-400 hover:bg-green-500/25 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
           >
-            {running ? (
+            {validating ? (
+              <><div className="w-3 h-3 border border-green-400/40 border-t-green-400 rounded-full animate-spin" />Validating…</>
+            ) : running ? (
               <><div className="w-3 h-3 border border-green-400/40 border-t-green-400 rounded-full animate-spin" />Running…</>
             ) : (
               <>
@@ -1697,6 +1728,13 @@ function InlineScriptRunner({
           )}
         </div>
       </div>
+
+      {/* Syntax error alert */}
+      {syntaxErrors.length > 0 && (
+        <div className="px-3 pt-2">
+          <SyntaxErrorAlert errors={syntaxErrors} onDismiss={() => setSyntaxErrors([])} />
+        </div>
+      )}
 
       {/* Log console header */}
       <div className="flex items-center justify-between px-3 py-1 border-t border-[#21262D] bg-[#0D1117]">
@@ -2732,6 +2770,10 @@ export default function ScriptGeneratorPage() {
   // ── Run result detail state ──────────────────────────────────────────────────
   const [selectedResult, setSelectedResult] = useState<RunResult | null>(null);
 
+  // ── Syntax validation state (for push-to-Azure pre-flight) ───────────────────
+  const [pushValidating,   setPushValidating]   = useState(false);
+  const [pushSyntaxErrors, setPushSyntaxErrors] = useState<Array<{ line: number; column: number; message: string }>>([]);
+
   // ── Confirm dialog state ─────────────────────────────────────────────────────
   const [confirmState, setConfirmState] = useState<{
     open: boolean;
@@ -3012,6 +3054,27 @@ export default function ScriptGeneratorPage() {
 
   const pushToAzure = async () => {
     if (!editorScript?.id || !scriptBody) return;
+
+    // Pre-flight: validate PowerShell syntax before pushing to Azure
+    if (scriptBody.trim()) {
+      setPushSyntaxErrors([]);
+      setPushValidating(true);
+      try {
+        const valData = await apiFetch("/admin/scripts/validate-syntax", token, {
+          method: "POST",
+          body: JSON.stringify({ content: scriptBody }),
+        }) as { valid: boolean; skipped?: boolean; errors?: Array<{ line: number; column: number; message: string }> } | null;
+        if (valData && !valData.valid && valData.errors && valData.errors.length > 0) {
+          setPushSyntaxErrors(valData.errors);
+          setPushValidating(false);
+          return;
+        }
+      } catch {
+        // validation request failed — proceed anyway
+      } finally {
+        setPushValidating(false);
+      }
+    }
 
     // Save first — silently; abort the push if save fails
     setUpdating(true);
@@ -3371,9 +3434,13 @@ export default function ScriptGeneratorPage() {
                     </button>
                   )}
                   {editorScript?.id && (
-                    <button onClick={pushToAzure} disabled={azurePushDialog.open || modulePushOpen} title="Push to Azure Automation" className="flex items-center gap-1 text-[11px] px-2 py-1 rounded border border-[#0078D4]/30 bg-[#0078D4]/10 text-[#58A6FF] hover:bg-[#0078D4]/20 disabled:opacity-50 disabled:cursor-not-allowed transition-colors">
-                      <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" /></svg>
-                      Azure
+                    <button onClick={pushToAzure} disabled={azurePushDialog.open || modulePushOpen || pushValidating} title="Push to Azure Automation" className="flex items-center gap-1 text-[11px] px-2 py-1 rounded border border-[#0078D4]/30 bg-[#0078D4]/10 text-[#58A6FF] hover:bg-[#0078D4]/20 disabled:opacity-50 disabled:cursor-not-allowed transition-colors">
+                      {pushValidating ? (
+                        <div className="w-3 h-3 border border-[#58A6FF]/40 border-t-[#58A6FF] rounded-full animate-spin" />
+                      ) : (
+                        <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" /></svg>
+                      )}
+                      {pushValidating ? "Validating…" : "Azure"}
                     </button>
                   )}
                   <button onClick={() => setShowSaveModal(true)} className="flex items-center gap-1 text-[11px] px-2 py-1 rounded bg-[#0078D4]/15 border border-[#0078D4]/30 text-[#58A6FF] hover:bg-[#0078D4]/25 transition-colors">
@@ -3404,6 +3471,13 @@ export default function ScriptGeneratorPage() {
                 )}
               </button>
             </div>
+
+            {/* Push-to-Azure syntax error alert */}
+            {pushSyntaxErrors.length > 0 && (
+              <div className="px-3 py-2 border-b border-[#21262D]">
+                <SyntaxErrorAlert errors={pushSyntaxErrors} onDismiss={() => setPushSyntaxErrors([])} />
+              </div>
+            )}
 
             {/* Editor body */}
             {selectedResult ? (

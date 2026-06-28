@@ -3,6 +3,7 @@ import { useLocation } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import { GovernanceAreasPicker } from "@/components/kanban/TypedCardContent";
+import SyntaxErrorAlert from "@/components/SyntaxErrorAlert";
 
 interface AzureCredential {
   id: number;
@@ -123,6 +124,12 @@ export default function ScriptRunnerPage() {
   const [aiTab, setAiTab] = useState<AITab>("summary");
   const [aiError, setAiError] = useState<string | null>(null);
 
+  // Script override (optional)
+  const [adHocScript, setAdHocScript] = useState("");
+  const [showScriptOverride, setShowScriptOverride] = useState(false);
+  const [validating, setValidating] = useState(false);
+  const [syntaxErrors, setSyntaxErrors] = useState<Array<{ line: number; column: number; message: string }>>([]);
+
   // Test SMS
   const [smsSending, setSmsSending] = useState(false);
   const [smsResult, setSmsResult] = useState<{ ok: boolean; message: string } | null>(null);
@@ -227,6 +234,32 @@ export default function ScriptRunnerPage() {
 
   const handleRun = async () => {
     if (!selectedCredId || !selectedRunbook) return;
+    setSyntaxErrors([]);
+
+    // Validate script override if one was provided
+    if (adHocScript.trim()) {
+      setValidating(true);
+      try {
+        const vRes = await fetchWithAuth("/api/admin/scripts/validate-syntax", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ content: adHocScript }),
+        });
+        if (vRes.ok) {
+          const vData = await vRes.json() as { valid: boolean; skipped?: boolean; errors?: Array<{ line: number; column: number; message: string }> };
+          if (!vData.valid && vData.errors && vData.errors.length > 0) {
+            setSyntaxErrors(vData.errors);
+            setValidating(false);
+            return;
+          }
+        }
+      } catch {
+        // Validation unavailable — proceed anyway
+      } finally {
+        setValidating(false);
+      }
+    }
+
     setRunning(true);
     setLogLines(["[Starting job…]"]);
     setLogLabel(null);
@@ -243,6 +276,7 @@ export default function ScriptRunnerPage() {
           credentialId: selectedCredId,
           runbookName: selectedRunbook,
           ...(areasPayload ? { governanceAreas: areasPayload } : {}),
+          ...(adHocScript.trim() ? { adHocContent: adHocScript } : {}),
         }),
       });
 
@@ -527,19 +561,62 @@ export default function ScriptRunnerPage() {
               />
             </div>
 
+            {/* Optional script override */}
+            <div className="border-t border-border pt-3 space-y-2">
+              <button
+                type="button"
+                onClick={() => { setShowScriptOverride(v => !v); setSyntaxErrors([]); }}
+                className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground hover:text-[#E6EDF3] transition-colors"
+              >
+                <svg
+                  className={`w-3 h-3 transition-transform ${showScriptOverride ? "rotate-90" : ""}`}
+                  fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+                </svg>
+                Script Override (optional)
+              </button>
+              {showScriptOverride && (
+                <div className="space-y-2">
+                  <p className="text-[10px] text-muted-foreground leading-snug">
+                    Paste a PowerShell script here to run it instead of the runbook's stored content. Validated before execution.
+                  </p>
+                  <textarea
+                    value={adHocScript}
+                    onChange={e => { setAdHocScript(e.target.value); setSyntaxErrors([]); }}
+                    disabled={running || validating}
+                    placeholder={"# Paste your PowerShell script here…\nGet-AzureADUser -All $true | Select-Object DisplayName, UserPrincipalName"}
+                    rows={8}
+                    className="w-full rounded-lg bg-[#0D1117] border border-[#30363D] text-xs font-mono text-[#E6EDF3] placeholder-muted-foreground px-3 py-2 resize-y focus:outline-none focus:border-[#0078D4]/60 disabled:opacity-50"
+                  />
+                  {syntaxErrors.length > 0 && (
+                    <SyntaxErrorAlert
+                      errors={syntaxErrors}
+                      onDismiss={() => setSyntaxErrors([])}
+                    />
+                  )}
+                </div>
+              )}
+            </div>
+
             <button
               onClick={() => void handleRun()}
-              disabled={!canRun}
+              disabled={!canRun || validating}
               className="w-full inline-flex items-center justify-center gap-2 text-sm font-semibold text-white bg-[#0078D4] hover:bg-[#0078D4]/90 disabled:opacity-40 rounded-lg px-4 py-2.5 transition-colors"
             >
-              {running ? (
+              {validating ? (
+                <>
+                  <div className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+                  Validating…
+                </>
+              ) : running ? (
                 <div className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
               ) : (
                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M5 3l14 9-14 9V3z" />
                 </svg>
               )}
-              {running ? "Running…" : "Run Runbook"}
+              {validating ? "" : running ? "Running…" : "Run Runbook"}
             </button>
           </div>
 
