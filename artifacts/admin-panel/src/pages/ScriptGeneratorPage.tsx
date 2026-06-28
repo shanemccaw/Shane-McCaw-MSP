@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from "react";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import { zipSync, strToU8 } from "fflate";
@@ -1382,35 +1383,48 @@ function RightPanel({
     (lsGet(IDE_RIGHT_TAB_KEY, "runner") as "runner" | "permissions")
   );
 
-  const switchTab = (t: "runner" | "permissions") => {
-    setActiveTab(t);
-    lsSet(IDE_RIGHT_TAB_KEY, t);
+  const switchTab = (t: string) => {
+    const tab = t as "runner" | "permissions";
+    setActiveTab(tab);
+    lsSet(IDE_RIGHT_TAB_KEY, tab);
   };
 
   return (
-    <div className="flex flex-col h-full overflow-hidden border-l border-[#21262D] bg-[#0D1117]">
-      {/* Tab strip */}
-      <div className="flex items-center border-b border-[#21262D] flex-shrink-0 bg-[#161B22] px-2" style={{ minHeight: 34 }}>
-        {([["runner", "Runner"], ["permissions", "Permissions"]] as const).map(([t, label]) => (
-          <button
-            key={t}
-            onClick={() => switchTab(t)}
-            className={`px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-wider rounded transition-colors ${activeTab === t ? "text-[#58A6FF] bg-[#0078D4]/15" : "text-[#484F58] hover:text-[#E6EDF3]"}`}
-          >
-            {label}
-          </button>
-        ))}
-      </div>
+    <Tabs
+      value={activeTab}
+      onValueChange={switchTab}
+      className="flex flex-col h-full border-l border-[#21262D] bg-[#0D1117] overflow-hidden"
+    >
+      {/* Content fills the top — each TabsContent is flex-1 so it expands */}
+      <TabsContent
+        value="runner"
+        className="flex-1 min-h-0 overflow-hidden flex flex-col mt-0 p-0"
+      >
+        <InlineScriptRunner scriptBody={scriptBody} editorScript={editorScript} />
+      </TabsContent>
+      <TabsContent
+        value="permissions"
+        className="flex-1 min-h-0 overflow-hidden flex flex-col mt-0 p-0"
+      >
+        <PermissionsSidebarPanel permissions={scriptLoaded ? permissions : null} />
+      </TabsContent>
 
-      {/* Panel content */}
-      <div className="flex-1 min-h-0 overflow-hidden flex flex-col">
-        {activeTab === "runner" ? (
-          <InlineScriptRunner scriptBody={scriptBody} editorScript={editorScript} />
-        ) : (
-          <PermissionsSidebarPanel permissions={scriptLoaded ? permissions : null} />
-        )}
-      </div>
-    </div>
+      {/* Tab strip pinned at the bottom */}
+      <TabsList className="flex-shrink-0 h-9 w-full rounded-none border-t border-[#21262D] bg-[#161B22] p-0 gap-0 justify-start">
+        <TabsTrigger
+          value="runner"
+          className="h-full px-4 rounded-none text-[10px] font-bold uppercase tracking-wider border-0 shadow-none data-[state=active]:bg-[#0078D4]/15 data-[state=active]:text-[#58A6FF] data-[state=active]:shadow-none data-[state=inactive]:text-[#484F58]"
+        >
+          Runner
+        </TabsTrigger>
+        <TabsTrigger
+          value="permissions"
+          className="h-full px-4 rounded-none text-[10px] font-bold uppercase tracking-wider border-0 shadow-none data-[state=active]:bg-amber-500/15 data-[state=active]:text-amber-400 data-[state=active]:shadow-none data-[state=inactive]:text-[#484F58]"
+        >
+          Permissions
+        </TabsTrigger>
+      </TabsList>
+    </Tabs>
   );
 }
 
