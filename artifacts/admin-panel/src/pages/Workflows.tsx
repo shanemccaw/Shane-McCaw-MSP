@@ -881,6 +881,90 @@ function GenerateStepScriptsDialog({
   );
 }
 
+// ─── Runbook Combobox ──────────────────────────────────────────────────────────
+
+function RunbookCombobox({
+  value,
+  onChange,
+  scripts,
+}: {
+  value: string | null;
+  onChange: (id: string | null) => void;
+  scripts: PublishedScript[];
+}) {
+  const [query, setQuery] = useState("");
+  const [open, setOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  const selected = scripts.find(s => s.id === value) ?? null;
+  const filtered = query.trim()
+    ? scripts.filter(s => s.title.toLowerCase().includes(query.toLowerCase()))
+    : scripts;
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  return (
+    <div ref={containerRef} className="relative">
+      <div
+        className="w-full border border-[#30363D] rounded-lg px-3 py-2 text-sm flex items-center justify-between gap-2 cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#0078D4] bg-[#0D1117]"
+        onClick={() => setOpen(o => !o)}
+        tabIndex={0}
+        onKeyDown={e => { if (e.key === "Enter" || e.key === " ") setOpen(o => !o); }}
+      >
+        <span className={selected ? "text-[#E6EDF3]" : "text-[#484F58]"}>
+          {selected ? selected.title : "None"}
+        </span>
+        <svg className="w-3.5 h-3.5 text-[#7D8590] flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+        </svg>
+      </div>
+      {open && (
+        <div className="absolute z-50 mt-1 w-full bg-[#161B22] border border-[#30363D] rounded-lg shadow-xl overflow-hidden">
+          <div className="p-2 border-b border-[#21262D]">
+            <input
+              autoFocus
+              className="w-full bg-[#0D1117] border border-[#30363D] rounded px-2 py-1.5 text-xs text-[#E6EDF3] placeholder-[#484F58] focus:outline-none focus:ring-1 focus:ring-[#0078D4]"
+              placeholder="Search runbooks…"
+              value={query}
+              onChange={e => setQuery(e.target.value)}
+              onClick={e => e.stopPropagation()}
+            />
+          </div>
+          <ul className="max-h-48 overflow-y-auto py-1">
+            <li
+              className="px-3 py-1.5 text-xs text-[#7D8590] hover:bg-[#1C2128] cursor-pointer"
+              onClick={() => { onChange(null); setOpen(false); setQuery(""); }}
+            >
+              None
+            </li>
+            {filtered.map(s => (
+              <li
+                key={s.id}
+                className={`px-3 py-1.5 text-xs cursor-pointer flex items-center gap-2 ${s.id === value ? "bg-[#0078D4]/10 text-[#0078D4]" : "text-[#E6EDF3] hover:bg-[#1C2128]"}`}
+                onClick={() => { onChange(s.id); setOpen(false); setQuery(""); }}
+              >
+                {s.id === value && <span className="w-1.5 h-1.5 rounded-full bg-[#0078D4] flex-shrink-0" />}
+                {s.title}
+              </li>
+            ))}
+            {filtered.length === 0 && (
+              <li className="px-3 py-2 text-xs text-[#484F58]">No matching runbooks</li>
+            )}
+          </ul>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Sortable Task Row ─────────────────────────────────────────────────────────
 
 function SortableTaskRow({
@@ -1229,16 +1313,11 @@ function TaskDrawer({
               </div>
               <div>
                 <label className="block text-xs font-semibold text-[#7D8590] mb-1 uppercase tracking-wide">Linked Runbook</label>
-                <select
-                  value={form.runbookId ?? ""}
-                  onChange={e => setForm(p => ({ ...p, runbookId: e.target.value || null }))}
-                  className="w-full border border-[#30363D] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4]"
-                >
-                  <option value="">None</option>
-                  {publishedScripts.map(s => (
-                    <option key={s.id} value={s.id}>{s.title}</option>
-                  ))}
-                </select>
+                <RunbookCombobox
+                  value={form.runbookId ?? null}
+                  onChange={id => setForm(p => ({ ...p, runbookId: id }))}
+                  scripts={publishedScripts}
+                />
                 <p className="text-[10px] text-[#7D8590] mt-1">
                   When set, a "Run Script" button will appear on this task's kanban card and modal.
                 </p>

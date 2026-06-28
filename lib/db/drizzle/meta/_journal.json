@@ -666,6 +666,13 @@
       "when": 1782770000000,
       "tag": "0092_add_template_task_runbook",
       "breakpoints": true
+    },
+    {
+      "idx": 93,
+      "version": "7",
+      "when": 1782683866011,
+      "tag": "0093_add_script_run_kanban_task",
+      "breakpoints": true
     }
   ]
 }

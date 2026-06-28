@@ -88,11 +88,18 @@ export default function RunLibraryScriptDialog({ scriptId, moduleId, scriptTitle
     const completionNotes = status === "completed"
       ? `Script '${scriptTitle}' completed successfully.\n\nOutput:\n${summary}`
       : `Script '${scriptTitle}' failed.\n\nOutput:\n${summary}`;
+    const patch: Record<string, unknown> = {
+      completionNotes,
+      completionStatus: status === "completed" ? "script_completed" : "script_failed",
+    };
+    if (status === "completed") {
+      patch.column = "completed";
+    }
     try {
       await fetchWithAuth(`/api/admin/kanban-tasks/${kanbanTaskId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ completionNotes }),
+        body: JSON.stringify(patch),
       });
     } catch { /* silent */ }
   }, [kanbanTaskId, scriptTitle, fetchWithAuth]);
@@ -134,6 +141,7 @@ export default function RunLibraryScriptDialog({ scriptId, moduleId, scriptTitle
         : { libraryScriptId: scriptId };
       if (credentialId) body.credentialId = credentialId;
       if (selectedClientId) body.customerId = selectedClientId;
+      if (kanbanTaskId) body.kanbanTaskId = kanbanTaskId;
 
       const r = await fetchWithAuth("/api/admin/run-script", {
         method: "POST",

@@ -1305,6 +1305,7 @@ export const scriptRunResultsTable = pgTable("script_run_results", {
   profileUpdates: jsonb("profile_updates").$type<Record<string, unknown>>().notNull().default({}),
   status: text("status", { enum: ["running", "completed", "failed", "awaiting_upload"] }).notNull().default("running"),
   executionSource: text("execution_source", { enum: ["automated", "manual"] }).notNull().default("automated"),
+  kanbanTaskId: integer("kanban_task_id").references(() => kanbanTasksTable.id, { onDelete: "set null" }),
   uploadedBy: text("uploaded_by"),
   uploadedAt: timestamp("uploaded_at", { withTimezone: true }),
   reviewedAt: timestamp("reviewed_at", { withTimezone: true }),

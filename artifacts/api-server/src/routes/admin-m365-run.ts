@@ -22,6 +22,7 @@ import {
   azureTenantCredentialsTable,
   usersTable,
   servicesTable,
+  kanbanTasksTable,
 } from "@workspace/db";
 import { eq, desc, and, sql } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/requireAuth";
@@ -40,6 +41,7 @@ const runScriptSchema = z.union([
     customerId: z.number().int().positive().optional(),
     credentialId: z.number().int().positive(),
     packageContext: z.string().optional(),
+    kanbanTaskId: z.number().int().positive().optional(),
   }),
   z.object({
     libraryScriptId: z.string().uuid(),
@@ -48,12 +50,14 @@ const runScriptSchema = z.union([
     clientId: z.string().min(1),
     clientSecret: z.string().min(1),
     packageContext: z.string().optional(),
+    kanbanTaskId: z.number().int().positive().optional(),
   }),
   z.object({
     libraryModuleId: z.string().uuid(),
     customerId: z.number().int().positive().optional(),
     credentialId: z.number().int().positive(),
     packageContext: z.string().optional(),
+    kanbanTaskId: z.number().int().positive().optional(),
   }),
   z.object({
     libraryModuleId: z.string().uuid(),
@@ -62,6 +66,7 @@ const runScriptSchema = z.union([
     clientId: z.string().min(1),
     clientSecret: z.string().min(1),
     packageContext: z.string().optional(),
+    kanbanTaskId: z.number().int().positive().optional(),
   }),
 ]);
 
@@ -200,6 +205,7 @@ async function processRunInBackground(
   customerId: number | undefined,
   packageContext: string,
   aiInstructions: string,
+  kanbanTaskId?: number,
 ): Promise<void> {
   let jobOutput: string;
   let jobStatus: string;
@@ -211,6 +217,15 @@ async function processRunInBackground(
       .update(scriptRunResultsTable)
       .set({ status: "failed", rawOutput: { error: String(err) } })
       .where(eq(scriptRunResultsTable.id, runResultId));
+    if (kanbanTaskId) {
+      try {
+        await db.update(kanbanTasksTable)
+          .set({ completionStatus: "script_failed", completionNotes: `Script run failed (job ${jobId})`, updatedAt: new Date() })
+          .where(eq(kanbanTasksTable.id, kanbanTaskId));
+      } catch (patchErr) {
+        logger.warn({ patchErr, kanbanTaskId }, "admin-m365-run: failed to update kanban task on timeout (non-fatal)");
+      }
+    }
     return;
   }
 
@@ -251,6 +266,23 @@ async function processRunInBackground(
       await applyProfileUpdates(customerId, aiResult.profileUpdates);
     } catch (err) {
       logger.warn({ err, customerId }, "admin-m365-run: failed to apply profile updates (non-fatal)");
+    }
+  }
+
+  if (kanbanTaskId) {
+    try {
+      const kanbanPatch: { column?: "completed"; completionStatus: string; completionNotes: string; updatedAt: Date } = {
+        completionStatus: finalStatus === "completed" ? "script_completed" : "script_failed",
+        completionNotes: finalStatus === "completed"
+          ? `Script run completed (job ${jobId}).`
+          : `Script run failed (job ${jobId}).`,
+        updatedAt: new Date(),
+      };
+      if (finalStatus === "completed") kanbanPatch.column = "completed";
+      await db.update(kanbanTasksTable).set(kanbanPatch).where(eq(kanbanTasksTable.id, kanbanTaskId));
+      logger.info({ kanbanTaskId, finalStatus }, "admin-m365-run: kanban task synced from script result");
+    } catch (patchErr) {
+      logger.warn({ patchErr, kanbanTaskId }, "admin-m365-run: failed to sync kanban task status (non-fatal)");
     }
   }
 
@@ -344,6 +376,8 @@ router.post("/admin/run-script", requireAdmin, async (req: Request, res: Respons
     resolvedLibraryScriptId = libraryScriptId;
   }
 
+  const kanbanTaskId: number | undefined = "kanbanTaskId" in parsed.data ? (parsed.data.kanbanTaskId ?? undefined) : undefined;
+
   // Create a placeholder run result row
   let runResultId: number;
   try {
@@ -352,6 +386,7 @@ router.post("/admin/run-script", requireAdmin, async (req: Request, res: Respons
       .values({
         customerId: customerId ?? null,
         libraryScriptId: resolvedLibraryScriptId,
+        kanbanTaskId: kanbanTaskId ?? null,
         status: "running",
       })
       .returning({ id: scriptRunResultsTable.id });
@@ -398,6 +433,7 @@ router.post("/admin/run-script", requireAdmin, async (req: Request, res: Respons
     customerId,
     packageContext,
     "",
+    kanbanTaskId,
   );
 
   res.json({ jobRef: jobId, resultId: runResultId, libraryScriptId: resolvedLibraryScriptId, status: "running" });
