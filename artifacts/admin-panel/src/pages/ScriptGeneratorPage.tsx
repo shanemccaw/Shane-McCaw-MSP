@@ -2,6 +2,10 @@ import { useState, useCallback, useEffect, useRef } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import { zipSync, strToU8 } from "fflate";
+import CodeMirror from "@uiw/react-codemirror";
+import { oneDark } from "@codemirror/theme-one-dark";
+import { StreamLanguage } from "@codemirror/language";
+import { powerShell } from "@codemirror/legacy-modes/mode/powershell";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -1394,13 +1398,25 @@ export default function ScriptGeneratorPage() {
                     <p className="text-xs text-[#7D8590]">{generating ? "Generating script…" : "Modularizing…"}</p>
                   </div>
                 )}
-                <textarea
+                <CodeMirror
                   value={scriptBody}
-                  onChange={(e) => setScriptBody(e.target.value)}
-                  spellCheck={false}
+                  onChange={(val) => setScriptBody(val)}
+                  extensions={[StreamLanguage.define(powerShell)]}
+                  theme={oneDark}
+                  basicSetup={{
+                    lineNumbers: true,
+                    highlightActiveLine: true,
+                    highlightActiveLineGutter: true,
+                    foldGutter: true,
+                    autocompletion: false,
+                  }}
                   placeholder="# PowerShell script will appear here after generation, or paste/type directly…"
-                  className="w-full h-full bg-[#0D1117] text-[#C9D1D9] font-mono text-xs leading-relaxed p-4 outline-none resize-none placeholder-[#30363D] block"
-                  style={{ fontFamily: "'Cascadia Code', 'Fira Code', 'Consolas', monospace" }}
+                  height="100%"
+                  style={{
+                    height: "100%",
+                    fontFamily: "'Cascadia Code', 'Fira Code', 'Consolas', monospace",
+                    fontSize: "12px",
+                  }}
                 />
               </div>
             )}
