@@ -4,8 +4,8 @@ import {
   leadQualificationsTable,
 } from "@workspace/db";
 import { eq, desc, count, gte, and, ilike, or, ne, type SQL, lt } from "drizzle-orm";
-import { requireAdmin } from "../middlewares/requireAuth";
-import { deriveSignalsFromQuiz, loadQuizPainConfig } from "../lib/derive-quiz-signals";
+import { requireAdmin } from "../middlewares/requireAuth.ts";
+import { deriveSignalsFromQuiz, loadQuizPainConfig } from "../lib/derive-quiz-signals.ts";
 import {
   sendEmailOrThrow,
   sendEmail,
@@ -16,10 +16,10 @@ import {
   contactInquiryNotificationEmail,
   serviceOverviewConfirmationEmail,
   serviceOverviewLeadNotificationEmail,
-} from "../lib/mailer";
-import { createAuditLog } from "../lib/audit";
-import { generateServiceOverviewPdf } from "../lib/service-overview-pdf";
-import { scoreLead, determineNextStep } from "../lib/lead-scorer";
+} from "../lib/mailer.ts";
+import { createAuditLog } from "../lib/audit.ts";
+import { generateServiceOverviewPdf } from "../lib/service-overview-pdf.ts";
+import { scoreLead, determineNextStep } from "../lib/lead-scorer.ts";
 import fs from "fs";
 import path from "path";
 
