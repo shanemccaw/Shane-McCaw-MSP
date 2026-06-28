@@ -39,6 +39,20 @@ interface WorkflowTemplateMeta {
   name: string;
 }
 
+interface ScriptSetItem {
+  scriptPackageId: string;
+  displayOrder: number;
+  title: string;
+  category: string;
+  tags: string[];
+}
+
+interface ScriptPackageMeta {
+  id: string;
+  title: string;
+  category: string;
+}
+
 interface Service {
   id: number;
   slug: string | null;
@@ -534,6 +548,12 @@ export default function ServicesPage() {
 
   const [showWorkflow, setShowWorkflow] = useState(false);
 
+  const [scriptSets, setScriptSets] = useState<ScriptSetItem[]>([]);
+  const [scriptSetsLoading, setScriptSetsLoading] = useState(false);
+  const [allPackages, setAllPackages] = useState<ScriptPackageMeta[]>([]);
+  const [scriptSetAddId, setScriptSetAddId] = useState("");
+  const [scriptSetSaving, setScriptSetSaving] = useState(false);
+
   function exportServiceJson() {
     if (!selected) return;
     const json = JSON.stringify(selected, null, 2);
@@ -569,6 +589,29 @@ export default function ServicesPage() {
   }, [fetchWithAuth, toast]);
 
   useEffect(() => { void fetchAll(); }, [fetchAll]);
+
+  useEffect(() => {
+    if (!selected) { setScriptSets([]); return; }
+    setScriptSetsLoading(true);
+    void (async () => {
+      try {
+        const res = await fetchWithAuth(`/api/admin/services/${selected.id}/script-sets`);
+        if (res.ok) setScriptSets(await res.json() as ScriptSetItem[]);
+      } catch { /* ignore */ } finally { setScriptSetsLoading(false); }
+    })();
+  }, [selected, fetchWithAuth]);
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        const res = await fetchWithAuth("/api/admin/ps-scripts/packages");
+        if (res.ok) {
+          const data = await res.json() as { id: string; title: string; category: string }[];
+          setAllPackages(data.map(p => ({ id: p.id, title: p.title, category: p.category })));
+        }
+      } catch { /* ignore */ }
+    })();
+  }, [fetchWithAuth]);
 
   function selectService(s: Service) {
     setSelected(s);
@@ -1271,6 +1314,111 @@ export default function ServicesPage() {
                 </button>
               </div>
             </form>
+
+            {/* Script Sets */}
+            {selected && (
+              <div className="bg-[#161B22] rounded-xl border border-[#30363D] p-6 mt-5">
+                <p className="text-xs font-bold text-[#7D8590] uppercase tracking-wider mb-1">Script Sets</p>
+                <p className="text-xs text-[#7D8590] mb-3">Script packages automatically run for clients of this service.</p>
+                {scriptSetsLoading ? (
+                  <div className="flex items-center gap-2 py-2"><Loader2 className="w-4 h-4 animate-spin text-[#0078D4]" /><span className="text-xs text-[#7D8590]">Loading…</span></div>
+                ) : (
+                  <>
+                    <div className="space-y-1 mb-3">
+                      {scriptSets.length === 0 && (
+                        <p className="text-xs text-[#484F58] italic">No script packages linked to this service.</p>
+                      )}
+                      {scriptSets.map((ss, idx) => (
+                        <div key={ss.scriptPackageId} className="flex items-center justify-between bg-[#0D1117] border border-[#21262D] rounded-lg px-3 py-1.5">
+                          <div className="flex flex-col gap-0.5 mr-2 flex-shrink-0">
+                            <button
+                              disabled={idx === 0}
+                              onClick={() => void (async () => {
+                                const next = [...scriptSets];
+                                [next[idx - 1], next[idx]] = [next[idx], next[idx - 1]];
+                                setScriptSets(next);
+                                await fetchWithAuth(`/api/admin/services/${selected.id}/script-sets/reorder`, {
+                                  method: "PATCH",
+                                  body: JSON.stringify({ order: next.map(x => x.scriptPackageId) }),
+                                });
+                              })()}
+                              className="text-[#484F58] hover:text-[#E6EDF3] disabled:opacity-20 transition-colors"
+                            >
+                              <ChevronUp className="w-3 h-3" />
+                            </button>
+                            <button
+                              disabled={idx === scriptSets.length - 1}
+                              onClick={() => void (async () => {
+                                const next = [...scriptSets];
+                                [next[idx + 1], next[idx]] = [next[idx], next[idx + 1]];
+                                setScriptSets(next);
+                                await fetchWithAuth(`/api/admin/services/${selected.id}/script-sets/reorder`, {
+                                  method: "PATCH",
+                                  body: JSON.stringify({ order: next.map(x => x.scriptPackageId) }),
+                                });
+                              })()}
+                              className="text-[#484F58] hover:text-[#E6EDF3] disabled:opacity-20 transition-colors"
+                            >
+                              <ChevronDown className="w-3 h-3" />
+                            </button>
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <span className="text-xs text-[#E6EDF3] font-medium">{ss.title}</span>
+                            {ss.category && <span className="ml-2 text-[10px] text-[#484F58]">{ss.category}</span>}
+                          </div>
+                          <button
+                            onClick={() => void (async () => {
+                              const res = await fetchWithAuth(`/api/admin/services/${selected.id}/script-sets/${ss.scriptPackageId}`, { method: "DELETE" });
+                              if (res.ok) setScriptSets(p => p.filter(x => x.scriptPackageId !== ss.scriptPackageId));
+                              else toast({ title: "Failed to remove script set", variant: "destructive" });
+                            })()}
+                            className="text-[#484F58] hover:text-red-400 transition-colors ml-2"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <select
+                        value={scriptSetAddId}
+                        onChange={e => setScriptSetAddId(e.target.value)}
+                        className="flex-1 border border-[#30363D] rounded-lg px-3 py-1.5 text-xs bg-[#1C2128] text-[#E6EDF3] focus:outline-none focus:ring-2 focus:ring-[#0078D4]"
+                      >
+                        <option value="">— Add a script package —</option>
+                        {allPackages.filter(p => !scriptSets.some(ss => ss.scriptPackageId === p.id)).map(p => (
+                          <option key={p.id} value={p.id}>{p.title} ({p.category})</option>
+                        ))}
+                      </select>
+                      <button
+                        onClick={() => void (async () => {
+                          if (!scriptSetAddId) return;
+                          setScriptSetSaving(true);
+                          try {
+                            const res = await fetchWithAuth(`/api/admin/services/${selected.id}/script-sets`, {
+                              method: "POST",
+                              body: JSON.stringify({ scriptPackageId: scriptSetAddId }),
+                            });
+                            if (res.ok) {
+                              const added = allPackages.find(p => p.id === scriptSetAddId);
+                              if (added) setScriptSets(prev => [...prev, { scriptPackageId: added.id, displayOrder: prev.length, title: added.title, category: added.category, tags: [] }]);
+                              setScriptSetAddId("");
+                            } else {
+                              toast({ title: "Failed to add script set", variant: "destructive" });
+                            }
+                          } finally { setScriptSetSaving(false); }
+                        })()}
+                        disabled={!scriptSetAddId || scriptSetSaving}
+                        className="flex items-center gap-1.5 text-xs font-semibold bg-[#0078D4] text-white px-3 py-1.5 rounded-lg hover:bg-[#006CBE] disabled:opacity-50 transition-colors"
+                      >
+                        {scriptSetSaving ? <Loader2 className="w-3 h-3 animate-spin" /> : <Plus className="w-3 h-3" />}
+                        Add
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
 
             {/* Service Overview PDF */}
             <div className="bg-[#161B22] rounded-xl border border-[#30363D] p-6 mt-5">

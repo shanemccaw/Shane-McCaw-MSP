@@ -3,7 +3,7 @@ import { Link, useLocation } from "wouter";
 
 const TABS = [
   {
-    label: "Script Catalog",
+    label: "Script Library",
     path: "/m365-scripts",
     icon: (
       <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -30,20 +30,10 @@ const TABS = [
       </svg>
     ),
   },
-  {
-    label: "Script Generator",
-    path: "/script-generator",
-    icon: (
-      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-      </svg>
-    ),
-  },
 ] as const;
 
 export default function ScriptsTabBar({ children }: { children: ReactNode }) {
   const [location] = useLocation();
-  const isIDE = location === "/script-generator";
 
   return (
     <div className="flex flex-col h-full">
@@ -66,7 +56,7 @@ export default function ScriptsTabBar({ children }: { children: ReactNode }) {
           );
         })}
       </div>
-      <div className={`flex-1 min-h-0 ${isIDE ? "overflow-hidden" : "overflow-y-auto"}`}>
+      <div className="flex-1 min-h-0 overflow-y-auto">
         {children}
       </div>
     </div>

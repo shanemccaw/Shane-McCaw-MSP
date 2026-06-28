@@ -47,6 +47,7 @@ import EmailTemplatesPage from "@/pages/EmailTemplates";
 import CouponsPage from "@/pages/Coupons";
 import ServicePageTriggersPage from "@/pages/ServicePageTriggers";
 import ScriptGeneratorPage from "@/pages/ScriptGeneratorPage";
+import ScriptsTabBar from "@/components/ScriptsTabBar";
 import AdminSecurity from "@/pages/AdminSecurity";
 import MarketingCommandCenterPage from "@/pages/MarketingCommandCenter";
 import type { ReactNode } from "react";
@@ -245,8 +246,14 @@ function Router() {
       <Route path="/service-page-triggers">
         <RequireAdmin><DashboardShell><ServicePageTriggersPage /></DashboardShell></RequireAdmin>
       </Route>
-      <Route path="/script-generator">
-        <RequireAdmin><DashboardShell><ScriptGeneratorPage /></DashboardShell></RequireAdmin>
+      <Route path="/m365-scripts">
+        <RequireAdmin><DashboardShell><ScriptsTabBar><ScriptGeneratorPage /></ScriptsTabBar></DashboardShell></RequireAdmin>
+      </Route>
+      <Route path="/script-runner">
+        <RequireAdmin><DashboardShell><ScriptsTabBar><ScriptGeneratorPage /></ScriptsTabBar></DashboardShell></RequireAdmin>
+      </Route>
+      <Route path="/m365-run-results">
+        <RequireAdmin><DashboardShell><ScriptsTabBar><ScriptGeneratorPage /></ScriptsTabBar></DashboardShell></RequireAdmin>
       </Route>
 
       {/* Marketing Command Center */}

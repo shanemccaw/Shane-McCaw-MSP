@@ -198,6 +198,24 @@ const legacyMigrations = [
       ALTER TABLE "script_run_results" ADD COLUMN IF NOT EXISTS "uploaded_at" timestamptz;
     `,
   },
+  {
+    name: "0010_remove_catalog_add_service_script_sets",
+    sql: `
+      ALTER TABLE "script_run_results" DROP CONSTRAINT IF EXISTS "script_run_results_script_id_fkey";
+      ALTER TABLE "script_run_results" ALTER COLUMN "script_id" DROP NOT NULL;
+      ALTER TABLE "script_run_results" ADD COLUMN IF NOT EXISTS "library_script_id" uuid REFERENCES "powershell_scripts"("id") ON DELETE SET NULL;
+      CREATE TABLE IF NOT EXISTS "service_script_sets" (
+        "service_id" integer NOT NULL REFERENCES "services"("id") ON DELETE CASCADE,
+        "script_package_id" uuid NOT NULL REFERENCES "script_packages"("id") ON DELETE CASCADE,
+        "display_order" integer NOT NULL DEFAULT 0,
+        PRIMARY KEY ("service_id", "script_package_id")
+      );
+      DROP TABLE IF EXISTS "script_catalog_categories" CASCADE;
+      DROP TABLE IF EXISTS "package_scripts" CASCADE;
+      DROP TABLE IF EXISTS "script_categories" CASCADE;
+      DROP TABLE IF EXISTS "script_catalog" CASCADE;
+    `,
+  },
 ];
 
 // ---------------------------------------------------------------------------

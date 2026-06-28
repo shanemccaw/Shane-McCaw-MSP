@@ -170,52 +170,8 @@ app.listen(port, (err) => {
     logger.warn({ err }, "Migration: opportunities.state column failed (non-fatal)");
   });
 
-  // M365 Command Center tables — created in dependency order (script_catalog must exist before dependents)
-  pool.query(`
-    CREATE TABLE IF NOT EXISTS script_catalog (
-      id SERIAL PRIMARY KEY,
-      name TEXT NOT NULL,
-      description TEXT,
-      runbook_name TEXT NOT NULL,
-      app_reg_permissions JSONB NOT NULL DEFAULT '[]',
-      ai_instructions TEXT,
-      created_at TIMESTAMP NOT NULL DEFAULT NOW(),
-      updated_at TIMESTAMP NOT NULL DEFAULT NOW()
-    )
-  `).then(() => {
-    logger.info("Migration: script_catalog table ensured");
-    return pool.query(`
-      CREATE TABLE IF NOT EXISTS package_scripts (
-        id SERIAL PRIMARY KEY,
-        package_id INTEGER NOT NULL REFERENCES services(id) ON DELETE CASCADE,
-        script_id INTEGER NOT NULL REFERENCES script_catalog(id) ON DELETE CASCADE,
-        run_order INTEGER NOT NULL DEFAULT 0,
-        created_at TIMESTAMP NOT NULL DEFAULT NOW()
-      )
-    `);
-  }).then(() => {
-    logger.info("Migration: package_scripts table ensured");
-    return pool.query(`
-      CREATE TABLE IF NOT EXISTS script_run_results (
-        id SERIAL PRIMARY KEY,
-        customer_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
-        script_id INTEGER NOT NULL REFERENCES script_catalog(id) ON DELETE CASCADE,
-        package_id INTEGER REFERENCES services(id) ON DELETE SET NULL,
-        job_id TEXT,
-        raw_output JSONB NOT NULL DEFAULT '{}',
-        parsed_findings JSONB NOT NULL DEFAULT '[]',
-        recommendations JSONB NOT NULL DEFAULT '[]',
-        score_impact JSONB NOT NULL DEFAULT '{}',
-        profile_updates JSONB NOT NULL DEFAULT '{}',
-        status TEXT NOT NULL DEFAULT 'running',
-        created_at TIMESTAMP NOT NULL DEFAULT NOW()
-      )
-    `);
-  }).then(() => {
-    logger.info("Migration: script_run_results table ensured");
-  }).catch((err: unknown) => {
-    logger.warn({ err }, "Migration: M365 script tables failed (non-fatal)");
-  });
+  // Note: script_catalog and package_scripts tables were dropped by migration 0087.
+  // Their legacy startup DDL has been removed to avoid recreating dropped tables.
 
   pool.query(`
     DO $$

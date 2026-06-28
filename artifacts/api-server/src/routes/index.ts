@@ -49,8 +49,6 @@ import adminFinanceRouter from "./admin-finance";
 import adminMarketingRouter from "./admin-marketing";
 import adminM365ScriptsRouter from "./admin-m365-scripts";
 import adminM365RunRouter from "./admin-m365-run";
-import adminM365CategoriesRouter from "./admin-m365-categories";
-import adminManualScriptsRouter from "./admin-manual-scripts";
 import adminPsScriptsRouter from "./admin-ps-scripts";
 import adminKanbanEscalationRouter from "./admin-kanban-escalation";
 
@@ -106,8 +104,6 @@ router.use(adminFinanceRouter);
 router.use(adminMarketingRouter);
 router.use(adminM365ScriptsRouter);
 router.use(adminM365RunRouter);
-router.use(adminM365CategoriesRouter);
-router.use(adminManualScriptsRouter);
 router.use(adminPsScriptsRouter);
 router.use(adminKanbanEscalationRouter);
 

@@ -1930,7 +1930,7 @@ export default function ClientDetailPage() {
                         </div>
 
                         <button
-                          onClick={() => navigate("/script-generator")}
+                          onClick={() => navigate("/m365-scripts")}
                           className="flex items-center gap-2 text-xs font-semibold bg-[#0078D4] text-white px-3 py-1.5 rounded-lg hover:bg-[#0078D4]/90 transition-colors"
                         >
                           <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>

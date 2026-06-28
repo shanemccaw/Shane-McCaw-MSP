@@ -12,7 +12,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { AzurePushDialog, type AzurePushDialogState } from "@/components/AzurePushDialog";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
-import CatalogSidebarPanel from "@/components/CatalogSidebarPanel";
+import RunLibraryScriptDialog from "@/components/RunLibraryScriptDialog";
 import RunResultsSidebarPanel from "@/components/RunResultsSidebarPanel";
 import type { RunResult } from "@/components/RunResultsSidebarPanel";
 import RunResultDetailPanel from "@/components/RunResultDetailPanel";
@@ -48,16 +48,6 @@ interface PsScriptDetail extends PsScriptListItem {
   permissions: PsScriptPermissions;
 }
 
-interface CatalogAnalyzeResult {
-  name?: string;
-  runbookName?: string;
-  description?: string;
-  aiInstructions?: string;
-  executionMode?: "automated" | "manual";
-  manualRequirements?: string[];
-  appRegPermissions?: { permission: string; type: "Application" | "Delegated"; reason: string }[];
-  psScriptBody?: string;
-}
 
 interface ScriptModuleItem {
   id?: string;
@@ -1189,8 +1179,7 @@ function LibrarySidebar({
   onOpenPackage,
   onOpenModule,
   loadingScriptId,
-  onPublishToCatalog,
-  publishingScriptId,
+  onRunScript,
 }: {
   scripts: PsScriptListItem[];
   packages: ScriptPackageListItem[];
@@ -1199,8 +1188,7 @@ function LibrarySidebar({
   onOpenPackage: (pkg: ScriptPackageListItem) => void;
   onOpenModule: (module: ScriptModuleItem, pkg: ScriptPackageListItem) => void;
   loadingScriptId: string | null;
-  onPublishToCatalog?: (item: { id: string; body?: string; title: string }) => void;
-  publishingScriptId?: string | null;
+  onRunScript?: (script: PsScriptListItem) => void;
 }) {
   const [search, setSearch] = useState("");
   const [collapsedCats, setCollapsedCats] = useState<Set<string>>(new Set());
@@ -1294,7 +1282,6 @@ function LibrarySidebar({
                 if (entry.type === "script") {
                   const s = entry.item;
                   const isLoading = loadingScriptId === s.id;
-                  const isPublishing = publishingScriptId === s.id;
                   return (
                     <div
                       key={`s-${s.id}`}
@@ -1315,18 +1302,13 @@ function LibrarySidebar({
                           <span className="flex-shrink-0 text-[8px] font-semibold px-1 py-0.5 rounded bg-yellow-500/20 border border-yellow-500/40 text-yellow-400 uppercase tracking-wide">M</span>
                         )}
                       </button>
-                      {onPublishToCatalog && (
+                      {onRunScript && s.azureRunbookName && (
                         <button
-                          onClick={(e) => { e.stopPropagation(); onPublishToCatalog({ id: s.id, title: s.title }); }}
-                          disabled={!!publishingScriptId}
-                          title="Publish to Catalog"
-                          className="flex-shrink-0 opacity-0 group-hover:opacity-100 px-1.5 py-1 text-[#484F58] hover:text-[#0078D4] disabled:opacity-30 transition-all"
+                          onClick={(e) => { e.stopPropagation(); onRunScript(s); }}
+                          title="Run script"
+                          className="flex-shrink-0 opacity-0 group-hover:opacity-100 px-1.5 py-1 text-[#484F58] hover:text-green-400 transition-all"
                         >
-                          {isPublishing ? (
-                            <svg className="w-3 h-3 animate-spin text-[#0078D4]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
-                          ) : (
-                            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" /></svg>
-                          )}
+                          <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" /><path strokeLinecap="round" strokeLinejoin="round" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
                         </button>
                       )}
                     </div>
@@ -1363,8 +1345,6 @@ function LibrarySidebar({
                       </div>
                       {/* Module child rows */}
                       {isExpanded && p.modules.map((mod) => {
-                        const modId = `${p.id}/${mod.filename}`;
-                        const isModPublishing = publishingScriptId === modId;
                         return (
                           <div
                             key={`mod-${mod.id ?? mod.filename}`}
@@ -1381,20 +1361,6 @@ function LibrarySidebar({
                               </svg>
                               <span className="flex-1 text-xs text-[#8B949E] group-hover:text-[#C9D1D9] truncate min-w-0 font-mono">{mod.filename}</span>
                             </button>
-                            {onPublishToCatalog && (
-                              <button
-                                onClick={(e) => { e.stopPropagation(); onPublishToCatalog({ id: modId, body: mod.content, title: mod.filename }); }}
-                                disabled={!!publishingScriptId}
-                                title="Publish to Catalog"
-                                className="flex-shrink-0 opacity-0 group-hover:opacity-100 px-1.5 py-1 text-[#484F58] hover:text-[#0078D4] disabled:opacity-30 transition-all"
-                              >
-                                {isModPublishing ? (
-                                  <svg className="w-3 h-3 animate-spin text-[#0078D4]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
-                                ) : (
-                                  <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" /></svg>
-                                )}
-                              </button>
-                            )}
                           </div>
                         );
                       })}
@@ -1444,14 +1410,10 @@ const ADHOC_RUNBOOK_NAME = "IDE-AdHoc";
 function InlineScriptRunner({
   scriptBody,
   editorScript,
-  presetRunbook,
-  onPresetConsumed,
   governanceAreas,
 }: {
   scriptBody: string;
   editorScript: PsScriptDetail | null;
-  presetRunbook?: string | null;
-  onPresetConsumed?: () => void;
   governanceAreas?: string[];
 }) {
   const { fetchWithAuth } = useAuth();
@@ -1521,12 +1483,9 @@ function InlineScriptRunner({
           setAzureConfigured(true);
           const list = data.runbooks ?? [];
           setRunbooks(list);
-          // Pre-select: catalog preset takes priority, then the editor script's runbook.
-          // (auto-select ADHOC_SENTINEL when no preset is active is handled in the separate effect below)
-          if (presetRunbook && list.some(r => r.name === presetRunbook)) {
-            setSelectedRunbook(presetRunbook);
-            onPresetConsumed?.();
-          } else if (editorScript?.azureRunbookName) {
+          // Pre-select: the editor script's runbook if available.
+          // (auto-select ADHOC_SENTINEL when nothing is pre-selected is handled in the separate effect below)
+          if (editorScript?.azureRunbookName) {
             setSelectedRunbook(editorScript.azureRunbookName);
           }
         } else if (res.status === 503) {
@@ -1536,7 +1495,7 @@ function InlineScriptRunner({
       finally { setLoadingRunbooks(false); }
     })();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedCredId, presetRunbook]);
+  }, [selectedCredId]);
 
   // Auto-select ADHOC_SENTINEL when runbooks finish loading if editor has content
   // and no runbook is pre-selected (mirrors m365-scripts behaviour)
@@ -1915,8 +1874,6 @@ function RightPanel({
   editorScript,
   activeTab,
   onActiveTabChange,
-  presetRunbook,
-  onPresetConsumed,
 }: {
   permissions: PsScriptPermissions;
   scriptLoaded: boolean;
@@ -1924,8 +1881,6 @@ function RightPanel({
   editorScript: PsScriptDetail | null;
   activeTab: "runner" | "permissions";
   onActiveTabChange: (t: "runner" | "permissions") => void;
-  presetRunbook: string | null;
-  onPresetConsumed: () => void;
 }) {
   const switchTab = (t: string) => {
     const tab = t as "runner" | "permissions";
@@ -1944,7 +1899,7 @@ function RightPanel({
         value="runner"
         className="flex-1 min-h-0 overflow-hidden flex flex-col mt-0 p-0"
       >
-        <InlineScriptRunner scriptBody={scriptBody} editorScript={editorScript} presetRunbook={presetRunbook} onPresetConsumed={onPresetConsumed} />
+        <InlineScriptRunner scriptBody={scriptBody} editorScript={editorScript} />
       </TabsContent>
       <TabsContent
         value="permissions"
@@ -2863,16 +2818,15 @@ export default function ScriptGeneratorPage() {
 
   const [leftCollapsed, setLeftCollapsed] = useState(() => lsGet(IDE_LEFT_COLLAPSED_KEY, "false") === "true");
   const [rightVisible, setRightVisible] = useState(() => lsGet(IDE_RIGHT_VISIBLE_KEY, "true") === "true");
-  const [leftMode, setLeftMode] = useState<"library" | "catalog" | "results">(() =>
-    (lsGet(IDE_LEFT_MODE_KEY, "library") as "library" | "catalog" | "results")
-  );
+  const [leftMode, setLeftMode] = useState<"library" | "results">(() => {
+    const stored = lsGet(IDE_LEFT_MODE_KEY, "library");
+    return (stored === "results" ? "results" : "library") as "library" | "results";
+  });
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [rightActiveTab, setRightActiveTab] = useState<"runner" | "permissions">(() =>
     (lsGet(IDE_RIGHT_TAB_KEY, "runner") as "runner" | "permissions")
   );
-  const [catalogPresetRunbook, setCatalogPresetRunbook] = useState<string | null>(null);
-  const [pendingCatalogEntry, setPendingCatalogEntry] = useState<CatalogAnalyzeResult | null>(null);
-  const [publishingScriptId, setPublishingScriptId] = useState<string | null>(null);
+  const [runLibraryScriptTarget, setRunLibraryScriptTarget] = useState<PsScriptListItem | null>(null);
 
   // Drag state refs
   const isDraggingLeft = useRef(false);
@@ -2979,62 +2933,6 @@ export default function ScriptGeneratorPage() {
     lsSet(IDE_RIGHT_VISIBLE_KEY, String(next));
   };
 
-  const handleCatalogRunScript = (runbookName: string) => {
-    setCatalogPresetRunbook(runbookName);
-    setRightActiveTab("runner");
-    lsSet(IDE_RIGHT_TAB_KEY, "runner");
-    if (!rightVisible) {
-      setRightVisible(true);
-      lsSet(IDE_RIGHT_VISIBLE_KEY, "true");
-    }
-  };
-
-  const handlePublishToCatalog = async (item: { id: string; body?: string; title: string }) => {
-    if (publishingScriptId) return;
-    setPublishingScriptId(item.id);
-    try {
-      let scriptBody: string;
-      let title: string = item.title;
-      let azureRunbookName: string | null = null;
-
-      if (item.body) {
-        // Body already provided (e.g. a module from a package)
-        scriptBody = item.body;
-      } else {
-        // Single script — fetch full detail for body
-        const detailRes = await apiFetch(`/admin/ps-scripts/${item.id}`, token) as PsScriptDetail;
-        if (!detailRes?.scriptBody) {
-          toast({ title: "Could not load script body", variant: "destructive" });
-          return;
-        }
-        scriptBody = detailRes.scriptBody;
-        title = detailRes.title;
-        azureRunbookName = detailRes.azureRunbookName;
-      }
-
-      let analyzed: CatalogAnalyzeResult;
-      try {
-        analyzed = await apiFetch("/admin/scripts/analyze", token, {
-          method: "POST",
-          body: JSON.stringify({ psScriptBody: scriptBody }),
-        }) as CatalogAnalyzeResult;
-      } catch (e) {
-        toast({ title: e instanceof ApiError ? e.message : "AI analysis failed", variant: "destructive" });
-        return;
-      }
-      if (!analyzed.name) analyzed.name = title;
-      if (!analyzed.runbookName && azureRunbookName) analyzed.runbookName = azureRunbookName;
-      analyzed.psScriptBody = scriptBody;
-      setPendingCatalogEntry(analyzed);
-      setLeftMode("catalog");
-      lsSet(IDE_LEFT_MODE_KEY, "catalog");
-      if (leftCollapsed) { setLeftCollapsed(false); lsSet(IDE_LEFT_COLLAPSED_KEY, "false"); }
-    } catch {
-      toast({ title: "Network error — please try again", variant: "destructive" });
-    } finally {
-      setPublishingScriptId(null);
-    }
-  };
 
   // ── Persist prompt fields ─────────────────────────────────────────────────────
   const handleCategoryChange = (v: string) => { setCategory(v); lsSet(CATEGORY_KEY, v); };
@@ -3438,7 +3336,7 @@ export default function ScriptGeneratorPage() {
               </button>
               <div className="w-px flex-1 bg-[#21262D]" />
               <span className="text-[8px] text-[#484F58] font-bold tracking-widest uppercase" style={{ writingMode: "vertical-rl" }}>
-                {leftMode === "library" ? "LIBRARY" : leftMode === "catalog" ? "CATALOG" : "RESULTS"}
+                {leftMode === "library" ? "LIBRARY" : "RESULTS"}
               </span>
             </div>
           ) : (
@@ -3449,7 +3347,7 @@ export default function ScriptGeneratorPage() {
                 <button onClick={toggleLeftCollapsed} title="Collapse sidebar" className="p-2 text-[#484F58] hover:text-[#E6EDF3] transition-colors flex-shrink-0">
                   <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" /></svg>
                 </button>
-                {(["library", "catalog", "results"] as const).map(m => (
+                {(["library", "results"] as const).map(m => (
                   <button
                     key={m}
                     onClick={() => { setLeftMode(m); lsSet(IDE_LEFT_MODE_KEY, m); }}
@@ -3459,7 +3357,7 @@ export default function ScriptGeneratorPage() {
                         : "text-[#484F58] hover:text-[#E6EDF3] border-transparent"
                     }`}
                   >
-                    {m === "library" ? "Library" : m === "catalog" ? "Catalog" : "Results"}
+                    {m === "library" ? "Library" : "Results"}
                   </button>
                 ))}
               </div>
@@ -3474,15 +3372,7 @@ export default function ScriptGeneratorPage() {
                     onOpenPackage={handleSidebarPackageClick}
                     onOpenModule={handleSidebarModuleClick}
                     loadingScriptId={loadingScriptId}
-                    onPublishToCatalog={(item) => void handlePublishToCatalog(item)}
-                    publishingScriptId={publishingScriptId}
-                  />
-                )}
-                {leftMode === "catalog" && (
-                  <CatalogSidebarPanel
-                    onRunScript={handleCatalogRunScript}
-                    pendingEntry={pendingCatalogEntry}
-                    onPendingConsumed={() => setPendingCatalogEntry(null)}
+                    onRunScript={setRunLibraryScriptTarget}
                   />
                 )}
                 {leftMode === "results" && (
@@ -3720,8 +3610,6 @@ export default function ScriptGeneratorPage() {
               editorScript={editorScript}
               activeTab={rightActiveTab}
               onActiveTabChange={(t) => { setRightActiveTab(t); lsSet(IDE_RIGHT_TAB_KEY, t); }}
-              presetRunbook={catalogPresetRunbook}
-              onPresetConsumed={() => setCatalogPresetRunbook(null)}
             />
           </div>
         )}
@@ -3828,6 +3716,15 @@ export default function ScriptGeneratorPage() {
         state={azurePushDialog}
         onClose={() => setAzurePushDialog(prev => ({ ...prev, open: false }))}
       />
+
+      {runLibraryScriptTarget && (
+        <RunLibraryScriptDialog
+          scriptId={runLibraryScriptTarget.id}
+          scriptTitle={runLibraryScriptTarget.title}
+          azureRunbookName={runLibraryScriptTarget.azureRunbookName}
+          onClose={() => setRunLibraryScriptTarget(null)}
+        />
+      )}
 
       {editingModuleId && editingPackageId && editorScript && (
         <PackagePushProgressDialog

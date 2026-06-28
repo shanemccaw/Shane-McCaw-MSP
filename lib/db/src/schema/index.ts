@@ -1284,59 +1284,14 @@ export const landingPagesTable = pgTable("landing_pages", {
 export type InsertLandingPage = typeof landingPagesTable.$inferInsert;
 export type LandingPage = typeof landingPagesTable.$inferSelect;
 
-// ── M365 Command Center Script Catalog ───────────────────────────────────────
-
-// Script Catalog — reusable runbook definitions with AI instructions
-export const scriptCatalogTable = pgTable("script_catalog", {
-  id: serial("id").primaryKey(),
-  name: text("name").notNull(),
-  description: text("description"),
-  runbookName: text("runbook_name").notNull(),
-  appRegPermissions: jsonb("app_reg_permissions").$type<Array<{ permission: string; type: "Application" | "Delegated"; reason: string }>>().notNull().default([]),
-  aiInstructions: text("ai_instructions"),
-  executionMode: text("execution_mode", { enum: ["automated", "manual"] }).notNull().default("automated"),
-  manualRequirements: jsonb("manual_requirements").$type<string[]>().notNull().default([]),
-  psScriptBody: text("ps_script_body"),
-  /**
-   * Optional JSON Schema (subset) describing the expected shape of uploaded JSON results.
-   * Supported keys:
-   *   required   — array of top-level key names that must be present in the uploaded data
-   *   properties — map of key → { type } for basic type checking (string | number | boolean | array | object)
-   *
-   * When null the upload endpoint skips structural validation and only checks that the
-   * payload is a non-empty object containing a "data" key (legacy behaviour).
-   */
-  outputSchema: jsonb("output_schema").$type<{
-    required?: string[];
-    properties?: Record<string, { type: "string" | "number" | "boolean" | "array" | "object" }>;
-  } | null>(),
-  azureSyncedAt: timestamp("azure_synced_at", { withTimezone: true }),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
-  updatedAt: timestamp("updated_at").notNull().defaultNow(),
-});
-
-export type InsertScriptCatalog = typeof scriptCatalogTable.$inferInsert;
-export type ScriptCatalog = typeof scriptCatalogTable.$inferSelect;
-
-// Package Scripts — maps services (Quick Win packages) to script_catalog entries with run order
-export const packageScriptsTable = pgTable("package_scripts", {
-  id: serial("id").primaryKey(),
-  packageId: integer("package_id").notNull().references(() => servicesTable.id, { onDelete: "cascade" }),
-  scriptId: integer("script_id").notNull().references(() => scriptCatalogTable.id, { onDelete: "cascade" }),
-  runOrder: integer("run_order").notNull().default(0),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
-}, (t) => ({
-  uniquePackageRunOrder: uniqueIndex("package_scripts_package_id_run_order_unique").on(t.packageId, t.runOrder),
-}));
-
-export type InsertPackageScript = typeof packageScriptsTable.$inferInsert;
-export type PackageScript = typeof packageScriptsTable.$inferSelect;
+// ── M365 Command Center ───────────────────────────────────────────────────────
 
 // Script Run Results — persisted results for every script execution
 export const scriptRunResultsTable = pgTable("script_run_results", {
   id: serial("id").primaryKey(),
   customerId: integer("customer_id").references(() => usersTable.id, { onDelete: "set null" }),
-  scriptId: integer("script_id").notNull().references(() => scriptCatalogTable.id, { onDelete: "cascade" }),
+  scriptId: integer("script_id"),
+  libraryScriptId: uuid("library_script_id").references(() => powershellScriptsTable.id, { onDelete: "set null" }),
   packageId: integer("package_id").references(() => servicesTable.id, { onDelete: "set null" }),
   jobId: text("job_id"),
   rawOutput: jsonb("raw_output").$type<Record<string, unknown>>().notNull().default({}),
@@ -1354,29 +1309,6 @@ export const scriptRunResultsTable = pgTable("script_run_results", {
 
 export type InsertScriptRunResult = typeof scriptRunResultsTable.$inferInsert;
 export type ScriptRunResult = typeof scriptRunResultsTable.$inferSelect;
-
-// Script Categories — named groups for organising the script catalog
-export const scriptCategoriesTable = pgTable("script_categories", {
-  id: serial("id").primaryKey(),
-  name: text("name").notNull(),
-  displayOrder: integer("display_order").notNull().default(0),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
-  updatedAt: timestamp("updated_at").notNull().defaultNow(),
-});
-
-export type InsertScriptCategory = typeof scriptCategoriesTable.$inferInsert;
-export type ScriptCategory = typeof scriptCategoriesTable.$inferSelect;
-
-// Join table: script_catalog ↔ script_categories (many-to-many)
-export const scriptCatalogCategoriesTable = pgTable("script_catalog_categories", {
-  scriptId: integer("script_id").notNull().references(() => scriptCatalogTable.id, { onDelete: "cascade" }),
-  categoryId: integer("category_id").notNull().references(() => scriptCategoriesTable.id, { onDelete: "cascade" }),
-}, (t) => ({
-  pk: primaryKey({ columns: [t.scriptId, t.categoryId] }),
-}));
-
-export type InsertScriptCatalogCategory = typeof scriptCatalogCategoriesTable.$inferInsert;
-export type ScriptCatalogCategory = typeof scriptCatalogCategoriesTable.$inferSelect;
 
 // Client Scores — upsert table tracking M365 health scores per client
 export const clientScoresTable = pgTable("client_scores", {
@@ -1441,3 +1373,15 @@ export const scriptModulesTable = pgTable("script_modules", {
 
 export type InsertScriptModule = typeof scriptModulesTable.$inferInsert;
 export type ScriptModule = typeof scriptModulesTable.$inferSelect;
+
+// Service Script Sets — links services (many) to script packages (many)
+export const serviceScriptSetsTable = pgTable("service_script_sets", {
+  serviceId: integer("service_id").notNull().references(() => servicesTable.id, { onDelete: "cascade" }),
+  scriptPackageId: uuid("script_package_id").notNull().references(() => scriptPackagesTable.id, { onDelete: "cascade" }),
+  displayOrder: integer("display_order").notNull().default(0),
+}, (t) => ({
+  pk: primaryKey({ columns: [t.serviceId, t.scriptPackageId] }),
+}));
+
+export type InsertServiceScriptSet = typeof serviceScriptSetsTable.$inferInsert;
+export type ServiceScriptSet = typeof serviceScriptSetsTable.$inferSelect;

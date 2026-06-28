@@ -624,6 +624,13 @@
       "when": 1782960000000,
       "tag": "0086_add_project_signoff",
       "breakpoints": true
+    },
+    {
+      "idx": 87,
+      "version": "7",
+      "when": 1782990000000,
+      "tag": "0087_remove_catalog_add_service_script_sets",
+      "breakpoints": true
     }
   ]
 }

@@ -6,6 +6,7 @@ import {
   powershellScriptsTable,
   scriptPackagesTable,
   scriptModulesTable,
+  serviceScriptSetsTable,
   servicesTable,
   workflowTemplatesTable,
   workflowTemplateStepsTable,
@@ -13,7 +14,7 @@ import {
   type PsScriptPermissions,
   type ScriptModule,
 } from "@workspace/db";
-import { eq, desc, asc, inArray, and } from "drizzle-orm";
+import { eq, desc, asc, inArray, and, sql } from "drizzle-orm";
 import { logger } from "../lib/logger.ts";
 import { hasPsKeywordsFullText } from "../lib/ps-guard.ts";
 import { isAzureConfigured, pushScriptToAzure } from "../lib/azure-automation.ts";
@@ -698,6 +699,17 @@ Classify each task and generate PowerShell automation scripts for all M365/Azure
         .values({ title: packageTitle, category: "m365" })
         .returning();
 
+      // Auto-link generated package to the requesting service (compute next displayOrder)
+      const [maxRow] = await db
+        .select({ maxOrder: sql<number>`coalesce(max(${serviceScriptSetsTable.displayOrder}), -1)` })
+        .from(serviceScriptSetsTable)
+        .where(eq(serviceScriptSetsTable.serviceId, serviceId));
+      const nextOrder = (maxRow?.maxOrder ?? -1) + 1;
+      await db
+        .insert(serviceScriptSetsTable)
+        .values({ serviceId, scriptPackageId: pkg.id, displayOrder: nextOrder })
+        .onConflictDoNothing();
+
       await db.insert(scriptModulesTable).values(
         validModules.map((m, i) => ({
           packageId: pkg.id,
@@ -994,6 +1006,57 @@ router.put("/admin/ps-scripts/modules/:id", requireAdmin, async (req: Request, r
 router.delete("/admin/ps-scripts/modules/:id", requireAdmin, async (req: Request, res: Response) => {
   const moduleId = String(req.params["id"] ?? "");
   if (!UUID_RE.test(moduleId)) { res.status(400).json({ error: "Invalid id" }); return; }
+  try {
+    await db.delete(scriptModulesTable).where(eq(scriptModulesTable.id, moduleId));
+    res.status(204).end();
+  } catch (err) {
+    logger.error({ err }, "Failed to delete script module");
+    res.status(500).json({ error: "Failed to delete module" });
+  }
+});
+
+// ─── Canonical module endpoints at /admin/script-packages/:id/modules ─────────
+// These are the task-specified paths; they delegate to the same logic above.
+
+router.post("/admin/script-packages/:id/modules", requireAdmin, async (req: Request, res: Response) => {
+  const pkgId = String(req.params["id"] ?? "");
+  if (!UUID_RE.test(pkgId)) { res.status(400).json({ error: "Invalid id" }); return; }
+
+  const { filename, description, content, sortOrder } = req.body as {
+    filename?: string;
+    description?: string;
+    content?: string;
+    sortOrder?: number;
+  };
+
+  if (!filename || typeof filename !== "string" || filename.trim().length === 0) {
+    res.status(400).json({ error: "filename is required" }); return;
+  }
+  if (typeof content !== "string") {
+    res.status(400).json({ error: "content is required" }); return;
+  }
+
+  try {
+    const [created] = await db
+      .insert(scriptModulesTable)
+      .values({
+        packageId: pkgId,
+        filename: filename.trim(),
+        description: description?.trim() ?? null,
+        content,
+        sortOrder: typeof sortOrder === "number" ? sortOrder : 999,
+      })
+      .returning();
+    res.status(201).json(created);
+  } catch (err) {
+    logger.error({ err }, "Failed to add module to script package");
+    res.status(500).json({ error: "Failed to add module" });
+  }
+});
+
+router.delete("/admin/script-packages/:id/modules/:moduleId", requireAdmin, async (req: Request, res: Response) => {
+  const moduleId = String(req.params["moduleId"] ?? "");
+  if (!UUID_RE.test(moduleId)) { res.status(400).json({ error: "Invalid module id" }); return; }
   try {
     await db.delete(scriptModulesTable).where(eq(scriptModulesTable.id, moduleId));
     res.status(204).end();
@@ -1479,6 +1542,172 @@ Rules:
   } catch (err) {
     logger.error({ err }, "PS script modularize failed");
     res.status(500).json({ error: err instanceof Error ? err.message : "Modularization failed" });
+  }
+});
+
+// ─── Service Script Sets ──────────────────────────────────────────────────────
+
+// GET /api/admin/services/:id/script-sets
+router.get("/admin/services/:id/script-sets", requireAdmin, async (req: Request, res: Response) => {
+  const serviceId = parseInt(String(req.params.id));
+  if (isNaN(serviceId)) { res.status(400).json({ error: "Invalid service id" }); return; }
+
+  try {
+    const rows = await db
+      .select({
+        scriptPackageId: serviceScriptSetsTable.scriptPackageId,
+        displayOrder: serviceScriptSetsTable.displayOrder,
+        title: scriptPackagesTable.title,
+        category: scriptPackagesTable.category,
+        tags: scriptPackagesTable.tags,
+        permissions: scriptPackagesTable.permissions,
+        createdAt: scriptPackagesTable.createdAt,
+      })
+      .from(serviceScriptSetsTable)
+      .innerJoin(scriptPackagesTable, eq(serviceScriptSetsTable.scriptPackageId, scriptPackagesTable.id))
+      .where(eq(serviceScriptSetsTable.serviceId, serviceId))
+      .orderBy(asc(serviceScriptSetsTable.displayOrder));
+    res.json(rows);
+  } catch (err) {
+    logger.error({ err, serviceId }, "admin-ps-scripts: failed to list service script sets");
+    res.status(500).json({ error: "Failed to list script sets" });
+  }
+});
+
+// POST /api/admin/services/:id/script-sets
+router.post("/admin/services/:id/script-sets", requireAdmin, async (req: Request, res: Response) => {
+  const serviceId = parseInt(String(req.params.id));
+  if (isNaN(serviceId)) { res.status(400).json({ error: "Invalid service id" }); return; }
+
+  const { scriptPackageId } = req.body as { scriptPackageId?: string };
+  if (!scriptPackageId || typeof scriptPackageId !== "string") {
+    res.status(400).json({ error: "scriptPackageId is required" }); return;
+  }
+
+  try {
+    const [maxRow] = await db
+      .select({ maxOrder: sql<number>`coalesce(max(${serviceScriptSetsTable.displayOrder}), -1)` })
+      .from(serviceScriptSetsTable)
+      .where(eq(serviceScriptSetsTable.serviceId, serviceId));
+    const nextOrder = (maxRow?.maxOrder ?? -1) + 1;
+    await db
+      .insert(serviceScriptSetsTable)
+      .values({ serviceId, scriptPackageId, displayOrder: nextOrder })
+      .onConflictDoNothing();
+    res.json({ ok: true });
+  } catch (err) {
+    logger.error({ err, serviceId, scriptPackageId }, "admin-ps-scripts: failed to add service script set");
+    res.status(500).json({ error: "Failed to link script package to service" });
+  }
+});
+
+// PATCH /api/admin/services/:id/script-sets/reorder
+// Body: { order: string[] }  — array of scriptPackageIds in desired display order
+router.patch("/admin/services/:id/script-sets/reorder", requireAdmin, async (req: Request, res: Response) => {
+  const serviceId = parseInt(String(req.params.id));
+  if (isNaN(serviceId)) { res.status(400).json({ error: "Invalid service id" }); return; }
+
+  const { order } = req.body as { order?: string[] };
+  if (!Array.isArray(order)) { res.status(400).json({ error: "order must be an array of scriptPackageIds" }); return; }
+
+  try {
+    await Promise.all(
+      order.map((scriptPackageId, idx) =>
+        db.update(serviceScriptSetsTable)
+          .set({ displayOrder: idx })
+          .where(and(
+            eq(serviceScriptSetsTable.serviceId, serviceId),
+            eq(serviceScriptSetsTable.scriptPackageId, scriptPackageId),
+          ))
+      )
+    );
+    res.json({ ok: true });
+  } catch (err) {
+    logger.error({ err, serviceId }, "admin-ps-scripts: failed to reorder script sets");
+    res.status(500).json({ error: "Failed to reorder script sets" });
+  }
+});
+
+// POST /api/admin/services/:id/run-script-sets
+// Returns the ordered execution plan (sets ordered by displayOrder, modules within each set by sortOrder).
+// Body: { customerId?: number }
+// Actual Azure Automation execution is wired in a follow-up task.
+router.post("/admin/services/:id/run-script-sets", requireAdmin, async (req: Request, res: Response) => {
+  const serviceId = parseInt(String(req.params.id));
+  if (isNaN(serviceId)) { res.status(400).json({ error: "Invalid service id" }); return; }
+
+  const { customerId } = req.body as { customerId?: number };
+
+  try {
+    // 1. Fetch ordered packages linked to this service
+    const sets = await db
+      .select({
+        scriptPackageId: serviceScriptSetsTable.scriptPackageId,
+        displayOrder: serviceScriptSetsTable.displayOrder,
+        title: scriptPackagesTable.title,
+        category: scriptPackagesTable.category,
+        permissions: scriptPackagesTable.permissions,
+      })
+      .from(serviceScriptSetsTable)
+      .innerJoin(scriptPackagesTable, eq(serviceScriptSetsTable.scriptPackageId, scriptPackagesTable.id))
+      .where(eq(serviceScriptSetsTable.serviceId, serviceId))
+      .orderBy(asc(serviceScriptSetsTable.displayOrder));
+
+    if (sets.length === 0) {
+      res.json({ ok: true, message: "No script packages linked to this service.", executionPlan: [], customerId: customerId ?? null });
+      return;
+    }
+
+    // 2. Fetch ordered modules for each package
+    const packageIds = sets.map(s => s.scriptPackageId);
+    const modules = await db
+      .select({
+        packageId: scriptModulesTable.packageId,
+        filename: scriptModulesTable.filename,
+        description: scriptModulesTable.description,
+        sortOrder: scriptModulesTable.sortOrder,
+      })
+      .from(scriptModulesTable)
+      .where(inArray(scriptModulesTable.packageId, packageIds))
+      .orderBy(asc(scriptModulesTable.sortOrder));
+
+    // 3. Build execution plan: each package with its ordered modules
+    const executionPlan = sets.map(s => ({
+      ...s,
+      modules: modules
+        .filter(m => m.packageId === s.scriptPackageId)
+        .sort((a, b) => a.sortOrder - b.sortOrder),
+    }));
+
+    res.json({
+      ok: true,
+      message: "Execution plan built. Automated run-script-sets execution is pending a follow-up task.",
+      customerId: customerId ?? null,
+      executionPlan,
+    });
+  } catch (err) {
+    logger.error({ err, serviceId }, "admin-ps-scripts: failed to build run-script-sets plan");
+    res.status(500).json({ error: "Failed to build script sets execution plan" });
+  }
+});
+
+// DELETE /api/admin/services/:id/script-sets/:packageId
+router.delete("/admin/services/:id/script-sets/:packageId", requireAdmin, async (req: Request, res: Response) => {
+  const serviceId = parseInt(String(req.params.id));
+  const scriptPackageId = String(req.params.packageId ?? "");
+  if (isNaN(serviceId) || !scriptPackageId) { res.status(400).json({ error: "Invalid ids" }); return; }
+
+  try {
+    await db
+      .delete(serviceScriptSetsTable)
+      .where(and(
+        eq(serviceScriptSetsTable.serviceId, serviceId),
+        eq(serviceScriptSetsTable.scriptPackageId, scriptPackageId),
+      ));
+    res.json({ ok: true });
+  } catch (err) {
+    logger.error({ err, serviceId, scriptPackageId }, "admin-ps-scripts: failed to remove service script set");
+    res.status(500).json({ error: "Failed to unlink script package from service" });
   }
 });
 

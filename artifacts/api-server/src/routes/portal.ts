@@ -1,5 +1,5 @@
 import { Router, type IRouter, type Request, type Response } from "express";
-import { db, projectsTable, clientServicesTable, servicesTable, workflowStepsTable, kanbanTasksTable, documentsTable, reportsTable, invoicesTable, messagesTable, notificationsTable, projectUpdatesTable, usersTable, contractsTable, passwordResetTokensTable, workflowTemplateStepsTable, workflowTemplateStepTasksTable, contractTemplatesTable, impersonationTokensTable, statusReportsTable, deviceTokensTable, projectClosuresTable, auditLogsTable, instructionSetsTable, checklistsTable, artifactSetsTable, deliverableSetsTable, emailsTable, emailDomainRulesTable, clientM365ProfilesTable, couponsTable, clientAppRegistrationsTable, accountSetupTokensTable, mfaEnrollmentsTable, mfaChallengesTable, webauthnCredentialsTable, webauthnChallengesTable, clientHealthHistoryTable, quizLeadsTable, scriptRunResultsTable, scriptCatalogTable, clientScoresTable } from "@workspace/db";
+import { db, projectsTable, clientServicesTable, servicesTable, workflowStepsTable, kanbanTasksTable, documentsTable, reportsTable, invoicesTable, messagesTable, notificationsTable, projectUpdatesTable, usersTable, contractsTable, passwordResetTokensTable, workflowTemplateStepsTable, workflowTemplateStepTasksTable, contractTemplatesTable, impersonationTokensTable, statusReportsTable, deviceTokensTable, projectClosuresTable, auditLogsTable, instructionSetsTable, checklistsTable, artifactSetsTable, deliverableSetsTable, emailsTable, emailDomainRulesTable, clientM365ProfilesTable, couponsTable, clientAppRegistrationsTable, accountSetupTokensTable, mfaEnrollmentsTable, mfaChallengesTable, webauthnCredentialsTable, webauthnChallengesTable, clientHealthHistoryTable, quizLeadsTable, scriptRunResultsTable, powershellScriptsTable, clientScoresTable } from "@workspace/db";
 import { eq, and, desc, asc, count, sql, inArray, gte, isNotNull, isNull, or, lt } from "drizzle-orm";
 import { requireAuth, requireAdmin } from "../middlewares/requireAuth";
 import jwt from "jsonwebtoken";
@@ -7548,14 +7548,12 @@ router.get("/portal/projects/:projectId/manual-scripts", requireAuth, async (req
         uploadedAt: scriptRunResultsTable.uploadedAt,
         parsedFindings: scriptRunResultsTable.parsedFindings,
         recommendations: scriptRunResultsTable.recommendations,
-        scriptName: scriptCatalogTable.name,
-        description: scriptCatalogTable.description,
-        manualRequirements: scriptCatalogTable.manualRequirements,
-        outputSchema: scriptCatalogTable.outputSchema,
-        psScriptBody: scriptCatalogTable.psScriptBody,
+        scriptName: powershellScriptsTable.title,
+        description: powershellScriptsTable.description,
+        psScriptBody: powershellScriptsTable.scriptBody,
       })
       .from(scriptRunResultsTable)
-      .innerJoin(scriptCatalogTable, eq(scriptRunResultsTable.scriptId, scriptCatalogTable.id))
+      .leftJoin(powershellScriptsTable, eq(scriptRunResultsTable.libraryScriptId, powershellScriptsTable.id))
       .where(
         and(
           eq(scriptRunResultsTable.customerId, userId),
@@ -7585,10 +7583,10 @@ router.get("/portal/projects/:projectId/manual-scripts", requireAuth, async (req
     // Augment each row with the package-generated instructions and filename
     const enriched = filtered.map(row => {
       const pkg = generateManualScriptPackage({
-        scriptId: row.scriptId,
-        scriptName: row.scriptName,
-        description: row.description,
-        manualRequirements: Array.isArray(row.manualRequirements) ? row.manualRequirements as string[] : [],
+        scriptId: row.scriptId ?? 0,
+        scriptName: row.scriptName ?? "Script",
+        description: row.description ?? null,
+        manualRequirements: [],
         psScriptBody: row.psScriptBody ?? null,
         runResultId: row.runResultId,
         customerDisplayName: clientUser?.name ?? undefined,
@@ -7600,13 +7598,10 @@ router.get("/portal/projects/:projectId/manual-scripts", requireAuth, async (req
         status: row.status,
         createdAt: row.createdAt,
         uploadedAt: row.uploadedAt,
-        scriptName: row.scriptName,
-        description: row.description,
-        manualRequirements: Array.isArray(row.manualRequirements) ? row.manualRequirements as string[] : [],
-        outputSchema: (row.outputSchema ?? null) as {
-          required?: string[];
-          properties?: Record<string, { type: string }>;
-        } | null,
+        scriptName: row.scriptName ?? null,
+        description: row.description ?? null,
+        manualRequirements: [] as string[],
+        outputSchema: null as null,
         filename: pkg.filename,
         instructions: pkg.instructions,
         findings: Array.isArray(row.parsedFindings) ? row.parsedFindings as string[] : [],
@@ -7645,6 +7640,7 @@ router.get("/portal/projects/:projectId/manual-scripts/:runResultId/download", r
       .select({
         id: scriptRunResultsTable.id,
         scriptId: scriptRunResultsTable.scriptId,
+        libraryScriptId: scriptRunResultsTable.libraryScriptId,
         customerId: scriptRunResultsTable.customerId,
         status: scriptRunResultsTable.status,
       })
@@ -7653,12 +7649,15 @@ router.get("/portal/projects/:projectId/manual-scripts/:runResultId/download", r
       .limit(1);
     if (!runResult) { res.status(404).json({ error: "Script run not found" }); return; }
 
-    const [script] = await db
-      .select()
-      .from(scriptCatalogTable)
-      .where(eq(scriptCatalogTable.id, runResult.scriptId))
-      .limit(1);
-    if (!script) { res.status(404).json({ error: "Script not found" }); return; }
+    // Prefer libraryScriptId (new runs) over legacy scriptId (old runs)
+    const scriptLookupId = runResult.libraryScriptId ?? (runResult.scriptId != null ? runResult.scriptId.toString() : null);
+    const [script] = scriptLookupId
+      ? await db
+          .select()
+          .from(powershellScriptsTable)
+          .where(eq(powershellScriptsTable.id, scriptLookupId))
+          .limit(1)
+      : [];
 
     const [user] = await db.select({ name: usersTable.name }).from(usersTable).where(eq(usersTable.id, userId)).limit(1);
 
@@ -7670,11 +7669,11 @@ router.get("/portal/projects/:projectId/manual-scripts/:runResultId/download", r
       : "http://localhost:8080";
 
     const pkg = generateManualScriptPackage({
-      scriptId: script.id,
-      scriptName: script.name,
-      description: script.description,
-      manualRequirements: Array.isArray(script.manualRequirements) ? script.manualRequirements as string[] : [],
-      psScriptBody: script.psScriptBody ?? null,
+      scriptId: runResult.scriptId ?? 0,
+      scriptName: script?.title ?? "Script",
+      description: script?.description ?? null,
+      manualRequirements: [],
+      psScriptBody: script?.scriptBody ?? null,
       runResultId,
       customerDisplayName: user?.name ?? undefined,
       uploadBaseUrl,
@@ -7720,68 +7719,17 @@ router.post("/portal/manual-scripts/:scriptRunId/upload", requireAuth, async (re
   }
 
   try {
-    // Ownership check — ensure the run result belongs to this authenticated client,
-    // and fetch the associated script catalog entry (needed for outputSchema validation).
+    // Ownership check — ensure the run result belongs to this authenticated client.
     const [runRow] = await db
       .select({
         id: scriptRunResultsTable.id,
-        outputSchema: scriptCatalogTable.outputSchema,
-        scriptName: scriptCatalogTable.name,
       })
       .from(scriptRunResultsTable)
-      .innerJoin(scriptCatalogTable, eq(scriptRunResultsTable.scriptId, scriptCatalogTable.id))
       .where(and(eq(scriptRunResultsTable.id, scriptRunId), eq(scriptRunResultsTable.customerId, userId)))
       .limit(1);
     if (!runRow) { res.status(404).json({ error: "Script run not found" }); return; }
 
-    // ── Schema validation ───────────────────────────────────────────────────────
-    // If the script catalog entry defines an outputSchema, validate the uploaded
-    // JSON data against it before accepting the payload.
-    if (runRow.outputSchema) {
-      const schema = runRow.outputSchema as {
-        required?: string[];
-        properties?: Record<string, { type: string }>;
-      };
-
-      const missingKeys: string[] = [];
-      const typeErrors: string[] = [];
-
-      if (Array.isArray(schema.required)) {
-        for (const key of schema.required) {
-          if (!(key in data)) {
-            missingKeys.push(key);
-          }
-        }
-      }
-
-      if (missingKeys.length > 0) {
-        res.status(422).json({
-          error: `Uploaded JSON is missing required field(s) for "${runRow.scriptName}": ${missingKeys.map(k => `"${k}"`).join(", ")}. Please re-run the script and upload the correct output file.`,
-        });
-        return;
-      }
-
-      if (schema.properties) {
-        for (const [key, def] of Object.entries(schema.properties)) {
-          if (!(key in data)) continue;
-          const value = data[key];
-          const expectedType = def.type;
-          let actualType: string = typeof value;
-          if (Array.isArray(value)) actualType = "array";
-
-          if (actualType !== expectedType) {
-            typeErrors.push(`"${key}" must be of type ${expectedType} but got ${actualType}`);
-          }
-        }
-      }
-
-      if (typeErrors.length > 0) {
-        res.status(422).json({
-          error: `Uploaded JSON has type mismatches for "${runRow.scriptName}": ${typeErrors.join("; ")}. Please upload the correct output file.`,
-        });
-        return;
-      }
-    }
+    // Schema validation was removed with catalog; accept any valid JSON object.
 
     const [user] = await db
       .select({ name: usersTable.name, email: usersTable.email })

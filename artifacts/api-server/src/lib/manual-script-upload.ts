@@ -10,7 +10,6 @@
 import {
   db,
   scriptRunResultsTable,
-  scriptCatalogTable,
   clientScoresTable,
   clientM365ProfilesTable,
 } from "@workspace/db";
@@ -150,12 +149,6 @@ export async function processManualScriptUpload(
   if (runResult.status === "completed")
     throw new UploadError("Results have already been uploaded for this run", 409);
 
-  const [script] = await db
-    .select()
-    .from(scriptCatalogTable)
-    .where(eq(scriptCatalogTable.id, runResult.scriptId))
-    .limit(1);
-
   const scriptOutput = JSON.stringify(jsonData, null, 2);
 
   let aiResult = {
@@ -168,7 +161,7 @@ export async function processManualScriptUpload(
   try {
     aiResult = await runAiAnalyzer({
       scriptOutput,
-      aiInstructions: script?.aiInstructions ?? "",
+      aiInstructions: "",
       packageContext: runResult.packageId
         ? `Package ${runResult.packageId}`
         : "Manual script upload",
@@ -227,7 +220,7 @@ export async function processManualScriptUpload(
 
   return {
     runResultId,
-    scriptId: runResult.scriptId,
+    scriptId: runResult.scriptId ?? 0,
     status: "completed",
     findings: aiResult.findings,
     recommendations: aiResult.recommendations,
