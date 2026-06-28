@@ -456,6 +456,45 @@ interface EditableModule extends ScriptModuleItem {
 let _editKeyCounter = 0;
 function makeEditKey() { return `emod-${++_editKeyCounter}`; }
 
+function PackageDrawerPushButton({ packageId, token, moduleCount }: { packageId: string; token: string; moduleCount: number }) {
+  const { toast } = useToast();
+  const [pushing, setPushing] = useState(false);
+
+  const handlePush = async () => {
+    setPushing(true);
+    try {
+      type PushApiResult = { ok: boolean; warning?: string; results?: { filename: string; ok: boolean; error?: string }[] };
+      const data = (await apiFetch(`/admin/ps-scripts/packages/${packageId}/push-to-azure`, token, { method: "POST" })) as PushApiResult;
+      if (data.warning) { toast({ title: "Azure push skipped", description: data.warning }); return; }
+      const failed = (data.results ?? []).filter((r) => !r.ok);
+      if (failed.length === 0) {
+        toast({ title: "All modules pushed to Azure", description: `${moduleCount} runbook(s) created/updated` });
+      } else {
+        toast({ title: `${failed.length} module(s) failed`, description: failed.map((f) => `${f.filename}: ${f.error ?? "unknown"}`).join(" | "), variant: "destructive" });
+      }
+    } catch (e) {
+      toast({ title: "Push failed", description: e instanceof Error ? e.message : "Unknown error", variant: "destructive" });
+    } finally {
+      setPushing(false);
+    }
+  };
+
+  return (
+    <button
+      onClick={handlePush}
+      disabled={pushing}
+      className="flex items-center gap-1.5 text-xs font-medium px-2.5 py-1.5 rounded-lg border border-[#0078D4]/35 bg-[#0078D4]/10 text-[#58A6FF] hover:bg-[#0078D4]/20 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+      title="Push each module as its own Azure Automation runbook"
+    >
+      {pushing ? (
+        <><div className="w-3.5 h-3.5 border-2 border-[#58A6FF]/40 border-t-[#58A6FF] rounded-full animate-spin" />Pushing…</>
+      ) : (
+        <><svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" /></svg>Push to Azure</>
+      )}
+    </button>
+  );
+}
+
 function PackageDrawer({
   pkg,
   token,
@@ -673,6 +712,7 @@ function PackageDrawer({
                   <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
                   Edit
                 </button>
+                <PackageDrawerPushButton packageId={pkg.id} token={token} moduleCount={pkg.modules.length} />
                 <button onClick={() => downloadAllModulesAsZip(pkg.modules, pkg.title)} className="flex items-center gap-1.5 text-xs font-medium px-2.5 py-1.5 rounded-lg border border-purple-500/30 bg-purple-500/10 text-purple-400 hover:bg-purple-500/20 transition-colors">
                   <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
                   Download .zip
@@ -803,20 +843,71 @@ function PackageDrawer({
 function ModulePackageView({
   modules,
   packageTitle,
+  packageId,
+  token,
   onBack,
 }: {
   modules: ScriptModuleItem[];
   packageTitle: string;
+  packageId: string | null;
+  token: string;
   onBack: () => void;
 }) {
+  const { toast } = useToast();
   const [activeIdx, setActiveIdx] = useState(0);
   const [copiedIdx, setCopiedIdx] = useState<number | null>(null);
+  const [pushing, setPushing] = useState(false);
+  const [pushStatuses, setPushStatuses] = useState<Record<string, "idle" | "pushing" | "done" | "error">>({});
   const activeModule = modules[activeIdx];
 
   const handleCopy = (idx: number) => {
     copyToClipboard(modules[idx]!.content);
     setCopiedIdx(idx);
     setTimeout(() => setCopiedIdx(null), 2000);
+  };
+
+  const handlePushToAzure = async () => {
+    if (!packageId) return;
+    setPushing(true);
+    setPushStatuses(Object.fromEntries(modules.map((m) => [m.filename, "pushing" as const])));
+    try {
+      type PushApiResult = {
+        ok: boolean;
+        warning?: string;
+        results?: { filename: string; runbookName: string; ok: boolean; error?: string }[];
+      };
+      const data = (await apiFetch(
+        `/admin/ps-scripts/packages/${packageId}/push-to-azure`,
+        token,
+        { method: "POST" },
+      )) as PushApiResult;
+
+      if (data.warning) {
+        toast({ title: "Azure push skipped", description: data.warning });
+        setPushStatuses(Object.fromEntries(modules.map((m) => [m.filename, "idle" as const])));
+        return;
+      }
+
+      const next: Record<string, "idle" | "pushing" | "done" | "error"> = {};
+      for (const r of data.results ?? []) next[r.filename] = r.ok ? "done" : "error";
+      setPushStatuses(next);
+
+      const failed = (data.results ?? []).filter((r) => !r.ok);
+      if (failed.length === 0) {
+        toast({ title: "All modules pushed to Azure", description: `${modules.length} runbook(s) created/updated` });
+      } else {
+        toast({
+          title: `${failed.length} module(s) failed`,
+          description: failed.map((f) => `${f.filename}: ${f.error ?? "unknown"}`).join(" | "),
+          variant: "destructive",
+        });
+      }
+    } catch (e) {
+      toast({ title: "Push failed", description: e instanceof Error ? e.message : "Unknown error", variant: "destructive" });
+      setPushStatuses(Object.fromEntries(modules.map((m) => [m.filename, "idle" as const])));
+    } finally {
+      setPushing(false);
+    }
   };
 
   return (
@@ -828,6 +919,20 @@ function ModulePackageView({
           <span className="text-xs text-[#7D8590]">— {modules.length} modules</span>
         </div>
         <div className="flex items-center gap-2">
+          {packageId && (
+            <button
+              onClick={handlePushToAzure}
+              disabled={pushing}
+              className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg bg-[#0078D4]/15 border border-[#0078D4]/35 text-[#58A6FF] hover:bg-[#0078D4]/25 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              title="Push each module as its own Azure Automation runbook"
+            >
+              {pushing ? (
+                <><div className="w-3.5 h-3.5 border-2 border-[#58A6FF]/40 border-t-[#58A6FF] rounded-full animate-spin" />Pushing…</>
+              ) : (
+                <><svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" /></svg>Push to Azure</>
+              )}
+            </button>
+          )}
           <button onClick={() => downloadAllModulesAsZip(modules, packageTitle)} className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg bg-purple-500/15 border border-purple-500/30 text-purple-400 hover:bg-purple-500/25 transition-colors">
             <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
             Download All (.zip)
@@ -838,6 +943,22 @@ function ModulePackageView({
           </button>
         </div>
       </div>
+      {/* Per-module push status bar — shown while pushing or after */}
+      {Object.values(pushStatuses).some((s) => s !== "idle") && (
+        <div className="flex flex-wrap gap-1.5 px-4 py-2 bg-[#0D1117] border-b border-[#21262D] flex-shrink-0">
+          {modules.map((m) => {
+            const s = pushStatuses[m.filename] ?? "idle";
+            return (
+              <span key={m.filename} className={`flex items-center gap-1 text-[10px] font-mono px-2 py-0.5 rounded border ${s === "done" ? "border-[#3FB950]/40 bg-[#3FB950]/10 text-[#3FB950]" : s === "error" ? "border-red-500/40 bg-red-500/10 text-red-400" : "border-[#30363D] text-[#7D8590]"}`}>
+                {s === "pushing" && <div className="w-2.5 h-2.5 border border-[#58A6FF]/40 border-t-[#58A6FF] rounded-full animate-spin" />}
+                {s === "done" && <svg className="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>}
+                {s === "error" && <svg className="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>}
+                {m.filename.replace(/\.ps1$/i, "")}
+              </span>
+            );
+          })}
+        </div>
+      )}
       <div className="flex flex-wrap gap-1 px-4 py-2 bg-[#0D1117] border-b border-[#30363D] flex-shrink-0">
         {modules.map((m, i) => (
           <button key={i} onClick={() => setActiveIdx(i)} className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all truncate max-w-[180px] ${activeIdx === i ? "bg-purple-500/15 text-purple-400 border border-purple-500/25" : "text-[#7D8590] hover:text-[#E6EDF3] border border-transparent"}`} title={m.filename}>
@@ -2360,6 +2481,7 @@ export default function ScriptGeneratorPage() {
   const [openDrawerScriptId, setOpenDrawerScriptId] = useState<string | null>(null);
   const [openDrawerPackage, setOpenDrawerPackage] = useState<ScriptPackageListItem | null>(null);
   const [loadedPackageTitle, setLoadedPackageTitle] = useState<string | null>(null);
+  const [loadedPackageId, setLoadedPackageId] = useState<string | null>(null);
 
   // ── Run result detail state ──────────────────────────────────────────────────
   const [selectedResult, setSelectedResult] = useState<RunResult | null>(null);
@@ -2694,6 +2816,7 @@ export default function ScriptGeneratorPage() {
     setOpenDrawerPackage(null);
     setModules(pkg.modules);
     setLoadedPackageTitle(pkg.title);
+    setLoadedPackageId(pkg.id);
     setEditorScript(null);
     setSelectedResult(null);
   };
@@ -2893,7 +3016,7 @@ export default function ScriptGeneratorPage() {
                 }
               />
             ) : modules.length > 0 ? (
-              <ModulePackageView modules={modules} packageTitle={loadedPackageTitle ?? (prompt.trim() || "package")} onBack={() => { setModules([]); setLoadedPackageTitle(null); }} />
+              <ModulePackageView modules={modules} packageTitle={loadedPackageTitle ?? (prompt.trim() || "package")} packageId={loadedPackageId} token={token} onBack={() => { setModules([]); setLoadedPackageTitle(null); setLoadedPackageId(null); }} />
             ) : (
               <div className="flex-1 min-h-0 relative">
                 {(generating || modularizing) && (
