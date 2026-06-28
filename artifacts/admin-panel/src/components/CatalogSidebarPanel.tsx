@@ -1,0 +1,589 @@
+import { useState, useEffect, useCallback, useRef } from "react";
+import { useAuth } from "@/contexts/AuthContext";
+import { useToast } from "@/hooks/use-toast";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { Loader2, Plus, Trash2, Pencil, Play, RefreshCw, X, Tag, ChevronRight, TerminalSquare } from "lucide-react";
+
+// ── Types ─────────────────────────────────────────────────────────────────────
+
+interface AppRegPermission {
+  permission: string;
+  type: "Application" | "Delegated";
+  reason: string;
+}
+
+interface Category {
+  id: number;
+  name: string;
+  displayOrder: number;
+}
+
+interface Script {
+  id: number;
+  name: string;
+  description: string | null;
+  runbookName: string;
+  azureSyncedAt: string | null;
+  appRegPermissions: AppRegPermission[];
+  aiInstructions: string | null;
+  executionMode: "automated" | "manual";
+  manualRequirements: string[];
+  psScriptBody: string | null;
+  categoryIds: number[];
+}
+
+interface RunbookSummary {
+  name: string;
+  runbookType?: string;
+}
+
+// ── Style constants ───────────────────────────────────────────────────────────
+
+const inputCls = "w-full border border-[#30363D] rounded-lg px-3 py-2 text-sm text-[#E6EDF3] focus:outline-none focus:ring-2 focus:ring-[#0078D4]/40 bg-[#161B22] placeholder-[#484F58]";
+const labelCls = "block text-[10px] font-bold uppercase tracking-wider text-[#7D8590] mb-1";
+
+const EMPTY_FORM = {
+  name: "",
+  description: "",
+  runbookName: "",
+  appRegPermissions: [] as AppRegPermission[],
+  aiInstructions: "",
+  executionMode: "automated" as "automated" | "manual",
+  manualRequirements: "",
+  psScriptBody: "",
+  categoryIds: [] as number[],
+};
+
+// ── Permission Row ────────────────────────────────────────────────────────────
+
+function PermissionRow({
+  perm,
+  onChange,
+  onRemove,
+}: {
+  perm: AppRegPermission;
+  onChange: (p: AppRegPermission) => void;
+  onRemove: () => void;
+}) {
+  return (
+    <div className="grid grid-cols-[1fr_100px_1fr_24px] gap-1.5 items-start">
+      <input
+        type="text"
+        placeholder="e.g. User.Read.All"
+        value={perm.permission}
+        onChange={e => onChange({ ...perm, permission: e.target.value })}
+        className="border border-[#30363D] rounded px-2 py-1 text-xs text-[#E6EDF3] bg-[#1C2128] focus:outline-none focus:ring-1 focus:ring-[#0078D4]/40 placeholder-[#484F58]"
+      />
+      <select
+        value={perm.type}
+        onChange={e => onChange({ ...perm, type: e.target.value as "Application" | "Delegated" })}
+        className="border border-[#30363D] rounded px-1.5 py-1 text-xs text-[#E6EDF3] bg-[#1C2128] focus:outline-none"
+      >
+        <option value="Application">App</option>
+        <option value="Delegated">Delegated</option>
+      </select>
+      <input
+        type="text"
+        placeholder="Reason"
+        value={perm.reason}
+        onChange={e => onChange({ ...perm, reason: e.target.value })}
+        className="border border-[#30363D] rounded px-2 py-1 text-xs text-[#E6EDF3] bg-[#1C2128] focus:outline-none focus:ring-1 focus:ring-[#0078D4]/40 placeholder-[#484F58]"
+      />
+      <button onClick={onRemove} className="text-red-400 hover:text-red-300 transition-colors h-[26px] flex items-center justify-center">
+        <X className="w-3 h-3" />
+      </button>
+    </div>
+  );
+}
+
+// ── Script Form Modal ─────────────────────────────────────────────────────────
+
+function ScriptFormModal({
+  script,
+  categories,
+  onClose,
+  onSaved,
+}: {
+  script: Script | null;
+  categories: Category[];
+  onClose: () => void;
+  onSaved: (s: Script) => void;
+}) {
+  const { fetchWithAuth } = useAuth();
+  const { toast } = useToast();
+  const [form, setForm] = useState(() =>
+    script
+      ? {
+          name: script.name,
+          description: script.description ?? "",
+          runbookName: script.runbookName,
+          appRegPermissions: script.appRegPermissions,
+          aiInstructions: script.aiInstructions ?? "",
+          executionMode: script.executionMode ?? "automated" as "automated" | "manual",
+          manualRequirements: (script.manualRequirements ?? []).join("\n"),
+          psScriptBody: script.psScriptBody ?? "",
+          categoryIds: script.categoryIds ?? [] as number[],
+        }
+      : { ...EMPTY_FORM, appRegPermissions: [] as AppRegPermission[] }
+  );
+  const [saving, setSaving] = useState(false);
+  const [runbooks, setRunbooks] = useState<RunbookSummary[]>([]);
+  const [loadingRunbooks, setLoadingRunbooks] = useState(true);
+  const [refreshingRunbooks, setRefreshingRunbooks] = useState(false);
+  const [azureConfigured, setAzureConfigured] = useState(true);
+
+  const fetchRunbooks = useCallback((isRefresh = false) => {
+    if (isRefresh) setRefreshingRunbooks(true); else setLoadingRunbooks(true);
+    let cancelled = false;
+    fetchWithAuth("/api/admin/runbooks")
+      .then(async res => {
+        if (cancelled) return;
+        if (res.status === 503) {
+          const body = await res.json() as { configured: boolean };
+          if (!body.configured) { if (!isRefresh) setAzureConfigured(false); return; }
+        }
+        if (!res.ok) return;
+        const body = await res.json() as { configured: boolean; runbooks: RunbookSummary[] };
+        setRunbooks(body.runbooks ?? []);
+        setAzureConfigured(true);
+      })
+      .catch(() => { if (!cancelled && !isRefresh) setAzureConfigured(false); })
+      .finally(() => { if (!cancelled) { setLoadingRunbooks(false); setRefreshingRunbooks(false); } });
+    return () => { cancelled = true; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => { return fetchRunbooks(false); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);
+
+  const addPerm = () => setForm(f => ({ ...f, appRegPermissions: [...f.appRegPermissions, { permission: "", type: "Application" as const, reason: "" }] }));
+  const updatePerm = (i: number, p: AppRegPermission) => setForm(f => ({ ...f, appRegPermissions: f.appRegPermissions.map((x, idx) => idx === i ? p : x) }));
+  const removePerm = (i: number) => setForm(f => ({ ...f, appRegPermissions: f.appRegPermissions.filter((_, idx) => idx !== i) }));
+
+  const handleSave = async () => {
+    if (!form.name.trim()) { toast({ title: "Script name is required", variant: "destructive" }); return; }
+    if (!form.runbookName.trim()) { toast({ title: azureConfigured ? "Please select a runbook" : "Runbook name is required", variant: "destructive" }); return; }
+    setSaving(true);
+    try {
+      const url = script ? `/api/admin/scripts/${script.id}` : "/api/admin/scripts";
+      const method = script ? "PUT" : "POST";
+      const res = await fetchWithAuth(url, {
+        method,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: form.name.trim(),
+          description: form.description.trim() || undefined,
+          runbookName: form.runbookName.trim(),
+          appRegPermissions: form.executionMode === "manual" ? [] : form.appRegPermissions.filter(p => p.permission.trim()),
+          aiInstructions: form.aiInstructions.trim() || undefined,
+          executionMode: form.executionMode,
+          manualRequirements: form.manualRequirements.trim()
+            ? form.manualRequirements.split("\n").map(l => l.trim()).filter(Boolean)
+            : [],
+          psScriptBody: form.executionMode === "manual" && form.psScriptBody.trim() ? form.psScriptBody.trim() : undefined,
+          categoryIds: form.categoryIds,
+        }),
+      });
+      if (!res.ok) {
+        const err = await res.json() as { error?: string };
+        toast({ title: err.error ?? "Failed to save script", variant: "destructive" });
+        return;
+      }
+      const saved = await res.json() as Script;
+      onSaved(saved);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-[60] flex items-start justify-end">
+      <div className="absolute inset-0 bg-black/50" onClick={onClose} />
+      <div className="relative w-full max-w-xl h-full bg-[#161B22] border-l border-[#30363D] flex flex-col shadow-2xl overflow-hidden">
+        <div className="flex items-center justify-between px-5 py-3.5 border-b border-[#30363D] flex-shrink-0">
+          <div>
+            <h2 className="text-sm font-bold text-[#E6EDF3]">{script ? "Edit Script" : "New Script"}</h2>
+            <p className="text-[10px] text-[#7D8590] mt-0.5">Catalog entry</p>
+          </div>
+          <button onClick={onClose} className="text-[#7D8590] hover:text-[#E6EDF3] transition-colors p-1 rounded">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
+          <div>
+            <label className={labelCls}>Script Name *</label>
+            <input type="text" placeholder="e.g. MFA Status Audit" value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} className={inputCls} />
+          </div>
+
+          <div>
+            <label className={labelCls}>Description</label>
+            <textarea placeholder="Brief description" value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} rows={2} className={`${inputCls} resize-none`} />
+          </div>
+
+          <div>
+            <div className="flex items-center gap-2 mb-1">
+              <label className={`${labelCls} mb-0`}>Runbook Name *</label>
+              {azureConfigured && !loadingRunbooks && (
+                <button type="button" onClick={() => fetchRunbooks(true)} disabled={refreshingRunbooks} className="text-[#484F58] hover:text-[#7D8590] disabled:opacity-50">
+                  <RefreshCw className={`w-3 h-3 ${refreshingRunbooks ? "animate-spin" : ""}`} />
+                </button>
+              )}
+            </div>
+            {loadingRunbooks ? (
+              <div className={`${inputCls} animate-pulse bg-[#1C2128] text-transparent select-none`}>Loading…</div>
+            ) : azureConfigured ? (
+              <select value={form.runbookName} onChange={e => setForm(f => ({ ...f, runbookName: e.target.value }))} disabled={refreshingRunbooks} className={`${inputCls} font-mono`}>
+                <option value="" disabled>— select a runbook —</option>
+                {runbooks.map(rb => <option key={rb.name} value={rb.name}>{rb.name}{rb.runbookType ? ` (${rb.runbookType})` : ""}</option>)}
+                {form.runbookName && !runbooks.some(rb => rb.name === form.runbookName) && (
+                  <option value={form.runbookName} disabled>{form.runbookName} (not in Azure)</option>
+                )}
+              </select>
+            ) : (
+              <input type="text" placeholder="e.g. Check-MFAStatus" value={form.runbookName} onChange={e => setForm(f => ({ ...f, runbookName: e.target.value }))} className={`${inputCls} font-mono`} />
+            )}
+          </div>
+
+          <div>
+            <label className={labelCls}>Execution Mode</label>
+            <div className="flex gap-2">
+              {(["automated", "manual"] as const).map(mode => (
+                <button key={mode} type="button" onClick={() => setForm(f => ({ ...f, executionMode: mode }))}
+                  className={`flex-1 py-1.5 px-2 rounded-lg text-xs font-semibold border transition-colors ${
+                    form.executionMode === mode
+                      ? mode === "automated" ? "bg-[#0078D4]/20 border-[#0078D4]/50 text-[#0078D4]" : "bg-amber-500/20 border-amber-500/40 text-amber-400"
+                      : "bg-[#1C2128] border-[#30363D] text-[#484F58] hover:text-[#7D8590]"
+                  }`}
+                >
+                  {mode === "automated" ? "⚡ Automated" : "📋 Manual"}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {form.executionMode === "manual" && (
+            <div>
+              <label className={labelCls}>Why Manual? (Requirements)</label>
+              <textarea placeholder={"One requirement per line…"} value={form.manualRequirements} onChange={e => setForm(f => ({ ...f, manualRequirements: e.target.value }))} rows={3} className={`${inputCls} resize-y`} />
+            </div>
+          )}
+
+          {form.executionMode === "automated" && (
+            <div>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className={`${labelCls} mb-0`}>App Registration Permissions</label>
+                <button onClick={addPerm} className="flex items-center gap-1 text-[10px] font-semibold text-[#0078D4] hover:text-[#1A90E0]">
+                  <Plus className="w-3 h-3" />Add
+                </button>
+              </div>
+              {form.appRegPermissions.length === 0 ? (
+                <p className="text-xs text-[#484F58] italic">No permissions defined.</p>
+              ) : (
+                <div className="space-y-1.5">
+                  {form.appRegPermissions.map((p, i) => (
+                    <PermissionRow key={i} perm={p} onChange={updated => updatePerm(i, updated)} onRemove={() => removePerm(i)} />
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          <div>
+            <label className={labelCls}>AI Instructions</label>
+            <textarea placeholder="Instructions for AI analysis of script output…" value={form.aiInstructions} onChange={e => setForm(f => ({ ...f, aiInstructions: e.target.value }))} rows={3} className={`${inputCls} resize-y`} />
+          </div>
+
+          {categories.length > 0 && (
+            <div>
+              <label className={labelCls}>Categories</label>
+              <div className="grid grid-cols-2 gap-1 mt-0.5">
+                {categories.map(cat => {
+                  const checked = form.categoryIds.includes(cat.id);
+                  return (
+                    <label key={cat.id} className={`flex items-center gap-1.5 px-2 py-1 rounded border cursor-pointer transition-colors select-none ${checked ? "border-[#0078D4]/60 bg-[#0078D4]/10 text-[#E6EDF3]" : "border-[#30363D] bg-[#1C2128] text-[#7D8590] hover:bg-[#21262D]"}`}>
+                      <input type="checkbox" className="hidden" checked={checked} onChange={() => setForm(f => ({ ...f, categoryIds: checked ? f.categoryIds.filter(id => id !== cat.id) : [...f.categoryIds, cat.id] }))} />
+                      <Tag className={`w-2.5 h-2.5 flex-shrink-0 ${checked ? "text-[#0078D4]" : "text-[#484F58]"}`} />
+                      <span className="text-xs truncate">{cat.name}</span>
+                    </label>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div className="flex items-center justify-end gap-3 px-5 py-3.5 border-t border-[#30363D] flex-shrink-0">
+          <button onClick={onClose} className="text-sm text-[#7D8590] hover:text-[#E6EDF3] font-medium transition-colors">Cancel</button>
+          <button
+            onClick={() => void handleSave()}
+            disabled={saving || loadingRunbooks}
+            className="flex items-center gap-1.5 bg-[#0078D4] hover:bg-[#006CBE] text-white text-sm font-semibold px-4 py-1.5 rounded-lg transition-colors disabled:opacity-50"
+          >
+            {saving && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+            {saving ? "Saving…" : script ? "Save Changes" : "Create Script"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Catalog Sidebar Panel ─────────────────────────────────────────────────────
+
+export default function CatalogSidebarPanel({
+  onRunScript,
+}: {
+  onRunScript: (runbookName: string) => void;
+}) {
+  const { fetchWithAuth } = useAuth();
+  const { toast } = useToast();
+  const [scripts, setScripts] = useState<Script[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState("");
+  const [openSections, setOpenSections] = useState<Set<number>>(new Set());
+  const [showForm, setShowForm] = useState(false);
+  const [editScript, setEditScript] = useState<Script | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<Script | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const initDone = useRef(false);
+
+  const loadAll = useCallback(async () => {
+    setLoading(true);
+    try {
+      const [sRes, cRes] = await Promise.all([
+        fetchWithAuth("/api/admin/scripts"),
+        fetchWithAuth("/api/admin/script-categories"),
+      ]);
+      if (sRes.ok) setScripts(await sRes.json() as Script[]);
+      if (cRes.ok) {
+        const cats = await cRes.json() as Category[];
+        setCategories(cats);
+        if (!initDone.current) {
+          initDone.current = true;
+          setOpenSections(new Set(cats.map(c => c.id)));
+        }
+      }
+    } catch {
+      // ignore
+    } finally {
+      setLoading(false);
+    }
+  }, [fetchWithAuth]);
+
+  useEffect(() => { void loadAll(); }, [loadAll]);
+
+  const handleSaved = (saved: Script) => {
+    setScripts(prev => {
+      const exists = prev.find(s => s.id === saved.id);
+      return exists ? prev.map(s => s.id === saved.id ? saved : s) : [...prev, saved];
+    });
+    setShowForm(false);
+    setEditScript(null);
+    toast({ title: "Script saved" });
+  };
+
+  const handleDelete = async () => {
+    if (!deleteTarget) return;
+    setDeleting(true);
+    try {
+      const res = await fetchWithAuth(`/api/admin/scripts/${deleteTarget.id}`, { method: "DELETE" });
+      if (!res.ok) {
+        const err = await res.json() as { error?: string };
+        toast({ title: err.error ?? "Failed to delete script", variant: "destructive" });
+        return;
+      }
+      setScripts(prev => prev.filter(s => s.id !== deleteTarget.id));
+      setDeleteTarget(null);
+      toast({ title: "Script deleted" });
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  const toggleSection = (id: number) =>
+    setOpenSections(prev => { const next = new Set(prev); if (next.has(id)) next.delete(id); else next.add(id); return next; });
+
+  const q = search.toLowerCase();
+  const filteredScripts = scripts.filter(s =>
+    !q || s.name.toLowerCase().includes(q) || (s.description ?? "").toLowerCase().includes(q) || s.runbookName.toLowerCase().includes(q)
+  );
+
+  const sortedCats = [...categories].sort((a, b) => a.displayOrder - b.displayOrder || a.id - b.id);
+
+  const catMap = new Map<number, Script[]>();
+  const uncategorised: Script[] = [];
+  for (const s of filteredScripts) {
+    if (!s.categoryIds || s.categoryIds.length === 0) {
+      uncategorised.push(s);
+    } else {
+      for (const cid of s.categoryIds) {
+        if (!catMap.has(cid)) catMap.set(cid, []);
+        catMap.get(cid)!.push(s);
+      }
+    }
+  }
+
+  const UNCATEGORISED_KEY = -1;
+
+  return (
+    <div className="flex flex-col h-full overflow-hidden bg-[#0D1117]">
+      {/* Toolbar */}
+      <div className="flex items-center gap-1.5 px-2 py-1.5 border-b border-[#21262D] flex-shrink-0">
+        <div className="relative flex-1">
+          <svg className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-[#484F58]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
+          <input
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            placeholder="Search scripts…"
+            className="w-full bg-[#161B22] border border-[#30363D] rounded pl-6 pr-2 py-1 text-xs text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#0078D4]/50"
+          />
+        </div>
+        <button
+          onClick={() => { setEditScript(null); setShowForm(true); }}
+          title="New Script"
+          className="p-1.5 text-[#484F58] hover:text-[#0078D4] hover:bg-[#0078D4]/10 rounded transition-colors flex-shrink-0"
+        >
+          <Plus className="w-3.5 h-3.5" />
+        </button>
+        <button onClick={() => void loadAll()} title="Refresh" className="p-1.5 text-[#484F58] hover:text-[#E6EDF3] hover:bg-[#21262D] rounded transition-colors flex-shrink-0">
+          <RefreshCw className={`w-3 h-3 ${loading ? "animate-spin" : ""}`} />
+        </button>
+      </div>
+
+      {/* List */}
+      <div className="flex-1 overflow-y-auto">
+        {loading && (
+          <div className="flex items-center justify-center py-8">
+            <div className="w-5 h-5 border-2 border-[#0078D4] border-t-transparent rounded-full animate-spin" />
+          </div>
+        )}
+
+        {!loading && filteredScripts.length === 0 && (
+          <div className="flex flex-col items-center justify-center py-12 px-4 text-center">
+            <TerminalSquare className="w-8 h-8 text-[#21262D] mb-2" />
+            <p className="text-xs text-[#484F58]">{scripts.length === 0 ? "No scripts in catalog yet" : "No results"}</p>
+            {scripts.length === 0 && (
+              <button onClick={() => { setEditScript(null); setShowForm(true); }} className="mt-3 text-xs text-[#0078D4] hover:text-[#1A90E0]">Create first script →</button>
+            )}
+          </div>
+        )}
+
+        {!loading && filteredScripts.length > 0 && (
+          <div>
+            {/* Categorised sections */}
+            {sortedCats.map(cat => {
+              const catScripts = catMap.get(cat.id) ?? [];
+              if (catScripts.length === 0) return null;
+              const isOpen = openSections.has(cat.id);
+              return (
+                <div key={cat.id}>
+                  <button
+                    onClick={() => toggleSection(cat.id)}
+                    className="w-full flex items-center gap-1.5 px-2 py-1.5 hover:bg-[#161B22] transition-colors"
+                  >
+                    <ChevronRight className={`w-3 h-3 text-[#484F58] flex-shrink-0 transition-transform ${isOpen ? "rotate-90" : ""}`} />
+                    <Tag className="w-2.5 h-2.5 text-[#0078D4] flex-shrink-0" />
+                    <span className="flex-1 text-left text-[10px] font-semibold text-[#7D8590] uppercase tracking-wide truncate">{cat.name}</span>
+                    <span className="text-[9px] px-1 py-0.5 rounded-full bg-[#21262D] text-[#484F58] border border-[#30363D] flex-shrink-0">{catScripts.length}</span>
+                  </button>
+                  {isOpen && catScripts.map(s => (
+                    <ScriptListRow key={s.id} s={s} onEdit={() => { setEditScript(s); setShowForm(true); }} onDelete={() => setDeleteTarget(s)} onRun={() => onRunScript(s.runbookName)} />
+                  ))}
+                </div>
+              );
+            })}
+
+            {/* Uncategorised */}
+            {uncategorised.length > 0 && (
+              <div>
+                <button onClick={() => toggleSection(UNCATEGORISED_KEY)} className="w-full flex items-center gap-1.5 px-2 py-1.5 hover:bg-[#161B22] transition-colors">
+                  <ChevronRight className={`w-3 h-3 text-[#484F58] flex-shrink-0 transition-transform ${openSections.has(UNCATEGORISED_KEY) ? "rotate-90" : ""}`} />
+                  <span className="flex-1 text-left text-[10px] font-semibold text-[#7D8590] uppercase tracking-wide">Uncategorised</span>
+                  <span className="text-[9px] px-1 py-0.5 rounded-full bg-[#21262D] text-[#484F58] border border-[#30363D] flex-shrink-0">{uncategorised.length}</span>
+                </button>
+                {openSections.has(UNCATEGORISED_KEY) && uncategorised.map(s => (
+                  <ScriptListRow key={s.id} s={s} onEdit={() => { setEditScript(s); setShowForm(true); }} onDelete={() => setDeleteTarget(s)} onRun={() => onRunScript(s.runbookName)} />
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Modals */}
+      {showForm && (
+        <ScriptFormModal
+          script={editScript}
+          categories={categories}
+          onClose={() => { setShowForm(false); setEditScript(null); }}
+          onSaved={handleSaved}
+        />
+      )}
+
+      <AlertDialog open={!!deleteTarget} onOpenChange={open => { if (!open) setDeleteTarget(null); }}>
+        <AlertDialogContent className="bg-[#161B22] border border-[#30363D] text-[#E6EDF3]">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Script</AlertDialogTitle>
+            <AlertDialogDescription className="text-[#7D8590]">
+              Delete <strong className="text-[#E6EDF3]">{deleteTarget?.name}</strong>? This cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="bg-[#1C2128] border-[#30363D] text-[#E6EDF3] hover:bg-[#30363D]">Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={() => void handleDelete()} disabled={deleting} className="bg-red-600 hover:bg-red-700 text-white">
+              {deleting ? "Deleting…" : "Delete"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </div>
+  );
+}
+
+// ── Script list row ───────────────────────────────────────────────────────────
+
+function ScriptListRow({
+  s,
+  onEdit,
+  onDelete,
+  onRun,
+}: {
+  s: Script;
+  onEdit: () => void;
+  onDelete: () => void;
+  onRun: () => void;
+}) {
+  return (
+    <div className="flex items-center gap-1.5 pl-7 pr-2 py-1 hover:bg-[#161B22] transition-colors group">
+      <div className="flex-1 min-w-0">
+        <p className="text-xs text-[#C9D1D9] truncate">{s.name}</p>
+        {s.description && <p className="text-[10px] text-[#484F58] truncate">{s.description}</p>}
+      </div>
+      <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
+        <button
+          onClick={onRun}
+          title={`Run "${s.name}" in IDE runner`}
+          className="p-1 text-[#484F58] hover:text-green-400 hover:bg-green-400/10 rounded transition-colors"
+        >
+          <Play className="w-3 h-3" />
+        </button>
+        <button onClick={onEdit} title="Edit" className="p-1 text-[#484F58] hover:text-[#0078D4] hover:bg-[#0078D4]/10 rounded transition-colors">
+          <Pencil className="w-3 h-3" />
+        </button>
+        <button onClick={onDelete} title="Delete" className="p-1 text-[#484F58] hover:text-red-400 hover:bg-red-400/10 rounded transition-colors">
+          <Trash2 className="w-3 h-3" />
+        </button>
+      </div>
+    </div>
+  );
+}

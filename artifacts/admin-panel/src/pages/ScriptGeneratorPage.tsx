@@ -2,6 +2,8 @@ import { useState, useCallback, useEffect, useRef } from "react";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
+import CatalogSidebarPanel from "@/components/CatalogSidebarPanel";
+import RunResultsSidebarPanel from "@/components/RunResultsSidebarPanel";
 import { zipSync, strToU8 } from "fflate";
 import CodeMirror from "@uiw/react-codemirror";
 import { oneDark } from "@codemirror/theme-one-dark";
@@ -87,6 +89,7 @@ const IDE_BOTTOM_HEIGHT_KEY = "sg:ideBottomHeight";
 const IDE_LEFT_COLLAPSED_KEY = "sg:ideLeftCollapsed";
 const IDE_RIGHT_VISIBLE_KEY = "sg:ideRightVisible";
 const IDE_RIGHT_TAB_KEY = "sg:ideRightTab";
+const IDE_LEFT_MODE_KEY = "sg:ideLeftMode";
 
 // ─── API helpers ──────────────────────────────────────────────────────────────
 
@@ -842,8 +845,6 @@ function LibrarySidebar({
   scripts,
   packages,
   loading,
-  collapsed,
-  onToggleCollapse,
   onOpenScript,
   onOpenPackage,
   loadingScriptId,
@@ -851,8 +852,6 @@ function LibrarySidebar({
   scripts: PsScriptListItem[];
   packages: ScriptPackageListItem[];
   loading: boolean;
-  collapsed: boolean;
-  onToggleCollapse: () => void;
   onOpenScript: (id: string) => void;
   onOpenPackage: (pkg: ScriptPackageListItem) => void;
   loadingScriptId: string | null;
@@ -898,28 +897,8 @@ function LibrarySidebar({
     });
   };
 
-  if (collapsed) {
-    return (
-      <div className="flex flex-col items-center py-3 gap-2 border-r border-[#21262D] bg-[#0D1117]" style={{ width: 40 }}>
-        <button onClick={onToggleCollapse} title="Expand library" className="p-1.5 text-[#484F58] hover:text-[#E6EDF3] rounded transition-colors">
-          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" /></svg>
-        </button>
-        <div className="w-px flex-1 bg-[#21262D]" />
-        <span className="text-[9px] text-[#484F58] font-semibold tracking-widest" style={{ writingMode: "vertical-rl" }}>LIBRARY</span>
-      </div>
-    );
-  }
-
   return (
-    <div className="flex flex-col border-r border-[#21262D] bg-[#0D1117] overflow-hidden" style={{ width: "100%" }}>
-      {/* Header */}
-      <div className="flex items-center justify-between px-3 py-2 border-b border-[#21262D] flex-shrink-0">
-        <span className="text-[10px] font-semibold text-[#484F58] uppercase tracking-widest">Library</span>
-        <button onClick={onToggleCollapse} title="Collapse library" className="p-1 text-[#484F58] hover:text-[#E6EDF3] rounded transition-colors">
-          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" /></svg>
-        </button>
-      </div>
-
+    <div className="flex flex-col bg-[#0D1117] overflow-hidden" style={{ width: "100%", height: "100%" }}>
       {/* Search */}
       <div className="px-2 py-2 flex-shrink-0 border-b border-[#21262D]">
         <div className="relative">
@@ -1032,9 +1011,13 @@ const ADHOC_RUNBOOK_NAME = "IDE-AdHoc";
 function InlineScriptRunner({
   scriptBody,
   editorScript,
+  presetRunbook,
+  onPresetConsumed,
 }: {
   scriptBody: string;
   editorScript: PsScriptDetail | null;
+  presetRunbook?: string | null;
+  onPresetConsumed?: () => void;
 }) {
   const { fetchWithAuth } = useAuth();
 
@@ -1093,9 +1076,15 @@ function InlineScriptRunner({
         const data = await res.json() as { configured: boolean; runbooks?: InlineRunbookEntry[] };
         if (res.ok && data.configured) {
           setAzureConfigured(true);
-          setRunbooks(data.runbooks ?? []);
-          // Pre-select current script's runbook if it's in the list
-          if (editorScript?.azureRunbookName) setSelectedRunbook(editorScript.azureRunbookName);
+          const list = data.runbooks ?? [];
+          setRunbooks(list);
+          // Pre-select: catalog preset takes priority, then the editor script's runbook
+          if (presetRunbook && list.some(r => r.name === presetRunbook)) {
+            setSelectedRunbook(presetRunbook);
+            onPresetConsumed?.();
+          } else if (editorScript?.azureRunbookName) {
+            setSelectedRunbook(editorScript.azureRunbookName);
+          }
         } else if (res.status === 503) {
           setAzureConfigured(false);
         }
@@ -1103,7 +1092,7 @@ function InlineScriptRunner({
       finally { setLoadingRunbooks(false); }
     })();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedClientId]);
+  }, [selectedClientId, presetRunbook]);
 
   const credId = clients.find(c => c.id === selectedClientId)?.credential?.id;
 
@@ -1371,19 +1360,23 @@ function RightPanel({
   scriptLoaded,
   scriptBody,
   editorScript,
+  activeTab,
+  onActiveTabChange,
+  presetRunbook,
+  onPresetConsumed,
 }: {
   permissions: PsScriptPermissions;
   scriptLoaded: boolean;
   scriptBody: string;
   editorScript: PsScriptDetail | null;
+  activeTab: "runner" | "permissions";
+  onActiveTabChange: (t: "runner" | "permissions") => void;
+  presetRunbook: string | null;
+  onPresetConsumed: () => void;
 }) {
-  const [activeTab, setActiveTab] = useState<"runner" | "permissions">(() =>
-    (lsGet(IDE_RIGHT_TAB_KEY, "runner") as "runner" | "permissions")
-  );
-
   const switchTab = (t: string) => {
     const tab = t as "runner" | "permissions";
-    setActiveTab(tab);
+    onActiveTabChange(tab);
     lsSet(IDE_RIGHT_TAB_KEY, tab);
   };
 
@@ -1398,7 +1391,7 @@ function RightPanel({
         value="runner"
         className="flex-1 min-h-0 overflow-hidden flex flex-col mt-0 p-0"
       >
-        <InlineScriptRunner scriptBody={scriptBody} editorScript={editorScript} />
+        <InlineScriptRunner scriptBody={scriptBody} editorScript={editorScript} presetRunbook={presetRunbook} onPresetConsumed={onPresetConsumed} />
       </TabsContent>
       <TabsContent
         value="permissions"
@@ -1695,6 +1688,14 @@ export default function ScriptGeneratorPage() {
 
   const [leftCollapsed, setLeftCollapsed] = useState(() => lsGet(IDE_LEFT_COLLAPSED_KEY, "false") === "true");
   const [rightVisible, setRightVisible] = useState(() => lsGet(IDE_RIGHT_VISIBLE_KEY, "true") === "true");
+  const [leftMode, setLeftMode] = useState<"library" | "catalog" | "results">(() =>
+    (lsGet(IDE_LEFT_MODE_KEY, "library") as "library" | "catalog" | "results")
+  );
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const [rightActiveTab, setRightActiveTab] = useState<"runner" | "permissions">(() =>
+    (lsGet(IDE_RIGHT_TAB_KEY, "runner") as "runner" | "permissions")
+  );
+  const [catalogPresetRunbook, setCatalogPresetRunbook] = useState<string | null>(null);
 
   // Drag state refs
   const isDraggingLeft = useRef(false);
@@ -1721,6 +1722,14 @@ export default function ScriptGeneratorPage() {
   }, [libraryLoaded, token, toast]);
 
   useEffect(() => { void loadLibrary(); }, [loadLibrary]);
+
+  // Fullscreen Escape key handler
+  useEffect(() => {
+    if (!isFullscreen) return;
+    const handle = (e: KeyboardEvent) => { if (e.key === "Escape") setIsFullscreen(false); };
+    document.addEventListener("keydown", handle);
+    return () => document.removeEventListener("keydown", handle);
+  }, [isFullscreen]);
 
   // ── Panel resize handlers ────────────────────────────────────────────────────
   const startLeftResize = useCallback((e: React.MouseEvent) => {
@@ -1791,6 +1800,16 @@ export default function ScriptGeneratorPage() {
     const next = !rightVisible;
     setRightVisible(next);
     lsSet(IDE_RIGHT_VISIBLE_KEY, String(next));
+  };
+
+  const handleCatalogRunScript = (runbookName: string) => {
+    setCatalogPresetRunbook(runbookName);
+    setRightActiveTab("runner");
+    lsSet(IDE_RIGHT_TAB_KEY, "runner");
+    if (!rightVisible) {
+      setRightVisible(true);
+      lsSet(IDE_RIGHT_VISIBLE_KEY, "true");
+    }
   };
 
   // ── Persist prompt fields ─────────────────────────────────────────────────────
@@ -1979,22 +1998,66 @@ export default function ScriptGeneratorPage() {
   const scriptLoaded = scriptBody.length > 0;
 
   return (
-    <div className="h-full flex flex-col overflow-hidden bg-[#0D1117]">
+    <div className={`flex flex-col overflow-hidden bg-[#0D1117] ${isFullscreen ? "fixed inset-0 z-[100]" : "h-full"}`}>
       {/* ── IDE body ──────────────────────────────────────────────────────── */}
       <div className="flex-1 min-h-0 flex overflow-hidden">
 
         {/* ── Left panel ──────────────────────────────────────────────────── */}
         <div className="flex flex-col overflow-hidden flex-shrink-0" style={{ width: effectiveLeftWidth }}>
-          <LibrarySidebar
-            scripts={scripts}
-            packages={packages}
-            loading={libraryLoading}
-            collapsed={leftCollapsed}
-            onToggleCollapse={toggleLeftCollapsed}
-            onOpenScript={handleSidebarScriptClick}
-            onOpenPackage={(pkg) => setOpenDrawerPackage(pkg)}
-            loadingScriptId={loadingScriptId}
-          />
+          {leftCollapsed ? (
+            /* Collapsed strip */
+            <div className="flex flex-col items-center py-3 gap-2 border-r border-[#21262D] bg-[#0D1117]" style={{ width: 40 }}>
+              <button onClick={toggleLeftCollapsed} title="Expand sidebar" className="p-1.5 text-[#484F58] hover:text-[#E6EDF3] rounded transition-colors">
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" /></svg>
+              </button>
+              <div className="w-px flex-1 bg-[#21262D]" />
+              <span className="text-[8px] text-[#484F58] font-bold tracking-widest uppercase" style={{ writingMode: "vertical-rl" }}>
+                {leftMode === "library" ? "LIBRARY" : leftMode === "catalog" ? "CATALOG" : "RESULTS"}
+              </span>
+            </div>
+          ) : (
+            /* Expanded: mode toggle + panel body */
+            <div className="flex flex-col border-r border-[#21262D] bg-[#0D1117] overflow-hidden h-full">
+              {/* Mode toggle header */}
+              <div className="flex items-center flex-shrink-0 border-b border-[#21262D] bg-[#0D1117]">
+                <button onClick={toggleLeftCollapsed} title="Collapse sidebar" className="p-2 text-[#484F58] hover:text-[#E6EDF3] transition-colors flex-shrink-0">
+                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" /></svg>
+                </button>
+                {(["library", "catalog", "results"] as const).map(m => (
+                  <button
+                    key={m}
+                    onClick={() => { setLeftMode(m); lsSet(IDE_LEFT_MODE_KEY, m); }}
+                    className={`flex-1 py-1.5 text-[9px] font-bold uppercase tracking-wider transition-colors text-center border-b-2 ${
+                      leftMode === m
+                        ? "text-[#58A6FF] border-[#0078D4]"
+                        : "text-[#484F58] hover:text-[#E6EDF3] border-transparent"
+                    }`}
+                  >
+                    {m === "library" ? "Library" : m === "catalog" ? "Catalog" : "Results"}
+                  </button>
+                ))}
+              </div>
+              {/* Panel body */}
+              <div className="flex-1 min-h-0 overflow-hidden">
+                {leftMode === "library" && (
+                  <LibrarySidebar
+                    scripts={scripts}
+                    packages={packages}
+                    loading={libraryLoading}
+                    onOpenScript={handleSidebarScriptClick}
+                    onOpenPackage={(pkg) => setOpenDrawerPackage(pkg)}
+                    loadingScriptId={loadingScriptId}
+                  />
+                )}
+                {leftMode === "catalog" && (
+                  <CatalogSidebarPanel onRunScript={handleCatalogRunScript} />
+                )}
+                {leftMode === "results" && (
+                  <RunResultsSidebarPanel />
+                )}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Left resize handle */}
@@ -2079,6 +2142,18 @@ export default function ScriptGeneratorPage() {
                 className={`ml-1 p-1.5 rounded transition-colors flex-shrink-0 ${rightVisible ? "text-[#58A6FF] bg-[#0078D4]/10" : "text-[#484F58] hover:text-[#E6EDF3] hover:bg-[#1C2128]"}`}
               >
                 <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 3H5a2 2 0 00-2 2v14a2 2 0 002 2h4m6-4l3-3m0 0l-3-3m3 3H9" /></svg>
+              </button>
+              {/* Fullscreen toggle */}
+              <button
+                onClick={() => setIsFullscreen(f => !f)}
+                title={isFullscreen ? "Exit fullscreen (Esc)" : "Enter fullscreen"}
+                className={`p-1.5 rounded transition-colors flex-shrink-0 ${isFullscreen ? "text-[#58A6FF] bg-[#0078D4]/10" : "text-[#484F58] hover:text-[#E6EDF3] hover:bg-[#1C2128]"}`}
+              >
+                {isFullscreen ? (
+                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+                ) : (
+                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" /></svg>
+                )}
               </button>
             </div>
 
@@ -2168,6 +2243,10 @@ export default function ScriptGeneratorPage() {
               scriptLoaded={scriptLoaded}
               scriptBody={scriptBody}
               editorScript={editorScript}
+              activeTab={rightActiveTab}
+              onActiveTabChange={(t) => { setRightActiveTab(t); lsSet(IDE_RIGHT_TAB_KEY, t); }}
+              presetRunbook={catalogPresetRunbook}
+              onPresetConsumed={() => setCatalogPresetRunbook(null)}
             />
           </div>
         )}
