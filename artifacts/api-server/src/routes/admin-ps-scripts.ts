@@ -554,8 +554,11 @@ router.post("/admin/ps-scripts/:id/push-to-azure", requireAdmin, async (req: Req
   const id = String(req.params["id"] ?? "");
   if (!UUID_RE.test(id)) { res.status(400).json({ error: "Invalid id" }); return; }
 
+  // Not configured: return a non-fatal warning (200) so the UI can show an
+  // informational message without treating it as an error.
   if (!isAzureConfigured()) {
-    res.status(503).json({ error: "Azure Automation is not configured on this server" });
+    logger.warn({ id }, "admin-ps-scripts: push-to-azure skipped — Azure not configured");
+    res.json({ ok: false, warning: "Azure Automation is not configured on this server — push skipped" });
     return;
   }
 

@@ -1469,10 +1469,16 @@ function PsScriptRow({
     e.stopPropagation();
     setPushing(true);
     try {
-      // apiFetch throws on non-OK and returns already-parsed JSON on success
-      const data = await apiFetch(`/admin/ps-scripts/${s.id}/push-to-azure`, token, { method: "POST" }) as { azureSyncedAt?: string } | null;
-      setSyncedAt(data?.azureSyncedAt ?? new Date().toISOString());
-      toast({ title: "Pushed to Azure Automation" });
+      // apiFetch throws on non-OK and returns already-parsed JSON on success.
+      // When Azure is not configured the server returns { ok: false, warning }
+      // (not an error) — show an informational toast, don't mark as error.
+      const data = await apiFetch(`/admin/ps-scripts/${s.id}/push-to-azure`, token, { method: "POST" }) as { ok: boolean; warning?: string; azureSyncedAt?: string } | null;
+      if (data && !data.ok && data.warning) {
+        toast({ title: data.warning });
+      } else {
+        setSyncedAt(data?.azureSyncedAt ?? new Date().toISOString());
+        toast({ title: "Pushed to Azure Automation" });
+      }
     } catch (err) {
       toast({ title: err instanceof Error ? err.message : "Push to Azure failed", variant: "destructive" });
     } finally {

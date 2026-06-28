@@ -1689,9 +1689,15 @@ function ScriptRow({
         toast({ title: err.error ?? "Push to Azure failed", variant: "destructive" });
         return;
       }
-      const data = await res.json() as { azureSyncedAt?: string };
-      setSyncedAt(data.azureSyncedAt ?? new Date().toISOString());
-      toast({ title: "Pushed to Azure Automation" });
+      // Server returns { ok: false, warning } (200) when Azure is not configured —
+      // treat as an informational message, not a destructive error.
+      const data = await res.json() as { ok: boolean; warning?: string; azureSyncedAt?: string };
+      if (!data.ok && data.warning) {
+        toast({ title: data.warning });
+      } else {
+        setSyncedAt(data.azureSyncedAt ?? new Date().toISOString());
+        toast({ title: "Pushed to Azure Automation" });
+      }
     } catch {
       toast({ title: "Network error pushing to Azure", variant: "destructive" });
     } finally {

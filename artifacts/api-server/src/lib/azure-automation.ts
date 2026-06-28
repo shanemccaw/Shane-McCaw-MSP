@@ -315,23 +315,32 @@ export async function upsertRunbookContent(name: string, psCode: string): Promis
 
 /**
  * Publish the draft slot of the named runbook so it becomes immediately executable.
- * Uses beginPublish (LRO) and polls until completion.
+ *
+ * Uses `client.runbook.publish()` which is the correct surface in
+ * @azure/arm-automation v10 — it internally calls `beginPublish` and polls
+ * until the LRO finishes.  Do NOT use `client.runbookDraft.beginPublish`
+ * which is a different (upload-only) surface and does not trigger publication.
  */
 export async function publishRunbook(name: string): Promise<void> {
   const { client, cfg } = buildClient();
 
-  const draft = client.runbookDraft as unknown as {
-    beginPublish?: (rg: string, acct: string, name: string) => Promise<{ pollUntilFinished?: () => Promise<void> }>;
-    publish?: (rg: string, acct: string, name: string) => Promise<void>;
+  // client.runbook.publish() → internally delegates to beginPublish + poll
+  // Falls back to beginPublish if the synchronous wrapper is absent (type-cast
+  // only to satisfy strict TS — both methods exist on RunbookOperations in v10).
+  const runbookOps = client.runbook as unknown as {
+    publish?: (rg: string, acct: string, name: string) => Promise<unknown>;
+    beginPublish?: (rg: string, acct: string, name: string) => Promise<{ pollUntilFinished?: () => Promise<unknown> }>;
   };
 
-  if (typeof draft.beginPublish === "function") {
-    const poller = await draft.beginPublish(cfg.resourceGroup, cfg.accountName, name);
+  if (typeof runbookOps.publish === "function") {
+    await runbookOps.publish(cfg.resourceGroup, cfg.accountName, name);
+  } else if (typeof runbookOps.beginPublish === "function") {
+    const poller = await runbookOps.beginPublish(cfg.resourceGroup, cfg.accountName, name);
     if (poller && typeof poller.pollUntilFinished === "function") {
       await poller.pollUntilFinished();
     }
-  } else if (typeof draft.publish === "function") {
-    await draft.publish(cfg.resourceGroup, cfg.accountName, name);
+  } else {
+    throw new Error("azure-automation: runbook publish API not available on this SDK version");
   }
 
   logger.info({ runbookName: name }, "azure-automation: runbook published");
