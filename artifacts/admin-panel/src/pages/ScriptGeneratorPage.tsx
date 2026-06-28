@@ -1559,15 +1559,17 @@ type BottomTab = "prompt" | "bugfix" | "instructions";
 function GenerateFromServiceDialog({
   token,
   baseInstructions,
+  detailedInstructions,
   onClose,
   onScriptGenerated,
   onPackageGenerated,
 }: {
   token: string;
   baseInstructions: string;
+  detailedInstructions: string;
   onClose: () => void;
   onScriptGenerated: (title: string, script: string, permissions: PsScriptPermissions) => void;
-  onPackageGenerated: (packageId: string, title: string, modules: ScriptModuleItem[]) => void;
+  onPackageGenerated: (packageId: string, title: string, modules: ScriptModuleItem[], permissions: PsScriptPermissions) => void;
 }) {
   const { toast } = useToast();
   const [services, setServices] = useState<ServiceListItem[]>([]);
@@ -1578,6 +1580,7 @@ function GenerateFromServiceDialog({
   const [customInstructions, setCustomInstructions] = useState("");
   const [generating, setGenerating] = useState(false);
   const [humanOnlyTasks, setHumanOnlyTasks] = useState<string[]>([]);
+  const [humanOnlyExplanation, setHumanOnlyExplanation] = useState<string | null>(null);
 
   useEffect(() => {
     apiFetch("/admin/services", token)
@@ -1609,10 +1612,12 @@ function GenerateFromServiceDialog({
   const handleGenerate = async () => {
     if (!selectedServiceId) return;
     setGenerating(true);
+    setHumanOnlyExplanation(null);
     try {
       type GenResult = {
-        type: "single" | "package";
+        type: "single" | "package" | "human-only";
         title: string;
+        explanation?: string;
         script?: string;
         packageId?: string;
         modules?: ScriptModuleItem[];
@@ -1625,6 +1630,7 @@ function GenerateFromServiceDialog({
           serviceId: selectedServiceId,
           customInstructions: customInstructions.trim() || undefined,
           baseInstructions: baseInstructions.trim() || undefined,
+          detailedInstructions: detailedInstructions.trim() || undefined,
         }),
       })) as GenResult;
 
@@ -1632,8 +1638,12 @@ function GenerateFromServiceDialog({
         setHumanOnlyTasks(result.humanOnlyTasks);
       }
 
-      if (result.type === "package" && result.packageId && result.modules) {
-        onPackageGenerated(result.packageId, result.title, result.modules);
+      if (result.type === "human-only") {
+        setHumanOnlyExplanation(result.explanation ?? "All tasks in this workflow require human action.");
+        toast({ title: result.title ?? "No automation possible", description: "See details below." });
+      } else if (result.type === "package" && result.packageId && result.modules) {
+        const pkgPerms: PsScriptPermissions = result.permissions ?? { appPermissions: [], delegatedPermissions: [], notes: "" };
+        onPackageGenerated(result.packageId, result.title, result.modules, pkgPerms);
         onClose();
       } else if (result.type === "single" && result.script) {
         onScriptGenerated(result.title, result.script, result.permissions);
@@ -1768,6 +1778,16 @@ function GenerateFromServiceDialog({
               className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-xs text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60 transition-colors resize-none"
             />
           </div>
+
+          {/* Human-only workflow result (shown when no tasks can be automated) */}
+          {humanOnlyExplanation && (
+            <div className="bg-[#161B22] border border-amber-800/50 rounded-lg px-3 py-2.5">
+              <p className="text-[10px] font-semibold text-amber-400 uppercase tracking-wide mb-1">
+                No automation available for this service
+              </p>
+              <p className="text-[11px] text-[#7D8590] leading-relaxed">{humanOnlyExplanation}</p>
+            </div>
+          )}
 
           {/* Human-only tasks result (shown after generation attempt if any) */}
           {humanOnlyTasks.length > 0 && (
@@ -2657,6 +2677,7 @@ export default function ScriptGeneratorPage() {
         <GenerateFromServiceDialog
           token={token}
           baseInstructions={baseInstructions}
+          detailedInstructions={detailedInstructions}
           onClose={() => setGenerateFromServiceOpen(false)}
           onScriptGenerated={(title, script, perms) => {
             setScriptBody(script);
@@ -2668,18 +2689,19 @@ export default function ScriptGeneratorPage() {
             setSummaryError(null);
             toast({ title: "Script generated", description: title });
           }}
-          onPackageGenerated={(packageId, title, mods) => {
+          onPackageGenerated={(packageId, title, mods, perms) => {
             const pkg: ScriptPackageListItem = {
               id: packageId,
               title,
               category: "m365",
-              permissions: { appPermissions: [], delegatedPermissions: [], notes: "" },
+              permissions: perms,
               tags: [],
               createdAt: new Date().toISOString(),
               modules: mods,
             };
             setPackages((prev) => [pkg, ...prev]);
             setModules(mods);
+            setPermissions(perms);
             setEditorScript(null);
             setFixSummary("");
             setSummaryError(null);

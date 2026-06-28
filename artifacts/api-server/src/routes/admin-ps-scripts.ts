@@ -290,10 +290,21 @@ STEP 2 — For every AUTOMATABLE task, write a complete production-ready PowerSh
   - CSV export where applicable
 
 STEP 3 — Choose output shape:
+  - ALL tasks are HUMAN_ONLY (nothing can be automated) → type "human-only": explanatory note only, no script
   - ONE automatable phase (or all tasks belong to a single phase) → type "single": one consolidated script
   - MULTIPLE distinct automatable phases → type "package": one focused module per phase + a Main.ps1 orchestrator that dot-sources them all
 
 Return ONLY a JSON object in a \`\`\`json fence. No prose before or after the fence.
+
+Human-only shape (use when NO tasks are automatable):
+\`\`\`json
+{
+  "type": "human-only",
+  "title": "Service Workflow — All Tasks Require Human Action",
+  "explanation": "Concise explanation of why no PowerShell automation applies to this workflow.",
+  "humanOnlyTasks": ["task description 1", "task description 2"]
+}
+\`\`\`
 
 Single script shape:
 \`\`\`json
@@ -335,10 +346,11 @@ Rules:
 - Distinguish Application permissions (service principal / app-only) from Delegated (signed-in user)`;
 
 router.post("/admin/ps-scripts/generate-from-service", requireAdmin, async (req: Request, res: Response) => {
-  const { serviceId, customInstructions, baseInstructions } = req.body as {
+  const { serviceId, customInstructions, baseInstructions, detailedInstructions } = req.body as {
     serviceId?: number;
     customInstructions?: string;
     baseInstructions?: string;
+    detailedInstructions?: string;
   };
 
   if (!serviceId || typeof serviceId !== "number") {
@@ -387,7 +399,21 @@ router.post("/admin/ps-scripts/generate-from-service", requireAdmin, async (req:
           if (step.description) workflowContext += `\n  ${step.description}`;
           for (const task of tasks) {
             workflowContext += `\n  - [TASK] ${task.title}`;
-            if (task.description) workflowContext += `: ${task.description}`;
+            if (task.taskType) workflowContext += ` [type: ${task.taskType}]`;
+            if (task.description) workflowContext += `\n    Description: ${task.description}`;
+            if (task.groupName) workflowContext += `\n    Group: ${task.groupName}`;
+            const taskInstructions = task.instructions as string[] | null;
+            if (taskInstructions?.length)
+              workflowContext += `\n    Instructions:${taskInstructions.map((i) => `\n      • ${i}`).join("")}`;
+            const taskChecklist = task.checklist as Array<{ id: string; label: string }> | null;
+            if (taskChecklist?.length)
+              workflowContext += `\n    Checklist:${taskChecklist.map((c) => `\n      ☐ ${c.label}`).join("")}`;
+            const taskArtifacts = task.artifactsProduced as string[] | null;
+            if (taskArtifacts?.length)
+              workflowContext += `\n    Artifacts produced: ${taskArtifacts.join(", ")}`;
+            const taskDeliverables = task.clientDeliverables as string[] | null;
+            if (taskDeliverables?.length)
+              workflowContext += `\n    Client deliverables: ${taskDeliverables.join(", ")}`;
           }
         }
       }
@@ -419,13 +445,16 @@ router.post("/admin/ps-scripts/generate-from-service", requireAdmin, async (req:
     const baseBlock = baseInstructions?.trim()
       ? `\n\nBase instructions (always apply):\n${baseInstructions.trim()}`
       : "";
+    const detailedBlock = detailedInstructions?.trim()
+      ? `\n\nDetailed instructions:\n${detailedInstructions.trim()}`
+      : "";
     const customBlock = customInstructions?.trim()
       ? `\n\nAdditional instructions:\n${customInstructions.trim()}`
       : "";
 
-    const userMessage = `${serviceContext}${workflowContext}${baseBlock}${customBlock}
+    const userMessage = `${serviceContext}${workflowContext}${baseBlock}${detailedBlock}${customBlock}
 
-Classify each task and generate PowerShell automation scripts for all M365/Azure-automatable tasks. Return the JSON response exactly as instructed.`;
+Classify each task and generate PowerShell automation scripts for all M365/Azure-automatable tasks. If no tasks can be automated, return the human-only shape. Return the JSON response exactly as instructed.`;
 
     const aiMsg = await anthropic.messages.create({
       model: "claude-haiku-4-5",
@@ -452,6 +481,18 @@ Classify each task and generate PowerShell automation scripts for all M365/Azure
     const parsed = rawJson as Record<string, unknown>;
     const type = typeof parsed["type"] === "string" ? parsed["type"] : "single";
     const humanOnlyTasks = Array.isArray(parsed["humanOnlyTasks"]) ? (parsed["humanOnlyTasks"] as string[]) : [];
+
+    if (type === "human-only") {
+      const title =
+        typeof parsed["title"] === "string" ? parsed["title"] : "Service Workflow — All Tasks Require Human Action";
+      const explanation =
+        typeof parsed["explanation"] === "string"
+          ? parsed["explanation"]
+          : "All tasks in this workflow require human judgment or action and cannot be automated with PowerShell.";
+      logger.info({ service: service.name }, "generate-from-service: all tasks human-only");
+      res.json({ type: "human-only", title, explanation, humanOnlyTasks });
+      return;
+    }
 
     const rawPerms = parsed["permissions"];
     let permissions: PsScriptPermissions = { appPermissions: [], delegatedPermissions: [], notes: "" };
