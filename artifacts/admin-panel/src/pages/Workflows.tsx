@@ -99,7 +99,7 @@ interface WorkflowTemplate {
   steps?: WorkflowStep[];
 }
 
-interface Service { id: number; name: string; }
+interface Service { id: number; name: string; category?: string; }
 
 interface EditingTaskForm {
   title: string;
@@ -1318,10 +1318,13 @@ export default function WorkflowsPage() {
 
   // AI Generate
   const [aiGenerateOpen, setAiGenerateOpen] = useState(false);
-  const [aiGenerateMode, setAiGenerateMode] = useState<"append" | "replace">("replace");
+  const [aiGenerateMode, setAiGenerateMode] = useState<"append" | "replace">("append");
   const [aiGenerating, setAiGenerating] = useState(false);
   const [aiGenerateResult, setAiGenerateResult] = useState<{ stepsCreated: number; tasksCreated: number } | null>(null);
   const [aiGenerateError, setAiGenerateError] = useState<string | null>(null);
+  const aiGenerateService = aiGenerateOpen && selected?.serviceId
+    ? (services.find(s => s.id === selected.serviceId) ?? null)
+    : null;
 
   // AI asset generation
   const [generateDialogOpen, setGenerateDialogOpen] = useState(false);
@@ -1651,7 +1654,9 @@ export default function WorkflowsPage() {
         setAiGenerateError(data.error ?? "Generation failed");
         return;
       }
-      setAiGenerateResult({ stepsCreated: data.stepsCreated ?? 0, tasksCreated: data.tasksCreated ?? 0 });
+      const counts = { stepsCreated: data.stepsCreated ?? 0, tasksCreated: data.tasksCreated ?? 0 };
+      setAiGenerateResult(counts);
+      toast({ title: `Generated ${counts.stepsCreated} step${counts.stepsCreated !== 1 ? "s" : ""} and ${counts.tasksCreated} task${counts.tasksCreated !== 1 ? "s" : ""}` });
       await refreshSelected();
     } catch {
       setAiGenerateError("Network error — please try again");
@@ -2312,6 +2317,14 @@ export default function WorkflowsPage() {
                       {/* AI Generate panel */}
                       {aiGenerateOpen && selected?.serviceId && (
                         <div className="mt-2 rounded-lg border border-violet-500/30 bg-violet-900/10 p-3 space-y-3">
+                          {aiGenerateService && (
+                            <div className="rounded bg-violet-900/20 border border-violet-500/20 px-2 py-1.5">
+                              <p className="text-[10px] font-semibold text-violet-200 leading-snug">{aiGenerateService.name}</p>
+                              {aiGenerateService.category && (
+                                <p className="text-[9px] text-violet-400 mt-0.5">{aiGenerateService.category}</p>
+                              )}
+                            </div>
+                          )}
                           <p className="text-[10px] text-violet-300 leading-snug">
                             Claude will read the linked service definition and generate a complete set of workflow steps and engineer tasks.
                           </p>
