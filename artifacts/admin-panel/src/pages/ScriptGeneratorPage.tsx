@@ -1298,11 +1298,11 @@ function LibrarySidebar({
                   return (
                     <div
                       key={`s-${s.id}`}
-                      className="flex items-center hover:bg-[#161B22] transition-colors group"
+                      className="flex items-center min-w-0 hover:bg-[#161B22] transition-colors group"
                     >
                       <button
                         onClick={() => onOpenScript(s.id)}
-                        className="flex-1 flex items-center gap-2 pl-7 pr-1 py-1 text-left min-w-0"
+                        className="flex-1 flex items-center gap-2 pl-7 pr-1 py-1 text-left min-w-0 overflow-hidden"
                         title={s.title}
                       >
                         {isLoading ? (
@@ -1310,9 +1310,9 @@ function LibrarySidebar({
                         ) : (
                           <svg className="w-3 h-3 text-[#484F58] group-hover:text-[#58A6FF] flex-shrink-0 transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
                         )}
-                        <span className="flex-1 text-xs text-[#C9D1D9] truncate">{s.title}</span>
+                        <span className="flex-1 text-xs text-[#C9D1D9] truncate min-w-0">{s.title}</span>
                         {s.tags?.includes("manual") && (
-                          <span className="flex-shrink-0 text-[8px] font-semibold px-1 py-0.5 rounded bg-yellow-500/20 border border-yellow-500/40 text-yellow-400 uppercase tracking-wide">Manual</span>
+                          <span className="flex-shrink-0 text-[8px] font-semibold px-1 py-0.5 rounded bg-yellow-500/20 border border-yellow-500/40 text-yellow-400 uppercase tracking-wide">M</span>
                         )}
                       </button>
                       {onPublishToCatalog && (
@@ -1320,7 +1320,7 @@ function LibrarySidebar({
                           onClick={(e) => { e.stopPropagation(); onPublishToCatalog(s.id); }}
                           disabled={!!publishingScriptId}
                           title="Publish to Catalog"
-                          className="flex-shrink-0 opacity-0 group-hover:opacity-100 pr-2 py-1 text-[#484F58] hover:text-[#0078D4] disabled:opacity-30 transition-all"
+                          className="flex-shrink-0 opacity-0 group-hover:opacity-100 px-1.5 py-1 text-[#484F58] hover:text-[#0078D4] disabled:opacity-30 transition-all"
                         >
                           {isPublishing ? (
                             <svg className="w-3 h-3 animate-spin text-[#0078D4]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
@@ -1334,9 +1334,10 @@ function LibrarySidebar({
                 } else {
                   const p = entry.item;
                   const isExpanded = expandedPackages.has(p.id);
+                  const isPkgPublishing = publishingScriptId === p.id;
                   return (
                     <div key={`p-${p.id}-${i}`}>
-                      <div className="w-full flex items-center hover:bg-[#161B22] transition-colors group">
+                      <div className="w-full flex items-center min-w-0 hover:bg-[#161B22] transition-colors group">
                         {/* Chevron toggle */}
                         <button
                           onClick={(e) => togglePackageExpand(p.id, e)}
@@ -1353,13 +1354,27 @@ function LibrarySidebar({
                         {/* Package row — clicking loads multi-module view */}
                         <button
                           onClick={() => onOpenPackage(p)}
-                          className="flex-1 flex items-center gap-2 pr-3 py-1 text-left min-w-0"
+                          className="flex-1 flex items-center gap-2 pr-1 py-1 text-left min-w-0 overflow-hidden"
                           title={p.title}
                         >
                           <svg className="w-3 h-3 text-purple-500/70 group-hover:text-purple-400 flex-shrink-0 transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" /></svg>
-                          <span className="flex-1 text-xs text-[#C9D1D9] truncate">{p.title}</span>
+                          <span className="flex-1 text-xs text-[#C9D1D9] truncate min-w-0">{p.title}</span>
                           <span className="text-[9px] text-purple-500/60 flex-shrink-0">{p.modules.length}m</span>
                         </button>
+                        {onPublishToCatalog && (
+                          <button
+                            onClick={(e) => { e.stopPropagation(); onPublishToCatalog(p.id); }}
+                            disabled={!!publishingScriptId}
+                            title="Publish to Catalog"
+                            className="flex-shrink-0 opacity-0 group-hover:opacity-100 px-1.5 py-1 text-[#484F58] hover:text-[#0078D4] disabled:opacity-30 transition-all"
+                          >
+                            {isPkgPublishing ? (
+                              <svg className="w-3 h-3 animate-spin text-[#0078D4]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
+                            ) : (
+                              <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" /></svg>
+                            )}
+                          </button>
+                        )}
                       </div>
                       {/* Module child rows */}
                       {isExpanded && p.modules.map((mod) => (
@@ -2967,28 +2982,47 @@ export default function ScriptGeneratorPage() {
     }
   };
 
-  const handlePublishToCatalog = async (scriptId: string) => {
+  const handlePublishToCatalog = async (id: string) => {
     if (publishingScriptId) return;
-    setPublishingScriptId(scriptId);
+    setPublishingScriptId(id);
     try {
-      const detailRes = await apiFetch(`/admin/ps-scripts/${scriptId}`, token) as PsScriptDetail;
-      if (!detailRes?.scriptBody) {
-        toast({ title: "Could not load script body", variant: "destructive" });
-        return;
+      let scriptBody: string;
+      let title: string;
+      let azureRunbookName: string | null = null;
+
+      const pkg = packages.find(p => p.id === id);
+      if (pkg) {
+        // Package — modules are already loaded in state, concatenate them
+        scriptBody = pkg.modules.map(m => `# === ${m.filename} ===\n${m.content}`).join("\n\n");
+        title = pkg.title;
+      } else {
+        // Single script — fetch full detail for body
+        const detailRes = await apiFetch(`/admin/ps-scripts/${id}`, token) as PsScriptDetail;
+        if (!detailRes?.scriptBody) {
+          toast({ title: "Could not load script body", variant: "destructive" });
+          return;
+        }
+        scriptBody = detailRes.scriptBody;
+        title = detailRes.title;
+        azureRunbookName = detailRes.azureRunbookName;
       }
-      const analyzeRes = await fetch(`${import.meta.env.BASE_URL}api/admin/scripts/analyze`.replace(/\/+/g, "/").replace(":/", "://"), {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ psScriptBody: detailRes.scriptBody }),
-      });
+
+      const analyzeRes = await fetch(
+        `${import.meta.env.BASE_URL}api/admin/scripts/analyze`.replace(/\/+/g, "/").replace(":/", "://"),
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ psScriptBody: scriptBody }),
+        }
+      );
       const analyzed = await analyzeRes.json() as CatalogAnalyzeResult & { error?: string };
       if (!analyzeRes.ok) {
         toast({ title: analyzed.error ?? "AI analysis failed", variant: "destructive" });
         return;
       }
-      if (!analyzed.name) analyzed.name = detailRes.title;
-      if (!analyzed.runbookName && detailRes.azureRunbookName) analyzed.runbookName = detailRes.azureRunbookName;
-      analyzed.psScriptBody = detailRes.scriptBody;
+      if (!analyzed.name) analyzed.name = title;
+      if (!analyzed.runbookName && azureRunbookName) analyzed.runbookName = azureRunbookName;
+      analyzed.psScriptBody = scriptBody;
       setPendingCatalogEntry(analyzed);
       setLeftMode("catalog");
       lsSet(IDE_LEFT_MODE_KEY, "catalog");
