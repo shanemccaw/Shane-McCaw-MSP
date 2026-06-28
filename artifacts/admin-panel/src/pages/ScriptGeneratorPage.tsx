@@ -3012,17 +3012,14 @@ export default function ScriptGeneratorPage() {
         azureRunbookName = detailRes.azureRunbookName;
       }
 
-      const analyzeRes = await fetch(
-        `${import.meta.env.BASE_URL}api/admin/scripts/analyze`.replace(/\/+/g, "/").replace(":/", "://"),
-        {
+      let analyzed: CatalogAnalyzeResult;
+      try {
+        analyzed = await apiFetch("/admin/scripts/analyze", token, {
           method: "POST",
-          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
           body: JSON.stringify({ psScriptBody: scriptBody }),
-        }
-      );
-      const analyzed = await analyzeRes.json() as CatalogAnalyzeResult & { error?: string };
-      if (!analyzeRes.ok) {
-        toast({ title: analyzed.error ?? "AI analysis failed", variant: "destructive" });
+        }) as CatalogAnalyzeResult;
+      } catch (e) {
+        toast({ title: e instanceof ApiError ? e.message : "AI analysis failed", variant: "destructive" });
         return;
       }
       if (!analyzed.name) analyzed.name = title;
