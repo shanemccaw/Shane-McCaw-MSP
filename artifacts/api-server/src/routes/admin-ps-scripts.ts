@@ -334,21 +334,31 @@ const GENERATE_FROM_SERVICE_SYSTEM = `You are an expert Microsoft 365 PowerShell
 
 You will receive a consulting service definition and its delivery workflow (phases + tasks).
 
-STEP 1 — CLASSIFY every task as one of:
-  AUTOMATABLE — executable as PowerShell using app-only auth (service principal / App Registration):
-    • Data queries / reporting (Graph API, Exchange cmdlets, SharePoint CSOM/PnP)
-    • Configuration changes (mailbox settings, Teams policies, SharePoint site provisioning, Intune profiles, Conditional Access, Sensitivity Labels, DLP rules, Retention policies, Defender settings)
-    • User/group/license management via Entra ID / Exchange
-    • Azure resource provisioning or querying
-  USER_ACCOUNT_REQUIRED — automatable as PowerShell but ONLY under a real licensed user account (delegated/interactive auth); cannot run as a service principal:
-    • Exchange Online cmdlets with no app-only equivalent (e.g. New-MigrationBatch, Set-MailboxAutoReplyConfiguration in some tenants, legacy EAC-only operations)
-    • Microsoft Graph scopes available only as Delegated (not Application), e.g. MailboxSettings.ReadWrite on certain tenants, Presence.Read
-    • Connect-ExchangeOnline without -AppId/-CertificateThumbprint (requires interactive or basic-auth login)
-    • Connect-PnPOnline -Interactive (SharePoint operations that require user context)
-    • Connect-MgGraph -Scopes (delegated consent flow)
-    • Teams cmdlets that require a signed-in user context
-    • Any operation that triggers MFA or Conditional Access policies blocking service principals
-  HUMAN_ONLY — requires a human by nature; cannot be scripted at all:
+STEP 1 — CLASSIFY every task as one of THREE categories:
+
+  AUTOMATABLE — executable via app-only auth (service principal / App Registration with client credentials):
+    • Entra ID / Azure AD: user/group/license management, Conditional Access policies, app registrations, directory queries
+    • Exchange Online (app-only Graph): mailbox property reads/writes that support Application permissions (Mail.ReadWrite, Calendars.ReadWrite, MailboxSettings.Read)
+    • SharePoint provisioning via PnP PowerShell with -ClientId/-ClientSecret (not -Interactive)
+    • Intune: device/policy management via Graph Application permissions
+    • Azure resources: provisioning, querying, RBAC via service principal
+    • Defender/Purview/Sensitivity Labels/DLP/Retention policies via Graph Application permissions
+    • Reporting and data export via Graph Application permissions
+
+  USER_ACCOUNT_REQUIRED — can be scripted in PowerShell but REQUIRES a real licensed user account (delegated/interactive auth). CANNOT run as a service principal or Azure Automation runbook. Use this category for:
+    • ALL mailbox migration tasks: New-MigrationBatch, Start-MigrationBatch, Get-MigrationBatch, Set-MigrationBatch, Remove-MigrationBatch, Get-MigrationStatistics — these cmdlets have NO app-only equivalent
+    • ALL Connect-MicrosoftTeams operations — the Teams PowerShell module requires delegated auth; it does not support service-principal-only connections for most administrative operations
+    • Connect-ExchangeOnline without -AppId/-CertificateThumbprint — any script using the EXO v2/v3 module interactively
+    • Connect-PnPOnline -Interactive — SharePoint/PnP operations that require user consent
+    • Connect-MgGraph -Scopes — any delegated Graph flow (Presence.Read, People.Read, Tasks.ReadWrite, Chat.ReadWrite, etc.)
+    • Send-MailMessage or sending email on behalf of a specific user when Delegated Mail.Send is required
+    • Add-MailboxPermission / Set-MailboxFolderPermission for user delegation scenarios
+    • Out-of-Office / automatic replies via Set-MailboxAutoReplyConfiguration (some tenants block app-only)
+    • Any Graph scope that lists as "Delegated only" with no Application equivalent in Microsoft docs
+    • Any operation requiring MFA or Conditional Access that blocks service principals
+    • RULE: If you are uncertain whether a cmdlet or Graph scope supports app-only auth, classify it USER_ACCOUNT_REQUIRED. It is always safer to require user auth than to generate a script that silently fails or requires permissions that must be specially granted.
+
+  HUMAN_ONLY — cannot be scripted at all; requires a human:
     • Client calls, kickoff meetings, status updates, emails, document review
     • Business decisions, approvals, sign-off, risk acceptance
     • Physical / in-person tasks, vendor negotiations
@@ -372,7 +382,7 @@ STEP 3 — Choose output shape based on task classification:
   - ANY task is USER_ACCOUNT_REQUIRED (even mixed with AUTOMATABLE) → type "manual": ONE consolidated script covering all scriptable tasks using interactive auth patterns; list HUMAN_ONLY tasks in humanOnlyTasks
   - ALL scriptable tasks are AUTOMATABLE (no USER_ACCOUNT_REQUIRED):
       • One automatable phase (or all tasks in a single phase) → type "single": one consolidated script
-      • Multiple distinct automatable phases → type "package": one focused module per phase + a Main.ps1 orchestrator
+      • Multiple distinct automatable phases → type "package": one standalone script per phase — NO Main.ps1, NO orchestrator, NO dot-sourcing
 
 Output format — STRICT RULES:
 1. Always start with a single \`\`\`json fence containing ONLY metadata (no PowerShell code inside the JSON).
@@ -432,8 +442,8 @@ Package shape (all AUTOMATABLE, multiple phases) — JSON envelope then one powe
   "type": "package",
   "title": "Package title (max 80 chars)",
   "modules": [
-    { "filename": "01-Phase.ps1", "description": "One-line description" },
-    { "filename": "Main.ps1", "description": "Orchestrator — dot-sources all modules and runs the workflow" }
+    { "filename": "01-Phase-One.ps1", "description": "One-line description of what this script does" },
+    { "filename": "02-Phase-Two.ps1", "description": "One-line description of what this script does" }
   ],
   "humanOnlyTasks": ["human task description 1"],
   "permissions": {
@@ -444,16 +454,19 @@ Package shape (all AUTOMATABLE, multiple phases) — JSON envelope then one powe
 }
 \`\`\`
 \`\`\`powershell
-# file: 01-Phase.ps1
-# Full script for this module
+# file: 01-Phase-One.ps1
+# Fully standalone script for Phase One — includes its own auth, param block, and error handling
 \`\`\`
 \`\`\`powershell
-# file: Main.ps1
-# Orchestrator script
+# file: 02-Phase-Two.ps1
+# Fully standalone script for Phase Two — includes its own auth, param block, and error handling
 \`\`\`
 
 Rules:
-- All filenames must end in .ps1; Main.ps1 must be the LAST module entry
+- All filenames must end in .ps1
+- NEVER create Main.ps1 or any orchestrator/runner script
+- NEVER use dot-sourcing (. .\other-script.ps1) or call another module from within a module
+- Every module MUST be completely standalone: its own [CmdletBinding()], param() block, auth connection, error handling, and output — runnable independently without any other file present
 - Do NOT put any script code inside the JSON object — all code goes in the \`\`\`powershell fences
 - For MANUAL scripts: the very first block after # file: MUST be this banner:
   # ===========================================================================
