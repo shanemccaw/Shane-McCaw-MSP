@@ -6,6 +6,7 @@ import CodeMirror from "@uiw/react-codemirror";
 import { oneDark } from "@codemirror/theme-one-dark";
 import { StreamLanguage } from "@codemirror/language";
 import { powerShell } from "@codemirror/legacy-modes/mode/powershell";
+import { powershellExtensions } from "@/lib/powershell-completions";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -735,9 +736,9 @@ function PackageDrawer({
                           height="100%"
                           minHeight="300px"
                           theme={oneDark}
-                          extensions={[StreamLanguage.define(powerShell)]}
+                          extensions={[StreamLanguage.define(powerShell), ...powershellExtensions]}
                           onChange={(val) => updateEditModule((activeModule as EditableModule)._key, { content: val })}
-                          basicSetup={{ lineNumbers: true, foldGutter: false, autocompletion: false }}
+                          basicSetup={{ lineNumbers: true, foldGutter: false, autocompletion: true }}
                           style={{ fontSize: "12px" }}
                         />
                       </div>
@@ -1667,14 +1668,14 @@ export default function ScriptGeneratorPage() {
                 <CodeMirror
                   value={scriptBody}
                   onChange={(val) => setScriptBody(val)}
-                  extensions={[StreamLanguage.define(powerShell)]}
+                  extensions={[StreamLanguage.define(powerShell), ...powershellExtensions]}
                   theme={oneDark}
                   basicSetup={{
                     lineNumbers: true,
                     highlightActiveLine: true,
                     highlightActiveLineGutter: true,
                     foldGutter: true,
-                    autocompletion: false,
+                    autocompletion: true,
                   }}
                   placeholder="# PowerShell script will appear here after generation, or paste/type directly…"
                   height="100%"
