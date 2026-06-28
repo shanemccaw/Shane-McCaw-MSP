@@ -292,9 +292,21 @@ export function isAzureConfigured(): boolean {
 export async function upsertRunbookContent(name: string, psCode: string): Promise<void> {
   const { client, cfg } = buildClient();
 
+  // Fetch the Automation Account to get its location — required by the ARM API
+  // when creating a new runbook resource for the first time (tolerated on updates).
+  const account = await client.automationAccount.get(cfg.resourceGroup, cfg.accountName);
+  const location = account.location;
+  if (!location) {
+    throw new Error(
+      `azure-automation: could not determine location for Automation Account "${cfg.accountName}". ` +
+      "The ARM API returned no location field.",
+    );
+  }
+
   // Step 1: ensure the runbook record exists (creates if new, updates metadata if existing)
   await client.runbook.createOrUpdate(cfg.resourceGroup, cfg.accountName, name, {
     name,
+    location,
     runbookType: "PowerShell",
     description: "Managed by Shane McCaw Consulting admin panel",
     logVerbose: false,
