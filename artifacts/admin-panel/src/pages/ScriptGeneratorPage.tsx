@@ -1694,6 +1694,17 @@ function GenerateFromServiceDialog({
   const [humanOnlyTasks, setHumanOnlyTasks] = useState<string[]>([]);
   const [humanOnlyExplanation, setHumanOnlyExplanation] = useState<string | null>(null);
 
+  type PackageResult = {
+    packageId: string;
+    title: string;
+    modules: ScriptModuleItem[];
+    permissions: PsScriptPermissions;
+  };
+  type PushModuleStatus = "idle" | "pushing" | "done" | "error";
+  const [packageResult, setPackageResult] = useState<PackageResult | null>(null);
+  const [pushStatuses, setPushStatuses] = useState<Record<string, PushModuleStatus>>({});
+  const [pushing, setPushing] = useState(false);
+
   useEffect(() => {
     apiFetch("/admin/services", token)
       .then((data) => setServices(data as ServiceListItem[]))
@@ -1721,6 +1732,59 @@ function GenerateFromServiceDialog({
       (selectedService.deliverables?.length ?? 0) > 0 ||
       (selectedService.inclusions?.length ?? 0) > 0 ||
       (selectedService.features?.length ?? 0) > 0);
+
+  const handlePushPackageToAzure = async () => {
+    if (!packageResult) return;
+    setPushing(true);
+    // Mark all as pushing
+    setPushStatuses(Object.fromEntries(packageResult.modules.map((m) => [m.filename, "pushing" as PushModuleStatus])));
+    try {
+      type PushApiResult = {
+        ok: boolean;
+        warning?: string;
+        results?: { filename: string; runbookName: string; ok: boolean; error?: string }[];
+      };
+      const data = (await apiFetch(
+        `/admin/ps-scripts/packages/${packageResult.packageId}/push-to-azure`,
+        token,
+        { method: "POST" },
+      )) as PushApiResult;
+
+      if (data.warning) {
+        toast({ title: "Azure push skipped", description: data.warning });
+        setPushStatuses(Object.fromEntries(packageResult.modules.map((m) => [m.filename, "idle" as PushModuleStatus])));
+        return;
+      }
+
+      const nextStatuses: Record<string, PushModuleStatus> = {};
+      for (const r of data.results ?? []) {
+        nextStatuses[r.filename] = r.ok ? "done" : "error";
+      }
+      setPushStatuses(nextStatuses);
+
+      const failed = (data.results ?? []).filter((r) => !r.ok);
+      if (failed.length === 0) {
+        toast({ title: "All modules pushed to Azure", description: `${packageResult.modules.length} runbook(s) created/updated` });
+      } else {
+        toast({
+          title: `${failed.length} module(s) failed to push`,
+          description: failed.map((f) => `${f.filename}: ${f.error ?? "unknown error"}`).join(" | "),
+          variant: "destructive",
+        });
+      }
+    } catch (e) {
+      toast({ title: "Push failed", description: e instanceof Error ? e.message : "Unknown error", variant: "destructive" });
+      setPushStatuses(Object.fromEntries(packageResult.modules.map((m) => [m.filename, "idle" as PushModuleStatus])));
+    } finally {
+      setPushing(false);
+    }
+  };
+
+  const handleDonePackage = () => {
+    if (!packageResult) return;
+    onPackageGenerated(packageResult.packageId, packageResult.title, packageResult.modules, packageResult.permissions);
+    onClose();
+  };
 
   const handleGenerate = async () => {
     if (!selectedServiceId) return;
@@ -1756,8 +1820,8 @@ function GenerateFromServiceDialog({
         toast({ title: result.title ?? "No automation possible", description: "See details below." });
       } else if (result.type === "package" && result.packageId && result.modules) {
         const pkgPerms: PsScriptPermissions = result.permissions ?? { appPermissions: [], delegatedPermissions: [], notes: "" };
-        onPackageGenerated(result.packageId, result.title, result.modules, pkgPerms);
-        onClose();
+        setPackageResult({ packageId: result.packageId, title: result.title, modules: result.modules, permissions: pkgPerms });
+        setPushStatuses(Object.fromEntries(result.modules.map((m) => [m.filename, "idle" as PushModuleStatus])));
       } else if (result.type === "single" && result.script) {
         onScriptGenerated(result.title, result.script, result.permissions);
         onClose();
@@ -1952,6 +2016,32 @@ function GenerateFromServiceDialog({
             </div>
           )}
 
+          {/* Package result panel — shown after successful package generation */}
+          {packageResult && (
+            <div className="bg-[#0D1117] border border-[#0078D4]/40 rounded-lg overflow-hidden">
+              <div className="flex items-center gap-2 px-3 py-2 border-b border-[#21262D] bg-[#0078D4]/10">
+                <svg className="w-3.5 h-3.5 text-[#58A6FF] flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8l1 12a2 2 0 002 2h8a2 2 0 002-2l1-12M10 12v4m4-4v4" /></svg>
+                <p className="text-[11px] font-semibold text-[#58A6FF] flex-1">Package generated — {packageResult.modules.length} module{packageResult.modules.length !== 1 ? "s" : ""}</p>
+                <span className="text-[10px] text-[#7D8590] truncate max-w-[180px]">{packageResult.title}</span>
+              </div>
+              <div className="divide-y divide-[#21262D]">
+                {packageResult.modules.map((m) => {
+                  const status = pushStatuses[m.filename] ?? "idle";
+                  return (
+                    <div key={m.filename} className="flex items-center gap-2.5 px-3 py-2">
+                      {status === "idle" && <div className="w-3.5 h-3.5 rounded-full border border-[#30363D] flex-shrink-0" />}
+                      {status === "pushing" && <div className="w-3.5 h-3.5 border-2 border-[#58A6FF]/40 border-t-[#58A6FF] rounded-full animate-spin flex-shrink-0" />}
+                      {status === "done" && <svg className="w-3.5 h-3.5 text-[#3FB950] flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>}
+                      {status === "error" && <svg className="w-3.5 h-3.5 text-red-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>}
+                      <span className="text-[11px] font-mono text-[#E6EDF3] flex-1">{m.filename}</span>
+                      {m.description && <span className="text-[10px] text-[#7D8590] truncate max-w-[200px]">{m.description}</span>}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
           {/* Human-only tasks result (shown after generation attempt if any) */}
           {humanOnlyTasks.length > 0 && (
             <div className="bg-[#0D1117] border border-[#21262D] rounded-lg px-3 py-2.5">
@@ -1973,31 +2063,66 @@ function GenerateFromServiceDialog({
         {/* Footer */}
         <div className="flex items-center justify-between px-5 py-3.5 border-t border-[#21262D] flex-shrink-0 gap-3">
           <p className="text-[10px] text-[#484F58] leading-relaxed">
-            AI classifies M365/Azure-automatable tasks and generates production-ready scripts. Human-only tasks are listed but not automated.
+            {packageResult
+              ? "Each module will be created/updated as its own Azure Automation runbook."
+              : "AI classifies M365/Azure-automatable tasks and generates production-ready scripts. Human-only tasks are listed but not automated."}
           </p>
           <div className="flex items-center gap-2 flex-shrink-0">
-            <button onClick={onClose} className="px-3 py-1.5 text-xs text-[#7D8590] hover:text-[#E6EDF3] rounded border border-[#30363D] hover:bg-[#21262D] transition-colors">
-              Cancel
-            </button>
-            <button
-              onClick={handleGenerate}
-              disabled={!selectedServiceId || !hasContext || generating}
-              className="flex items-center gap-1.5 px-4 py-1.5 text-xs font-semibold bg-teal-600/20 border border-teal-500/40 text-teal-400 hover:bg-teal-600/30 disabled:opacity-50 disabled:cursor-not-allowed rounded transition-colors"
-            >
-              {generating ? (
-                <>
-                  <div className="w-3.5 h-3.5 border-2 border-teal-400/40 border-t-teal-400 rounded-full animate-spin" />
-                  Generating…
-                </>
-              ) : (
-                <>
-                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
-                  </svg>
-                  Generate Scripts
-                </>
-              )}
-            </button>
+            {packageResult ? (
+              <>
+                <button
+                  onClick={handleDonePackage}
+                  disabled={pushing}
+                  className="px-3 py-1.5 text-xs text-[#7D8590] hover:text-[#E6EDF3] rounded border border-[#30363D] hover:bg-[#21262D] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                >
+                  Done
+                </button>
+                <button
+                  onClick={handlePushPackageToAzure}
+                  disabled={pushing}
+                  className="flex items-center gap-1.5 px-4 py-1.5 text-xs font-semibold bg-[#0078D4]/20 border border-[#0078D4]/40 text-[#58A6FF] hover:bg-[#0078D4]/30 disabled:opacity-50 disabled:cursor-not-allowed rounded transition-colors"
+                >
+                  {pushing ? (
+                    <>
+                      <div className="w-3.5 h-3.5 border-2 border-[#58A6FF]/40 border-t-[#58A6FF] rounded-full animate-spin" />
+                      Pushing…
+                    </>
+                  ) : (
+                    <>
+                      <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                      </svg>
+                      Push to Azure
+                    </>
+                  )}
+                </button>
+              </>
+            ) : (
+              <>
+                <button onClick={onClose} className="px-3 py-1.5 text-xs text-[#7D8590] hover:text-[#E6EDF3] rounded border border-[#30363D] hover:bg-[#21262D] transition-colors">
+                  Cancel
+                </button>
+                <button
+                  onClick={handleGenerate}
+                  disabled={!selectedServiceId || !hasContext || generating}
+                  className="flex items-center gap-1.5 px-4 py-1.5 text-xs font-semibold bg-teal-600/20 border border-teal-500/40 text-teal-400 hover:bg-teal-600/30 disabled:opacity-50 disabled:cursor-not-allowed rounded transition-colors"
+                >
+                  {generating ? (
+                    <>
+                      <div className="w-3.5 h-3.5 border-2 border-teal-400/40 border-t-teal-400 rounded-full animate-spin" />
+                      Generating…
+                    </>
+                  ) : (
+                    <>
+                      <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                      </svg>
+                      Generate Scripts
+                    </>
+                  )}
+                </button>
+              </>
+            )}
           </div>
         </div>
       </div>

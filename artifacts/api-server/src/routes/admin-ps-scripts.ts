@@ -1015,6 +1015,71 @@ router.post("/admin/ps-scripts/:id/push-to-azure", requireAdmin, async (req: Req
   }
 });
 
+// ─── POST /api/admin/ps-scripts/packages/:packageId/push-to-azure ────────────
+
+router.post("/admin/ps-scripts/packages/:packageId/push-to-azure", requireAdmin, async (req: Request, res: Response) => {
+  const packageId = String(req.params["packageId"] ?? "");
+  if (!UUID_RE.test(packageId)) { res.status(400).json({ error: "Invalid packageId" }); return; }
+
+  if (!isAzureConfigured()) {
+    res.json({ ok: false, warning: "Azure Automation is not configured on this server — push skipped", results: [] });
+    return;
+  }
+
+  try {
+    const mods = await db
+      .select()
+      .from(scriptModulesTable)
+      .where(eq(scriptModulesTable.packageId, packageId))
+      .orderBy(asc(scriptModulesTable.sortOrder));
+
+    if (mods.length === 0) {
+      res.status(404).json({ error: "No modules found for this package" });
+      return;
+    }
+
+    function filenameToRunbookName(filename: string): string {
+      // Strip .ps1 extension then sanitize like titleToRunbookName
+      return filename
+        .replace(/\.ps1$/i, "")
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-+|-+$/g, "")
+        .slice(0, 63) || "script";
+    }
+
+    type ModuleResult = { filename: string; runbookName: string; ok: boolean; error?: string };
+    const results: ModuleResult[] = [];
+
+    for (const mod of mods) {
+      const filename = mod.filename ?? "module.ps1";
+      const content = mod.content?.trim() ?? "";
+      const runbookName = filenameToRunbookName(filename);
+
+      if (!content) {
+        results.push({ filename, runbookName, ok: false, error: "Module has no content" });
+        continue;
+      }
+
+      try {
+        await pushScriptToAzure(runbookName, content);
+        results.push({ filename, runbookName, ok: true });
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : "Push failed";
+        results.push({ filename, runbookName, ok: false, error: msg });
+      }
+    }
+
+    const allOk = results.every((r) => r.ok);
+    logger.info({ packageId, results }, "admin-ps-scripts: package push-to-azure complete");
+    res.json({ ok: allOk, results });
+  } catch (err) {
+    logger.error({ err, packageId }, "admin-ps-scripts: package push-to-azure failed");
+    const msg = err instanceof Error ? err.message : "Push to Azure failed";
+    res.status(500).json({ error: msg });
+  }
+});
+
 // ─── DELETE /api/admin/ps-scripts/:id ────────────────────────────────────────
 
 router.delete("/admin/ps-scripts/:id", requireAdmin, async (req: Request, res: Response) => {
