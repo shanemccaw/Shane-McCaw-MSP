@@ -891,6 +891,7 @@ function SortableTaskRow({
   checklists,
   artifactSets,
   deliverableSets,
+  publishedScripts,
 }: {
   task: StepTask;
   onEdit: (t: StepTask) => void;
@@ -899,6 +900,7 @@ function SortableTaskRow({
   checklists: AssetItem[];
   artifactSets: AssetItem[];
   deliverableSets: AssetItem[];
+  publishedScripts: PublishedScript[];
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: task.id });
 
@@ -973,14 +975,17 @@ function SortableTaskRow({
                 👤 Customer Run
               </span>
             )}
-            {task.runbookId && (
-              <span className="text-[9px] bg-blue-900/20 text-[#0078D4] border border-[#0078D4]/30 px-1.5 py-0.5 rounded font-semibold flex items-center gap-0.5">
-                <svg className="w-2 h-2 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
-                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clipRule="evenodd" />
-                </svg>
-                Runbook Linked
-              </span>
-            )}
+            {task.runbookId && (() => {
+              const scriptName = publishedScripts.find(s => s.id === task.runbookId)?.title ?? "Runbook";
+              return (
+                <span className="text-[9px] bg-blue-900/20 text-[#0078D4] border border-[#0078D4]/30 px-1.5 py-0.5 rounded font-semibold flex items-center gap-0.5" title={scriptName}>
+                  <svg className="w-2 h-2 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clipRule="evenodd" />
+                  </svg>
+                  {scriptName.length > 20 ? scriptName.slice(0, 20) + "…" : scriptName}
+                </span>
+              );
+            })()}
             {task.instructionSetId && (() => {
               const name = instructionSets.find(a => a.id === task.instructionSetId)?.title ?? `#${task.instructionSetId}`;
               return (
@@ -2577,6 +2582,7 @@ export default function WorkflowsPage() {
                                     checklists={checklists}
                                     artifactSets={artifactSets}
                                     deliverableSets={deliverableSets}
+                                    publishedScripts={publishedScripts}
                                   />
                                 ))}
                               </div>

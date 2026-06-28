@@ -22,14 +22,16 @@ interface Props {
   scriptTitle: string;
   azureRunbookName?: string | null;
   onClose: () => void;
+  initialClientId?: number | null;
+  kanbanTaskId?: number | null;
 }
 
-export default function RunLibraryScriptDialog({ scriptId, moduleId, scriptTitle, azureRunbookName, onClose }: Props) {
+export default function RunLibraryScriptDialog({ scriptId, moduleId, scriptTitle, azureRunbookName, onClose, initialClientId, kanbanTaskId }: Props) {
   const { fetchWithAuth } = useAuth();
   const { toast } = useToast();
 
   const [clients, setClients] = useState<ClientEntry[]>([]);
-  const [selectedClientId, setSelectedClientId] = useState<number | null>(null);
+  const [selectedClientId, setSelectedClientId] = useState<number | null>(initialClientId ?? null);
   const [loadingClients, setLoadingClients] = useState(true);
   const [credentialId, setCredentialId] = useState<number | null>(null);
 
@@ -46,13 +48,17 @@ export default function RunLibraryScriptDialog({ scriptId, moduleId, scriptTitle
     fetchWithAuth("/api/admin/clients/with-azure-credentials")
       .then(r => r.json())
       .then((data: unknown) => {
-        setClients(Array.isArray(data) ? (data as ClientEntry[]) : []);
+        const list = Array.isArray(data) ? (data as ClientEntry[]) : [];
+        setClients(list);
+        if (initialClientId != null && list.some(c => c.id === initialClientId)) {
+          setSelectedClientId(initialClientId);
+        }
       })
       .catch(() => {
         toast({ title: "Failed to load clients", variant: "destructive" });
       })
       .finally(() => setLoadingClients(false));
-  }, [fetchWithAuth, toast]);
+  }, [fetchWithAuth, toast, initialClientId]);
 
   // Auto-select credential when client changes
   useEffect(() => {
@@ -76,6 +82,21 @@ export default function RunLibraryScriptDialog({ scriptId, moduleId, scriptTitle
 
   useEffect(() => () => stopPolling(), [stopPolling]);
 
+  const patchKanbanTask = useCallback(async (status: "completed" | "failed", outputLines: string[]) => {
+    if (!kanbanTaskId) return;
+    const summary = outputLines.slice(-10).join("\n");
+    const completionNotes = status === "completed"
+      ? `Script '${scriptTitle}' completed successfully.\n\nOutput:\n${summary}`
+      : `Script '${scriptTitle}' failed.\n\nOutput:\n${summary}`;
+    try {
+      await fetchWithAuth(`/api/admin/kanban-tasks/${kanbanTaskId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ completionNotes }),
+      });
+    } catch { /* silent */ }
+  }, [kanbanTaskId, scriptTitle, fetchWithAuth]);
+
   const startPolling = useCallback((ref: string) => {
     stopPolling();
     pollRef.current = setInterval(async () => {
@@ -87,13 +108,14 @@ export default function RunLibraryScriptDialog({ scriptId, moduleId, scriptTitle
         if (data.status !== "running") {
           stopPolling();
           setRunning(false);
+          void patchKanbanTask(data.status, data.outputLines);
         }
       } catch {
         stopPolling();
         setRunning(false);
       }
     }, 4000);
-  }, [fetchWithAuth, stopPolling]);
+  }, [fetchWithAuth, stopPolling, patchKanbanTask]);
 
   const handleRun = async () => {
     if (!moduleId && !azureRunbookName) {

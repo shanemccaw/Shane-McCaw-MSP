@@ -42,6 +42,7 @@ interface Props {
   mode?: "client" | "admin";
   fetchWithAuth?: (url: string, options?: RequestInit) => Promise<Response>;
   onUpdate?: (updated: KanbanCardModalTask) => void;
+  clientId?: number | null;
 }
 
 const COLUMN_CONFIG: Record<string, { label: string; cls: string }> = {
@@ -368,7 +369,7 @@ export function KanbanCardModal(props: Props) {
   return <GenericKanbanCardModal {...props} />;
 }
 
-function GenericKanbanCardModal({ task, stepTitle, open, onClose, mode = "client", fetchWithAuth, onUpdate }: Props) {
+function GenericKanbanCardModal({ task, stepTitle, open, onClose, mode = "client", fetchWithAuth, onUpdate, clientId }: Props) {
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState<EditForm>({ title: "", description: "", priority: "", assignedTo: "", dueDate: "" });
@@ -834,6 +835,8 @@ function GenericKanbanCardModal({ task, stepTitle, open, onClose, mode = "client
         scriptId={linkedRunbook.scriptId}
         scriptTitle={linkedRunbook.scriptTitle}
         azureRunbookName={linkedRunbook.azureRunbookName}
+        initialClientId={clientId}
+        kanbanTaskId={localTask.id}
         onClose={() => setRunDialogOpen(false)}
       />
     )}

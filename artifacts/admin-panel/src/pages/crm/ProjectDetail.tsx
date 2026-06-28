@@ -179,7 +179,7 @@ function AssigneeAvatar({ name }: { name: string }) {
 }
 
 function DraggableCard({
-  task, onDelete, projectId, steps, onQuickMove, onCardClick, onReply,
+  task, onDelete, projectId, steps, onQuickMove, onCardClick, onReply, clientUserId,
 }: {
   task: KanbanTask;
   onDelete: (taskId: number, projectId: number) => void;
@@ -188,6 +188,7 @@ function DraggableCard({
   onQuickMove: (task: KanbanTask, targetColumn: ColumnKey) => void;
   onCardClick: (task: KanbanTask) => void;
   onReply: (reportId: number, reply: string) => Promise<void>;
+  clientUserId?: number | null;
 }) {
   const [expanded, setExpanded] = useState(false);
   const [customerViewOpen, setCustomerViewOpen] = useState(false);
@@ -533,6 +534,8 @@ function DraggableCard({
           scriptId={linkedRunbook.scriptId}
           scriptTitle={linkedRunbook.scriptTitle}
           azureRunbookName={linkedRunbook.azureRunbookName}
+          initialClientId={clientUserId}
+          kanbanTaskId={task.id}
           onClose={() => setRunDialogOpen(false)}
         />
       )}
@@ -551,7 +554,7 @@ function CardOverlay({ task }: { task: KanbanTask }) {
 }
 
 function DroppableColumn({
-  col, tasks, onDelete, projectId, isOver, steps, onQuickMove, onCardClick, onReply,
+  col, tasks, onDelete, projectId, isOver, steps, onQuickMove, onCardClick, onReply, clientUserId,
 }: {
   col: { key: string; label: string };
   tasks: KanbanTask[];
@@ -562,6 +565,7 @@ function DroppableColumn({
   onQuickMove: (task: KanbanTask, targetColumn: ColumnKey) => void;
   onCardClick: (task: KanbanTask) => void;
   onReply: (reportId: number, reply: string) => Promise<void>;
+  clientUserId?: number | null;
 }) {
   const { setNodeRef } = useDroppable({ id: col.key });
 
@@ -596,6 +600,7 @@ function DroppableColumn({
             onQuickMove={onQuickMove}
             onCardClick={onCardClick}
             onReply={onReply}
+            clientUserId={clientUserId}
           />
         ))}
       </div>
@@ -606,7 +611,7 @@ function DroppableColumn({
 type PendingMove = { task: KanbanTask; targetColumn: ColumnKey };
 
 function KanbanBoard({
-  projectId, tasks, steps, onTasksChange, onDelete, fetchWithAuth, toast, onCardClick, onMutation,
+  projectId, tasks, steps, onTasksChange, onDelete, fetchWithAuth, toast, onCardClick, onMutation, clientUserId,
 }: {
   projectId: number;
   tasks: KanbanTask[];
@@ -617,6 +622,7 @@ function KanbanBoard({
   toast: ReturnType<typeof useToast>["toast"];
   onCardClick: (task: KanbanTask) => void;
   onMutation: () => void;
+  clientUserId?: number | null;
 })  {
   const [activeTask, setActiveTask] = useState<KanbanTask | null>(null);
   const [overColumnKey, setOverColumnKey] = useState<string | null>(null);
@@ -749,6 +755,7 @@ function KanbanBoard({
               onQuickMove={interceptMove}
               onCardClick={onCardClick}
               onReply={handleReply}
+              clientUserId={clientUserId}
             />
           ))}
         </div>
@@ -2138,6 +2145,7 @@ export default function ProjectDetailPage() {
           toast={toast}
           onCardClick={handleCardClick}
           onMutation={loadAuditLogs}
+          clientUserId={project?.clientUserId}
         />
       </section>
 
@@ -3029,6 +3037,7 @@ export default function ProjectDetailPage() {
         onClose={() => setSelectedTask(null)}
         mode="admin"
         fetchWithAuth={fetchWithAuth}
+        clientId={project?.clientUserId}
         onUpdate={updated => {
           setSelectedTask(prev => prev ? { ...prev, ...updated } : prev);
           setTasks(prev => prev.map(t =>
