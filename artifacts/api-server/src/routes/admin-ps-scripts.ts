@@ -15,7 +15,7 @@ import {
 } from "@workspace/db";
 import { eq, desc, asc, inArray } from "drizzle-orm";
 import { logger } from "../lib/logger.ts";
-import { hasPsKeywords } from "../lib/ps-guard.ts";
+import { hasPsKeywords, hasPsKeywordsFullText } from "../lib/ps-guard.ts";
 import { isAzureConfigured, pushScriptToAzure } from "../lib/azure-automation.ts";
 
 // ─── Runbook name helpers ─────────────────────────────────────────────────────
@@ -532,7 +532,7 @@ Classify each task and generate PowerShell automation scripts for all M365/Azure
         return;
       }
 
-      if (validModules.some((m) => !hasPsKeywords(m.content))) {
+      if (validModules.some((m) => !hasPsKeywordsFullText(m.content))) {
         logger.error(
           { moduleCount: validModules.length },
           "generate-from-service: one or more modules contain no PS keywords — refusing to send",
@@ -571,7 +571,7 @@ Classify each task and generate PowerShell automation scripts for all M365/Azure
     const scriptBody =
       typeof parsed["scriptBody"] === "string" ? parsed["scriptBody"].trim() : "";
 
-    if (scriptBody.length < 20 || !hasPsKeywords(scriptBody)) {
+    if (scriptBody.length < 20 || !hasPsKeywordsFullText(scriptBody)) {
       logger.error(
         { scriptBodyPrefix: scriptBody.slice(0, 300) },
         "generate-from-service: scriptBody is empty or contains no PS keywords",
