@@ -413,6 +413,13 @@ function ScriptDrawer({
 
 // ─── Package Drawer ───────────────────────────────────────────────────────────
 
+interface EditableModule extends ScriptModuleItem {
+  _key: string;
+}
+
+let _editKeyCounter = 0;
+function makeEditKey() { return `emod-${++_editKeyCounter}`; }
+
 function PackageDrawer({
   pkg,
   token,
@@ -430,6 +437,130 @@ function PackageDrawer({
   const [deleting, setDeleting] = useState(false);
   const [activeModuleIdx, setActiveModuleIdx] = useState(0);
 
+  // ── Edit mode state ──────────────────────────────────────────────────────
+  const [editMode, setEditMode] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [editTitle, setEditTitle] = useState("");
+  const [editCategory, setEditCategory] = useState("");
+  const [editModules, setEditModules] = useState<EditableModule[]>([]);
+
+  const enterEdit = () => {
+    setEditTitle(pkg.title);
+    setEditCategory(pkg.category);
+    setEditModules(pkg.modules.map((m) => ({ ...m, _key: makeEditKey() })));
+    setActiveModuleIdx(0);
+    setEditMode(true);
+  };
+
+  const cancelEdit = () => {
+    setEditMode(false);
+    setActiveModuleIdx(0);
+  };
+
+  const handleSave = async () => {
+    if (!editTitle.trim()) {
+      toast({ title: "Package title is required", variant: "destructive" });
+      return;
+    }
+    setSaving(true);
+    try {
+      // 1. Update package metadata
+      await apiFetch(`/admin/ps-scripts/packages/${pkg.id}`, token, {
+        method: "PATCH",
+        body: JSON.stringify({ title: editTitle.trim(), category: editCategory }),
+      });
+
+      // 2. Delete modules that were removed
+      const removedIds = pkg.modules
+        .filter((orig) => orig.id && !editModules.some((em) => em.id === orig.id))
+        .map((orig) => orig.id!);
+      for (const mid of removedIds) {
+        await apiFetch(`/admin/ps-scripts/modules/${mid}`, token, { method: "DELETE" });
+      }
+
+      // 3. Update existing modules / add new ones
+      const savedModules: ScriptModuleItem[] = [];
+      for (let i = 0; i < editModules.length; i++) {
+        const em = editModules[i]!;
+        if (em.id) {
+          await apiFetch(`/admin/ps-scripts/modules/${em.id}`, token, {
+            method: "PUT",
+            body: JSON.stringify({
+              filename: em.filename,
+              description: em.description,
+              content: em.content,
+              sortOrder: i,
+            }),
+          });
+          savedModules.push({ id: em.id, filename: em.filename, description: em.description, content: em.content });
+        } else {
+          const created = await apiFetch(`/admin/ps-scripts/packages/${pkg.id}/modules`, token, {
+            method: "POST",
+            body: JSON.stringify({
+              filename: em.filename,
+              description: em.description,
+              content: em.content,
+              sortOrder: i,
+            }),
+          }) as ScriptModuleItem;
+          savedModules.push(created);
+        }
+      }
+
+      // 4. Notify parent
+      const updated: ScriptPackageListItem = {
+        ...pkg,
+        title: editTitle.trim(),
+        category: editCategory,
+        modules: savedModules,
+      };
+      onUpdated(updated);
+      toast({ title: "Package saved" });
+      setEditMode(false);
+    } catch (err) {
+      toast({ title: `Save failed: ${err instanceof Error ? err.message : "Unknown error"}`, variant: "destructive" });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // ── Module edit helpers ──────────────────────────────────────────────────
+  const updateEditModule = (key: string, patch: Partial<EditableModule>) => {
+    setEditModules((prev) => prev.map((m) => m._key === key ? { ...m, ...patch } : m));
+  };
+
+  const moveModule = (idx: number, dir: -1 | 1) => {
+    const next = idx + dir;
+    if (next < 0 || next >= editModules.length) return;
+    setEditModules((prev) => {
+      const arr = [...prev];
+      [arr[idx], arr[next]] = [arr[next]!, arr[idx]!];
+      return arr;
+    });
+    setActiveModuleIdx(next);
+  };
+
+  const addModule = () => {
+    const newMod: EditableModule = {
+      _key: makeEditKey(),
+      filename: `Module${editModules.length + 1}.ps1`,
+      description: null,
+      content: "",
+    };
+    setEditModules((prev) => [...prev, newMod]);
+    setActiveModuleIdx(editModules.length);
+  };
+
+  const removeModule = (idx: number) => {
+    if (editModules.length === 1) {
+      toast({ title: "A package must have at least one module", variant: "destructive" });
+      return;
+    }
+    setEditModules((prev) => prev.filter((_, i) => i !== idx));
+    setActiveModuleIdx((prev) => Math.min(prev, editModules.length - 2));
+  };
+
+  // ── Delete package ───────────────────────────────────────────────────────
   const handleDelete = async () => {
     if (!confirm(`Delete package "${pkg.title}" and all its modules? This cannot be undone.`)) return;
     setDeleting(true);
@@ -443,53 +574,188 @@ function PackageDrawer({
     }
   };
 
-  const activeModule = pkg.modules[activeModuleIdx];
+  // ── Read mode ────────────────────────────────────────────────────────────
+  const activeModule = editMode ? editModules[activeModuleIdx] : pkg.modules[activeModuleIdx];
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-end bg-black/50 backdrop-blur-sm" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-end bg-black/50 backdrop-blur-sm" onClick={editMode ? undefined : onClose}>
       <div className="bg-[#161B22] border border-[#30363D] h-full w-full sm:max-w-2xl flex flex-col shadow-2xl" onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-center justify-between px-5 py-4 border-b border-[#30363D] flex-shrink-0">
-          <div className="flex items-center gap-2">
-            <PackageBadge />
-            <CategoryBadge category={pkg.category} />
-          </div>
-          <div className="flex items-center gap-2 ml-auto">
-            <button onClick={() => downloadAllModulesAsZip(pkg.modules, pkg.title)} className="flex items-center gap-1.5 text-xs font-medium px-2.5 py-1.5 rounded-lg border border-purple-500/30 bg-purple-500/10 text-purple-400 hover:bg-purple-500/20 transition-colors">
-              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
-              Download .zip
-            </button>
-            <button onClick={handleDelete} disabled={deleting} className="p-1.5 text-[#7D8590] hover:text-red-400 hover:bg-red-400/10 rounded-lg transition-colors">
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
-            </button>
-            <button onClick={onClose} className="p-1.5 text-[#7D8590] hover:text-[#E6EDF3] rounded-lg transition-colors">
-              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
-            </button>
-          </div>
-        </div>
-        <div className="flex-1 overflow-y-auto p-5 space-y-4">
-          <div>
-            <h2 className="text-lg font-bold text-[#E6EDF3]">{pkg.title}</h2>
-            <p className="text-xs text-[#484F58] mt-1">{pkg.modules.length} modules · Saved {formatDate(pkg.createdAt)}</p>
-          </div>
-          {pkg.modules.length > 1 && (
-            <div className="flex flex-wrap gap-1 bg-[#1C2128] border border-[#30363D] rounded-xl p-1">
-              {pkg.modules.map((m, i) => (
-                <button key={i} onClick={() => setActiveModuleIdx(i)} className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all truncate max-w-[180px] ${activeModuleIdx === i ? "bg-purple-500/15 text-purple-400 border border-purple-500/25" : "text-[#7D8590] hover:text-[#E6EDF3] border border-transparent"}`} title={m.filename}>
-                  {m.filename}
-                </button>
-              ))}
+
+        {/* ── Header ── */}
+        <div className="flex items-center justify-between px-5 py-4 border-b border-[#30363D] flex-shrink-0 gap-3">
+          {editMode ? (
+            <div className="flex-1 flex flex-col gap-2 min-w-0">
+              <input
+                className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-1.5 text-sm font-semibold text-[#E6EDF3] focus:outline-none focus:border-purple-500/60 placeholder-[#484F58]"
+                value={editTitle}
+                onChange={(e) => setEditTitle(e.target.value)}
+                placeholder="Package title"
+              />
+              <select
+                className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-1.5 text-xs text-[#C9D1D9] focus:outline-none focus:border-purple-500/60"
+                value={editCategory}
+                onChange={(e) => setEditCategory(e.target.value)}
+              >
+                {CATEGORIES.map((c) => (
+                  <option key={c.value} value={c.value}>{c.label}</option>
+                ))}
+              </select>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2">
+              <PackageBadge />
+              <CategoryBadge category={pkg.category} />
             </div>
           )}
-          {activeModule && (
-            <div className="bg-[#161B22] border border-[#30363D] rounded-xl overflow-hidden">
-              <div className="flex items-center justify-between px-4 py-2.5 bg-[#1C2128] border-b border-[#30363D]">
-                <span className="text-xs font-mono text-[#7D8590]">{activeModule.filename}</span>
-                <div className="flex items-center gap-1.5">
-                  <button onClick={() => { copyToClipboard(activeModule.content); }} className="flex items-center gap-1.5 text-xs px-2.5 py-1 rounded border border-[#30363D] text-[#8B949E] hover:text-[#E6EDF3] hover:bg-[#21262D] transition-colors">Copy</button>
-                  <button onClick={() => downloadFile(activeModule.content, activeModule.filename)} className="flex items-center gap-1.5 text-xs px-2.5 py-1 rounded border border-[#30363D] text-[#8B949E] hover:text-[#E6EDF3] hover:bg-[#21262D] transition-colors">Download</button>
-                </div>
+          <div className="flex items-center gap-2 flex-shrink-0">
+            {editMode ? (
+              <>
+                <button
+                  onClick={handleSave}
+                  disabled={saving}
+                  className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg bg-purple-500/15 border border-purple-500/30 text-purple-400 hover:bg-purple-500/25 transition-colors disabled:opacity-50"
+                >
+                  {saving ? (
+                    <svg className="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M4 12a8 8 0 018-8v8H4z" /></svg>
+                  ) : (
+                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
+                  )}
+                  {saving ? "Saving…" : "Save"}
+                </button>
+                <button
+                  onClick={cancelEdit}
+                  disabled={saving}
+                  className="text-xs font-medium px-3 py-1.5 rounded-lg border border-[#30363D] text-[#7D8590] hover:text-[#E6EDF3] hover:bg-[#21262D] transition-colors disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+              </>
+            ) : (
+              <>
+                <button
+                  onClick={enterEdit}
+                  className="flex items-center gap-1.5 text-xs font-medium px-2.5 py-1.5 rounded-lg border border-[#30363D] text-[#7D8590] hover:text-[#E6EDF3] hover:bg-[#21262D] transition-colors"
+                >
+                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
+                  Edit
+                </button>
+                <button onClick={() => downloadAllModulesAsZip(pkg.modules, pkg.title)} className="flex items-center gap-1.5 text-xs font-medium px-2.5 py-1.5 rounded-lg border border-purple-500/30 bg-purple-500/10 text-purple-400 hover:bg-purple-500/20 transition-colors">
+                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
+                  Download .zip
+                </button>
+                <button onClick={handleDelete} disabled={deleting} className="p-1.5 text-[#7D8590] hover:text-red-400 hover:bg-red-400/10 rounded-lg transition-colors">
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                </button>
+                <button onClick={onClose} className="p-1.5 text-[#7D8590] hover:text-[#E6EDF3] rounded-lg transition-colors">
+                  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+
+        {/* ── Body ── */}
+        <div className="flex-1 overflow-y-auto p-5 space-y-4">
+          {!editMode && (
+            <div>
+              <h2 className="text-lg font-bold text-[#E6EDF3]">{pkg.title}</h2>
+              <p className="text-xs text-[#484F58] mt-1">{pkg.modules.length} modules · Saved {formatDate(pkg.createdAt)}</p>
+            </div>
+          )}
+
+          {/* Module tabs */}
+          {(editMode ? editModules.length > 0 : pkg.modules.length > 0) && (
+            <div className="bg-[#1C2128] border border-[#30363D] rounded-xl overflow-hidden">
+              {/* Tab list */}
+              <div className="flex flex-wrap gap-1 p-1 border-b border-[#30363D]">
+                {(editMode ? editModules : pkg.modules).map((m, i) => (
+                  <button
+                    key={editMode ? (m as EditableModule)._key : i}
+                    onClick={() => setActiveModuleIdx(i)}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all truncate max-w-[160px] ${activeModuleIdx === i ? "bg-purple-500/15 text-purple-400 border border-purple-500/25" : "text-[#7D8590] hover:text-[#E6EDF3] border border-transparent"}`}
+                    title={m.filename}
+                  >
+                    {m.filename}
+                  </button>
+                ))}
+                {editMode && (
+                  <button
+                    onClick={addModule}
+                    className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium border border-dashed border-[#30363D] text-[#484F58] hover:text-[#7D8590] hover:border-[#484F58] transition-colors"
+                  >
+                    <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" /></svg>
+                    Add module
+                  </button>
+                )}
               </div>
-              <pre className="bg-[#0D1117] text-[#C9D1D9] font-mono text-xs leading-relaxed p-4 overflow-x-auto whitespace-pre" style={{ fontFamily: "'Cascadia Code', 'Fira Code', 'Consolas', monospace" }}>{activeModule.content}</pre>
+
+              {/* Active module view / edit */}
+              {activeModule && (
+                <div>
+                  {editMode ? (
+                    <div className="flex flex-col gap-0">
+                      {/* Filename + reorder/delete controls */}
+                      <div className="flex items-center gap-2 px-3 py-2 bg-[#161B22] border-b border-[#30363D]">
+                        <input
+                          className="flex-1 bg-[#0D1117] border border-[#30363D] rounded px-2.5 py-1 text-xs font-mono text-[#C9D1D9] focus:outline-none focus:border-purple-500/60"
+                          value={activeModule.filename}
+                          onChange={(e) => updateEditModule((activeModule as EditableModule)._key, { filename: e.target.value })}
+                          placeholder="module-name.ps1"
+                        />
+                        <div className="flex items-center gap-1">
+                          <button
+                            onClick={() => moveModule(activeModuleIdx, -1)}
+                            disabled={activeModuleIdx === 0}
+                            title="Move up"
+                            className="p-1 rounded text-[#484F58] hover:text-[#8B949E] hover:bg-[#21262D] disabled:opacity-25 transition-colors"
+                          >
+                            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M5 15l7-7 7 7" /></svg>
+                          </button>
+                          <button
+                            onClick={() => moveModule(activeModuleIdx, 1)}
+                            disabled={activeModuleIdx === editModules.length - 1}
+                            title="Move down"
+                            className="p-1 rounded text-[#484F58] hover:text-[#8B949E] hover:bg-[#21262D] disabled:opacity-25 transition-colors"
+                          >
+                            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" /></svg>
+                          </button>
+                          <button
+                            onClick={() => removeModule(activeModuleIdx)}
+                            title="Delete module"
+                            className="p-1 rounded text-[#484F58] hover:text-red-400 hover:bg-red-400/10 transition-colors"
+                          >
+                            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                          </button>
+                        </div>
+                      </div>
+                      {/* Content editor */}
+                      <div className="min-h-[300px] max-h-[520px] overflow-auto">
+                        <CodeMirror
+                          value={activeModule.content}
+                          height="100%"
+                          minHeight="300px"
+                          theme={oneDark}
+                          extensions={[StreamLanguage.define(powerShell)]}
+                          onChange={(val) => updateEditModule((activeModule as EditableModule)._key, { content: val })}
+                          basicSetup={{ lineNumbers: true, foldGutter: false, autocompletion: false }}
+                          style={{ fontSize: "12px" }}
+                        />
+                      </div>
+                    </div>
+                  ) : (
+                    <div>
+                      <div className="flex items-center justify-between px-4 py-2.5 bg-[#161B22]">
+                        <span className="text-xs font-mono text-[#7D8590]">{activeModule.filename}</span>
+                        <div className="flex items-center gap-1.5">
+                          <button onClick={() => copyToClipboard(activeModule.content)} className="flex items-center gap-1.5 text-xs px-2.5 py-1 rounded border border-[#30363D] text-[#8B949E] hover:text-[#E6EDF3] hover:bg-[#21262D] transition-colors">Copy</button>
+                          <button onClick={() => downloadFile(activeModule.content, activeModule.filename)} className="flex items-center gap-1.5 text-xs px-2.5 py-1 rounded border border-[#30363D] text-[#8B949E] hover:text-[#E6EDF3] hover:bg-[#21262D] transition-colors">Download</button>
+                        </div>
+                      </div>
+                      <pre className="bg-[#0D1117] text-[#C9D1D9] font-mono text-xs leading-relaxed p-4 overflow-x-auto whitespace-pre" style={{ fontFamily: "'Cascadia Code', 'Fira Code', 'Consolas', monospace" }}>{activeModule.content}</pre>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           )}
         </div>
