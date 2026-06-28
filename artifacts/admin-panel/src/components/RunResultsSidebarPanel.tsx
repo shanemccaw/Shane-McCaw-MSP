@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, Fragment } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
-import { ClipboardList, ChevronDown, ChevronUp, RefreshCw, CheckCircle, Zap } from "lucide-react";
+import { ClipboardList, ChevronDown, ChevronUp, RefreshCw, CheckCircle, Zap, Download, Upload, X } from "lucide-react";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -55,9 +55,114 @@ function StatusBadge({ status }: { status: string }) {
   );
 }
 
+// ── Awaiting Upload Panel ─────────────────────────────────────────────────────
+
+function AwaitingUploadPanel({ result, onUploaded }: { result: RunResult; onUploaded: (id: number) => void }) {
+  const { fetchWithAuth } = useAuth();
+  const { toast } = useToast();
+  const [downloading, setDownloading] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [showUploadForm, setShowUploadForm] = useState(false);
+  const [jsonText, setJsonText] = useState("");
+
+  const handleDownload = async () => {
+    setDownloading(true);
+    try {
+      const res = await fetchWithAuth(`/api/admin/manual-scripts/${result.id}/download`);
+      if (!res.ok) { toast({ title: "Failed to download script", variant: "destructive" }); return; }
+      const blob = await res.blob();
+      const disposition = res.headers.get("Content-Disposition") ?? "";
+      const match = /filename="([^"]+)"/.exec(disposition);
+      const filename = match?.[1] ?? `script_run_${result.id}.ps1`;
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url; a.download = filename;
+      document.body.appendChild(a); a.click();
+      document.body.removeChild(a); URL.revokeObjectURL(url);
+    } catch { toast({ title: "Download failed", variant: "destructive" }); }
+    finally { setDownloading(false); }
+  };
+
+  const handleUpload = async () => {
+    let parsed: Record<string, unknown>;
+    try { parsed = JSON.parse(jsonText) as Record<string, unknown>; }
+    catch { toast({ title: "Invalid JSON — check format and try again", variant: "destructive" }); return; }
+    setUploading(true);
+    try {
+      const res = await fetchWithAuth(`/api/admin/manual-scripts/${result.id}/upload`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ jsonData: parsed }),
+      });
+      if (!res.ok) {
+        const err = await res.json() as { error?: string };
+        toast({ title: err.error ?? "Upload failed", variant: "destructive" }); return;
+      }
+      toast({ title: "Results uploaded and processed" });
+      setShowUploadForm(false); setJsonText(""); onUploaded(result.id);
+    } catch { toast({ title: "Upload failed", variant: "destructive" }); }
+    finally { setUploading(false); }
+  };
+
+  return (
+    <div className="px-3 pb-3 pt-2 bg-[#0D1117] border-t border-[#21262D] space-y-2">
+      <div className="flex items-start gap-2 p-2 bg-amber-500/8 border border-amber-500/20 rounded-lg">
+        <span className="text-amber-400 text-sm leading-none mt-0.5">📋</span>
+        <div className="flex-1 min-w-0">
+          <p className="text-[10px] font-semibold text-amber-300">Awaiting manual execution &amp; upload</p>
+          <p className="text-[10px] text-[#7D8590] mt-0.5 leading-relaxed">Download the .ps1, run it in the customer's tenant, then upload the JSON output here.</p>
+        </div>
+      </div>
+      <div className="flex gap-2 flex-wrap">
+        <button
+          onClick={() => void handleDownload()}
+          disabled={downloading}
+          className="flex items-center gap-1 px-2.5 py-1.5 text-[10px] font-semibold text-[#0078D4] border border-[#0078D4]/30 hover:border-[#0078D4] hover:bg-[#0078D4]/10 rounded-lg transition-colors disabled:opacity-50"
+        >
+          {downloading ? <RefreshCw className="w-3 h-3 animate-spin" /> : <Download className="w-3 h-3" />}
+          {downloading ? "Downloading…" : "Download .ps1"}
+        </button>
+        <button
+          onClick={() => setShowUploadForm(v => !v)}
+          className="flex items-center gap-1 px-2.5 py-1.5 text-[10px] font-semibold text-amber-400 border border-amber-500/30 hover:border-amber-500 hover:bg-amber-500/10 rounded-lg transition-colors"
+        >
+          <Upload className="w-3 h-3" />
+          Upload JSON
+        </button>
+      </div>
+      {showUploadForm && (
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <p className="text-[10px] font-bold uppercase tracking-wider text-[#7D8590]">Paste JSON output</p>
+            <button onClick={() => { setShowUploadForm(false); setJsonText(""); }} className="text-[#484F58] hover:text-[#7D8590]">
+              <X className="w-3 h-3" />
+            </button>
+          </div>
+          <textarea
+            value={jsonText}
+            onChange={e => setJsonText(e.target.value)}
+            placeholder={'{\n  "data": {...}\n}'}
+            rows={6}
+            className="w-full border border-[#30363D] rounded-lg px-2 py-1.5 text-[10px] text-[#E6EDF3] bg-[#161B22] font-mono focus:outline-none focus:ring-2 focus:ring-amber-500/30 placeholder-[#484F58] resize-y"
+          />
+          <div className="flex justify-end">
+            <button
+              onClick={() => void handleUpload()}
+              disabled={uploading || !jsonText.trim()}
+              className="flex items-center gap-1 px-3 py-1.5 text-[10px] font-semibold text-white bg-amber-600 hover:bg-amber-500 disabled:opacity-50 rounded-lg transition-colors"
+            >
+              {uploading ? <><RefreshCw className="w-3 h-3 animate-spin" />Processing…</> : <><Upload className="w-3 h-3" />Submit &amp; Analyze</>}
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Expanded row (compact sidebar version) ────────────────────────────────────
 
-function ExpandedRow({ result, onMarkReviewed }: { result: RunResult; onMarkReviewed: (id: number, reviewedAt: string) => void }) {
+function ExpandedRow({ result, onMarkReviewed, onUploaded }: { result: RunResult; onMarkReviewed: (id: number, reviewedAt: string) => void; onUploaded: (id: number) => void }) {
   const { fetchWithAuth } = useAuth();
   const { toast } = useToast();
   const [applying, setApplying] = useState(false);
@@ -99,6 +204,10 @@ function ExpandedRow({ result, onMarkReviewed }: { result: RunResult; onMarkRevi
       setMarking(false);
     }
   };
+
+  if (result.status === "awaiting_upload") {
+    return <AwaitingUploadPanel result={result} onUploaded={onUploaded} />;
+  }
 
   return (
     <div className="px-3 pb-3 pt-2 bg-[#0D1117] border-t border-[#21262D] space-y-2">
@@ -195,6 +304,10 @@ export default function RunResultsSidebarPanel() {
     setResults(prev => prev.map(r => r.id === id ? { ...r, reviewedAt } : r));
   };
 
+  const handleUploaded = (id: number) => {
+    setResults(prev => prev.map(r => r.id === id ? { ...r, status: "completed" as const } : r));
+  };
+
   const filtered = statusFilter ? results.filter(r => r.status === statusFilter) : results;
 
   return (
@@ -268,7 +381,7 @@ export default function RunResultsSidebarPanel() {
                     </div>
                   </button>
                   {isExpanded && (
-                    <ExpandedRow result={r} onMarkReviewed={handleMarkReviewed} />
+                    <ExpandedRow result={r} onMarkReviewed={handleMarkReviewed} onUploaded={handleUploaded} />
                   )}
                 </Fragment>
               );

@@ -11,7 +11,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Loader2, Plus, Trash2, Pencil, Play, RefreshCw, X, Tag, ChevronRight, TerminalSquare } from "lucide-react";
+import { Loader2, Plus, Trash2, Pencil, Play, RefreshCw, X, Tag, ChevronRight, ChevronUp, ChevronDown, TerminalSquare } from "lucide-react";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -478,6 +478,10 @@ export default function CatalogSidebarPanel({
           </div>
         )}
 
+        {!loading && (
+          <CategoryManagerPanel categories={categories} onChanged={() => void loadAll()} />
+        )}
+
         {!loading && filteredScripts.length > 0 && (
           <div>
             {/* Categorised sections */}
@@ -547,6 +551,201 @@ export default function CatalogSidebarPanel({
         </AlertDialogContent>
       </AlertDialog>
     </div>
+  );
+}
+
+// ── Category Manager Panel ────────────────────────────────────────────────────
+
+function CategoryManagerPanel({
+  categories,
+  onChanged,
+}: {
+  categories: Category[];
+  onChanged: () => void;
+}) {
+  const { fetchWithAuth } = useAuth();
+  const { toast } = useToast();
+  const [open, setOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [newName, setNewName] = useState("");
+  const [editId, setEditId] = useState<number | null>(null);
+  const [editName, setEditName] = useState("");
+  const [deleteTarget, setDeleteTarget] = useState<Category | null>(null);
+
+  const sorted = [...categories].sort((a, b) => a.displayOrder - b.displayOrder || a.id - b.id);
+
+  const handleCreate = async () => {
+    if (!newName.trim()) return;
+    setSaving(true);
+    try {
+      const res = await fetchWithAuth("/api/admin/script-categories", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: newName.trim(), displayOrder: categories.length }),
+      });
+      if (!res.ok) {
+        const err = await res.json() as { error?: string };
+        toast({ title: err.error ?? "Failed to create category", variant: "destructive" }); return;
+      }
+      setNewName(""); onChanged();
+    } finally { setSaving(false); }
+  };
+
+  const handleRename = async (id: number) => {
+    const trimmed = editName.trim();
+    setEditId(null);
+    if (!trimmed) return;
+    setSaving(true);
+    try {
+      const res = await fetchWithAuth(`/api/admin/script-categories/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: trimmed }),
+      });
+      if (!res.ok) {
+        const err = await res.json() as { error?: string };
+        toast({ title: err.error ?? "Failed to rename category", variant: "destructive" }); return;
+      }
+      onChanged();
+    } finally { setSaving(false); }
+  };
+
+  const handleMove = async (cat: Category, dir: -1 | 1) => {
+    const idx = sorted.findIndex(c => c.id === cat.id);
+    const next = idx + dir;
+    if (next < 0 || next >= sorted.length) return;
+    const neighbour = sorted[next];
+    setSaving(true);
+    try {
+      const [r1, r2] = await Promise.all([
+        fetchWithAuth(`/api/admin/script-categories/${cat.id}`, {
+          method: "PATCH", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ displayOrder: neighbour.displayOrder }),
+        }),
+        fetchWithAuth(`/api/admin/script-categories/${neighbour.id}`, {
+          method: "PATCH", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ displayOrder: cat.displayOrder }),
+        }),
+      ]);
+      if (!r1.ok || !r2.ok) { toast({ title: "Failed to reorder categories", variant: "destructive" }); return; }
+      onChanged();
+    } catch { toast({ title: "Failed to reorder categories", variant: "destructive" }); }
+    finally { setSaving(false); }
+  };
+
+  const handleDelete = async () => {
+    if (!deleteTarget) return;
+    setSaving(true);
+    try {
+      const res = await fetchWithAuth(`/api/admin/script-categories/${deleteTarget.id}`, { method: "DELETE" });
+      if (!res.ok) {
+        const err = await res.json() as { error?: string };
+        toast({ title: err.error ?? "Failed to delete category", variant: "destructive" }); return;
+      }
+      setDeleteTarget(null); onChanged();
+    } finally { setSaving(false); }
+  };
+
+  return (
+    <>
+      <div className="border-t border-[#21262D] bg-[#0D1117]">
+        <button
+          onClick={() => setOpen(o => !o)}
+          className="w-full flex items-center justify-between px-3 py-2 text-left hover:bg-[#161B22] transition-colors"
+        >
+          <div className="flex items-center gap-2">
+            <Tag className="w-3 h-3 text-[#0078D4]" />
+            <span className="text-[10px] font-bold uppercase tracking-wider text-[#7D8590]">Manage Categories</span>
+            <span className="text-[9px] text-[#484F58] bg-[#161B22] border border-[#30363D] rounded px-1 py-0.5">{categories.length}</span>
+          </div>
+          <div className="flex items-center gap-1">
+            {saving && <Loader2 className="w-3 h-3 text-[#0078D4] animate-spin" />}
+            <ChevronDown className={`w-3 h-3 text-[#484F58] transition-transform duration-150 ${open ? "rotate-180" : ""}`} />
+          </div>
+        </button>
+
+        {open && (
+          <div className="px-3 pb-3 space-y-2">
+            {sorted.length === 0 ? (
+              <p className="text-[10px] text-[#484F58] italic text-center py-1">No categories yet</p>
+            ) : (
+              <div className="space-y-1">
+                {sorted.map((cat, idx) => (
+                  <div key={cat.id} className="flex items-center gap-1.5 bg-[#161B22] border border-[#30363D] rounded-lg px-2 py-1.5">
+                    <div className="flex flex-col gap-0 flex-shrink-0">
+                      <button onClick={() => void handleMove(cat, -1)} disabled={idx === 0 || saving} className="text-[#484F58] hover:text-[#E6EDF3] disabled:opacity-30 transition-colors">
+                        <ChevronUp className="w-2.5 h-2.5" />
+                      </button>
+                      <button onClick={() => void handleMove(cat, 1)} disabled={idx === sorted.length - 1 || saving} className="text-[#484F58] hover:text-[#E6EDF3] disabled:opacity-30 transition-colors">
+                        <ChevronDown className="w-2.5 h-2.5" />
+                      </button>
+                    </div>
+                    {editId === cat.id ? (
+                      <input
+                        autoFocus
+                        className="flex-1 min-w-0 text-[10px] bg-[#0D1117] border border-[#0078D4]/50 rounded px-1.5 py-0.5 text-[#E6EDF3] focus:outline-none"
+                        value={editName}
+                        onChange={e => setEditName(e.target.value)}
+                        onBlur={() => void handleRename(cat.id)}
+                        onKeyDown={e => { if (e.key === "Enter") void handleRename(cat.id); if (e.key === "Escape") setEditId(null); }}
+                      />
+                    ) : (
+                      <span
+                        className="flex-1 min-w-0 text-[10px] text-[#E6EDF3] cursor-text hover:text-white truncate"
+                        onDoubleClick={() => { setEditId(cat.id); setEditName(cat.name); }}
+                        title="Double-click to rename"
+                      >
+                        {cat.name}
+                      </span>
+                    )}
+                    <button onClick={() => { setEditId(cat.id); setEditName(cat.name); }} className="text-[#484F58] hover:text-[#0078D4] transition-colors flex-shrink-0" title="Rename">
+                      <Pencil className="w-2.5 h-2.5" />
+                    </button>
+                    <button onClick={() => setDeleteTarget(cat)} className="text-[#484F58] hover:text-red-400 transition-colors flex-shrink-0" title="Delete">
+                      <Trash2 className="w-2.5 h-2.5" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+            <div className="flex gap-1.5 pt-1 border-t border-[#21262D]">
+              <input
+                type="text"
+                placeholder="New category…"
+                value={newName}
+                onChange={e => setNewName(e.target.value)}
+                onKeyDown={e => { if (e.key === "Enter") void handleCreate(); }}
+                className="flex-1 min-w-0 border border-[#30363D] rounded px-2 py-1 text-[10px] text-[#E6EDF3] bg-[#161B22] focus:outline-none focus:border-[#0078D4]/50 placeholder-[#484F58]"
+              />
+              <button
+                onClick={() => void handleCreate()}
+                disabled={!newName.trim() || saving}
+                className="flex items-center gap-0.5 px-2 py-1 text-[10px] font-semibold text-white bg-[#0078D4] hover:bg-[#006CBE] disabled:opacity-50 rounded transition-colors flex-shrink-0"
+              >
+                <Plus className="w-3 h-3" />Add
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+
+      <AlertDialog open={!!deleteTarget} onOpenChange={open => { if (!open) setDeleteTarget(null); }}>
+        <AlertDialogContent className="bg-[#161B22] border border-[#30363D] text-[#E6EDF3]">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Category</AlertDialogTitle>
+            <AlertDialogDescription className="text-[#7D8590]">
+              Delete <strong className="text-[#E6EDF3]">{deleteTarget?.name}</strong>? Scripts in this category will become uncategorised.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="bg-[#1C2128] border-[#30363D] text-[#E6EDF3] hover:bg-[#30363D]">Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={() => void handleDelete()} disabled={saving} className="bg-red-600 hover:bg-red-700 text-white">
+              {saving ? "Deleting…" : "Delete"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
   );
 }
 
