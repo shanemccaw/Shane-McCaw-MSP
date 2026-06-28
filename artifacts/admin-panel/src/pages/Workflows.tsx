@@ -125,7 +125,6 @@ interface EditingTaskForm {
 interface PublishedScript {
   id: string;
   title: string;
-  azureRunbookName: string | null;
 }
 
 // ─── Sub-editors ──────────────────────────────────────────────────────────────
@@ -1528,8 +1527,13 @@ export default function WorkflowsPage() {
 
   const fetchPublishedScripts = useCallback(async () => {
     try {
-      const res = await fetchWithAuth("/api/admin/ps-scripts/published");
-      if (res.ok) setPublishedScripts(await res.json() as PublishedScript[]);
+      const res = await fetchWithAuth("/api/admin/runbooks");
+      if (res.ok) {
+        const data = await res.json() as { configured: boolean; runbooks?: { name: string }[] };
+        if (data.configured && data.runbooks) {
+          setPublishedScripts(data.runbooks.map(r => ({ id: r.name, title: r.name })));
+        }
+      }
     } catch { /* ignore */ }
   }, [fetchWithAuth]);
 
