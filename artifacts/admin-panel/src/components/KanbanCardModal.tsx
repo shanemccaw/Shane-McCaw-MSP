@@ -124,6 +124,136 @@ interface LastRunResult {
   scoreImpact?: Record<string, number>;
 }
 
+interface AutoSavedAiAnalysis {
+  summary?: string;
+  risks?: string[];
+  recommendations?: string[];
+  nextSteps?: string[];
+}
+
+function AutoSavedScriptResultsSection({
+  scriptOutput,
+  aiAnalysis,
+  completedAt,
+  failedAt,
+  lastJobStatus,
+}: {
+  scriptOutput?: string;
+  aiAnalysis?: AutoSavedAiAnalysis;
+  completedAt?: string;
+  failedAt?: string;
+  lastJobStatus?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const [showOutput, setShowOutput] = useState(false);
+
+  const timestamp = completedAt ?? failedAt;
+  const isFailure = !!failedAt && !completedAt;
+  const statusLabel = lastJobStatus ?? (isFailure ? "Failed" : "Completed");
+  const formattedDate = timestamp
+    ? new Date(timestamp).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" })
+    : null;
+
+  const hasAi = !!(aiAnalysis?.summary || (aiAnalysis?.risks?.length ?? 0) > 0 || (aiAnalysis?.recommendations?.length ?? 0) > 0);
+  const hasOutput = !!scriptOutput?.trim();
+
+  if (!hasAi && !hasOutput) return null;
+
+  return (
+    <div className={`border rounded-lg overflow-hidden ${isFailure ? "border-red-500/20" : "border-emerald-500/20"}`}>
+      <button
+        onClick={() => setOpen(o => !o)}
+        className={`w-full flex items-center justify-between px-4 py-2.5 text-left transition-colors ${isFailure ? "bg-red-500/8 hover:bg-red-500/12" : "bg-emerald-500/8 hover:bg-emerald-500/12"}`}
+      >
+        <div className="flex items-center gap-2">
+          <svg className={`w-3.5 h-3.5 flex-shrink-0 ${isFailure ? "text-red-400" : "text-emerald-400"}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M9 3H5a2 2 0 00-2 2v4m6-6h10a2 2 0 012 2v4M9 3v18m0 0h10a2 2 0 002-2V9M9 21H5a2 2 0 01-2-2V9m0 0h18" />
+          </svg>
+          <p className={`text-[10px] font-bold uppercase tracking-wider ${isFailure ? "text-red-400" : "text-emerald-400"}`}>
+            Auto-Run Results · {statusLabel}
+          </p>
+          {formattedDate && <span className="text-[9px] text-[#484F58]">{formattedDate}</span>}
+        </div>
+        <span className="material-symbols-outlined text-muted-foreground flex-shrink-0" style={{ fontSize: "16px" }}>
+          {open ? "expand_less" : "expand_more"}
+        </span>
+      </button>
+
+      {open && (
+        <div className="px-4 py-3 border-t border-border/60 space-y-3 bg-[#0D1117]/40">
+          {aiAnalysis?.summary && (
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1">Summary</p>
+              <p className="text-xs text-[#C9D1D9] leading-relaxed">{aiAnalysis.summary}</p>
+            </div>
+          )}
+
+          {(aiAnalysis?.risks?.length ?? 0) > 0 && (
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-wider text-red-400 mb-1.5">Risks</p>
+              <ul className="space-y-1">
+                {aiAnalysis!.risks!.map((r, i) => (
+                  <li key={i} className="flex items-start gap-2 text-xs text-[#C9D1D9]">
+                    <span className="text-red-400 mt-0.5 flex-shrink-0">⚠</span>
+                    <span className="leading-relaxed">{r}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {(aiAnalysis?.recommendations?.length ?? 0) > 0 && (
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-wider text-[#7D8590] mb-1.5">Recommendations</p>
+              <ol className="space-y-1">
+                {aiAnalysis!.recommendations!.map((rec, i) => (
+                  <li key={i} className="flex items-start gap-2 text-xs text-[#C9D1D9]">
+                    <span className="text-emerald-400 mt-0.5 flex-shrink-0 font-semibold">{i + 1}.</span>
+                    <span className="leading-relaxed">{rec}</span>
+                  </li>
+                ))}
+              </ol>
+            </div>
+          )}
+
+          {(aiAnalysis?.nextSteps?.length ?? 0) > 0 && (
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-wider text-[#7D8590] mb-1.5">Next Steps</p>
+              <ol className="space-y-1">
+                {aiAnalysis!.nextSteps!.map((step, i) => (
+                  <li key={i} className="flex items-start gap-2 text-xs text-[#C9D1D9]">
+                    <span className="text-blue-400 mt-0.5 flex-shrink-0">→</span>
+                    <span className="leading-relaxed">{step}</span>
+                  </li>
+                ))}
+              </ol>
+            </div>
+          )}
+
+          {hasOutput && (
+            <div>
+              <button
+                onClick={() => setShowOutput(o => !o)}
+                className="text-[10px] font-semibold text-[#0078D4] hover:text-[#0078D4]/80 transition-colors flex items-center gap-1"
+              >
+                <svg className={`w-3 h-3 transition-transform ${showOutput ? "rotate-90" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+                </svg>
+                {showOutput ? "Hide" : "Show"} raw output
+              </button>
+              {showOutput && (
+                <pre className="mt-2 text-[10px] text-[#8B949E] bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2.5 whitespace-pre-wrap font-mono leading-relaxed max-h-52 overflow-y-auto">
+                  {scriptOutput}
+                </pre>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function LastRunResultsSection({ result }: { result: LastRunResult }) {
   const [open, setOpen] = useState(false);
   const [showAllFindings, setShowAllFindings] = useState(false);
@@ -801,6 +931,16 @@ function GenericKanbanCardModal({ task, stepTitle, open, onClose, mode = "client
                 <LastRunResultsSection result={meta.lastRunResult as LastRunResult} />
               )}
 
+              {(meta.scriptOutput || meta.aiAnalysis) && (
+                <AutoSavedScriptResultsSection
+                  scriptOutput={meta.scriptOutput as string | undefined}
+                  aiAnalysis={meta.aiAnalysis as AutoSavedAiAnalysis | undefined}
+                  completedAt={meta.completedAt as string | undefined}
+                  failedAt={meta.failedAt as string | undefined}
+                  lastJobStatus={meta.lastJobStatus as string | undefined}
+                />
+              )}
+
               {mode === "admin" && fetchWithAuth && (
                 <EngineerDetailSection
                   task={localTask}
@@ -909,6 +1049,16 @@ function GenericKanbanCardModal({ task, stepTitle, open, onClose, mode = "client
 
               {meta.lastRunResult && (
                 <LastRunResultsSection result={meta.lastRunResult as LastRunResult} />
+              )}
+
+              {(meta.scriptOutput || meta.aiAnalysis) && (
+                <AutoSavedScriptResultsSection
+                  scriptOutput={meta.scriptOutput as string | undefined}
+                  aiAnalysis={meta.aiAnalysis as AutoSavedAiAnalysis | undefined}
+                  completedAt={meta.completedAt as string | undefined}
+                  failedAt={meta.failedAt as string | undefined}
+                  lastJobStatus={meta.lastJobStatus as string | undefined}
+                />
               )}
 
               {mode === "admin" && fetchWithAuth && (
