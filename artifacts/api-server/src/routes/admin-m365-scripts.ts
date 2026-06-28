@@ -23,7 +23,7 @@ import { db, scriptCatalogTable, packageScriptsTable, scriptCatalogCategoriesTab
 import { eq, and, asc, inArray } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/requireAuth";
 import { logger } from "../lib/logger";
-import { isAzureConfigured, pushScriptToAzure } from "../lib/azure-automation";
+import { isAzureConfigured, pushScriptToAzure, deleteRunbook } from "../lib/azure-automation";
 
 // ── Azure push helper (fire-and-forget) ───────────────────────────────────────
 
@@ -299,6 +299,13 @@ router.delete("/admin/scripts/:id", requireAdmin, async (req: Request, res: Resp
   }
 
   try {
+    // Fetch the runbook name before deleting so we can clean up Azure afterward
+    const [existing] = await db
+      .select({ runbookName: scriptCatalogTable.runbookName, azureSyncedAt: scriptCatalogTable.azureSyncedAt })
+      .from(scriptCatalogTable)
+      .where(eq(scriptCatalogTable.id, id))
+      .limit(1);
+
     const [deleted] = await db
       .delete(scriptCatalogTable)
       .where(eq(scriptCatalogTable.id, id))
@@ -308,6 +315,21 @@ router.delete("/admin/scripts/:id", requireAdmin, async (req: Request, res: Resp
       res.status(404).json({ error: "Script not found" });
       return;
     }
+
+    // If the script was pushed to Azure, delete the matching runbook.
+    // This is best-effort: failures are logged but never surface as errors to the client.
+    if (existing?.azureSyncedAt && existing.runbookName && isAzureConfigured()) {
+      void (async () => {
+        try {
+          await deleteRunbook(existing.runbookName);
+        } catch (err) {
+          logger.warn({ err, id, runbookName: existing.runbookName }, "admin-m365-scripts: failed to delete runbook from Azure (non-fatal)");
+        }
+      })();
+    } else if (existing?.azureSyncedAt && !isAzureConfigured()) {
+      logger.warn({ id, runbookName: existing.runbookName }, "admin-m365-scripts: Azure not configured — runbook left in Azure after script delete");
+    }
+
     res.json({ deleted: true, id });
   } catch (err) {
     logger.error({ err, id }, "admin-m365-scripts: failed to delete script");

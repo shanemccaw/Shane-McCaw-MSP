@@ -354,3 +354,28 @@ export async function pushScriptToAzure(runbookName: string, psCode: string): Pr
   await upsertRunbookContent(runbookName, psCode);
   await publishRunbook(runbookName);
 }
+
+/**
+ * Delete a runbook from Azure Automation by name.
+ *
+ * - If the runbook does not exist (404) the function resolves silently — this
+ *   is the "already gone" case and should not be treated as an error.
+ * - All other errors are rethrown so callers can decide whether to surface them.
+ * - Callers should guard with isAzureConfigured() before calling this.
+ */
+export async function deleteRunbook(name: string): Promise<void> {
+  const { client, cfg } = buildClient();
+  try {
+    await client.runbook.deleteMethod(cfg.resourceGroup, cfg.accountName, name);
+    logger.info({ runbookName: name }, "azure-automation: runbook deleted");
+  } catch (err: unknown) {
+    // 404 means the runbook was already gone — treat as success
+    const status = (err as { statusCode?: number; code?: string })?.statusCode
+      ?? (err as { response?: { status?: number } })?.response?.status;
+    if (status === 404) {
+      logger.info({ runbookName: name }, "azure-automation: runbook not found in Azure — skipping delete (already gone)");
+      return;
+    }
+    throw err;
+  }
+}
