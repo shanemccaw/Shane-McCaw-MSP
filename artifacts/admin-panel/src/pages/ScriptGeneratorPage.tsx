@@ -2680,6 +2680,7 @@ export default function ScriptGeneratorPage() {
   const [fixSummary, setFixSummary] = useState("");
   const [summaryError, setSummaryError] = useState<"generate" | "fix" | null>(null);
   const [summaryAiResponse, setSummaryAiResponse] = useState<string | null>(null);
+  const [editingModuleId, setEditingModuleId] = useState<string | null>(null);
   const [modules, setModules] = useState<ScriptModuleItem[]>([]);
   const [editorScript, setEditorScript] = useState<PsScriptDetail | null>(null);
   const [generateFromServiceOpen, setGenerateFromServiceOpen] = useState(false);
@@ -2947,13 +2948,29 @@ export default function ScriptGeneratorPage() {
     if (!editorScript?.id || !scriptBody) return;
     setUpdating(true);
     try {
-      const updated = await apiFetch(`/admin/ps-scripts/${editorScript.id}`, token, {
-        method: "PUT",
-        body: JSON.stringify({ scriptBody, permissions }),
-      }) as PsScriptListItem;
-      cleanBodyRef.current = scriptBody;
-      setScripts((prev) => prev.map((s) => (s.id === updated.id ? updated : s)));
-      toast({ title: "Library entry updated" });
+      if (editingModuleId) {
+        // Editing a module that belongs to a package — use the modules endpoint
+        await apiFetch(`/admin/ps-scripts/modules/${editingModuleId}`, token, {
+          method: "PUT",
+          body: JSON.stringify({ content: scriptBody }),
+        });
+        cleanBodyRef.current = scriptBody;
+        // Reflect the change in the packages list so the sidebar stays fresh
+        setPackages((prev) => prev.map((pkg) => ({
+          ...pkg,
+          modules: pkg.modules.map((m) => m.id === editingModuleId ? { ...m, content: scriptBody } : m),
+        })));
+        toast({ title: "Module updated" });
+      } else {
+        // Editing a standalone library script
+        const updated = await apiFetch(`/admin/ps-scripts/${editorScript.id}`, token, {
+          method: "PUT",
+          body: JSON.stringify({ scriptBody, permissions }),
+        }) as PsScriptListItem;
+        cleanBodyRef.current = scriptBody;
+        setScripts((prev) => prev.map((s) => (s.id === updated.id ? updated : s)));
+        toast({ title: "Library entry updated" });
+      }
     } catch (e) {
       toast({ title: "Update failed", description: e instanceof Error ? e.message : "Unknown error", variant: "destructive" });
     } finally {
@@ -3009,6 +3026,7 @@ export default function ScriptGeneratorPage() {
       try {
         const detail = await apiFetch(`/admin/ps-scripts/${id}`, token) as PsScriptDetail;
         setEditorScript(detail);
+        setEditingModuleId(null);
         setScriptBody(detail.scriptBody);
         cleanBodyRef.current = detail.scriptBody;
         setPermissions(detail.permissions);
@@ -3052,6 +3070,7 @@ export default function ScriptGeneratorPage() {
         permissions: pkg.permissions,
       };
       setEditorScript(syntheticScript);
+      setEditingModuleId(module.id ?? null);
       setScriptBody(module.content);
       cleanBodyRef.current = module.content;
       setPermissions(pkg.permissions);
@@ -3085,7 +3104,7 @@ export default function ScriptGeneratorPage() {
       try {
         await apiFetch(`/admin/ps-scripts/${id}`, token, { method: "DELETE" });
         setScripts((prev) => prev.filter((s) => s.id !== id));
-        if (editorScript?.id === id) { setEditorScript(null); }
+        if (editorScript?.id === id) { setEditorScript(null); setEditingModuleId(null); }
         toast({ title: "Script deleted" });
       } catch {
         toast({ title: "Failed to delete script", variant: "destructive" });
@@ -3110,6 +3129,7 @@ export default function ScriptGeneratorPage() {
     setLoadedPackageTitle(pkg.title);
     setLoadedPackage(pkg);
     setEditorScript(null);
+    setEditingModuleId(null);
     setActivePackageTitle(null);
     setSelectedResult(null);
   };
@@ -3133,6 +3153,7 @@ export default function ScriptGeneratorPage() {
 
   const handleLoadInEditor = (script: PsScriptDetail) => {
     setEditorScript(script);
+    setEditingModuleId(null);
     setScriptBody(script.scriptBody);
     cleanBodyRef.current = script.scriptBody;
     setPermissions(script.permissions);
@@ -3242,7 +3263,7 @@ export default function ScriptGeneratorPage() {
                 {isUnsaved && <span className="w-1.5 h-1.5 rounded-full bg-[#E6EDF3]/50 flex-shrink-0" title="Unsaved changes" />}
                 {editorScript && (
                   <button
-                    onClick={() => { setEditorScript(null); setScriptBody(""); cleanBodyRef.current = ""; setPermissions({ appPermissions: [], delegatedPermissions: [], notes: "" }); setModules([]); setLoadedPackage(null); setLoadedPackageTitle(null); }}
+                    onClick={() => { setEditorScript(null); setEditingModuleId(null); setScriptBody(""); cleanBodyRef.current = ""; setPermissions({ appPermissions: [], delegatedPermissions: [], notes: "" }); setModules([]); setLoadedPackage(null); setLoadedPackageTitle(null); }}
                     title="Clear — start a new script"
                     className="p-0.5 text-[#484F58] hover:text-[#E6EDF3] rounded transition-colors flex-shrink-0"
                   >
@@ -3450,6 +3471,7 @@ export default function ScriptGeneratorPage() {
             cleanBodyRef.current = script;
             setPermissions(perms);
             setEditorScript(null);
+            setEditingModuleId(null);
             setModules([]);
             setLoadedPackage(null);
             setLoadedPackageTitle(null);
@@ -3473,6 +3495,7 @@ export default function ScriptGeneratorPage() {
             setLoadedPackageTitle(title);
             setPermissions(perms);
             setEditorScript(null);
+            setEditingModuleId(null);
             setFixSummary("");
             setSummaryError(null);
             toast({ title: "Package generated", description: title });
