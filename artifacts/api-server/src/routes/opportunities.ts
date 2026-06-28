@@ -9,8 +9,8 @@ import {
   kanbanTasksTable,
 } from "@workspace/db";
 import { eq, desc, and, lte, or, isNull, count, ne, inArray, lt } from "drizzle-orm";
-import { requireAdmin } from "../middlewares/requireAuth";
-import { generateWorkflowTasks, daysFromNow } from "../lib/workflow-tasks";
+import { requireAdmin } from "../middlewares/requireAuth.ts";
+import { generateWorkflowTasks, daysFromNow } from "../lib/workflow-tasks.ts";
 
 const router: IRouter = Router();
 

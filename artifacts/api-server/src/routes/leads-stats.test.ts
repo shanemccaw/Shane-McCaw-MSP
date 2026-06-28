@@ -101,6 +101,10 @@ mock.module("@workspace/db", {
     servicesTable: {},
     quizLeadsTable: {},
     leadQualificationsTable: {},
+    kanbanTasksTable: {},
+    opportunityTasksTable: {},
+    opportunitiesTable: {},
+    projectsTable: {},
   },
 });
 
