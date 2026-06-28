@@ -298,6 +298,94 @@ function SlideOver({ lead, onClose, onRefresh }: {
   );
 }
 
+function DeleteDialog({ lead, onClose, onDeleted }: {
+  lead: QuizLead;
+  onClose: () => void;
+  onDeleted: () => void;
+}) {
+  const { fetchWithAuth } = useAuth();
+  const [deleting, setDeleting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const handleDelete = async () => {
+    setDeleting(true);
+    setError(null);
+    try {
+      const res = await fetchWithAuth(`/api/admin/quiz-leads/${lead.id}`, { method: "DELETE" });
+      if (res.status === 204) {
+        onDeleted();
+      } else {
+        const data = await res.json() as { error?: string };
+        setError(data.error ?? "Failed to delete quiz lead");
+      }
+    } catch {
+      setError("An unexpected error occurred");
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/60" onClick={onClose} />
+      <div className="relative bg-[#161B22] border border-border rounded-xl shadow-2xl w-full max-w-md p-6">
+        <div className="flex items-center gap-3 mb-4">
+          <div className="w-10 h-10 rounded-full bg-red-500/15 flex items-center justify-center flex-shrink-0">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-5 h-5 text-red-400">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
+            </svg>
+          </div>
+          <div>
+            <h3 className="text-[#E6EDF3] font-bold text-base">Delete Quiz Lead</h3>
+            <p className="text-xs text-muted-foreground mt-0.5">This action cannot be undone</p>
+          </div>
+        </div>
+
+        <p className="text-sm text-[#C9D1D9] mb-3">
+          The following records will be permanently deleted:
+        </p>
+        <ul className="text-sm text-muted-foreground space-y-1.5 mb-4 pl-1">
+          <li className="flex items-start gap-2">
+            <span className="mt-1 w-1.5 h-1.5 rounded-full bg-red-400 flex-shrink-0" />
+            <span>Quiz lead — <strong className="text-[#E6EDF3]">{lead.name}</strong> ({lead.email})</span>
+          </li>
+          <li className="flex items-start gap-2">
+            <span className="mt-1 w-1.5 h-1.5 rounded-full bg-red-400 flex-shrink-0" />
+            <span>All analytics events tied to this quiz lead</span>
+          </li>
+          <li className="flex items-start gap-2">
+            <span className="mt-1 w-1.5 h-1.5 rounded-full bg-red-400 flex-shrink-0" />
+            <span>Any matching entry in the main leads table with the same email</span>
+          </li>
+        </ul>
+
+        {error && (
+          <div className="mb-4 px-3 py-2.5 rounded-lg bg-red-500/10 border border-red-500/20 text-sm text-red-400">
+            {error}
+          </div>
+        )}
+
+        <div className="flex gap-3">
+          <button
+            onClick={onClose}
+            disabled={deleting}
+            className="flex-1 px-4 py-2.5 border border-border rounded-lg text-sm font-medium text-muted-foreground hover:bg-[#1C2128] transition-colors disabled:opacity-40"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={handleDelete}
+            disabled={deleting}
+            className="flex-1 px-4 py-2.5 rounded-lg text-sm font-semibold bg-red-600 hover:bg-red-700 text-white transition-colors disabled:opacity-40"
+          >
+            {deleting ? "Deleting…" : "Delete permanently"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 const TIER_OPTIONS = ["all", "Beginner", "Developing", "Emerging", "Advanced", "Ready"] as const;
 const QUIZ_TYPE_OPTIONS = ["all", "copilot", "m365-health", "sharepoint", "power-platform", "security-compliance", "teams", "migration", "governance"] as const;
 const LIMIT = 20;
@@ -305,6 +393,7 @@ const LIMIT = 20;
 export default function QuizLeadsPage() {
   const { fetchWithAuth } = useAuth();
   const [selectedLead, setSelectedLead] = useState<QuizLead | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<QuizLead | null>(null);
   const [stats, setStats] = useState<QuizLeadStats | null>(null);
   const [downloadStats, setDownloadStats] = useState<DownloadStats | null>(null);
   const [selectorStats, setSelectorStats] = useState<SelectorStats | null>(null);
@@ -315,6 +404,12 @@ export default function QuizLeadsPage() {
   const [tierFilter, setTierFilter] = useState("all");
   const [contactedFilter, setContactedFilter] = useState("all");
   const [quizTypeFilter, setQuizTypeFilter] = useState("all");
+  const [toast, setToast] = useState<string | null>(null);
+
+  const showToast = (msg: string) => {
+    setToast(msg);
+    setTimeout(() => setToast(null), 3000);
+  };
 
   const fetchStats = useCallback(async () => {
     const [statsRes, dlRes, selectorRes] = await Promise.all([
@@ -353,10 +448,23 @@ export default function QuizLeadsPage() {
     void Promise.all([fetchLeads(page, tierFilter, contactedFilter, quizTypeFilter), fetchStats()]);
   };
 
+  const handleDeleted = () => {
+    setDeleteTarget(null);
+    showToast("Quiz lead deleted successfully");
+    void Promise.all([fetchLeads(page, tierFilter, contactedFilter, quizTypeFilter), fetchStats()]);
+  };
+
   const totalPages = Math.ceil(total / LIMIT);
 
   return (
     <div className="p-4 sm:p-6 max-w-[1200px]">
+      {/* Toast */}
+      {toast && (
+        <div className="fixed top-4 right-4 z-[70] px-4 py-3 rounded-lg bg-green-600 text-white text-sm font-medium shadow-lg">
+          {toast}
+        </div>
+      )}
+
       <div className="mb-6">
         <h1 className="text-xl font-bold text-[#E6EDF3]">Quiz Leads</h1>
         <p className="text-sm text-muted-foreground mt-0.5">Prospects who completed any assessment quiz.</p>
@@ -500,6 +608,7 @@ export default function QuizLeadsPage() {
                     <th className="text-left px-5 py-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Tier</th>
                     <th className="text-left px-5 py-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground hidden lg:table-cell">Date</th>
                     <th className="text-left px-5 py-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Contacted</th>
+                    <th className="px-5 py-3" />
                   </tr>
                 </thead>
                 <tbody>
@@ -535,6 +644,17 @@ export default function QuizLeadsPage() {
                           <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-[#30363D]/50 text-[#7D8590]">No</span>
                         )}
                       </td>
+                      <td className="px-3 py-3.5" onClick={e => e.stopPropagation()}>
+                        <button
+                          onClick={() => setDeleteTarget(lead)}
+                          title="Delete lead"
+                          className="p-1.5 rounded-lg text-muted-foreground hover:text-red-400 hover:bg-red-500/10 transition-colors"
+                        >
+                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-4 h-4">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                          </svg>
+                        </button>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -544,9 +664,8 @@ export default function QuizLeadsPage() {
             {/* Mobile cards */}
             <div className="sm:hidden divide-y divide-border">
               {leads.map(lead => (
-                <div key={lead.id} onClick={() => setSelectedLead(lead)}
-                  className="px-4 py-3 flex items-center gap-3 cursor-pointer hover:bg-[#1C2128] transition-colors">
-                  <div className="flex-1 min-w-0">
+                <div key={lead.id} className="px-4 py-3 flex items-center gap-3">
+                  <div className="flex-1 min-w-0 cursor-pointer" onClick={() => setSelectedLead(lead)}>
                     <p className="text-sm font-semibold text-[#E6EDF3] truncate">{lead.name}</p>
                     <p className="text-xs text-muted-foreground truncate">{lead.email}</p>
                     {lead.company && <p className="text-xs text-muted-foreground/70 truncate">{lead.company}</p>}
@@ -556,6 +675,15 @@ export default function QuizLeadsPage() {
                     <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${TIER_COLORS[lead.tier] ?? "bg-[#30363D]/50 text-[#7D8590]"}`}>{lead.tier}</span>
                     <span className="text-xs text-muted-foreground font-semibold">{lead.totalScore}</span>
                     {lead.contactedAt && <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-green-500/15 text-green-400">Contacted</span>}
+                    <button
+                      onClick={() => setDeleteTarget(lead)}
+                      title="Delete lead"
+                      className="p-1.5 rounded-lg text-muted-foreground hover:text-red-400 hover:bg-red-500/10 transition-colors mt-0.5"
+                    >
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-4 h-4">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                      </svg>
+                    </button>
                   </div>
                 </div>
               ))}
@@ -589,6 +717,14 @@ export default function QuizLeadsPage() {
           lead={selectedLead}
           onClose={() => setSelectedLead(null)}
           onRefresh={handleRefresh}
+        />
+      )}
+
+      {deleteTarget && (
+        <DeleteDialog
+          lead={deleteTarget}
+          onClose={() => setDeleteTarget(null)}
+          onDeleted={handleDeleted}
         />
       )}
     </div>

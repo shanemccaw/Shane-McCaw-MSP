@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { db, quizLeadsTable, quizAnalyticsEventsTable } from "@workspace/db";
+import { db, quizLeadsTable, quizAnalyticsEventsTable, leadsTable } from "@workspace/db";
 import { requireAdmin } from "../middlewares/requireAuth";
 import { desc, eq, count, sql, and, isNull, isNotNull } from "drizzle-orm";
 import type { SQL } from "drizzle-orm";
@@ -137,6 +137,39 @@ router.patch("/admin/quiz-leads/:id/contacted", requireAdmin, async (req, res) =
   } catch (err) {
     req.log.error({ err }, "admin/quiz-leads PATCH contacted failed");
     return res.status(500).json({ error: "Failed to update quiz lead" });
+  }
+});
+
+// DELETE /api/admin/quiz-leads/:id — permanently delete a quiz lead and correlated data
+router.delete("/admin/quiz-leads/:id", requireAdmin, async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ error: "Invalid ID" });
+
+  try {
+    // Look up the lead first to get the email for correlated leads table deletion
+    const [quizLead] = await db.select({ email: quizLeadsTable.email })
+      .from(quizLeadsTable)
+      .where(eq(quizLeadsTable.id, id))
+      .limit(1);
+
+    if (!quizLead) return res.status(404).json({ error: "Quiz lead not found" });
+
+    await db.transaction(async (tx) => {
+      // 1. Delete analytics events associated with this quiz lead via JSONB properties
+      await tx.delete(quizAnalyticsEventsTable)
+        .where(sql`(${quizAnalyticsEventsTable.properties}->>'quizLeadId')::int = ${id}`);
+
+      // 2. Delete any correlated entry in the main leads table (same email)
+      await tx.delete(leadsTable).where(eq(leadsTable.email, quizLead.email));
+
+      // 3. Delete the quiz lead itself
+      await tx.delete(quizLeadsTable).where(eq(quizLeadsTable.id, id));
+    });
+
+    return res.status(204).end();
+  } catch (err) {
+    req.log.error({ err }, "admin/quiz-leads DELETE failed");
+    return res.status(500).json({ error: "Failed to delete quiz lead" });
   }
 });
 

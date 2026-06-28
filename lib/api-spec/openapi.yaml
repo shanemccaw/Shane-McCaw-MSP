@@ -1069,6 +1069,36 @@ paths:
               schema:
                 $ref: "#/components/schemas/RunbookJobOutput"
 
+  /admin/quiz-leads/{id}:
+    delete:
+      operationId: deleteQuizLead
+      tags: [admin]
+      summary: Permanently delete a quiz lead and all associated records
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+          description: Quiz lead ID
+      responses:
+        "204":
+          description: Deleted successfully
+        "404":
+          description: Quiz lead not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
 components:
   schemas:
     ClientM365ProfileResponse:

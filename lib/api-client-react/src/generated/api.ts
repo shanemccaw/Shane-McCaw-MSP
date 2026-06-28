@@ -3656,3 +3656,73 @@ export function useGetRunbookJobOutput<TData = Awaited<ReturnType<typeof getRunb
 
 
 
+export const getDeleteQuizLeadUrl = (id: number,) => {
+
+
+
+
+  return `/api/admin/quiz-leads/${id}`
+}
+
+/**
+ * @summary Permanently delete a quiz lead and all associated records
+ */
+export const deleteQuizLead = async (id: number, options?: RequestInit): Promise<void> => {
+
+  return customFetch<void>(getDeleteQuizLeadUrl(id),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+export const getDeleteQuizLeadMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteQuizLead>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteQuizLead>>, TError,{id: number}, TContext> => {
+
+const mutationKey = ['deleteQuizLead'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteQuizLead>>, {id: number}> = (props) => {
+          const {id} = props ?? {};
+
+          return  deleteQuizLead(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeleteQuizLeadMutationResult = NonNullable<Awaited<ReturnType<typeof deleteQuizLead>>>
+
+    export type DeleteQuizLeadMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Permanently delete a quiz lead and all associated records
+ */
+export const useDeleteQuizLead = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteQuizLead>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof deleteQuizLead>>,
+        TError,
+        {id: number},
+        TContext
+      > => {
+      return useMutation(getDeleteQuizLeadMutationOptions(options));
+    }
+

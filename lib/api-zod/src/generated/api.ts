@@ -836,3 +836,11 @@ export const GetRunbookJobOutputResponse = zod.object({
 })
 
 
+/**
+ * @summary Permanently delete a quiz lead and all associated records
+ */
+export const DeleteQuizLeadParams = zod.object({
+  "id": zod.coerce.number().describe('Quiz lead ID')
+})
+
+
