@@ -3,7 +3,8 @@
  *
  * Runs all script packages linked to a client's active services sequentially.
  * Each script module becomes a runbook that is pushed to Azure Automation,
- * then a job is created and polled to completion before the next module starts.
+ * then a job is created (passing the client's own tenant credentials as
+ * runbook parameters) and polled to completion before the next module starts.
  *
  * Progress is written to `client_automation_runs` so the CRM portal can poll it.
  *
@@ -11,24 +12,19 @@
  * Azure env vars are required — if absent the run is marked failed immediately.
  */
 
-import { db, clientAutomationRunsTable, clientServicesTable, serviceScriptSetsTable, scriptPackagesTable, scriptModulesTable, usersTable } from "@workspace/db";
+import { db, clientAutomationRunsTable, clientServicesTable, serviceScriptSetsTable, scriptPackagesTable, scriptModulesTable, usersTable, clientAppRegistrationsTable } from "@workspace/db";
 import { eq, and, asc, inArray } from "drizzle-orm";
 import { pushScriptToAzure, createRunbookJob, getJobStatus, isTerminalStatus, isAzureConfigured } from "./azure-automation";
+import { getSecretValue } from "./azure-keyvault";
 import { sendEmail } from "./mailer";
 import { logger } from "./logger";
 
 const POLL_INTERVAL_MS = 5_000;
 const JOB_TIMEOUT_MS = 10 * 60 * 1000;
 
-async function markRunning(runId: number, packageId: string, moduleId: string, total: number) {
-  await db.update(clientAutomationRunsTable)
-    .set({ status: "running", currentPackageId: packageId, currentModuleId: moduleId, modulesTotal: total })
-    .where(eq(clientAutomationRunsTable.id, runId));
-}
-
 async function advanceProgress(runId: number, completed: number, packageId: string, moduleId: string, snippet: string) {
   await db.update(clientAutomationRunsTable)
-    .set({ modulesCompleted: completed, currentPackageId: packageId, currentModuleId: moduleId, lastLogSnippet: snippet.slice(0, 500) })
+    .set({ status: "running", modulesCompleted: completed, currentPackageId: packageId, currentModuleId: moduleId, lastLogSnippet: snippet.slice(0, 500) })
     .where(eq(clientAutomationRunsTable.id, runId));
 }
 
@@ -68,6 +64,31 @@ export async function runClientScriptSequence(clientUserId: number, runId: numbe
       .from(usersTable)
       .where(eq(usersTable.id, clientUserId));
 
+    // ── Fetch client App Registration for credential parameters ────────────
+    const [appReg] = await db.select()
+      .from(clientAppRegistrationsTable)
+      .where(and(
+        eq(clientAppRegistrationsTable.clientUserId, clientUserId),
+        eq(clientAppRegistrationsTable.status, "verified"),
+      ));
+
+    if (!appReg) {
+      logger.warn({ clientUserId, runId }, "client-script-sequence: no verified App Registration found — marking failed");
+      await markFailed(runId, "No verified Azure App Registration found for this client.");
+      return;
+    }
+
+    let clientSecret: string;
+    try {
+      clientSecret = await getSecretValue(appReg.keyVaultSecretName);
+    } catch (kvErr) {
+      const msg = kvErr instanceof Error ? kvErr.message : String(kvErr);
+      logger.error({ kvErr, runId, clientUserId }, "client-script-sequence: Key Vault fetch failed");
+      await markFailed(runId, `Key Vault error: ${msg}`);
+      return;
+    }
+
+    // ── Gather script packages from active client services ─────────────────
     const activeServices = await db.select({ serviceId: clientServicesTable.serviceId })
       .from(clientServicesTable)
       .where(and(eq(clientServicesTable.clientUserId, clientUserId), eq(clientServicesTable.status, "active")));
@@ -133,14 +154,23 @@ export async function runClientScriptSequence(clientUserId: number, runId: numbe
     for (const pkg of orderedPackages) {
       const modules = modulesByPackage.get(pkg.id) ?? [];
       for (const mod of modules) {
-        await markRunning(runId, pkg.id, mod.id, totalModules);
+        await db.update(clientAutomationRunsTable)
+          .set({ currentPackageId: pkg.id, currentModuleId: mod.id, lastLogSnippet: `Running: ${mod.filename} (${pkg.title})` })
+          .where(eq(clientAutomationRunsTable.id, runId));
 
         const runbookName = `client-${clientUserId}-${mod.id}`;
         logger.info({ runId, clientUserId, runbookName, module: mod.filename }, "client-script-sequence: pushing module to Azure");
 
         await pushScriptToAzure(runbookName, mod.content);
 
-        const { jobId } = await createRunbookJob({ runbookName });
+        const { jobId } = await createRunbookJob({
+          runbookName,
+          parameters: {
+            TenantId: appReg.tenantId,
+            ClientId: appReg.azureClientId,
+            ClientSecret: clientSecret,
+          },
+        });
 
         logger.info({ runId, clientUserId, jobId, runbookName }, "client-script-sequence: job created, polling");
 
@@ -167,7 +197,7 @@ export async function runClientScriptSequence(clientUserId: number, runId: numbe
         }
 
         completedCount++;
-        await advanceProgress(runId, completedCount, pkg.id, mod.id, `Completed: ${mod.filename}`);
+        await advanceProgress(runId, completedCount, pkg.id, mod.id, `Completed: ${mod.filename} (${pkg.title})`);
         logger.info({ runId, clientUserId, completedCount, totalModules }, "client-script-sequence: module done");
       }
     }

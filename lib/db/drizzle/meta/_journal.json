@@ -652,6 +652,13 @@
       "when": 1782673427735,
       "tag": "0090_soft_delete_opportunities",
       "breakpoints": true
+    },
+    {
+      "idx": 91,
+      "version": "7",
+      "when": 1782683400000,
+      "tag": "0091_add_client_automation_runs",
+      "breakpoints": true
     }
   ]
 }

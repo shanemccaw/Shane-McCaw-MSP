@@ -1,5 +1,5 @@
 import { Router, type IRouter, type Request, type Response } from "express";
-import { db, projectsTable, clientServicesTable, servicesTable, workflowStepsTable, kanbanTasksTable, documentsTable, reportsTable, invoicesTable, messagesTable, notificationsTable, projectUpdatesTable, usersTable, contractsTable, passwordResetTokensTable, workflowTemplateStepsTable, workflowTemplateStepTasksTable, contractTemplatesTable, impersonationTokensTable, statusReportsTable, deviceTokensTable, projectClosuresTable, auditLogsTable, instructionSetsTable, checklistsTable, artifactSetsTable, deliverableSetsTable, emailsTable, emailDomainRulesTable, clientM365ProfilesTable, couponsTable, clientAppRegistrationsTable, accountSetupTokensTable, mfaEnrollmentsTable, mfaChallengesTable, webauthnCredentialsTable, webauthnChallengesTable, clientHealthHistoryTable, quizLeadsTable, scriptRunResultsTable, powershellScriptsTable, clientScoresTable, clientAutomationRunsTable } from "@workspace/db";
+import { db, projectsTable, clientServicesTable, servicesTable, workflowStepsTable, kanbanTasksTable, documentsTable, reportsTable, invoicesTable, messagesTable, notificationsTable, projectUpdatesTable, usersTable, contractsTable, passwordResetTokensTable, workflowTemplateStepsTable, workflowTemplateStepTasksTable, contractTemplatesTable, impersonationTokensTable, statusReportsTable, deviceTokensTable, projectClosuresTable, auditLogsTable, instructionSetsTable, checklistsTable, artifactSetsTable, deliverableSetsTable, emailsTable, emailDomainRulesTable, clientM365ProfilesTable, couponsTable, clientAppRegistrationsTable, accountSetupTokensTable, mfaEnrollmentsTable, mfaChallengesTable, webauthnCredentialsTable, webauthnChallengesTable, clientHealthHistoryTable, quizLeadsTable, scriptRunResultsTable, powershellScriptsTable, clientScoresTable, clientAutomationRunsTable, scriptPackagesTable, scriptModulesTable } from "@workspace/db";
 import { eq, and, desc, asc, count, sql, inArray, gte, isNotNull, isNull, or, lt } from "drizzle-orm";
 import { requireAuth, requireAdmin } from "../middlewares/requireAuth";
 import jwt from "jsonwebtoken";
@@ -613,7 +613,25 @@ router.get("/portal/automation-progress", requireAuth, async (req: Request, res:
     .where(eq(clientAutomationRunsTable.clientUserId, userId))
     .orderBy(desc(clientAutomationRunsTable.triggeredAt))
     .limit(1);
-  if (!run) { res.json(null); return; }
+
+  if (!run) { res.json({ status: "idle" }); return; }
+
+  // Resolve current package/module names for richer UI display
+  let currentPackageName: string | null = null;
+  let currentModuleName: string | null = null;
+  if (run.currentPackageId) {
+    const [pkg] = await db.select({ title: scriptPackagesTable.title })
+      .from(scriptPackagesTable)
+      .where(eq(scriptPackagesTable.id, run.currentPackageId));
+    currentPackageName = pkg?.title ?? null;
+  }
+  if (run.currentModuleId) {
+    const [mod] = await db.select({ filename: scriptModulesTable.filename })
+      .from(scriptModulesTable)
+      .where(eq(scriptModulesTable.id, run.currentModuleId));
+    currentModuleName = mod?.filename ?? null;
+  }
+
   res.json({
     id: run.id,
     status: run.status,
@@ -623,6 +641,8 @@ router.get("/portal/automation-progress", requireAuth, async (req: Request, res:
     errorMessage: run.errorMessage,
     triggeredAt: run.triggeredAt,
     finishedAt: run.finishedAt,
+    currentPackageName,
+    currentModuleName,
   });
 });
 
