@@ -1687,7 +1687,9 @@ function GenerateFromServiceDialog({
   const [workflowTemplate, setWorkflowTemplate] = useState<WorkflowTemplateDetail | null>(null);
   const [loadingWorkflow, setLoadingWorkflow] = useState(false);
   const [serviceSearch, setServiceSearch] = useState("");
-  const [customInstructions, setCustomInstructions] = useState("");
+  const [customInstructions, setCustomInstructions] = useState(
+    () => localStorage.getItem("gfs-custom-instructions") ?? "",
+  );
   const [generating, setGenerating] = useState(false);
   const [humanOnlyTasks, setHumanOnlyTasks] = useState<string[]>([]);
   const [humanOnlyExplanation, setHumanOnlyExplanation] = useState<string | null>(null);
@@ -1930,7 +1932,10 @@ function GenerateFromServiceDialog({
             </label>
             <textarea
               value={customInstructions}
-              onChange={(e) => setCustomInstructions(e.target.value)}
+              onChange={(e) => {
+                setCustomInstructions(e.target.value);
+                localStorage.setItem("gfs-custom-instructions", e.target.value);
+              }}
               rows={2}
               placeholder="e.g. Use PnP PowerShell module. Client uses a hybrid setup. Always include verbose logging…"
               className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-xs text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60 transition-colors resize-none"
