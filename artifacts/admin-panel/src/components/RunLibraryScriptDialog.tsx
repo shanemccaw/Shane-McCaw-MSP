@@ -129,8 +129,8 @@ export default function RunLibraryScriptDialog({ scriptId, moduleId, scriptTitle
       toast({ title: "Script not pushed to Azure", description: "Push this script to Azure Automation first", variant: "destructive" });
       return;
     }
-    if (!selectedClientId && !appRegistrationId) {
-      toast({ title: "Select a client", variant: "destructive" });
+    if (!appRegistrationId) {
+      toast({ title: "Select a client with an App Registration", variant: "destructive" });
       return;
     }
     setRunning(true);
@@ -217,14 +217,14 @@ export default function RunLibraryScriptDialog({ scriptId, moduleId, scriptTitle
 
           {selectedClientId && !appRegistrationId && (
             <div className="rounded-lg bg-amber-500/10 border border-amber-500/30 px-4 py-3">
-              <p className="text-xs text-amber-400">This client has no App Registration linked. The script will run using the Automation account's own identity.</p>
+              <p className="text-xs text-amber-400">This client has no App Registration linked — the Run button is disabled. Add one in the CRM first.</p>
             </div>
           )}
 
           {/* Run button */}
           <button
             onClick={() => void handleRun()}
-            disabled={running || !azureRunbookName}
+            disabled={running || !azureRunbookName || !appRegistrationId}
             className="w-full flex items-center justify-center gap-2 bg-[#0078D4] text-white rounded-lg px-4 py-2.5 text-sm font-semibold hover:bg-[#006CBE] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           >
             {running ? (
