@@ -1412,10 +1412,11 @@ function InlineScriptRunner({
   const logEndRef   = useRef<HTMLDivElement>(null);
   const abortedRef  = useRef(false);
 
-  const [aiAnalysis,   setAiAnalysis]   = useState<InlineAIAnalysis | null>(null);
-  const [analyzingAI,  setAnalyzingAI]  = useState(false);
-  const [aiError,      setAiError]      = useState<string | null>(null);
-  const [aiTab,        setAiTab]        = useState<keyof InlineAIAnalysis>("summary");
+  const [aiAnalysis,     setAiAnalysis]     = useState<InlineAIAnalysis | null>(null);
+  const [analyzingAI,    setAnalyzingAI]    = useState(false);
+  const [aiError,        setAiError]        = useState<string | null>(null);
+  const [aiTab,          setAiTab]          = useState<keyof InlineAIAnalysis>("summary");
+  const [copiedConsole,  setCopiedConsole]  = useState(false);
 
   // Mark component as unmounted so polling stops cleanly
   useEffect(() => () => { abortedRef.current = true; }, []);
@@ -1695,6 +1696,35 @@ function InlineScriptRunner({
             <span className={`text-[10px] font-semibold ${statusColor}`}>{jobStatus}</span>
           )}
         </div>
+      </div>
+
+      {/* Log console header */}
+      <div className="flex items-center justify-between px-3 py-1 border-t border-[#21262D] bg-[#0D1117]">
+        <span className="text-[9px] font-bold uppercase tracking-wider text-[#484F58]">Output</span>
+        {logLines.length > 0 && (
+          <button
+            onClick={() => {
+              void navigator.clipboard.writeText(logLines.join("\n")).then(() => {
+                setCopiedConsole(true);
+                setTimeout(() => setCopiedConsole(false), 2000);
+              });
+            }}
+            className="flex items-center gap-1 text-[10px] text-[#484F58] hover:text-[#E6EDF3] transition-colors"
+            title="Copy console output"
+          >
+            {copiedConsole ? (
+              <>
+                <svg className="w-3 h-3 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
+                <span className="text-green-400">Copied</span>
+              </>
+            ) : (
+              <>
+                <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
+                Copy
+              </>
+            )}
+          </button>
+        )}
       </div>
 
       {/* Log console */}
@@ -3204,9 +3234,7 @@ export default function ScriptGeneratorPage() {
   };
 
   // ── Computed values ───────────────────────────────────────────────────────────
-  const tabLabel = editorScript
-    ? (activePackageTitle ? `${activePackageTitle} › ${editorScript.title}` : editorScript.title)
-    : "Untitled — New Script";
+  const tabLabel = editorScript ? editorScript.title : "Untitled — New Script";
   // Dirty when the current body diverges from the last saved/generated/loaded baseline
   const isUnsaved = scriptBody.length > 0 && scriptBody !== cleanBodyRef.current;
   const effectiveLeftWidth = leftCollapsed ? 40 : leftPanel.size;
