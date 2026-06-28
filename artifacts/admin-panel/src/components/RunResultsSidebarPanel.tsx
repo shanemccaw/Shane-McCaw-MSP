@@ -284,12 +284,15 @@ interface RunResultsSidebarPanelProps {
   selectedResultId?: number | null;
 }
 
+const POLL_INTERVAL = 12;
+
 export default function RunResultsSidebarPanel({ onSelectResult, selectedResultId }: RunResultsSidebarPanelProps = {}) {
   const { fetchWithAuth } = useAuth();
   const [results, setResults] = useState<RunResult[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [statusFilter, setStatusFilter] = useState("");
+  const [countdown, setCountdown] = useState(POLL_INTERVAL);
 
   const load = useCallback(async (showRefresh = false) => {
     if (showRefresh) setRefreshing(true); else setLoading(true);
@@ -299,17 +302,28 @@ export default function RunResultsSidebarPanel({ onSelectResult, selectedResultI
     } finally {
       setLoading(false);
       setRefreshing(false);
+      setCountdown(POLL_INTERVAL);
     }
   }, [fetchWithAuth]);
 
   useEffect(() => { void load(); }, [load]);
 
   const hasRunning = results.some(r => r.status === "running");
+
   useEffect(() => {
     if (!hasRunning) return;
-    const id = setInterval(() => { void load(true); }, 12000);
-    return () => clearInterval(id);
+    const pollId = setInterval(() => { void load(true); }, POLL_INTERVAL * 1000);
+    return () => clearInterval(pollId);
   }, [hasRunning, load]);
+
+  useEffect(() => {
+    if (!hasRunning) return;
+    setCountdown(POLL_INTERVAL);
+    const tickId = setInterval(() => {
+      setCountdown(c => (c <= 1 ? POLL_INTERVAL : c - 1));
+    }, 1000);
+    return () => clearInterval(tickId);
+  }, [hasRunning]);
 
   const filtered = statusFilter ? results.filter(r => r.status === statusFilter) : results;
 
@@ -328,6 +342,11 @@ export default function RunResultsSidebarPanel({ onSelectResult, selectedResultI
           <option value="failed">Failed</option>
           <option value="awaiting_upload">Awaiting Upload</option>
         </select>
+        {hasRunning && !refreshing && (
+          <span className="text-[10px] text-[#484F58] flex-shrink-0 tabular-nums">
+            auto in {countdown}s
+          </span>
+        )}
         <button
           onClick={() => void load(true)}
           disabled={refreshing}
