@@ -5,6 +5,7 @@
  *
  * GET    /api/admin/scripts                          — list all scripts
  * POST   /api/admin/scripts                          — create script
+ * POST   /api/admin/scripts/analyze                 — AI-analyze a PS script body (self-registration)
  * GET    /api/admin/scripts/:id                      — get script by id
  * PUT    /api/admin/scripts/:id                      — update script
  * DELETE /api/admin/scripts/:id                      — delete script
@@ -19,11 +20,12 @@
 
 import { Router, type IRouter, type Request, type Response } from "express";
 import { z } from "zod";
-import { db, scriptCatalogTable, packageScriptsTable, scriptCatalogCategoriesTable } from "@workspace/db";
+import { db, scriptCatalogTable, packageScriptsTable, scriptCatalogCategoriesTable, scriptCategoriesTable } from "@workspace/db";
 import { eq, and, asc, inArray } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/requireAuth";
 import { logger } from "../lib/logger";
 import { isAzureConfigured, pushScriptToAzure, deleteRunbook } from "../lib/azure-automation";
+import { anthropic } from "@workspace/integrations-anthropic-ai";
 
 // ── Azure push helper (fire-and-forget) ───────────────────────────────────────
 
@@ -71,6 +73,40 @@ async function syncScriptCategories(scriptId: number, categoryIds: number[]): Pr
 
 const router: IRouter = Router();
 
+// ── Metadata block parser ──────────────────────────────────────────────────────
+
+/**
+ * Extracts .CATALOG_NAME and .CATALOG_RUNBOOK from a PowerShell comment block.
+ *
+ * Supported format:
+ *   <#
+ *   .CATALOG_NAME  MFA Status Audit
+ *   .CATALOG_RUNBOOK  Check-MFAStatus
+ *   #>
+ *
+ * Falls back to the first `# Comment` line as name if no block is present.
+ */
+function parseCatalogBlock(psBody: string): { name: string | null; runbookName: string | null } {
+  let name: string | null = null;
+  let runbookName: string | null = null;
+
+  const blockMatch = psBody.match(/<#([\s\S]*?)#>/);
+  if (blockMatch) {
+    const block = blockMatch[1];
+    const nameMatch = block.match(/\.CATALOG_NAME\s+(.+)/i);
+    const runbookMatch = block.match(/\.CATALOG_RUNBOOK\s+(.+)/i);
+    if (nameMatch) name = nameMatch[1].trim();
+    if (runbookMatch) runbookName = runbookMatch[1].trim();
+  }
+
+  if (!name) {
+    const firstCommentMatch = psBody.match(/^#\s+(.+)/m);
+    if (firstCommentMatch) name = firstCommentMatch[1].trim().replace(/^#+\s*/, "");
+  }
+
+  return { name, runbookName };
+}
+
 // ── Zod schemas ────────────────────────────────────────────────────────────────
 
 const appRegPermissionSchema = z.object({
@@ -111,6 +147,123 @@ const assignPackageScriptSchema = z.object({
 
 const updatePackageScriptSchema = z.object({
   runOrder: z.number().int().min(0),
+});
+
+// ── POST /api/admin/scripts/analyze ───────────────────────────────────────────
+// Parses a PS script body for catalog metadata and uses AI to generate
+// description, aiInstructions, suggested categories, and app permissions.
+// Must be registered BEFORE /admin/scripts/:id to avoid "analyze" being
+// treated as an id parameter.
+
+router.post("/admin/scripts/analyze", requireAdmin, async (req: Request, res: Response) => {
+  const parsed = z.object({ psScriptBody: z.string().min(1) }).safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: "psScriptBody is required" });
+    return;
+  }
+
+  const psBody = parsed.data.psScriptBody;
+  const { name, runbookName } = parseCatalogBlock(psBody);
+
+  let categories: Array<{ id: number; name: string }> = [];
+  try {
+    categories = await db
+      .select({ id: scriptCategoriesTable.id, name: scriptCategoriesTable.name })
+      .from(scriptCategoriesTable)
+      .orderBy(scriptCategoriesTable.displayOrder);
+  } catch (err) {
+    logger.warn({ err }, "admin-m365-scripts: could not fetch categories for analyze — continuing without");
+  }
+
+  const categoryList = categories.length > 0
+    ? categories.map(c => c.name).join(", ")
+    : "No categories defined yet";
+
+  const prompt = `You are a Microsoft 365 security and governance expert. Analyze the following PowerShell script and return a JSON object describing it for a script catalog.
+
+Available category names (choose only from this list for suggestedCategories):
+${categoryList}
+
+=== POWERSHELL SCRIPT ===
+${psBody.slice(0, 8000)}
+=== END SCRIPT ===
+
+Return ONLY a JSON object with exactly these fields:
+{
+  "description": "2-4 sentence description of what the script does, what data it collects, and what M365 area it covers",
+  "aiInstructions": "2-5 sentences instructing an AI analyzer how to interpret this script's output — what fields to look for, what constitutes a risk finding, how to score security impact",
+  "suggestedCategories": ["up to 3 category names chosen ONLY from the available list above"],
+  "appRegPermissions": [
+    { "permission": "Graph.Permission.Name", "type": "Application", "reason": "why this permission is needed by the script" }
+  ]
+}
+
+Rules:
+- suggestedCategories: use ONLY names from the available list; empty array if none fit
+- appRegPermissions: list every Microsoft Graph API permission the script calls or would need; "type" is "Application" for app-only/unattended scripts and "Delegated" for interactive user-context scripts; use official Microsoft Graph permission names (e.g. "User.Read.All", "Policy.Read.All"); if no Graph permissions are needed return an empty array
+- Return ONLY the JSON — no markdown fences, no preamble, no trailing text`;
+
+  let raw: string;
+  try {
+    const message = await anthropic.messages.create({
+      model: "claude-haiku-4-5",
+      max_tokens: 2048,
+      messages: [{ role: "user", content: prompt }],
+    });
+    const textBlock = message.content.find(b => b.type === "text");
+    if (!textBlock || textBlock.type !== "text") throw new Error("No text response from AI");
+    raw = textBlock.text.trim();
+  } catch (err) {
+    logger.error({ err }, "admin-m365-scripts: AI analyze call failed");
+    res.status(502).json({ error: "AI analysis failed — please try again" });
+    return;
+  }
+
+  const jsonMatch = raw.match(/\{[\s\S]*\}/);
+  if (!jsonMatch) {
+    logger.warn({ raw: raw.slice(0, 300) }, "admin-m365-scripts: analyze response had no JSON");
+    res.status(502).json({ error: "AI returned an unparseable response — please try again" });
+    return;
+  }
+
+  let aiResult: {
+    description?: string;
+    aiInstructions?: string;
+    suggestedCategories?: string[];
+    appRegPermissions?: Array<{ permission: string; type: string; reason: string }>;
+  };
+  try {
+    aiResult = JSON.parse(jsonMatch[0]) as typeof aiResult;
+  } catch {
+    logger.warn({ raw: raw.slice(0, 300) }, "admin-m365-scripts: analyze JSON.parse failed");
+    res.status(502).json({ error: "AI returned malformed JSON — please try again" });
+    return;
+  }
+
+  // Match suggested category names to real IDs
+  const suggestedNames = Array.isArray(aiResult.suggestedCategories) ? aiResult.suggestedCategories : [];
+  const matchedCategoryIds = categories
+    .filter(c => suggestedNames.some(n => n.toLowerCase() === c.name.toLowerCase()))
+    .map(c => c.id);
+
+  // Validate / normalise appRegPermissions
+  const rawPerms = Array.isArray(aiResult.appRegPermissions) ? aiResult.appRegPermissions : [];
+  const appRegPermissions = rawPerms
+    .filter(p => p && typeof p.permission === "string" && p.permission.trim())
+    .map(p => ({
+      permission: String(p.permission).trim(),
+      type: p.type === "Delegated" ? "Delegated" : "Application",
+      reason: String(p.reason ?? "").trim(),
+    })) as Array<{ permission: string; type: "Application" | "Delegated"; reason: string }>;
+
+  res.json({
+    name: name ?? null,
+    runbookName: runbookName ?? null,
+    description: typeof aiResult.description === "string" ? aiResult.description.trim() : "",
+    aiInstructions: typeof aiResult.aiInstructions === "string" ? aiResult.aiInstructions.trim() : "",
+    suggestedCategoryIds: matchedCategoryIds,
+    appRegPermissions,
+  });
 });
 
 // ── Script Catalog CRUD ────────────────────────────────────────────────────────

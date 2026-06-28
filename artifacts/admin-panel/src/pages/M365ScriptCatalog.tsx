@@ -12,7 +12,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Loader2, Plus, Trash2, Pencil, ChevronUp, ChevronDown, Copy, Check, TerminalSquare, X, Play, RefreshCw, ChevronRight, Tag } from "lucide-react";
+import { Loader2, Plus, Trash2, Pencil, ChevronUp, ChevronDown, Copy, Check, TerminalSquare, X, Play, RefreshCw, ChevronRight, Tag, Sparkles, Upload, FileCode } from "lucide-react";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -206,14 +206,25 @@ const EMPTY_FORM = {
   categoryIds: [] as number[],
 };
 
+interface AnalyzeResult {
+  name: string | null;
+  runbookName: string | null;
+  description: string;
+  aiInstructions: string;
+  suggestedCategoryIds: number[];
+  appRegPermissions: AppRegPermission[];
+}
+
 function ScriptFormModal({
   script,
   categories,
+  initialValues,
   onClose,
   onSaved,
 }: {
   script: Script | null;
   categories: Category[];
+  initialValues?: Partial<typeof EMPTY_FORM>;
   onClose: () => void;
   onSaved: (s: Script) => void;
 }) {
@@ -232,7 +243,7 @@ function ScriptFormModal({
           psScriptBody: script.psScriptBody ?? "",
           categoryIds: script.categoryIds ?? [] as number[],
         }
-      : { ...EMPTY_FORM, appRegPermissions: [] as AppRegPermission[] }
+      : { ...EMPTY_FORM, appRegPermissions: [] as AppRegPermission[], ...(initialValues ?? {}) }
   );
   const [saving, setSaving] = useState(false);
 
@@ -2086,6 +2097,182 @@ function ScriptCatalogTab({
   );
 }
 
+// ── Register From Script Sheet ─────────────────────────────────────────────────
+
+function RegisterFromScriptSheet({
+  onClose,
+  onResult,
+}: {
+  onClose: () => void;
+  onResult: (r: AnalyzeResult) => void;
+}) {
+  const { fetchWithAuth } = useAuth();
+  const { toast } = useToast();
+  const [psBody, setPsBody] = useState("");
+  const [analyzing, setAnalyzing] = useState(false);
+  const [showAnnotation, setShowAnnotation] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = ev => {
+      const text = ev.target?.result;
+      if (typeof text === "string") setPsBody(text);
+    };
+    reader.readAsText(file);
+    e.target.value = "";
+  };
+
+  const handleAnalyze = async () => {
+    if (!psBody.trim()) {
+      toast({ title: "Paste or upload a PowerShell script first", variant: "destructive" });
+      return;
+    }
+    setAnalyzing(true);
+    try {
+      const res = await fetchWithAuth("/api/admin/scripts/analyze", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ psScriptBody: psBody }),
+      });
+      const body = await res.json() as AnalyzeResult & { error?: string };
+      if (!res.ok) {
+        toast({ title: body.error ?? "Analysis failed", variant: "destructive" });
+        return;
+      }
+      onResult(body);
+    } catch {
+      toast({ title: "Network error — please try again", variant: "destructive" });
+    } finally {
+      setAnalyzing(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-start justify-end">
+      <div className="absolute inset-0 bg-black/50" onClick={onClose} />
+      <div className="relative w-full max-w-2xl h-full bg-[#161B22] border-l border-[#30363D] flex flex-col shadow-2xl overflow-hidden">
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-4 border-b border-[#30363D] flex-shrink-0">
+          <div>
+            <div className="flex items-center gap-2">
+              <Sparkles className="w-4 h-4 text-[#0078D4]" />
+              <h2 className="text-base font-bold text-[#E6EDF3]">Register from Script</h2>
+            </div>
+            <p className="text-xs text-[#7D8590] mt-0.5">Paste or upload a .ps1 file — AI fills in the catalog entry for you</p>
+          </div>
+          <button onClick={onClose} className="text-[#7D8590] hover:text-[#E6EDF3] transition-colors p-1 rounded">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        {/* Body */}
+        <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
+          {/* Annotation format info */}
+          <div className="bg-[#0D1117] border border-[#30363D] rounded-xl overflow-hidden">
+            <button
+              type="button"
+              onClick={() => setShowAnnotation(v => !v)}
+              className="w-full flex items-center justify-between px-4 py-3 text-left hover:bg-[#161B22] transition-colors"
+            >
+              <div className="flex items-center gap-2">
+                <FileCode className="w-4 h-4 text-[#484F58]" />
+                <span className="text-xs font-semibold text-[#7D8590]">How to annotate your script</span>
+              </div>
+              <ChevronRight className={`w-4 h-4 text-[#484F58] transition-transform ${showAnnotation ? "rotate-90" : ""}`} />
+            </button>
+            {showAnnotation && (
+              <div className="px-4 pb-4 space-y-3 border-t border-[#30363D]">
+                <p className="text-xs text-[#7D8590] mt-3 leading-relaxed">
+                  Add a <code className="bg-[#1C2128] px-1 rounded text-[#E6EDF3] text-[11px]">&lt;# … #&gt;</code> comment block at the top of your script with these fields. The AI will use them to pre-fill the Name and Runbook fields, then generate everything else automatically.
+                </p>
+                <pre className="text-[11px] text-[#E6EDF3] font-mono bg-[#1C2128] border border-[#30363D] rounded-lg p-3 leading-relaxed select-all">{`<#
+.CATALOG_NAME   MFA Status Audit
+.CATALOG_RUNBOOK  Check-MFAStatus
+#>
+
+# Your PowerShell script body starts here…
+param(
+    [string]$TenantId,
+    [string]$ClientId,
+    [string]$ClientSecret
+)
+
+Connect-MgGraph -TenantId $TenantId …`}</pre>
+                <p className="text-[10px] text-[#484F58]">
+                  <strong className="text-[#7D8590]">.CATALOG_NAME</strong> — friendly display name for the script catalog<br />
+                  <strong className="text-[#7D8590]">.CATALOG_RUNBOOK</strong> — exact Azure Automation runbook name (case-sensitive)
+                </p>
+              </div>
+            )}
+          </div>
+
+          {/* Script paste area */}
+          <div>
+            <div className="flex items-center justify-between mb-1">
+              <label className={labelCls}>PowerShell Script Body</label>
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                className="flex items-center gap-1.5 text-[10px] font-semibold text-[#0078D4] hover:text-[#1A90E0] transition-colors"
+              >
+                <Upload className="w-3 h-3" />
+                Upload .ps1
+              </button>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".ps1,.txt,text/plain"
+                className="hidden"
+                onChange={handleFileUpload}
+              />
+            </div>
+            <textarea
+              value={psBody}
+              onChange={e => setPsBody(e.target.value)}
+              placeholder={"Paste your PowerShell script here…\n\nTip: add a <# .CATALOG_NAME … .CATALOG_RUNBOOK … #> block at the top to pre-fill the name and runbook fields automatically."}
+              rows={20}
+              className={`${inputCls} resize-y font-mono text-[11px]`}
+            />
+            <p className="text-[10px] text-[#484F58] mt-1">
+              The AI reads the full script to generate description, AI instructions, app permissions, and category tags
+            </p>
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="flex items-center justify-between gap-3 px-6 py-4 border-t border-[#30363D] flex-shrink-0">
+          <button
+            onClick={onClose}
+            className="text-sm text-[#7D8590] hover:text-[#E6EDF3] font-medium transition-colors"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={() => void handleAnalyze()}
+            disabled={analyzing || !psBody.trim()}
+            className="flex items-center gap-2 bg-[#0078D4] hover:bg-[#006CBE] disabled:opacity-50 text-white text-sm font-semibold px-5 py-2 rounded-lg transition-colors"
+          >
+            {analyzing ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin" />
+                Analyzing…
+              </>
+            ) : (
+              <>
+                <Sparkles className="w-4 h-4" />
+                Analyze Script
+              </>
+            )}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Page Root ─────────────────────────────────────────────────────────────────
 
 type Tab = "catalog" | "packages";
@@ -2098,6 +2285,8 @@ export default function M365ScriptCatalogPage() {
   const [categories, setCategories] = useState<Category[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [editScript, setEditScript] = useState<Script | null>(null);
+  const [showRegisterSheet, setShowRegisterSheet] = useState(false);
+  const [registerInitialValues, setRegisterInitialValues] = useState<Partial<typeof EMPTY_FORM> | null>(null);
 
   const loadScripts = useCallback(async () => {
     try {
@@ -2133,6 +2322,26 @@ export default function M365ScriptCatalogPage() {
 
   const handleNew = () => {
     setEditScript(null);
+    setRegisterInitialValues(null);
+    setShowForm(true);
+  };
+
+  const handleRegisterFromScript = () => {
+    setShowRegisterSheet(true);
+  };
+
+  const handleAnalyzeResult = (result: AnalyzeResult) => {
+    setShowRegisterSheet(false);
+    setEditScript(null);
+    setRegisterInitialValues({
+      name: result.name ?? "",
+      runbookName: result.runbookName ?? "",
+      description: result.description,
+      aiInstructions: result.aiInstructions,
+      appRegPermissions: result.appRegPermissions,
+      categoryIds: result.suggestedCategoryIds,
+      executionMode: "automated",
+    });
     setShowForm(true);
   };
 
@@ -2143,6 +2352,7 @@ export default function M365ScriptCatalogPage() {
     });
     setShowForm(false);
     setEditScript(null);
+    setRegisterInitialValues(null);
   };
 
   const handleDeleted = (id: number) => {
@@ -2158,13 +2368,22 @@ export default function M365ScriptCatalogPage() {
           <p className="text-sm text-[#7D8590] mt-0.5">Manage the Command Center script catalog and Quick Win package assignments</p>
         </div>
         {tab === "catalog" && (
-          <button
-            onClick={handleNew}
-            className="flex items-center gap-2 bg-[#0078D4] hover:bg-[#006CBE] text-white text-sm font-semibold px-4 py-2 rounded-lg transition-colors"
-          >
-            <Plus className="w-4 h-4" />
-            New Script
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleRegisterFromScript}
+              className="flex items-center gap-2 border border-[#30363D] bg-[#1C2128] hover:bg-[#21262D] text-[#E6EDF3] text-sm font-semibold px-4 py-2 rounded-lg transition-colors"
+            >
+              <Sparkles className="w-4 h-4 text-[#0078D4]" />
+              Register from Script
+            </button>
+            <button
+              onClick={handleNew}
+              className="flex items-center gap-2 bg-[#0078D4] hover:bg-[#006CBE] text-white text-sm font-semibold px-4 py-2 rounded-lg transition-colors"
+            >
+              <Plus className="w-4 h-4" />
+              New Script
+            </button>
+          </div>
         )}
       </div>
 
@@ -2208,12 +2427,21 @@ export default function M365ScriptCatalogPage() {
         <PackageAssignmentsTab allScripts={scripts} />
       )}
 
+      {/* Register from Script sheet */}
+      {showRegisterSheet && (
+        <RegisterFromScriptSheet
+          onClose={() => setShowRegisterSheet(false)}
+          onResult={handleAnalyzeResult}
+        />
+      )}
+
       {/* Create/Edit slide-over */}
       {showForm && (
         <ScriptFormModal
           script={editScript}
           categories={categories}
-          onClose={() => { setShowForm(false); setEditScript(null); }}
+          initialValues={registerInitialValues ?? undefined}
+          onClose={() => { setShowForm(false); setEditScript(null); setRegisterInitialValues(null); }}
           onSaved={handleSaved}
         />
       )}
