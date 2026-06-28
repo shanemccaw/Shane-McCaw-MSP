@@ -12,7 +12,7 @@
  */
 
 import { Router, type IRouter, type Request, type Response } from "express";
-import { db, azureTenantCredentialsTable, kanbanTasksTable, runbookJobHistoryTable } from "@workspace/db";
+import { db, azureTenantCredentialsTable, clientAppRegistrationsTable, usersTable, kanbanTasksTable, runbookJobHistoryTable } from "@workspace/db";
 import { eq, desc } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/requireAuth";
 import { getCredential } from "../lib/azure-keyvault";
@@ -63,7 +63,10 @@ router.get("/admin/runbooks", requireAdmin, async (_req: Request, res: Response)
 });
 
 interface CreateJobBody {
-  credentialId: number;
+  /** Legacy credential from azureTenantCredentialsTable. Kept for backward compatibility. */
+  credentialId?: number;
+  /** Preferred: use client's App Registration from clientAppRegistrationsTable. */
+  appRegistrationId?: number;
   runbookName: string;
   kanbanTaskId?: number;
   governanceAreas?: string[];
@@ -73,10 +76,14 @@ interface CreateJobBody {
 
 router.post("/admin/runbook-jobs", requireAdmin, async (req: Request, res: Response) => {
   try {
-    const { credentialId, runbookName, kanbanTaskId, governanceAreas, adHocContent } = req.body as CreateJobBody;
+    const { credentialId, appRegistrationId, runbookName, kanbanTaskId, governanceAreas, adHocContent } = req.body as CreateJobBody;
 
-    if (!credentialId || !runbookName) {
-      res.status(400).json({ error: "credentialId and runbookName are required" });
+    if (!credentialId && !appRegistrationId) {
+      res.status(400).json({ error: "Either appRegistrationId or credentialId is required" });
+      return;
+    }
+    if (!runbookName) {
+      res.status(400).json({ error: "runbookName is required" });
       return;
     }
 
@@ -97,25 +104,73 @@ router.post("/admin/runbook-jobs", requireAdmin, async (req: Request, res: Respo
       }
     }
 
-    const [cred] = await db
-      .select()
-      .from(azureTenantCredentialsTable)
-      .where(eq(azureTenantCredentialsTable.id, credentialId))
-      .limit(1);
-
-    if (!cred) {
-      res.status(404).json({ error: "Azure credential not found" });
-      return;
-    }
-
+    // ── Resolve credentials ────────────────────────────────────────────────────
+    let tenantId: string;
+    let clientId: string;
     let credentialValue: string;
-    try {
-      credentialValue = await getCredential(cred.keyVaultSecretName, cred.credentialType);
-    } catch (kvErr) {
-      const msg = kvErr instanceof Error ? kvErr.message : String(kvErr);
-      logger.error({ kvErr, secretName: cred.keyVaultSecretName }, "admin-script-runner: Key Vault fetch failed");
-      res.status(502).json({ error: `Key Vault error: ${msg}` });
-      return;
+    let credentialType: "secret" | "certificate" = "secret";
+    let historyCredentialId: number | null = null;
+    let customerName: string = "Unknown";
+
+    if (appRegistrationId) {
+      // Preferred path: use client's App Registration
+      const [appReg] = await db
+        .select()
+        .from(clientAppRegistrationsTable)
+        .where(eq(clientAppRegistrationsTable.id, appRegistrationId))
+        .limit(1);
+
+      if (!appReg) {
+        res.status(404).json({ error: "App Registration not found" });
+        return;
+      }
+
+      tenantId = appReg.tenantId;
+      clientId = appReg.azureClientId;
+
+      // Fetch customer name for the history record
+      const [user] = await db
+        .select({ name: usersTable.name })
+        .from(usersTable)
+        .where(eq(usersTable.id, appReg.clientUserId))
+        .limit(1);
+      customerName = user?.name ?? `Client #${appReg.clientUserId}`;
+
+      try {
+        credentialValue = await getCredential(appReg.keyVaultSecretName, "secret");
+      } catch (kvErr) {
+        const msg = kvErr instanceof Error ? kvErr.message : String(kvErr);
+        logger.error({ kvErr, secretName: appReg.keyVaultSecretName }, "admin-script-runner: Key Vault fetch failed (App Registration)");
+        res.status(502).json({ error: `Key Vault error: ${msg}` });
+        return;
+      }
+    } else {
+      // Legacy path: use azureTenantCredentialsTable entry
+      const [cred] = await db
+        .select()
+        .from(azureTenantCredentialsTable)
+        .where(eq(azureTenantCredentialsTable.id, credentialId!))
+        .limit(1);
+
+      if (!cred) {
+        res.status(404).json({ error: "Azure credential not found" });
+        return;
+      }
+
+      tenantId = cred.tenantId;
+      clientId = cred.clientId;
+      credentialType = (cred.credentialType as typeof credentialType) ?? "secret";
+      customerName = cred.displayName;
+      historyCredentialId = cred.id;
+
+      try {
+        credentialValue = await getCredential(cred.keyVaultSecretName, cred.credentialType);
+      } catch (kvErr) {
+        const msg = kvErr instanceof Error ? kvErr.message : String(kvErr);
+        logger.error({ kvErr, secretName: cred.keyVaultSecretName }, "admin-script-runner: Key Vault fetch failed");
+        res.status(502).json({ error: `Key Vault error: ${msg}` });
+        return;
+      }
     }
 
     const hasAreas = Array.isArray(governanceAreas) && governanceAreas.length > 0;
@@ -126,9 +181,9 @@ router.post("/admin/runbook-jobs", requireAdmin, async (req: Request, res: Respo
       ({ jobId, status } = await createRunbookJob({
         runbookName,
         parameters: {
-          TenantId: cred.tenantId,
-          ClientId: cred.clientId,
-          ...(cred.credentialType === "secret"
+          TenantId: tenantId,
+          ClientId: clientId,
+          ...(credentialType === "secret"
             ? { ClientSecret: credentialValue }
             : { CertificatePem: credentialValue }),
           ...(hasAreas ? { GovernanceAreas: governanceAreas!.join(",") } : {}),
@@ -146,8 +201,8 @@ router.post("/admin/runbook-jobs", requireAdmin, async (req: Request, res: Respo
       await db.insert(runbookJobHistoryTable).values({
         jobId,
         runbookName,
-        credentialId: cred.id,
-        customerName: cred.displayName,
+        credentialId: historyCredentialId,
+        customerName,
         status,
         startedAt: new Date(),
       });

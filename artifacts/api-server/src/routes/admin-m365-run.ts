@@ -20,6 +20,7 @@ import {
   clientM365ProfilesTable,
   clientHealthHistoryTable,
   azureTenantCredentialsTable,
+  clientAppRegistrationsTable,
   usersTable,
   servicesTable,
   kanbanTasksTable,
@@ -47,6 +48,13 @@ const runScriptSchema = z.union([
   z.object({
     libraryScriptId: z.string().uuid(),
     customerId: z.number().int().positive().optional(),
+    appRegistrationId: z.number().int().positive(),
+    packageContext: z.string().optional(),
+    kanbanTaskId: z.number().int().positive().optional(),
+  }),
+  z.object({
+    libraryScriptId: z.string().uuid(),
+    customerId: z.number().int().positive().optional(),
     tenantId: z.string().min(1),
     clientId: z.string().min(1),
     clientSecret: z.string().min(1),
@@ -57,6 +65,13 @@ const runScriptSchema = z.union([
     libraryModuleId: z.string().uuid(),
     customerId: z.number().int().positive().optional(),
     credentialId: z.number().int().positive(),
+    packageContext: z.string().optional(),
+    kanbanTaskId: z.number().int().positive().optional(),
+  }),
+  z.object({
+    libraryModuleId: z.string().uuid(),
+    customerId: z.number().int().positive().optional(),
+    appRegistrationId: z.number().int().positive(),
     packageContext: z.string().optional(),
     kanbanTaskId: z.number().int().positive().optional(),
   }),
@@ -343,6 +358,28 @@ router.post("/admin/run-script", requireAdmin, async (req: Request, res: Respons
     }
     tenantId = cred.tenantId;
     clientId = cred.clientId;
+  } else if ("appRegistrationId" in parsed.data) {
+    const [appReg] = await db
+      .select()
+      .from(clientAppRegistrationsTable)
+      .where(eq(clientAppRegistrationsTable.id, parsed.data.appRegistrationId))
+      .limit(1);
+    if (!appReg) {
+      res.status(404).json({ error: "App Registration not found" });
+      return;
+    }
+    if (!customerId) {
+      customerId = appReg.clientUserId;
+    }
+    try {
+      clientSecret = await getSecretValue(appReg.keyVaultSecretName);
+    } catch (err) {
+      logger.error({ err, appRegistrationId: parsed.data.appRegistrationId }, "admin-m365-run: failed to fetch secret from Key Vault");
+      res.status(502).json({ error: "Failed to retrieve client secret from Key Vault" });
+      return;
+    }
+    tenantId = appReg.tenantId;
+    clientId = appReg.azureClientId;
   } else {
     tenantId = parsed.data.tenantId;
     clientId = parsed.data.clientId;

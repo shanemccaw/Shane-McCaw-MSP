@@ -1566,7 +1566,7 @@ function LibrarySidebar({
 interface InlineClientEntry {
   id: number;
   name: string;
-  credential: { id: number; displayName: string | null } | null;
+  appRegistration: { id: number; tenantId: string; azureClientId: string; keyVaultSecretName: string; status: string } | null;
 }
 
 interface InlineRunbookEntry {
@@ -1610,7 +1610,6 @@ function InlineScriptRunner({
   const [azureConfigured, setAzureConfigured] = useState<boolean | null>(null);
 
   const [selectedClientId, setSelectedClientId] = useState<number | "">("");
-  const [selectedCredId,   setSelectedCredId]   = useState<number | "">("");
   const [selectedRunbook,  setSelectedRunbook]  = useState("");
 
   const [running,   setRunning]   = useState(false);
@@ -1648,17 +1647,19 @@ function InlineScriptRunner({
       try {
         const res = await fetchWithAuth("/api/admin/clients/with-azure-credentials");
         if (res.ok) {
-          const data = await res.json() as Array<{ id: number; name: string; email: string; credential: { id: number; displayName: string | null } | null }>;
-          setClients(data.map(c => ({ id: c.id, name: c.name, credential: c.credential })));
+          const data = await res.json() as Array<{ id: number; name: string; email: string; appRegistration: { id: number; tenantId: string; azureClientId: string; keyVaultSecretName: string; status: string } | null }>;
+          setClients(data.map(c => ({ id: c.id, name: c.name, appRegistration: c.appRegistration ?? null })));
         }
       } finally { setLoadingClients(false); }
     })();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Load runbooks when a credential is selected
+  // Load runbooks when a client with an App Registration is selected
   useEffect(() => {
-    if (!selectedCredId) { setRunbooks([]); setSelectedRunbook(""); return; }
+    if (!selectedClientId) { setRunbooks([]); setSelectedRunbook(""); return; }
+    const client = clients.find(c => c.id === selectedClientId);
+    if (!client?.appRegistration) { setRunbooks([]); setSelectedRunbook(""); return; }
     void (async () => {
       setLoadingRunbooks(true);
       try {
@@ -1680,7 +1681,7 @@ function InlineScriptRunner({
       finally { setLoadingRunbooks(false); }
     })();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedCredId]);
+  }, [selectedClientId, clients]);
 
   // Auto-select ADHOC_SENTINEL when runbooks finish loading if editor has content
   // and no runbook is pre-selected (mirrors m365-scripts behaviour)
@@ -1692,7 +1693,8 @@ function InlineScriptRunner({
   }, [loadingRunbooks]);
 
   const handleRun = async () => {
-    if (!selectedCredId || !selectedRunbook) return;
+    const appRegId = selectedClient?.appRegistration?.id;
+    if (!appRegId || !selectedRunbook) return;
     const isAdHoc = selectedRunbook === ADHOC_SENTINEL;
     if (isAdHoc && !scriptBody.trim()) return;
     const actualRunbook = isAdHoc
@@ -1733,7 +1735,7 @@ function InlineScriptRunner({
     try {
       const areasPayload = Array.isArray(governanceAreas) && governanceAreas.length > 0 ? governanceAreas : undefined;
       const body: Record<string, unknown> = {
-        credentialId: selectedCredId,
+        appRegistrationId: appRegId,
         runbookName: actualRunbook,
         ...(areasPayload ? { governanceAreas: areasPayload } : {}),
       };
@@ -1811,11 +1813,11 @@ function InlineScriptRunner({
 
   const isTerminal = ["Completed", "Failed", "Stopped", "Suspended"].includes(jobStatus);
   const isAdHocSelected = selectedRunbook === ADHOC_SENTINEL;
-  const canRun = !!selectedCredId && selectedRunbook !== "" && !running && !(isAdHocSelected && !scriptBody.trim());
+  const selectedClient = clients.find(c => c.id === selectedClientId);
+  const canRun = !!selectedClientId && !!selectedClient?.appRegistration && selectedRunbook !== "" && !running && !(isAdHocSelected && !scriptBody.trim());
   const statusColor = INLINE_JOB_COLORS[jobStatus] ?? "text-[#7D8590]";
   const currentRunbookName = editorScript?.azureRunbookName ?? null;
   const hasEditorContent = scriptBody.trim().length > 0;
-  const selectedClient = clients.find(c => c.id === selectedClientId);
 
   if (azureConfigured === false) {
     return (
@@ -1842,45 +1844,37 @@ function InlineScriptRunner({
               onChange={e => {
                 const clientId = e.target.value ? Number(e.target.value) : "";
                 setSelectedClientId(clientId);
-                const cred = clientId ? clients.find(c => c.id === clientId)?.credential : null;
-                setSelectedCredId(cred?.id ?? "");
                 setSelectedRunbook("");
               }}
               className="w-full bg-[#161B22] border border-[#30363D] rounded px-2 py-1.5 text-xs text-[#E6EDF3] outline-none focus:border-[#0078D4]/50 transition-colors"
             >
               <option value="">Select customer…</option>
               {clients.map(c => (
-                <option key={c.id} value={c.id} disabled={!c.credential}>
-                  {c.name}{!c.credential ? " (no credential)" : ""}
+                <option key={c.id} value={c.id}>
+                  {c.name}{!c.appRegistration ? " (no App Registration)" : ""}
                 </option>
               ))}
             </select>
           )}
         </div>
 
-        {/* Credential — shown after client selected, explicit picker matching m365-scripts */}
+        {/* App Registration — read-only credential info sourced from the client's App Registration */}
         {selectedClientId !== "" && selectedClient && (
           <div>
             <label className="block text-[9px] font-bold uppercase tracking-wider text-[#484F58] mb-1">Credential</label>
-            {selectedClient.credential ? (
-              <select
-                value={selectedCredId}
-                onChange={e => { setSelectedCredId(e.target.value ? Number(e.target.value) : ""); setSelectedRunbook(""); }}
-                className="w-full bg-[#161B22] border border-[#30363D] rounded px-2 py-1.5 text-xs text-[#E6EDF3] outline-none focus:border-[#0078D4]/50 transition-colors"
-              >
-                <option value="">Select credential…</option>
-                <option value={selectedClient.credential.id}>
-                  {selectedClient.credential.displayName ?? `Credential #${selectedClient.credential.id}`}
-                </option>
-              </select>
+            {selectedClient.appRegistration ? (
+              <p className="text-[10px] text-[#E6EDF3] bg-[#161B22] border border-[#30363D] rounded px-2 py-1.5 truncate">
+                {selectedClient.name} — App Registration
+                <span className="ml-1.5 text-[#0078D4]">({selectedClient.appRegistration.status})</span>
+              </p>
             ) : (
-              <p className="text-[10px] text-amber-400">No Azure credential — add one in the CRM first.</p>
+              <p className="text-[10px] text-amber-400">No App Registration — add one in the CRM first.</p>
             )}
           </div>
         )}
 
-        {/* Runbook — only after credential selected */}
-        {selectedCredId !== "" && (
+        {/* Runbook — only shown when the client has an App Registration */}
+        {selectedClientId !== "" && selectedClient?.appRegistration && (
           <div>
             <label className="block text-[9px] font-bold uppercase tracking-wider text-[#484F58] mb-1">Runbook</label>
             {loadingRunbooks ? (

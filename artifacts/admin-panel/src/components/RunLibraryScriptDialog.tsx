@@ -5,7 +5,7 @@ import { useToast } from "@/hooks/use-toast";
 interface ClientEntry {
   id: number;
   name: string | null;
-  credential: { id: number; displayName: string | null } | null;
+  appRegistration: { id: number; tenantId: string; azureClientId: string; keyVaultSecretName: string; status: string } | null;
 }
 
 interface RunStatus {
@@ -33,7 +33,7 @@ export default function RunLibraryScriptDialog({ scriptId, moduleId, scriptTitle
   const [clients, setClients] = useState<ClientEntry[]>([]);
   const [selectedClientId, setSelectedClientId] = useState<number | null>(initialClientId ?? null);
   const [loadingClients, setLoadingClients] = useState(true);
-  const [credentialId, setCredentialId] = useState<number | null>(null);
+  const [appRegistrationId, setAppRegistrationId] = useState<number | null>(null);
 
   const [running, setRunning] = useState(false);
   const [jobRef, setJobRef] = useState<string | null>(null);
@@ -60,10 +60,10 @@ export default function RunLibraryScriptDialog({ scriptId, moduleId, scriptTitle
       .finally(() => setLoadingClients(false));
   }, [fetchWithAuth, toast, initialClientId]);
 
-  // Auto-select credential when client changes
+  // Auto-select App Registration when client changes
   useEffect(() => {
     const client = clients.find(c => c.id === selectedClientId);
-    setCredentialId(client?.credential?.id ?? null);
+    setAppRegistrationId(client?.appRegistration?.id ?? null);
   }, [selectedClientId, clients]);
 
   // Auto-scroll terminal
@@ -129,7 +129,7 @@ export default function RunLibraryScriptDialog({ scriptId, moduleId, scriptTitle
       toast({ title: "Script not pushed to Azure", description: "Push this script to Azure Automation first", variant: "destructive" });
       return;
     }
-    if (!credentialId && !selectedClientId) {
+    if (!selectedClientId && !appRegistrationId) {
       toast({ title: "Select a client", variant: "destructive" });
       return;
     }
@@ -139,7 +139,7 @@ export default function RunLibraryScriptDialog({ scriptId, moduleId, scriptTitle
       const body: Record<string, unknown> = moduleId
         ? { libraryModuleId: moduleId }
         : { libraryScriptId: scriptId };
-      if (credentialId) body.credentialId = credentialId;
+      if (appRegistrationId) body.appRegistrationId = appRegistrationId;
       if (selectedClientId) body.customerId = selectedClientId;
       if (kanbanTaskId) body.kanbanTaskId = kanbanTaskId;
 
@@ -208,16 +208,16 @@ export default function RunLibraryScriptDialog({ scriptId, moduleId, scriptTitle
                 {clients.map(c => (
                   <option key={c.id} value={c.id}>
                     {c.name ?? `Client #${c.id}`}
-                    {c.credential ? ` (${c.credential.displayName ?? "credential linked"})` : " — no credential"}
+                    {c.appRegistration ? ` (App Registration — ${c.appRegistration.status})` : " — no App Registration"}
                   </option>
                 ))}
               </select>
             )}
           </div>
 
-          {selectedClientId && !credentialId && (
+          {selectedClientId && !appRegistrationId && (
             <div className="rounded-lg bg-amber-500/10 border border-amber-500/30 px-4 py-3">
-              <p className="text-xs text-amber-400">This client has no Azure credential linked. The script will run using the Automation account's own identity.</p>
+              <p className="text-xs text-amber-400">This client has no App Registration linked. The script will run using the Automation account's own identity.</p>
             </div>
           )}
 

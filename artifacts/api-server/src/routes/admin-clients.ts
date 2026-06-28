@@ -203,8 +203,9 @@ router.get("/admin/clients/enriched", requireAdmin, async (_req: Request, res: R
 });
 
 // ─── GET /admin/clients/with-azure-credentials ───────────────────────────────
-// Returns ALL clients (role=client), each with their linked Azure credential
-// (or null if none). Used by Script Runner to show all customers with status.
+// Returns ALL clients (role=client), each with their linked App Registration
+// (or null if none). The legacy `azureTenantCredentialsTable` fallback has been
+// removed — only App Registrations submitted by clients appear here.
 router.get("/admin/clients/with-azure-credentials", requireAdmin, async (_req: Request, res: Response) => {
   try {
     const rows = await db
@@ -212,17 +213,16 @@ router.get("/admin/clients/with-azure-credentials", requireAdmin, async (_req: R
         id: usersTable.id,
         name: usersTable.name,
         email: usersTable.email,
-        credentialId: azureTenantCredentialsTable.id,
-        credentialDisplayName: azureTenantCredentialsTable.displayName,
-        credentialTenantId: azureTenantCredentialsTable.tenantId,
-        credentialClientId: azureTenantCredentialsTable.clientId,
-        credentialType: azureTenantCredentialsTable.credentialType,
-        credentialKeyVaultSecretName: azureTenantCredentialsTable.keyVaultSecretName,
+        appRegId: clientAppRegistrationsTable.id,
+        appRegTenantId: clientAppRegistrationsTable.tenantId,
+        appRegAzureClientId: clientAppRegistrationsTable.azureClientId,
+        appRegKeyVaultSecretName: clientAppRegistrationsTable.keyVaultSecretName,
+        appRegStatus: clientAppRegistrationsTable.status,
       })
       .from(usersTable)
       .leftJoin(
-        azureTenantCredentialsTable,
-        eq(azureTenantCredentialsTable.clientUserId, usersTable.id),
+        clientAppRegistrationsTable,
+        eq(clientAppRegistrationsTable.clientUserId, usersTable.id),
       )
       .where(eq(usersTable.role, "client"))
       .orderBy(asc(usersTable.name));
@@ -231,78 +231,16 @@ router.get("/admin/clients/with-azure-credentials", requireAdmin, async (_req: R
       id: r.id,
       name: r.name,
       email: r.email,
-      credential: r.credentialId != null
+      appRegistration: r.appRegId != null
         ? {
-            id: r.credentialId,
-            displayName: r.credentialDisplayName,
-            tenantId: r.credentialTenantId,
-            clientId: r.credentialClientId,
-            credentialType: r.credentialType,
-            keyVaultSecretName: r.credentialKeyVaultSecretName,
+            id: r.appRegId,
+            tenantId: r.appRegTenantId,
+            azureClientId: r.appRegAzureClientId,
+            keyVaultSecretName: r.appRegKeyVaultSecretName,
+            status: r.appRegStatus,
           }
         : null,
     }));
-
-    // For clients that have no directly-linked credential, attempt to match
-    // unlinked credentials (clientUserId IS NULL) that were added via the
-    // global credentials manager without being associated to a specific client.
-    //
-    // Two matching strategies are tried in order:
-    //
-    // 1. Deterministic name match — if a credential's displayName exactly
-    //    matches (case-insensitive) the client's name or email-prefix, it is
-    //    confidently attributed to that client.
-    //
-    // 2. Unambiguous 1-to-1 fallback — if there is exactly one uncredentialed
-    //    client AND exactly one unlinked credential, the relationship is
-    //    unambiguous and the credential is assigned.
-    //
-    // Any other situation leaves credential as null (grey dot remains correct).
-    const uncredentialedClients = result.filter(r => r.credential === null);
-    if (uncredentialedClients.length > 0) {
-      const unlinked = await db
-        .select({
-          id: azureTenantCredentialsTable.id,
-          displayName: azureTenantCredentialsTable.displayName,
-          tenantId: azureTenantCredentialsTable.tenantId,
-          clientId: azureTenantCredentialsTable.clientId,
-          credentialType: azureTenantCredentialsTable.credentialType,
-          keyVaultSecretName: azureTenantCredentialsTable.keyVaultSecretName,
-        })
-        .from(azureTenantCredentialsTable)
-        .where(isNull(azureTenantCredentialsTable.clientUserId))
-        .orderBy(asc(azureTenantCredentialsTable.displayName));
-
-      if (unlinked.length > 0) {
-        // Pass 1: deterministic name match — assign only when a credential's
-        // displayName exactly matches (case-insensitive) the client's name or
-        // email-prefix. Consumes the matched credential so it is not reused.
-        const usedIds = new Set<number>();
-        for (const client of uncredentialedClients) {
-          const clientName = (client.name ?? "").toLowerCase();
-          const clientEmailPrefix = client.email.split("@")[0].toLowerCase();
-          const nameMatch = unlinked.find(
-            u =>
-              !usedIds.has(u.id) &&
-              ((clientName && u.displayName.toLowerCase() === clientName) ||
-                u.displayName.toLowerCase() === clientEmailPrefix),
-          );
-          if (nameMatch) {
-            client.credential = nameMatch;
-            usedIds.add(nameMatch.id);
-          }
-        }
-
-        // Pass 2: unambiguous 1-to-1 — apply only when exactly one client
-        // remains uncredentialed AND exactly one unlinked credential remains
-        // unused. This is the only safe fallback when names do not match.
-        const stillNull = uncredentialedClients.filter(c => c.credential === null);
-        const stillUnused = unlinked.filter(u => !usedIds.has(u.id));
-        if (stillNull.length === 1 && stillUnused.length === 1) {
-          stillNull[0].credential = stillUnused[0];
-        }
-      }
-    }
 
     res.json(result);
   } catch (err) {
