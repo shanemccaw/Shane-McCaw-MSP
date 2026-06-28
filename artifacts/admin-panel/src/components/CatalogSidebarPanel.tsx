@@ -46,6 +46,19 @@ interface RunbookSummary {
   runbookType?: string;
 }
 
+interface AzureCredential {
+  id: number;
+  tenantId: string;
+  clientId: string;
+}
+
+interface ClientWithCred {
+  id: number;
+  name: string | null;
+  email: string;
+  credential: AzureCredential | null;
+}
+
 // ── Style constants ───────────────────────────────────────────────────────────
 
 const inputCls = "w-full border border-[#30363D] rounded-lg px-3 py-2 text-sm text-[#E6EDF3] focus:outline-none focus:ring-2 focus:ring-[#0078D4]/40 bg-[#161B22] placeholder-[#484F58]";
@@ -337,6 +350,165 @@ function ScriptFormModal({
   );
 }
 
+// ── Run Script Modal ──────────────────────────────────────────────────────────
+
+function RunScriptModal({ script, onClose }: { script: Script; onClose: () => void }) {
+  const { fetchWithAuth } = useAuth();
+  const { toast } = useToast();
+  const [clients, setClients] = useState<ClientWithCred[]>([]);
+  const [loadingCreds, setLoadingCreds] = useState(true);
+  const [selectedClientId, setSelectedClientId] = useState<number | "">("");
+  const [running, setRunning] = useState(false);
+  const [done, setDone] = useState(false);
+  const [findings, setFindings] = useState<string[]>([]);
+
+  useEffect(() => {
+    fetchWithAuth("/api/admin/clients/with-azure-credentials")
+      .then(r => r.json() as Promise<ClientWithCred[]>)
+      .then(d => setClients(d.filter(c => c.credential !== null)))
+      .catch(() => {})
+      .finally(() => setLoadingCreds(false));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const selectedClient = clients.find(c => c.id === selectedClientId);
+
+  const handleRun = async () => {
+    if (!selectedClientId || !selectedClient?.credential) return;
+    setRunning(true);
+    try {
+      const res = await fetchWithAuth("/api/admin/run-script", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          scriptId: script.id,
+          credentialId: selectedClient.credential.id,
+          customerId: selectedClient.id,
+        }),
+      });
+      const data = await res.json() as { status?: string; findings?: string[]; error?: string };
+      if (!res.ok) {
+        toast({ title: data.error ?? "Script run failed", variant: "destructive" });
+      } else {
+        setFindings(data.findings ?? []);
+        setDone(true);
+        toast({
+          title: `Script run ${data.status ?? "complete"}`,
+          description: data.findings?.length
+            ? `${data.findings.length} finding${data.findings.length !== 1 ? "s" : ""} — check Run Results`
+            : "No findings — see Run Results for details",
+        });
+      }
+    } catch {
+      toast({ title: "Network error — could not reach the server", variant: "destructive" });
+    } finally {
+      setRunning(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+      <div className="bg-[#161B22] border border-[#30363D] rounded-xl shadow-2xl w-full max-w-md">
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 py-4 border-b border-[#30363D]">
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-bold text-[#E6EDF3]">Run Script</p>
+            <p className="text-[10px] text-[#7D8590] font-mono mt-0.5 truncate">{script.name}</p>
+          </div>
+          <button onClick={onClose} className="text-[#484F58] hover:text-[#E6EDF3] transition-colors ml-2 flex-shrink-0">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        {/* Body */}
+        <div className="px-5 py-4 space-y-4">
+          {done ? (
+            <div className="space-y-3">
+              <div className="flex items-center gap-2">
+                <div className="w-2 h-2 rounded-full bg-green-400" />
+                <p className="text-sm font-semibold text-green-400">Run complete</p>
+              </div>
+              {findings.length > 0 ? (
+                <div className="bg-[#1C2128] border border-[#30363D] rounded-lg p-3 space-y-1.5 max-h-48 overflow-y-auto">
+                  {findings.map((f, i) => (
+                    <p key={i} className="text-xs text-[#C9D1D9] leading-relaxed flex gap-2">
+                      <span className="text-[#0078D4] flex-shrink-0 mt-0.5">•</span>
+                      {f}
+                    </p>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-xs text-[#7D8590] italic">No findings — check Run Results for full output.</p>
+              )}
+            </div>
+          ) : (
+            <>
+              <div>
+                <label className={labelCls}>Client</label>
+                {loadingCreds ? (
+                  <div className="h-9 bg-[#1C2128] rounded-lg animate-pulse" />
+                ) : clients.length === 0 ? (
+                  <p className="text-xs text-[#484F58] italic py-2">No clients with Azure credentials found.</p>
+                ) : (
+                  <select
+                    className={inputCls}
+                    value={selectedClientId}
+                    onChange={e => setSelectedClientId(e.target.value ? Number(e.target.value) : "")}
+                  >
+                    <option value="">Select a client…</option>
+                    {clients.map(c => (
+                      <option key={c.id} value={c.id}>{c.name ?? c.email}</option>
+                    ))}
+                  </select>
+                )}
+              </div>
+
+              {selectedClient?.credential && (
+                <div className="text-[10px] text-[#7D8590] font-mono bg-[#1C2128] border border-[#30363D] rounded-lg px-3 py-2">
+                  <span className="font-sans font-semibold text-[#484F58] mr-1">Tenant:</span>{selectedClient.credential.tenantId}
+                  <span className="mx-2 text-[#30363D]">·</span>
+                  <span className="font-sans font-semibold text-[#484F58] mr-1">App:</span>{selectedClient.credential.clientId}
+                </div>
+              )}
+
+              <div className="flex items-center gap-1.5 text-[10px] text-[#484F58]">
+                <span>Runbook:</span>
+                <span className="font-mono text-[#7D8590] bg-[#1C2128] border border-[#30363D] rounded px-1.5 py-0.5">{script.runbookName}</span>
+                {script.executionMode === "manual" && (
+                  <span className="px-1.5 py-0.5 rounded-full bg-amber-500/10 text-amber-400 border border-amber-500/20 font-bold uppercase tracking-wider text-[9px]">Manual</span>
+                )}
+              </div>
+            </>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="flex justify-end gap-2 px-5 pb-4">
+          <button
+            onClick={onClose}
+            className="px-4 py-2 rounded-lg text-sm text-[#7D8590] hover:text-[#E6EDF3] hover:bg-[#30363D] transition-colors"
+          >
+            {done ? "Close" : "Cancel"}
+          </button>
+          {!done && (
+            <button
+              onClick={() => void handleRun()}
+              disabled={!selectedClientId || running || loadingCreds}
+              className="flex items-center gap-2 bg-[#0078D4] hover:bg-[#006CBE] disabled:opacity-50 text-white text-sm font-semibold px-4 py-2 rounded-lg transition-colors"
+            >
+              {running ? (
+                <><Loader2 className="w-4 h-4 animate-spin" />Running…</>
+              ) : (
+                <><Play className="w-4 h-4" />Run Script</>
+              )}
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Catalog Sidebar Panel ─────────────────────────────────────────────────────
 
 export default function CatalogSidebarPanel({
@@ -355,6 +527,7 @@ export default function CatalogSidebarPanel({
   const [editScript, setEditScript] = useState<Script | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Script | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [runScriptTarget, setRunScriptTarget] = useState<Script | null>(null);
   const initDone = useRef(false);
 
   const loadAll = useCallback(async () => {
@@ -501,7 +674,7 @@ export default function CatalogSidebarPanel({
                     <span className="text-[9px] px-1 py-0.5 rounded-full bg-[#21262D] text-[#484F58] border border-[#30363D] flex-shrink-0">{catScripts.length}</span>
                   </button>
                   {isOpen && catScripts.map(s => (
-                    <ScriptListRow key={s.id} s={s} onEdit={() => { setEditScript(s); setShowForm(true); }} onDelete={() => setDeleteTarget(s)} onRun={() => onRunScript(s.runbookName)} />
+                    <ScriptListRow key={s.id} s={s} onEdit={() => { setEditScript(s); setShowForm(true); }} onDelete={() => setDeleteTarget(s)} onRun={() => setRunScriptTarget(s)} />
                   ))}
                 </div>
               );
@@ -516,13 +689,21 @@ export default function CatalogSidebarPanel({
                   <span className="text-[9px] px-1 py-0.5 rounded-full bg-[#21262D] text-[#484F58] border border-[#30363D] flex-shrink-0">{uncategorised.length}</span>
                 </button>
                 {openSections.has(UNCATEGORISED_KEY) && uncategorised.map(s => (
-                  <ScriptListRow key={s.id} s={s} onEdit={() => { setEditScript(s); setShowForm(true); }} onDelete={() => setDeleteTarget(s)} onRun={() => onRunScript(s.runbookName)} />
+                  <ScriptListRow key={s.id} s={s} onEdit={() => { setEditScript(s); setShowForm(true); }} onDelete={() => setDeleteTarget(s)} onRun={() => setRunScriptTarget(s)} />
                 ))}
               </div>
             )}
           </div>
         )}
       </div>
+
+      {/* Run Script Modal */}
+      {runScriptTarget && (
+        <RunScriptModal
+          script={runScriptTarget}
+          onClose={() => setRunScriptTarget(null)}
+        />
+      )}
 
       {/* Modals */}
       {showForm && (
