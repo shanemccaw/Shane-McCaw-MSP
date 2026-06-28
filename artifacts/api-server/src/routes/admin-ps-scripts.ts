@@ -341,6 +341,12 @@ Package shape:
 
 Rules:
 - All filenames must end in .ps1; Main.ps1 must be the LAST module entry
+- At the top of EVERY generated script or module body (inside scriptBody or each module's content), insert a PowerShell comment block listing all human-only tasks that apply, e.g.:
+  # ─── HUMAN ACTION REQUIRED — steps NOT automated by this script ───────────────
+  # • Client kickoff call: Schedule and conduct an introductory call with the client
+  # • Approval sign-off: Obtain written approval before applying configuration changes
+  # ─────────────────────────────────────────────────────────────────────────────
+  If there are no human-only tasks, omit the comment block entirely.
 - Include HUMAN_ONLY tasks in "humanOnlyTasks" for documentation — never generate code for them
 - Be specific about permission scopes (e.g. "Group.Read.All (Microsoft Graph Application)" not just "Group.Read.All")
 - Distinguish Application permissions (service principal / app-only) from Delegated (signed-in user)`;

@@ -59,9 +59,11 @@ interface ServiceListItem {
   name: string;
   description: string | null;
   category: string | null;
+  tier: string | null;
   workflowTemplateId: number | null;
   deliverables: string[];
   inclusions: string[];
+  features: string[];
 }
 
 interface WorkflowTemplateStep {
@@ -1577,6 +1579,7 @@ function GenerateFromServiceDialog({
   const [selectedServiceId, setSelectedServiceId] = useState<number | null>(null);
   const [workflowTemplate, setWorkflowTemplate] = useState<WorkflowTemplateDetail | null>(null);
   const [loadingWorkflow, setLoadingWorkflow] = useState(false);
+  const [serviceSearch, setServiceSearch] = useState("");
   const [customInstructions, setCustomInstructions] = useState("");
   const [generating, setGenerating] = useState(false);
   const [humanOnlyTasks, setHumanOnlyTasks] = useState<string[]>([]);
@@ -1607,7 +1610,8 @@ function GenerateFromServiceDialog({
     selectedService &&
     (selectedService.workflowTemplateId ||
       (selectedService.deliverables?.length ?? 0) > 0 ||
-      (selectedService.inclusions?.length ?? 0) > 0);
+      (selectedService.inclusions?.length ?? 0) > 0 ||
+      (selectedService.features?.length ?? 0) > 0);
 
   const handleGenerate = async () => {
     if (!selectedServiceId) return;
@@ -1696,22 +1700,69 @@ function GenerateFromServiceDialog({
             ) : services.length === 0 ? (
               <p className="text-xs text-[#7D8590]">No services found. Create services in the Service Management page first.</p>
             ) : (
-              <select
-                value={selectedServiceId ?? ""}
-                onChange={(e) => {
-                  setSelectedServiceId(e.target.value ? Number(e.target.value) : null);
-                  setHumanOnlyTasks([]);
-                }}
-                className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-xs text-[#E6EDF3] outline-none focus:border-[#0078D4]/60 transition-colors"
-              >
-                <option value="">— Choose a service —</option>
-                {services.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.name}
-                    {!s.workflowTemplateId ? " · no workflow" : ""}
-                  </option>
-                ))}
-              </select>
+              <div className="space-y-1.5">
+                {/* Search input */}
+                <input
+                  type="text"
+                  placeholder="Search services…"
+                  value={serviceSearch}
+                  onChange={(e) => setServiceSearch(e.target.value)}
+                  className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-1.5 text-xs text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60 transition-colors"
+                />
+                {/* Scrollable list */}
+                <div className="max-h-44 overflow-y-auto border border-[#21262D] rounded-lg divide-y divide-[#21262D]">
+                  {services
+                    .filter((s) => {
+                      const q = serviceSearch.toLowerCase();
+                      return (
+                        !q ||
+                        s.name.toLowerCase().includes(q) ||
+                        (s.category ?? "").toLowerCase().includes(q) ||
+                        (s.tier ?? "").toLowerCase().includes(q)
+                      );
+                    })
+                    .map((s) => (
+                      <button
+                        key={s.id}
+                        type="button"
+                        onClick={() => {
+                          setSelectedServiceId(s.id === selectedServiceId ? null : s.id);
+                          setHumanOnlyTasks([]);
+                          setHumanOnlyExplanation(null);
+                        }}
+                        className={`w-full text-left px-3 py-2 flex items-center justify-between gap-3 transition-colors ${
+                          selectedServiceId === s.id
+                            ? "bg-[#0078D4]/15 border-l-2 border-[#0078D4]"
+                            : "bg-[#0D1117] hover:bg-[#161B22] border-l-2 border-transparent"
+                        }`}
+                      >
+                        <div className="min-w-0">
+                          <p className="text-xs text-[#E6EDF3] truncate font-medium">{s.name}</p>
+                          <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+                            {s.category && (
+                              <span className="text-[10px] text-[#58A6FF] bg-[#1F6FEB]/15 border border-[#1F6FEB]/30 rounded px-1.5 py-0.5">{s.category}</span>
+                            )}
+                            {s.tier && (
+                              <span className="text-[10px] text-[#3FB950] bg-[#238636]/15 border border-[#238636]/30 rounded px-1.5 py-0.5">{s.tier}</span>
+                            )}
+                            {!s.workflowTemplateId && (
+                              <span className="text-[10px] text-[#7D8590]">no workflow</span>
+                            )}
+                          </div>
+                        </div>
+                        {selectedServiceId === s.id && (
+                          <svg className="w-3.5 h-3.5 text-[#0078D4] flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
+                        )}
+                      </button>
+                    ))}
+                  {services.filter((s) => {
+                    const q = serviceSearch.toLowerCase();
+                    return !q || s.name.toLowerCase().includes(q) || (s.category ?? "").toLowerCase().includes(q) || (s.tier ?? "").toLowerCase().includes(q);
+                  }).length === 0 && (
+                    <p className="text-xs text-[#7D8590] px-3 py-2">No services match "{serviceSearch}"</p>
+                  )}
+                </div>
+              </div>
             )}
           </div>
 
