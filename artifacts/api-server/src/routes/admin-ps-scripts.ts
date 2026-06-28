@@ -78,6 +78,36 @@ function jsonParse(candidate: string): unknown {
   return null;
 }
 
+// Extract the first ```json fence only (envelope has no embedded code — no lastIndexOf needed).
+function extractEnvelopeJson(text: string): unknown {
+  const jsonTagPos = text.indexOf("```json");
+  if (jsonTagPos === -1) return null;
+  const bodyStart = jsonTagPos + 7;
+  const afterNewline = text[bodyStart] === "\n" ? bodyStart + 1 : bodyStart;
+  const closingPos = text.indexOf("```", afterNewline); // first close fence, not last
+  if (closingPos <= afterNewline) return null;
+  return jsonParse(text.slice(afterNewline, closingPos).trim());
+}
+
+// Extract all ```powershell fences, keyed by the leading "# file: <filename>" comment.
+function extractPowershellFences(text: string): Map<string, string> {
+  const scripts = new Map<string, string>();
+  let searchFrom = 0;
+  while (true) {
+    const openPos = text.indexOf("```powershell", searchFrom);
+    if (openPos === -1) break;
+    const afterOpen = text.indexOf("\n", openPos);
+    if (afterOpen === -1) break;
+    const closePos = text.indexOf("```", afterOpen + 1);
+    if (closePos === -1) break;
+    const content = text.slice(afterOpen + 1, closePos).trimEnd();
+    const headerMatch = content.match(/^#\s*file:\s*(\S+\.ps1)/i);
+    if (headerMatch) scripts.set(headerMatch[1], content);
+    searchFrom = closePos + 3;
+  }
+  return scripts;
+}
+
 function extractJson(text: string): unknown {
   // 1. ```json … ``` — use indexOf/lastIndexOf so embedded backtick sequences
   //    inside module content strings don't prematurely terminate the match.
@@ -325,7 +355,11 @@ STEP 3 — Choose output shape:
   - ONE automatable phase (or all tasks belong to a single phase) → type "single": one consolidated script
   - MULTIPLE distinct automatable phases → type "package": one focused module per phase + a Main.ps1 orchestrator that dot-sources them all
 
-Return ONLY a JSON object in a \`\`\`json fence. No prose before or after the fence.
+Output format — STRICT RULES:
+1. Always start with a single \`\`\`json fence containing ONLY metadata (no PowerShell code inside the JSON).
+2. After the closing \`\`\` of the JSON fence, output each script in its own \`\`\`powershell fence.
+3. The very first line of every \`\`\`powershell fence MUST be: # file: <filename.ps1>
+4. No prose, explanations, or text outside the fences.
 
 Human-only shape (use when NO tasks are automatable):
 \`\`\`json
@@ -337,13 +371,12 @@ Human-only shape (use when NO tasks are automatable):
 }
 \`\`\`
 
-Single script shape:
+Single script shape — JSON envelope then one powershell fence:
 \`\`\`json
 {
   "type": "single",
   "title": "Brief script title (max 60 chars)",
-  "scriptBody": "# Complete PowerShell script",
-  "humanOnlyTasks": ["human task description 1", "human task description 2"],
+  "humanOnlyTasks": ["human task description 1"],
   "permissions": {
     "appPermissions": ["e.g. User.Read.All (Microsoft Graph Application)"],
     "delegatedPermissions": [],
@@ -351,15 +384,19 @@ Single script shape:
   }
 }
 \`\`\`
+\`\`\`powershell
+# file: script.ps1
+# Complete PowerShell script body here
+\`\`\`
 
-Package shape:
+Package shape — JSON envelope then one powershell fence per module in the same order:
 \`\`\`json
 {
   "type": "package",
   "title": "Package title (max 80 chars)",
   "modules": [
-    { "filename": "01-Phase.ps1", "description": "One-line description", "content": "# full script" },
-    { "filename": "Main.ps1", "description": "Orchestrator — dot-sources all modules and runs the workflow", "content": "# Main.ps1" }
+    { "filename": "01-Phase.ps1", "description": "One-line description" },
+    { "filename": "Main.ps1", "description": "Orchestrator — dot-sources all modules and runs the workflow" }
   ],
   "humanOnlyTasks": ["human task description 1"],
   "permissions": {
@@ -369,15 +406,24 @@ Package shape:
   }
 }
 \`\`\`
+\`\`\`powershell
+# file: 01-Phase.ps1
+# Full script for this module
+\`\`\`
+\`\`\`powershell
+# file: Main.ps1
+# Orchestrator script
+\`\`\`
 
 Rules:
 - All filenames must end in .ps1; Main.ps1 must be the LAST module entry
-- At the top of EVERY generated script or module body (inside scriptBody or each module's content), insert a PowerShell comment block listing all human-only tasks that apply, e.g.:
+- Do NOT put any script code inside the JSON object — all code goes in the \`\`\`powershell fences
+- At the top of EVERY powershell script (after the # file: line), insert a comment block listing human-only tasks that apply:
   # ─── HUMAN ACTION REQUIRED — steps NOT automated by this script ───────────────
   # • Client kickoff call: Schedule and conduct an introductory call with the client
   # • Approval sign-off: Obtain written approval before applying configuration changes
   # ─────────────────────────────────────────────────────────────────────────────
-  If there are no human-only tasks, omit the comment block entirely.
+  If there are no human-only tasks, omit the block entirely.
 - Include HUMAN_ONLY tasks in "humanOnlyTasks" for documentation — never generate code for them
 - Be specific about permission scopes (e.g. "Group.Read.All (Microsoft Graph Application)" not just "Group.Read.All")
 - Distinguish Application permissions (service principal / app-only) from Delegated (signed-in user)`;
@@ -505,15 +551,19 @@ Classify each task and generate PowerShell automation scripts for all M365/Azure
       return;
     }
 
-    const rawJson = extractJson(aiBlock.text);
+    // Parse the JSON envelope (metadata only — no script content inside the JSON).
+    const rawJson = extractEnvelopeJson(aiBlock.text);
     if (!rawJson || typeof rawJson !== "object" || Array.isArray(rawJson)) {
       logger.warn(
-        { textPrefix: aiBlock.text.slice(0, 600) },
-        "generate-from-service: failed to parse JSON from AI response",
+        { textLength: aiBlock.text.length, textPrefix: aiBlock.text.slice(0, 400) },
+        "generate-from-service: failed to parse JSON envelope from AI response",
       );
       res.status(500).json({ error: "AI returned an unstructured response. Please try again." });
       return;
     }
+
+    // Extract the PowerShell scripts from their own ```powershell fences.
+    const psScripts = extractPowershellFences(aiBlock.text);
 
     const parsed = rawJson as Record<string, unknown>;
     const type = typeof parsed["type"] === "string" ? parsed["type"] : "single";
@@ -551,14 +601,24 @@ Classify each task and generate PowerShell automation scripts for all M365/Azure
 
       const validModules = (rawModules as unknown[])
         .filter((m): m is Record<string, unknown> => m !== null && typeof m === "object" && !Array.isArray(m))
-        .filter((m) => typeof m["filename"] === "string" && typeof m["content"] === "string")
-        .map((m) => ({
-          filename: String(m["filename"]),
-          description: typeof m["description"] === "string" ? m["description"] : null,
-          content: String(m["content"]),
-        }));
+        .filter((m) => typeof m["filename"] === "string")
+        .map((m) => {
+          const filename = String(m["filename"]);
+          // Script content comes from the matching ```powershell fence, not from inside the JSON.
+          const content = psScripts.get(filename) ?? (typeof m["content"] === "string" ? String(m["content"]) : "");
+          return {
+            filename,
+            description: typeof m["description"] === "string" ? m["description"] : null,
+            content,
+          };
+        })
+        .filter((m) => m.content.length > 0);
 
       if (validModules.length === 0) {
+        logger.warn(
+          { psScriptKeys: [...psScripts.keys()], textLength: aiBlock.text.length },
+          "generate-from-service: no modules with content found",
+        );
         res.status(500).json({ error: "AI returned no valid modules. Please try again." });
         return;
       }
@@ -598,13 +658,13 @@ Classify each task and generate PowerShell automation scripts for all M365/Azure
       return;
     }
 
-    // type === "single"
-    const scriptBody =
-      typeof parsed["scriptBody"] === "string" ? parsed["scriptBody"].trim() : "";
+    // type === "single" — script comes from the first ```powershell fence.
+    const fenceScript = psScripts.size > 0 ? [...psScripts.values()][0] : "";
+    const scriptBody = fenceScript || (typeof parsed["scriptBody"] === "string" ? parsed["scriptBody"].trim() : "");
 
     if (scriptBody.length < 20 || !hasPsKeywordsFullText(scriptBody)) {
       logger.error(
-        { scriptBodyPrefix: scriptBody.slice(0, 300) },
+        { scriptBodyPrefix: scriptBody.slice(0, 300), psScriptCount: psScripts.size },
         "generate-from-service: scriptBody is empty or contains no PS keywords",
       );
       res.status(500).json({ error: "AI returned an unreadable script. Please try again." });
