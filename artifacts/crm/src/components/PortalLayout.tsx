@@ -4,7 +4,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import PortalTour, { useTour } from "@/components/PortalTour";
 import { useAssistantChat } from "@/hooks/useAssistantChat";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
-import AutomationProgressBanner from "@/components/AutomationProgressBanner";
+import ScriptProgressWidget from "@/components/ScriptProgressWidget";
 
 interface NavItem {
   label: string;
@@ -289,6 +289,7 @@ export function ClientSidebar({ unreadNotifications = 0, unreadMessages = 0, has
       <Logo />
       <div className="pt-3">
         <OverallHealthWidget />
+        <ScriptProgressWidget />
       </div>
       <nav className="flex-1 py-2 overflow-y-auto space-y-0.5">
         {navItems.map(item => (
@@ -754,7 +755,6 @@ export default function PortalLayout({ children, unreadNotifications = 0, unread
   return (
     <div className="flex flex-col min-h-screen bg-[#F7F9FC]">
       {isImpersonating && <ImpersonationBanner email={user!.email} />}
-      <AutomationProgressBanner />
       <div className={`flex flex-1 w-full ${isImpersonating ? "pt-[42px]" : ""}`}>
         <ClientSidebar unreadNotifications={unreadNotifications} unreadMessages={unreadMessages} hasArchivedProjects={hasArchivedProjects} appRegPending={appRegPending} />
         <main className="flex-1 overflow-auto min-w-0 pb-16 md:pb-0">
