@@ -2981,7 +2981,35 @@ export default function ScriptGeneratorPage() {
   };
 
   const pushToAzure = async () => {
-    if (!editorScript?.id) return;
+    if (!editorScript?.id || !scriptBody) return;
+
+    // Save first — silently; abort the push if save fails
+    setUpdating(true);
+    try {
+      if (editingModuleId) {
+        await apiFetch(`/admin/ps-scripts/modules/${editingModuleId}`, token, {
+          method: "PUT",
+          body: JSON.stringify({ content: scriptBody }),
+        });
+        cleanBodyRef.current = scriptBody;
+        setPackages((prev) => prev.map((pkg) => ({
+          ...pkg,
+          modules: pkg.modules.map((m) => m.id === editingModuleId ? { ...m, content: scriptBody } : m),
+        })));
+      } else {
+        const updated = await apiFetch(`/admin/ps-scripts/${editorScript.id}`, token, {
+          method: "PUT",
+          body: JSON.stringify({ scriptBody, permissions }),
+        }) as PsScriptListItem;
+        cleanBodyRef.current = scriptBody;
+        setScripts((prev) => prev.map((s) => (s.id === updated.id ? updated : s)));
+      }
+    } catch (e) {
+      toast({ title: "Save failed — Azure push aborted", description: e instanceof Error ? e.message : "Unknown error", variant: "destructive" });
+      setUpdating(false);
+      return;
+    }
+    setUpdating(false);
 
     // Module from a package — use the package push dialog for this single module
     if (editingModuleId && editingPackageId) {
