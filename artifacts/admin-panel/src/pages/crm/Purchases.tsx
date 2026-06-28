@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
-import { Trash2, AlertTriangle } from "lucide-react";
+import { Trash2, AlertTriangle, ExternalLink } from "lucide-react";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -30,6 +30,14 @@ interface Purchase {
   clientCompany: string | null;
 }
 
+interface Blockers {
+  project: { id: number; title: string; status: string };
+  kanbanTasks: number;
+  documents: number;
+  workflowSteps: number;
+  statusReports: number;
+}
+
 export default function PurchasesPage() {
   const { fetchWithAuth } = useAuth();
   const [, navigate] = useLocation();
@@ -39,6 +47,7 @@ export default function PurchasesPage() {
   const [deleteTarget, setDeleteTarget] = useState<Purchase | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [confirmText, setConfirmText] = useState("");
+  const [blockers, setBlockers] = useState<Blockers | null>(null);
 
   useEffect(() => {
     fetchWithAuth("/api/admin/purchases")
@@ -49,6 +58,7 @@ export default function PurchasesPage() {
 
   function openDeleteDialog(p: Purchase) {
     setConfirmText("");
+    setBlockers(null);
     setDeleteTarget(p);
   }
 
@@ -56,27 +66,57 @@ export default function PurchasesPage() {
     if (!deleting) {
       setDeleteTarget(null);
       setConfirmText("");
+      setBlockers(null);
     }
   }
 
   const isPaid = deleteTarget?.status === "paid";
   const confirmReady = !isPaid || confirmText === deleteTarget?.invoiceNumber;
 
-  async function handleDelete() {
-    if (!deleteTarget || !confirmReady) return;
+  async function executDelete(force: boolean) {
+    if (!deleteTarget) return;
     setDeleting(true);
     try {
-      const res = await fetchWithAuth(`/api/admin/purchases/${deleteTarget.id}`, { method: "DELETE" });
+      const url = `/api/admin/purchases/${deleteTarget.id}${force ? "?force=true" : ""}`;
+      const res = await fetchWithAuth(url, { method: "DELETE" });
+
+      if (res.status === 409) {
+        const body = await res.json() as { error: string; blockers: Blockers };
+        setBlockers(body.blockers);
+        setDeleting(false);
+        return;
+      }
+
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       setPurchases(prev => prev.filter(p => p.id !== deleteTarget.id));
       toast({ title: "Purchase deleted", description: `${deleteTarget.invoiceNumber} has been removed.` });
+      setDeleteTarget(null);
+      setConfirmText("");
+      setBlockers(null);
     } catch {
       toast({ title: "Delete failed", description: "Could not delete the purchase. Please try again.", variant: "destructive" });
     } finally {
       setDeleting(false);
-      setDeleteTarget(null);
-      setConfirmText("");
     }
+  }
+
+  async function handleDelete() {
+    if (!confirmReady) return;
+    await executDelete(false);
+  }
+
+  async function handleForceDelete() {
+    await executDelete(true);
+  }
+
+  function blockerSummary(b: Blockers): string[] {
+    const lines: string[] = [];
+    if (b.project.status === "active") lines.push("Project is currently active");
+    if (b.kanbanTasks > 0) lines.push(`${b.kanbanTasks} kanban task${b.kanbanTasks !== 1 ? "s" : ""}`);
+    if (b.documents > 0) lines.push(`${b.documents} document${b.documents !== 1 ? "s" : ""}`);
+    if (b.workflowSteps > 0) lines.push(`${b.workflowSteps} workflow step${b.workflowSteps !== 1 ? "s" : ""}`);
+    if (b.statusReports > 0) lines.push(`${b.statusReports} status report${b.statusReports !== 1 ? "s" : ""}`);
+    return lines;
   }
 
   return (
@@ -142,17 +182,19 @@ export default function PurchasesPage() {
       )}
 
       <AlertDialog open={!!deleteTarget} onOpenChange={(open) => { if (!open) closeDeleteDialog(); }}>
-        <AlertDialogContent className={isPaid ? "border-red-500/60" : undefined}>
+        <AlertDialogContent className={isPaid || blockers ? "border-red-500/60" : undefined}>
           <AlertDialogHeader>
-            {isPaid && (
+            {(isPaid || blockers) && (
               <div className="flex items-center gap-2 mb-1 px-3 py-2 rounded-lg bg-red-500/10 border border-red-500/30">
                 <AlertTriangle className="w-4 h-4 text-red-400 shrink-0" />
-                <span className="text-xs font-semibold text-red-400 uppercase tracking-wide">Warning — this is a paid purchase</span>
+                <span className="text-xs font-semibold text-red-400 uppercase tracking-wide">
+                  {blockers ? "Cannot delete — linked records exist" : "Warning — this is a paid purchase"}
+                </span>
               </div>
             )}
             <AlertDialogTitle className="flex items-center gap-2">
               Delete this purchase?
-              {isPaid && (
+              {isPaid && !blockers && (
                 <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-green-500/15 text-green-400 border border-green-500/30">
                   PAID
                 </span>
@@ -160,45 +202,91 @@ export default function PurchasesPage() {
             </AlertDialogTitle>
             <AlertDialogDescription asChild>
               <div className="space-y-3">
-                <p>
-                  {isPaid
-                    ? "You are about to permanently delete a paid purchase record. This will also remove linked contracts and client services and cannot be undone."
-                    : "This will also remove linked contracts and client services. This cannot be undone."}
-                </p>
-                {deleteTarget?.stripeSessionId && (
-                  <p className="text-xs text-muted-foreground">
-                    The linked Stripe session will not be modified — only the local record is deleted.
-                  </p>
-                )}
-                {isPaid && (
-                  <div className="pt-1 space-y-1.5">
-                    <p className="text-xs font-medium text-[#E6EDF3]">
-                      Type the invoice number to confirm:{" "}
-                      <span className="font-mono text-red-400">{deleteTarget?.invoiceNumber}</span>
+                {blockers ? (
+                  <>
+                    <p>This purchase is linked to a project that has associated records. Resolve them first, or use <strong className="text-[#E6EDF3]">Force Delete</strong> to permanently remove everything.</p>
+                    <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 px-4 py-3 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-semibold text-[#E6EDF3]">
+                          Project: {blockers.project.title}
+                        </span>
+                        <span className={`text-xs font-semibold px-2 py-0.5 rounded-full capitalize ${blockers.project.status === "active" ? "bg-green-500/15 text-green-400" : "bg-yellow-500/15 text-yellow-400"}`}>
+                          {blockers.project.status}
+                        </span>
+                      </div>
+                      <ul className="space-y-1">
+                        {blockerSummary(blockers).map((line, i) => (
+                          <li key={i} className="flex items-center gap-2 text-xs text-amber-300">
+                            <span className="w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0" />
+                            {line}
+                          </li>
+                        ))}
+                      </ul>
+                      <button
+                        onClick={() => { closeDeleteDialog(); navigate(`/crm/projects/${blockers.project.id}`); }}
+                        className="flex items-center gap-1 text-xs text-[#0078D4] hover:underline mt-1"
+                      >
+                        <ExternalLink className="w-3 h-3" />
+                        Open project to resolve
+                      </button>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      <strong className="text-red-400">Force Delete</strong> will permanently erase the project, all its kanban tasks, documents, and workflow steps — this cannot be undone.
                     </p>
-                    <Input
-                      value={confirmText}
-                      onChange={e => setConfirmText(e.target.value)}
-                      placeholder={deleteTarget?.invoiceNumber}
-                      className="font-mono text-sm border-red-500/40 focus-visible:ring-red-500/50"
-                      autoFocus
-                      autoComplete="off"
-                      spellCheck={false}
-                    />
-                  </div>
+                  </>
+                ) : (
+                  <>
+                    <p>
+                      {isPaid
+                        ? "You are about to permanently delete a paid purchase record. This will also remove linked contracts and client services and cannot be undone."
+                        : "This will also remove linked contracts and client services. This cannot be undone."}
+                    </p>
+                    {deleteTarget?.stripeSessionId && (
+                      <p className="text-xs text-muted-foreground">
+                        The linked Stripe session will not be modified — only the local record is deleted.
+                      </p>
+                    )}
+                    {isPaid && (
+                      <div className="pt-1 space-y-1.5">
+                        <p className="text-xs font-medium text-[#E6EDF3]">
+                          Type the invoice number to confirm:{" "}
+                          <span className="font-mono text-red-400">{deleteTarget?.invoiceNumber}</span>
+                        </p>
+                        <Input
+                          value={confirmText}
+                          onChange={e => setConfirmText(e.target.value)}
+                          placeholder={deleteTarget?.invoiceNumber}
+                          className="font-mono text-sm border-red-500/40 focus-visible:ring-red-500/50"
+                          autoFocus
+                          autoComplete="off"
+                          spellCheck={false}
+                        />
+                      </div>
+                    )}
+                  </>
                 )}
               </div>
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel disabled={deleting}>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={handleDelete}
-              disabled={deleting || !confirmReady}
-              className="bg-red-600 hover:bg-red-700 focus:ring-red-600 disabled:opacity-40"
-            >
-              {deleting ? "Deleting…" : "Delete"}
-            </AlertDialogAction>
+            {blockers ? (
+              <AlertDialogAction
+                onClick={handleForceDelete}
+                disabled={deleting}
+                className="bg-red-600 hover:bg-red-700 focus:ring-red-600 disabled:opacity-40"
+              >
+                {deleting ? "Deleting…" : "Force Delete"}
+              </AlertDialogAction>
+            ) : (
+              <AlertDialogAction
+                onClick={handleDelete}
+                disabled={deleting || !confirmReady}
+                className="bg-red-600 hover:bg-red-700 focus:ring-red-600 disabled:opacity-40"
+              >
+                {deleting ? "Deleting…" : "Delete"}
+              </AlertDialogAction>
+            )}
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

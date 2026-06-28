@@ -7217,16 +7217,83 @@ router.delete("/admin/purchases/:id", requireAdmin, async (req: Request, res: Re
   const id = parseInt(rawId, 10);
   if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
 
-  await db.transaction(async (tx) => {
-    const [inv] = await tx
-      .select({ id: invoicesTable.id, stripeSessionId: invoicesTable.stripeSessionId, projectId: invoicesTable.projectId })
-      .from(invoicesTable)
-      .where(eq(invoicesTable.id, id))
+  const force = req.query.force === "true";
+
+  const [inv] = await db
+    .select({ id: invoicesTable.id, stripeSessionId: invoicesTable.stripeSessionId, projectId: invoicesTable.projectId })
+    .from(invoicesTable)
+    .where(eq(invoicesTable.id, id))
+    .limit(1);
+
+  if (!inv) { res.status(404).json({ error: "Purchase not found" }); return; }
+
+  // ── Blocker check ──────────────────────────────────────────────────────────
+  if (inv.projectId && !force) {
+    const [project] = await db
+      .select({ id: projectsTable.id, title: projectsTable.title, status: projectsTable.status })
+      .from(projectsTable)
+      .where(eq(projectsTable.id, inv.projectId))
       .limit(1);
 
-    if (!inv) {
-      res.status(404).json({ error: "Purchase not found" });
-      return;
+    if (project) {
+      const [{ taskCount }] = await db
+        .select({ taskCount: sql<number>`cast(count(*) as int)` })
+        .from(kanbanTasksTable)
+        .where(eq(kanbanTasksTable.projectId, inv.projectId));
+
+      const [{ docCount }] = await db
+        .select({ docCount: sql<number>`cast(count(*) as int)` })
+        .from(documentsTable)
+        .where(eq(documentsTable.projectId, inv.projectId));
+
+      const [{ stepCount }] = await db
+        .select({ stepCount: sql<number>`cast(count(*) as int)` })
+        .from(workflowStepsTable)
+        .where(eq(workflowStepsTable.projectId, inv.projectId));
+
+      const [{ reportCount }] = await db
+        .select({ reportCount: sql<number>`cast(count(*) as int)` })
+        .from(statusReportsTable)
+        .where(eq(statusReportsTable.projectId, inv.projectId));
+
+      const hasBlockers = (taskCount > 0) || (docCount > 0) || (stepCount > 0) || (reportCount > 0) || project.status === "active";
+
+      if (hasBlockers) {
+        res.status(409).json({
+          error: "blocked",
+          blockers: {
+            project: { id: project.id, title: project.title, status: project.status },
+            kanbanTasks: taskCount,
+            documents: docCount,
+            workflowSteps: stepCount,
+            statusReports: reportCount,
+          },
+        });
+        return;
+      }
+    }
+  }
+
+  // ── Cascade delete (force path cleans up the project first) ────────────────
+  await db.transaction(async (tx) => {
+    if (inv.projectId && force) {
+      const [project] = await tx
+        .select({ id: projectsTable.id })
+        .from(projectsTable)
+        .where(eq(projectsTable.id, inv.projectId))
+        .limit(1);
+
+      if (project) {
+        await tx.delete(kanbanTasksTable).where(eq(kanbanTasksTable.projectId, inv.projectId));
+        await tx.delete(workflowStepsTable).where(eq(workflowStepsTable.projectId, inv.projectId));
+        await tx.delete(documentsTable).where(eq(documentsTable.projectId, inv.projectId));
+        await tx.delete(projectUpdatesTable).where(eq(projectUpdatesTable.projectId, inv.projectId));
+        await tx.update(reportsTable).set({ projectId: null }).where(eq(reportsTable.projectId, inv.projectId));
+        await tx.update(statusReportsTable).set({ projectId: null }).where(eq(statusReportsTable.projectId, inv.projectId));
+        // Nullify projectId on this invoice so FK allows project deletion
+        await tx.update(invoicesTable).set({ projectId: null }).where(eq(invoicesTable.projectId, inv.projectId));
+        await tx.delete(projectsTable).where(eq(projectsTable.id, inv.projectId));
+      }
     }
 
     // Delete linked contracts (matched by stripeSessionId or projectId)
@@ -7234,19 +7301,14 @@ router.delete("/admin/purchases/:id", requireAdmin, async (req: Request, res: Re
       await tx.delete(contractsTable).where(eq(contractsTable.stripeSessionId, inv.stripeSessionId));
     }
     if (inv.projectId) {
-      // Also delete any contracts linked only by projectId (non-first invoices)
       await tx.delete(contractsTable).where(eq(contractsTable.projectId, inv.projectId));
-      // Delete related client_services rows
       await tx.delete(clientServicesTable).where(eq(clientServicesTable.projectId, inv.projectId));
     }
 
-    // Delete the invoice row
     await tx.delete(invoicesTable).where(eq(invoicesTable.id, id));
   });
 
-  if (!res.headersSent) {
-    res.status(204).end();
-  }
+  res.status(204).end();
 });
 
 // ─── PUBLIC: Testimonials ────────────────────────────────────────────────────
