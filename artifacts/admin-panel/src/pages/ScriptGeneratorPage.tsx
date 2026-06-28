@@ -3225,6 +3225,8 @@ export default function ScriptGeneratorPage() {
     downloadFile(scriptBody, `script-${Date.now()}.ps1`);
   };
 
+  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
   const updateSavedCopy = async () => {
     if (!editorScript?.id || !scriptBody) return;
     setUpdating(true);
@@ -3242,6 +3244,9 @@ export default function ScriptGeneratorPage() {
           modules: pkg.modules.map((m) => m.id === editingModuleId ? { ...m, content: scriptBody } : m),
         })));
         toast({ title: "Module updated" });
+      } else if (!UUID_RE.test(editorScript.id)) {
+        // Synthetic id (e.g. mod-<filename>) — module has no DB record yet; cannot update
+        toast({ title: "Cannot update", description: "This module was not saved to the library. Please re-generate the package.", variant: "destructive" });
       } else {
         // Editing a standalone library script
         const updated = await apiFetch(`/admin/ps-scripts/${editorScript.id}`, token, {
@@ -3296,6 +3301,8 @@ export default function ScriptGeneratorPage() {
           ...pkg,
           modules: pkg.modules.map((m) => m.id === editingModuleId ? { ...m, content: scriptBody } : m),
         })));
+      } else if (!UUID_RE.test(editorScript.id)) {
+        throw new Error("This module has no DB record and cannot be saved before pushing.");
       } else {
         const updated = await apiFetch(`/admin/ps-scripts/${editorScript.id}`, token, {
           method: "PUT",

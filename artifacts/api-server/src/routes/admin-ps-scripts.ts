@@ -931,7 +931,7 @@ Classify each task and generate PowerShell automation scripts for all M365/Azure
         .values({ serviceId, scriptPackageId: pkg.id, displayOrder: nextOrder })
         .onConflictDoNothing();
 
-      await db.insert(scriptModulesTable).values(
+      const insertedModules = await db.insert(scriptModulesTable).values(
         validModules.map((m, i) => ({
           packageId: pkg.id,
           filename: m.filename,
@@ -939,10 +939,18 @@ Classify each task and generate PowerShell automation scripts for all M365/Azure
           content: m.content,
           sortOrder: i,
         })),
-      );
+      ).returning({ id: scriptModulesTable.id, filename: scriptModulesTable.filename });
+
+      // Stitch the DB-generated UUIDs back onto validModules so the done payload
+      // carries real ids — the frontend needs them to route module updates correctly.
+      const filenameToId = new Map(insertedModules.map((r) => [r.filename, r.id]));
+      const validModulesWithIds = validModules.map((m) => ({
+        ...m,
+        id: filenameToId.get(m.filename),
+      }));
 
       logger.info(
-        { packageId: pkg.id, moduleCount: validModules.length, service: service.name },
+        { packageId: pkg.id, moduleCount: validModulesWithIds.length, service: service.name },
         "generate-from-service: saved package",
       );
 
@@ -1100,7 +1108,7 @@ Classify each task and generate PowerShell automation scripts for all M365/Azure
         logger.warn({ assocErr }, "generate-from-service: Kanban association step failed (non-fatal)");
       }
 
-      sendSSE({ type: "done", payload: { type: "package", packageId: pkg.id, title: packageTitle, modules: validModules, humanOnlyTasks, permissions, taskAssociations } });
+      sendSSE({ type: "done", payload: { type: "package", packageId: pkg.id, title: packageTitle, modules: validModulesWithIds, humanOnlyTasks, permissions, taskAssociations } });
       res.end();
       return;
     }
