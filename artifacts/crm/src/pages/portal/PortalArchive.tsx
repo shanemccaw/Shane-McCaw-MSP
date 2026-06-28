@@ -24,6 +24,7 @@ interface Project {
   currentStepIndex: number;
   currentStepTitle: string | null;
   steps: StepSummary[];
+  signedOffAt: string | null;
 }
 
 function formatDate(iso: string | null | undefined): string {
@@ -88,7 +89,7 @@ function ArchivedProjectCard({ project }: { project: Project }) {
             </div>
           )}
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-1 border-t border-gray-50">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-1 border-t border-gray-50">
             <div>
               <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-0.5">Started</p>
               <p className="text-[13px] font-semibold text-[#0A2540]">{formatDate(project.startDate)}</p>
@@ -96,6 +97,10 @@ function ArchivedProjectCard({ project }: { project: Project }) {
             <div>
               <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-0.5">Target Date</p>
               <p className="text-[13px] font-semibold text-[#0A2540]">{formatDate(project.endDate)}</p>
+            </div>
+            <div>
+              <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-0.5">Signed Off</p>
+              <p className="text-[13px] font-semibold text-green-600">{formatDate(project.signedOffAt)}</p>
             </div>
           </div>
         </div>
@@ -112,7 +117,9 @@ export default function PortalArchive() {
   useEffect(() => {
     fetchWithAuth("/api/portal/projects")
       .then(r => r.json())
-      .then(d => setProjects((d as Project[]).filter(p => p.status === "completed")))
+      .then(d => setProjects(
+        (d as Project[]).filter(p => p.status === "completed" && p.signedOffAt != null)
+      ))
       .catch(() => null)
       .finally(() => setLoading(false));
   }, [fetchWithAuth]);
@@ -129,7 +136,7 @@ export default function PortalArchive() {
                 Project Archive
               </span>
               <h2 className="text-2xl font-bold text-[#0A2540] tracking-tight">Completed Projects</h2>
-              <p className="text-sm text-muted-foreground mt-1">All successfully closed engagements.</p>
+              <p className="text-sm text-muted-foreground mt-1">All successfully closed and signed-off engagements.</p>
             </div>
             <Link href="/portal/projects">
               <span className="inline-flex items-center gap-2 text-sm font-semibold text-[#0078D4] hover:underline cursor-pointer flex-shrink-0">
@@ -153,7 +160,7 @@ export default function PortalArchive() {
               </svg>
             </div>
             <h3 className="text-[#0A2540] font-bold mb-1">No archived projects</h3>
-            <p className="text-gray-500 text-sm">Completed projects will appear here once an engagement is closed out.</p>
+            <p className="text-gray-500 text-sm">Projects appear here after they are completed and signed off.</p>
             <Link href="/portal/projects">
               <span className="mt-4 inline-block text-sm font-semibold text-[#0078D4] hover:underline cursor-pointer">
                 View active projects →

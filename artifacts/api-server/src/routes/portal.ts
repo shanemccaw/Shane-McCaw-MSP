@@ -865,6 +865,29 @@ router.get("/portal/projects", requireAuth, async (req: Request, res: Response) 
   res.json(enriched);
 });
 
+router.post("/portal/projects/:id/signoff", requireAuth, async (req: Request, res: Response) => {
+  const userId = req.user!.id;
+  const id = parseInt(String(req.params.id ?? ""), 10);
+  if (isNaN(id)) { res.status(400).json({ error: "Invalid project ID" }); return; }
+
+  const [project] = await db
+    .select({ id: projectsTable.id, status: projectsTable.status, signedOffAt: projectsTable.signedOffAt, clientUserId: projectsTable.clientUserId })
+    .from(projectsTable)
+    .where(and(eq(projectsTable.id, id), eq(projectsTable.clientUserId, userId)));
+
+  if (!project) { res.status(404).json({ error: "Project not found" }); return; }
+  if (project.status !== "completed") { res.status(400).json({ error: "Project is not completed" }); return; }
+  if (project.signedOffAt) { res.status(400).json({ error: "Project has already been signed off" }); return; }
+
+  const [updated] = await db
+    .update(projectsTable)
+    .set({ signedOffAt: new Date(), signedOffBy: userId })
+    .where(eq(projectsTable.id, id))
+    .returning();
+
+  res.json(updated);
+});
+
 router.get("/portal/projects/:id", requireAuth, async (req: Request, res: Response) => {
   const userId = req.user!.id;
   const id = parseInt(String(req.params.id ?? ""), 10);

@@ -25,6 +25,7 @@ interface Project {
   currentStepIndex: number;
   currentStepTitle: string | null;
   steps: StepSummary[];
+  signedOffAt: string | null;
 }
 
 function SegmentedStepBar({ steps, currentStepIndex }: { steps: StepSummary[]; currentStepIndex: number }) {
@@ -310,6 +311,87 @@ function TrackHeader({ icon, title, subtitle }: { icon: React.ReactNode; title: 
   );
 }
 
+function SignOffCard({
+  project,
+  onSignedOff,
+}: {
+  project: Project;
+  onSignedOff: (id: number) => void;
+}) {
+  const { fetchWithAuth } = useAuth();
+  const [confirming, setConfirming] = useState(false);
+  const [loading, setLoading] = useState(false);
+
+  async function handleSignOff() {
+    setLoading(true);
+    try {
+      const res = await fetchWithAuth(`/api/portal/projects/${project.id}/signoff`, { method: "POST" });
+      if (res.ok) {
+        onSignedOff(project.id);
+      }
+    } finally {
+      setLoading(false);
+      setConfirming(false);
+    }
+  }
+
+  return (
+    <article className="bg-white rounded-xl border border-green-100 p-5 flex flex-col sm:flex-row sm:items-center gap-4"
+      style={{ boxShadow: "0 2px 8px rgba(15,23,42,0.04)" }}>
+      <div className="flex items-center gap-3 flex-1 min-w-0">
+        <div className="w-10 h-10 rounded-xl bg-green-50 flex items-center justify-center text-green-600 flex-shrink-0">
+          <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+        </div>
+        <div className="min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <h4 className="text-[14px] font-bold text-[#0A2540] truncate">{project.title}</h4>
+            <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-widest bg-green-100 text-green-700 flex-shrink-0">
+              Completed — Awaiting Your Sign-Off
+            </span>
+          </div>
+          {project.endDate && (
+            <p className="text-[12px] text-gray-500 mt-0.5">
+              Completed {new Date(project.endDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+            </p>
+          )}
+        </div>
+      </div>
+
+      {confirming ? (
+        <div className="flex flex-col sm:items-end gap-2 flex-shrink-0">
+          <p className="text-[12px] text-gray-500 max-w-[260px]">
+            By signing off, you confirm this work is complete and accepted.
+          </p>
+          <div className="flex gap-2">
+            <button
+              onClick={() => setConfirming(false)}
+              className="px-3 py-1.5 rounded-lg text-xs font-semibold text-gray-600 bg-gray-100 hover:bg-gray-200 transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleSignOff}
+              disabled={loading}
+              className="px-4 py-1.5 rounded-lg text-xs font-bold text-white bg-green-600 hover:bg-green-700 transition-colors disabled:opacity-60"
+            >
+              {loading ? "Confirming…" : "Confirm Sign-Off"}
+            </button>
+          </div>
+        </div>
+      ) : (
+        <button
+          onClick={() => setConfirming(true)}
+          className="px-4 py-2 rounded-lg text-sm font-bold text-white bg-green-600 hover:bg-green-700 transition-colors flex-shrink-0"
+        >
+          Sign Off
+        </button>
+      )}
+    </article>
+  );
+}
+
 export default function PortalProjects() {
   const { fetchWithAuth } = useAuth();
   const [projects, setProjects] = useState<Project[]>([]);
@@ -323,13 +405,20 @@ export default function PortalProjects() {
       .finally(() => setLoading(false));
   }, [fetchWithAuth]);
 
+  function handleSignedOff(id: number) {
+    setProjects(prev => prev.filter(p => p.id !== id));
+  }
+
   const activeProjects = projects.filter(p => p.status !== "completed");
+  const awaitingSignoff = projects.filter(p => p.status === "completed" && !p.signedOffAt);
   const retainers = activeProjects.filter(p => p.projectType === "retainer");
   const engagements = activeProjects.filter(p => p.projectType !== "retainer");
 
   const avgProgress = activeProjects.length > 0
     ? Math.round(activeProjects.reduce((s, p) => s + p.progress, 0) / activeProjects.length)
     : 0;
+
+  const hasContent = activeProjects.length > 0 || awaitingSignoff.length > 0;
 
   return (
     <PortalLayout>
@@ -360,7 +449,7 @@ export default function PortalProjects() {
           <div className="flex items-center justify-center py-24">
             <div className="w-8 h-8 border-4 border-[#0078D4] border-t-transparent rounded-full animate-spin" />
           </div>
-        ) : activeProjects.length === 0 ? (
+        ) : !hasContent ? (
           <div className="bg-white border border-gray-100 rounded-xl p-16 text-center"
             style={{ boxShadow: "0 2px 10px rgba(15,23,42,0.04)" }}>
             <div className="w-14 h-14 rounded-xl bg-[#0078D4]/10 flex items-center justify-center mx-auto mb-4">
@@ -383,7 +472,7 @@ export default function PortalProjects() {
                       <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 13.5l10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75z" />
                     </svg>
                   }
-                  title={`Track 0${retainers.length > 0 ? "1" : "1"}: Project Engagements`}
+                  title="Track 01: Project Engagements"
                   subtitle="Complex implementations and focused modernization efforts."
                 />
                 <div className="grid grid-cols-1 gap-5">
@@ -406,6 +495,26 @@ export default function PortalProjects() {
                 />
                 <div className="grid grid-cols-1 gap-5">
                   {retainers.map(p => <RetainerCard key={p.id} project={p} />)}
+                </div>
+              </section>
+            )}
+
+            {/* Awaiting Sign-Off section */}
+            {awaitingSignoff.length > 0 && (
+              <section className="space-y-4">
+                <TrackHeader
+                  icon={
+                    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                  }
+                  title="Awaiting Your Sign-Off"
+                  subtitle="These projects are complete — please review and confirm acceptance."
+                />
+                <div className="flex flex-col gap-3">
+                  {awaitingSignoff.map(p => (
+                    <SignOffCard key={p.id} project={p} onSignedOff={handleSignedOff} />
+                  ))}
                 </div>
               </section>
             )}
