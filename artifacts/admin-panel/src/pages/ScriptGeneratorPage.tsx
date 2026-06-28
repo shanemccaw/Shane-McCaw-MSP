@@ -1013,11 +1013,13 @@ function InlineScriptRunner({
   editorScript,
   presetRunbook,
   onPresetConsumed,
+  governanceAreas,
 }: {
   scriptBody: string;
   editorScript: PsScriptDetail | null;
   presetRunbook?: string | null;
   onPresetConsumed?: () => void;
+  governanceAreas?: string[];
 }) {
   const { fetchWithAuth } = useAuth();
 
@@ -1028,17 +1030,22 @@ function InlineScriptRunner({
   const [azureConfigured, setAzureConfigured] = useState<boolean | null>(null);
 
   const [selectedClientId, setSelectedClientId] = useState<number | "">("");
+  const [selectedCredId,   setSelectedCredId]   = useState<number | "">("");
   const [selectedRunbook,  setSelectedRunbook]  = useState("");
 
   const [running,   setRunning]   = useState(false);
   const [jobStatus, setJobStatus] = useState("Never run");
   const [logLines,  setLogLines]  = useState<string[]>([]);
-  const logEndRef = useRef<HTMLDivElement>(null);
+  const logEndRef   = useRef<HTMLDivElement>(null);
+  const abortedRef  = useRef(false);
 
   const [aiAnalysis,   setAiAnalysis]   = useState<InlineAIAnalysis | null>(null);
   const [analyzingAI,  setAnalyzingAI]  = useState(false);
   const [aiError,      setAiError]      = useState<string | null>(null);
   const [aiTab,        setAiTab]        = useState<keyof InlineAIAnalysis>("summary");
+
+  // Mark component as unmounted so polling stops cleanly
+  useEffect(() => () => { abortedRef.current = true; }, []);
 
   // Auto-scroll log
   useEffect(() => { logEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [logLines]);
@@ -1065,10 +1072,9 @@ function InlineScriptRunner({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Load runbooks when a client is selected
+  // Load runbooks when a credential is selected
   useEffect(() => {
-    const cred = clients.find(c => c.id === selectedClientId)?.credential;
-    if (!cred) { setRunbooks([]); setSelectedRunbook(""); return; }
+    if (!selectedCredId) { setRunbooks([]); setSelectedRunbook(""); return; }
     void (async () => {
       setLoadingRunbooks(true);
       try {
@@ -1078,7 +1084,8 @@ function InlineScriptRunner({
           setAzureConfigured(true);
           const list = data.runbooks ?? [];
           setRunbooks(list);
-          // Pre-select: catalog preset takes priority, then the editor script's runbook
+          // Pre-select: catalog preset takes priority, then the editor script's runbook.
+          // (auto-select ADHOC_SENTINEL when no preset is active is handled in the separate effect below)
           if (presetRunbook && list.some(r => r.name === presetRunbook)) {
             setSelectedRunbook(presetRunbook);
             onPresetConsumed?.();
@@ -1092,12 +1099,19 @@ function InlineScriptRunner({
       finally { setLoadingRunbooks(false); }
     })();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedClientId, presetRunbook]);
+  }, [selectedCredId, presetRunbook]);
 
-  const credId = clients.find(c => c.id === selectedClientId)?.credential?.id;
+  // Auto-select ADHOC_SENTINEL when runbooks finish loading if editor has content
+  // and no runbook is pre-selected (mirrors m365-scripts behaviour)
+  useEffect(() => {
+    if (!loadingRunbooks && runbooks.length >= 0 && selectedRunbook === "" && scriptBody.trim().length > 0) {
+      setSelectedRunbook(ADHOC_SENTINEL);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loadingRunbooks]);
 
   const handleRun = async () => {
-    if (!credId || !selectedRunbook) return;
+    if (!selectedCredId || !selectedRunbook) return;
     const isAdHoc = selectedRunbook === ADHOC_SENTINEL;
     if (isAdHoc && !scriptBody.trim()) return;
     const actualRunbook = isAdHoc
@@ -1111,7 +1125,12 @@ function InlineScriptRunner({
     setAiError(null);
 
     try {
-      const body: Record<string, unknown> = { credentialId: credId, runbookName: actualRunbook };
+      const areasPayload = Array.isArray(governanceAreas) && governanceAreas.length > 0 ? governanceAreas : undefined;
+      const body: Record<string, unknown> = {
+        credentialId: selectedCredId,
+        runbookName: actualRunbook,
+        ...(areasPayload ? { governanceAreas: areasPayload } : {}),
+      };
       if (isAdHoc) body["adHocContent"] = scriptBody;
       const res = await fetchWithAuth("/api/admin/runbook-jobs", {
         method: "POST",
@@ -1128,10 +1147,12 @@ function InlineScriptRunner({
       let lastSeq = -1;
 
       const poll = async (): Promise<void> => {
+        if (abortedRef.current) return;
         try {
           const pollRes = await fetchWithAuth(`/api/admin/runbook-jobs/output?jobId=${encodeURIComponent(jobId)}&since=${lastSeq}`);
           if (!pollRes.ok) throw new Error("poll failed");
           const data = await pollRes.json() as { status: string; terminal: boolean; lines: Array<{ sequence: number; text: string }> };
+          if (abortedRef.current) return;
           setJobStatus(data.status);
           if (data.lines.length > 0) {
             setLogLines(prev => [...prev, ...data.lines.map(l => l.text)]);
@@ -1140,12 +1161,16 @@ function InlineScriptRunner({
           if (data.terminal) {
             setLogLines(prev => [...prev, `[Job ${data.status}]`]);
             setRunning(false);
+            // Signal the m365-scripts page to refresh its job history
+            window.dispatchEvent(new CustomEvent("runbook-job-complete"));
             return;
           }
           setTimeout(() => void poll(), 3000);
         } catch {
-          setLogLines(prev => [...prev, "[Polling error — job may still be running in Azure]"]);
-          setRunning(false);
+          if (!abortedRef.current) {
+            setLogLines(prev => [...prev, "[Polling error — job may still be running in Azure]"]);
+            setRunning(false);
+          }
         }
       };
       void poll();
@@ -1180,10 +1205,11 @@ function InlineScriptRunner({
 
   const isTerminal = ["Completed", "Failed", "Stopped", "Suspended"].includes(jobStatus);
   const isAdHocSelected = selectedRunbook === ADHOC_SENTINEL;
-  const canRun = !!credId && selectedRunbook !== "" && !running && !(isAdHocSelected && !scriptBody.trim());
+  const canRun = !!selectedCredId && selectedRunbook !== "" && !running && !(isAdHocSelected && !scriptBody.trim());
   const statusColor = INLINE_JOB_COLORS[jobStatus] ?? "text-[#7D8590]";
   const currentRunbookName = editorScript?.azureRunbookName ?? null;
   const hasEditorContent = scriptBody.trim().length > 0;
+  const selectedClient = clients.find(c => c.id === selectedClientId);
 
   if (azureConfigured === false) {
     return (
@@ -1207,7 +1233,13 @@ function InlineScriptRunner({
           ) : (
             <select
               value={selectedClientId}
-              onChange={e => { setSelectedClientId(e.target.value ? Number(e.target.value) : ""); setSelectedRunbook(""); }}
+              onChange={e => {
+                const clientId = e.target.value ? Number(e.target.value) : "";
+                setSelectedClientId(clientId);
+                const cred = clientId ? clients.find(c => c.id === clientId)?.credential : null;
+                setSelectedCredId(cred?.id ?? "");
+                setSelectedRunbook("");
+              }}
               className="w-full bg-[#161B22] border border-[#30363D] rounded px-2 py-1.5 text-xs text-[#E6EDF3] outline-none focus:border-[#0078D4]/50 transition-colors"
             >
               <option value="">Select customer…</option>
@@ -1220,8 +1252,29 @@ function InlineScriptRunner({
           )}
         </div>
 
-        {/* Runbook — only after client selected */}
-        {selectedClientId !== "" && (
+        {/* Credential — shown after client selected, explicit picker matching m365-scripts */}
+        {selectedClientId !== "" && selectedClient && (
+          <div>
+            <label className="block text-[9px] font-bold uppercase tracking-wider text-[#484F58] mb-1">Credential</label>
+            {selectedClient.credential ? (
+              <select
+                value={selectedCredId}
+                onChange={e => { setSelectedCredId(e.target.value ? Number(e.target.value) : ""); setSelectedRunbook(""); }}
+                className="w-full bg-[#161B22] border border-[#30363D] rounded px-2 py-1.5 text-xs text-[#E6EDF3] outline-none focus:border-[#0078D4]/50 transition-colors"
+              >
+                <option value="">Select credential…</option>
+                <option value={selectedClient.credential.id}>
+                  {selectedClient.credential.displayName ?? `Credential #${selectedClient.credential.id}`}
+                </option>
+              </select>
+            ) : (
+              <p className="text-[10px] text-amber-400">No Azure credential — add one in the CRM first.</p>
+            )}
+          </div>
+        )}
+
+        {/* Runbook — only after credential selected */}
+        {selectedCredId !== "" && (
           <div>
             <label className="block text-[9px] font-bold uppercase tracking-wider text-[#484F58] mb-1">Runbook</label>
             {loadingRunbooks ? (

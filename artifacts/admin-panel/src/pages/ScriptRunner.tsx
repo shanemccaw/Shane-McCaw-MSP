@@ -146,6 +146,10 @@ export default function ScriptRunnerPage() {
     void loadClients();
     void checkAzureConfig();
     void loadHistory();
+    // Refresh history when the IDE's InlineScriptRunner completes a job
+    const handleExternalJobComplete = () => void loadHistory();
+    window.addEventListener("runbook-job-complete", handleExternalJobComplete);
+    return () => window.removeEventListener("runbook-job-complete", handleExternalJobComplete);
   }, []);
 
   useEffect(() => {
