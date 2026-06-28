@@ -185,14 +185,16 @@ router.post("/leads", async (req: Request, res: Response) => {
 });
 
 router.get("/leads/stats", requireAdmin, async (_req: Request, res: Response) => {
-  const [totalRow] = await db.select({ count: count() }).from(leadsTable);
+  const notArchived = ne(leadsTable.status, "archived");
+
+  const [totalRow] = await db.select({ count: count() }).from(leadsTable).where(notArchived);
 
   const weekAgo = new Date();
   weekAgo.setDate(weekAgo.getDate() - 7);
-  const [weekRow] = await db.select({ count: count() }).from(leadsTable).where(gte(leadsTable.createdAt, weekAgo));
+  const [weekRow] = await db.select({ count: count() }).from(leadsTable).where(and(notArchived, gte(leadsTable.createdAt, weekAgo)));
 
-  const [contactRow] = await db.select({ count: count() }).from(leadsTable).where(eq(leadsTable.source, "contact_form"));
-  const [magnetRow] = await db.select({ count: count() }).from(leadsTable).where(eq(leadsTable.source, "lead_magnet"));
+  const [contactRow] = await db.select({ count: count() }).from(leadsTable).where(and(notArchived, eq(leadsTable.source, "contact_form")));
+  const [magnetRow] = await db.select({ count: count() }).from(leadsTable).where(and(notArchived, eq(leadsTable.source, "lead_magnet")));
 
   res.json({
     total: totalRow?.count ?? 0,
