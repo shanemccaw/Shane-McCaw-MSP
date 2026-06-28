@@ -198,17 +198,6 @@ function M365ScoreTab({ result }: { result: RunResult }) {
     );
   }
 
-  if (!hasDeltas) {
-    return (
-      <div className="flex flex-col items-center justify-center py-16 text-center">
-        <svg className="w-10 h-10 text-[#21262D] mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-          <path strokeLinecap="round" strokeLinejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-        </svg>
-        <p className="text-sm text-[#484F58]">No score deltas for this run</p>
-      </div>
-    );
-  }
-
   if (loading) {
     return (
       <div className="space-y-3 animate-pulse">
@@ -228,6 +217,32 @@ function M365ScoreTab({ result }: { result: RunResult }) {
   }
 
   const base: ClientScores = scores ?? { identity: 0, security: 0, collaboration: 0, compliance: 0, copilotReadiness: 0 };
+
+  if (!hasDeltas) {
+    return (
+      <div className="space-y-3">
+        <div className="grid grid-cols-2 text-[10px] font-bold uppercase tracking-wider text-[#484F58] px-1 mb-1">
+          <span>Category</span>
+          <span className="text-center">Current Score</span>
+        </div>
+        {SCORE_KEYS.map(({ key, label }) => {
+          const current = base[key];
+          return (
+            <div key={key} className="grid grid-cols-2 items-center bg-[#161B22] border border-[#21262D] rounded-lg px-3 py-3 gap-2">
+              <span className="text-xs text-[#C9D1D9] font-medium">{label}</span>
+              <div className="flex flex-col items-center">
+                <span className="text-sm font-bold text-[#E6EDF3] tabular-nums">{current}</span>
+                <div className="w-full h-1 bg-[#21262D] rounded-full mt-1">
+                  <div className="h-full bg-[#0078D4] rounded-full" style={{ width: `${current}%` }} />
+                </div>
+              </div>
+            </div>
+          );
+        })}
+        <p className="text-xs text-[#484F58] text-center pt-1">No projected changes from this run</p>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-3">
