@@ -110,11 +110,18 @@ function SectionCard({ title, icon, children }: { title: string; icon: React.Rea
   );
 }
 
+function isEmpty(v: React.ReactNode): boolean {
+  return v === undefined || v === null || v === "" || (typeof v === "string" && v.trim() === "");
+}
+
 function DataRow({ label, value }: { label: string; value: React.ReactNode }) {
+  const blank = isEmpty(value);
   return (
     <div className="flex items-start justify-between gap-4 py-2 border-b border-gray-50 last:border-0">
       <span className="text-xs text-gray-500 flex-shrink-0 w-36">{label}</span>
-      <span className="text-xs font-semibold text-[#0A2540] text-right flex-1">{value ?? <span className="text-gray-300 font-normal">Not provided</span>}</span>
+      <span className="text-xs font-semibold text-[#0A2540] text-right flex-1">
+        {blank ? <span className="text-gray-300 font-normal">Not provided</span> : value}
+      </span>
     </div>
   );
 }
@@ -198,11 +205,15 @@ const WORKLOADS: { key: keyof M365Profile; label: string }[] = [
 
 export default function PortalM365Profile() {
   const { fetchWithAuth } = useAuth();
-  const [loading, setLoading]   = useState(true);
-  const [profile, setProfile]   = useState<M365Profile | null>(null);
+  const [loading, setLoading]     = useState(true);
+  const [profile, setProfile]     = useState<M365Profile | null>(null);
+  const [loadError, setLoadError] = useState(false);
+  const [retryCount, setRetryCount] = useState(0);
   const [dismissedAlerts, setDismissedAlerts] = useState(false);
 
   useEffect(() => {
+    setLoading(true);
+    setLoadError(false);
     Promise.all([
       fetchWithAuth("/api/portal/m365-profile").then(r => r.json() as Promise<M365Profile>),
       fetchWithAuth("/api/portal/profile").then(r => r.ok ? r.json() as Promise<{ company?: string | null }> : Promise.resolve({})),
@@ -212,15 +223,40 @@ export default function PortalM365Profile() {
         if (!merged.orgName && base.company) merged.orgName = base.company;
         setProfile(merged);
       })
-      .catch(() => setProfile(null))
+      .catch(() => setLoadError(true))
       .finally(() => setLoading(false));
-  }, [fetchWithAuth]);
+  }, [fetchWithAuth, retryCount]);
 
   if (loading) {
     return (
       <PortalLayout>
         <div className="flex items-center justify-center min-h-[60vh]">
           <div className="w-8 h-8 border-4 border-[#0078D4] border-t-transparent rounded-full animate-spin" />
+        </div>
+      </PortalLayout>
+    );
+  }
+
+  // ── Error state ────────────────────────────────────────────────────────────
+
+  if (loadError) {
+    return (
+      <PortalLayout>
+        <div className="max-w-md mx-auto px-4 py-24 text-center">
+          <div className="w-14 h-14 rounded-2xl bg-red-50 flex items-center justify-center mx-auto mb-5">
+            <svg className="w-7 h-7 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+            </svg>
+          </div>
+          <h2 className="text-lg font-bold text-[#0A2540] mb-2">Unable to load your tenant data</h2>
+          <p className="text-sm text-gray-500 mb-5">There was a problem fetching your M365 profile. Please check your connection and try again.</p>
+          <button
+            onClick={() => setRetryCount(c => c + 1)}
+            className="inline-flex items-center gap-2 bg-[#0078D4] text-white text-sm font-semibold px-4 py-2 rounded-xl hover:bg-[#0078D4]/90 transition-colors"
+          >
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
+            Retry
+          </button>
         </div>
       </PortalLayout>
     );
@@ -313,13 +349,13 @@ export default function PortalM365Profile() {
             <div className="flex flex-wrap gap-4 mt-1">
               {profile.employeeCount && (
                 <div className="text-center">
-                  <div className="text-2xl font-extrabold text-white">{parseInt(profile.employeeCount).toLocaleString()}</div>
+                  <div className="text-2xl font-extrabold text-white">{(parseInt(profile.employeeCount ?? "", 10) || 0).toLocaleString()}</div>
                   <div className="text-[11px] text-white/50 uppercase tracking-wide">Employees</div>
                 </div>
               )}
               {profile.licensedUserCount && (
                 <div className="text-center">
-                  <div className="text-2xl font-extrabold text-[#00B4D8]">{parseInt(profile.licensedUserCount).toLocaleString()}</div>
+                  <div className="text-2xl font-extrabold text-[#00B4D8]">{(parseInt(profile.licensedUserCount ?? "", 10) || 0).toLocaleString()}</div>
                   <div className="text-[11px] text-white/50 uppercase tracking-wide">Licensed Users</div>
                 </div>
               )}
