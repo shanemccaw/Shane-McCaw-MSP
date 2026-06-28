@@ -293,6 +293,7 @@ export default function RunResultsSidebarPanel({ onSelectResult, selectedResultI
   const [refreshing, setRefreshing] = useState(false);
   const [statusFilter, setStatusFilter] = useState("");
   const [countdown, setCountdown] = useState(POLL_INTERVAL);
+  const [pollFlash, setPollFlash] = useState(false);
 
   const load = useCallback(async (showRefresh = false) => {
     if (showRefresh) setRefreshing(true); else setLoading(true);
@@ -303,6 +304,10 @@ export default function RunResultsSidebarPanel({ onSelectResult, selectedResultI
       setLoading(false);
       setRefreshing(false);
       setCountdown(POLL_INTERVAL);
+      if (showRefresh) {
+        setPollFlash(false);
+        requestAnimationFrame(() => setPollFlash(true));
+      }
     }
   }, [fetchWithAuth]);
 
@@ -343,7 +348,11 @@ export default function RunResultsSidebarPanel({ onSelectResult, selectedResultI
           <option value="awaiting_upload">Awaiting Upload</option>
         </select>
         {hasRunning && !refreshing && (
-          <span className="text-[10px] text-[#484F58] flex-shrink-0 tabular-nums">
+          <span
+            key={pollFlash ? "flash" : "idle"}
+            className={`text-[10px] flex-shrink-0 tabular-nums ${pollFlash ? "poll-flash" : "text-[#484F58]"}`}
+            onAnimationEnd={() => setPollFlash(false)}
+          >
             auto in {countdown}s
           </span>
         )}

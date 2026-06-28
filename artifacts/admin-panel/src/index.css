@@ -105,3 +105,13 @@
   ::-webkit-scrollbar-thumb { background: #30363D; border-radius: 3px; }
   ::-webkit-scrollbar-thumb:hover { background: #484F58; }
 }
+
+@keyframes poll-flash {
+  0%   { color: #0078D4; }
+  60%  { color: #0078D4; }
+  100% { color: #484F58; }
+}
+
+.poll-flash {
+  animation: poll-flash 1s ease-out forwards;
+}
