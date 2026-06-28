@@ -203,7 +203,7 @@ function ScriptFormModal({
 
   useEffect(() => { return fetchRunbooks(false); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);
 
-  const addPerm = () => setForm(f => ({ ...f, appRegPermissions: [...f.appRegPermissions, { permission: "", type: "Application" as const, reason: "" }] }));
+  const addPerm = () => setForm(f => ({ ...f, appRegPermissions: [...f.appRegPermissions, { permission: "", type: (f.executionMode === "manual" ? "Delegated" : "Application") as "Application" | "Delegated", reason: "" }] }));
   const updatePerm = (i: number, p: AppRegPermission) => setForm(f => ({ ...f, appRegPermissions: f.appRegPermissions.map((x, idx) => idx === i ? p : x) }));
   const removePerm = (i: number) => setForm(f => ({ ...f, appRegPermissions: f.appRegPermissions.filter((_, idx) => idx !== i) }));
 
