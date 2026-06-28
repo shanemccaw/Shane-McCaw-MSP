@@ -1,6 +1,17 @@
 import { useState, useCallback, useEffect } from "react";
 import { useLocation } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { Trash2 } from "lucide-react";
 
 type OpportunityState = "new" | "contacted" | "qualified" | "converted" | "archived";
 
@@ -97,6 +108,8 @@ export default function OpportunitiesPage() {
   const [loading, setLoading] = useState(false);
   const [page, setPage] = useState(1);
   const [filterState, setFilterState] = useState<OpportunityState | "all">("all");
+  const [deleteTarget, setDeleteTarget] = useState<Opportunity | null>(null);
+  const [deleting, setDeleting] = useState(false);
   const LIMIT = 20;
 
   const fetchOpportunities = useCallback(async (p = 1, state: OpportunityState | "all" = "all") => {
@@ -122,6 +135,21 @@ export default function OpportunitiesPage() {
   const handleFilterChange = (state: OpportunityState | "all") => {
     setFilterState(state);
     setPage(1);
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (!deleteTarget) return;
+    setDeleting(true);
+    try {
+      const res = await fetchWithAuth(`/api/opportunities/${deleteTarget.id}`, { method: "DELETE" });
+      if (res.ok) {
+        setOpportunities(prev => prev.filter(op => op.id !== deleteTarget.id));
+        setTotal(prev => Math.max(0, prev - 1));
+      }
+    } finally {
+      setDeleting(false);
+      setDeleteTarget(null);
+    }
   };
 
   const totalPages = Math.ceil(total / LIMIT);
@@ -220,6 +248,13 @@ export default function OpportunitiesPage() {
                       <p className="text-xs text-muted-foreground">Score</p>
                       <p className="text-lg font-black text-[#E6EDF3]">{op.scoreSnapshot}<span className="text-xs font-normal text-muted-foreground">/100</span></p>
                     </div>
+                    <button
+                      onClick={e => { e.stopPropagation(); setDeleteTarget(op); }}
+                      className="p-1.5 rounded-lg text-[#7D8590] hover:text-rose-400 hover:bg-rose-500/10 transition-colors opacity-0 group-hover:opacity-100"
+                      title="Delete opportunity"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
                   </div>
                   <p className="text-xs text-muted-foreground">
                     {new Date(op.createdAt).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}
@@ -259,6 +294,31 @@ export default function OpportunitiesPage() {
           </div>
         </div>
       )}
+
+      <AlertDialog open={!!deleteTarget} onOpenChange={open => { if (!open) setDeleteTarget(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete opportunity?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently delete the opportunity for{" "}
+              <span className="font-semibold text-foreground">
+                {deleteTarget?.lead?.name ?? `Lead #${deleteTarget?.leadId}`}
+              </span>{" "}
+              and all its associated tasks. This cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDeleteConfirm}
+              disabled={deleting}
+              className="bg-rose-600 hover:bg-rose-700 focus:ring-rose-600"
+            >
+              {deleting ? "Deleting…" : "Delete"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

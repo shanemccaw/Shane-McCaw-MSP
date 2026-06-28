@@ -8,7 +8,7 @@ import {
   projectsTable,
   kanbanTasksTable,
 } from "@workspace/db";
-import { eq, desc, and, lte, or, isNull, count } from "drizzle-orm";
+import { eq, desc, and, lte, or, isNull, count, ne } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/requireAuth";
 import { generateWorkflowTasks, daysFromNow } from "../lib/workflow-tasks";
 
@@ -190,7 +190,10 @@ router.get("/opportunities", requireAdmin, async (req: Request, res: Response) =
   const stateParam = typeof req.query.state === "string" && (VALID_OPPORTUNITY_STATES as readonly string[]).includes(req.query.state)
     ? req.query.state as OpportunityState
     : null;
-  const stateFilter = stateParam ? eq(opportunitiesTable.state, stateParam) : undefined;
+  // "all" means every state except archived; explicit "archived" filter shows only archived
+  const stateFilter = stateParam
+    ? eq(opportunitiesTable.state, stateParam)
+    : ne(opportunitiesTable.state, "archived");
 
   const [totalRow] = await db.select({ count: count() }).from(opportunitiesTable).where(stateFilter);
   const opportunities = await db
@@ -243,6 +246,21 @@ router.get("/opportunities/:id", requireAdmin, async (req: Request, res: Respons
     .orderBy(opportunityTasksTable.createdAt);
 
   res.json({ ...op, lead: lead ?? null, tasks });
+});
+
+// ── DELETE /api/opportunities/:id ─────────────────────────────────────────────
+router.delete("/opportunities/:id", requireAdmin, async (req: Request, res: Response) => {
+  const id = parseInt(String(req.params.id ?? ""), 10);
+  if (isNaN(id)) { res.status(400).json({ error: "Invalid opportunity ID" }); return; }
+
+  const [op] = await db.select({ id: opportunitiesTable.id }).from(opportunitiesTable).where(eq(opportunitiesTable.id, id)).limit(1);
+  if (!op) { res.status(404).json({ error: "Opportunity not found" }); return; }
+
+  // Delete related opportunity tasks first (FK constraint)
+  await db.delete(opportunityTasksTable).where(eq(opportunityTasksTable.opportunityId, id));
+  await db.delete(opportunitiesTable).where(eq(opportunitiesTable.id, id));
+
+  res.json({ ok: true });
 });
 
 // ── PATCH /api/opportunities/:id ──────────────────────────────────────────────
