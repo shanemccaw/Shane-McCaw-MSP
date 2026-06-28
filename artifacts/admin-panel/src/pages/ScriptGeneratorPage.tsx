@@ -619,6 +619,9 @@ function GeneratorTab({
   const [fixing, setFixing] = useState(false);
   const [fixSummary, setFixSummary] = useState("");
 
+  // Retry banner — tracks which action returned a summary instead of a script
+  const [summaryError, setSummaryError] = useState<"generate" | "fix" | null>(null);
+
   // Modularize state
   const [modularizing, setModularizing] = useState(false);
   const [modules, setModules] = useState<ScriptModuleItem[]>([]);
@@ -631,6 +634,7 @@ function GeneratorTab({
     setModules([]);
     setFixSummary("");
     setShowBugReporter(false);
+    setSummaryError(null);
     try {
       const result = await apiFetch("/admin/ps-scripts/generate", token, {
         method: "POST",
@@ -652,7 +656,12 @@ function GeneratorTab({
       setScriptBody(result.script);
       setPermissions(result.permissions);
     } catch (e) {
-      toast({ title: "Generation failed", description: e instanceof Error ? e.message : "Unknown error", variant: "destructive" });
+      const msg = e instanceof Error ? e.message : "Unknown error";
+      if (msg.toLowerCase().includes("summary instead of a script")) {
+        setSummaryError("generate");
+      } else {
+        toast({ title: "Generation failed", description: msg, variant: "destructive" });
+      }
     } finally {
       setGenerating(false);
     }
@@ -662,6 +671,7 @@ function GeneratorTab({
     if (!bugDescription.trim()) { toast({ title: "Describe the bug first", variant: "destructive" }); return; }
     setFixing(true);
     setFixSummary("");
+    setSummaryError(null);
     try {
       const result = await apiFetch("/admin/ps-scripts/fix", token, {
         method: "POST",
@@ -685,7 +695,12 @@ function GeneratorTab({
       setBugDescription("");
       setShowBugReporter(false);
     } catch (e) {
-      toast({ title: "Fix failed", description: e instanceof Error ? e.message : "Unknown error", variant: "destructive" });
+      const msg = e instanceof Error ? e.message : "Unknown error";
+      if (msg.toLowerCase().includes("summary instead of a script")) {
+        setSummaryError("fix");
+      } else {
+        toast({ title: "Fix failed", description: msg, variant: "destructive" });
+      }
     } finally {
       setFixing(false);
     }
@@ -839,6 +854,46 @@ function GeneratorTab({
           )}
         </button>
       </div>
+
+      {/* AI summary-instead-of-script retry banner */}
+      {summaryError && (
+        <div className="flex items-start gap-3 bg-amber-500/10 border border-amber-500/30 rounded-xl px-4 py-3">
+          <svg className="w-4 h-4 text-amber-400 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+          </svg>
+          <div className="flex-1 min-w-0">
+            <p className="text-xs font-semibold text-amber-400 mb-0.5">AI returned a summary instead of a script</p>
+            <p className="text-xs text-amber-300/70 leading-relaxed">
+              {summaryError === "generate"
+                ? "The model described what the script would do instead of writing it. Your editor content is unchanged."
+                : "The model described the fix instead of applying it. Your original script has not been modified."}
+            </p>
+          </div>
+          <div className="flex items-center gap-2 flex-shrink-0">
+            <button
+              onClick={() => {
+                if (summaryError === "generate") generate();
+                else fixBug();
+              }}
+              className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg bg-amber-500/15 border border-amber-500/30 text-amber-400 hover:bg-amber-500/25 transition-colors"
+            >
+              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+              </svg>
+              Retry
+            </button>
+            <button
+              onClick={() => setSummaryError(null)}
+              className="p-1.5 text-amber-400/50 hover:text-amber-400 transition-colors rounded"
+              title="Dismiss"
+            >
+              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Generated output */}
       {scriptBody && (
