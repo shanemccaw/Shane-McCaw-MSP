@@ -11,9 +11,20 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Loader2, Plus, Trash2, Pencil, Play, RefreshCw, X, Tag, ChevronRight, ChevronUp, ChevronDown, TerminalSquare } from "lucide-react";
+import { Loader2, Plus, Trash2, Pencil, Play, RefreshCw, X, Tag, ChevronRight, ChevronUp, ChevronDown, TerminalSquare, Sparkles, Upload, FileCode } from "lucide-react";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
+
+interface AnalyzeResult {
+  name?: string;
+  runbookName?: string;
+  description?: string;
+  aiInstructions?: string;
+  executionMode?: "automated" | "manual";
+  manualRequirements?: string[];
+  appRegPermissions?: AppRegPermission[];
+  psScriptBody?: string;
+}
 
 interface AppRegPermission {
   permission: string;
@@ -123,11 +134,13 @@ function PermissionRow({
 function ScriptFormModal({
   script,
   categories,
+  initialValues,
   onClose,
   onSaved,
 }: {
   script: Script | null;
   categories: Category[];
+  initialValues?: AnalyzeResult;
   onClose: () => void;
   onSaved: (s: Script) => void;
 }) {
@@ -146,7 +159,20 @@ function ScriptFormModal({
           psScriptBody: script.psScriptBody ?? "",
           categoryIds: script.categoryIds ?? [] as number[],
         }
-      : { ...EMPTY_FORM, appRegPermissions: [] as AppRegPermission[] }
+      : {
+          ...EMPTY_FORM,
+          ...(initialValues ? {
+            name: initialValues.name ?? "",
+            description: initialValues.description ?? "",
+            runbookName: initialValues.runbookName ?? "",
+            aiInstructions: initialValues.aiInstructions ?? "",
+            executionMode: initialValues.executionMode ?? "automated" as "automated" | "manual",
+            manualRequirements: (initialValues.manualRequirements ?? []).join("\n"),
+            psScriptBody: initialValues.psScriptBody ?? "",
+          } : {}),
+          appRegPermissions: initialValues?.appRegPermissions ?? [] as AppRegPermission[],
+          categoryIds: [] as number[],
+        }
   );
   const [saving, setSaving] = useState(false);
   const [runbooks, setRunbooks] = useState<RunbookSummary[]>([]);
@@ -509,6 +535,171 @@ function RunScriptModal({ script, onClose }: { script: Script; onClose: () => vo
   );
 }
 
+// ── Register from Script Sheet ────────────────────────────────────────────────
+
+const inputClsR = "w-full border border-[#30363D] rounded-lg px-3 py-2 text-sm text-[#E6EDF3] focus:outline-none focus:ring-2 focus:ring-[#0078D4]/40 bg-[#161B22] placeholder-[#484F58]";
+const labelClsR = "block text-[10px] font-bold uppercase tracking-wider text-[#7D8590] mb-1";
+
+function RegisterFromScriptSheet({
+  onClose,
+  onResult,
+}: {
+  onClose: () => void;
+  onResult: (r: AnalyzeResult) => void;
+}) {
+  const { fetchWithAuth } = useAuth();
+  const { toast } = useToast();
+  const [psBody, setPsBody] = useState("");
+  const [analyzing, setAnalyzing] = useState(false);
+  const [showAnnotation, setShowAnnotation] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = ev => {
+      const text = ev.target?.result;
+      if (typeof text === "string") setPsBody(text);
+    };
+    reader.readAsText(file);
+    e.target.value = "";
+  };
+
+  const handleAnalyze = async () => {
+    if (!psBody.trim()) {
+      toast({ title: "Paste or upload a PowerShell script first", variant: "destructive" });
+      return;
+    }
+    setAnalyzing(true);
+    try {
+      const res = await fetchWithAuth("/api/admin/scripts/analyze", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ psScriptBody: psBody }),
+      });
+      const body = await res.json() as AnalyzeResult & { error?: string };
+      if (!res.ok) {
+        toast({ title: (body as { error?: string }).error ?? "Analysis failed", variant: "destructive" });
+        return;
+      }
+      onResult(body);
+    } catch {
+      toast({ title: "Network error — please try again", variant: "destructive" });
+    } finally {
+      setAnalyzing(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-[70] flex items-start justify-end">
+      <div className="absolute inset-0 bg-black/50" onClick={onClose} />
+      <div className="relative w-full max-w-2xl h-full bg-[#161B22] border-l border-[#30363D] flex flex-col shadow-2xl overflow-hidden">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-[#30363D] flex-shrink-0">
+          <div>
+            <div className="flex items-center gap-2">
+              <Sparkles className="w-4 h-4 text-[#0078D4]" />
+              <h2 className="text-base font-bold text-[#E6EDF3]">Register from Script</h2>
+            </div>
+            <p className="text-xs text-[#7D8590] mt-0.5">Paste or upload a .ps1 file — AI fills in the catalog entry for you</p>
+          </div>
+          <button onClick={onClose} className="text-[#7D8590] hover:text-[#E6EDF3] transition-colors p-1 rounded">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
+          <div className="bg-[#0D1117] border border-[#30363D] rounded-xl overflow-hidden">
+            <button
+              type="button"
+              onClick={() => setShowAnnotation(v => !v)}
+              className="w-full flex items-center justify-between px-4 py-3 text-left hover:bg-[#161B22] transition-colors"
+            >
+              <div className="flex items-center gap-2">
+                <FileCode className="w-4 h-4 text-[#484F58]" />
+                <span className="text-xs font-semibold text-[#7D8590]">How to annotate your script</span>
+              </div>
+              <ChevronRight className={`w-4 h-4 text-[#484F58] transition-transform ${showAnnotation ? "rotate-90" : ""}`} />
+            </button>
+            {showAnnotation && (
+              <div className="px-4 pb-4 space-y-3 border-t border-[#30363D]">
+                <p className="text-xs text-[#7D8590] mt-3 leading-relaxed">
+                  Add a <code className="bg-[#1C2128] px-1 rounded text-[#E6EDF3] text-[11px]">&lt;# … #&gt;</code> comment block at the top of your script with these fields. The AI will use them to pre-fill the Name and Runbook fields, then generate everything else automatically.
+                </p>
+                <pre className="text-[11px] text-[#E6EDF3] font-mono bg-[#1C2128] border border-[#30363D] rounded-lg p-3 leading-relaxed select-all">{`<#
+.CATALOG_NAME   MFA Status Audit
+.CATALOG_RUNBOOK  Check-MFAStatus
+#>
+
+# Your PowerShell script body starts here…
+param(
+    [string]$TenantId,
+    [string]$ClientId,
+    [string]$ClientSecret
+)
+
+Connect-MgGraph -TenantId $TenantId …`}</pre>
+                <p className="text-[10px] text-[#484F58]">
+                  <strong className="text-[#7D8590]">.CATALOG_NAME</strong> — friendly display name for the script catalog<br />
+                  <strong className="text-[#7D8590]">.CATALOG_RUNBOOK</strong> — exact Azure Automation runbook name (case-sensitive)
+                </p>
+              </div>
+            )}
+          </div>
+
+          <div>
+            <div className="flex items-center justify-between mb-1">
+              <label className={labelClsR}>PowerShell Script Body</label>
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                className="flex items-center gap-1.5 text-[10px] font-semibold text-[#0078D4] hover:text-[#1A90E0] transition-colors"
+              >
+                <Upload className="w-3 h-3" />
+                Upload .ps1
+              </button>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".ps1,.txt,text/plain"
+                className="hidden"
+                onChange={handleFileUpload}
+              />
+            </div>
+            <textarea
+              value={psBody}
+              onChange={e => setPsBody(e.target.value)}
+              placeholder={"Paste your PowerShell script here…\n\nTip: add a <# .CATALOG_NAME … .CATALOG_RUNBOOK … #> block at the top to pre-fill the name and runbook fields automatically."}
+              rows={20}
+              className={`${inputClsR} resize-y font-mono text-[11px]`}
+            />
+            <p className="text-[10px] text-[#484F58] mt-1">
+              The AI reads the full script to generate description, AI instructions, app permissions, and category tags
+            </p>
+          </div>
+        </div>
+
+        <div className="flex items-center justify-between gap-3 px-6 py-4 border-t border-[#30363D] flex-shrink-0">
+          <button onClick={onClose} className="text-sm text-[#7D8590] hover:text-[#E6EDF3] font-medium transition-colors">
+            Cancel
+          </button>
+          <button
+            onClick={() => void handleAnalyze()}
+            disabled={analyzing || !psBody.trim()}
+            className="flex items-center gap-2 bg-[#0078D4] hover:bg-[#006CBE] disabled:opacity-50 text-white text-sm font-semibold px-5 py-2 rounded-lg transition-colors"
+          >
+            {analyzing ? (
+              <><Loader2 className="w-4 h-4 animate-spin" />Analyzing…</>
+            ) : (
+              <><Sparkles className="w-4 h-4" />Analyze Script</>
+            )}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Catalog Sidebar Panel ─────────────────────────────────────────────────────
 
 export default function CatalogSidebarPanel({
@@ -525,6 +716,8 @@ export default function CatalogSidebarPanel({
   const [openSections, setOpenSections] = useState<Set<number>>(new Set());
   const [showForm, setShowForm] = useState(false);
   const [editScript, setEditScript] = useState<Script | null>(null);
+  const [formInitialValues, setFormInitialValues] = useState<AnalyzeResult | undefined>(undefined);
+  const [showRegister, setShowRegister] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<Script | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [runScriptTarget, setRunScriptTarget] = useState<Script | null>(null);
@@ -622,11 +815,18 @@ export default function CatalogSidebarPanel({
           />
         </div>
         <button
-          onClick={() => { setEditScript(null); setShowForm(true); }}
+          onClick={() => { setEditScript(null); setFormInitialValues(undefined); setShowForm(true); }}
           title="New Script"
           className="p-1.5 text-[#484F58] hover:text-[#0078D4] hover:bg-[#0078D4]/10 rounded transition-colors flex-shrink-0"
         >
           <Plus className="w-3.5 h-3.5" />
+        </button>
+        <button
+          onClick={() => setShowRegister(true)}
+          title="Register from Script (AI)"
+          className="p-1.5 text-[#484F58] hover:text-[#0078D4] hover:bg-[#0078D4]/10 rounded transition-colors flex-shrink-0"
+        >
+          <Sparkles className="w-3.5 h-3.5" />
         </button>
         <button onClick={() => void loadAll()} title="Refresh" className="p-1.5 text-[#484F58] hover:text-[#E6EDF3] hover:bg-[#21262D] rounded transition-colors flex-shrink-0">
           <RefreshCw className={`w-3 h-3 ${loading ? "animate-spin" : ""}`} />
@@ -706,11 +906,24 @@ export default function CatalogSidebarPanel({
       )}
 
       {/* Modals */}
+      {showRegister && (
+        <RegisterFromScriptSheet
+          onClose={() => setShowRegister(false)}
+          onResult={result => {
+            setShowRegister(false);
+            setEditScript(null);
+            setFormInitialValues(result);
+            setShowForm(true);
+          }}
+        />
+      )}
+
       {showForm && (
         <ScriptFormModal
           script={editScript}
           categories={categories}
-          onClose={() => { setShowForm(false); setEditScript(null); }}
+          initialValues={editScript ? undefined : formInitialValues}
+          onClose={() => { setShowForm(false); setEditScript(null); setFormInitialValues(undefined); }}
           onSaved={handleSaved}
         />
       )}
