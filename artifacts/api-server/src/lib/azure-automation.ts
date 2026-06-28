@@ -287,10 +287,16 @@ export function isAzureConfigured(): boolean {
  *
  * - If the runbook does not exist it is created with type "PowerShell".
  * - If the runbook already exists, `createOrUpdate` updates only metadata
- *   and the content is replaced via `runbookDraft.replaceContent`.
+ *   and the content is replaced via a direct REST PUT.
+ *
+ * NOTE: The ARM SDK's `runbookDraft.replaceContent` is an LRO that attempts
+ * to parse the response body as JSON for polling state. The response body is
+ * raw PowerShell text, so the SDK throws a JSON parse error. We bypass the
+ * SDK for this one call and use a raw fetch with a bearer token instead.
  */
 export async function upsertRunbookContent(name: string, psCode: string): Promise<void> {
   const { client, cfg } = buildClient();
+  const azCfg = getAzureConfig();
 
   // Fetch the Automation Account to get its location — required by the ARM API
   // when creating a new runbook resource for the first time (tolerated on updates).
@@ -315,12 +321,38 @@ export async function upsertRunbookContent(name: string, psCode: string): Promis
     draft: {},
   });
 
-  // Step 2: upload script content to the draft slot
-  // replaceContent accepts msRest.HttpRequestBody (string | Buffer | stream)
-  const contentBuffer = Buffer.from(psCode, "utf-8");
-  await (client.runbookDraft as unknown as {
-    replaceContent: (rg: string, acct: string, name: string, content: Buffer) => Promise<unknown>;
-  }).replaceContent(cfg.resourceGroup, cfg.accountName, name, contentBuffer);
+  // Step 2: upload script content via a raw REST PUT.
+  // We cannot use client.runbookDraft.replaceContent() because the ARM SDK
+  // treats the endpoint as an LRO and tries to JSON-parse the response body
+  // (which is the raw PS script text) — causing "Unexpected token 'C'..." errors.
+  const credential = new ClientSecretCredential(azCfg.tenantId, azCfg.clientId, azCfg.clientSecret);
+  const tokenResponse = await credential.getToken("https://management.azure.com/.default");
+  if (!tokenResponse?.token) {
+    throw new Error("azure-automation: failed to acquire bearer token for draft content upload");
+  }
+
+  const contentUrl =
+    `https://management.azure.com/subscriptions/${azCfg.subscriptionId}` +
+    `/resourceGroups/${azCfg.resourceGroup}` +
+    `/providers/Microsoft.Automation/automationAccounts/${azCfg.accountName}` +
+    `/runbooks/${encodeURIComponent(name)}/draft/content` +
+    `?api-version=2019-06-01`;
+
+  const uploadRes = await fetch(contentUrl, {
+    method: "PUT",
+    headers: {
+      "Authorization": `Bearer ${tokenResponse.token}`,
+      "Content-Type": "text/powershell",
+    },
+    body: psCode,
+  });
+
+  if (!uploadRes.ok) {
+    const errBody = await uploadRes.text().catch(() => "");
+    throw new Error(
+      `azure-automation: draft content upload failed — HTTP ${uploadRes.status}: ${errBody}`,
+    );
+  }
 
   logger.info({ runbookName: name }, "azure-automation: runbook content upserted");
 }
