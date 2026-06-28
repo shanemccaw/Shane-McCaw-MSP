@@ -1081,6 +1081,7 @@ function LibrarySidebar({
   loading,
   onOpenScript,
   onOpenPackage,
+  onOpenModule,
   loadingScriptId,
 }: {
   scripts: PsScriptListItem[];
@@ -1088,10 +1089,21 @@ function LibrarySidebar({
   loading: boolean;
   onOpenScript: (id: string) => void;
   onOpenPackage: (pkg: ScriptPackageListItem) => void;
+  onOpenModule: (module: ScriptModuleItem, pkg: ScriptPackageListItem) => void;
   loadingScriptId: string | null;
 }) {
   const [search, setSearch] = useState("");
   const [collapsedCats, setCollapsedCats] = useState<Set<string>>(new Set());
+  const [expandedPackages, setExpandedPackages] = useState<Set<string>>(new Set());
+
+  const togglePackageExpand = (pkgId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setExpandedPackages((prev) => {
+      const next = new Set(prev);
+      if (next.has(pkgId)) next.delete(pkgId); else next.add(pkgId);
+      return next;
+    });
+  };
 
   const q = search.toLowerCase();
 
@@ -1189,17 +1201,50 @@ function LibrarySidebar({
                   );
                 } else {
                   const p = entry.item;
+                  const isExpanded = expandedPackages.has(p.id);
                   return (
-                    <button
-                      key={`p-${p.id}-${i}`}
-                      onClick={() => onOpenPackage(p)}
-                      className="w-full flex items-center gap-2 pl-7 pr-3 py-1 hover:bg-[#161B22] transition-colors group text-left"
-                      title={p.title}
-                    >
-                      <svg className="w-3 h-3 text-purple-500/70 group-hover:text-purple-400 flex-shrink-0 transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" /></svg>
-                      <span className="flex-1 text-xs text-[#C9D1D9] truncate">{p.title}</span>
-                      <span className="text-[9px] text-purple-500/60 flex-shrink-0">{p.modules.length}m</span>
-                    </button>
+                    <div key={`p-${p.id}-${i}`}>
+                      <div className="w-full flex items-center hover:bg-[#161B22] transition-colors group">
+                        {/* Chevron toggle */}
+                        <button
+                          onClick={(e) => togglePackageExpand(p.id, e)}
+                          className="pl-7 pr-1 py-1 flex-shrink-0 text-[#484F58] hover:text-[#E6EDF3] transition-colors"
+                          title={isExpanded ? "Collapse modules" : "Expand modules"}
+                        >
+                          <svg
+                            className={`w-3 h-3 transition-transform ${isExpanded ? "rotate-90" : ""}`}
+                            fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}
+                          >
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+                          </svg>
+                        </button>
+                        {/* Package row — clicking loads multi-module view */}
+                        <button
+                          onClick={() => onOpenPackage(p)}
+                          className="flex-1 flex items-center gap-2 pr-3 py-1 text-left min-w-0"
+                          title={p.title}
+                        >
+                          <svg className="w-3 h-3 text-purple-500/70 group-hover:text-purple-400 flex-shrink-0 transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" /></svg>
+                          <span className="flex-1 text-xs text-[#C9D1D9] truncate">{p.title}</span>
+                          <span className="text-[9px] text-purple-500/60 flex-shrink-0">{p.modules.length}m</span>
+                        </button>
+                      </div>
+                      {/* Module child rows */}
+                      {isExpanded && p.modules.map((mod) => (
+                        <button
+                          key={`mod-${mod.id ?? mod.filename}`}
+                          onClick={() => onOpenModule(mod, p)}
+                          className="w-full flex items-center gap-2 pl-12 pr-3 py-1 hover:bg-[#161B22] transition-colors group text-left border-l border-purple-500/20 ml-7"
+                          style={{ marginLeft: 28 }}
+                          title={mod.filename}
+                        >
+                          <svg className="w-3 h-3 text-[#484F58] group-hover:text-purple-400 flex-shrink-0 transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
+                          </svg>
+                          <span className="flex-1 text-xs text-[#8B949E] group-hover:text-[#C9D1D9] truncate font-mono">{mod.filename}</span>
+                        </button>
+                      ))}
+                    </div>
                   );
                 }
               })}
@@ -2507,6 +2552,7 @@ export default function ScriptGeneratorPage() {
   const [openDrawerPackage, setOpenDrawerPackage] = useState<ScriptPackageListItem | null>(null);
   const [loadedPackageTitle, setLoadedPackageTitle] = useState<string | null>(null);
   const [loadedPackage, setLoadedPackage] = useState<ScriptPackageListItem | null>(null);
+  const [activePackageTitle, setActivePackageTitle] = useState<string | null>(null);
 
   // ── Run result detail state ──────────────────────────────────────────────────
   const [selectedResult, setSelectedResult] = useState<RunResult | null>(null);
@@ -2809,6 +2855,7 @@ export default function ScriptGeneratorPage() {
       setModules([]);
       setLoadedPackage(null);
       setLoadedPackageTitle(null);
+      setActivePackageTitle(null);
       setFixSummary("");
       setSummaryError(null);
     } catch {
@@ -2816,6 +2863,32 @@ export default function ScriptGeneratorPage() {
     } finally {
       setLoadingScriptId(null);
     }
+  };
+
+  const handleSidebarModuleClick = (module: ScriptModuleItem, pkg: ScriptPackageListItem) => {
+    const syntheticScript: PsScriptDetail = {
+      id: module.id ?? `mod-${module.filename}`,
+      title: module.filename,
+      description: module.description,
+      category: pkg.category,
+      tags: pkg.tags,
+      azureRunbookName: null,
+      azureSyncedAt: null,
+      createdAt: pkg.createdAt,
+      updatedAt: pkg.createdAt,
+      scriptBody: module.content,
+      permissions: pkg.permissions,
+    };
+    setEditorScript(syntheticScript);
+    setScriptBody(module.content);
+    cleanBodyRef.current = module.content;
+    setPermissions(pkg.permissions);
+    setModules([]);
+    setLoadedPackage(null);
+    setLoadedPackageTitle(null);
+    setActivePackageTitle(pkg.title);
+    setFixSummary("");
+    setSummaryError(null);
   };
 
   const handleScriptSaved = (s: PsScriptListItem) => {
@@ -2854,6 +2927,7 @@ export default function ScriptGeneratorPage() {
     setLoadedPackageTitle(pkg.title);
     setLoadedPackage(pkg);
     setEditorScript(null);
+    setActivePackageTitle(null);
     setSelectedResult(null);
   };
 
@@ -2880,7 +2954,9 @@ export default function ScriptGeneratorPage() {
   };
 
   // ── Computed values ───────────────────────────────────────────────────────────
-  const tabLabel = editorScript ? editorScript.title : "Untitled — New Script";
+  const tabLabel = editorScript
+    ? (activePackageTitle ? `${activePackageTitle} › ${editorScript.title}` : editorScript.title)
+    : "Untitled — New Script";
   // Dirty when the current body diverges from the last saved/generated/loaded baseline
   const isUnsaved = scriptBody.length > 0 && scriptBody !== cleanBodyRef.current;
   const effectiveLeftWidth = leftCollapsed ? 40 : leftPanel.size;
@@ -2936,6 +3012,7 @@ export default function ScriptGeneratorPage() {
                     loading={libraryLoading}
                     onOpenScript={handleSidebarScriptClick}
                     onOpenPackage={handleSidebarPackageClick}
+                    onOpenModule={handleSidebarModuleClick}
                     loadingScriptId={loadingScriptId}
                   />
                 )}
