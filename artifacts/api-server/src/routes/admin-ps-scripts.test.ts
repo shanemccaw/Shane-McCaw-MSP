@@ -67,6 +67,10 @@ mock.module("@workspace/db", {
     powershellScriptsTable: {},
     scriptPackagesTable: {},
     scriptModulesTable: {},
+    servicesTable: {},
+    workflowTemplatesTable: {},
+    workflowTemplateStepsTable: {},
+    workflowTemplateStepTasksTable: {},
   },
 });
 
