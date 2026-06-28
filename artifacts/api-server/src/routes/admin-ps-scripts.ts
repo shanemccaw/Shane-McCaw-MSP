@@ -976,6 +976,7 @@ Classify each task and generate PowerShell automation scripts for all M365/Azure
                   .values({
                     customerId,
                     libraryScriptId: libScript.id,
+                    packageId: serviceId,   // links run result to the service for portal queries
                     status: "awaiting_upload",
                     executionSource: "manual",
                   })
@@ -988,6 +989,7 @@ Classify each task and generate PowerShell automation scripts for all M365/Azure
                   .set({
                     taskMetadata: {
                       ...meta,
+                      scriptId: runResult.id,       // integer ID required by ManualScriptMetadata
                       scriptRunResultId: runResult.id,
                       projectId: kanbanTask.projectId,
                     },
