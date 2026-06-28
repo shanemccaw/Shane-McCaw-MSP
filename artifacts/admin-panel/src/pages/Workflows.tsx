@@ -508,12 +508,25 @@ function GenerateStepScriptsDialog({
 }) {
   const { fetchWithAuth } = useAuth();
   const [state, setState] = useState<ScriptGenState>(SCRIPT_GEN_INITIAL);
+  const [packageExists, setPackageExists] = useState<boolean | null>(null);
   const logRef = useRef<HTMLDivElement>(null);
   const readerRef = useRef<ReadableStreamDefaultReader<Uint8Array> | null>(null);
 
+  // On open, check if a package with this step's name already exists
   useEffect(() => {
-    if (open) setState(SCRIPT_GEN_INITIAL);
-  }, [open]);
+    if (!open || !step) return;
+    setState(SCRIPT_GEN_INITIAL);
+    setPackageExists(null);
+
+    const expectedTitle = `${step.title} Scripts`;
+    fetchWithAuth("/api/admin/ps-scripts/packages")
+      .then(r => r.ok ? r.json() as Promise<Array<{ title: string }>> : Promise.resolve([]))
+      .then(pkgs => {
+        setPackageExists(pkgs.some(p => p.title === expectedTitle));
+      })
+      .catch(() => setPackageExists(false));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, step?.id]);
 
   useEffect(() => {
     if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight;
@@ -633,42 +646,56 @@ function GenerateStepScriptsDialog({
         <div className="flex-1 overflow-y-auto p-5 space-y-4">
           {state.phase === "confirm" && (
             <>
-              <p className="text-sm text-[#C9D1D9]">
-                AI will classify each task in <span className="font-semibold text-[#E6EDF3]">"{step.title}"</span>,
-                skip human-only tasks, and generate a PowerShell script for each automatable task.
-                Results are saved as a Script Package named{" "}
-                <span className="font-semibold text-[#00B4D8]">"{step.title} Scripts"</span>.
-              </p>
-              <div className="text-xs text-[#7D8590] bg-[#1C2128] rounded-lg px-3 py-2">
-                <span className="font-semibold text-[#E6EDF3]">{step.tasks?.length ?? 0}</span> task
-                {(step.tasks?.length ?? 0) !== 1 ? "s" : ""} will be classified
-              </div>
-              <div>
-                <p className="text-[10px] font-bold uppercase tracking-wide text-[#7D8590] mb-2">
-                  If a package named "{step.title} Scripts" already exists:
-                </p>
-                <div className="space-y-1.5">
-                  {(["replace", "append"] as ScriptGenMode[]).map(m => (
-                    <label key={m} className="flex items-start gap-2.5 cursor-pointer">
-                      <input
-                        type="radio"
-                        name="script-gen-mode"
-                        value={m}
-                        checked={state.mode === m}
-                        onChange={() => setState(s => ({ ...s, mode: m }))}
-                        className="mt-0.5 accent-[#0078D4]"
-                      />
-                      <span className="text-sm text-[#C9D1D9]">
-                        {m === "replace" ? (
-                          <><span className="font-semibold text-[#E6EDF3]">Replace</span> — delete existing scripts and write fresh ones</>
-                        ) : (
-                          <><span className="font-semibold text-[#E6EDF3]">Append</span> — add new scripts to the existing package</>
-                        )}
-                      </span>
-                    </label>
-                  ))}
+              {packageExists === null ? (
+                <div className="flex items-center justify-center py-6 text-[#7D8590] text-xs gap-2">
+                  <div className="w-4 h-4 border-2 border-[#7D8590] border-t-transparent rounded-full animate-spin" />
+                  Checking for existing package…
                 </div>
-              </div>
+              ) : (
+                <>
+                  <p className="text-sm text-[#C9D1D9]">
+                    AI will classify each task in <span className="font-semibold text-[#E6EDF3]">"{step.title}"</span>,
+                    skip human-only tasks, and generate a PowerShell script for each automatable task.
+                    Results are saved as a Script Package named{" "}
+                    <span className="font-semibold text-[#00B4D8]">"{step.title} Scripts"</span>.
+                  </p>
+                  <div className="text-xs text-[#7D8590] bg-[#1C2128] rounded-lg px-3 py-2">
+                    <span className="font-semibold text-[#E6EDF3]">{step.tasks?.length ?? 0}</span> task
+                    {(step.tasks?.length ?? 0) !== 1 ? "s" : ""} will be classified
+                    {packageExists && (
+                      <span className="ml-2 text-amber-400">· A package named "{step.title} Scripts" already exists</span>
+                    )}
+                  </div>
+                  {packageExists && (
+                    <div>
+                      <p className="text-[10px] font-bold uppercase tracking-wide text-[#7D8590] mb-2">
+                        Since the package already exists:
+                      </p>
+                      <div className="space-y-1.5">
+                        {(["replace", "append"] as ScriptGenMode[]).map(m => (
+                          <label key={m} className="flex items-start gap-2.5 cursor-pointer">
+                            <input
+                              type="radio"
+                              name="script-gen-mode"
+                              value={m}
+                              checked={state.mode === m}
+                              onChange={() => setState(s => ({ ...s, mode: m }))}
+                              className="mt-0.5 accent-[#0078D4]"
+                            />
+                            <span className="text-sm text-[#C9D1D9]">
+                              {m === "replace" ? (
+                                <><span className="font-semibold text-[#E6EDF3]">Replace</span> — delete existing scripts and write fresh ones</>
+                              ) : (
+                                <><span className="font-semibold text-[#E6EDF3]">Append</span> — add new scripts to the existing package</>
+                              )}
+                            </span>
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
             </>
           )}
 
@@ -773,11 +800,24 @@ function GenerateStepScriptsDialog({
                         {entry.taskTitle}
                       </span>
                       <span className="flex-shrink-0 text-[9px] text-[#7D8590]">
-                        {entry.skipped ? "skipped" : entry.saved ? "saved" : "failed"}
+                        {entry.classification === "USER_ACCOUNT_REQUIRED" ? "UI+script" : entry.skipped ? "skipped" : entry.saved ? "saved" : "failed"}
                       </span>
                     </div>
                   ))}
                 </div>
+              )}
+              {/* CTA: View in Script Generator */}
+              {state.summary.generated > 0 && (
+                <a
+                  href="/admin-panel/script-generator"
+                  onClick={handleClose}
+                  className="flex items-center justify-center gap-2 w-full bg-[#00B4D8]/10 hover:bg-[#00B4D8]/20 border border-[#00B4D8]/30 text-[#00B4D8] text-xs font-semibold px-4 py-2.5 rounded-lg transition-colors"
+                >
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
+                  </svg>
+                  View in Script Generator
+                </a>
               )}
             </div>
           )}
@@ -801,7 +841,8 @@ function GenerateStepScriptsDialog({
               </button>
               <button
                 onClick={() => void startGeneration()}
-                className="flex items-center gap-1.5 bg-[#00B4D8] text-white text-xs font-semibold px-4 py-1.5 rounded-lg hover:bg-[#0097B5] transition-colors"
+                disabled={packageExists === null}
+                className="flex items-center gap-1.5 bg-[#00B4D8] text-white text-xs font-semibold px-4 py-1.5 rounded-lg hover:bg-[#0097B5] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />

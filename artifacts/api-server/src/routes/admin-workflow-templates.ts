@@ -14,7 +14,7 @@ import {
 } from "@workspace/db";
 import { eq, asc, inArray, desc } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/requireAuth";
-import { classifyAndUpdateTask } from "../lib/classify-task-type";
+import { classifyAndUpdateTask, classifyTaskForScriptGeneration } from "../lib/classify-task-type";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
 import { logger } from "../lib/logger";
 
@@ -809,29 +809,9 @@ router.post(
           sendSSE({ type: "progress", current: i, total, taskTitle: task.title, status: "classifying" });
         }
 
-        let classification: "AUTOMATABLE" | "HUMAN_ONLY" = "HUMAN_ONLY";
-        try {
-          const classMsg = await anthropic.messages.create({
-            model: "claude-haiku-4-5",
-            max_tokens: 20,
-            messages: [
-              {
-                role: "user",
-                content: `Classify this Microsoft 365 workflow task. Reply with ONLY one word: AUTOMATABLE or HUMAN_ONLY.
-AUTOMATABLE = can be done or assisted by a PowerShell script (provisioning, config, bulk ops, reports, policy enforcement, account setup).
-HUMAN_ONLY = inherently human: meetings, training sessions, approvals requiring judgment, writing docs, stakeholder comms, decisions.
+        const classification = await classifyTaskForScriptGeneration(task.title, task.description);
 
-Task: "${task.title}"${task.description ? `\nDescription: ${task.description}` : ""}`,
-              },
-            ],
-          });
-          const block = classMsg.content[0];
-          const text = block?.type === "text" ? block.text.trim().toUpperCase() : "";
-          classification = text.includes("AUTOMATABLE") ? "AUTOMATABLE" : "HUMAN_ONLY";
-        } catch (err) {
-          logger.warn({ err, taskTitle: task.title }, "generate-scripts: classification failed, defaulting to HUMAN_ONLY");
-        }
-
+        // Only skip HUMAN_ONLY — generate for both AUTOMATABLE and USER_ACCOUNT_REQUIRED
         if (classification === "HUMAN_ONLY") {
           skipped++;
           if (acceptsSSE) {

@@ -89,6 +89,50 @@ async function callAI(
   }
 }
 
+// ─── Script automatable classification ────────────────────────────────────────
+
+const SCRIPT_AUTOMATABLE_PROMPT = `You are classifying Microsoft 365 workflow tasks to determine automation eligibility for PowerShell scripting.
+
+Classify the task as exactly one of:
+- AUTOMATABLE: Can be fully or partially automated with PowerShell (provisioning accounts/sites/groups, configuring policies, bulk operations, reports, running cmdlets, setting permissions, Azure Automation runbooks)
+- USER_ACCOUNT_REQUIRED: Requires admin UI interaction but a helper or companion script could assist (enabling features in admin center, tasks with PowerShell equivalents, hybrid tasks mixing UI and scripting)
+- HUMAN_ONLY: Inherently human with no meaningful script component: meetings, training sessions, document writing, stakeholder communication, strategic decisions, reviews requiring human judgment
+
+Reply with ONLY one word: AUTOMATABLE, USER_ACCOUNT_REQUIRED, or HUMAN_ONLY`;
+
+/**
+ * Classify a task as AUTOMATABLE, USER_ACCOUNT_REQUIRED, or HUMAN_ONLY
+ * for the purpose of PowerShell script generation.
+ * Never throws — defaults to HUMAN_ONLY on any failure.
+ */
+export async function classifyTaskForScriptGeneration(
+  title: string,
+  description?: string | null
+): Promise<"AUTOMATABLE" | "USER_ACCOUNT_REQUIRED" | "HUMAN_ONLY"> {
+  try {
+    const msg = await anthropic.messages.create({
+      model: "claude-haiku-4-5",
+      max_tokens: 20,
+      messages: [
+        {
+          role: "user",
+          content: `${SCRIPT_AUTOMATABLE_PROMPT}\n\nTask: "${title}"${description ? `\nDescription: ${description}` : ""}`,
+        },
+      ],
+    });
+    const block = msg.content[0];
+    const text = block?.type === "text" ? block.text.trim().toUpperCase() : "";
+    if (text.includes("USER_ACCOUNT")) return "USER_ACCOUNT_REQUIRED";
+    if (text.includes("AUTOMATABLE")) return "AUTOMATABLE";
+    return "HUMAN_ONLY";
+  } catch (err) {
+    logger.warn({ err }, "classifyTaskForScriptGeneration: AI call failed, defaulting to HUMAN_ONLY");
+    return "HUMAN_ONLY";
+  }
+}
+
+// ─── DB-updating classification ────────────────────────────────────────────────
+
 /**
  * Classify a single newly-inserted task and update its task_type in the DB.
  * Designed to be called as a fire-and-forget background job — never throws.
