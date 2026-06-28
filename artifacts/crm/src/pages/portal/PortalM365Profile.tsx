@@ -272,8 +272,21 @@ export default function PortalM365Profile() {
   const govTagline    = govScore >= 80 ? "Mature governance posture" : govScore >= 55 ? "Governance foundations forming" : "Governance controls needed";
   const adoptTagline  = adoptionScore >= 80 ? "High user adoption" : adoptionScore >= 60 ? "Room to grow adoption" : "Low adoption — licences underused";
 
-  const secAction     = secScore < 55 ? "Enforce MFA and Conditional Access first" : undefined;
-  const copAction     = copScore < 55 ? "Security prerequisites needed before Copilot" : undefined;
+  const secAction    = secScore < 80
+    ? (secScore < 55 ? "Enforce MFA and Conditional Access first" : "Enable Defender and implement DLP policies")
+    : "Review configuration drift quarterly";
+  const compAction   = compScore < 80
+    ? (compScore < 55 ? "Implement DLP policies and sensitivity labels" : "Extend to insider risk and retention policies")
+    : "Expand to advanced Purview workloads";
+  const copAction    = copScore < 80
+    ? (copScore < 55 ? "Address security prerequisites before Copilot rollout" : "Configure sensitivity labels and DLP to unblock Copilot")
+    : "Define Copilot use cases and roll out to more users";
+  const govAction    = govScore < 80
+    ? (govScore < 55 ? "Establish retention policies and Conditional Access" : "Add lifecycle management for Teams and Groups")
+    : "Automate governance with Power Automate policies";
+  const adoptAction  = adoptionScore < 80
+    ? (adoptionScore < 60 ? "Run adoption workshops and identify power users" : "Drive advanced feature use in Teams and SharePoint")
+    : "Optimise with Copilot and advanced analytics";
 
   return (
     <PortalLayout>
@@ -317,20 +330,16 @@ export default function PortalM365Profile() {
               )}
             </div>
           </div>
-          <div className="mt-4 pt-4 border-t border-white/10 flex items-center justify-between flex-wrap gap-2">
-            <div className="flex flex-wrap gap-3 text-xs text-white/50">
+          {(profile.itContactName || profile.itContactEmail) && (
+            <div className="mt-4 pt-4 border-t border-white/10 flex flex-wrap gap-3 text-xs text-white/50">
               {profile.itContactName && <span>IT Contact: <span className="text-white/80 font-medium">{profile.itContactName}</span></span>}
               {profile.itContactEmail && <span>{profile.itContactEmail}</span>}
             </div>
-            <a href="/portal/m365-wizard" className="text-[11px] font-semibold text-white/50 hover:text-white/80 transition-colors flex items-center gap-1">
-              <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
-              Update profile
-            </a>
-          </div>
+          )}
         </div>
 
-        {/* ── Critical Alerts ──────────────────────────────────────────────── */}
-        {!dismissedAlerts && (criticalAlerts.length > 0 || warningAlerts.length > 0) && (
+        {/* ── Critical Alerts (high-urgency only) ─────────────────────────── */}
+        {!dismissedAlerts && criticalAlerts.length > 0 && (
           <div className="rounded-2xl border border-red-200 bg-red-50 overflow-hidden">
             <div className="flex items-center justify-between px-5 py-3 border-b border-red-200 bg-red-100/60">
               <div className="flex items-center gap-2">
@@ -338,7 +347,7 @@ export default function PortalM365Profile() {
                   <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
                 </svg>
                 <span className="text-sm font-bold text-red-800">
-                  {criticalAlerts.length > 0 ? `${criticalAlerts.length} Critical Issue${criticalAlerts.length > 1 ? "s" : ""} Detected` : `${warningAlerts.length} Improvement${warningAlerts.length > 1 ? "s" : ""} Flagged`}
+                  {criticalAlerts.length} Critical Issue{criticalAlerts.length > 1 ? "s" : ""} Require Immediate Attention
                 </span>
               </div>
               <button onClick={() => setDismissedAlerts(true)} className="text-red-400 hover:text-red-600 transition-colors">
@@ -346,11 +355,32 @@ export default function PortalM365Profile() {
               </button>
             </div>
             <div className="px-5 py-4 space-y-3">
-              {[...criticalAlerts, ...warningAlerts].map((a, i) => (
+              {criticalAlerts.map((a, i) => (
                 <div key={i} className="flex items-start gap-3">
-                  <span className={`mt-0.5 flex-shrink-0 text-xs font-bold px-1.5 py-0.5 rounded ${a.level === "critical" ? "bg-red-200 text-red-700" : "bg-amber-200 text-amber-700"}`}>
-                    {a.level === "critical" ? "URGENT" : "REVIEW"}
-                  </span>
+                  <span className="mt-0.5 flex-shrink-0 text-xs font-bold px-1.5 py-0.5 rounded bg-red-200 text-red-700">URGENT</span>
+                  <div>
+                    <p className="text-sm font-semibold text-[#0A2540]">{a.headline}</p>
+                    <p className="text-xs text-gray-500 mt-0.5">{a.why}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* ── Improvement opportunities (warnings) ────────────────────────── */}
+        {warningAlerts.length > 0 && (
+          <div className="rounded-2xl border border-amber-200 bg-amber-50 overflow-hidden">
+            <div className="flex items-center gap-2 px-5 py-3 border-b border-amber-200 bg-amber-100/40">
+              <svg className="w-4 h-4 text-amber-600 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              <span className="text-sm font-bold text-amber-800">{warningAlerts.length} Improvement Opportunit{warningAlerts.length > 1 ? "ies" : "y"}</span>
+            </div>
+            <div className="px-5 py-4 space-y-3">
+              {warningAlerts.map((a, i) => (
+                <div key={i} className="flex items-start gap-3">
+                  <span className="mt-0.5 flex-shrink-0 text-xs font-bold px-1.5 py-0.5 rounded bg-amber-200 text-amber-700">REVIEW</span>
                   <div>
                     <p className="text-sm font-semibold text-[#0A2540]">{a.headline}</p>
                     <p className="text-xs text-gray-500 mt-0.5">{a.why}</p>
@@ -386,10 +416,10 @@ export default function PortalM365Profile() {
           <h2 className="text-sm font-bold text-gray-400 uppercase tracking-wider mb-3">Readiness Scores</h2>
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
             <ScoreRing label="Security Posture"     score={secScore}      tagline={secTagline}   action={secAction} />
-            <ScoreRing label="Compliance Coverage"  score={compScore}     tagline={compTagline} />
+            <ScoreRing label="Compliance Coverage"  score={compScore}     tagline={compTagline}  action={compAction} />
             <ScoreRing label="Copilot Readiness"    score={copScore}      tagline={copTagline}   action={copAction} />
-            <ScoreRing label="Governance Maturity"  score={govScore}      tagline={govTagline} />
-            <ScoreRing label="Adoption"             score={adoptionScore} tagline={adoptTagline} />
+            <ScoreRing label="Governance Maturity"  score={govScore}      tagline={govTagline}   action={govAction} />
+            <ScoreRing label="Adoption"             score={adoptionScore} tagline={adoptTagline} action={adoptAction} />
           </div>
         </div>
 
@@ -540,13 +570,6 @@ export default function PortalM365Profile() {
 
         </div>
 
-        {/* Update nudge */}
-        <div className="text-center py-2">
-          <a href="/portal/m365-wizard" className="text-xs text-gray-400 hover:text-[#0078D4] transition-colors flex items-center justify-center gap-1">
-            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
-            Update your tenant profile via the setup wizard
-          </a>
-        </div>
 
       </div>
     </PortalLayout>
