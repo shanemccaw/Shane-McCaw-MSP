@@ -21,6 +21,7 @@ import {
   clientHealthHistoryTable,
   azureTenantCredentialsTable,
   clientAppRegistrationsTable,
+  clientAutomationRunsTable,
   usersTable,
   servicesTable,
   kanbanTasksTable,
@@ -230,6 +231,7 @@ async function processRunInBackground(
   packageContext: string,
   aiInstructions: string,
   kanbanTaskId?: number,
+  automationRunId?: number,
 ): Promise<void> {
   let jobOutput: string;
   let jobStatus: string;
@@ -241,6 +243,11 @@ async function processRunInBackground(
       .update(scriptRunResultsTable)
       .set({ status: "failed", rawOutput: { error: String(err) } })
       .where(eq(scriptRunResultsTable.id, runResultId));
+    if (automationRunId) {
+      await db.update(clientAutomationRunsTable)
+        .set({ status: "failed", errorMessage: String(err), finishedAt: new Date() })
+        .where(eq(clientAutomationRunsTable.id, automationRunId));
+    }
     if (kanbanTaskId) {
       try {
         await db.update(kanbanTasksTable)
@@ -313,6 +320,23 @@ async function processRunInBackground(
       logger.info({ kanbanTaskId, finalStatus }, "admin-m365-run: kanban task synced from script result");
     } catch (patchErr) {
       logger.warn({ patchErr, kanbanTaskId }, "admin-m365-run: failed to sync kanban task status (non-fatal)");
+    }
+  }
+
+  // Update the CRM portal automation run row so the client sees the final status
+  if (automationRunId) {
+    try {
+      await db.update(clientAutomationRunsTable)
+        .set({
+          status: finalStatus,
+          modulesCompleted: 1,
+          finishedAt: new Date(),
+          lastLogSnippet: jobOutput.slice(-500) || null,
+          errorMessage: finalStatus === "failed" ? (jobOutput.slice(-200) || "Script failed") : null,
+        })
+        .where(eq(clientAutomationRunsTable.id, automationRunId));
+    } catch (err) {
+      logger.warn({ err, automationRunId }, "admin-m365-run: failed to finalize automation run row (non-fatal)");
     }
   }
 
@@ -477,6 +501,22 @@ router.post("/admin/run-script", requireAdmin, async (req: Request, res: Respons
     .set({ jobId })
     .where(eq(scriptRunResultsTable.id, runResultId));
 
+  // Create a clientAutomationRuns row so the CRM portal can show progress
+  let automationRunId: number | undefined;
+  if (customerId) {
+    try {
+      const [autoRun] = await db.insert(clientAutomationRunsTable).values({
+        clientUserId: customerId,
+        status: "running",
+        modulesTotal: 1,
+        modulesCompleted: 0,
+      }).returning({ id: clientAutomationRunsTable.id });
+      automationRunId = autoRun?.id;
+    } catch (err) {
+      logger.warn({ err, customerId }, "admin-m365-run: failed to create automation run row (non-fatal)");
+    }
+  }
+
   // Kick off background processing (detached — do NOT await)
   void processRunInBackground(
     runResultId,
@@ -486,6 +526,7 @@ router.post("/admin/run-script", requireAdmin, async (req: Request, res: Respons
     packageContext,
     "",
     kanbanTaskId,
+    automationRunId,
   );
 
   res.json({ jobRef: jobId, resultId: runResultId, libraryScriptId: resolvedLibraryScriptId, status: "running" });
