@@ -241,7 +241,12 @@ function NavItemLink({
   return (
     <Tooltip>
       <TooltipTrigger asChild>{linkEl}</TooltipTrigger>
-      <TooltipContent side="right">{item.label}</TooltipContent>
+      <TooltipContent side="right">
+        <span className="font-semibold">{item.label}</span>
+        {item.description && (
+          <span className="block text-xs text-muted-foreground mt-0.5">{item.description}</span>
+        )}
+      </TooltipContent>
     </Tooltip>
   );
 }
