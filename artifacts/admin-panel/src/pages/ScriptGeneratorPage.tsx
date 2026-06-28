@@ -85,6 +85,7 @@ const IDE_RIGHT_WIDTH_KEY = "sg:ideRightWidth";
 const IDE_BOTTOM_HEIGHT_KEY = "sg:ideBottomHeight";
 const IDE_LEFT_COLLAPSED_KEY = "sg:ideLeftCollapsed";
 const IDE_RIGHT_VISIBLE_KEY = "sg:ideRightVisible";
+const IDE_RIGHT_TAB_KEY = "sg:ideRightTab";
 
 // ─── API helpers ──────────────────────────────────────────────────────────────
 
@@ -998,6 +999,404 @@ function LibrarySidebar({
   );
 }
 
+// ─── Inline Script Runner (right panel) ──────────────────────────────────────
+
+interface InlineClientEntry {
+  id: number;
+  name: string;
+  credential: { id: number; displayName: string | null } | null;
+}
+
+interface InlineRunbookEntry {
+  name: string;
+  state?: string;
+}
+
+interface InlineAIAnalysis {
+  summary: string;
+  risks: string[];
+  recommendations: string[];
+  nextSteps: string[];
+}
+
+const INLINE_JOB_COLORS: Record<string, string> = {
+  "Running":   "text-yellow-400",
+  "Completed": "text-green-400",
+  "Failed":    "text-red-400",
+  "Stopped":   "text-[#7D8590]",
+  "Suspended": "text-orange-400",
+};
+
+function InlineScriptRunner({
+  editorScript,
+}: {
+  editorScript: PsScriptDetail | null;
+}) {
+  const { fetchWithAuth } = useAuth();
+
+  const [clients, setClients]           = useState<InlineClientEntry[]>([]);
+  const [runbooks, setRunbooks]         = useState<InlineRunbookEntry[]>([]);
+  const [loadingClients, setLoadingClients]   = useState(true);
+  const [loadingRunbooks, setLoadingRunbooks] = useState(false);
+  const [azureConfigured, setAzureConfigured] = useState<boolean | null>(null);
+
+  const [selectedClientId, setSelectedClientId] = useState<number | "">("");
+  const [selectedRunbook,  setSelectedRunbook]  = useState("");
+
+  const [running,   setRunning]   = useState(false);
+  const [jobStatus, setJobStatus] = useState("Never run");
+  const [logLines,  setLogLines]  = useState<string[]>([]);
+  const logEndRef = useRef<HTMLDivElement>(null);
+
+  const [aiAnalysis,   setAiAnalysis]   = useState<InlineAIAnalysis | null>(null);
+  const [analyzingAI,  setAnalyzingAI]  = useState(false);
+  const [aiError,      setAiError]      = useState<string | null>(null);
+  const [aiTab,        setAiTab]        = useState<keyof InlineAIAnalysis>("summary");
+
+  // Auto-scroll log
+  useEffect(() => { logEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [logLines]);
+
+  // Check Azure config + load clients on mount
+  useEffect(() => {
+    void (async () => {
+      try {
+        const res = await fetchWithAuth("/api/admin/runbooks");
+        const data = await res.json() as { configured: boolean };
+        setAzureConfigured(res.status === 503 && data.configured === false ? false : true);
+      } catch { /* unknown — leave null */ }
+    })();
+    void (async () => {
+      setLoadingClients(true);
+      try {
+        const res = await fetchWithAuth("/api/admin/clients/with-azure-credentials");
+        if (res.ok) {
+          const data = await res.json() as Array<{ id: number; name: string; email: string; credential: { id: number; displayName: string | null } | null }>;
+          setClients(data.map(c => ({ id: c.id, name: c.name, credential: c.credential })));
+        }
+      } finally { setLoadingClients(false); }
+    })();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Load runbooks when a client is selected
+  useEffect(() => {
+    const cred = clients.find(c => c.id === selectedClientId)?.credential;
+    if (!cred) { setRunbooks([]); setSelectedRunbook(""); return; }
+    void (async () => {
+      setLoadingRunbooks(true);
+      try {
+        const res = await fetchWithAuth("/api/admin/runbooks");
+        const data = await res.json() as { configured: boolean; runbooks?: InlineRunbookEntry[] };
+        if (res.ok && data.configured) {
+          setAzureConfigured(true);
+          setRunbooks(data.runbooks ?? []);
+          // Pre-select current script's runbook if it's in the list
+          if (editorScript?.azureRunbookName) setSelectedRunbook(editorScript.azureRunbookName);
+        } else if (res.status === 503) {
+          setAzureConfigured(false);
+        }
+      } catch { /* ignore */ }
+      finally { setLoadingRunbooks(false); }
+    })();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedClientId]);
+
+  const credId = clients.find(c => c.id === selectedClientId)?.credential?.id;
+
+  const handleRun = async () => {
+    if (!credId || !selectedRunbook) return;
+    setRunning(true);
+    setLogLines(["[Starting job…]"]);
+    setJobStatus("New");
+    setAiAnalysis(null);
+    setAiError(null);
+
+    try {
+      const res = await fetchWithAuth("/api/admin/runbook-jobs", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ credentialId: credId, runbookName: selectedRunbook }),
+      });
+      if (!res.ok) {
+        const err = await res.json() as { error?: string };
+        setLogLines(prev => [...prev, `[Error: ${err.error ?? "Failed to start job"}]`]);
+        setRunning(false);
+        return;
+      }
+      const { jobId } = await res.json() as { jobId: string };
+      let lastSeq = -1;
+
+      const poll = async (): Promise<void> => {
+        try {
+          const pollRes = await fetchWithAuth(`/api/admin/runbook-jobs/output?jobId=${encodeURIComponent(jobId)}&since=${lastSeq}`);
+          if (!pollRes.ok) throw new Error("poll failed");
+          const data = await pollRes.json() as { status: string; terminal: boolean; lines: Array<{ sequence: number; text: string }> };
+          setJobStatus(data.status);
+          if (data.lines.length > 0) {
+            setLogLines(prev => [...prev, ...data.lines.map(l => l.text)]);
+            lastSeq = Math.max(...data.lines.map(l => l.sequence));
+          }
+          if (data.terminal) {
+            setLogLines(prev => [...prev, `[Job ${data.status}]`]);
+            setRunning(false);
+            return;
+          }
+          setTimeout(() => void poll(), 3000);
+        } catch {
+          setLogLines(prev => [...prev, "[Polling error — job may still be running in Azure]"]);
+          setRunning(false);
+        }
+      };
+      void poll();
+    } catch {
+      setLogLines(prev => [...prev, "[Network error]"]);
+      setRunning(false);
+    }
+  };
+
+  const handleAnalyze = async () => {
+    if (!logLines.length || running) return;
+    setAnalyzingAI(true);
+    setAiAnalysis(null);
+    setAiError(null);
+    setAiTab("summary");
+    const clientName = clients.find(c => c.id === selectedClientId)?.name;
+    try {
+      const res = await fetchWithAuth("/api/admin/scripts/analyze", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ output: logLines.join("\n"), runbookName: selectedRunbook || undefined, customerName: clientName }),
+      });
+      const data = await res.json() as InlineAIAnalysis & { error?: string };
+      if (!res.ok) { setAiError(data.error ?? "AI analysis failed"); return; }
+      setAiAnalysis(data);
+    } catch {
+      setAiError("Request failed — check connection");
+    } finally {
+      setAnalyzingAI(false);
+    }
+  };
+
+  const isTerminal = ["Completed", "Failed", "Stopped", "Suspended"].includes(jobStatus);
+  const canRun = !!credId && !!selectedRunbook && !running;
+  const statusColor = INLINE_JOB_COLORS[jobStatus] ?? "text-[#7D8590]";
+  const currentRunbookName = editorScript?.azureRunbookName ?? null;
+
+  if (azureConfigured === false) {
+    return (
+      <div className="flex-1 flex flex-col items-center justify-center p-4 text-center gap-2">
+        <svg className="w-8 h-8 text-amber-500/40" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" /></svg>
+        <p className="text-[11px] text-amber-400 font-semibold">Azure not configured</p>
+        <p className="text-[10px] text-[#7D8590] leading-relaxed">Add Azure secrets in Replit Secrets to enable script execution</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col h-full overflow-hidden">
+      {/* Config section */}
+      <div className="flex-shrink-0 p-3 space-y-2 border-b border-[#21262D]">
+        {/* Customer */}
+        <div>
+          <label className="block text-[9px] font-bold uppercase tracking-wider text-[#484F58] mb-1">Customer</label>
+          {loadingClients ? (
+            <div className="h-7 bg-[#161B22] rounded animate-pulse" />
+          ) : (
+            <select
+              value={selectedClientId}
+              onChange={e => { setSelectedClientId(e.target.value ? Number(e.target.value) : ""); setSelectedRunbook(""); }}
+              className="w-full bg-[#161B22] border border-[#30363D] rounded px-2 py-1.5 text-xs text-[#E6EDF3] outline-none focus:border-[#0078D4]/50 transition-colors"
+            >
+              <option value="">Select customer…</option>
+              {clients.map(c => (
+                <option key={c.id} value={c.id} disabled={!c.credential}>
+                  {c.name}{!c.credential ? " (no credential)" : ""}
+                </option>
+              ))}
+            </select>
+          )}
+        </div>
+
+        {/* Runbook — only after client selected */}
+        {selectedClientId !== "" && (
+          <div>
+            <label className="block text-[9px] font-bold uppercase tracking-wider text-[#484F58] mb-1">Runbook</label>
+            {loadingRunbooks ? (
+              <div className="h-7 bg-[#161B22] rounded animate-pulse" />
+            ) : (
+              <select
+                value={selectedRunbook}
+                onChange={e => setSelectedRunbook(e.target.value)}
+                className="w-full bg-[#161B22] border border-[#30363D] rounded px-2 py-1.5 text-xs text-[#E6EDF3] outline-none focus:border-[#0078D4]/50 transition-colors"
+              >
+                <option value="">Select runbook…</option>
+                {currentRunbookName && (
+                  <option value={currentRunbookName}>★ {currentRunbookName} (current script)</option>
+                )}
+                {runbooks
+                  .filter(r => r.name !== currentRunbookName)
+                  .map(r => <option key={r.name} value={r.name}>{r.name}</option>)}
+              </select>
+            )}
+          </div>
+        )}
+
+        {/* Run button + status badge */}
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => void handleRun()}
+            disabled={!canRun}
+            className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg bg-green-500/15 border border-green-500/30 text-green-400 hover:bg-green-500/25 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+          >
+            {running ? (
+              <><div className="w-3 h-3 border border-green-400/40 border-t-green-400 rounded-full animate-spin" />Running…</>
+            ) : (
+              <>
+                <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" /></svg>
+                Run
+              </>
+            )}
+          </button>
+          {jobStatus !== "Never run" && (
+            <span className={`text-[10px] font-semibold ${statusColor}`}>{jobStatus}</span>
+          )}
+        </div>
+      </div>
+
+      {/* Log console */}
+      <div className="flex-1 min-h-0 overflow-y-auto p-3 font-mono text-[10px] leading-relaxed bg-[#0A0E14]">
+        {logLines.length === 0 ? (
+          <span className="text-[#30363D]">Output will appear here after running…</span>
+        ) : (
+          logLines.map((line, i) => (
+            <div
+              key={i}
+              className={
+                line.startsWith("[Error") || line.includes("[Job Failed") ? "text-red-400" :
+                line.includes("[Job Completed") ? "text-green-400" :
+                line.startsWith("[") ? "text-[#7D8590]" :
+                "text-[#C9D1D9]"
+              }
+            >
+              {line}
+            </div>
+          ))
+        )}
+        <div ref={logEndRef} />
+      </div>
+
+      {/* AI Analyze section — shown after terminal job */}
+      {isTerminal && logLines.length > 1 && (
+        <div className="flex-shrink-0 border-t border-[#21262D] p-3 space-y-2">
+          {!aiAnalysis && !analyzingAI && !aiError && (
+            <button
+              onClick={() => void handleAnalyze()}
+              className="w-full flex items-center justify-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg bg-[#0078D4]/15 border border-[#0078D4]/30 text-[#58A6FF] hover:bg-[#0078D4]/25 transition-colors"
+            >
+              <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" /></svg>
+              Analyze with AI
+            </button>
+          )}
+          {analyzingAI && (
+            <div className="flex items-center justify-center gap-2 py-1">
+              <div className="w-4 h-4 border-2 border-[#0078D4] border-t-transparent rounded-full animate-spin" />
+              <span className="text-[11px] text-[#7D8590]">Analyzing…</span>
+            </div>
+          )}
+          {aiError && (
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-[11px] text-red-400">{aiError}</p>
+              <button onClick={() => void handleAnalyze()} className="text-[10px] text-[#58A6FF] underline">Retry</button>
+            </div>
+          )}
+          {aiAnalysis && (
+            <div className="space-y-2">
+              <div className="flex gap-1 flex-wrap">
+                {(["summary", "risks", "recommendations", "nextSteps"] as const).map(t => (
+                  <button
+                    key={t}
+                    onClick={() => setAiTab(t)}
+                    className={`px-2 py-0.5 text-[10px] font-semibold rounded transition-colors ${aiTab === t ? "bg-[#0078D4]/15 text-[#58A6FF] border border-[#0078D4]/25" : "text-[#7D8590] hover:text-[#E6EDF3] border border-transparent"}`}
+                  >
+                    {t === "nextSteps" ? "Next Steps" : t.charAt(0).toUpperCase() + t.slice(1)}
+                  </button>
+                ))}
+              </div>
+              <div className="text-[11px] text-[#C9D1D9] leading-relaxed max-h-40 overflow-y-auto">
+                {aiTab === "summary" ? (
+                  <p>{aiAnalysis.summary}</p>
+                ) : (
+                  <ul className="space-y-1">
+                    {(aiAnalysis[aiTab] as string[]).map((item, i) => (
+                      <li key={i} className="flex items-start gap-1.5">
+                        <span className="mt-1.5 w-1 h-1 rounded-full bg-[#0078D4] flex-shrink-0" />
+                        {item}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+              <button onClick={() => { setAiAnalysis(null); setAiError(null); }} className="text-[10px] text-[#484F58] hover:text-[#7D8590] transition-colors">Clear</button>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Right panel wrapper (Runner + Permissions tabs) ──────────────────────────
+
+function RightPanel({
+  permissions,
+  scriptLoaded,
+  scriptBody,
+  editorScript,
+}: {
+  permissions: PsScriptPermissions;
+  scriptLoaded: boolean;
+  scriptBody: string;
+  editorScript: PsScriptDetail | null;
+}) {
+  // scriptBody is passed through for future use (e.g. ad-hoc content runs)
+  void scriptBody;
+
+  const [activeTab, setActiveTab] = useState<"runner" | "permissions">(() =>
+    (lsGet(IDE_RIGHT_TAB_KEY, "runner") as "runner" | "permissions")
+  );
+
+  const switchTab = (t: "runner" | "permissions") => {
+    setActiveTab(t);
+    lsSet(IDE_RIGHT_TAB_KEY, t);
+  };
+
+  return (
+    <div className="flex flex-col h-full overflow-hidden border-l border-[#21262D] bg-[#0D1117]">
+      {/* Tab strip */}
+      <div className="flex items-center border-b border-[#21262D] flex-shrink-0 bg-[#161B22] px-2" style={{ minHeight: 34 }}>
+        {([["runner", "Runner"], ["permissions", "Permissions"]] as const).map(([t, label]) => (
+          <button
+            key={t}
+            onClick={() => switchTab(t)}
+            className={`px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-wider rounded transition-colors ${activeTab === t ? "text-[#58A6FF] bg-[#0078D4]/15" : "text-[#484F58] hover:text-[#E6EDF3]"}`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {/* Panel content */}
+      <div className="flex-1 min-h-0 overflow-hidden flex flex-col">
+        {activeTab === "runner" ? (
+          <InlineScriptRunner editorScript={editorScript} />
+        ) : (
+          <PermissionsSidebarPanel permissions={scriptLoaded ? permissions : null} />
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ─── Right Permissions Sidebar ────────────────────────────────────────────────
 
 function PermissionsSidebarPanel({ permissions }: { permissions: PsScriptPermissions | null }) {
@@ -1006,7 +1405,7 @@ function PermissionsSidebarPanel({ permissions }: { permissions: PsScriptPermiss
     : 0;
 
   return (
-    <div className="flex flex-col h-full overflow-hidden border-l border-[#21262D] bg-[#0D1117]">
+    <div className="flex flex-col h-full overflow-hidden bg-[#0D1117]">
       <div className="px-4 py-2.5 border-b border-[#21262D] flex-shrink-0 flex items-center justify-between">
         <div className="flex items-center gap-2">
           <svg className="w-3.5 h-3.5 text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" /></svg>
@@ -1647,10 +2046,10 @@ export default function ScriptGeneratorPage() {
               {/* Right panel toggle */}
               <button
                 onClick={toggleRightVisible}
-                title={rightVisible ? "Hide permissions panel" : "Show permissions panel"}
-                className={`ml-1 p-1.5 rounded transition-colors flex-shrink-0 ${rightVisible ? "text-amber-400 bg-amber-500/10" : "text-[#484F58] hover:text-[#E6EDF3] hover:bg-[#1C2128]"}`}
+                title={rightVisible ? "Hide right panel" : "Show right panel"}
+                className={`ml-1 p-1.5 rounded transition-colors flex-shrink-0 ${rightVisible ? "text-[#58A6FF] bg-[#0078D4]/10" : "text-[#484F58] hover:text-[#E6EDF3] hover:bg-[#1C2128]"}`}
               >
-                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" /></svg>
+                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 3H5a2 2 0 00-2 2v14a2 2 0 002 2h4m6-4l3-3m0 0l-3-3m3 3H9" /></svg>
               </button>
             </div>
 
@@ -1735,7 +2134,12 @@ export default function ScriptGeneratorPage() {
         {/* ── Right panel ──────────────────────────────────────────────────── */}
         {rightVisible && (
           <div className="flex-shrink-0 overflow-hidden" style={{ width: rightPanel.size }}>
-            <PermissionsSidebarPanel permissions={scriptLoaded ? permissions : null} />
+            <RightPanel
+              permissions={permissions}
+              scriptLoaded={scriptLoaded}
+              scriptBody={scriptBody}
+              editorScript={editorScript}
+            />
           </div>
         )}
       </div>
