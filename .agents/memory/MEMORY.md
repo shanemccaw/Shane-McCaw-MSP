@@ -7,3 +7,4 @@
 - [Mobile auth session-expiry](mobile-auth-session-expiry.md) — use sessionExpired flag in AuthState, not user-diff, to drive login redirect
 - [AI JSON extraction from Claude responses](ai-json-extraction.md) — Claude Haiku adds preamble prose; use extractJson() not a ^-anchored fence regex
 - [ARM SDK runbookDraft.replaceContent JSON crash](arm-runbook-draft-content.md) — SDK treats replaceContent as LRO and JSON-parses the PS script body; bypass with raw fetch + bearer token
+- [drizzle-kit push requires TTY](drizzle-kit-tty.md) — push-force still fails non-interactively when drizzle-kit detects schema conflicts; use executeSql() in code_execution to CREATE TABLE directly

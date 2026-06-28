@@ -1385,3 +1385,21 @@ export const serviceScriptSetsTable = pgTable("service_script_sets", {
 
 export type InsertServiceScriptSet = typeof serviceScriptSetsTable.$inferInsert;
 export type ServiceScriptSet = typeof serviceScriptSetsTable.$inferSelect;
+
+// ─── AI Prompts — centralised, DB-backed prompt management ────────────────────
+export const aiPromptsTable = pgTable("ai_prompts", {
+  id: serial("id").primaryKey(),
+  key: text("key").notNull().unique(),
+  name: text("name").notNull(),
+  description: text("description").notNull().default(""),
+  category: text("category", { enum: ["scripting", "marketing", "advisory", "inbox", "classification", "artifacts"] }).notNull(),
+  featureArea: text("feature_area").notNull().default(""),
+  featureRoute: text("feature_route").notNull().default(""),
+  model: text("model"),
+  promptBody: text("prompt_body").notNull(),
+  defaultBody: text("default_body").notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
+});
+
+export type AiPrompt = typeof aiPromptsTable.$inferSelect;
+export type InsertAiPrompt = typeof aiPromptsTable.$inferInsert;

@@ -4,6 +4,7 @@ import { validateStripeKeyOnStartup, checkWebhookHealthOnStartup } from "./lib/s
 import { initGraphSubscription } from "./lib/graph-subscription";
 import { graphCredentialsPresent } from "./lib/graph";
 import { checkManualScriptEscalations } from "./lib/manual-script-escalation";
+import { seedAiPrompts } from "./lib/prompt-loader";
 import { pool } from "@workspace/db";
 
 const rawPort = process.env["PORT"];
@@ -54,6 +55,10 @@ app.listen(port, (err) => {
 
   initGraphSubscription().catch((err) => {
     logger.warn({ err }, "Graph subscription init failed (non-fatal)");
+  });
+
+  seedAiPrompts().catch((err) => {
+    logger.warn({ err }, "AI prompt seed failed (non-fatal)");
   });
 
   // ── Daily escalation check: manual script cards stalled in Waiting on Customer ──

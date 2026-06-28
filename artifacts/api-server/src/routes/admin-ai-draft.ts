@@ -1,6 +1,7 @@
 import { Router, type Request, type Response } from "express";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
 import { requireAdmin } from "../middlewares/requireAuth";
+import { getPrompt } from "../lib/prompt-loader";
 
 const router = Router();
 
@@ -73,6 +74,7 @@ const PERSONA = `You are Shane McCaw, a senior Microsoft 365 architect and consu
 router.post("/admin/status-reports/ai-draft", requireAdmin, async (req: Request, res: Response) => {
   const body = req.body as AiDraftBody;
   const { section } = body;
+  const persona = await getPrompt("status-report-persona", PERSONA);
 
   if (!["executive_summary", "key_outcomes", "next_steps", "all"].includes(section)) {
     res.status(400).json({ error: "Invalid section. Must be one of: executive_summary, key_outcomes, next_steps, all" });
@@ -93,7 +95,7 @@ router.post("/admin/status-reports/ai-draft", requireAdmin, async (req: Request,
         messages: [
           {
             role: "user",
-            content: `${PERSONA}
+            content: `${persona}
 
 Write a concise Executive Summary for this status report. Focus on overall progress, key achievements this period, and current project health. Keep it to 2-3 sentences. Do not use bullet points. Do not include headers.
 
@@ -114,7 +116,7 @@ Executive Summary:`,
         messages: [
           {
             role: "user",
-            content: `${PERSONA}
+            content: `${persona}
 
 Write a Key Outcomes section for this status report. Describe the business or technical value delivered this period — what these activities mean for the client in terms of efficiency, risk reduction, compliance, or strategic progress. Keep it to 2-4 sentences. Plain prose only, no bullet points, no headers.
 
@@ -135,7 +137,7 @@ Key Outcomes:`,
         messages: [
           {
             role: "user",
-            content: `${PERSONA}
+            content: `${persona}
 
 Based on the project context below, suggest 3-5 concrete next steps for the upcoming period. Return ONLY a JSON array in this exact format, nothing else:
 [{"label":"Phase or category","title":"Short action title","description":"One sentence detail"}]

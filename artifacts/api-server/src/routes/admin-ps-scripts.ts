@@ -18,6 +18,7 @@ import { eq, desc, asc, inArray, and, sql } from "drizzle-orm";
 import { logger } from "../lib/logger.ts";
 import { hasPsKeywordsFullText } from "../lib/ps-guard.ts";
 import { isAzureConfigured, pushScriptToAzure } from "../lib/azure-automation.ts";
+import { getPrompt } from "../lib/prompt-loader.ts";
 
 // ─── Runbook name helpers ─────────────────────────────────────────────────────
 
@@ -250,6 +251,8 @@ router.post("/admin/ps-scripts/generate", requireAdmin, async (req: Request, res
     ? `\n\nAdditional instructions for this generation:\n${detailedInstructions.trim()}`
     : "";
 
+  const systemPrompt = await getPrompt("ps-engineer-system", SYSTEM_PROMPT);
+
   try {
     const msg = await anthropic.messages.create({
       model: "claude-haiku-4-5",
@@ -257,7 +260,7 @@ router.post("/admin/ps-scripts/generate", requireAdmin, async (req: Request, res
       messages: [
         {
           role: "user",
-          content: `${SYSTEM_PROMPT}${baseBlock}${detailedBlock}
+          content: `${systemPrompt}${baseBlock}${detailedBlock}
 
 Category: ${categoryLabel}
 
@@ -598,10 +601,11 @@ router.post("/admin/ps-scripts/generate-from-service", requireAdmin, async (req:
 
 Classify each task and generate PowerShell automation scripts for all M365/Azure-automatable tasks. If no tasks can be automated, return the human-only shape. Return the JSON response exactly as instructed.`;
 
+    const fromServicePrompt = await getPrompt("ps-engineer-from-service", GENERATE_FROM_SERVICE_SYSTEM);
     const aiMsg = await anthropic.messages.create({
       model: "claude-haiku-4-5",
       max_tokens: 16000,
-      messages: [{ role: "user", content: `${GENERATE_FROM_SERVICE_SYSTEM}\n\n${userMessage}` }],
+      messages: [{ role: "user", content: `${fromServicePrompt}\n\n${userMessage}` }],
     });
 
     const aiBlock = aiMsg.content[0];
@@ -1351,6 +1355,8 @@ router.post("/admin/ps-scripts/fix", requireAdmin, async (req: Request, res: Res
     ? `\n\nAdditional instructions:\n${customInstructions.trim()}`
     : "";
 
+  const fixSystemPrompt = await getPrompt("ps-engineer-system", SYSTEM_PROMPT);
+
   try {
     const msg = await anthropic.messages.create({
       model: "claude-haiku-4-5",
@@ -1358,7 +1364,7 @@ router.post("/admin/ps-scripts/fix", requireAdmin, async (req: Request, res: Res
       messages: [
         {
           role: "user",
-          content: `${SYSTEM_PROMPT}${customBlock}
+          content: `${fixSystemPrompt}${customBlock}
 
 The user has reported a bug in the following PowerShell script. Fix it.
 

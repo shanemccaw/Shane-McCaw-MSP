@@ -49,6 +49,8 @@ import ServicePageTriggersPage from "@/pages/ServicePageTriggers";
 import ScriptGeneratorPage from "@/pages/ScriptGeneratorPage";
 import AdminSecurity from "@/pages/AdminSecurity";
 import MarketingCommandCenterPage from "@/pages/MarketingCommandCenter";
+import PromptCenterPage from "@/pages/PromptCenter";
+import PromptCenterEditPage from "@/pages/PromptCenterEdit";
 import type { ReactNode } from "react";
 
 const queryClient = new QueryClient({
@@ -258,6 +260,14 @@ function Router() {
       {/* Marketing Command Center */}
       <Route path="/marketing-command-center">
         <RequireAdmin><DashboardShell><MarketingCommandCenterPage /></DashboardShell></RequireAdmin>
+      </Route>
+
+      {/* AI Prompt Center */}
+      <Route path="/prompt-center/:id">
+        {(params) => <RequireAdmin><DashboardShell><PromptCenterEditPage params={params} /></DashboardShell></RequireAdmin>}
+      </Route>
+      <Route path="/prompt-center">
+        <RequireAdmin><DashboardShell><PromptCenterPage /></DashboardShell></RequireAdmin>
       </Route>
 
       {/* Security */}

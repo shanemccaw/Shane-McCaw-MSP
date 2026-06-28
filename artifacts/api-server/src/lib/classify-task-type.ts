@@ -15,6 +15,7 @@ import { db, workflowTemplateStepsTable, workflowTemplatesTable, workflowTemplat
 import { eq } from "drizzle-orm";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
 import { logger } from "./logger";
+import { getPrompt } from "./prompt-loader";
 
 const VALID_TYPES = [
   "discovery",
@@ -63,11 +64,12 @@ async function callAI(
     .join("\n");
 
   try {
+    const classificationPrompt = await getPrompt("task-classifier", CLASSIFICATION_PROMPT);
     const msg = await anthropic.messages.create({
       model: "claude-haiku-4-5",
       max_tokens: 256,
       messages: [
-        { role: "user", content: `${CLASSIFICATION_PROMPT}\n\nTasks to classify:\n${userContent}` },
+        { role: "user", content: `${classificationPrompt}\n\nTasks to classify:\n${userContent}` },
       ],
     });
 
@@ -110,13 +112,14 @@ export async function classifyTaskForScriptGeneration(
   description?: string | null
 ): Promise<"AUTOMATABLE" | "USER_ACCOUNT_REQUIRED" | "HUMAN_ONLY"> {
   try {
+    const scriptEligibilityPrompt = await getPrompt("task-script-eligibility", SCRIPT_AUTOMATABLE_PROMPT);
     const msg = await anthropic.messages.create({
       model: "claude-haiku-4-5",
       max_tokens: 20,
       messages: [
         {
           role: "user",
-          content: `${SCRIPT_AUTOMATABLE_PROMPT}\n\nTask: "${title}"${description ? `\nDescription: ${description}` : ""}`,
+          content: `${scriptEligibilityPrompt}\n\nTask: "${title}"${description ? `\nDescription: ${description}` : ""}`,
         },
       ],
     });

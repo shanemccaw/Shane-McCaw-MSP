@@ -51,6 +51,7 @@ import adminM365ScriptsRouter from "./admin-m365-scripts";
 import adminM365RunRouter from "./admin-m365-run";
 import adminPsScriptsRouter from "./admin-ps-scripts";
 import adminKanbanEscalationRouter from "./admin-kanban-escalation";
+import adminAiPromptsRouter from "./admin-ai-prompts";
 
 const router: IRouter = Router();
 
@@ -106,5 +107,6 @@ router.use(adminM365ScriptsRouter);
 router.use(adminM365RunRouter);
 router.use(adminPsScriptsRouter);
 router.use(adminKanbanEscalationRouter);
+router.use(adminAiPromptsRouter);
 
 export default router;
