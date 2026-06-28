@@ -1,4 +1,5 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, Fragment } from "react";
+import { AzurePushDialog, type AzurePushDialogState } from "@/components/AzurePushDialog";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
 import {
@@ -1675,106 +1676,127 @@ function ScriptRow({
   onRun: (s: Script) => void;
 }) {
   const { fetchWithAuth } = useAuth();
-  const { toast } = useToast();
-  const [pushing, setPushing] = useState(false);
   const [syncedAt, setSyncedAt] = useState<string | null>(s.azureSyncedAt ?? null);
+  const [azurePushDialog, setAzurePushDialog] = useState<AzurePushDialogState>({
+    open: false,
+    stepStatus: ["idle", "idle", "idle"],
+    error: null,
+  });
 
   const handlePush = async (e: { stopPropagation: () => void }) => {
     e.stopPropagation();
-    setPushing(true);
-    try {
-      const res = await fetchWithAuth(`/api/admin/scripts/${s.id}/push-to-azure`, { method: "POST" });
+
+    setAzurePushDialog({ open: true, stepStatus: ["running", "idle", "idle"], error: null });
+
+    type PushResult = { ok: boolean; warning?: string; azureSyncedAt?: string };
+    type PushOutcome = { data: PushResult | null; error: string | null };
+
+    const apiCall: Promise<PushOutcome> = fetchWithAuth(
+      `/api/admin/scripts/${s.id}/push-to-azure`,
+      { method: "POST" },
+    ).then(async res => {
       if (!res.ok) {
         const err = await res.json() as { error?: string };
-        toast({ title: err.error ?? "Push to Azure failed", variant: "destructive" });
-        return;
+        return { data: null, error: err.error ?? "Push to Azure failed" };
       }
-      // Server returns { ok: false, warning } (200) when Azure is not configured —
-      // treat as an informational message, not a destructive error.
-      const data = await res.json() as { ok: boolean; warning?: string; azureSyncedAt?: string };
-      if (!data.ok && data.warning) {
-        toast({ title: data.warning });
-      } else {
-        setSyncedAt(data.azureSyncedAt ?? new Date().toISOString());
-        toast({ title: "Pushed to Azure Automation" });
-      }
-    } catch {
-      toast({ title: "Network error pushing to Azure", variant: "destructive" });
-    } finally {
-      setPushing(false);
+      return { data: await res.json() as PushResult, error: null };
+    }).catch(err => ({ data: null, error: err instanceof Error ? err.message : "Network error pushing to Azure" }));
+
+    await new Promise(resolve => setTimeout(resolve, 800));
+
+    setAzurePushDialog(prev => ({ ...prev, stepStatus: ["done", "running", "idle"] }));
+
+    const outcome = await apiCall;
+
+    if (outcome.error) {
+      setAzurePushDialog(prev => ({ ...prev, stepStatus: ["done", "error", "idle"], error: outcome.error }));
+      return;
     }
+
+    if (outcome.data && !outcome.data.ok && outcome.data.warning) {
+      setAzurePushDialog(prev => ({ ...prev, stepStatus: ["done", "error", "idle"], error: outcome.data!.warning ?? "Push skipped" }));
+      return;
+    }
+
+    setSyncedAt(outcome.data?.azureSyncedAt ?? new Date().toISOString());
+    setAzurePushDialog(prev => ({ ...prev, stepStatus: ["done", "done", "done"] }));
+
+    setTimeout(() => {
+      setAzurePushDialog(prev => ({ ...prev, open: false }));
+    }, 2000);
   };
 
+  const pushing = azurePushDialog.open;
+
   return (
-    <tr className="hover:bg-[#1C2128] transition-colors group">
-      <td className="px-4 py-3">
-        <p className="font-semibold text-[#E6EDF3] truncate max-w-xs">{s.name}</p>
-        {s.description && (
-          <p className="text-[10px] text-[#7D8590] mt-0.5 truncate max-w-xs">{s.description}</p>
-        )}
-      </td>
-      <td className="px-4 py-3 hidden md:table-cell">
-        <div className="flex flex-col gap-1">
-          <span className="font-mono text-xs text-[#7D8590]">{s.runbookName}</span>
-          {syncedAt ? (
-            <div className="flex items-center gap-1">
-              <span className="inline-flex items-center gap-0.5 text-[9px] font-medium px-1.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 whitespace-nowrap">
-                <svg className="w-2 h-2" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
-                Synced to Azure ✓
-              </span>
-              <button
-                onClick={(e) => void handlePush(e)}
-                disabled={pushing}
-                className="p-0.5 text-[#484F58] hover:text-[#58A6FF] disabled:opacity-40 transition-colors"
-                title={`Re-sync runbook (last synced ${new Date(syncedAt).toLocaleString()})`}
-              >
-                {pushing
-                  ? <svg className="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg>
-                  : <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
-                }
-              </button>
-            </div>
-          ) : (
-            <div className="flex items-center gap-1">
-              <span className="text-[9px] text-[#484F58] italic">Not pushed</span>
-              <button
-                onClick={(e) => void handlePush(e)}
-                disabled={pushing}
-                className="inline-flex items-center gap-0.5 text-[9px] font-medium px-1.5 py-0.5 rounded-full bg-[#0078D4]/10 text-[#58A6FF] border border-[#0078D4]/25 hover:bg-[#0078D4]/20 disabled:opacity-50 transition-colors"
-                title="Push to Azure Automation"
-              >
-                {pushing ? (
-                  <svg className="w-2 h-2 animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg>
-                ) : (
-                  <svg className="w-2 h-2" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" /></svg>
-                )}
-                {pushing ? "Pushing…" : "Push to Azure"}
-              </button>
-            </div>
+    <Fragment>
+      <tr className="hover:bg-[#1C2128] transition-colors group">
+        <td className="px-4 py-3">
+          <p className="font-semibold text-[#E6EDF3] truncate max-w-xs">{s.name}</p>
+          {s.description && (
+            <p className="text-[10px] text-[#7D8590] mt-0.5 truncate max-w-xs">{s.description}</p>
           )}
-        </div>
-      </td>
-      <td className="px-4 py-3 hidden lg:table-cell">
-        <span className="text-xs text-[#7D8590]">
-          {s.appRegPermissions.length > 0
-            ? `${s.appRegPermissions.length} permission${s.appRegPermissions.length !== 1 ? "s" : ""}`
-            : <span className="text-[#484F58] italic">None</span>}
-        </span>
-      </td>
-      <td className="px-4 py-3">
-        <div className="flex items-center gap-1 justify-end opacity-0 group-hover:opacity-100 transition-opacity">
-          <button onClick={() => onRun(s)} className="p-1.5 text-[#7D8590] hover:text-green-400 hover:bg-green-400/10 rounded transition-colors" title="Run script against a client">
-            <Play className="w-3.5 h-3.5" />
-          </button>
-          <button onClick={() => onEdit(s)} className="p-1.5 text-[#7D8590] hover:text-[#0078D4] hover:bg-[#0078D4]/10 rounded transition-colors" title="Edit">
-            <Pencil className="w-3.5 h-3.5" />
-          </button>
-          <button onClick={() => onDelete(s)} className="p-1.5 text-[#7D8590] hover:text-red-400 hover:bg-red-400/10 rounded transition-colors" title="Delete">
-            <Trash2 className="w-3.5 h-3.5" />
-          </button>
-        </div>
-      </td>
-    </tr>
+        </td>
+        <td className="px-4 py-3 hidden md:table-cell">
+          <div className="flex flex-col gap-1">
+            <span className="font-mono text-xs text-[#7D8590]">{s.runbookName}</span>
+            {syncedAt ? (
+              <div className="flex items-center gap-1">
+                <span className="inline-flex items-center gap-0.5 text-[9px] font-medium px-1.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 whitespace-nowrap">
+                  <svg className="w-2 h-2" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
+                  Synced to Azure ✓
+                </span>
+                <button
+                  onClick={(e) => void handlePush(e)}
+                  disabled={pushing}
+                  className="p-0.5 text-[#484F58] hover:text-[#58A6FF] disabled:opacity-40 transition-colors"
+                  title={`Re-sync runbook (last synced ${new Date(syncedAt).toLocaleString()})`}
+                >
+                  <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
+                </button>
+              </div>
+            ) : (
+              <div className="flex items-center gap-1">
+                <span className="text-[9px] text-[#484F58] italic">Not pushed</span>
+                <button
+                  onClick={(e) => void handlePush(e)}
+                  disabled={pushing}
+                  className="inline-flex items-center gap-0.5 text-[9px] font-medium px-1.5 py-0.5 rounded-full bg-[#0078D4]/10 text-[#58A6FF] border border-[#0078D4]/25 hover:bg-[#0078D4]/20 disabled:opacity-50 transition-colors"
+                  title="Push to Azure Automation"
+                >
+                  <svg className="w-2 h-2" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" /></svg>
+                  Push to Azure
+                </button>
+              </div>
+            )}
+          </div>
+        </td>
+        <td className="px-4 py-3 hidden lg:table-cell">
+          <span className="text-xs text-[#7D8590]">
+            {s.appRegPermissions.length > 0
+              ? `${s.appRegPermissions.length} permission${s.appRegPermissions.length !== 1 ? "s" : ""}`
+              : <span className="text-[#484F58] italic">None</span>}
+          </span>
+        </td>
+        <td className="px-4 py-3">
+          <div className="flex items-center gap-1 justify-end opacity-0 group-hover:opacity-100 transition-opacity">
+            <button onClick={() => onRun(s)} className="p-1.5 text-[#7D8590] hover:text-green-400 hover:bg-green-400/10 rounded transition-colors" title="Run script against a client">
+              <Play className="w-3.5 h-3.5" />
+            </button>
+            <button onClick={() => onEdit(s)} className="p-1.5 text-[#7D8590] hover:text-[#0078D4] hover:bg-[#0078D4]/10 rounded transition-colors" title="Edit">
+              <Pencil className="w-3.5 h-3.5" />
+            </button>
+            <button onClick={() => onDelete(s)} className="p-1.5 text-[#7D8590] hover:text-red-400 hover:bg-red-400/10 rounded transition-colors" title="Delete">
+              <Trash2 className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        </td>
+      </tr>
+      <AzurePushDialog
+        state={azurePushDialog}
+        onClose={() => setAzurePushDialog(prev => ({ ...prev, open: false }))}
+      />
+    </Fragment>
   );
 }
 
