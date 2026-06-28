@@ -49,6 +49,7 @@ const EMPTY_TASK_FORM: EditingTaskForm = {
   checklistId: null,
   artifactsId: null,
   deliverablesId: null,
+  isCustomerTask: false,
 };
 
 // ─── Interfaces ───────────────────────────────────────────────────────────────
@@ -80,6 +81,7 @@ interface StepTask {
   artifactsId: number | null;
   deliverablesId: number | null;
   requiresManualRun: boolean | null;
+  isCustomerTask: boolean | null;
 }
 
 interface WorkflowStep {
@@ -114,6 +116,7 @@ interface EditingTaskForm {
   checklistId: number | null;
   artifactsId: number | null;
   deliverablesId: number | null;
+  isCustomerTask: boolean;
 }
 
 // ─── Sub-editors ──────────────────────────────────────────────────────────────
@@ -951,6 +954,11 @@ function SortableTaskRow({
                 🏷 {TASK_TYPE_LABELS[task.taskType] ?? task.taskType}
               </span>
             )}
+            {task.isCustomerTask && (
+              <span className="text-[9px] bg-amber-50 text-amber-700 border border-amber-200 px-1.5 py-0.5 rounded font-semibold">
+                🙋 Customer Task
+              </span>
+            )}
             {task.taskType === "script" && task.requiresManualRun && (
               <span className="text-[9px] bg-orange-50 text-orange-700 border border-orange-200 px-1.5 py-0.5 rounded font-semibold">
                 👤 Customer Run
@@ -1171,6 +1179,29 @@ function TaskDrawer({
                   onChange={e => setForm(p => ({ ...p, description: e.target.value }))}
                   className="w-full border border-[#30363D] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4] resize-none"
                 />
+              </div>
+              <div className={`flex items-start gap-3 rounded-lg border px-3 py-3 cursor-pointer select-none transition-colors ${
+                form.isCustomerTask
+                  ? "bg-amber-500/10 border-amber-500/30"
+                  : "bg-[#0D1117] border-[#30363D] hover:border-[#484F58]"
+              }`}
+                onClick={() => setForm(p => ({ ...p, isCustomerTask: !p.isCustomerTask }))}
+              >
+                <div className={`mt-0.5 flex-shrink-0 w-4 h-4 rounded border-2 flex items-center justify-center transition-colors ${
+                  form.isCustomerTask ? "bg-amber-500 border-amber-500" : "border-[#484F58]"
+                }`}>
+                  {form.isCustomerTask && (
+                    <svg className="w-2.5 h-2.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                    </svg>
+                  )}
+                </div>
+                <div>
+                  <p className="text-xs font-semibold text-[#E6EDF3]">Customer Task</p>
+                  <p className="text-[10px] text-[#7D8590] mt-0.5 leading-relaxed">
+                    When added to the Kanban board, this task will land in the <span className="font-semibold text-amber-400">"Waiting For You"</span> bucket on the customer's board instead of Backlog.
+                  </p>
+                </div>
               </div>
             </>
           )}
@@ -1563,6 +1594,7 @@ export default function WorkflowsPage() {
       checklistId: task.checklistId ?? null,
       artifactsId: task.artifactsId ?? null,
       deliverablesId: task.deliverablesId ?? null,
+      isCustomerTask: task.isCustomerTask ?? false,
     });
     setDrawerIsNew(false);
     setDrawerOpen(true);
@@ -1584,6 +1616,7 @@ export default function WorkflowsPage() {
       checklistId: taskForm.checklistId,
       artifactsId: taskForm.artifactsId,
       deliverablesId: taskForm.deliverablesId,
+      isCustomerTask: taskForm.isCustomerTask,
     };
 
     if (drawerIsNew) {
@@ -1647,6 +1680,7 @@ export default function WorkflowsPage() {
               checklistId: t.checklistId ?? null,
               artifactsId: t.artifactsId ?? null,
               deliverablesId: t.deliverablesId ?? null,
+              isCustomerTask: t.isCustomerTask ?? false,
             }),
           }
         )
