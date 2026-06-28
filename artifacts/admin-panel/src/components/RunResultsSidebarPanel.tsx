@@ -1,11 +1,11 @@
-import { useState, useEffect, useCallback, Fragment } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
-import { ClipboardList, ChevronDown, ChevronUp, RefreshCw, CheckCircle, Zap, Download, Upload, X } from "lucide-react";
+import { ClipboardList, ChevronDown, RefreshCw, CheckCircle, Zap, Download, Upload, X } from "lucide-react";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-interface RunResult {
+export interface RunResult {
   id: number;
   customerId: number | null;
   scriptId: number;
@@ -279,12 +279,16 @@ function ExpandedRow({ result, onMarkReviewed, onUploaded }: { result: RunResult
 
 // ── Run Results Sidebar Panel ─────────────────────────────────────────────────
 
-export default function RunResultsSidebarPanel() {
+interface RunResultsSidebarPanelProps {
+  onSelectResult?: (result: RunResult) => void;
+  selectedResultId?: number | null;
+}
+
+export default function RunResultsSidebarPanel({ onSelectResult, selectedResultId }: RunResultsSidebarPanelProps = {}) {
   const { fetchWithAuth } = useAuth();
   const [results, setResults] = useState<RunResult[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [expandedId, setExpandedId] = useState<number | null>(null);
   const [statusFilter, setStatusFilter] = useState("");
 
   const load = useCallback(async (showRefresh = false) => {
@@ -299,14 +303,6 @@ export default function RunResultsSidebarPanel() {
   }, [fetchWithAuth]);
 
   useEffect(() => { void load(); }, [load]);
-
-  const handleMarkReviewed = (id: number, reviewedAt: string) => {
-    setResults(prev => prev.map(r => r.id === id ? { ...r, reviewedAt } : r));
-  };
-
-  const handleUploaded = (id: number) => {
-    setResults(prev => prev.map(r => r.id === id ? { ...r, status: "completed" as const } : r));
-  };
 
   const filtered = statusFilter ? results.filter(r => r.status === statusFilter) : results;
 
@@ -353,37 +349,34 @@ export default function RunResultsSidebarPanel() {
         {!loading && filtered.length > 0 && (
           <div className="divide-y divide-[#21262D]">
             {filtered.map(r => {
-              const isExpanded = expandedId === r.id;
+              const isActive = selectedResultId === r.id;
               return (
-                <Fragment key={r.id}>
-                  <button
-                    onClick={() => setExpandedId(isExpanded ? null : r.id)}
-                    className="w-full flex items-start gap-2 px-3 py-2 hover:bg-[#161B22] transition-colors text-left group"
-                  >
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-1.5 flex-wrap">
-                        <span className="text-xs text-[#E6EDF3] truncate font-medium">
-                          {r.clientName ?? (r.customerId ? `Client #${r.customerId}` : "No client")}
-                        </span>
-                        <StatusBadge status={r.status} />
-                      </div>
-                      <p className="text-[10px] text-[#7D8590] truncate mt-0.5">
-                        {r.scriptName ?? `Script #${r.scriptId}`}
-                        {r.executionSource === "manual" && <span className="ml-1 text-amber-500/70">📋 Manual</span>}
-                      </p>
-                      <p className="text-[9px] text-[#484F58] mt-0.5">{formatRelative(r.createdAt)}</p>
+                <button
+                  key={r.id}
+                  onClick={() => onSelectResult?.(r)}
+                  className={`w-full flex items-start gap-2 px-3 py-2 transition-colors text-left group ${
+                    isActive
+                      ? "bg-[#0078D4]/10 border-l-2 border-[#0078D4]"
+                      : "hover:bg-[#161B22] border-l-2 border-transparent"
+                  }`}
+                >
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span className={`text-xs truncate font-medium ${isActive ? "text-[#58A6FF]" : "text-[#E6EDF3]"}`}>
+                        {r.clientName ?? (r.customerId ? `Client #${r.customerId}` : "No client")}
+                      </span>
+                      <StatusBadge status={r.status} />
                     </div>
-                    <div className="flex-shrink-0 mt-0.5">
-                      {isExpanded
-                        ? <ChevronUp className="w-3 h-3 text-[#7D8590]" />
-                        : <ChevronDown className="w-3 h-3 text-[#484F58] group-hover:text-[#7D8590]" />
-                      }
-                    </div>
-                  </button>
-                  {isExpanded && (
-                    <ExpandedRow result={r} onMarkReviewed={handleMarkReviewed} onUploaded={handleUploaded} />
-                  )}
-                </Fragment>
+                    <p className="text-[10px] text-[#7D8590] truncate mt-0.5">
+                      {r.scriptName ?? `Script #${r.scriptId}`}
+                      {r.executionSource === "manual" && <span className="ml-1 text-amber-500/70">📋 Manual</span>}
+                    </p>
+                    <p className="text-[9px] text-[#484F58] mt-0.5">{formatRelative(r.createdAt)}</p>
+                  </div>
+                  <div className="flex-shrink-0 mt-0.5">
+                    <ChevronDown className={`w-3 h-3 transition-colors ${isActive ? "text-[#58A6FF]" : "text-[#484F58] group-hover:text-[#7D8590]"}`} />
+                  </div>
+                </button>
               );
             })}
           </div>

@@ -5,6 +5,8 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import CatalogSidebarPanel from "@/components/CatalogSidebarPanel";
 import RunResultsSidebarPanel from "@/components/RunResultsSidebarPanel";
+import type { RunResult } from "@/components/RunResultsSidebarPanel";
+import RunResultDetailPanel from "@/components/RunResultDetailPanel";
 import { zipSync, strToU8 } from "fflate";
 import CodeMirror from "@uiw/react-codemirror";
 import { oneDark } from "@codemirror/theme-one-dark";
@@ -2122,6 +2124,9 @@ export default function ScriptGeneratorPage() {
   const [openDrawerScriptId, setOpenDrawerScriptId] = useState<string | null>(null);
   const [openDrawerPackage, setOpenDrawerPackage] = useState<ScriptPackageListItem | null>(null);
 
+  // ── Run result detail state ──────────────────────────────────────────────────
+  const [selectedResult, setSelectedResult] = useState<RunResult | null>(null);
+
   // ── IDE panel layout state ───────────────────────────────────────────────────
   const leftPanel = useResize(IDE_LEFT_WIDTH_KEY, 240, 140, 400);
   const rightPanel = useResize(IDE_RIGHT_WIDTH_KEY, 260, 160, 420);
@@ -2523,7 +2528,10 @@ export default function ScriptGeneratorPage() {
                   <CatalogSidebarPanel onRunScript={handleCatalogRunScript} />
                 )}
                 {leftMode === "results" && (
-                  <RunResultsSidebarPanel />
+                  <RunResultsSidebarPanel
+                    onSelectResult={setSelectedResult}
+                    selectedResultId={selectedResult?.id ?? null}
+                  />
                 )}
               </div>
             </div>
@@ -2628,7 +2636,18 @@ export default function ScriptGeneratorPage() {
             </div>
 
             {/* Editor body */}
-            {modules.length > 0 ? (
+            {selectedResult ? (
+              <RunResultDetailPanel
+                result={selectedResult}
+                onClose={() => setSelectedResult(null)}
+                onMarkReviewed={(id, reviewedAt) =>
+                  setSelectedResult(prev => prev?.id === id ? { ...prev, reviewedAt } : prev)
+                }
+                onUploaded={(id) =>
+                  setSelectedResult(prev => prev?.id === id ? { ...prev, status: "completed" as const } : prev)
+                }
+              />
+            ) : modules.length > 0 ? (
               <ModulePackageView modules={modules} packageTitle={prompt.trim() || "package"} onBack={() => setModules([])} />
             ) : (
               <div className="flex-1 min-h-0 relative">
@@ -2663,38 +2682,42 @@ export default function ScriptGeneratorPage() {
           </div>
 
           {/* Bottom resize handle */}
-          <div
-            onMouseDown={startBottomResize}
-            className="h-1 cursor-row-resize bg-[#21262D] hover:bg-[#0078D4]/50 transition-colors flex-shrink-0"
-            title="Drag to resize"
-          />
+          {!selectedResult && (
+            <div
+              onMouseDown={startBottomResize}
+              className="h-1 cursor-row-resize bg-[#21262D] hover:bg-[#0078D4]/50 transition-colors flex-shrink-0"
+              title="Drag to resize"
+            />
+          )}
 
           {/* Bottom panel */}
-          <div className="flex-shrink-0 overflow-hidden" style={{ height: bottomPanel.size }}>
-            <BottomPanel
-              category={category}
-              onCategoryChange={handleCategoryChange}
-              prompt={prompt}
-              onPromptChange={handlePromptChange}
-              detailedInstructions={detailedInstructions}
-              onDetailedInstructionsChange={handleDetailedInstructionsChange}
-              baseInstructions={baseInstructions}
-              onBaseInstructionsChange={handleBaseInstructionsChange}
-              bugDescription={bugDescription}
-              onBugDescriptionChange={setBugDescription}
-              generating={generating}
-              fixing={fixing}
-              summaryError={summaryError}
-              fixSummary={fixSummary}
-              onGenerate={generate}
-              onFixBug={fixBug}
-              onDismissSummaryError={() => setSummaryError(null)}
-              onDismissFixSummary={() => setFixSummary("")}
-              activeTab={bottomActiveTab}
-              onActiveTabChange={setBottomActiveTab}
-              onOpenGenerateFromService={() => setGenerateFromServiceOpen(true)}
-            />
-          </div>
+          {!selectedResult && (
+            <div className="flex-shrink-0 overflow-hidden" style={{ height: bottomPanel.size }}>
+              <BottomPanel
+                category={category}
+                onCategoryChange={handleCategoryChange}
+                prompt={prompt}
+                onPromptChange={handlePromptChange}
+                detailedInstructions={detailedInstructions}
+                onDetailedInstructionsChange={handleDetailedInstructionsChange}
+                baseInstructions={baseInstructions}
+                onBaseInstructionsChange={handleBaseInstructionsChange}
+                bugDescription={bugDescription}
+                onBugDescriptionChange={setBugDescription}
+                generating={generating}
+                fixing={fixing}
+                summaryError={summaryError}
+                fixSummary={fixSummary}
+                onGenerate={generate}
+                onFixBug={fixBug}
+                onDismissSummaryError={() => setSummaryError(null)}
+                onDismissFixSummary={() => setFixSummary("")}
+                activeTab={bottomActiveTab}
+                onActiveTabChange={setBottomActiveTab}
+                onOpenGenerateFromService={() => setGenerateFromServiceOpen(true)}
+              />
+            </div>
+          )}
         </div>
 
         {/* Right resize handle */}
