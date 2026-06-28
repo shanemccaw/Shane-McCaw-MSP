@@ -51,6 +51,7 @@ import ScriptRunnerPage from "@/pages/ScriptRunner";
 import M365ScriptCatalogPage from "@/pages/M365ScriptCatalog";
 import ScriptGeneratorPage from "@/pages/ScriptGeneratorPage";
 import M365RunResultsPage from "@/pages/M365RunResults";
+import ScriptsTabBar from "@/components/ScriptsTabBar";
 import AdminSecurity from "@/pages/AdminSecurity";
 import MarketingCommandCenterPage from "@/pages/MarketingCommandCenter";
 import type { ReactNode } from "react";
@@ -255,16 +256,16 @@ function Router() {
         <RequireAdmin><DashboardShell><ServicePageTriggersPage /></DashboardShell></RequireAdmin>
       </Route>
       <Route path="/script-runner">
-        <RequireAdmin><DashboardShell><ScriptRunnerPage /></DashboardShell></RequireAdmin>
+        <RequireAdmin><DashboardShell><ScriptsTabBar><ScriptRunnerPage /></ScriptsTabBar></DashboardShell></RequireAdmin>
       </Route>
       <Route path="/m365-scripts">
-        <RequireAdmin><DashboardShell><M365ScriptCatalogPage /></DashboardShell></RequireAdmin>
+        <RequireAdmin><DashboardShell><ScriptsTabBar><M365ScriptCatalogPage /></ScriptsTabBar></DashboardShell></RequireAdmin>
       </Route>
       <Route path="/m365-run-results">
-        <RequireAdmin><DashboardShell><M365RunResultsPage /></DashboardShell></RequireAdmin>
+        <RequireAdmin><DashboardShell><ScriptsTabBar><M365RunResultsPage /></ScriptsTabBar></DashboardShell></RequireAdmin>
       </Route>
       <Route path="/script-generator">
-        <RequireAdmin><DashboardShell><ScriptGeneratorPage /></DashboardShell></RequireAdmin>
+        <RequireAdmin><DashboardShell><ScriptsTabBar><ScriptGeneratorPage /></ScriptsTabBar></DashboardShell></RequireAdmin>
       </Route>
 
       {/* Marketing Command Center */}
