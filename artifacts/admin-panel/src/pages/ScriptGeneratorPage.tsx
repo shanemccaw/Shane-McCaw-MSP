@@ -1996,6 +1996,7 @@ function GenerateFromServiceDialog({
           </div>
         </div>
       </div>
+      <GeneratingProgressDialog open={generating} />
     </div>
   );
 }
