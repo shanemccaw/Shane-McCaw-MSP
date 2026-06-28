@@ -99,26 +99,78 @@ function readSidebarCollapsed(): boolean {
 
 // ─── Breadcrumb helper ────────────────────────────────────────────────────────
 
-const WORKSPACE_NAMES: Record<string, string> = {
-  command: "Command",
-  pipeline: "Pipeline",
-  delivery: "Delivery",
-  finance: "Finance",
-  content: "Content & Offers",
-  system: "System",
+// Explicit section-level labels keyed by exact workspace path
+const SECTION_LABELS: Record<string, { group: string; label: string }> = {
+  // Command
+  "/command/overview":  { group: "Command", label: "Overview" },
+  "/command/messages":  { group: "Command", label: "Messages" },
+  "/command/analytics": { group: "Command", label: "Analytics" },
+  "/command/marketing": { group: "Command", label: "Marketing" },
+  "/command/prompts":   { group: "Command", label: "AI Prompts" },
+  "/command/scripts":   { group: "Command", label: "M365 Scripts" },
+  // Pipeline
+  "/pipeline/leads":             { group: "Pipeline", label: "Leads" },
+  "/pipeline/quiz-leads":        { group: "Pipeline", label: "Quiz Leads" },
+  "/pipeline/opportunities":     { group: "Pipeline", label: "Opportunities" },
+  "/pipeline/clients":           { group: "Pipeline", label: "Clients" },
+  "/pipeline/m365-intelligence": { group: "Pipeline", label: "M365 Intelligence" },
+  // Delivery
+  "/delivery/projects":             { group: "Delivery", label: "Projects" },
+  "/delivery/clients":              { group: "Delivery", label: "Clients" },
+  "/delivery/engagement-projects":  { group: "Delivery", label: "Engagement Projects" },
+  "/delivery/workflows":            { group: "Delivery", label: "Workflows" },
+  "/delivery/activity-logs":        { group: "Delivery", label: "Activity Logs" },
+  "/delivery/hub-storage":          { group: "Delivery", label: "Hub Storage" },
+  // Finance
+  "/finance/invoices":   { group: "Finance", label: "Invoices" },
+  "/finance/purchases":  { group: "Finance", label: "Purchases" },
+  "/finance/contracts":  { group: "Finance", label: "Contracts" },
+  "/finance/coupons":    { group: "Finance", label: "Coupons" },
+  "/finance/reports":    { group: "Finance", label: "Reports" },
+  // Content & Offers
+  "/content/articles":             { group: "Content & Offers", label: "Articles" },
+  "/content/services":             { group: "Content & Offers", label: "Services" },
+  "/content/engagement-projects":  { group: "Content & Offers", label: "Engagement Projects" },
+  "/content/service-triggers":     { group: "Content & Offers", label: "Service Triggers" },
+  "/content/email-templates":      { group: "Content & Offers", label: "Email Templates" },
+  "/content/contract-templates":   { group: "Content & Offers", label: "Contract Templates" },
+  "/content/template-library":     { group: "Content & Offers", label: "Template Library" },
+  "/content/asset-library":        { group: "Content & Offers", label: "Asset Library" },
+  // System
+  "/system/inbox":            { group: "System", label: "Inbox" },
+  "/system/security":         { group: "System", label: "Security" },
+  "/system/signal-mappings":  { group: "System", label: "Signal Mappings" },
+  "/system/integrations":     { group: "System", label: "Integrations" },
+  "/system/environment":      { group: "System", label: "Environment Settings" },
 };
 
+// Prefix-based labels for detail pages that don't match exact paths
+const PREFIX_LABELS: Array<{ prefix: string; group: string; label: string }> = [
+  { prefix: "/crm/leads/",        group: "Pipeline",  label: "Lead Detail" },
+  { prefix: "/crm/clients/",      group: "Pipeline",  label: "Client Detail" },
+  { prefix: "/crm/projects/",     group: "Delivery",  label: "Project Detail" },
+  { prefix: "/crm/invoices/",     group: "Finance",   label: "Invoice Detail" },
+  { prefix: "/crm/purchases/",    group: "Finance",   label: "Purchase Detail" },
+  { prefix: "/crm/opportunities/", group: "Pipeline", label: "Opportunity Detail" },
+  { prefix: "/crm/documents",     group: "Delivery",  label: "Documents" },
+  { prefix: "/crm/status-reports", group: "Delivery", label: "Status Reports" },
+  { prefix: "/crm/testimonials",  group: "Delivery",  label: "Testimonials" },
+  { prefix: "/prompt-center/",    group: "Command",   label: "Edit Prompt" },
+  { prefix: "/asset-library/",    group: "Content & Offers", label: "Asset Library" },
+];
+
 function computeBreadcrumb(location: string): { group: string; label: string } | null {
-  const parts = location.replace(/^\//, "").split("/");
-  const [prefix, sectionSlug] = parts;
-  const workspaceName = WORKSPACE_NAMES[prefix];
-  if (!workspaceName) return null;
-  if (!sectionSlug) return { group: workspaceName, label: workspaceName };
-  const sectionName = sectionSlug
-    .split("-")
-    .map(w => w.charAt(0).toUpperCase() + w.slice(1))
-    .join(" ");
-  return { group: workspaceName, label: sectionName };
+  // 1. Exact workspace path match
+  if (SECTION_LABELS[location]) return SECTION_LABELS[location];
+  // 2. Prefix match for workspace paths (e.g. /command/overview/sub)
+  for (const [path, crumb] of Object.entries(SECTION_LABELS)) {
+    if (location.startsWith(path + "/")) return crumb;
+  }
+  // 3. Prefix match for legacy detail pages
+  for (const { prefix, group, label } of PREFIX_LABELS) {
+    if (location.startsWith(prefix)) return { group, label };
+  }
+  return null;
 }
 
 // ─── NavItemLink ──────────────────────────────────────────────────────────────
