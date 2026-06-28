@@ -4,15 +4,20 @@
  *
  * Approach:
  *  - mock.module() stubs the Anthropic client so it returns a prose-only
- *    response (no ```powershell fence, no PS keywords in first 200 chars).
+ *    response (no ```powershell fence, no PS keywords anywhere in the text).
  *  - mock.module() stubs requireAdmin as a pass-through (no auth needed in
  *    tests) and @workspace/db so loading the route doesn't open a real DB
- *    connection — the prose path returns 500 before reaching any DB code.
+ *    connection.
  *  - The real router from admin-ps-scripts.ts is mounted in a lightweight
  *    Express server and called over HTTP.
  *
+ * /fix uses messages.create() and returns plain JSON (HTTP 500 on guard fail).
+ * /generate uses messages.stream() and returns SSE; guard failures appear as
+ *   an SSE event { type: "error", message: "..." } with HTTP 200.
+ *
  * Because the actual route handlers run, any refactor that removes or bypasses
- * hasPsKeywords() in admin-ps-scripts.ts will break these tests.
+ * hasPsKeywords() / hasPsKeywordsFullText() in admin-ps-scripts.ts will break
+ * these tests.
  *
  * Run with:
  *   pnpm --filter @workspace/api-server run test
@@ -27,11 +32,29 @@ import assert from "node:assert/strict";
 import http from "node:http";
 import type { AddressInfo } from "node:net";
 
-// ── Prose-only text: no PS keywords in first 200 chars ───────────────────────
+// ── Prose-only text: no PS keywords anywhere ──────────────────────────────────
 const PROSE_RESPONSE =
-  "This script connects to your Microsoft 365 tenant and applies the " +
+  "This connects to your Microsoft 365 tenant and applies the " +
   "required governance policies. Please ensure you have the Exchange " +
   "Administrator role assigned before running any automation routines.";
+
+// ── Fake streaming helper ─────────────────────────────────────────────────────
+// Mimics the subset of the Anthropic stream object used by the /generate route:
+//   stream.on("text", cb)  — registers a text-delta handler
+//   stream.finalMessage()  — resolves after firing all registered text handlers
+function makeProseStream() {
+  const textHandlers: ((text: string) => void)[] = [];
+  return {
+    on(event: string, cb: (...args: unknown[]) => void) {
+      if (event === "text") textHandlers.push(cb as (text: string) => void);
+      return this;
+    },
+    async finalMessage() {
+      for (const cb of textHandlers) cb(PROSE_RESPONSE);
+      return { content: [{ type: "text", text: PROSE_RESPONSE }] };
+    },
+  };
+}
 
 // ── Register mocks BEFORE the route module is dynamically imported ─────────────
 // mock.module() must be called before the target module loads. We use dynamic
@@ -39,7 +62,9 @@ const PROSE_RESPONSE =
 // all relative imports (requireAuth.ts, logger.ts, ps-guard.ts) so mock
 // specifiers with .ts match exactly.
 
-// 1. Stub the Anthropic client to return prose-only text.
+// 1. Stub the Anthropic client:
+//    - create() is used by /fix (plain JSON response)
+//    - stream() is used by /generate (SSE streaming)
 mock.module("@workspace/integrations-anthropic-ai", {
   namedExports: {
     anthropic: {
@@ -47,6 +72,7 @@ mock.module("@workspace/integrations-anthropic-ai", {
         create: async () => ({
           content: [{ type: "text", text: PROSE_RESPONSE }],
         }),
+        stream: () => makeProseStream(),
       },
     },
   },
@@ -60,17 +86,22 @@ mock.module("../middlewares/requireAuth.ts", {
 });
 
 // 3. Stub @workspace/db so loading the route doesn't attempt a real DB
-//    connection. The prose guard path returns 500 before any DB call.
+//    connection. The prose guard path returns before any DB call.
 mock.module("@workspace/db", {
   namedExports: {
     db: {},
     powershellScriptsTable: {},
     scriptPackagesTable: {},
     scriptModulesTable: {},
+    serviceScriptSetsTable: {},
     servicesTable: {},
     workflowTemplatesTable: {},
     workflowTemplateStepsTable: {},
     workflowTemplateStepTasksTable: {},
+    kanbanTasksTable: {},
+    clientServicesTable: {},
+    scriptRunResultsTable: {},
+    aiPromptsTable: {},
   },
 });
 
@@ -116,7 +147,8 @@ after(
     }),
 );
 
-// ── Helper ────────────────────────────────────────────────────────────────────
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
 async function postJson(path: string, body: unknown) {
   const res = await fetch(`${baseUrl}${path}`, {
     method: "POST",
@@ -127,34 +159,58 @@ async function postJson(path: string, body: unknown) {
   return { status: res.status, body: json as Record<string, unknown> };
 }
 
+// Read an SSE response to completion and return all parsed event objects.
+// The /generate route streams "data: {...}\n\n" lines and ends with res.end().
+async function postSse(path: string, body: unknown) {
+  const res = await fetch(`${baseUrl}${path}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  const text = await res.text();
+  const events = text
+    .split("\n\n")
+    .filter(Boolean)
+    .map((chunk) => {
+      const line = chunk.replace(/^data: /, "").trim();
+      try {
+        return JSON.parse(line) as Record<string, unknown>;
+      } catch {
+        return null;
+      }
+    })
+    .filter((e): e is Record<string, unknown> => e !== null);
+  return { status: res.status, events };
+}
+
 // ── POST /api/admin/ps-scripts/generate ──────────────────────────────────────
+// The /generate endpoint uses SSE streaming. Guard failures are sent as an
+// SSE event { type: "error", message: "..." } — not as HTTP 500 + JSON.
 
 describe("POST /api/admin/ps-scripts/generate — real route: prose-only AI response guard", () => {
-  it("returns HTTP 500 when the AI returns only prose (no PS keywords in first 200 chars)", async () => {
-    const { status, body } = await postJson("/api/admin/ps-scripts/generate", {
-      prompt: "List all M365 users",
-      category: "m365",
-    });
-    assert.equal(
-      status,
-      500,
-      `expected HTTP 500, got ${status}; body: ${JSON.stringify(body)}`,
+  const generatePayload = { prompt: "List all M365 users", category: "m365" };
+
+  it("sends an SSE error event when the AI returns only prose (no PS keywords)", async () => {
+    const { events } = await postSse("/api/admin/ps-scripts/generate", generatePayload);
+    const errorEvent = events.find((e) => e["type"] === "error");
+    assert.ok(
+      errorEvent,
+      `expected an SSE { type: "error" } event; got: ${JSON.stringify(events)}`,
     );
   });
 
   it("returns the exact error message the client surfaces to the user", async () => {
-    const { body } = await postJson("/api/admin/ps-scripts/generate", {
-      prompt: "List all M365 users",
-      category: "m365",
-    });
+    const { events } = await postSse("/api/admin/ps-scripts/generate", generatePayload);
+    const errorEvent = events.find((e) => e["type"] === "error");
     assert.equal(
-      (body as { error: string }).error,
+      errorEvent?.["message"],
       "AI returned a summary instead of a script. Please try again.",
     );
   });
 });
 
 // ── POST /api/admin/ps-scripts/fix ───────────────────────────────────────────
+// The /fix endpoint uses messages.create() and returns plain JSON (HTTP 500).
 
 describe("POST /api/admin/ps-scripts/fix — real route: prose-only AI response guard", () => {
   const fixPayload = {

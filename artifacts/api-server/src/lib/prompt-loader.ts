@@ -11,7 +11,7 @@
 
 import { db, aiPromptsTable } from "@workspace/db";
 import { eq, sql } from "drizzle-orm";
-import { logger } from "./logger";
+import { logger } from "./logger.ts";
 
 export async function getPrompt(key: string, fallback: string): Promise<string> {
   try {
