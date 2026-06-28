@@ -6,51 +6,33 @@ import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import { InboxProvider } from "@/contexts/InboxContext";
 import LoginPage from "@/pages/Login";
 import DashboardShell from "@/components/DashboardShell";
-import ArticlesPage from "@/pages/Articles";
-import ServicesPage from "@/pages/Services";
-import WorkflowsPage from "@/pages/Workflows";
-import ContractTemplatesPage from "@/pages/ContractTemplates";
-import EngagementProjectsPage from "@/pages/EngagementProjects";
-import LeadsPage from "@/pages/crm/Leads";
+
+// ─── Workspace pages ──────────────────────────────────────────────────────────
+import CommandWorkspace from "@/pages/workspaces/CommandWorkspace";
+import PipelineWorkspace from "@/pages/workspaces/PipelineWorkspace";
+import DeliveryWorkspace from "@/pages/workspaces/DeliveryWorkspace";
+import FinanceWorkspace from "@/pages/workspaces/FinanceWorkspace";
+import ContentWorkspace from "@/pages/workspaces/ContentWorkspace";
+import SystemWorkspace from "@/pages/workspaces/SystemWorkspace";
+
+// ─── Detail pages (open without workspace layout) ─────────────────────────────
 import LeadDetailPage from "@/pages/crm/LeadDetail";
-import ClientsPage from "@/pages/crm/Clients";
 import ClientDetailPage from "@/pages/crm/ClientDetail";
-import ProjectsPage from "@/pages/crm/Projects";
 import ProjectDetailPage from "@/pages/crm/ProjectDetail";
-import ReportsPage from "@/pages/crm/Reports";
-import InvoicesPage from "@/pages/crm/Invoices";
 import InvoiceDetailPage from "@/pages/crm/InvoiceDetail";
-import DocumentsPage from "@/pages/crm/Documents";
-import MessagesPage from "@/pages/crm/Messages";
-import PurchasesPage from "@/pages/crm/Purchases";
 import PurchaseDetailPage from "@/pages/crm/PurchaseDetail";
-import ContractsPage from "@/pages/crm/Contracts";
+import OpportunityDetailPage from "@/pages/crm/OpportunityDetail";
+import PromptCenterEditPage from "@/pages/PromptCenterEdit";
+
+// ─── Standalone pages (remain at legacy paths, still need DashboardShell) ────
+import DocumentsPage from "@/pages/crm/Documents";
 import StatusReportsPage from "@/pages/crm/StatusReports";
 import TestimonialsPage from "@/pages/crm/Testimonials";
-import M365IntelligencePage from "@/pages/crm/M365Intelligence";
-import QuizLeadsPage from "@/pages/crm/QuizLeads";
-import QuizPainConfigPage from "@/pages/crm/QuizPainConfig";
-import OpportunitiesPage from "@/pages/crm/Opportunities";
-import OpportunityDetailPage from "@/pages/crm/OpportunityDetail";
-import OverviewPage from "@/pages/Overview";
-import AnalyticsPage from "@/pages/Analytics";
-import InboxPage from "@/pages/inbox/Inbox";
-import ActivityLogPage from "@/pages/ActivityLog";
-import SharePointPage from "@/pages/SharePoint";
-import TemplateLibraryPage from "@/pages/templates/TemplateLibrary";
-import InstructionSetsPage from "@/pages/asset-library/InstructionSetsPage";
 import ChecklistsPage from "@/pages/asset-library/ChecklistsPage";
 import ArtifactSetsPage from "@/pages/asset-library/ArtifactSetsPage";
 import DeliverableSetsPage from "@/pages/asset-library/DeliverableSetsPage";
 import CategoriesPage from "@/pages/asset-library/CategoriesPage";
-import EmailTemplatesPage from "@/pages/EmailTemplates";
-import CouponsPage from "@/pages/Coupons";
-import ServicePageTriggersPage from "@/pages/ServicePageTriggers";
-import ScriptGeneratorPage from "@/pages/ScriptGeneratorPage";
-import AdminSecurity from "@/pages/AdminSecurity";
-import MarketingCommandCenterPage from "@/pages/MarketingCommandCenter";
-import PromptCenterPage from "@/pages/PromptCenter";
-import PromptCenterEditPage from "@/pages/PromptCenterEdit";
+
 import type { ReactNode } from "react";
 
 const queryClient = new QueryClient({
@@ -67,7 +49,6 @@ function RequireAdmin({ children }: { children: ReactNode }) {
     );
   }
   if (!user || user.role !== "admin") {
-    // Preserve the intended destination so we can restore it after login
     const base = import.meta.env.BASE_URL.replace(/\/$/, "");
     const rel = window.location.pathname.replace(base, "") + window.location.search;
     if (rel && rel !== "/" && !rel.startsWith("/login")) {
@@ -78,16 +59,20 @@ function RequireAdmin({ children }: { children: ReactNode }) {
   return <>{children}</>;
 }
 
-// After a successful login, redirect to the page the user originally tried to visit
-// (stored in sessionStorage by RequireAdmin), or fall back to the overview.
 function PostLoginRedirect() {
   const [, navigate] = useLocation();
   useEffect(() => {
     const returnTo = sessionStorage.getItem("adminReturnTo") ?? "";
     sessionStorage.removeItem("adminReturnTo");
-    navigate(returnTo && !returnTo.startsWith("/login") ? returnTo : "/overview", { replace: true });
+    navigate(returnTo && !returnTo.startsWith("/login") ? returnTo : "/command/overview", { replace: true });
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
   return null;
+}
+
+// ─── Shorthand wrapper ────────────────────────────────────────────────────────
+
+function AdminRoute({ children }: { children: ReactNode }) {
+  return <RequireAdmin><DashboardShell>{children}</DashboardShell></RequireAdmin>;
 }
 
 function Router() {
@@ -103,178 +88,173 @@ function Router() {
 
   return (
     <Switch>
+      {/* ── Auth ── */}
       <Route path="/login">
         {user && user.role === "admin" ? <PostLoginRedirect /> : <LoginPage />}
       </Route>
       <Route path="/">
-        {user && user.role === "admin" ? <Redirect to="/overview" /> : <Redirect to="/login" />}
+        {user && user.role === "admin" ? <Redirect to="/command/overview" /> : <Redirect to="/login" />}
       </Route>
 
-      {/* Overview */}
-      <Route path="/overview">
-        <RequireAdmin><DashboardShell><OverviewPage /></DashboardShell></RequireAdmin>
+      {/* ── COMMAND workspace ── */}
+      <Route path="/command">
+        <Redirect to="/command/overview" />
+      </Route>
+      <Route path="/command/:section">
+        {(params) => (
+          <AdminRoute>
+            <CommandWorkspace section={params?.section ?? "overview"} />
+          </AdminRoute>
+        )}
       </Route>
 
-      {/* Content */}
-      <Route path="/articles">
-        <RequireAdmin><DashboardShell><ArticlesPage /></DashboardShell></RequireAdmin>
+      {/* ── PIPELINE workspace ── */}
+      <Route path="/pipeline">
+        <Redirect to="/pipeline/leads" />
       </Route>
-      <Route path="/services">
-        <RequireAdmin><DashboardShell><ServicesPage /></DashboardShell></RequireAdmin>
-      </Route>
-      <Route path="/workflows">
-        <RequireAdmin><DashboardShell><WorkflowsPage /></DashboardShell></RequireAdmin>
-      </Route>
-      <Route path="/contract-templates">
-        <RequireAdmin><DashboardShell><ContractTemplatesPage /></DashboardShell></RequireAdmin>
-      </Route>
-      <Route path="/engagement-projects">
-        <RequireAdmin><DashboardShell><EngagementProjectsPage /></DashboardShell></RequireAdmin>
+      <Route path="/pipeline/:section">
+        {(params) => (
+          <AdminRoute>
+            <PipelineWorkspace section={params?.section ?? "leads"} />
+          </AdminRoute>
+        )}
       </Route>
 
-      {/* CRM */}
+      {/* ── DELIVERY workspace ── */}
+      <Route path="/delivery">
+        <Redirect to="/delivery/projects" />
+      </Route>
+      <Route path="/delivery/:section">
+        {(params) => (
+          <AdminRoute>
+            <DeliveryWorkspace section={params?.section ?? "projects"} />
+          </AdminRoute>
+        )}
+      </Route>
+
+      {/* ── FINANCE workspace ── */}
+      <Route path="/finance">
+        <Redirect to="/finance/invoices" />
+      </Route>
+      <Route path="/finance/:section">
+        {(params) => (
+          <AdminRoute>
+            <FinanceWorkspace section={params?.section ?? "invoices"} />
+          </AdminRoute>
+        )}
+      </Route>
+
+      {/* ── CONTENT workspace ── */}
+      <Route path="/content">
+        <Redirect to="/content/articles" />
+      </Route>
+      <Route path="/content/:section">
+        {(params) => (
+          <AdminRoute>
+            <ContentWorkspace section={params?.section ?? "articles"} />
+          </AdminRoute>
+        )}
+      </Route>
+
+      {/* ── SYSTEM workspace ── */}
+      <Route path="/system">
+        <Redirect to="/system/inbox" />
+      </Route>
+      <Route path="/system/:section">
+        {(params) => (
+          <AdminRoute>
+            <SystemWorkspace section={params?.section ?? "inbox"} />
+          </AdminRoute>
+        )}
+      </Route>
+
+      {/* ── Detail pages (no workspace layout changes needed) ── */}
       <Route path="/crm/leads/:id">
-        {(params) => <RequireAdmin><DashboardShell><LeadDetailPage params={params} /></DashboardShell></RequireAdmin>}
-      </Route>
-      <Route path="/crm/leads">
-        <RequireAdmin><DashboardShell><LeadsPage /></DashboardShell></RequireAdmin>
+        {(params) => <AdminRoute><LeadDetailPage params={params} /></AdminRoute>}
       </Route>
       <Route path="/crm/clients/:id">
-        <RequireAdmin><DashboardShell><ClientDetailPage /></DashboardShell></RequireAdmin>
-      </Route>
-      <Route path="/crm/clients">
-        <RequireAdmin><DashboardShell><ClientsPage /></DashboardShell></RequireAdmin>
+        <AdminRoute><ClientDetailPage /></AdminRoute>
       </Route>
       <Route path="/crm/projects/:id">
-        <RequireAdmin><DashboardShell><ProjectDetailPage /></DashboardShell></RequireAdmin>
-      </Route>
-      <Route path="/crm/projects">
-        <RequireAdmin><DashboardShell><ProjectsPage /></DashboardShell></RequireAdmin>
-      </Route>
-      <Route path="/crm/reports">
-        <RequireAdmin><DashboardShell><ReportsPage /></DashboardShell></RequireAdmin>
+        <AdminRoute><ProjectDetailPage /></AdminRoute>
       </Route>
       <Route path="/crm/invoices/:id">
-        <RequireAdmin><DashboardShell><InvoiceDetailPage /></DashboardShell></RequireAdmin>
-      </Route>
-      <Route path="/crm/invoices">
-        <RequireAdmin><DashboardShell><InvoicesPage /></DashboardShell></RequireAdmin>
-      </Route>
-      <Route path="/crm/documents">
-        <RequireAdmin><DashboardShell><DocumentsPage /></DashboardShell></RequireAdmin>
-      </Route>
-      <Route path="/crm/messages">
-        <RequireAdmin><DashboardShell><MessagesPage /></DashboardShell></RequireAdmin>
+        <AdminRoute><InvoiceDetailPage /></AdminRoute>
       </Route>
       <Route path="/crm/purchases/:id">
-        <RequireAdmin><DashboardShell><PurchaseDetailPage /></DashboardShell></RequireAdmin>
-      </Route>
-      <Route path="/crm/purchases">
-        <RequireAdmin><DashboardShell><PurchasesPage /></DashboardShell></RequireAdmin>
-      </Route>
-      <Route path="/crm/contracts">
-        <RequireAdmin><DashboardShell><ContractsPage /></DashboardShell></RequireAdmin>
-      </Route>
-      <Route path="/crm/status-reports">
-        <RequireAdmin><DashboardShell><StatusReportsPage /></DashboardShell></RequireAdmin>
-      </Route>
-      <Route path="/crm/testimonials">
-        <RequireAdmin><DashboardShell><TestimonialsPage /></DashboardShell></RequireAdmin>
-      </Route>
-      <Route path="/crm/m365-intelligence">
-        <RequireAdmin><DashboardShell><M365IntelligencePage /></DashboardShell></RequireAdmin>
-      </Route>
-      <Route path="/crm/quiz-leads">
-        <RequireAdmin><DashboardShell><QuizLeadsPage /></DashboardShell></RequireAdmin>
-      </Route>
-      <Route path="/crm/quiz-pain-config">
-        <RequireAdmin><DashboardShell><QuizPainConfigPage /></DashboardShell></RequireAdmin>
+        <AdminRoute><PurchaseDetailPage /></AdminRoute>
       </Route>
       <Route path="/crm/opportunities/:id">
-        {(params) => <RequireAdmin><DashboardShell><OpportunityDetailPage params={params} /></DashboardShell></RequireAdmin>}
+        {(params) => <AdminRoute><OpportunityDetailPage params={params} /></AdminRoute>}
       </Route>
-      <Route path="/crm/opportunities">
-        <RequireAdmin><DashboardShell><OpportunitiesPage /></DashboardShell></RequireAdmin>
-      </Route>
-
-      {/* Analytics */}
-      <Route path="/analytics">
-        <RequireAdmin><DashboardShell><AnalyticsPage /></DashboardShell></RequireAdmin>
+      <Route path="/prompt-center/:id">
+        {(params) => <AdminRoute><PromptCenterEditPage params={params} /></AdminRoute>}
       </Route>
 
-      {/* Inbox (replaces Email Activity) */}
-      <Route path="/inbox">
-        <RequireAdmin><DashboardShell><InboxPage /></DashboardShell></RequireAdmin>
+      {/* ── Standalone pages still at legacy paths ── */}
+      <Route path="/crm/documents">
+        <AdminRoute><DocumentsPage /></AdminRoute>
       </Route>
-
-      {/* Activity Log */}
-      <Route path="/activity-log">
-        <RequireAdmin><DashboardShell><ActivityLogPage /></DashboardShell></RequireAdmin>
+      <Route path="/crm/status-reports">
+        <AdminRoute><StatusReportsPage /></AdminRoute>
       </Route>
-
-      {/* SharePoint Hub */}
-      <Route path="/sharepoint">
-        <RequireAdmin><DashboardShell><SharePointPage /></DashboardShell></RequireAdmin>
-      </Route>
-
-      {/* Template Library */}
-      <Route path="/templates/library">
-        <RequireAdmin><DashboardShell><TemplateLibraryPage /></DashboardShell></RequireAdmin>
-      </Route>
-
-      {/* Asset Library */}
-      <Route path="/asset-library/instruction-sets">
-        <RequireAdmin><DashboardShell><InstructionSetsPage /></DashboardShell></RequireAdmin>
+      <Route path="/crm/testimonials">
+        <AdminRoute><TestimonialsPage /></AdminRoute>
       </Route>
       <Route path="/asset-library/checklists">
-        <RequireAdmin><DashboardShell><ChecklistsPage /></DashboardShell></RequireAdmin>
+        <AdminRoute><ChecklistsPage /></AdminRoute>
       </Route>
       <Route path="/asset-library/artifact-sets">
-        <RequireAdmin><DashboardShell><ArtifactSetsPage /></DashboardShell></RequireAdmin>
+        <AdminRoute><ArtifactSetsPage /></AdminRoute>
       </Route>
       <Route path="/asset-library/deliverable-sets">
-        <RequireAdmin><DashboardShell><DeliverableSetsPage /></DashboardShell></RequireAdmin>
+        <AdminRoute><DeliverableSetsPage /></AdminRoute>
       </Route>
       <Route path="/asset-library/categories">
-        <RequireAdmin><DashboardShell><CategoriesPage /></DashboardShell></RequireAdmin>
-      </Route>
-      <Route path="/email-templates">
-        <RequireAdmin><DashboardShell><EmailTemplatesPage /></DashboardShell></RequireAdmin>
-      </Route>
-      <Route path="/coupons">
-        <RequireAdmin><DashboardShell><CouponsPage /></DashboardShell></RequireAdmin>
-      </Route>
-      <Route path="/service-page-triggers">
-        <RequireAdmin><DashboardShell><ServicePageTriggersPage /></DashboardShell></RequireAdmin>
-      </Route>
-      <Route path="/m365-scripts">
-        <RequireAdmin><DashboardShell><ScriptGeneratorPage /></DashboardShell></RequireAdmin>
-      </Route>
-      <Route path="/script-runner">
-        <Redirect to="/m365-scripts" />
-      </Route>
-      <Route path="/m365-run-results">
-        <Redirect to="/m365-scripts" />
+        <AdminRoute><CategoriesPage /></AdminRoute>
       </Route>
 
-      {/* Marketing Command Center */}
-      <Route path="/marketing-command-center">
-        <RequireAdmin><DashboardShell><MarketingCommandCenterPage /></DashboardShell></RequireAdmin>
-      </Route>
+      {/* ── Old routes → workspace redirects ── */}
+      <Route path="/overview"><Redirect to="/command/overview" /></Route>
+      <Route path="/analytics"><Redirect to="/command/analytics" /></Route>
+      <Route path="/marketing-command-center"><Redirect to="/command/marketing" /></Route>
+      <Route path="/prompt-center"><Redirect to="/command/prompts" /></Route>
+      <Route path="/m365-scripts"><Redirect to="/command/scripts" /></Route>
+      <Route path="/script-runner"><Redirect to="/command/scripts" /></Route>
+      <Route path="/m365-run-results"><Redirect to="/command/scripts" /></Route>
 
-      {/* AI Prompt Center */}
-      <Route path="/prompt-center/:id">
-        {(params) => <RequireAdmin><DashboardShell><PromptCenterEditPage params={params} /></DashboardShell></RequireAdmin>}
-      </Route>
-      <Route path="/prompt-center">
-        <RequireAdmin><DashboardShell><PromptCenterPage /></DashboardShell></RequireAdmin>
-      </Route>
+      <Route path="/crm/leads"><Redirect to="/pipeline/leads" /></Route>
+      <Route path="/crm/quiz-leads"><Redirect to="/pipeline/quiz-leads" /></Route>
+      <Route path="/crm/opportunities"><Redirect to="/pipeline/opportunities" /></Route>
+      <Route path="/crm/clients"><Redirect to="/pipeline/clients" /></Route>
+      <Route path="/crm/m365-intelligence"><Redirect to="/pipeline/m365-intelligence" /></Route>
+      <Route path="/crm/messages"><Redirect to="/command/messages" /></Route>
 
-      {/* Security */}
-      <Route path="/security">
-        <RequireAdmin><AdminSecurity /></RequireAdmin>
-      </Route>
+      <Route path="/crm/projects"><Redirect to="/delivery/projects" /></Route>
+      <Route path="/engagement-projects"><Redirect to="/delivery/engagement-projects" /></Route>
+      <Route path="/workflows"><Redirect to="/delivery/workflows" /></Route>
+      <Route path="/activity-log"><Redirect to="/delivery/activity-logs" /></Route>
+      <Route path="/sharepoint"><Redirect to="/delivery/hub-storage" /></Route>
 
+      <Route path="/crm/invoices"><Redirect to="/finance/invoices" /></Route>
+      <Route path="/crm/purchases"><Redirect to="/finance/purchases" /></Route>
+      <Route path="/crm/contracts"><Redirect to="/finance/contracts" /></Route>
+      <Route path="/coupons"><Redirect to="/finance/coupons" /></Route>
+      <Route path="/crm/reports"><Redirect to="/finance/reports" /></Route>
+
+      <Route path="/articles"><Redirect to="/content/articles" /></Route>
+      <Route path="/services"><Redirect to="/content/services" /></Route>
+      <Route path="/service-page-triggers"><Redirect to="/content/service-triggers" /></Route>
+      <Route path="/email-templates"><Redirect to="/content/email-templates" /></Route>
+      <Route path="/contract-templates"><Redirect to="/content/contract-templates" /></Route>
+      <Route path="/templates/library"><Redirect to="/content/template-library" /></Route>
+      <Route path="/asset-library/instruction-sets"><Redirect to="/content/asset-library" /></Route>
+
+      <Route path="/inbox"><Redirect to="/system/inbox" /></Route>
+      <Route path="/security"><Redirect to="/system/security" /></Route>
+      <Route path="/crm/quiz-pain-config"><Redirect to="/system/signal-mappings" /></Route>
+
+      {/* ── Catch-all ── */}
       <Route>
         <Redirect to="/login" />
       </Route>
@@ -287,20 +267,20 @@ function App() {
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
         <InboxProvider>
-        <div className="flex flex-col h-screen overflow-hidden">
-          {import.meta.env.DEV && (
-            <div className="flex-shrink-0 flex items-center justify-center gap-2 bg-amber-400 text-amber-950 text-xs font-semibold py-1 px-3 select-none">
-              <span className="inline-block w-1.5 h-1.5 rounded-full bg-amber-700 animate-pulse" />
-              DEVELOPMENT ENVIRONMENT — changes here do not affect production
+          <div className="flex flex-col h-screen overflow-hidden">
+            {import.meta.env.DEV && (
+              <div className="flex-shrink-0 flex items-center justify-center gap-2 bg-amber-400 text-amber-950 text-xs font-semibold py-1 px-3 select-none">
+                <span className="inline-block w-1.5 h-1.5 rounded-full bg-amber-700 animate-pulse" />
+                DEVELOPMENT ENVIRONMENT — changes here do not affect production
+              </div>
+            )}
+            <div className="flex-1 overflow-hidden">
+              <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
+                <Router />
+              </WouterRouter>
             </div>
-          )}
-          <div className="flex-1 overflow-hidden">
-            <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
-              <Router />
-            </WouterRouter>
           </div>
-        </div>
-        <Toaster />
+          <Toaster />
         </InboxProvider>
       </AuthProvider>
     </QueryClientProvider>

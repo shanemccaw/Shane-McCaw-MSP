@@ -1,6 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
 import { useAuth } from "@/contexts/AuthContext";
-import DashboardShell from "@/components/DashboardShell";
 import { startRegistration } from "@simplewebauthn/browser";
 
 type Alert = { type: "success" | "error"; message: string } | null;
@@ -170,7 +169,7 @@ export default function AdminSecurity() {
   };
 
   return (
-    <DashboardShell>
+    <>
       <div className="max-w-lg mx-auto py-6 space-y-6">
         <div>
           <h1 className="text-xl font-bold text-[#E6EDF3]">Admin Security</h1>
@@ -359,6 +358,6 @@ export default function AdminSecurity() {
           </ul>
         </div>
       </div>
-    </DashboardShell>
+    </>
   );
 }
