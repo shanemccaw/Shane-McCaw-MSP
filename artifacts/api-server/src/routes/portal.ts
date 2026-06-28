@@ -5923,6 +5923,28 @@ router.patch("/admin/invoices/:id", requireAdmin, async (req: Request, res: Resp
   res.json(updated);
 });
 
+router.delete("/admin/invoices/:id", requireAdmin, async (req: Request, res: Response) => {
+  const id = parseInt(String(req.params.id ?? ""), 10);
+  if (isNaN(id)) { res.status(400).json({ error: "Invalid ID" }); return; }
+
+  const [deleted] = await db.delete(invoicesTable).where(eq(invoicesTable.id, id)).returning();
+  if (!deleted) { res.status(404).json({ error: "Invoice not found" }); return; }
+
+  void createAuditLog({
+    actorUserId: req.user!.id,
+    actorName: req.user!.name ?? req.user!.email,
+    actorRole: "admin",
+    actionType: "invoice_deleted",
+    entityType: "invoice",
+    entityId: deleted.id,
+    entityLabel: deleted.invoiceNumber,
+    clientId: deleted.clientUserId,
+    metadata: { stripeInvoiceId: deleted.stripeInvoiceId ?? null },
+  });
+
+  res.status(204).end();
+});
+
 // ─── ADMIN: Services ─────────────────────────────────────────────────────────
 router.get("/admin/services", requireAdmin, async (_req: Request, res: Response) => {
   const services = await db.select().from(servicesTable).orderBy(asc(servicesTable.name));
