@@ -809,7 +809,7 @@ function GenerateStepScriptsDialog({
               {/* CTA: View in Script Generator */}
               {state.summary.generated > 0 && (
                 <a
-                  href="/admin-panel/script-generator"
+                  href="/admin-panel/m365-scripts"
                   onClick={handleClose}
                   className="flex items-center justify-center gap-2 w-full bg-[#00B4D8]/10 hover:bg-[#00B4D8]/20 border border-[#00B4D8]/30 text-[#00B4D8] text-xs font-semibold px-4 py-2.5 rounded-lg transition-colors"
                 >
