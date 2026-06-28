@@ -462,28 +462,59 @@ router.post("/inbox/ai", requireAdmin, async (req: Request, res: Response) => {
     ? `\nCRM Context: Lead=${crmContext.leadName ?? "unknown"}, Company=${crmContext.leadCompany ?? "unknown"}, Score=${crmContext.leadScore ?? 0}, Stage=${crmContext.opportunityStage ?? "none"}`
     : "";
 
-  const INBOX_PERSONA_DEFAULT = `You are Shane McCaw, a senior Microsoft 365 consultant. Be concise and professional.`;
-  const persona = await getPrompt("inbox-persona", INBOX_PERSONA_DEFAULT);
-
   try {
     let prompt = "";
 
+    const DRAFT_REPLY_DEFAULT    = `You are Shane McCaw, a senior Microsoft 365 consultant. Be concise and professional.\n\nDraft a professional reply to this email from {{senderName}}.\nSubject: {{subject}}\nBody:\n{{messageBody}}\n\nDraft reply (plain text, no markdown headers):`;
+    const SUMMARIZE_DEFAULT      = `You are Shane McCaw, a senior Microsoft 365 consultant. Be concise and professional.\n\nSummarize this email thread. Extract: key action items, commitments made, deadlines mentioned, and decision points.\nSubject: {{subject}}\nBody:\n{{messageBody}}\n\nReturn JSON: {"summary":"...","actionItems":["..."],"commitments":["..."],"deadlines":["..."]}`;
+    const EXTRACT_TASKS_DEFAULT  = `You are Shane McCaw, a senior Microsoft 365 consultant. Be concise and professional.\n\nExtract all action items and tasks from this email. For each task include a title, brief description, estimated due date (relative like "within 3 days"), and priority (low/medium/high).\nSubject: {{subject}}\nBody:\n{{messageBody}}\n\nReturn ONLY a JSON array: [{"title":"...","description":"...","dueDate":"YYYY-MM-DD or null","priority":"medium"}]`;
+    const DETECT_OPP_DEFAULT     = `You are Shane McCaw, a senior Microsoft 365 consultant. Be concise and professional.\n\nAnalyze this email for buying signals — budget discussion, timeline, decision maker involvement, pain points, or explicit purchase intent.\nSubject: {{subject}}\nBody:\n{{messageBody}}\n\nReturn JSON: {"detected":true/false,"confidence":"high/medium/low","signals":["..."],"opportunityName":"...","recommendedNextStep":"..."}`;
+    const DETECT_LEAD_DEFAULT    = `You are Shane McCaw, a senior Microsoft 365 consultant. Be concise and professional.\n\nAnalyze this email for lead qualification signals. Score each dimension (0-10): fit, pain, maturity, intent, urgency.\nSubject: {{subject}}\nBody:\n{{messageBody}}\n\nReturn JSON: {"scoreFit":0,"scorePain":0,"scoreMaturity":0,"scoreIntent":0,"scoreUrgency":0,"signals":["..."],"stageProgression":"none/propose/qualify","confidence":"high/medium/low"}`;
+    const SUGGEST_SUBJECT_DEFAULT = `You are Shane McCaw, a senior Microsoft 365 consultant. Be concise and professional.\n\nSuggest 3 professional subject line alternatives for this email thread.\nCurrent subject: {{subject}}\nBody: {{messageBody}}\n\nReturn ONLY a JSON array of 3 strings, no other text:`;
+    const SUGGEST_FOLLOWUP_DEFAULT = `You are Shane McCaw, a senior Microsoft 365 consultant. Be concise and professional.\n\nBased on this email, suggest 2-3 follow-up messages to send later.\nSubject: {{subject}}\nBody: {{messageBody}}\n\nReturn JSON array: [{"subject":"...","body":"...","timing":"..."}]`;
+    const GEN_TEMPLATE_DEFAULT   = `You are Shane McCaw, a senior Microsoft 365 consultant. Be concise and professional.\n\nGenerate a reusable outreach email template based on the context of this message.\nSubject: {{subject}}\nBody: {{messageBody}}\n\nReturn JSON: {"subject":"...","body":"...","description":"..."}`;
+
     if (action === "draft_reply") {
-      prompt = `${persona}\n\nDraft a professional reply to this email from ${senderName ?? "the sender"}.\nSubject: ${subject ?? ""}\nBody:\n${messageBody}${crmCtx}\n\nDraft reply (plain text, no markdown headers):`;
+      const tpl = await getPrompt("inbox-draft-reply", DRAFT_REPLY_DEFAULT);
+      prompt = tpl
+        .replace("{{senderName}}", senderName ?? "the sender")
+        .replace("{{subject}}", subject ?? "")
+        .replace("{{messageBody}}", messageBody + crmCtx);
     } else if (action === "suggest_subject") {
-      prompt = `${persona}\n\nSuggest 3 professional subject line alternatives for this email thread.\nCurrent subject: ${subject ?? "none"}\nBody: ${messageBody.slice(0, 500)}\n\nReturn ONLY a JSON array of 3 strings, no other text:`;
+      const tpl = await getPrompt("inbox-suggest-subject", SUGGEST_SUBJECT_DEFAULT);
+      prompt = tpl
+        .replace("{{subject}}", subject ?? "none")
+        .replace("{{messageBody}}", messageBody.slice(0, 500));
     } else if (action === "summarize") {
-      prompt = `${persona}\n\nSummarize this email thread. Extract: key action items, commitments made, deadlines mentioned, and decision points.\nSubject: ${subject ?? ""}\nBody:\n${messageBody}\n\nReturn JSON: {"summary":"...","actionItems":["..."],"commitments":["..."],"deadlines":["..."]}`;
+      const tpl = await getPrompt("inbox-summarize", SUMMARIZE_DEFAULT);
+      prompt = tpl
+        .replace("{{subject}}", subject ?? "")
+        .replace("{{messageBody}}", messageBody);
     } else if (action === "suggest_followup") {
-      prompt = `${persona}\n\nBased on this email, suggest 2-3 follow-up messages to send later.\nSubject: ${subject ?? ""}\nBody: ${messageBody.slice(0, 800)}${crmCtx}\n\nReturn JSON array: [{"subject":"...","body":"...","timing":"..."}]`;
+      const tpl = await getPrompt("inbox-suggest-followup", SUGGEST_FOLLOWUP_DEFAULT);
+      prompt = tpl
+        .replace("{{subject}}", subject ?? "")
+        .replace("{{messageBody}}", messageBody.slice(0, 800) + crmCtx);
     } else if (action === "generate_template") {
-      prompt = `${persona}\n\nGenerate a reusable outreach email template based on the context of this message.\nSubject: ${subject ?? ""}\nBody: ${messageBody.slice(0, 600)}${crmCtx}\n\nReturn JSON: {"subject":"...","body":"...","description":"..."}`;
+      const tpl = await getPrompt("inbox-generate-template", GEN_TEMPLATE_DEFAULT);
+      prompt = tpl
+        .replace("{{subject}}", subject ?? "")
+        .replace("{{messageBody}}", messageBody.slice(0, 600) + crmCtx);
     } else if (action === "extract_tasks") {
-      prompt = `${persona}\n\nExtract all action items and tasks from this email. For each task include a title, brief description, estimated due date (relative like "within 3 days"), and priority (low/medium/high).\nSubject: ${subject ?? ""}\nBody:\n${messageBody}\n\nReturn ONLY a JSON array: [{"title":"...","description":"...","dueDate":"YYYY-MM-DD or null","priority":"medium"}]`;
+      const tpl = await getPrompt("inbox-extract-tasks", EXTRACT_TASKS_DEFAULT);
+      prompt = tpl
+        .replace("{{subject}}", subject ?? "")
+        .replace("{{messageBody}}", messageBody);
     } else if (action === "detect_opportunity") {
-      prompt = `${persona}\n\nAnalyze this email for buying signals — budget discussion, timeline, decision maker involvement, pain points, or explicit purchase intent.\nSubject: ${subject ?? ""}\nBody:\n${messageBody}\n\nReturn JSON: {"detected":true/false,"confidence":"high/medium/low","signals":["..."],"opportunityName":"...","recommendedNextStep":"..."}`;
+      const tpl = await getPrompt("inbox-detect-opportunity", DETECT_OPP_DEFAULT);
+      prompt = tpl
+        .replace("{{subject}}", subject ?? "")
+        .replace("{{messageBody}}", messageBody);
     } else if (action === "detect_lead_signals") {
-      prompt = `${persona}\n\nAnalyze this email for lead qualification signals. Score each dimension (0-10): fit, pain, maturity, intent, urgency.\nSubject: ${subject ?? ""}\nBody:\n${messageBody}${crmCtx}\n\nReturn JSON: {"scoreFit":0,"scorePain":0,"scoreMaturity":0,"scoreIntent":0,"scoreUrgency":0,"signals":["..."],"stageProgression":"none/propose/qualify","confidence":"high/medium/low"}`;
+      const tpl = await getPrompt("inbox-detect-lead-signals", DETECT_LEAD_DEFAULT);
+      prompt = tpl
+        .replace("{{subject}}", subject ?? "")
+        .replace("{{messageBody}}", messageBody + crmCtx);
     } else {
       res.status(400).json({ error: "Unknown action" });
       return;

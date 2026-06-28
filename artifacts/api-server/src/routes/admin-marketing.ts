@@ -13,6 +13,7 @@ import { anthropic } from "@workspace/integrations-anthropic-ai";
 import { sendMessage, GraphMailConfigError } from "../lib/graphEmail";
 import { fetchTopQueries } from "../lib/search-console";
 import { logger } from "../lib/logger";
+import { getPrompt } from "../lib/prompt-loader.ts";
 import { z } from "zod";
 
 const router = Router();
@@ -277,15 +278,10 @@ router.post("/admin/marketing/recommended-leads/generate", requireAdmin, async (
       ? `\nADDITIONAL TARGETING INSTRUCTIONS: ${targetingPrompt.trim()}\nFocus lead generation specifically on this criteria while still matching the ICP above.\n`
       : "";
 
-    const message = await anthropic.messages.create({
-      model: "claude-haiku-4-5",
-      max_tokens: 2000,
-      messages: [{
-        role: "user",
-        content: `You are a B2B lead generation specialist for a Microsoft 365 consulting firm led by Shane McCaw, a 30-year Microsoft veteran and NASA M365 architect.
+    const LEAD_GEN_DEFAULT = `You are a B2B lead generation specialist for a Microsoft 365 consulting firm led by Shane McCaw, a 30-year Microsoft veteran and NASA M365 architect.
 
-${icpContext}
-${targetingClause}
+{{icpContext}}
+{{targetingClause}}
 Generate 7 highly specific, realistic recommended leads who perfectly match the above ICP. Each should be a real-sounding decision-maker at a company that would genuinely benefit from these services.
 
 IMPORTANT COMPLIANCE CONSTRAINT: Shane McCaw is a full-time federal employee (NASA). He is legally prohibited from contracting with: (1) other federal agencies, government departments, national laboratories, DoD components, or any other government entity; (2) any commercial company that holds, pursues, or is known to be a prime or subcontractor on NASA contracts. Only recommend private-sector, commercially-focused companies with NO known NASA or federal prime/sub contract relationships.
@@ -305,7 +301,18 @@ Respond with a JSON array (no markdown):
     "recommendedService": "Service name",
     "confidence": 85
   }
-]`,
+]`;
+    const leadGenTemplate = await getPrompt("marketing-lead-gen", LEAD_GEN_DEFAULT);
+    const leadGenPrompt = leadGenTemplate
+      .replace("{{icpContext}}", icpContext)
+      .replace("{{targetingClause}}", targetingClause);
+
+    const message = await anthropic.messages.create({
+      model: "claude-haiku-4-5",
+      max_tokens: 2000,
+      messages: [{
+        role: "user",
+        content: leadGenPrompt,
       }],
     });
 
@@ -447,14 +454,28 @@ router.post("/admin/marketing/generate/outreach", requireAdmin, async (req: Requ
     const icpContext = await buildICPContext();
     const painStr = leadData.painPoints.join(", ") || "M365 adoption challenges";
 
-    const prompts: Record<string, string> = {
-      cold_email: `Write a concise, personalized cold email from Shane McCaw (Lead Microsoft 365 Architect, 30-year Microsoft veteran, NASA M365 architect) to ${leadData.name} at ${leadData.company} (${leadData.role}, ${leadData.industry}). Pain points: ${painStr}. Context: ${icpContext}. Keep it short, no fluff, specific value prop, clear CTA. Format: SUBJECT: ...\n\nBODY: ...`,
-      linkedin: `Write a LinkedIn connection request message from Shane McCaw to ${leadData.name} at ${leadData.company}. 300 chars max. Reference their ${leadData.industry} context and offer value around Microsoft 365. No salesy language. Be specific.`,
-      followup: `Write a 3-touch follow-up email sequence from Shane McCaw to ${leadData.name} at ${leadData.company} who hasn't responded to the initial outreach. Pain points: ${painStr}. Each email shorter and different angle. Format: EMAIL 1:\nSUBJECT: ...\nBODY: ...\n\nEMAIL 2:\nSUBJECT: ...\nBODY: ...\n\nEMAIL 3:\nSUBJECT: ...\nBODY: ...`,
-      cold_call: `Write a cold call script for Shane McCaw to call ${leadData.name} at ${leadData.company} (${leadData.role}, ${leadData.industry}). Include: opener (5 sec), permission ask, value prop (15 sec), pain-point discovery question, objection handler for "not interested", CTA. Keep under 90 seconds conversational flow.`,
+    const OUTREACH_DEFAULTS: Record<string, string> = {
+      cold_email: `Write a concise, personalized cold email from Shane McCaw (Lead Microsoft 365 Architect, 30-year Microsoft veteran, NASA M365 architect) to {{name}} at {{company}} ({{role}}, {{industry}}). Pain points: {{painPoints}}. Context: {{icpContext}}. Keep it short, no fluff, specific value prop, clear CTA. Format: SUBJECT: ...\n\nBODY: ...`,
+      linkedin:   `Write a LinkedIn connection request message from Shane McCaw to {{name}} at {{company}}. 300 chars max. Reference their {{industry}} context and offer value around Microsoft 365. No salesy language. Be specific.`,
+      followup:   `Write a 3-touch follow-up email sequence from Shane McCaw to {{name}} at {{company}} who hasn't responded to the initial outreach. Pain points: {{painPoints}}. Each email shorter and a different angle. Format: EMAIL 1:\nSUBJECT: ...\nBODY: ...\n\nEMAIL 2:\nSUBJECT: ...\nBODY: ...\n\nEMAIL 3:\nSUBJECT: ...\nBODY: ...`,
+      cold_call:  `Write a cold call script for Shane McCaw to call {{name}} at {{company}} ({{role}}, {{industry}}). Include: opener (5 sec), permission ask, value prop (15 sec), pain-point discovery question, objection handler for "not interested", CTA. Keep under 90 seconds conversational flow.`,
     };
-
-    const prompt = prompts[body.templateType] ?? prompts["cold_email"] ?? "";
+    const OUTREACH_KEYS: Record<string, string> = {
+      cold_email: "marketing-outreach-cold-email",
+      linkedin:   "marketing-outreach-linkedin",
+      followup:   "marketing-outreach-followup",
+      cold_call:  "marketing-outreach-cold-call",
+    };
+    const templateType = body.templateType in OUTREACH_KEYS ? body.templateType : "cold_email";
+    const outreachDefault = OUTREACH_DEFAULTS[templateType] ?? OUTREACH_DEFAULTS["cold_email"] ?? "";
+    const outreachTemplate = await getPrompt(OUTREACH_KEYS[templateType] ?? "marketing-outreach-cold-email", outreachDefault);
+    const prompt = outreachTemplate
+      .replace(/\{\{name\}\}/g, leadData.name)
+      .replace(/\{\{company\}\}/g, leadData.company)
+      .replace(/\{\{role\}\}/g, leadData.role)
+      .replace(/\{\{industry\}\}/g, leadData.industry)
+      .replace(/\{\{painPoints\}\}/g, painStr)
+      .replace(/\{\{icpContext\}\}/g, icpContext);
     const message = await anthropic.messages.create({
       model: "claude-haiku-4-5",
       max_tokens: 1200,

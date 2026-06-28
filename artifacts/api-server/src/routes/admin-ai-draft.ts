@@ -88,6 +88,16 @@ router.post("/admin/status-reports/ai-draft", requireAdmin, async (req: Request,
 
     const shouldWrite = (s: string) => section === "all" || section === s;
 
+    const EXEC_SUMMARY_DEFAULT = `Write a concise Executive Summary for this status report. Focus on overall progress, key achievements this period, and current project health. Keep it to 2-3 sentences. Do not use bullet points. Do not include headers.`;
+    const KEY_OUTCOMES_DEFAULT = `Write a Key Outcomes section for this status report. Describe the business or technical value delivered this period — what these activities mean for the client in terms of efficiency, risk reduction, compliance, or strategic progress. Keep it to 2-4 sentences. Plain prose only, no bullet points, no headers.`;
+    const NEXT_STEPS_DEFAULT = `Based on the project context below, suggest 3-5 concrete next steps for the upcoming period. Return ONLY a JSON array in this exact format, nothing else:\n[{"label":"Phase or category","title":"Short action title","description":"One sentence detail"}]`;
+
+    const [execSummaryInstr, keyOutcomesInstr, nextStepsInstr] = await Promise.all([
+      getPrompt("status-report-exec-summary", EXEC_SUMMARY_DEFAULT),
+      getPrompt("status-report-key-outcomes", KEY_OUTCOMES_DEFAULT),
+      getPrompt("status-report-next-steps", NEXT_STEPS_DEFAULT),
+    ]);
+
     if (shouldWrite("executive_summary")) {
       const msg = await anthropic.messages.create({
         model: "claude-haiku-4-5",
@@ -97,7 +107,7 @@ router.post("/admin/status-reports/ai-draft", requireAdmin, async (req: Request,
             role: "user",
             content: `${persona}
 
-Write a concise Executive Summary for this status report. Focus on overall progress, key achievements this period, and current project health. Keep it to 2-3 sentences. Do not use bullet points. Do not include headers.
+${execSummaryInstr}
 
 ${context}
 
@@ -118,7 +128,7 @@ Executive Summary:`,
             role: "user",
             content: `${persona}
 
-Write a Key Outcomes section for this status report. Describe the business or technical value delivered this period — what these activities mean for the client in terms of efficiency, risk reduction, compliance, or strategic progress. Keep it to 2-4 sentences. Plain prose only, no bullet points, no headers.
+${keyOutcomesInstr}
 
 ${context}
 
@@ -139,8 +149,7 @@ Key Outcomes:`,
             role: "user",
             content: `${persona}
 
-Based on the project context below, suggest 3-5 concrete next steps for the upcoming period. Return ONLY a JSON array in this exact format, nothing else:
-[{"label":"Phase or category","title":"Short action title","description":"One sentence detail"}]
+${nextStepsInstr}
 
 ${context}
 

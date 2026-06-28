@@ -6,6 +6,7 @@ import { anthropic } from "@workspace/integrations-anthropic-ai";
 import { PDFDocument, rgb, StandardFonts, type PDFFont, type PDFPage } from "pdf-lib";
 import { uploadFileToSharePoint, graphCredentialsPresent, ensureSharePointFolderAtRoot } from "../lib/graph";
 import { logger } from "../lib/logger";
+import { getPrompt } from "../lib/prompt-loader.ts";
 
 const router = Router();
 
@@ -196,13 +197,12 @@ function buildProjectContext(
   ].filter(Boolean).join("\n");
 }
 
-const AI_PROMPT = (artifactName: string, projectContext: string) =>
-  `You are a senior Microsoft 365 consultant. Generate a professional project artifact document in Markdown format.
+const AI_PROMPT_DEFAULT = `You are a senior Microsoft 365 consultant. Generate a professional project artifact document in Markdown format.
 
 Project Context:
-${projectContext}
+{{projectContext}}
 
-Generate the artifact: "${artifactName}"
+Generate the artifact: "{{artifactName}}"
 
 Requirements:
 - Use proper Markdown headings (##, ###) to structure the document
@@ -212,6 +212,13 @@ Requirements:
 - Length: 400-800 words
 - Do NOT include a top-level title (# heading) — that will be added automatically
 - Start directly with the first section heading (## ...)`;
+
+async function buildArtifactPrompt(artifactName: string, projectContext: string): Promise<string> {
+  const template = await getPrompt("artifact-generator", AI_PROMPT_DEFAULT);
+  return template
+    .replace("{{artifactName}}", artifactName)
+    .replace("{{projectContext}}", projectContext);
+}
 
 // ── Shared pre-flight helper ───────────────────────────────────────────────
 async function loadProjectAndClient(projectId: number): Promise<
@@ -345,7 +352,7 @@ router.post(
         const aiResponse = await anthropic.messages.create({
           model: "claude-sonnet-4-6",
           max_tokens: 8192,
-          messages: [{ role: "user", content: AI_PROMPT(artifactName, projectContext) }],
+          messages: [{ role: "user", content: await buildArtifactPrompt(artifactName, projectContext) }],
         });
         const textBlock = aiResponse.content.find(b => b.type === "text");
         const markdownContent = textBlock && textBlock.type === "text" ? textBlock.text : "";
@@ -455,7 +462,7 @@ router.post(
         const aiResponse = await anthropic.messages.create({
           model: "claude-sonnet-4-6",
           max_tokens: 8192,
-          messages: [{ role: "user", content: AI_PROMPT(artifactName, projectContext) }],
+          messages: [{ role: "user", content: await buildArtifactPrompt(artifactName, projectContext) }],
         });
         const textBlock = aiResponse.content.find(b => b.type === "text");
         const markdown = textBlock && textBlock.type === "text" ? textBlock.text : "";
