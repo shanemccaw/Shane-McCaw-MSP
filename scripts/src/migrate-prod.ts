@@ -191,8 +191,16 @@ const legacyMigrations = [
   {
     name: "0009_manual_script_execution",
     sql: `
-      ALTER TABLE "script_catalog" ADD COLUMN IF NOT EXISTS "execution_mode" text NOT NULL DEFAULT 'automated';
-      ALTER TABLE "script_catalog" ADD COLUMN IF NOT EXISTS "manual_requirements" jsonb NOT NULL DEFAULT '[]'::jsonb;
+      DO $$
+      BEGIN
+        IF EXISTS (
+          SELECT FROM information_schema.tables
+          WHERE table_schema = 'public' AND table_name = 'script_catalog'
+        ) THEN
+          ALTER TABLE "script_catalog" ADD COLUMN IF NOT EXISTS "execution_mode" text NOT NULL DEFAULT 'automated';
+          ALTER TABLE "script_catalog" ADD COLUMN IF NOT EXISTS "manual_requirements" jsonb NOT NULL DEFAULT '[]'::jsonb;
+        END IF;
+      END $$;
       ALTER TABLE "script_run_results" ADD COLUMN IF NOT EXISTS "execution_source" text NOT NULL DEFAULT 'automated';
       ALTER TABLE "script_run_results" ADD COLUMN IF NOT EXISTS "uploaded_by" text;
       ALTER TABLE "script_run_results" ADD COLUMN IF NOT EXISTS "uploaded_at" timestamptz;
