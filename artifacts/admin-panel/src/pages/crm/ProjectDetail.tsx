@@ -5,6 +5,7 @@ import { useToast } from "@/hooks/use-toast";
 import { formatAuditEntry, type AuditLogEntry } from "@/lib/auditFormatter";
 import { KanbanCardModal } from "@/components/KanbanCardModal";
 import type { KanbanCardModalTask } from "@/components/KanbanCardModal";
+import RunLibraryScriptDialog from "@/components/RunLibraryScriptDialog";
 import { TypedCardContent, TASK_TYPE_CONFIG } from "@/components/kanban/TypedCardContent";
 import type { TaskType } from "@/components/kanban/TypedCardContent";
 import StatusReportForm from "@/components/StatusReportForm";
@@ -193,6 +194,7 @@ function DraggableCard({
   const [replyDraft, setReplyDraft] = useState("");
   const [replySending, setReplySending] = useState(false);
   const [replySent, setReplySent] = useState(false);
+  const [runDialogOpen, setRunDialogOpen] = useState(false);
 
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
     id: task.id,
@@ -215,6 +217,7 @@ function DraggableCard({
 
   const customerMeta = (task.taskMetadata ?? {}) as Record<string, unknown>;
   const clientDeliverables = (customerMeta.clientDeliverables ?? []) as string[];
+  const linkedRunbook = customerMeta.linkedRunbook as { scriptId: string; azureRunbookName: string; scriptTitle: string } | null | undefined;
   const hasCustomerContent = Boolean(
     task.taskType ||
     clientDeliverables.length > 0 ||
@@ -492,6 +495,18 @@ function DraggableCard({
             )}
 
             <div className="flex items-center gap-1 mt-1.5 flex-wrap">
+              {linkedRunbook?.azureRunbookName && (
+                <button
+                  onClick={e => { e.stopPropagation(); setRunDialogOpen(true); }}
+                  className="text-[9px] font-semibold px-1.5 py-0.5 rounded border border-emerald-500/30 bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 transition-colors flex items-center gap-0.5"
+                  title="Run linked script"
+                >
+                  <svg className="w-2.5 h-2.5" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clipRule="evenodd" />
+                  </svg>
+                  Run Script
+                </button>
+              )}
               {targetCols.map(col => (
                 <button
                   key={col.key}
@@ -512,6 +527,15 @@ function DraggableCard({
           </div>
         </div>
       </div>
+
+      {runDialogOpen && linkedRunbook?.azureRunbookName && (
+        <RunLibraryScriptDialog
+          scriptId={linkedRunbook.scriptId}
+          scriptTitle={linkedRunbook.scriptTitle}
+          azureRunbookName={linkedRunbook.azureRunbookName}
+          onClose={() => setRunDialogOpen(false)}
+        />
+      )}
     </div>
   );
 }

@@ -50,6 +50,7 @@ const EMPTY_TASK_FORM: EditingTaskForm = {
   artifactsId: null,
   deliverablesId: null,
   isCustomerTask: false,
+  runbookId: null,
 };
 
 // ─── Interfaces ───────────────────────────────────────────────────────────────
@@ -82,6 +83,7 @@ interface StepTask {
   deliverablesId: number | null;
   requiresManualRun: boolean | null;
   isCustomerTask: boolean | null;
+  runbookId: string | null;
 }
 
 interface WorkflowStep {
@@ -117,6 +119,13 @@ interface EditingTaskForm {
   artifactsId: number | null;
   deliverablesId: number | null;
   isCustomerTask: boolean;
+  runbookId: string | null;
+}
+
+interface PublishedScript {
+  id: string;
+  title: string;
+  azureRunbookName: string | null;
 }
 
 // ─── Sub-editors ──────────────────────────────────────────────────────────────
@@ -964,6 +973,14 @@ function SortableTaskRow({
                 👤 Customer Run
               </span>
             )}
+            {task.runbookId && (
+              <span className="text-[9px] bg-blue-900/20 text-[#0078D4] border border-[#0078D4]/30 px-1.5 py-0.5 rounded font-semibold flex items-center gap-0.5">
+                <svg className="w-2 h-2 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clipRule="evenodd" />
+                </svg>
+                Runbook Linked
+              </span>
+            )}
             {task.instructionSetId && (() => {
               const name = instructionSets.find(a => a.id === task.instructionSetId)?.title ?? `#${task.instructionSetId}`;
               return (
@@ -1060,6 +1077,7 @@ function TaskDrawer({
   checklists,
   artifactSets,
   deliverableSets,
+  publishedScripts,
 }: {
   open: boolean;
   isNew: boolean;
@@ -1071,6 +1089,7 @@ function TaskDrawer({
   checklists: AssetItem[];
   artifactSets: AssetItem[];
   deliverableSets: AssetItem[];
+  publishedScripts: PublishedScript[];
 }) {
   const [tab, setTab] = useState<DrawerTab>("basic");
 
@@ -1203,6 +1222,22 @@ function TaskDrawer({
                   </p>
                 </div>
               </div>
+              <div>
+                <label className="block text-xs font-semibold text-[#7D8590] mb-1 uppercase tracking-wide">Linked Runbook</label>
+                <select
+                  value={form.runbookId ?? ""}
+                  onChange={e => setForm(p => ({ ...p, runbookId: e.target.value || null }))}
+                  className="w-full border border-[#30363D] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4]"
+                >
+                  <option value="">None</option>
+                  {publishedScripts.map(s => (
+                    <option key={s.id} value={s.id}>{s.title}</option>
+                  ))}
+                </select>
+                <p className="text-[10px] text-[#7D8590] mt-1">
+                  When set, a "Run Script" button will appear on this task's kanban card and modal.
+                </p>
+              </div>
             </>
           )}
 
@@ -1326,6 +1361,7 @@ export default function WorkflowsPage() {
   const [checklists, setChecklists] = useState<AssetItem[]>([]);
   const [artifactSets, setArtifactSets] = useState<AssetItem[]>([]);
   const [deliverableSets, setDeliverableSets] = useState<AssetItem[]>([]);
+  const [publishedScripts, setPublishedScripts] = useState<PublishedScript[]>([]);
 
   // Two-column view: selected step
   const [selectedStepId, setSelectedStepId] = useState<number | null>(null);
@@ -1406,11 +1442,19 @@ export default function WorkflowsPage() {
     } catch { /* ignore */ }
   }, [fetchWithAuth]);
 
+  const fetchPublishedScripts = useCallback(async () => {
+    try {
+      const res = await fetchWithAuth("/api/admin/ps-scripts/published");
+      if (res.ok) setPublishedScripts(await res.json() as PublishedScript[]);
+    } catch { /* ignore */ }
+  }, [fetchWithAuth]);
+
   useEffect(() => {
     void fetchTemplates();
     void fetchServices();
     void fetchAssetLibrary();
-  }, [fetchTemplates, fetchServices, fetchAssetLibrary]);
+    void fetchPublishedScripts();
+  }, [fetchTemplates, fetchServices, fetchAssetLibrary, fetchPublishedScripts]);
 
   // Sync the "Default Service" dropdown with the authoritative reverse-lookup.
   // services.workflowTemplateId is the source of truth; we derive the linked
@@ -1595,6 +1639,7 @@ export default function WorkflowsPage() {
       artifactsId: task.artifactsId ?? null,
       deliverablesId: task.deliverablesId ?? null,
       isCustomerTask: task.isCustomerTask ?? false,
+      runbookId: task.runbookId ?? null,
     });
     setDrawerIsNew(false);
     setDrawerOpen(true);
@@ -1617,6 +1662,7 @@ export default function WorkflowsPage() {
       artifactsId: taskForm.artifactsId,
       deliverablesId: taskForm.deliverablesId,
       isCustomerTask: taskForm.isCustomerTask,
+      runbookId: taskForm.runbookId || null,
     };
 
     if (drawerIsNew) {
@@ -1681,6 +1727,7 @@ export default function WorkflowsPage() {
               artifactsId: t.artifactsId ?? null,
               deliverablesId: t.deliverablesId ?? null,
               isCustomerTask: t.isCustomerTask ?? false,
+              runbookId: t.runbookId ?? null,
             }),
           }
         )
@@ -2572,6 +2619,7 @@ export default function WorkflowsPage() {
         checklists={checklists}
         artifactSets={artifactSets}
         deliverableSets={deliverableSets}
+        publishedScripts={publishedScripts}
       />
 
       {/* ── Generate assets dialog ──────────────────────────────────────────── */}

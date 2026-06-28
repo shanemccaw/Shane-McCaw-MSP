@@ -115,6 +115,7 @@ async function resolveTemplateTaskMetadata(
     checklist?: unknown;
     artifactsProduced?: unknown;
     clientDeliverables?: unknown;
+    runbookId?: string | null;
   }>
 ): Promise<Array<{
   instructions: string[];
@@ -123,32 +124,45 @@ async function resolveTemplateTaskMetadata(
   clientDeliverables: string[];
   checklistState: Record<string, never>;
   uploadedArtifacts: never[];
+  linkedRunbook: { scriptId: string; azureRunbookName: string; scriptTitle: string } | null;
 }>> {
   const linkedInstrIds = [...new Set(templateTasks.map(t => t.instructionSetId).filter((id): id is number => id !== null && id !== undefined))];
   const linkedClIds = [...new Set(templateTasks.map(t => t.checklistId).filter((id): id is number => id !== null && id !== undefined))];
   const linkedArtIds = [...new Set(templateTasks.map(t => t.artifactsId).filter((id): id is number => id !== null && id !== undefined))];
   const linkedDelIds = [...new Set(templateTasks.map(t => t.deliverablesId).filter((id): id is number => id !== null && id !== undefined))];
+  const linkedRunbookIds = [...new Set(templateTasks.map(t => t.runbookId).filter((id): id is string => !!id))];
 
-  const [instrRows, clRows, artRows, delRows] = await Promise.all([
+  const [instrRows, clRows, artRows, delRows, runbookRows] = await Promise.all([
     linkedInstrIds.length > 0 ? db.select().from(instructionSetsTable).where(inArray(instructionSetsTable.id, linkedInstrIds)) : Promise.resolve([]),
     linkedClIds.length > 0 ? db.select().from(checklistsTable).where(inArray(checklistsTable.id, linkedClIds)) : Promise.resolve([]),
     linkedArtIds.length > 0 ? db.select().from(artifactSetsTable).where(inArray(artifactSetsTable.id, linkedArtIds)) : Promise.resolve([]),
     linkedDelIds.length > 0 ? db.select().from(deliverableSetsTable).where(inArray(deliverableSetsTable.id, linkedDelIds)) : Promise.resolve([]),
+    linkedRunbookIds.length > 0
+      ? db.select({ id: powershellScriptsTable.id, title: powershellScriptsTable.title, azureRunbookName: powershellScriptsTable.azureRunbookName })
+          .from(powershellScriptsTable).where(inArray(powershellScriptsTable.id, linkedRunbookIds))
+      : Promise.resolve([]),
   ]);
 
   const instrMap = new Map(instrRows.map(r => [r.id, r.instructions as string[]]));
   const clMap = new Map(clRows.map(r => [r.id, r.items as Array<{ id: string; label: string }>]));
   const artMap = new Map(artRows.map(r => [r.id, r.artifacts as string[]]));
   const delMap = new Map(delRows.map(r => [r.id, r.deliverables as string[]]));
+  const runbookMap = new Map(runbookRows.map(r => [r.id, r]));
 
-  return templateTasks.map(t => ({
-    instructions: t.instructionSetId ? (instrMap.get(t.instructionSetId) ?? (t.instructions as string[] | null) ?? []) : ((t.instructions as string[] | null) ?? []),
-    checklist: t.checklistId ? (clMap.get(t.checklistId) ?? (t.checklist as Array<{ id: string; label: string }> | null) ?? []) : ((t.checklist as Array<{ id: string; label: string }> | null) ?? []),
-    artifactsProduced: t.artifactsId ? (artMap.get(t.artifactsId) ?? (t.artifactsProduced as string[] | null) ?? []) : ((t.artifactsProduced as string[] | null) ?? []),
-    clientDeliverables: t.deliverablesId ? (delMap.get(t.deliverablesId) ?? (t.clientDeliverables as string[] | null) ?? []) : ((t.clientDeliverables as string[] | null) ?? []),
-    checklistState: {} as Record<string, never>,
-    uploadedArtifacts: [] as never[],
-  }));
+  return templateTasks.map(t => {
+    const runbook = t.runbookId ? runbookMap.get(t.runbookId) : undefined;
+    return {
+      instructions: t.instructionSetId ? (instrMap.get(t.instructionSetId) ?? (t.instructions as string[] | null) ?? []) : ((t.instructions as string[] | null) ?? []),
+      checklist: t.checklistId ? (clMap.get(t.checklistId) ?? (t.checklist as Array<{ id: string; label: string }> | null) ?? []) : ((t.checklist as Array<{ id: string; label: string }> | null) ?? []),
+      artifactsProduced: t.artifactsId ? (artMap.get(t.artifactsId) ?? (t.artifactsProduced as string[] | null) ?? []) : ((t.artifactsProduced as string[] | null) ?? []),
+      clientDeliverables: t.deliverablesId ? (delMap.get(t.deliverablesId) ?? (t.clientDeliverables as string[] | null) ?? []) : ((t.clientDeliverables as string[] | null) ?? []),
+      checklistState: {} as Record<string, never>,
+      uploadedArtifacts: [] as never[],
+      linkedRunbook: runbook && runbook.azureRunbookName
+        ? { scriptId: runbook.id, azureRunbookName: runbook.azureRunbookName, scriptTitle: runbook.title }
+        : null,
+    };
+  });
 }
 
 async function getAdminUnreadMessageCount(): Promise<number> {

@@ -13,6 +13,7 @@ import {
 } from "@/components/kanban/TypedCardContent";
 import ChecklistClosureDialog from "@/components/kanban/ChecklistClosureDialog";
 import type { ClosureField } from "@/components/kanban/ChecklistClosureForm";
+import RunLibraryScriptDialog from "@/components/RunLibraryScriptDialog";
 
 export interface KanbanCardModalTask {
   id: number;
@@ -374,6 +375,7 @@ function GenericKanbanCardModal({ task, stepTitle, open, onClose, mode = "client
   const [saveError, setSaveError] = useState<string | null>(null);
   const [localTask, setLocalTask] = useState<KanbanCardModalTask | null>(null);
   const [taskDetailsOpen, setTaskDetailsOpen] = useState(false);
+  const [runDialogOpen, setRunDialogOpen] = useState(false);
 
   useEffect(() => {
     if (task) {
@@ -445,8 +447,10 @@ function GenericKanbanCardModal({ task, stepTitle, open, onClose, mode = "client
   const checkedCount = checklist.filter(item => checklistState[item.id]).length;
   const banner = getTypedStatusBanner(localTask.taskType, localTask.taskMetadata);
   const typeCfg = localTask.taskType ? TASK_TYPE_CONFIG[localTask.taskType as TaskType] : null;
+  const linkedRunbook = meta.linkedRunbook as { scriptId: string; azureRunbookName: string; scriptTitle: string } | null | undefined;
 
   return (
+    <>
     <Dialog open={open} onOpenChange={o => { if (!o) { setEditing(false); onClose(); } }}>
       <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
         <DialogHeader>
@@ -471,6 +475,19 @@ function GenericKanbanCardModal({ task, stepTitle, open, onClose, mode = "client
                 </DialogTitle>
               )}
             </div>
+
+            {/* Run Script button (when linked runbook present) */}
+            {!editing && linkedRunbook?.azureRunbookName && (
+              <button
+                onClick={() => setRunDialogOpen(true)}
+                className="flex-shrink-0 flex items-center gap-1.5 text-xs font-semibold text-emerald-400 hover:text-emerald-300 border border-emerald-500/30 hover:border-emerald-400 rounded-lg px-2.5 py-1.5 transition-colors mt-0.5"
+              >
+                <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clipRule="evenodd" />
+                </svg>
+                Run Script
+              </button>
+            )}
 
             {/* Edit / Cancel toggle (admin only) */}
             {mode === "admin" && fetchWithAuth && onUpdate && !editing && (
@@ -811,5 +828,15 @@ function GenericKanbanCardModal({ task, stepTitle, open, onClose, mode = "client
         </div>
       </DialogContent>
     </Dialog>
+
+    {runDialogOpen && linkedRunbook?.azureRunbookName && (
+      <RunLibraryScriptDialog
+        scriptId={linkedRunbook.scriptId}
+        scriptTitle={linkedRunbook.scriptTitle}
+        azureRunbookName={linkedRunbook.azureRunbookName}
+        onClose={() => setRunDialogOpen(false)}
+      />
+    )}
+  </>
   );
 }

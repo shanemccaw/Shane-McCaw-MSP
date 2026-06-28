@@ -1184,6 +1184,28 @@ Classify each task and generate PowerShell automation scripts for all M365/Azure
   }
 });
 
+// ─── GET /api/admin/ps-scripts/published ─────────────────────────────────────
+// Returns only scripts that are published to Azure (azureRunbookName IS NOT NULL)
+// Used by workflow template editor to populate the "Linked Runbook" dropdown.
+
+router.get("/admin/ps-scripts/published", requireAdmin, async (_req: Request, res: Response) => {
+  try {
+    const scripts = await db
+      .select({
+        id: powershellScriptsTable.id,
+        title: powershellScriptsTable.title,
+        azureRunbookName: powershellScriptsTable.azureRunbookName,
+      })
+      .from(powershellScriptsTable)
+      .where(isNotNull(powershellScriptsTable.azureRunbookName))
+      .orderBy(powershellScriptsTable.title);
+    res.json(scripts);
+  } catch (err) {
+    logger.error({ err }, "Failed to list published PS scripts");
+    res.status(500).json({ error: "Failed to list published scripts" });
+  }
+});
+
 // ─── GET /api/admin/ps-scripts ────────────────────────────────────────────────
 
 router.get("/admin/ps-scripts", requireAdmin, async (_req: Request, res: Response) => {
