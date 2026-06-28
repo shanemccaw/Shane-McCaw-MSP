@@ -8,7 +8,7 @@ import {
   projectsTable,
   kanbanTasksTable,
 } from "@workspace/db";
-import { eq, desc, and, lte, or, isNull, count, ne, inArray } from "drizzle-orm";
+import { eq, desc, and, lte, or, isNull, count, ne, inArray, lt } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/requireAuth";
 import { generateWorkflowTasks, daysFromNow } from "../lib/workflow-tasks";
 
@@ -178,11 +178,32 @@ router.post("/leads/qualification/:id/snooze", requireAdmin, async (req: Request
   res.json({ ok: true, snoozedUntil });
 });
 
-const VALID_OPPORTUNITY_STATES = ["new", "contacted", "qualified", "converted", "archived"] as const;
+const VALID_OPPORTUNITY_STATES = ["new", "contacted", "qualified", "converted", "archived", "deleted"] as const;
 type OpportunityState = typeof VALID_OPPORTUNITY_STATES[number];
 
 // ── GET /api/opportunities ────────────────────────────────────────────────────
 router.get("/opportunities", requireAdmin, async (req: Request, res: Response) => {
+  // Auto-purge opportunities deleted more than 30 days ago
+  const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+  const staleDeleted = await db
+    .select({ id: opportunitiesTable.id })
+    .from(opportunitiesTable)
+    .where(and(eq(opportunitiesTable.state, "deleted"), lt(opportunitiesTable.deletedAt, thirtyDaysAgo)));
+
+  if (staleDeleted.length > 0) {
+    const staleIds = staleDeleted.map(r => r.id);
+    const linkedKanban = await db
+      .select({ kanbanTaskId: opportunityTasksTable.kanbanTaskId })
+      .from(opportunityTasksTable)
+      .where(inArray(opportunityTasksTable.opportunityId, staleIds));
+    const kanbanIds = linkedKanban.map(r => r.kanbanTaskId).filter((id): id is number => id != null);
+    await db.delete(opportunityTasksTable).where(inArray(opportunityTasksTable.opportunityId, staleIds));
+    if (kanbanIds.length > 0) {
+      await db.delete(kanbanTasksTable).where(inArray(kanbanTasksTable.id, kanbanIds));
+    }
+    await db.delete(opportunitiesTable).where(inArray(opportunitiesTable.id, staleIds));
+  }
+
   const page = Math.max(1, parseInt(String(req.query.page ?? "1"), 10));
   const limit = Math.min(50, Math.max(1, parseInt(String(req.query.limit ?? "20"), 10)));
   const offset = (page - 1) * limit;
@@ -190,10 +211,15 @@ router.get("/opportunities", requireAdmin, async (req: Request, res: Response) =
   const stateParam = typeof req.query.state === "string" && (VALID_OPPORTUNITY_STATES as readonly string[]).includes(req.query.state)
     ? req.query.state as OpportunityState
     : null;
-  // "all" means every state except archived; explicit "archived" filter shows only archived
-  const stateFilter = stateParam
-    ? eq(opportunitiesTable.state, stateParam)
-    : ne(opportunitiesTable.state, "archived");
+
+  // "all" = every state except deleted; "deleted" = only deleted; explicit state = that state
+  const stateFilter = stateParam === "deleted"
+    ? eq(opportunitiesTable.state, "deleted")
+    : stateParam
+      ? eq(opportunitiesTable.state, stateParam)
+      : ne(opportunitiesTable.state, "deleted") && ne(opportunitiesTable.state, "archived")
+        ? and(ne(opportunitiesTable.state, "deleted"), ne(opportunitiesTable.state, "archived"))
+        : ne(opportunitiesTable.state, "deleted");
 
   const [totalRow] = await db.select({ count: count() }).from(opportunitiesTable).where(stateFilter);
   const opportunities = await db
@@ -249,14 +275,60 @@ router.get("/opportunities/:id", requireAdmin, async (req: Request, res: Respons
 });
 
 // ── DELETE /api/opportunities/:id ─────────────────────────────────────────────
+// Soft-delete: marks the opportunity as deleted and records the deletion time.
+// The opportunity moves to "Recently Deleted" and can be restored within 30 days.
 router.delete("/opportunities/:id", requireAdmin, async (req: Request, res: Response) => {
   const id = parseInt(String(req.params.id ?? ""), 10);
   if (isNaN(id)) { res.status(400).json({ error: "Invalid opportunity ID" }); return; }
 
-  const [op] = await db.select({ id: opportunitiesTable.id }).from(opportunitiesTable).where(eq(opportunitiesTable.id, id)).limit(1);
+  const [op] = await db.select({ id: opportunitiesTable.id, state: opportunitiesTable.state })
+    .from(opportunitiesTable).where(eq(opportunitiesTable.id, id)).limit(1);
   if (!op) { res.status(404).json({ error: "Opportunity not found" }); return; }
+  if (op.state === "deleted") { res.status(400).json({ error: "Opportunity is already deleted" }); return; }
 
-  // Collect kanban task IDs linked to this opportunity's tasks before deleting them
+  const [updated] = await db
+    .update(opportunitiesTable)
+    .set({ state: "deleted", deletedAt: new Date() })
+    .where(eq(opportunitiesTable.id, id))
+    .returning();
+
+  res.json({ ok: true, opportunity: updated });
+});
+
+// ── POST /api/opportunities/:id/restore ───────────────────────────────────────
+// Restores a soft-deleted opportunity back to "archived" state.
+router.post("/opportunities/:id/restore", requireAdmin, async (req: Request, res: Response) => {
+  const id = parseInt(String(req.params.id ?? ""), 10);
+  if (isNaN(id)) { res.status(400).json({ error: "Invalid opportunity ID" }); return; }
+
+  const [op] = await db.select({ id: opportunitiesTable.id, state: opportunitiesTable.state })
+    .from(opportunitiesTable).where(eq(opportunitiesTable.id, id)).limit(1);
+  if (!op) { res.status(404).json({ error: "Opportunity not found" }); return; }
+  if (op.state !== "deleted") { res.status(400).json({ error: "Opportunity is not in a deleted state" }); return; }
+
+  const [updated] = await db
+    .update(opportunitiesTable)
+    .set({ state: "archived", deletedAt: null })
+    .where(eq(opportunitiesTable.id, id))
+    .returning();
+
+  res.json({ ok: true, opportunity: updated });
+});
+
+// ── DELETE /api/opportunities/:id/purge ───────────────────────────────────────
+// Hard-deletes an opportunity permanently (only allowed when state = "deleted").
+router.delete("/opportunities/:id/purge", requireAdmin, async (req: Request, res: Response) => {
+  const id = parseInt(String(req.params.id ?? ""), 10);
+  if (isNaN(id)) { res.status(400).json({ error: "Invalid opportunity ID" }); return; }
+
+  const [op] = await db.select({ id: opportunitiesTable.id, state: opportunitiesTable.state })
+    .from(opportunitiesTable).where(eq(opportunitiesTable.id, id)).limit(1);
+  if (!op) { res.status(404).json({ error: "Opportunity not found" }); return; }
+  if (op.state !== "deleted") {
+    res.status(400).json({ error: "Only soft-deleted opportunities can be purged. Delete it first." });
+    return;
+  }
+
   const linkedKanbanTasks = await db
     .select({ kanbanTaskId: opportunityTasksTable.kanbanTaskId })
     .from(opportunityTasksTable)
@@ -266,10 +338,8 @@ router.delete("/opportunities/:id", requireAdmin, async (req: Request, res: Resp
     .map((r) => r.kanbanTaskId)
     .filter((kId): kId is number => kId != null);
 
-  // Delete related opportunity tasks first (FK constraint)
   await db.delete(opportunityTasksTable).where(eq(opportunityTasksTable.opportunityId, id));
 
-  // Delete the matching kanban tasks so they don't pile up as orphans
   if (kanbanTaskIds.length > 0) {
     await db.delete(kanbanTasksTable).where(inArray(kanbanTasksTable.id, kanbanTaskIds));
   }
@@ -285,8 +355,9 @@ router.patch("/opportunities/:id", requireAdmin, async (req: Request, res: Respo
   if (isNaN(id)) { res.status(400).json({ error: "Invalid opportunity ID" }); return; }
 
   const { state } = req.body as { state?: string };
-  if (!state || !(VALID_OPPORTUNITY_STATES as readonly string[]).includes(state)) {
-    res.status(400).json({ error: `Invalid state. Must be one of: ${VALID_OPPORTUNITY_STATES.join(", ")}` });
+  const patchableStates = VALID_OPPORTUNITY_STATES.filter(s => s !== "deleted") as readonly string[];
+  if (!state || !patchableStates.includes(state)) {
+    res.status(400).json({ error: `Invalid state. Must be one of: ${patchableStates.join(", ")}` });
     return;
   }
 

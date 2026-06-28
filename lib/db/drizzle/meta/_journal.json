@@ -645,6 +645,13 @@
       "when": 1782675000000,
       "tag": "0089_add_requires_manual_run",
       "breakpoints": true
+    },
+    {
+      "idx": 90,
+      "version": "7",
+      "when": 1782673427735,
+      "tag": "0090_soft_delete_opportunities",
+      "breakpoints": true
     }
   ]
 }

@@ -11,9 +11,9 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Trash2 } from "lucide-react";
+import { Trash2, RotateCcw, X } from "lucide-react";
 
-type OpportunityState = "new" | "contacted" | "qualified" | "converted" | "archived";
+type OpportunityState = "new" | "contacted" | "qualified" | "converted" | "archived" | "deleted";
 
 interface OpportunityLead {
   id: number;
@@ -35,6 +35,7 @@ interface Opportunity {
   recommendedNextStep: string | null;
   workflowType: string | null;
   state: OpportunityState;
+  deletedAt: string | null;
   createdAt: string;
   lead: OpportunityLead | null;
   taskCount: number;
@@ -90,6 +91,7 @@ const STATE_PILLS: { value: OpportunityState | "all"; label: string }[] = [
   { value: "qualified", label: "Qualified" },
   { value: "converted", label: "Converted" },
   { value: "archived", label: "Archived" },
+  { value: "deleted", label: "Recently Deleted" },
 ];
 
 const STATE_BADGE: Record<OpportunityState, string> = {
@@ -98,7 +100,16 @@ const STATE_BADGE: Record<OpportunityState, string> = {
   qualified: "bg-emerald-500/15 text-emerald-400 border border-emerald-500/20",
   converted: "bg-purple-500/15 text-purple-400 border border-purple-500/20",
   archived: "bg-[#30363D] text-[#7D8590] border border-[#30363D]",
+  deleted: "bg-rose-500/15 text-rose-400 border border-rose-500/20",
 };
+
+function daysUntilPurge(deletedAt: string | null): number | null {
+  if (!deletedAt) return null;
+  const deleted = new Date(deletedAt).getTime();
+  const purgeAt = deleted + 30 * 24 * 60 * 60 * 1000;
+  const remaining = Math.ceil((purgeAt - Date.now()) / (24 * 60 * 60 * 1000));
+  return Math.max(0, remaining);
+}
 
 export default function OpportunitiesPage() {
   const { fetchWithAuth } = useAuth();
@@ -109,7 +120,10 @@ export default function OpportunitiesPage() {
   const [page, setPage] = useState(1);
   const [filterState, setFilterState] = useState<OpportunityState | "all">("all");
   const [deleteTarget, setDeleteTarget] = useState<Opportunity | null>(null);
+  const [purgeTarget, setPurgeTarget] = useState<Opportunity | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [purging, setPurging] = useState(false);
+  const [restoringId, setRestoringId] = useState<number | null>(null);
   const LIMIT = 20;
 
   const fetchOpportunities = useCallback(async (p = 1, state: OpportunityState | "all" = "all") => {
@@ -152,7 +166,37 @@ export default function OpportunitiesPage() {
     }
   };
 
+  const handleRestore = async (op: Opportunity) => {
+    setRestoringId(op.id);
+    try {
+      const res = await fetchWithAuth(`/api/opportunities/${op.id}/restore`, { method: "POST" });
+      if (res.ok) {
+        setOpportunities(prev => prev.filter(o => o.id !== op.id));
+        setTotal(prev => Math.max(0, prev - 1));
+      }
+    } finally {
+      setRestoringId(null);
+    }
+  };
+
+  const handlePurgeConfirm = async () => {
+    if (!purgeTarget) return;
+    setPurging(true);
+    try {
+      const res = await fetchWithAuth(`/api/opportunities/${purgeTarget.id}/purge`, { method: "DELETE" });
+      if (res.ok) {
+        setOpportunities(prev => prev.filter(op => op.id !== purgeTarget.id));
+        setTotal(prev => Math.max(0, prev - 1));
+      }
+    } finally {
+      setPurging(false);
+      setPurgeTarget(null);
+    }
+  };
+
   const totalPages = Math.ceil(total / LIMIT);
+
+  const isDeletedView = filterState === "deleted";
 
   return (
     <div className="p-4 sm:p-6 max-w-[1200px]">
@@ -171,8 +215,12 @@ export default function OpportunitiesPage() {
             onClick={() => handleFilterChange(pill.value)}
             className={`px-3 py-1 rounded-full text-xs font-semibold transition-colors border ${
               filterState === pill.value
-                ? "bg-[#0078D4] text-white border-[#0078D4]"
-                : "bg-transparent text-[#7D8590] border-[#30363D] hover:border-[#0078D4]/50 hover:text-[#E6EDF3]"
+                ? pill.value === "deleted"
+                  ? "bg-rose-600 text-white border-rose-600"
+                  : "bg-[#0078D4] text-white border-[#0078D4]"
+                : pill.value === "deleted"
+                  ? "bg-transparent text-rose-400/70 border-rose-500/30 hover:border-rose-500/60 hover:text-rose-300"
+                  : "bg-transparent text-[#7D8590] border-[#30363D] hover:border-[#0078D4]/50 hover:text-[#E6EDF3]"
             }`}
           >
             {pill.label}
@@ -182,6 +230,17 @@ export default function OpportunitiesPage() {
           <span className="ml-auto text-xs text-muted-foreground self-center">{total} total</span>
         )}
       </div>
+
+      {/* Recently Deleted banner */}
+      {isDeletedView && (
+        <div className="mb-4 flex items-start gap-3 bg-rose-500/10 border border-rose-500/20 rounded-xl px-4 py-3">
+          <Trash2 className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
+          <p className="text-sm text-rose-300">
+            Deleted opportunities are kept for <span className="font-semibold">30 days</span> before being permanently removed.
+            Restore an opportunity to move it back to <span className="font-semibold">Archived</span>.
+          </p>
+        </div>
+      )}
 
       {loading ? (
         <div className="flex items-center justify-center py-32">
@@ -193,85 +252,123 @@ export default function OpportunitiesPage() {
             <path strokeLinecap="round" strokeLinejoin="round" d="M11.48 3.499a.562.562 0 011.04 0l2.125 5.111a.563.563 0 00.475.345l5.518.442c.499.04.701.663.321.988l-4.204 3.602a.563.563 0 00-.182.557l1.285 5.385a.562.562 0 01-.84.61l-4.725-2.885a.563.563 0 00-.586 0L6.982 20.54a.562.562 0 01-.84-.61l1.285-5.386a.562.562 0 00-.182-.557l-4.204-3.602a.562.562 0 01.321-.988l5.518-.442a.563.563 0 00.475-.345L11.48 3.5z" />
           </svg>
           <p className="text-sm font-medium text-muted-foreground">
-            {filterState === "all" ? "No opportunities yet" : `No ${filterState} opportunities`}
+            {isDeletedView ? "No recently deleted opportunities" : filterState === "all" ? "No opportunities yet" : `No ${filterState} opportunities`}
           </p>
           <p className="text-xs text-muted-foreground/60 mt-1">
-            {filterState === "all"
-              ? "Opportunities are created when you approve a lead qualification. Edit a lead's profile to trigger scoring."
-              : "Try selecting a different filter above."}
+            {isDeletedView
+              ? "Opportunities you delete will appear here for 30 days."
+              : filterState === "all"
+                ? "Opportunities are created when you approve a lead qualification. Edit a lead's profile to trigger scoring."
+                : "Try selecting a different filter above."}
           </p>
         </div>
       ) : (
         <div className="space-y-4">
-          {opportunities.map(op => (
-            <div
-              key={op.id}
-              onClick={() => navigate(`/crm/opportunities/${op.id}`)}
-              className="bg-[#161B22] border border-border rounded-xl p-5 cursor-pointer hover:border-[#0078D4]/50 hover:bg-[#1C2128] transition-all group"
-            >
-              <div className="flex items-start gap-4 flex-wrap">
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-3 mb-1 flex-wrap">
-                    <ScoreBadge score={op.scoreSnapshot} />
-                    <h3 className="text-base font-bold text-[#E6EDF3] group-hover:text-[#0078D4] transition-colors">
-                      {op.lead?.name ?? `Lead #${op.leadId}`}
-                    </h3>
-                    {op.lead?.company && (
-                      <span className="text-sm text-muted-foreground">{op.lead.company}</span>
+          {opportunities.map(op => {
+            const daysLeft = isDeletedView ? daysUntilPurge(op.deletedAt) : null;
+            return (
+              <div
+                key={op.id}
+                onClick={() => !isDeletedView && navigate(`/crm/opportunities/${op.id}`)}
+                className={`bg-[#161B22] border border-border rounded-xl p-5 transition-all group ${
+                  isDeletedView
+                    ? "opacity-70 cursor-default"
+                    : "cursor-pointer hover:border-[#0078D4]/50 hover:bg-[#1C2128]"
+                }`}
+              >
+                <div className="flex items-start gap-4 flex-wrap">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-3 mb-1 flex-wrap">
+                      <ScoreBadge score={op.scoreSnapshot} />
+                      <h3 className="text-base font-bold text-[#E6EDF3] group-hover:text-[#0078D4] transition-colors">
+                        {op.lead?.name ?? `Lead #${op.leadId}`}
+                      </h3>
+                      {op.lead?.company && (
+                        <span className="text-sm text-muted-foreground">{op.lead.company}</span>
+                      )}
+                      <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full capitalize ${STATE_BADGE[op.state]}`}>
+                        {op.state === "deleted" ? "Deleted" : op.state}
+                      </span>
+                      {daysLeft !== null && (
+                        <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${daysLeft <= 3 ? "bg-rose-500/20 text-rose-300" : "bg-[#30363D] text-[#7D8590]"}`}>
+                          {daysLeft === 0 ? "Purges today" : `Purges in ${daysLeft}d`}
+                        </span>
+                      )}
+                    </div>
+                    {op.recommendedNextStep && !isDeletedView && (
+                      <div className="flex items-center gap-1.5 mt-1">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-3.5 h-3.5 text-[#0078D4] shrink-0">
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                        </svg>
+                        <span className="text-xs font-medium text-[#0078D4]">{op.recommendedNextStep}</span>
+                      </div>
                     )}
-                    <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full capitalize ${STATE_BADGE[op.state]}`}>
-                      {op.state}
-                    </span>
+                    {op.workflowType && (
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Workflow: {WORKFLOW_LABELS[op.workflowType] ?? op.workflowType}
+                      </p>
+                    )}
                   </div>
-                  {op.recommendedNextStep && (
-                    <div className="flex items-center gap-1.5 mt-1">
-                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-3.5 h-3.5 text-[#0078D4] shrink-0">
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
-                      </svg>
-                      <span className="text-xs font-medium text-[#0078D4]">{op.recommendedNextStep}</span>
+
+                  <div className="flex flex-col gap-2 shrink-0 text-right">
+                    <div className="flex items-center gap-4 justify-end">
+                      <div className="text-center">
+                        <p className="text-xs text-muted-foreground">Tasks</p>
+                        <p className="text-lg font-black text-[#E6EDF3]">{op.taskCount}</p>
+                      </div>
+                      <div className="text-center">
+                        <p className="text-xs text-muted-foreground">Score</p>
+                        <p className="text-lg font-black text-[#E6EDF3]">{op.scoreSnapshot}<span className="text-xs font-normal text-muted-foreground">/100</span></p>
+                      </div>
+
+                      {isDeletedView ? (
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            onClick={e => { e.stopPropagation(); void handleRestore(op); }}
+                            disabled={restoringId === op.id}
+                            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 border border-emerald-500/20 transition-colors disabled:opacity-50"
+                            title="Restore opportunity"
+                          >
+                            <RotateCcw className="w-3.5 h-3.5" />
+                            {restoringId === op.id ? "Restoring…" : "Restore"}
+                          </button>
+                          <button
+                            onClick={e => { e.stopPropagation(); setPurgeTarget(op); }}
+                            className="p-1.5 rounded-lg text-[#7D8590] hover:text-rose-400 hover:bg-rose-500/10 transition-colors"
+                            title="Permanently delete"
+                          >
+                            <X className="w-4 h-4" />
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          onClick={e => { e.stopPropagation(); setDeleteTarget(op); }}
+                          className="p-1.5 rounded-lg text-[#7D8590] hover:text-rose-400 hover:bg-rose-500/10 transition-colors opacity-0 group-hover:opacity-100"
+                          title="Move to trash"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      )}
                     </div>
-                  )}
-                  {op.workflowType && (
-                    <p className="text-xs text-muted-foreground mt-1">
-                      Workflow: {WORKFLOW_LABELS[op.workflowType] ?? op.workflowType}
+                    <p className="text-xs text-muted-foreground">
+                      {isDeletedView && op.deletedAt
+                        ? `Deleted ${new Date(op.deletedAt).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}`
+                        : new Date(op.createdAt).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}
                     </p>
-                  )}
-                </div>
-
-                <div className="flex flex-col gap-2 shrink-0 text-right">
-                  <div className="flex items-center gap-4 justify-end">
-                    <div className="text-center">
-                      <p className="text-xs text-muted-foreground">Tasks</p>
-                      <p className="text-lg font-black text-[#E6EDF3]">{op.taskCount}</p>
-                    </div>
-                    <div className="text-center">
-                      <p className="text-xs text-muted-foreground">Score</p>
-                      <p className="text-lg font-black text-[#E6EDF3]">{op.scoreSnapshot}<span className="text-xs font-normal text-muted-foreground">/100</span></p>
-                    </div>
-                    <button
-                      onClick={e => { e.stopPropagation(); setDeleteTarget(op); }}
-                      className="p-1.5 rounded-lg text-[#7D8590] hover:text-rose-400 hover:bg-rose-500/10 transition-colors opacity-0 group-hover:opacity-100"
-                      title="Delete opportunity"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
                   </div>
-                  <p className="text-xs text-muted-foreground">
-                    {new Date(op.createdAt).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}
-                  </p>
+                </div>
+
+                {/* Sub-score mini bars */}
+                <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2">
+                  <SubScoreMini label="Fit" val={op.scoreFit} max={25} color="bg-sky-500" />
+                  <SubScoreMini label="Pain" val={op.scorePain} max={30} color="bg-orange-500" />
+                  <SubScoreMini label="Maturity" val={op.scoreMaturity} max={20} color="bg-emerald-500" />
+                  <SubScoreMini label="Intent" val={op.scoreIntent} max={15} color="bg-violet-500" />
+                  <SubScoreMini label="Urgency" val={op.scoreUrgency} max={10} color="bg-rose-500" />
                 </div>
               </div>
-
-              {/* Sub-score mini bars */}
-              <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2">
-                <SubScoreMini label="Fit" val={op.scoreFit} max={25} color="bg-sky-500" />
-                <SubScoreMini label="Pain" val={op.scorePain} max={30} color="bg-orange-500" />
-                <SubScoreMini label="Maturity" val={op.scoreMaturity} max={20} color="bg-emerald-500" />
-                <SubScoreMini label="Intent" val={op.scoreIntent} max={15} color="bg-violet-500" />
-                <SubScoreMini label="Urgency" val={op.scoreUrgency} max={10} color="bg-rose-500" />
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
 
@@ -295,16 +392,17 @@ export default function OpportunitiesPage() {
         </div>
       )}
 
+      {/* Soft-delete confirmation */}
       <AlertDialog open={!!deleteTarget} onOpenChange={open => { if (!open) setDeleteTarget(null); }}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete opportunity?</AlertDialogTitle>
+            <AlertDialogTitle>Move to Recently Deleted?</AlertDialogTitle>
             <AlertDialogDescription>
-              This will permanently delete the opportunity for{" "}
               <span className="font-semibold text-foreground">
                 {deleteTarget?.lead?.name ?? `Lead #${deleteTarget?.leadId}`}
               </span>{" "}
-              and all its associated tasks. This cannot be undone.
+              will be moved to <span className="font-semibold text-foreground">Recently Deleted</span>. You can
+              restore it within 30 days. After that it will be permanently removed.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -314,7 +412,33 @@ export default function OpportunitiesPage() {
               disabled={deleting}
               className="bg-rose-600 hover:bg-rose-700 focus:ring-rose-600"
             >
-              {deleting ? "Deleting…" : "Delete"}
+              {deleting ? "Moving…" : "Move to Trash"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Hard purge confirmation */}
+      <AlertDialog open={!!purgeTarget} onOpenChange={open => { if (!open) setPurgeTarget(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Permanently delete?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently delete the opportunity for{" "}
+              <span className="font-semibold text-foreground">
+                {purgeTarget?.lead?.name ?? `Lead #${purgeTarget?.leadId}`}
+              </span>{" "}
+              and all its associated tasks. <span className="font-semibold text-foreground">This cannot be undone.</span>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={purging}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handlePurgeConfirm}
+              disabled={purging}
+              className="bg-rose-600 hover:bg-rose-700 focus:ring-rose-600"
+            >
+              {purging ? "Deleting…" : "Delete Forever"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
