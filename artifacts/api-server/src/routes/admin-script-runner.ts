@@ -439,7 +439,7 @@ router.post("/admin/scripts/validate-syntax", requireAdmin, async (req: Request,
  * Sends the log output from a completed runbook job to Claude for AI-powered
  * analysis. Returns structured JSON: summary, risks, recommendations, nextSteps.
  */
-router.post("/admin/scripts/analyze", requireAdmin, async (req: Request, res: Response) => {
+router.post("/admin/scripts/analyze-output", requireAdmin, async (req: Request, res: Response) => {
   const { output, runbookName, customerName } = req.body as {
     output?: string;
     runbookName?: string;

@@ -1650,7 +1650,7 @@ function InlineScriptRunner({
     setAiTab("summary");
     const clientName = clients.find(c => c.id === selectedClientId)?.name;
     try {
-      const res = await fetchWithAuth("/api/admin/scripts/analyze", {
+      const res = await fetchWithAuth("/api/admin/scripts/analyze-output", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ output: logLines.join("\n"), runbookName: selectedRunbook || undefined, customerName: clientName }),
