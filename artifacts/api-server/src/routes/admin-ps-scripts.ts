@@ -301,7 +301,7 @@ Write the complete PowerShell script followed by the permissions JSON block.`,
         { scriptBodyPrefix: scriptBody.slice(0, 300) },
         "generate endpoint: fallback result contains no PS keywords — AI returned prose only; refusing to send to client",
       );
-      res.status(500).json({ error: "AI returned a summary instead of a script. Please try again." });
+      res.status(500).json({ error: "AI returned a summary instead of a script. Please try again.", aiResponse: scriptBody.slice(0, 3000) });
       return;
     }
 
@@ -1240,7 +1240,7 @@ Provide the corrected script in a \`\`\`powershell fence. Then include a <fix-su
         { fixedScriptPrefix: fixedScript.slice(0, 300) },
         "fix endpoint: fallback result contains no PS keywords — AI returned prose only; refusing to overwrite editor",
       );
-      res.status(500).json({ error: "AI returned a summary instead of a script. Please try again." });
+      res.status(500).json({ error: "AI returned a summary instead of a script. Please try again.", aiResponse: fixedScript.slice(0, 3000) });
       return;
     }
 
@@ -1356,7 +1356,9 @@ Rules:
         { moduleCount: validModules.length },
         "modularize endpoint: one or more modules contain no PS keywords — AI returned prose only; refusing to overwrite editor",
       );
-      res.status(500).json({ error: "AI returned a summary instead of a script. Please try again." });
+      const proseModules = validModules.filter((m) => !hasPsKeywords(m.content));
+      const aiResponseText = proseModules.map((m) => `### ${m.filename}\n${m.content}`).join("\n\n").slice(0, 3000);
+      res.status(500).json({ error: "AI returned a summary instead of a script. Please try again.", aiResponse: aiResponseText });
       return;
     }
 

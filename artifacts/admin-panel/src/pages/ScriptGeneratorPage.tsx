@@ -123,6 +123,15 @@ const IDE_LEFT_MODE_KEY = "sg:ideLeftMode";
 
 // ─── API helpers ──────────────────────────────────────────────────────────────
 
+class ApiError extends Error {
+  aiResponse?: string;
+  constructor(message: string, aiResponse?: string) {
+    super(message);
+    this.name = "ApiError";
+    this.aiResponse = aiResponse;
+  }
+}
+
 async function apiFetch(path: string, token: string, opts: RequestInit = {}) {
   const res = await fetch(`/api${path}`, {
     ...opts,
@@ -133,8 +142,8 @@ async function apiFetch(path: string, token: string, opts: RequestInit = {}) {
     },
   });
   if (!res.ok) {
-    const body = await res.json().catch(() => ({ error: "Request failed" })) as { error?: string };
-    throw new Error(body.error ?? `HTTP ${res.status}`);
+    const body = await res.json().catch(() => ({ error: "Request failed" })) as { error?: string; aiResponse?: string };
+    throw new ApiError(body.error ?? `HTTP ${res.status}`, body.aiResponse);
   }
   if (res.status === 204) return null;
   return res.json();
@@ -2322,6 +2331,56 @@ function GenerateFromServiceDialog({
   );
 }
 
+// ─── Summary Error Banner ─────────────────────────────────────────────────────
+
+function SummaryErrorBanner({
+  kind,
+  aiResponse,
+  onRetry,
+  onDismiss,
+}: {
+  kind: "generate" | "fix";
+  aiResponse: string | null;
+  onRetry: () => void;
+  onDismiss: () => void;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  return (
+    <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl overflow-hidden">
+      <div className="flex items-start gap-3 px-3 py-2.5">
+        <svg className="w-4 h-4 text-amber-400 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
+        <div className="flex-1 min-w-0">
+          <p className="text-xs font-semibold text-amber-400 mb-0.5">AI returned a summary instead of a script</p>
+          <p className="text-[11px] text-amber-300/70">
+            {kind === "generate"
+              ? "The model described the script instead of writing it. Your editor is unchanged."
+              : "The model described the fix. Your original script has not been modified."}
+          </p>
+        </div>
+        <div className="flex items-center gap-1.5 flex-shrink-0">
+          {aiResponse && (
+            <button
+              onClick={() => setExpanded((v) => !v)}
+              className="text-[10px] font-medium px-2 py-1 rounded border border-amber-500/30 text-amber-400/70 hover:text-amber-400 hover:bg-amber-500/10 transition-colors"
+              title="View what the AI said"
+            >
+              {expanded ? "Hide" : "View response"}
+            </button>
+          )}
+          <button onClick={onRetry} className="text-xs font-semibold px-2.5 py-1.5 rounded-lg bg-amber-500/15 border border-amber-500/30 text-amber-400 hover:bg-amber-500/25 transition-colors">Retry</button>
+          <button onClick={onDismiss} className="p-1 text-amber-400/50 hover:text-amber-400 rounded transition-colors"><svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg></button>
+        </div>
+      </div>
+      {expanded && aiResponse && (
+        <div className="border-t border-amber-500/20 px-3 py-2.5 bg-amber-500/5">
+          <p className="text-[10px] font-semibold text-amber-400/60 uppercase tracking-wide mb-1.5">AI response</p>
+          <pre className="text-[10px] text-amber-300/60 font-mono whitespace-pre-wrap leading-relaxed max-h-48 overflow-y-auto">{aiResponse}</pre>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Bottom Panel ─────────────────────────────────────────────────────────────
 
 function BottomPanel({
@@ -2338,6 +2397,7 @@ function BottomPanel({
   generating,
   fixing,
   summaryError,
+  summaryAiResponse,
   fixSummary,
   onGenerate,
   onFixBug,
@@ -2360,6 +2420,7 @@ function BottomPanel({
   generating: boolean;
   fixing: boolean;
   summaryError: "generate" | "fix" | null;
+  summaryAiResponse: string | null;
   fixSummary: string;
   onGenerate: () => void;
   onFixBug: () => void;
@@ -2390,17 +2451,12 @@ function BottomPanel({
       <div className="flex-1 overflow-y-auto p-3 space-y-3">
         {/* Summary-error retry banner */}
         {summaryError && (
-          <div className="flex items-start gap-3 bg-amber-500/10 border border-amber-500/30 rounded-xl px-3 py-2.5">
-            <svg className="w-4 h-4 text-amber-400 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
-            <div className="flex-1 min-w-0">
-              <p className="text-xs font-semibold text-amber-400 mb-0.5">AI returned a summary instead of a script</p>
-              <p className="text-[11px] text-amber-300/70">{summaryError === "generate" ? "The model described the script instead of writing it. Your editor is unchanged." : "The model described the fix. Your original script has not been modified."}</p>
-            </div>
-            <div className="flex items-center gap-1.5 flex-shrink-0">
-              <button onClick={summaryError === "generate" ? onGenerate : onFixBug} className="text-xs font-semibold px-2.5 py-1.5 rounded-lg bg-amber-500/15 border border-amber-500/30 text-amber-400 hover:bg-amber-500/25 transition-colors">Retry</button>
-              <button onClick={onDismissSummaryError} className="p-1 text-amber-400/50 hover:text-amber-400 rounded transition-colors"><svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg></button>
-            </div>
-          </div>
+          <SummaryErrorBanner
+            kind={summaryError}
+            aiResponse={summaryAiResponse}
+            onRetry={summaryError === "generate" ? onGenerate : onFixBug}
+            onDismiss={onDismissSummaryError}
+          />
         )}
 
         {/* Fix summary callout */}
@@ -2538,6 +2594,7 @@ export default function ScriptGeneratorPage() {
   const [bugDescription, setBugDescription] = useState("");
   const [fixSummary, setFixSummary] = useState("");
   const [summaryError, setSummaryError] = useState<"generate" | "fix" | null>(null);
+  const [summaryAiResponse, setSummaryAiResponse] = useState<string | null>(null);
   const [modules, setModules] = useState<ScriptModuleItem[]>([]);
   const [editorScript, setEditorScript] = useState<PsScriptDetail | null>(null);
   const [generateFromServiceOpen, setGenerateFromServiceOpen] = useState(false);
@@ -2717,8 +2774,10 @@ export default function ScriptGeneratorPage() {
       setPermissions(result.permissions);
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Unknown error";
-      if (msg.toLowerCase().includes("summary instead of a script")) setSummaryError("generate");
-      else toast({ title: "Generation failed", description: msg, variant: "destructive" });
+      if (msg.toLowerCase().includes("summary instead of a script")) {
+        setSummaryError("generate");
+        setSummaryAiResponse(e instanceof ApiError ? (e.aiResponse ?? null) : null);
+      } else toast({ title: "Generation failed", description: msg, variant: "destructive" });
     } finally {
       setGenerating(false);
     }
@@ -2745,8 +2804,10 @@ export default function ScriptGeneratorPage() {
       setBugDescription("");
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Unknown error";
-      if (msg.toLowerCase().includes("summary instead of a script")) setSummaryError("fix");
-      else toast({ title: "Fix failed", description: msg, variant: "destructive" });
+      if (msg.toLowerCase().includes("summary instead of a script")) {
+        setSummaryError("fix");
+        setSummaryAiResponse(e instanceof ApiError ? (e.aiResponse ?? null) : null);
+      } else toast({ title: "Fix failed", description: msg, variant: "destructive" });
     } finally {
       setFixing(false);
     }
@@ -3211,10 +3272,11 @@ export default function ScriptGeneratorPage() {
                 generating={generating}
                 fixing={fixing}
                 summaryError={summaryError}
+                summaryAiResponse={summaryAiResponse}
                 fixSummary={fixSummary}
                 onGenerate={generate}
                 onFixBug={fixBug}
-                onDismissSummaryError={() => setSummaryError(null)}
+                onDismissSummaryError={() => { setSummaryError(null); setSummaryAiResponse(null); }}
                 onDismissFixSummary={() => setFixSummary("")}
                 activeTab={bottomActiveTab}
                 onActiveTabChange={setBottomActiveTab}
