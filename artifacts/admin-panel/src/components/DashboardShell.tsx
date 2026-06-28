@@ -13,6 +13,7 @@ interface NavItem {
   label: string;
   path: string;
   icon: ReactNode;
+  description?: string;
 }
 
 interface WorkspaceEntry {
@@ -21,6 +22,7 @@ interface WorkspaceEntry {
   defaultPath: string;
   icon: ReactNode;
   hasBadge?: boolean;
+  description: string;
 }
 
 // ─── Six Workspace Navigation Entries ────────────────────────────────────────
@@ -30,6 +32,7 @@ const WORKSPACES: WorkspaceEntry[] = [
     label: "Command",
     prefix: "/command",
     defaultPath: "/command/overview",
+    description: "Overview, analytics & AI tools",
     icon: (
       <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 5a1 1 0 011-1h4a1 1 0 011 1v5a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM14 5a1 1 0 011-1h4a1 1 0 011 1v2a1 1 0 01-1 1h-4a1 1 0 01-1-1V5zM4 15a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1H5a1 1 0 01-1-1v-4zM14 13a1 1 0 011-1h4a1 1 0 011 1v6a1 1 0 01-1 1h-4a1 1 0 01-1-1v-6z" />
@@ -40,6 +43,7 @@ const WORKSPACES: WorkspaceEntry[] = [
     label: "Pipeline",
     prefix: "/pipeline",
     defaultPath: "/pipeline/leads",
+    description: "Leads, clients & opportunities",
     icon: (
       <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 018.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0111.964-3.07M12 6.375a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zm8.25 2.25a2.625 2.625 0 11-5.25 0 2.625 2.625 0 015.25 0z" />
@@ -50,6 +54,7 @@ const WORKSPACES: WorkspaceEntry[] = [
     label: "Delivery",
     prefix: "/delivery",
     defaultPath: "/delivery/projects",
+    description: "Projects, workflows & activity",
     icon: (
       <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
@@ -60,6 +65,7 @@ const WORKSPACES: WorkspaceEntry[] = [
     label: "Finance",
     prefix: "/finance",
     defaultPath: "/finance/invoices",
+    description: "Invoices, purchases & contracts",
     icon: (
       <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 14l6-6m-5.5.5h.01m4.99 5h.01M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16l3.5-2 3.5 2 3.5-2 3.5 2z" />
@@ -70,6 +76,7 @@ const WORKSPACES: WorkspaceEntry[] = [
     label: "Content & Offers",
     prefix: "/content",
     defaultPath: "/content/articles",
+    description: "Articles, services & templates",
     icon: (
       <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 20H5a2 2 0 01-2-2V6a2 2 0 012-2h10a2 2 0 012 2v1m2 13a2 2 0 01-2-2V7m2 13a2 2 0 002-2V9a2 2 0 00-2-2h-2m-4-3H9M7 16h6M7 8h6v4H7V8z" />
@@ -80,6 +87,7 @@ const WORKSPACES: WorkspaceEntry[] = [
     label: "System",
     prefix: "/system",
     defaultPath: "/system/inbox",
+    description: "Inbox, security & settings",
     hasBadge: true,
     icon: (
       <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -190,6 +198,7 @@ function NavItemLink({
   badge?: number;
   href?: string;
 }) {
+  const showDescription = !collapsed && !isActive && !!item.description;
   const linkEl = (
     <Link
       href={href ?? item.path}
@@ -210,7 +219,16 @@ function NavItemLink({
           </span>
         )}
       </span>
-      {!collapsed && <span className="truncate flex-1">{item.label}</span>}
+      {!collapsed && (
+        <span className="flex-1 min-w-0 flex flex-col">
+          <span className="truncate leading-snug">{item.label}</span>
+          {showDescription && (
+            <span className="text-[10px] font-normal text-[#484F58] truncate leading-snug mt-0.5">
+              {item.description}
+            </span>
+          )}
+        </span>
+      )}
       {!collapsed && !!badge && (
         <span className="ml-auto min-w-[18px] h-[18px] bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center px-1 leading-none shrink-0">
           {badge > 99 ? "99+" : badge}
@@ -386,7 +404,7 @@ function SidebarContent({
         {WORKSPACES.map(ws => {
           const isActive = location === ws.prefix || location.startsWith(ws.prefix + "/");
           const badge = ws.hasBadge ? unreadEmailCount : 0;
-          const navItem: NavItem = { label: ws.label, path: ws.defaultPath, icon: ws.icon };
+          const navItem: NavItem = { label: ws.label, path: ws.defaultPath, icon: ws.icon, description: ws.description };
           return (
             <NavItemLink
               key={ws.label}
