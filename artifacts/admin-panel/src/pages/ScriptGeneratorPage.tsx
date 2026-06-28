@@ -1292,6 +1292,9 @@ function LibrarySidebar({
                         <svg className="w-3 h-3 text-[#484F58] group-hover:text-[#58A6FF] flex-shrink-0 transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
                       )}
                       <span className="flex-1 text-xs text-[#C9D1D9] truncate">{s.title}</span>
+                      {s.tags?.includes("manual") && (
+                        <span className="flex-shrink-0 text-[8px] font-semibold px-1 py-0.5 rounded bg-yellow-500/20 border border-yellow-500/40 text-yellow-400 uppercase tracking-wide">Manual</span>
+                      )}
                     </button>
                   );
                 } else {
@@ -2083,6 +2086,7 @@ function GenerateFromServiceDialog({
   onClose,
   onScriptGenerated,
   onPackageGenerated,
+  onManualScriptGenerated,
 }: {
   token: string;
   baseInstructions: string;
@@ -2090,6 +2094,7 @@ function GenerateFromServiceDialog({
   onClose: () => void;
   onScriptGenerated: (title: string, script: string, permissions: PsScriptPermissions) => void;
   onPackageGenerated: (packageId: string, title: string, modules: ScriptModuleItem[], permissions: PsScriptPermissions) => void;
+  onManualScriptGenerated: (detail: PsScriptDetail) => void;
 }) {
   const { toast } = useToast();
   const [services, setServices] = useState<ServiceListItem[]>([]);
@@ -2154,14 +2159,15 @@ function GenerateFromServiceDialog({
     setHumanOnlyExplanation(null);
     try {
       type GenResult = {
-        type: "single" | "package" | "human-only";
+        type: "single" | "package" | "human-only" | "manual";
         title: string;
         explanation?: string;
         script?: string;
         packageId?: string;
         modules?: ScriptModuleItem[];
+        savedScript?: PsScriptDetail;
         humanOnlyTasks: string[];
-        permissions: PsScriptPermissions;
+        permissions?: PsScriptPermissions;
       };
       const result = (await apiFetch("/admin/ps-scripts/generate-from-service", token, {
         method: "POST",
@@ -2183,8 +2189,16 @@ function GenerateFromServiceDialog({
       } else if (result.type === "package" && result.packageId && result.modules) {
         const pkgPerms: PsScriptPermissions = result.permissions ?? { appPermissions: [], delegatedPermissions: [], notes: "" };
         setPackageResult({ packageId: result.packageId, title: result.title, modules: result.modules, permissions: pkgPerms });
+      } else if (result.type === "manual" && result.savedScript) {
+        onManualScriptGenerated(result.savedScript);
+        toast({
+          title: "Manual script saved",
+          description: "This script requires interactive execution under a licensed user account.",
+        });
+        onClose();
       } else if (result.type === "single" && result.script) {
-        onScriptGenerated(result.title, result.script, result.permissions);
+        const perms = result.permissions ?? { appPermissions: [], delegatedPermissions: [], notes: "" };
+        onScriptGenerated(result.title, result.script, perms);
         onClose();
       } else {
         toast({ title: "Generation returned unexpected format", variant: "destructive" });
@@ -3391,6 +3405,9 @@ export default function ScriptGeneratorPage() {
               <div className="flex items-center gap-1.5 min-w-0 mr-auto">
                 <svg className="w-3.5 h-3.5 text-[#58A6FF] flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
                 <span className="text-xs font-medium text-[#E6EDF3] truncate max-w-xs">{tabLabel}</span>
+                {editorScript?.tags?.includes("manual") && (
+                  <span className="flex-shrink-0 text-[9px] font-semibold px-1.5 py-0.5 rounded-full bg-yellow-500/20 border border-yellow-500/40 text-yellow-400 uppercase tracking-wide" title="Must be run locally under a licensed user account — cannot run as a service principal">Manual</span>
+                )}
                 {isUnsaved && <span className="w-1.5 h-1.5 rounded-full bg-[#E6EDF3]/50 flex-shrink-0" title="Unsaved changes" />}
                 {editorScript && (
                   <button
@@ -3643,6 +3660,10 @@ export default function ScriptGeneratorPage() {
             setFixSummary("");
             setSummaryError(null);
             toast({ title: "Package generated", description: title });
+          }}
+          onManualScriptGenerated={(detail) => {
+            setScripts((prev) => [detail, ...prev.filter((s) => s.id !== detail.id)]);
+            handleLoadInEditor(detail);
           }}
         />
       )}

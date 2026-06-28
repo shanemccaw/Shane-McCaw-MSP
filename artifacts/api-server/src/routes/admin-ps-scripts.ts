@@ -335,18 +335,31 @@ const GENERATE_FROM_SERVICE_SYSTEM = `You are an expert Microsoft 365 PowerShell
 You will receive a consulting service definition and its delivery workflow (phases + tasks).
 
 STEP 1 — CLASSIFY every task as one of:
-  AUTOMATABLE — executable as PowerShell against M365/Azure APIs:
+  AUTOMATABLE — executable as PowerShell using app-only auth (service principal / App Registration):
     • Data queries / reporting (Graph API, Exchange cmdlets, SharePoint CSOM/PnP)
     • Configuration changes (mailbox settings, Teams policies, SharePoint site provisioning, Intune profiles, Conditional Access, Sensitivity Labels, DLP rules, Retention policies, Defender settings)
     • User/group/license management via Entra ID / Exchange
     • Azure resource provisioning or querying
-  HUMAN_ONLY — requires a human by nature:
+  USER_ACCOUNT_REQUIRED — automatable as PowerShell but ONLY under a real licensed user account (delegated/interactive auth); cannot run as a service principal:
+    • Exchange Online cmdlets with no app-only equivalent (e.g. New-MigrationBatch, Set-MailboxAutoReplyConfiguration in some tenants, legacy EAC-only operations)
+    • Microsoft Graph scopes available only as Delegated (not Application), e.g. MailboxSettings.ReadWrite on certain tenants, Presence.Read
+    • Connect-ExchangeOnline without -AppId/-CertificateThumbprint (requires interactive or basic-auth login)
+    • Connect-PnPOnline -Interactive (SharePoint operations that require user context)
+    • Connect-MgGraph -Scopes (delegated consent flow)
+    • Teams cmdlets that require a signed-in user context
+    • Any operation that triggers MFA or Conditional Access policies blocking service principals
+  HUMAN_ONLY — requires a human by nature; cannot be scripted at all:
     • Client calls, kickoff meetings, status updates, emails, document review
     • Business decisions, approvals, sign-off, risk acceptance
     • Physical / in-person tasks, vendor negotiations
 
-STEP 2 — For every AUTOMATABLE task, write a complete production-ready PowerShell script:
+STEP 2 — For every task that can be scripted (AUTOMATABLE or USER_ACCOUNT_REQUIRED), write a complete production-ready PowerShell script:
+  For AUTOMATABLE tasks:
   - [CmdletBinding()] attribute + param() block with typed, documented parameters (-TenantId, -ClientId, -ClientSecret where applicable)
+  For USER_ACCOUNT_REQUIRED tasks:
+  - [CmdletBinding()] attribute + param() block — OMIT -ClientId, -ClientSecret, -CertificateThumbprint entirely
+  - Use interactive auth: Connect-MgGraph -Scopes "...", Connect-ExchangeOnline (no -AppId), Connect-PnPOnline -Interactive
+  Both types:
   - $ErrorActionPreference = "Stop"
   - Structured try/catch/finally error handling
   - Write-Output (NOT Write-Host) for all console output — Write-Error and Write-Warning are acceptable for their respective streams
@@ -354,10 +367,12 @@ STEP 2 — For every AUTOMATABLE task, write a complete production-ready PowerSh
   - CSV export where applicable
   - Never use Write-Host — always Write-Output
 
-STEP 3 — Choose output shape:
-  - ALL tasks are HUMAN_ONLY (nothing can be automated) → type "human-only": explanatory note only, no script
-  - ONE automatable phase (or all tasks belong to a single phase) → type "single": one consolidated script
-  - MULTIPLE distinct automatable phases → type "package": one focused module per phase + a Main.ps1 orchestrator that dot-sources them all
+STEP 3 — Choose output shape based on task classification:
+  - ALL tasks are HUMAN_ONLY (nothing can be scripted) → type "human-only": explanatory note only, no script
+  - ANY task is USER_ACCOUNT_REQUIRED (even mixed with AUTOMATABLE) → type "manual": ONE consolidated script covering all scriptable tasks using interactive auth patterns; list HUMAN_ONLY tasks in humanOnlyTasks
+  - ALL scriptable tasks are AUTOMATABLE (no USER_ACCOUNT_REQUIRED):
+      • One automatable phase (or all tasks in a single phase) → type "single": one consolidated script
+      • Multiple distinct automatable phases → type "package": one focused module per phase + a Main.ps1 orchestrator
 
 Output format — STRICT RULES:
 1. Always start with a single \`\`\`json fence containing ONLY metadata (no PowerShell code inside the JSON).
@@ -365,7 +380,7 @@ Output format — STRICT RULES:
 3. The very first line of every \`\`\`powershell fence MUST be: # file: <filename.ps1>
 4. No prose, explanations, or text outside the fences.
 
-Human-only shape (use when NO tasks are automatable):
+Human-only shape (use when NO tasks can be scripted):
 \`\`\`json
 {
   "type": "human-only",
@@ -375,7 +390,25 @@ Human-only shape (use when NO tasks are automatable):
 }
 \`\`\`
 
-Single script shape — JSON envelope then one powershell fence:
+Manual script shape (use when ANY task is USER_ACCOUNT_REQUIRED) — JSON envelope then one powershell fence:
+\`\`\`json
+{
+  "type": "manual",
+  "title": "Brief script title (max 60 chars)",
+  "humanOnlyTasks": ["human task description 1"],
+  "permissions": {
+    "appPermissions": [],
+    "delegatedPermissions": ["e.g. MailboxSettings.ReadWrite (Microsoft Graph Delegated)", "User.Read (Microsoft Graph Delegated)"],
+    "notes": "Must be run interactively under a licensed user account. Cannot run as an Azure Automation runbook or service principal."
+  }
+}
+\`\`\`
+\`\`\`powershell
+# file: script.ps1
+# Complete PowerShell script body using interactive/delegated auth
+\`\`\`
+
+Single script shape (all AUTOMATABLE, one phase) — JSON envelope then one powershell fence:
 \`\`\`json
 {
   "type": "single",
@@ -393,7 +426,7 @@ Single script shape — JSON envelope then one powershell fence:
 # Complete PowerShell script body here
 \`\`\`
 
-Package shape — JSON envelope then one powershell fence per module in the same order:
+Package shape (all AUTOMATABLE, multiple phases) — JSON envelope then one powershell fence per module in the same order:
 \`\`\`json
 {
   "type": "package",
@@ -422,7 +455,14 @@ Package shape — JSON envelope then one powershell fence per module in the same
 Rules:
 - All filenames must end in .ps1; Main.ps1 must be the LAST module entry
 - Do NOT put any script code inside the JSON object — all code goes in the \`\`\`powershell fences
-- At the top of EVERY powershell script (after the # file: line), insert a comment block listing human-only tasks that apply:
+- For MANUAL scripts: the very first block after # file: MUST be this banner:
+  # ===========================================================================
+  # WARNING: MANUAL EXECUTION REQUIRED
+  # This script uses delegated/interactive authentication and MUST be run
+  # locally under a licensed user account with appropriate permissions.
+  # It cannot run as an Azure Automation runbook or service principal.
+  # ===========================================================================
+- At the top of EVERY powershell script (after the # file: line and after any banner), insert a comment block listing human-only tasks that apply:
   # ─── HUMAN ACTION REQUIRED — steps NOT automated by this script ───────────────
   # • Client kickoff call: Schedule and conduct an introductory call with the client
   # • Approval sign-off: Obtain written approval before applying configuration changes
@@ -430,7 +470,8 @@ Rules:
   If there are no human-only tasks, omit the block entirely.
 - Include HUMAN_ONLY tasks in "humanOnlyTasks" for documentation — never generate code for them
 - Be specific about permission scopes (e.g. "Group.Read.All (Microsoft Graph Application)" not just "Group.Read.All")
-- Distinguish Application permissions (service principal / app-only) from Delegated (signed-in user)`;
+- Distinguish Application permissions (service principal / app-only) from Delegated (signed-in user)
+- MANUAL scripts MUST NOT contain -ClientId, -ClientSecret, or -CertificateThumbprint parameters`;
 
 router.post("/admin/ps-scripts/generate-from-service", requireAdmin, async (req: Request, res: Response) => {
   const { serviceId, customInstructions, baseInstructions, detailedInstructions } = req.body as {
@@ -662,7 +703,7 @@ Classify each task and generate PowerShell automation scripts for all M365/Azure
       return;
     }
 
-    // type === "single" — script comes from the first ```powershell fence.
+    // type === "manual" or type === "single" — script comes from the first ```powershell fence.
     const fenceScript = psScripts.size > 0 ? [...psScripts.values()][0] : "";
     const scriptBody = fenceScript || (typeof parsed["scriptBody"] === "string" ? parsed["scriptBody"].trim() : "");
 
@@ -677,6 +718,43 @@ Classify each task and generate PowerShell automation scripts for all M365/Azure
 
     const title =
       (typeof parsed["title"] === "string" ? parsed["title"].trim() : null) || service.name;
+
+    if (type === "manual") {
+      // Auto-save to the library with the "manual" tag so the editor can open it immediately.
+      const [saved] = await db
+        .insert(powershellScriptsTable)
+        .values({
+          title,
+          category: "m365",
+          scriptBody,
+          permissions,
+          tags: ["manual"],
+        })
+        .returning();
+
+      logger.info(
+        { scriptId: saved.id, service: service.name },
+        "generate-from-service: saved manual script",
+      );
+      res.json({
+        type: "manual",
+        savedScript: {
+          id: saved.id,
+          title: saved.title,
+          description: saved.description,
+          category: saved.category,
+          tags: saved.tags,
+          azureRunbookName: saved.azureRunbookName,
+          azureSyncedAt: saved.azureSyncedAt?.toISOString() ?? null,
+          createdAt: saved.createdAt.toISOString(),
+          updatedAt: saved.updatedAt.toISOString(),
+          scriptBody: saved.scriptBody,
+          permissions: saved.permissions,
+        },
+        humanOnlyTasks,
+      });
+      return;
+    }
 
     res.json({ type: "single", title, script: scriptBody, humanOnlyTasks, permissions });
   } catch (err) {
