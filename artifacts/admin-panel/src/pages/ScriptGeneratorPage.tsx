@@ -846,17 +846,20 @@ function ModulePackageView({
   packageId,
   token,
   onBack,
+  onDeleted,
 }: {
   modules: ScriptModuleItem[];
   packageTitle: string;
   packageId: string | null;
   token: string;
   onBack: () => void;
+  onDeleted?: (id: string) => void;
 }) {
   const { toast } = useToast();
   const [activeIdx, setActiveIdx] = useState(0);
   const [copiedIdx, setCopiedIdx] = useState<number | null>(null);
   const [pushing, setPushing] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [pushStatuses, setPushStatuses] = useState<Record<string, "idle" | "pushing" | "done" | "error">>({});
   const activeModule = modules[activeIdx];
 
@@ -864,6 +867,21 @@ function ModulePackageView({
     copyToClipboard(modules[idx]!.content);
     setCopiedIdx(idx);
     setTimeout(() => setCopiedIdx(null), 2000);
+  };
+
+  const handleDelete = async () => {
+    if (!packageId) return;
+    if (!confirm(`Delete package "${packageTitle}" and all its modules? This cannot be undone.`)) return;
+    setDeleting(true);
+    try {
+      await apiFetch(`/admin/ps-scripts/packages/${packageId}`, token, { method: "DELETE" });
+      toast({ title: "Package deleted" });
+      onDeleted?.(packageId);
+      onBack();
+    } catch (e) {
+      toast({ title: "Delete failed", description: e instanceof Error ? e.message : "Unknown error", variant: "destructive" });
+      setDeleting(false);
+    }
   };
 
   const handlePushToAzure = async () => {
@@ -937,6 +955,19 @@ function ModulePackageView({
             <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
             Download All (.zip)
           </button>
+          {packageId && (
+            <button
+              onClick={handleDelete}
+              disabled={deleting || pushing}
+              className="p-1.5 text-[#7D8590] hover:text-red-400 hover:bg-red-400/10 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              title="Delete this package"
+            >
+              {deleting
+                ? <div className="w-4 h-4 border-2 border-red-400/40 border-t-red-400 rounded-full animate-spin" />
+                : <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+              }
+            </button>
+          )}
           <button onClick={onBack} className="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg border border-[#30363D] text-[#7D8590] hover:text-[#E6EDF3] hover:bg-[#21262D] transition-colors">
             <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M10 19l-7-7m0 0l7-7m-7 7h18" /></svg>
             Back to editor
@@ -3016,7 +3047,19 @@ export default function ScriptGeneratorPage() {
                 }
               />
             ) : modules.length > 0 ? (
-              <ModulePackageView modules={modules} packageTitle={loadedPackageTitle ?? (prompt.trim() || "package")} packageId={loadedPackageId} token={token} onBack={() => { setModules([]); setLoadedPackageTitle(null); setLoadedPackageId(null); }} />
+              <ModulePackageView
+                modules={modules}
+                packageTitle={loadedPackageTitle ?? (prompt.trim() || "package")}
+                packageId={loadedPackageId}
+                token={token}
+                onBack={() => { setModules([]); setLoadedPackageTitle(null); setLoadedPackageId(null); }}
+                onDeleted={(id) => {
+                  setPackages((prev) => prev.filter((p) => p.id !== id));
+                  setModules([]);
+                  setLoadedPackageTitle(null);
+                  setLoadedPackageId(null);
+                }}
+              />
             ) : (
               <div className="flex-1 min-h-0 relative">
                 {(generating || modularizing) && (
