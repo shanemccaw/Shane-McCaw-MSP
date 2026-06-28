@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
-import { Trash2 } from "lucide-react";
+import { Trash2, AlertTriangle } from "lucide-react";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -12,6 +12,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
 
 interface Purchase {
@@ -37,6 +38,7 @@ export default function PurchasesPage() {
   const [loading, setLoading] = useState(true);
   const [deleteTarget, setDeleteTarget] = useState<Purchase | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [confirmText, setConfirmText] = useState("");
 
   useEffect(() => {
     fetchWithAuth("/api/admin/purchases")
@@ -45,8 +47,23 @@ export default function PurchasesPage() {
       .catch(() => setLoading(false));
   }, [fetchWithAuth]);
 
+  function openDeleteDialog(p: Purchase) {
+    setConfirmText("");
+    setDeleteTarget(p);
+  }
+
+  function closeDeleteDialog() {
+    if (!deleting) {
+      setDeleteTarget(null);
+      setConfirmText("");
+    }
+  }
+
+  const isPaid = deleteTarget?.status === "paid";
+  const confirmReady = !isPaid || confirmText === deleteTarget?.invoiceNumber;
+
   async function handleDelete() {
-    if (!deleteTarget) return;
+    if (!deleteTarget || !confirmReady) return;
     setDeleting(true);
     try {
       const res = await fetchWithAuth(`/api/admin/purchases/${deleteTarget.id}`, { method: "DELETE" });
@@ -58,6 +75,7 @@ export default function PurchasesPage() {
     } finally {
       setDeleting(false);
       setDeleteTarget(null);
+      setConfirmText("");
     }
   }
 
@@ -108,7 +126,7 @@ export default function PurchasesPage() {
                     <td className="px-5 py-3.5 text-muted-foreground text-xs hidden lg:table-cell cursor-pointer" onClick={() => navigate(`/crm/purchases/${p.id}`)}>{new Date(p.createdAt).toLocaleDateString()}</td>
                     <td className="px-3 py-3.5 text-right">
                       <button
-                        onClick={(e) => { e.stopPropagation(); setDeleteTarget(p); }}
+                        onClick={(e) => { e.stopPropagation(); openDeleteDialog(p); }}
                         className="p-1.5 rounded text-muted-foreground hover:text-red-400 hover:bg-red-500/10 transition-colors"
                         title="Delete purchase"
                       >
@@ -123,25 +141,61 @@ export default function PurchasesPage() {
         </div>
       )}
 
-      <AlertDialog open={!!deleteTarget} onOpenChange={(open) => { if (!open) setDeleteTarget(null); }}>
-        <AlertDialogContent>
+      <AlertDialog open={!!deleteTarget} onOpenChange={(open) => { if (!open) closeDeleteDialog(); }}>
+        <AlertDialogContent className={isPaid ? "border-red-500/60" : undefined}>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete this purchase?</AlertDialogTitle>
-            <AlertDialogDescription>
-              This will also remove linked contracts and client services. This cannot be undone.
-              {deleteTarget?.stripeSessionId && (
-                <span className="block mt-2 text-xs text-muted-foreground">
-                  The linked Stripe session will not be modified — only the local record is deleted.
+            {isPaid && (
+              <div className="flex items-center gap-2 mb-1 px-3 py-2 rounded-lg bg-red-500/10 border border-red-500/30">
+                <AlertTriangle className="w-4 h-4 text-red-400 shrink-0" />
+                <span className="text-xs font-semibold text-red-400 uppercase tracking-wide">Warning — this is a paid purchase</span>
+              </div>
+            )}
+            <AlertDialogTitle className="flex items-center gap-2">
+              Delete this purchase?
+              {isPaid && (
+                <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-green-500/15 text-green-400 border border-green-500/30">
+                  PAID
                 </span>
               )}
+            </AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-3">
+                <p>
+                  {isPaid
+                    ? "You are about to permanently delete a paid purchase record. This will also remove linked contracts and client services and cannot be undone."
+                    : "This will also remove linked contracts and client services. This cannot be undone."}
+                </p>
+                {deleteTarget?.stripeSessionId && (
+                  <p className="text-xs text-muted-foreground">
+                    The linked Stripe session will not be modified — only the local record is deleted.
+                  </p>
+                )}
+                {isPaid && (
+                  <div className="pt-1 space-y-1.5">
+                    <p className="text-xs font-medium text-[#E6EDF3]">
+                      Type the invoice number to confirm:{" "}
+                      <span className="font-mono text-red-400">{deleteTarget?.invoiceNumber}</span>
+                    </p>
+                    <Input
+                      value={confirmText}
+                      onChange={e => setConfirmText(e.target.value)}
+                      placeholder={deleteTarget?.invoiceNumber}
+                      className="font-mono text-sm border-red-500/40 focus-visible:ring-red-500/50"
+                      autoFocus
+                      autoComplete="off"
+                      spellCheck={false}
+                    />
+                  </div>
+                )}
+              </div>
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel disabled={deleting}>Cancel</AlertDialogCancel>
             <AlertDialogAction
               onClick={handleDelete}
-              disabled={deleting}
-              className="bg-red-600 hover:bg-red-700 focus:ring-red-600"
+              disabled={deleting || !confirmReady}
+              className="bg-red-600 hover:bg-red-700 focus:ring-red-600 disabled:opacity-40"
             >
               {deleting ? "Deleting…" : "Delete"}
             </AlertDialogAction>

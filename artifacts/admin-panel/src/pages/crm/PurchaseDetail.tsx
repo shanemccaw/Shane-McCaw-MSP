@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useRoute, useLocation } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
-import { Trash2 } from "lucide-react";
+import { Trash2, AlertTriangle } from "lucide-react";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -12,6 +12,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
 
 interface WizardOption {
@@ -111,6 +112,7 @@ export default function PurchaseDetailPage() {
   const [error, setError] = useState<string | null>(null);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [confirmText, setConfirmText] = useState("");
 
   const id = params?.id;
 
@@ -126,8 +128,23 @@ export default function PurchaseDetailPage() {
       .catch(err => { setError(String(err)); setLoading(false); });
   }, [id, fetchWithAuth]);
 
+  function openDeleteDialog() {
+    setConfirmText("");
+    setShowDeleteDialog(true);
+  }
+
+  function closeDeleteDialog() {
+    if (!deleting) {
+      setShowDeleteDialog(false);
+      setConfirmText("");
+    }
+  }
+
+  const isPaid = detail?.status === "paid";
+  const confirmReady = !isPaid || confirmText === detail?.invoiceNumber;
+
   async function handleDelete() {
-    if (!detail) return;
+    if (!detail || !confirmReady) return;
     setDeleting(true);
     try {
       const res = await fetchWithAuth(`/api/admin/purchases/${detail.id}`, { method: "DELETE" });
@@ -186,7 +203,7 @@ export default function PurchaseDetailPage() {
             <span className={statusBadge(detail.status)}>{detail.status}</span>
           </div>
           <button
-            onClick={() => setShowDeleteDialog(true)}
+            onClick={openDeleteDialog}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm text-red-400 border border-red-500/30 hover:bg-red-500/10 transition-colors"
           >
             <Trash2 className="w-4 h-4" />
@@ -283,25 +300,61 @@ export default function PurchaseDetailPage() {
         </Card>
       )}
 
-      <AlertDialog open={showDeleteDialog} onOpenChange={(open) => { if (!open && !deleting) setShowDeleteDialog(false); }}>
-        <AlertDialogContent>
+      <AlertDialog open={showDeleteDialog} onOpenChange={(open) => { if (!open) closeDeleteDialog(); }}>
+        <AlertDialogContent className={isPaid ? "border-red-500/60" : undefined}>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete this purchase?</AlertDialogTitle>
-            <AlertDialogDescription>
-              This will also remove linked contracts and client services. This cannot be undone.
-              {detail.stripeSessionId && (
-                <span className="block mt-2 text-xs text-muted-foreground">
-                  The linked Stripe session will not be modified — only the local record is deleted.
+            {isPaid && (
+              <div className="flex items-center gap-2 mb-1 px-3 py-2 rounded-lg bg-red-500/10 border border-red-500/30">
+                <AlertTriangle className="w-4 h-4 text-red-400 shrink-0" />
+                <span className="text-xs font-semibold text-red-400 uppercase tracking-wide">Warning — this is a paid purchase</span>
+              </div>
+            )}
+            <AlertDialogTitle className="flex items-center gap-2">
+              Delete this purchase?
+              {isPaid && (
+                <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-green-500/15 text-green-400 border border-green-500/30">
+                  PAID
                 </span>
               )}
+            </AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-3">
+                <p>
+                  {isPaid
+                    ? "You are about to permanently delete a paid purchase record. This will also remove linked contracts and client services and cannot be undone."
+                    : "This will also remove linked contracts and client services. This cannot be undone."}
+                </p>
+                {detail.stripeSessionId && (
+                  <p className="text-xs text-muted-foreground">
+                    The linked Stripe session will not be modified — only the local record is deleted.
+                  </p>
+                )}
+                {isPaid && (
+                  <div className="pt-1 space-y-1.5">
+                    <p className="text-xs font-medium text-[#E6EDF3]">
+                      Type the invoice number to confirm:{" "}
+                      <span className="font-mono text-red-400">{detail.invoiceNumber}</span>
+                    </p>
+                    <Input
+                      value={confirmText}
+                      onChange={e => setConfirmText(e.target.value)}
+                      placeholder={detail.invoiceNumber}
+                      className="font-mono text-sm border-red-500/40 focus-visible:ring-red-500/50"
+                      autoFocus
+                      autoComplete="off"
+                      spellCheck={false}
+                    />
+                  </div>
+                )}
+              </div>
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel disabled={deleting}>Cancel</AlertDialogCancel>
             <AlertDialogAction
               onClick={handleDelete}
-              disabled={deleting}
-              className="bg-red-600 hover:bg-red-700 focus:ring-red-600"
+              disabled={deleting || !confirmReady}
+              className="bg-red-600 hover:bg-red-700 focus:ring-red-600 disabled:opacity-40"
             >
               {deleting ? "Deleting…" : "Delete"}
             </AlertDialogAction>
