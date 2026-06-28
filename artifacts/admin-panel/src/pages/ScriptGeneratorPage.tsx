@@ -1558,6 +1558,111 @@ function PermissionsSidebarPanel({ permissions }: { permissions: PsScriptPermiss
 
 type BottomTab = "prompt" | "bugfix" | "instructions";
 
+// ─── Generating Progress Dialog ───────────────────────────────────────────────
+
+const GEN_PHASES: { label: string; desc: string; target: number }[] = [
+  { label: "Analyzing prompt",      desc: "Parsing the task and identifying the M365/Azure service scope",                target: 12 },
+  { label: "Planning structure",    desc: "Designing parameter blocks, error handling flow, and cmdlet sequence",          target: 35 },
+  { label: "Writing PowerShell",    desc: "Generating production-ready code with try/catch logging and CSV export",        target: 68 },
+  { label: "Detecting permissions", desc: "Scanning for required Graph API application and delegated role scopes",         target: 84 },
+  { label: "Finalizing output",     desc: "Validating script structure and formatting the final response",                 target: 96 },
+];
+
+function GeneratingProgressDialog({ open }: { open: boolean }) {
+  const [pct, setPct] = useState(0);
+  const [phaseIdx, setPhaseIdx] = useState(0);
+  const phaseRef = useRef(0);
+  const pctRef = useRef(0);
+
+  useEffect(() => {
+    if (!open) {
+      setPct(0);
+      setPhaseIdx(0);
+      phaseRef.current = 0;
+      pctRef.current = 0;
+      return;
+    }
+    const id = setInterval(() => {
+      const phase = phaseRef.current;
+      const target = GEN_PHASES[phase]?.target ?? 96;
+      const cur = pctRef.current;
+      if (cur < target) {
+        const step = Math.max(0.2, (target - cur) * 0.04);
+        const next = Math.min(cur + step, target);
+        pctRef.current = next;
+        setPct(next);
+      } else if (phase < GEN_PHASES.length - 1) {
+        phaseRef.current = phase + 1;
+        setPhaseIdx(phase + 1);
+      }
+    }, 60);
+    return () => clearInterval(id);
+  }, [open]);
+
+  if (!open) return null;
+
+  const phase = GEN_PHASES[Math.min(phaseIdx, GEN_PHASES.length - 1)];
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75">
+      <div className="w-full max-w-sm mx-4 bg-[#161B22] border border-[#30363D] rounded-2xl shadow-2xl p-6">
+        {/* Header */}
+        <div className="flex items-center gap-3 mb-5">
+          <div className="w-9 h-9 rounded-xl bg-[#0078D4]/15 border border-[#0078D4]/30 flex items-center justify-center flex-shrink-0">
+            <div className="w-4 h-4 border-2 border-[#0078D4]/30 border-t-[#0078D4] rounded-full animate-spin" />
+          </div>
+          <div>
+            <h2 className="text-sm font-semibold text-[#E6EDF3]">Generating Script</h2>
+            <p className="text-[10px] text-[#7D8590]">Claude is writing your PowerShell automation</p>
+          </div>
+        </div>
+
+        {/* Progress bar */}
+        <div className="mb-5">
+          <div className="flex items-center justify-between mb-1.5">
+            <span className="text-xs font-medium text-[#E6EDF3]">{phase.label}</span>
+            <span className="text-[10px] text-[#7D8590] tabular-nums">{Math.round(pct)}%</span>
+          </div>
+          <div className="h-1.5 bg-[#21262D] rounded-full overflow-hidden">
+            <div
+              className="h-full rounded-full transition-all duration-75"
+              style={{ width: `${pct}%`, background: "linear-gradient(90deg, #0078D4, #00B4D8)" }}
+            />
+          </div>
+          <p className="text-[11px] text-[#7D8590] mt-1.5 leading-relaxed">{phase.desc}</p>
+        </div>
+
+        {/* Phase checklist */}
+        <div className="space-y-0.5">
+          {GEN_PHASES.map((p, i) => {
+            const done = i < phaseIdx;
+            const active = i === phaseIdx;
+            return (
+              <div
+                key={p.label}
+                className={`flex items-center gap-2.5 py-1.5 px-2.5 rounded-lg transition-colors ${active ? "bg-[#0078D4]/10" : ""}`}
+              >
+                {done ? (
+                  <svg className="w-3.5 h-3.5 text-green-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                  </svg>
+                ) : active ? (
+                  <div className="w-3.5 h-3.5 border border-[#0078D4]/40 border-t-[#0078D4] rounded-full animate-spin flex-shrink-0" />
+                ) : (
+                  <div className="w-3.5 h-3.5 rounded-full border border-[#21262D] flex-shrink-0" />
+                )}
+                <span className={`text-[11px] ${done ? "text-[#484F58] line-through" : active ? "text-[#E6EDF3] font-medium" : "text-[#484F58]"}`}>
+                  {p.label}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Generate from Service Dialog ────────────────────────────────────────────
 
 function GenerateFromServiceDialog({
@@ -2747,6 +2852,8 @@ export default function ScriptGeneratorPage() {
       </div>
 
       {/* ── Modals & Drawers ──────────────────────────────────────────────── */}
+      <GeneratingProgressDialog open={generating} />
+
       {generateFromServiceOpen && (
         <GenerateFromServiceDialog
           token={token}
