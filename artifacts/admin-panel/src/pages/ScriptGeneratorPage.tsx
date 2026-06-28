@@ -1199,7 +1199,7 @@ function LibrarySidebar({
   onOpenPackage: (pkg: ScriptPackageListItem) => void;
   onOpenModule: (module: ScriptModuleItem, pkg: ScriptPackageListItem) => void;
   loadingScriptId: string | null;
-  onPublishToCatalog?: (id: string) => void;
+  onPublishToCatalog?: (item: { id: string; body?: string; title: string }) => void;
   publishingScriptId?: string | null;
 }) {
   const [search, setSearch] = useState("");
@@ -1317,7 +1317,7 @@ function LibrarySidebar({
                       </button>
                       {onPublishToCatalog && (
                         <button
-                          onClick={(e) => { e.stopPropagation(); onPublishToCatalog(s.id); }}
+                          onClick={(e) => { e.stopPropagation(); onPublishToCatalog({ id: s.id, title: s.title }); }}
                           disabled={!!publishingScriptId}
                           title="Publish to Catalog"
                           className="flex-shrink-0 opacity-0 group-hover:opacity-100 px-1.5 py-1 text-[#484F58] hover:text-[#0078D4] disabled:opacity-30 transition-all"
@@ -1334,7 +1334,6 @@ function LibrarySidebar({
                 } else {
                   const p = entry.item;
                   const isExpanded = expandedPackages.has(p.id);
-                  const isPkgPublishing = publishingScriptId === p.id;
                   return (
                     <div key={`p-${p.id}-${i}`}>
                       <div className="w-full flex items-center min-w-0 hover:bg-[#161B22] transition-colors group">
@@ -1354,43 +1353,51 @@ function LibrarySidebar({
                         {/* Package row — clicking loads multi-module view */}
                         <button
                           onClick={() => onOpenPackage(p)}
-                          className="flex-1 flex items-center gap-2 pr-1 py-1 text-left min-w-0 overflow-hidden"
+                          className="flex-1 flex items-center gap-2 pr-3 py-1 text-left min-w-0 overflow-hidden"
                           title={p.title}
                         >
                           <svg className="w-3 h-3 text-purple-500/70 group-hover:text-purple-400 flex-shrink-0 transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" /></svg>
                           <span className="flex-1 text-xs text-[#C9D1D9] truncate min-w-0">{p.title}</span>
                           <span className="text-[9px] text-purple-500/60 flex-shrink-0">{p.modules.length}m</span>
                         </button>
-                        {onPublishToCatalog && (
-                          <button
-                            onClick={(e) => { e.stopPropagation(); onPublishToCatalog(p.id); }}
-                            disabled={!!publishingScriptId}
-                            title="Publish to Catalog"
-                            className="flex-shrink-0 opacity-0 group-hover:opacity-100 px-1.5 py-1 text-[#484F58] hover:text-[#0078D4] disabled:opacity-30 transition-all"
-                          >
-                            {isPkgPublishing ? (
-                              <svg className="w-3 h-3 animate-spin text-[#0078D4]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
-                            ) : (
-                              <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" /></svg>
-                            )}
-                          </button>
-                        )}
                       </div>
                       {/* Module child rows */}
-                      {isExpanded && p.modules.map((mod) => (
-                        <button
-                          key={`mod-${mod.id ?? mod.filename}`}
-                          onClick={() => onOpenModule(mod, p)}
-                          className="w-full flex items-center gap-2 pl-12 pr-3 py-1 hover:bg-[#161B22] transition-colors group text-left border-l border-purple-500/20 ml-7"
-                          style={{ marginLeft: 28 }}
-                          title={mod.filename}
-                        >
-                          <svg className="w-3 h-3 text-[#484F58] group-hover:text-purple-400 flex-shrink-0 transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
-                          </svg>
-                          <span className="flex-1 text-xs text-[#8B949E] group-hover:text-[#C9D1D9] truncate font-mono">{mod.filename}</span>
-                        </button>
-                      ))}
+                      {isExpanded && p.modules.map((mod) => {
+                        const modId = `${p.id}/${mod.filename}`;
+                        const isModPublishing = publishingScriptId === modId;
+                        return (
+                          <div
+                            key={`mod-${mod.id ?? mod.filename}`}
+                            className="flex items-center min-w-0 hover:bg-[#161B22] transition-colors group border-l border-purple-500/20"
+                            style={{ marginLeft: 28 }}
+                          >
+                            <button
+                              onClick={() => onOpenModule(mod, p)}
+                              className="flex-1 flex items-center gap-2 pl-12 pr-1 py-1 text-left min-w-0 overflow-hidden"
+                              title={mod.filename}
+                            >
+                              <svg className="w-3 h-3 text-[#484F58] group-hover:text-purple-400 flex-shrink-0 transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
+                              </svg>
+                              <span className="flex-1 text-xs text-[#8B949E] group-hover:text-[#C9D1D9] truncate min-w-0 font-mono">{mod.filename}</span>
+                            </button>
+                            {onPublishToCatalog && (
+                              <button
+                                onClick={(e) => { e.stopPropagation(); onPublishToCatalog({ id: modId, body: mod.content, title: mod.filename }); }}
+                                disabled={!!publishingScriptId}
+                                title="Publish to Catalog"
+                                className="flex-shrink-0 opacity-0 group-hover:opacity-100 px-1.5 py-1 text-[#484F58] hover:text-[#0078D4] disabled:opacity-30 transition-all"
+                              >
+                                {isModPublishing ? (
+                                  <svg className="w-3 h-3 animate-spin text-[#0078D4]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
+                                ) : (
+                                  <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" /></svg>
+                                )}
+                              </button>
+                            )}
+                          </div>
+                        );
+                      })}
                     </div>
                   );
                 }
@@ -2982,22 +2989,20 @@ export default function ScriptGeneratorPage() {
     }
   };
 
-  const handlePublishToCatalog = async (id: string) => {
+  const handlePublishToCatalog = async (item: { id: string; body?: string; title: string }) => {
     if (publishingScriptId) return;
-    setPublishingScriptId(id);
+    setPublishingScriptId(item.id);
     try {
       let scriptBody: string;
-      let title: string;
+      let title: string = item.title;
       let azureRunbookName: string | null = null;
 
-      const pkg = packages.find(p => p.id === id);
-      if (pkg) {
-        // Package — modules are already loaded in state, concatenate them
-        scriptBody = pkg.modules.map(m => `# === ${m.filename} ===\n${m.content}`).join("\n\n");
-        title = pkg.title;
+      if (item.body) {
+        // Body already provided (e.g. a module from a package)
+        scriptBody = item.body;
       } else {
         // Single script — fetch full detail for body
-        const detailRes = await apiFetch(`/admin/ps-scripts/${id}`, token) as PsScriptDetail;
+        const detailRes = await apiFetch(`/admin/ps-scripts/${item.id}`, token) as PsScriptDetail;
         if (!detailRes?.scriptBody) {
           toast({ title: "Could not load script body", variant: "destructive" });
           return;
@@ -3472,7 +3477,7 @@ export default function ScriptGeneratorPage() {
                     onOpenPackage={handleSidebarPackageClick}
                     onOpenModule={handleSidebarModuleClick}
                     loadingScriptId={loadingScriptId}
-                    onPublishToCatalog={(id) => void handlePublishToCatalog(id)}
+                    onPublishToCatalog={(item) => void handlePublishToCatalog(item)}
                     publishingScriptId={publishingScriptId}
                   />
                 )}
