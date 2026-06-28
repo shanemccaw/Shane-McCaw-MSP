@@ -341,8 +341,24 @@ router.post("/admin/ps-scripts/generate", requireAdmin, async (req: Request, res
 
   const systemPrompt = await getPrompt("ps-engineer-system", SYSTEM_PROMPT);
 
+  // ── Switch to SSE streaming mode ─────────────────────────────────────────
+  res.setHeader("Content-Type", "text/event-stream");
+  res.setHeader("Cache-Control", "no-cache");
+  res.setHeader("Connection", "keep-alive");
+  res.flushHeaders();
+
+  const sendSSE = (event: Record<string, unknown>): void => {
+    res.write(`data: ${JSON.stringify(event)}\n\n`);
+  };
+  const sendError = (message: string, aiResponse?: string): void => {
+    sendSSE({ type: "error", message, ...(aiResponse !== undefined ? { aiResponse } : {}) });
+    res.end();
+  };
+
+  sendSSE({ type: "phase", label: "Sending prompt to Claude…", pct: 5 });
+
   try {
-    const msg = await anthropic.messages.create({
+    const stream = anthropic.messages.stream({
       model: "claude-haiku-4-5",
       max_tokens: 8192,
       messages: [
@@ -359,13 +375,31 @@ Write the complete PowerShell script followed by the permissions JSON block.`,
       ],
     });
 
-    const block = msg.content[0];
-    if (block.type !== "text") {
-      res.status(500).json({ error: "Unexpected AI response format" });
-      return;
-    }
+    let accumulated = "";
+    const EXPECTED_CHARS = 28_000;
+    let lastEmittedPct = 5;
+    let firstChunk = true;
 
-    const fullText = block.text;
+    stream.on("text", (text: string) => {
+      if (firstChunk) {
+        firstChunk = false;
+        sendSSE({ type: "phase", label: "Claude is writing the PowerShell script…", pct: 20 });
+        lastEmittedPct = 20;
+      }
+      accumulated += text;
+      const rawPct = 20 + (accumulated.length / EXPECTED_CHARS) * 60;
+      const pct = Math.min(80, Math.round(rawPct));
+      if (pct >= lastEmittedPct + 3) {
+        lastEmittedPct = pct;
+        sendSSE({ type: "progress", pct });
+      }
+    });
+
+    await stream.finalMessage();
+
+    sendSSE({ type: "phase", label: "Parsing permissions and metadata…", pct: 90 });
+
+    const fullText = accumulated;
 
     // Extract the script body — everything before the ```json block
     const jsonFenceIdx = fullText.search(/```json/i);
@@ -389,14 +423,14 @@ Write the complete PowerShell script followed by the permissions JSON block.`,
 
     // Heuristic guard: if the full text contains no recognisable PowerShell keyword,
     // the AI returned only prose (scripts may open with long comment blocks so a
-    // character-window check would give false positives). Return a 500 so the editor
+    // character-window check would give false positives). Emit SSE error so the editor
     // is never overwritten with non-PS text.
     if (!hasPsKeywordsFullText(scriptBody)) {
       logger.error(
         { scriptBodyPrefix: scriptBody.slice(0, 300) },
         "generate endpoint: fallback result contains no PS keywords — AI returned prose only; refusing to send to client",
       );
-      res.status(500).json({ error: "AI returned a summary instead of a script. Please try again.", aiResponse: scriptBody.slice(0, 3000) });
+      sendError("AI returned a summary instead of a script. Please try again.", scriptBody.slice(0, 3000));
       return;
     }
 
@@ -412,11 +446,11 @@ Write the complete PowerShell script followed by the permissions JSON block.`,
       };
     }
 
-    res.json({ script: scriptBody, permissions });
+    sendSSE({ type: "done", payload: { script: scriptBody, permissions } });
+    res.end();
   } catch (err) {
     logger.error({ err }, "PS script generation failed");
-    const msg = err instanceof Error ? err.message : "AI generation failed";
-    res.status(500).json({ error: msg });
+    sendError(err instanceof Error ? err.message : "AI generation failed");
   }
 });
 
@@ -707,31 +741,63 @@ router.post("/admin/ps-scripts/generate-from-service", requireAdmin, async (req:
 Classify each task and generate PowerShell automation scripts for all M365/Azure-automatable tasks. If no tasks can be automated, return the human-only shape. Return the JSON response exactly as instructed.`;
 
     const fromServicePrompt = await getPrompt("ps-engineer-from-service", GENERATE_FROM_SERVICE_SYSTEM);
-    const aiMsg = await anthropic.messages.create({
+
+    // ── Switch to SSE streaming mode ────────────────────────────────────────
+    res.setHeader("Content-Type", "text/event-stream");
+    res.setHeader("Cache-Control", "no-cache");
+    res.setHeader("Connection", "keep-alive");
+    res.flushHeaders();
+
+    const sendSSE = (event: Record<string, unknown>): void => {
+      res.write(`data: ${JSON.stringify(event)}\n\n`);
+    };
+
+    sendSSE({ type: "phase", label: "Sending prompt to Claude…", pct: 5 });
+
+    const sseStream = anthropic.messages.stream({
       model: "claude-haiku-4-5",
       max_tokens: 16000,
       messages: [{ role: "user", content: `${fromServicePrompt}\n\n${userMessage}` }],
     });
 
-    const aiBlock = aiMsg.content[0];
-    if (aiBlock.type !== "text") {
-      res.status(500).json({ error: "Unexpected AI response format" });
-      return;
-    }
+    let accumulated = "";
+    const EXPECTED_CHARS = 48_000;
+    let lastEmittedPct = 5;
+    let firstChunk = true;
+
+    sseStream.on("text", (text: string) => {
+      if (firstChunk) {
+        firstChunk = false;
+        sendSSE({ type: "phase", label: "Claude is generating the PowerShell package…", pct: 20 });
+        lastEmittedPct = 20;
+      }
+      accumulated += text;
+      const rawPct = 20 + (accumulated.length / EXPECTED_CHARS) * 55;
+      const pct = Math.min(75, Math.round(rawPct));
+      if (pct >= lastEmittedPct + 3) {
+        lastEmittedPct = pct;
+        sendSSE({ type: "progress", pct });
+      }
+    });
+
+    await sseStream.finalMessage();
+
+    sendSSE({ type: "phase", label: "Parsing modules and validating scripts…", pct: 82 });
 
     // Parse the JSON envelope (metadata only — no script content inside the JSON).
-    const rawJson = extractEnvelopeJson(aiBlock.text);
+    const rawJson = extractEnvelopeJson(accumulated);
     if (!rawJson || typeof rawJson !== "object" || Array.isArray(rawJson)) {
       logger.warn(
-        { textLength: aiBlock.text.length, textPrefix: aiBlock.text.slice(0, 400) },
+        { textLength: accumulated.length, textPrefix: accumulated.slice(0, 400) },
         "generate-from-service: failed to parse JSON envelope from AI response",
       );
-      res.status(500).json({ error: "AI returned an unstructured response. Please try again." });
+      sendSSE({ type: "error", message: "AI returned an unstructured response. Please try again." });
+      res.end();
       return;
     }
 
     // Extract the PowerShell scripts from their own ```powershell fences.
-    const psScripts = extractPowershellFences(aiBlock.text);
+    const psScripts = extractPowershellFences(accumulated);
 
     const parsed = rawJson as Record<string, unknown>;
     const type = typeof parsed["type"] === "string" ? parsed["type"] : "single";
@@ -745,7 +811,8 @@ Classify each task and generate PowerShell automation scripts for all M365/Azure
           ? parsed["explanation"]
           : "All tasks in this workflow require human judgment or action and cannot be automated with PowerShell.";
       logger.info({ service: service.name }, "generate-from-service: all tasks human-only");
-      res.json({ type: "human-only", title, explanation, humanOnlyTasks });
+      sendSSE({ type: "done", payload: { type: "human-only", title, explanation, humanOnlyTasks } });
+      res.end();
       return;
     }
 
@@ -763,7 +830,8 @@ Classify each task and generate PowerShell automation scripts for all M365/Azure
     if (type === "package") {
       const rawModules = parsed["modules"];
       if (!Array.isArray(rawModules) || rawModules.length === 0) {
-        res.status(500).json({ error: "AI returned a package with no modules. Please try again." });
+        sendSSE({ type: "error", message: "AI returned a package with no modules. Please try again." });
+        res.end();
         return;
       }
 
@@ -784,10 +852,11 @@ Classify each task and generate PowerShell automation scripts for all M365/Azure
 
       if (validModules.length === 0) {
         logger.warn(
-          { psScriptKeys: [...psScripts.keys()], textLength: aiBlock.text.length },
+          { psScriptKeys: [...psScripts.keys()], textLength: accumulated.length },
           "generate-from-service: no modules with content found",
         );
-        res.status(500).json({ error: "AI returned no valid modules. Please try again." });
+        sendSSE({ type: "error", message: "AI returned no valid modules. Please try again." });
+        res.end();
         return;
       }
 
@@ -796,7 +865,8 @@ Classify each task and generate PowerShell automation scripts for all M365/Azure
           { moduleCount: validModules.length },
           "generate-from-service: one or more modules contain no PS keywords — refusing to send",
         );
-        res.status(500).json({ error: "AI returned a description instead of a script. Please try again." });
+        sendSSE({ type: "error", message: "AI returned a description instead of a script. Please try again." });
+        res.end();
         return;
       }
 
@@ -843,6 +913,8 @@ Classify each task and generate PowerShell automation scripts for all M365/Azure
       const packageTitle =
         (typeof parsed["title"] === "string" ? parsed["title"].trim() : null) || service.name;
 
+      sendSSE({ type: "phase", label: "Saving package to library…", pct: 90 });
+
       const [pkg] = await db
         .insert(scriptPackagesTable)
         .values({ title: packageTitle, category: "m365" })
@@ -887,6 +959,7 @@ Classify each task and generate PowerShell automation scripts for all M365/Azure
         kanbanTasksUpdated: number;
       }
       const taskAssociations: TaskAssociationResult[] = [];
+      sendSSE({ type: "phase", label: "Linking Kanban tasks…", pct: 95 });
 
       try {
         if (bijectiveAssignment.size > 0) {
@@ -1027,7 +1100,8 @@ Classify each task and generate PowerShell automation scripts for all M365/Azure
         logger.warn({ assocErr }, "generate-from-service: Kanban association step failed (non-fatal)");
       }
 
-      res.json({ type: "package", packageId: pkg.id, title: packageTitle, modules: validModules, humanOnlyTasks, permissions, taskAssociations });
+      sendSSE({ type: "done", payload: { type: "package", packageId: pkg.id, title: packageTitle, modules: validModules, humanOnlyTasks, permissions, taskAssociations } });
+      res.end();
       return;
     }
 
@@ -1040,7 +1114,8 @@ Classify each task and generate PowerShell automation scripts for all M365/Azure
         { scriptBodyPrefix: scriptBody.slice(0, 300), psScriptCount: psScripts.size },
         "generate-from-service: scriptBody is empty or contains no PS keywords",
       );
-      res.status(500).json({ error: "AI returned an unreadable script. Please try again." });
+      sendSSE({ type: "error", message: "AI returned an unreadable script. Please try again." });
+      res.end();
       return;
     }
 
@@ -1064,30 +1139,40 @@ Classify each task and generate PowerShell automation scripts for all M365/Azure
         { scriptId: saved.id, service: service.name },
         "generate-from-service: saved manual script",
       );
-      res.json({
-        type: "manual",
-        savedScript: {
-          id: saved.id,
-          title: saved.title,
-          description: saved.description,
-          category: saved.category,
-          tags: saved.tags,
-          azureRunbookName: saved.azureRunbookName,
-          azureSyncedAt: saved.azureSyncedAt?.toISOString() ?? null,
-          createdAt: saved.createdAt.toISOString(),
-          updatedAt: saved.updatedAt.toISOString(),
-          scriptBody: saved.scriptBody,
-          permissions: saved.permissions,
+      sendSSE({
+        type: "done",
+        payload: {
+          type: "manual",
+          savedScript: {
+            id: saved.id,
+            title: saved.title,
+            description: saved.description,
+            category: saved.category,
+            tags: saved.tags,
+            azureRunbookName: saved.azureRunbookName,
+            azureSyncedAt: saved.azureSyncedAt?.toISOString() ?? null,
+            createdAt: saved.createdAt.toISOString(),
+            updatedAt: saved.updatedAt.toISOString(),
+            scriptBody: saved.scriptBody,
+            permissions: saved.permissions,
+          },
+          humanOnlyTasks,
         },
-        humanOnlyTasks,
       });
+      res.end();
       return;
     }
 
-    res.json({ type: "single", title, script: scriptBody, humanOnlyTasks, permissions });
+    sendSSE({ type: "done", payload: { type: "single", title, script: scriptBody, humanOnlyTasks, permissions } });
+    res.end();
   } catch (err) {
     logger.error({ err }, "generate-from-service failed");
-    res.status(500).json({ error: err instanceof Error ? err.message : "Generation failed" });
+    if (res.headersSent) {
+      res.write(`data: ${JSON.stringify({ type: "error", message: err instanceof Error ? err.message : "Generation failed" })}\n\n`);
+      res.end();
+    } else {
+      res.status(500).json({ error: err instanceof Error ? err.message : "Generation failed" });
+    }
   }
 });
 

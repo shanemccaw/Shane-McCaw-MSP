@@ -169,6 +169,67 @@ async function apiFetch(path: string, token: string, opts: RequestInit = {}) {
   return res.json();
 }
 
+// ─── SSE streaming helper for generation endpoints ────────────────────────────
+
+async function consumeGenerationSSE<T>(
+  path: string,
+  token: string,
+  body: Record<string, unknown>,
+  onUpdate: (pct: number, label: string) => void,
+): Promise<T> {
+  const res = await fetch(`/api${path}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify(body),
+  });
+
+  if (!res.ok) {
+    const json = await res.json().catch(() => ({ error: `HTTP ${res.status}` })) as { error?: string; aiResponse?: string };
+    throw new ApiError(json.error ?? `HTTP ${res.status}`, json.aiResponse);
+  }
+
+  const reader = res.body!.getReader();
+  const decoder = new TextDecoder();
+  let buf = "";
+
+  return new Promise<T>((resolve, reject) => {
+    (async () => {
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) { reject(new Error("Stream ended without completion")); return; }
+          buf += decoder.decode(value, { stream: true });
+          const lines = buf.split("\n");
+          buf = lines.pop() ?? "";
+          for (const line of lines) {
+            if (!line.startsWith("data: ")) continue;
+            const raw = line.slice(6).trim();
+            if (!raw) continue;
+            let evt: Record<string, unknown>;
+            try { evt = JSON.parse(raw) as Record<string, unknown>; } catch { continue; }
+            const evtType = evt["type"] as string | undefined;
+            if (evtType === "phase" || evtType === "progress") {
+              onUpdate(
+                typeof evt["pct"] === "number" ? evt["pct"] : 0,
+                typeof evt["label"] === "string" ? evt["label"] : "",
+              );
+            } else if (evtType === "done") {
+              resolve(evt["payload"] as T);
+              return;
+            } else if (evtType === "error") {
+              reject(new ApiError(
+                typeof evt["message"] === "string" ? evt["message"] : "Generation failed",
+                typeof evt["aiResponse"] === "string" ? evt["aiResponse"] : undefined,
+              ));
+              return;
+            }
+          }
+        }
+      } catch (e) { reject(e instanceof Error ? e : new Error(String(e))); }
+    })();
+  });
+}
+
 // ─── Utility helpers ──────────────────────────────────────────────────────────
 
 function downloadFile(content: string, filename: string) {
@@ -2109,48 +2170,16 @@ type BottomTab = "prompt" | "bugfix" | "instructions";
 
 // ─── Generating Progress Dialog ───────────────────────────────────────────────
 
-const GEN_PHASES: { label: string; desc: string; target: number }[] = [
-  { label: "Analyzing prompt",      desc: "Parsing the task and identifying the M365/Azure service scope",                target: 12 },
-  { label: "Planning structure",    desc: "Designing parameter blocks, error handling flow, and cmdlet sequence",          target: 35 },
-  { label: "Writing PowerShell",    desc: "Generating production-ready code with try/catch logging and CSV export",        target: 68 },
-  { label: "Detecting permissions", desc: "Scanning for required Graph API application and delegated role scopes",         target: 84 },
-  { label: "Finalizing output",     desc: "Validating script structure and formatting the final response",                 target: 96 },
-];
-
-function GeneratingProgressDialog({ open }: { open: boolean }) {
-  const [pct, setPct] = useState(0);
-  const [phaseIdx, setPhaseIdx] = useState(0);
-  const phaseRef = useRef(0);
-  const pctRef = useRef(0);
-
-  useEffect(() => {
-    if (!open) {
-      setPct(0);
-      setPhaseIdx(0);
-      phaseRef.current = 0;
-      pctRef.current = 0;
-      return;
-    }
-    const id = setInterval(() => {
-      const phase = phaseRef.current;
-      const target = GEN_PHASES[phase]?.target ?? 96;
-      const cur = pctRef.current;
-      if (cur < target) {
-        const step = Math.max(0.2, (target - cur) * 0.04);
-        const next = Math.min(cur + step, target);
-        pctRef.current = next;
-        setPct(next);
-      } else if (phase < GEN_PHASES.length - 1) {
-        phaseRef.current = phase + 1;
-        setPhaseIdx(phase + 1);
-      }
-    }, 60);
-    return () => clearInterval(id);
-  }, [open]);
-
+function GeneratingProgressDialog({
+  open,
+  pct = 0,
+  phaseLabel = "Generating…",
+}: {
+  open: boolean;
+  pct?: number;
+  phaseLabel?: string;
+}) {
   if (!open) return null;
-
-  const phase = GEN_PHASES[Math.min(phaseIdx, GEN_PHASES.length - 1)];
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75">
@@ -2167,45 +2196,17 @@ function GeneratingProgressDialog({ open }: { open: boolean }) {
         </div>
 
         {/* Progress bar */}
-        <div className="mb-5">
+        <div className="mb-4">
           <div className="flex items-center justify-between mb-1.5">
-            <span className="text-xs font-medium text-[#E6EDF3]">{phase.label}</span>
-            <span className="text-[10px] text-[#7D8590] tabular-nums">{Math.round(pct)}%</span>
+            <span className="text-xs font-medium text-[#E6EDF3] truncate mr-2">{phaseLabel}</span>
+            <span className="text-[10px] text-[#7D8590] tabular-nums flex-shrink-0">{Math.round(pct)}%</span>
           </div>
           <div className="h-1.5 bg-[#21262D] rounded-full overflow-hidden">
             <div
-              className="h-full rounded-full transition-all duration-75"
+              className="h-full rounded-full transition-all duration-300 ease-out"
               style={{ width: `${pct}%`, background: "linear-gradient(90deg, #0078D4, #00B4D8)" }}
             />
           </div>
-          <p className="text-[11px] text-[#7D8590] mt-1.5 leading-relaxed">{phase.desc}</p>
-        </div>
-
-        {/* Phase checklist */}
-        <div className="space-y-0.5">
-          {GEN_PHASES.map((p, i) => {
-            const done = i < phaseIdx;
-            const active = i === phaseIdx;
-            return (
-              <div
-                key={p.label}
-                className={`flex items-center gap-2.5 py-1.5 px-2.5 rounded-lg transition-colors ${active ? "bg-[#0078D4]/10" : ""}`}
-              >
-                {done ? (
-                  <svg className="w-3.5 h-3.5 text-green-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                  </svg>
-                ) : active ? (
-                  <div className="w-3.5 h-3.5 border border-[#0078D4]/40 border-t-[#0078D4] rounded-full animate-spin flex-shrink-0" />
-                ) : (
-                  <div className="w-3.5 h-3.5 rounded-full border border-[#21262D] flex-shrink-0" />
-                )}
-                <span className={`text-[11px] ${done ? "text-[#484F58] line-through" : active ? "text-[#E6EDF3] font-medium" : "text-[#484F58]"}`}>
-                  {p.label}
-                </span>
-              </div>
-            );
-          })}
         </div>
       </div>
     </div>
@@ -2242,6 +2243,8 @@ function GenerateFromServiceDialog({
     () => localStorage.getItem("gfs-custom-instructions") ?? "",
   );
   const [generating, setGenerating] = useState(false);
+  const [genPct, setGenPct] = useState(5);
+  const [genPhaseLabel, setGenPhaseLabel] = useState("Generating…");
   const [humanOnlyTasks, setHumanOnlyTasks] = useState<string[]>([]);
   const [humanOnlyExplanation, setHumanOnlyExplanation] = useState<string | null>(null);
 
@@ -2299,6 +2302,8 @@ function GenerateFromServiceDialog({
   const handleGenerate = async () => {
     if (!selectedServiceId) return;
     setGenerating(true);
+    setGenPct(5);
+    setGenPhaseLabel("Sending prompt to Claude…");
     setHumanOnlyExplanation(null);
     try {
       type GenResult = {
@@ -2313,15 +2318,17 @@ function GenerateFromServiceDialog({
         permissions?: PsScriptPermissions;
         taskAssociations?: TaskAssociation[];
       };
-      const result = (await apiFetch("/admin/ps-scripts/generate-from-service", token, {
-        method: "POST",
-        body: JSON.stringify({
+      const result = await consumeGenerationSSE<GenResult>(
+        "/admin/ps-scripts/generate-from-service",
+        token,
+        {
           serviceId: selectedServiceId,
           customInstructions: customInstructions.trim() || undefined,
           baseInstructions: baseInstructions.trim() || undefined,
           detailedInstructions: detailedInstructions.trim() || undefined,
-        }),
-      })) as GenResult;
+        },
+        (pct, label) => { setGenPct(pct); if (label) setGenPhaseLabel(label); },
+      );
 
       if (result.humanOnlyTasks?.length > 0) {
         setHumanOnlyTasks(result.humanOnlyTasks);
@@ -2669,7 +2676,7 @@ function GenerateFromServiceDialog({
           </div>
         </div>
       </div>
-      <GeneratingProgressDialog open={generating} />
+      <GeneratingProgressDialog open={generating} pct={genPct} phaseLabel={genPhaseLabel} />
       {packageResult && (
         <PackagePushProgressDialog
           open={pushDialogOpen}
@@ -2929,6 +2936,8 @@ export default function ScriptGeneratorPage() {
   const [scriptBody, setScriptBody] = useState("");
   const [permissions, setPermissions] = useState<PsScriptPermissions>({ appPermissions: [], delegatedPermissions: [], notes: "" });
   const [generating, setGenerating] = useState(false);
+  const [genPct, setGenPct] = useState(5);
+  const [genPhaseLabel, setGenPhaseLabel] = useState("Generating…");
   const [updating, setUpdating] = useState(false);
   const [modularizing, setModularizing] = useState(false);
   const [fixing, setFixing] = useState(false);
@@ -3121,16 +3130,20 @@ export default function ScriptGeneratorPage() {
   const generate = async () => {
     if (!prompt.trim()) { toast({ title: "Enter a description first", variant: "destructive" }); return; }
     setGenerating(true);
+    setGenPct(5);
+    setGenPhaseLabel("Sending prompt to Claude…");
     setModules([]);
     setLoadedPackage(null);
     setLoadedPackageTitle(null);
     setFixSummary("");
     setSummaryError(null);
     try {
-      const result = await apiFetch("/admin/ps-scripts/generate", token, {
-        method: "POST",
-        body: JSON.stringify({ prompt: prompt.trim(), category, baseInstructions: baseInstructions.trim() || undefined, detailedInstructions: detailedInstructions.trim() || undefined }),
-      }) as { script: string; permissions: PsScriptPermissions };
+      const result = await consumeGenerationSSE<{ script: string; permissions: PsScriptPermissions }>(
+        "/admin/ps-scripts/generate",
+        token,
+        { prompt: prompt.trim(), category, baseInstructions: baseInstructions.trim() || undefined, detailedInstructions: detailedInstructions.trim() || undefined },
+        (pct, label) => { setGenPct(pct); if (label) setGenPhaseLabel(label); },
+      );
       if (!result.script || result.script.trim().length < 20) {
         toast({ title: "Generation could not be applied", description: "The AI returned an unreadable response.", variant: "destructive" });
         return;
@@ -3805,7 +3818,7 @@ export default function ScriptGeneratorPage() {
       </div>
 
       {/* ── Modals & Drawers ──────────────────────────────────────────────── */}
-      <GeneratingProgressDialog open={generating} />
+      <GeneratingProgressDialog open={generating} pct={genPct} phaseLabel={genPhaseLabel} />
 
       {generateFromServiceOpen && (
         <GenerateFromServiceDialog
