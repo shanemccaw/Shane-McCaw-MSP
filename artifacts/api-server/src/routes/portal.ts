@@ -4208,6 +4208,38 @@ router.put("/admin/clients/:id/m365-profile", requireAdmin, async (req: Request,
   await db.insert(clientM365ProfilesTable)
     .values({ clientId, profile })
     .onConflictDoUpdate({ target: clientM365ProfilesTable.clientId, set: { profile, updatedAt: new Date() } });
+
+  // Compute health scores and save snapshot (same logic as portal PUT)
+  try {
+    const scores = computeM365Scores(profile);
+    const recentRows = await db
+      .select({ category: clientHealthHistoryTable.category, score: clientHealthHistoryTable.score })
+      .from(clientHealthHistoryTable)
+      .where(eq(clientHealthHistoryTable.clientId, clientId))
+      .orderBy(desc(clientHealthHistoryTable.recordedAt))
+      .limit(10);
+    const latestByCategory: Partial<Record<M365ScoreCategory, number>> = {};
+    for (const row of recentRows) {
+      const cat = row.category as M365ScoreCategory;
+      if (!(cat in latestByCategory)) latestByCategory[cat] = row.score;
+    }
+    const hasChanged = (Object.entries(scores) as [M365ScoreCategory, number][])
+      .some(([cat, score]) => latestByCategory[cat] !== score);
+    if (hasChanged) {
+      const now = new Date();
+      await db.insert(clientHealthHistoryTable).values(
+        (Object.entries(scores) as [M365ScoreCategory, number][]).map(([category, score]) => ({
+          clientId,
+          category,
+          score,
+          recordedAt: now,
+        }))
+      );
+    }
+  } catch (err) {
+    req.log.warn({ err }, "admin m365-profile: failed to save health snapshot (non-fatal)");
+  }
+
   res.json({ ok: true });
 });
 

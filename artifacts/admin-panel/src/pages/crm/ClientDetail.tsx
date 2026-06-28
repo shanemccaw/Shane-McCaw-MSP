@@ -2434,7 +2434,7 @@ export default function ClientDetailPage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={() => setShowM365Dialog(false)}>
           <div className="absolute inset-0 bg-black/60" />
           <div
-            className="relative bg-[#161B22] border border-border rounded-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto shadow-2xl"
+            className="relative bg-[#161B22] border border-border rounded-2xl w-full max-w-3xl max-h-[90vh] overflow-y-auto shadow-2xl"
             onClick={e => e.stopPropagation()}
           >
             {/* Header */}
@@ -2454,17 +2454,145 @@ export default function ClientDetailPage() {
               </div>
             ) : (
               <div className="p-6 space-y-6">
-                {/* Copilot Readiness Score */}
+
+                {/* ── 1. Organization Overview ──────────────────────────────── */}
+                <div>
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-3">Organization Overview</p>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+                    <div>
+                      <label className={labelCls}>Org Name</label>
+                      <input className={inputCls} value={String(m365FormData.orgName ?? "")} onChange={e => setM365FormData(f => ({ ...f, orgName: e.target.value }))} />
+                    </div>
+                    <div>
+                      <label className={labelCls}>Industry</label>
+                      <input className={inputCls} value={String(m365FormData.industry ?? "")} onChange={e => setM365FormData(f => ({ ...f, industry: e.target.value }))} />
+                    </div>
+                    <div>
+                      <label className={labelCls}>Tenant Domain</label>
+                      <input className={inputCls} placeholder="contoso.onmicrosoft.com" value={String(m365FormData.tenantDomain ?? "")} onChange={e => setM365FormData(f => ({ ...f, tenantDomain: e.target.value }))} />
+                    </div>
+                    <div>
+                      <label className={labelCls}>Employee Count</label>
+                      <input type="number" min="1" className={inputCls} value={String(m365FormData.employeeCount ?? "")} onChange={e => setM365FormData(f => ({ ...f, employeeCount: e.target.value ? Number(e.target.value) : undefined }))} />
+                    </div>
+                    <div>
+                      <label className={labelCls}>M365 Licensed Users</label>
+                      <input type="number" min="0" className={inputCls} value={String(m365FormData.licensedUserCount ?? "")} onChange={e => setM365FormData(f => ({ ...f, licensedUserCount: e.target.value ? Number(e.target.value) : undefined }))} />
+                    </div>
+                    <div>
+                      <label className={labelCls}>IT Contact Name</label>
+                      <input className={inputCls} value={String(m365FormData.itContactName ?? "")} onChange={e => setM365FormData(f => ({ ...f, itContactName: e.target.value }))} />
+                    </div>
+                    <div>
+                      <label className={labelCls}>IT Contact Email</label>
+                      <input type="email" className={inputCls} value={String(m365FormData.itContactEmail ?? "")} onChange={e => setM365FormData(f => ({ ...f, itContactEmail: e.target.value }))} />
+                    </div>
+                    <div className="flex items-center gap-2 pt-5">
+                      <input type="checkbox" checked={Boolean(m365FormData.isMicrosoftPartner)} onChange={e => setM365FormData(f => ({ ...f, isMicrosoftPartner: e.target.checked }))} className="w-3.5 h-3.5 rounded accent-[#0078D4]" />
+                      <span className="text-xs text-[#E6EDF3]">Microsoft Partner</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* ── 2. M365 Licensing & Usage ─────────────────────────────── */}
+                <div>
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-3">M365 Licensing & Usage</p>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 mb-3">
+                    <div className="sm:col-span-2">
+                      <label className={labelCls}>License SKUs (comma-separated)</label>
+                      <input className={inputCls} placeholder="E3, E5, Business Premium" value={Array.isArray(m365FormData.licenseSKUs) ? (m365FormData.licenseSKUs as string[]).join(", ") : String(m365FormData.licenseSKUs ?? "")} onChange={e => setM365FormData(f => ({ ...f, licenseSKUs: e.target.value.split(",").map(s => s.trim()).filter(Boolean) }))} />
+                    </div>
+                    <div>
+                      <label className={labelCls}>Active User %</label>
+                      <input type="number" min="0" max="100" className={inputCls} placeholder="e.g. 80" value={String(m365FormData.activeUserPercent ?? "")} onChange={e => setM365FormData(f => ({ ...f, activeUserPercent: e.target.value ? Number(e.target.value) : undefined }))} />
+                    </div>
+                  </div>
+                  <p className="text-[10px] font-medium text-muted-foreground mb-2">Active Workloads</p>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                    {([
+                      { key: "allUsersLicensed", label: "All Users Licensed" },
+                      { key: "usesExchange", label: "Exchange Online" },
+                      { key: "usesTeams", label: "Microsoft Teams" },
+                      { key: "usesSharePoint", label: "SharePoint Online" },
+                      { key: "usesOneDrive", label: "OneDrive for Business" },
+                      { key: "usesYammer", label: "Viva Engage / Yammer" },
+                    ] as { key: string; label: string }[]).map(({ key, label }) => (
+                      <label key={key} className="flex items-center gap-2 cursor-pointer">
+                        <input type="checkbox" checked={Boolean(m365FormData[key])} onChange={e => setM365FormData(f => ({ ...f, [key]: e.target.checked }))} className="w-3.5 h-3.5 rounded accent-[#0078D4]" />
+                        <span className="text-xs text-[#E6EDF3]">{label}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+
+                {/* ── 3. Environment Structure ──────────────────────────────── */}
+                <div>
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-3">Environment Structure</p>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 mb-3">
+                    <div>
+                      <label className={labelCls}>SharePoint Site Count</label>
+                      <input type="number" min="0" className={inputCls} value={String(m365FormData.sharepointSiteCount ?? "")} onChange={e => setM365FormData(f => ({ ...f, sharepointSiteCount: e.target.value ? Number(e.target.value) : undefined }))} />
+                    </div>
+                    <div>
+                      <label className={labelCls}>Teams Count</label>
+                      <input type="number" min="0" className={inputCls} value={String(m365FormData.teamCount ?? "")} onChange={e => setM365FormData(f => ({ ...f, teamCount: e.target.value ? Number(e.target.value) : undefined }))} />
+                    </div>
+                    <div>
+                      <label className={labelCls}>Security Groups</label>
+                      <input type="number" min="0" className={inputCls} value={String(m365FormData.securityGroupCount ?? "")} onChange={e => setM365FormData(f => ({ ...f, securityGroupCount: e.target.value ? Number(e.target.value) : undefined }))} />
+                    </div>
+                    <div>
+                      <label className={labelCls}>Auth Method</label>
+                      <input className={inputCls} placeholder="e.g. Cloud-only, Hybrid" value={String(m365FormData.authMethod ?? "")} onChange={e => setM365FormData(f => ({ ...f, authMethod: e.target.value }))} />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                    {([
+                      { key: "externalSharingEnabled", label: "External Sharing On" },
+                      { key: "guestUsersPresent", label: "Guest Users Present" },
+                      { key: "isHybrid", label: "Hybrid Environment" },
+                      { key: "hasOnPremExchange", label: "On-Prem Exchange" },
+                      { key: "usesAADConnect", label: "Entra Connect / AADC" },
+                    ] as { key: string; label: string }[]).map(({ key, label }) => (
+                      <label key={key} className="flex items-center gap-2 cursor-pointer">
+                        <input type="checkbox" checked={Boolean(m365FormData[key])} onChange={e => setM365FormData(f => ({ ...f, [key]: e.target.checked }))} className="w-3.5 h-3.5 rounded accent-[#0078D4]" />
+                        <span className="text-xs text-[#E6EDF3]">{label}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+
+                {/* ── 4. Security & Compliance ──────────────────────────────── */}
+                <div>
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-3">Security & Compliance</p>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                    {([
+                      { key: "mfaEnforced", label: "MFA Enforced" },
+                      { key: "conditionalAccessEnabled", label: "Conditional Access" },
+                      { key: "hasAADP1orP2", label: "Entra ID P1 / P2" },
+                      { key: "intuneEnabled", label: "Intune Enabled" },
+                      { key: "hasDefender", label: "Defender for M365" },
+                      { key: "hasDLP", label: "DLP Policies" },
+                      { key: "sensitivityLabelsConfigured", label: "Sensitivity Labels" },
+                      { key: "hasRetentionPolicies", label: "Retention Policies" },
+                      { key: "usesComplianceCenter", label: "Compliance Center" },
+                      { key: "hasInsiderRisk", label: "Insider Risk Mgmt" },
+                    ] as { key: string; label: string }[]).map(({ key, label }) => (
+                      <label key={key} className="flex items-center gap-2 cursor-pointer">
+                        <input type="checkbox" checked={Boolean(m365FormData[key])} onChange={e => setM365FormData(f => ({ ...f, [key]: e.target.checked }))} className="w-3.5 h-3.5 rounded accent-[#0078D4]" />
+                        <span className="text-xs text-[#E6EDF3]">{label}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+
+                {/* ── 5. Copilot Readiness ──────────────────────────────────── */}
                 <div>
                   <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-3">Copilot Readiness</p>
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
                     <div>
                       <label className={labelCls}>Readiness Score (1–5)</label>
-                      <select
-                        className={inputCls}
-                        value={String(m365FormData.copilotReadinessScore ?? "")}
-                        onChange={e => setM365FormData(f => ({ ...f, copilotReadinessScore: e.target.value ? Number(e.target.value) : undefined }))}
-                      >
+                      <select className={inputCls} value={String(m365FormData.copilotReadinessScore ?? "")} onChange={e => setM365FormData(f => ({ ...f, copilotReadinessScore: e.target.value ? Number(e.target.value) : undefined }))}>
                         <option value="">— select —</option>
                         <option value="1">1 — Not Ready</option>
                         <option value="2">2 — Early Stage</option>
@@ -2473,79 +2601,78 @@ export default function ClientDetailPage() {
                         <option value="5">5 — Ready</option>
                       </select>
                     </div>
-                    <div>
-                      <label className={labelCls}>Auth Method</label>
-                      <input className={inputCls} placeholder="e.g. Cloud-only" value={String(m365FormData.authMethod ?? "")} onChange={e => setM365FormData(f => ({ ...f, authMethod: e.target.value }))} />
+                    <div className="flex items-center gap-2 pt-5">
+                      <input type="checkbox" checked={Boolean(m365FormData.hasCopilotLicenses)} onChange={e => setM365FormData(f => ({ ...f, hasCopilotLicenses: e.target.checked }))} className="w-3.5 h-3.5 rounded accent-[#0078D4]" />
+                      <span className="text-xs text-[#E6EDF3]">Has Copilot Licenses</span>
                     </div>
-                    <div>
-                      <label className={labelCls}>Active User %</label>
-                      <input type="number" min="0" max="100" className={inputCls} placeholder="e.g. 80" value={String(m365FormData.activeUserPercent ?? "")} onChange={e => setM365FormData(f => ({ ...f, activeUserPercent: e.target.value ? Number(e.target.value) : undefined }))} />
-                    </div>
-                  </div>
-                </div>
-
-                {/* Tenant Info */}
-                <div>
-                  <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-3">Tenant Info</p>
-                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
-                    <div>
-                      <label className={labelCls}>Org Name</label>
-                      <input className={inputCls} value={String(m365FormData.orgName ?? "")} onChange={e => setM365FormData(f => ({ ...f, orgName: e.target.value }))} />
-                    </div>
-                    <div>
-                      <label className={labelCls}>Tenant Domain</label>
-                      <input className={inputCls} placeholder="contoso.onmicrosoft.com" value={String(m365FormData.tenantDomain ?? "")} onChange={e => setM365FormData(f => ({ ...f, tenantDomain: e.target.value }))} />
-                    </div>
-                    <div>
-                      <label className={labelCls}>Industry</label>
-                      <input className={inputCls} value={String(m365FormData.industry ?? "")} onChange={e => setM365FormData(f => ({ ...f, industry: e.target.value }))} />
-                    </div>
-                    <div>
-                      <label className={labelCls}>Employee Count</label>
-                      <input type="number" min="1" className={inputCls} value={String(m365FormData.employeeCount ?? "")} onChange={e => setM365FormData(f => ({ ...f, employeeCount: e.target.value ? Number(e.target.value) : undefined }))} />
-                    </div>
-                    <div>
-                      <label className={labelCls}>IT Contact Name</label>
-                      <input className={inputCls} value={String(m365FormData.itContactName ?? "")} onChange={e => setM365FormData(f => ({ ...f, itContactName: e.target.value }))} />
-                    </div>
-                    <div>
-                      <label className={labelCls}>License SKUs (comma-sep)</label>
-                      <input className={inputCls} placeholder="E3, E5, Business Premium" value={Array.isArray(m365FormData.licenseSKUs) ? (m365FormData.licenseSKUs as string[]).join(", ") : String(m365FormData.licenseSKUs ?? "")} onChange={e => setM365FormData(f => ({ ...f, licenseSKUs: e.target.value.split(",").map(s => s.trim()).filter(Boolean) }))} />
-                    </div>
+                    {Boolean(m365FormData.hasCopilotLicenses) && (
+                      <div>
+                        <label className={labelCls}>Copilot License Count</label>
+                        <input type="number" min="0" className={inputCls} value={String(m365FormData.copilotLicenseCount ?? "")} onChange={e => setM365FormData(f => ({ ...f, copilotLicenseCount: e.target.value ? Number(e.target.value) : undefined }))} />
+                      </div>
+                    )}
                     <div className="sm:col-span-3">
                       <label className={labelCls}>Primary Copilot Use Case</label>
                       <input className={inputCls} placeholder="e.g. Document summarisation, meeting transcripts" value={String(m365FormData.copilotUseCase ?? "")} onChange={e => setM365FormData(f => ({ ...f, copilotUseCase: e.target.value }))} />
                     </div>
+                    <div className="sm:col-span-3">
+                      <label className={labelCls}>Current AI Tools in Use</label>
+                      <input className={inputCls} placeholder="e.g. ChatGPT, GitHub Copilot" value={String(m365FormData.currentAITools ?? "")} onChange={e => setM365FormData(f => ({ ...f, currentAITools: e.target.value }))} />
+                    </div>
+                    <div className="sm:col-span-2">
+                      <label className={labelCls}>Data Governance Concerns</label>
+                      <input className={inputCls} placeholder="e.g. Oversharing, unclassified data" value={String(m365FormData.dataGovernanceConcerns ?? "")} onChange={e => setM365FormData(f => ({ ...f, dataGovernanceConcerns: e.target.value }))} />
+                    </div>
+                    <div>
+                      <label className={labelCls}>Primary Blocker</label>
+                      <input className={inputCls} placeholder="e.g. No DLP, Hybrid complexity" value={String(m365FormData.copilotBlockedBy ?? "")} onChange={e => setM365FormData(f => ({ ...f, copilotBlockedBy: e.target.value }))} />
+                    </div>
                   </div>
                 </div>
 
-                {/* Boolean Flags */}
+                {/* ── 6. Engagement Metadata ────────────────────────────────── */}
                 <div>
-                  <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-3">Security & Licensing Flags</p>
-                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                    {([
-                      { key: "hasCopilotLicenses", label: "Has Copilot Licenses" },
-                      { key: "mfaEnforced", label: "MFA Enforced" },
-                      { key: "conditionalAccessEnabled", label: "Conditional Access" },
-                      { key: "allUsersLicensed", label: "All Users Licensed" },
-                      { key: "hasAADP1orP2", label: "AAD P1 / P2" },
-                      { key: "intuneEnabled", label: "Intune Enabled" },
-                      { key: "hasDLP", label: "DLP Policies" },
-                      { key: "isHybrid", label: "Hybrid Environment" },
-                      { key: "externalSharingEnabled", label: "External Sharing On" },
-                    ] as { key: string; label: string }[]).map(({ key, label }) => (
-                      <label key={key} className="flex items-center gap-2 cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={Boolean(m365FormData[key])}
-                          onChange={e => setM365FormData(f => ({ ...f, [key]: e.target.checked }))}
-                          className="w-3.5 h-3.5 rounded accent-[#0078D4]"
-                        />
-                        <span className="text-xs text-[#E6EDF3]">{label}</span>
-                      </label>
-                    ))}
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-3">Engagement Metadata</p>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+                    <div>
+                      <label className={labelCls}>Engagement Start Date</label>
+                      <input type="date" className={inputCls} value={String(m365FormData.engagementStartDate ?? "")} onChange={e => setM365FormData(f => ({ ...f, engagementStartDate: e.target.value }))} />
+                    </div>
+                    <div>
+                      <label className={labelCls}>Estimated Duration</label>
+                      <input className={inputCls} placeholder="e.g. 3 months" value={String(m365FormData.estimatedDuration ?? "")} onChange={e => setM365FormData(f => ({ ...f, estimatedDuration: e.target.value }))} />
+                    </div>
+                    <div>
+                      <label className={labelCls}>Engagement Type</label>
+                      <input className={inputCls} placeholder="e.g. Assessment, Retainer" value={String(m365FormData.engagementType ?? "")} onChange={e => setM365FormData(f => ({ ...f, engagementType: e.target.value }))} />
+                    </div>
+                    <div>
+                      <label className={labelCls}>Budget Range</label>
+                      <input className={inputCls} placeholder="e.g. $10k–$25k" value={String(m365FormData.budgetRange ?? "")} onChange={e => setM365FormData(f => ({ ...f, budgetRange: e.target.value }))} />
+                    </div>
+                    <div>
+                      <label className={labelCls}>Decision Maker Name</label>
+                      <input className={inputCls} value={String(m365FormData.decisionMakerName ?? "")} onChange={e => setM365FormData(f => ({ ...f, decisionMakerName: e.target.value }))} />
+                    </div>
+                    <div>
+                      <label className={labelCls}>Decision Maker Email</label>
+                      <input type="email" className={inputCls} value={String(m365FormData.decisionMakerEmail ?? "")} onChange={e => setM365FormData(f => ({ ...f, decisionMakerEmail: e.target.value }))} />
+                    </div>
+                    <div>
+                      <label className={labelCls}>Referral Source</label>
+                      <input className={inputCls} placeholder="e.g. LinkedIn, Word of mouth" value={String(m365FormData.referralSource ?? "")} onChange={e => setM365FormData(f => ({ ...f, referralSource: e.target.value }))} />
+                    </div>
+                    <div className="sm:col-span-3">
+                      <label className={labelCls}>Business Goals</label>
+                      <textarea rows={2} className={inputCls} placeholder="Key business objectives for this engagement" value={String(m365FormData.businessGoals ?? "")} onChange={e => setM365FormData(f => ({ ...f, businessGoals: e.target.value }))} />
+                    </div>
+                    <div className="sm:col-span-3">
+                      <label className={labelCls}>Known Blockers</label>
+                      <textarea rows={2} className={inputCls} placeholder="Technical or organizational blockers" value={String(m365FormData.knownBlockers ?? "")} onChange={e => setM365FormData(f => ({ ...f, knownBlockers: e.target.value }))} />
+                    </div>
                   </div>
                 </div>
+
               </div>
             )}
 
