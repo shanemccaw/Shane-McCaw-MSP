@@ -1066,6 +1066,40 @@ router.delete("/admin/script-packages/:id/modules/:moduleId", requireAdmin, asyn
   }
 });
 
+// ─── POST /api/admin/ps-scripts/:id/associate-to-package ─────────────────────
+// NOTE: must be registered BEFORE /admin/ps-scripts/:id to prevent route shadowing
+
+router.post("/admin/ps-scripts/:id/associate-to-package", requireAdmin, async (req: Request, res: Response) => {
+  const id = String(req.params["id"] ?? "");
+  const UUID_RE_LOCAL = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (!UUID_RE_LOCAL.test(id)) { res.status(400).json({ error: "Invalid id" }); return; }
+
+  const { packageId } = req.body as { packageId?: string };
+  if (!packageId || !UUID_RE_LOCAL.test(packageId)) { res.status(400).json({ error: "packageId is required" }); return; }
+
+  try {
+    const [script] = await db.select().from(powershellScriptsTable).where(eq(powershellScriptsTable.id, id));
+    if (!script) { res.status(404).json({ error: "Script not found" }); return; }
+
+    const [pkg] = await db.select({ id: scriptPackagesTable.id }).from(scriptPackagesTable).where(eq(scriptPackagesTable.id, packageId));
+    if (!pkg) { res.status(404).json({ error: "Package not found" }); return; }
+
+    const filename = `${titleToRunbookName(script.title)}.ps1`;
+    const [mod] = await db.insert(scriptModulesTable).values({
+      packageId,
+      filename,
+      description: script.description ?? null,
+      content: script.scriptBody ?? "",
+      sortOrder: 999,
+    }).returning();
+
+    res.status(201).json(mod);
+  } catch (err) {
+    logger.error({ err }, "Failed to associate script to package");
+    res.status(500).json({ error: "Failed to associate script" });
+  }
+});
+
 // ─── GET /api/admin/ps-scripts/:id ───────────────────────────────────────────
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;

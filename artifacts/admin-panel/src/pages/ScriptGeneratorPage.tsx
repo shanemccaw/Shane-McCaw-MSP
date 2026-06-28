@@ -8,6 +8,16 @@ import {
   AlertDialogDescription,
   AlertDialogFooter,
 } from "@/components/ui/alert-dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { AzurePushDialog, type AzurePushDialogState } from "@/components/AzurePushDialog";
 import { useAuth } from "@/contexts/AuthContext";
@@ -1181,6 +1191,8 @@ function LibrarySidebar({
   loadingScriptId,
   onRunScript,
   onRunModule,
+  token,
+  onDeleteScript,
 }: {
   scripts: PsScriptListItem[];
   packages: ScriptPackageListItem[];
@@ -1191,10 +1203,44 @@ function LibrarySidebar({
   loadingScriptId: string | null;
   onRunScript?: (script: PsScriptListItem) => void;
   onRunModule?: (module: ScriptModuleItem) => void;
+  token: string;
+  onDeleteScript?: (scriptId: string) => void;
 }) {
+  const { toast } = useToast();
   const [search, setSearch] = useState("");
   const [collapsedCats, setCollapsedCats] = useState<Set<string>>(new Set());
   const [expandedPackages, setExpandedPackages] = useState<Set<string>>(new Set());
+  const [confirmDeleteScript, setConfirmDeleteScript] = useState<PsScriptListItem | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  const handleAssociate = async (script: PsScriptListItem, pkg: ScriptPackageListItem) => {
+    try {
+      await apiFetch(`/admin/ps-scripts/${script.id}/associate-to-package`, token, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ packageId: pkg.id }),
+      });
+      toast({ title: "Script added to set", description: `"${script.title}" added to "${pkg.title}" as a new module.` });
+    } catch {
+      toast({ title: "Failed to associate script", variant: "destructive" });
+    }
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (!confirmDeleteScript) return;
+    const s = confirmDeleteScript;
+    setConfirmDeleteScript(null);
+    setDeletingId(s.id);
+    try {
+      await apiFetch(`/admin/ps-scripts/${s.id}`, token, { method: "DELETE" });
+      onDeleteScript?.(s.id);
+      toast({ title: "Script deleted", description: `"${s.title}" has been removed from the library.` });
+    } catch {
+      toast({ title: "Failed to delete script", variant: "destructive" });
+    } finally {
+      setDeletingId(null);
+    }
+  };
 
   const togglePackageExpand = (pkgId: string, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -1304,14 +1350,74 @@ function LibrarySidebar({
                           <span className="flex-shrink-0 text-[8px] font-semibold px-1 py-0.5 rounded bg-yellow-500/20 border border-yellow-500/40 text-yellow-400 uppercase tracking-wide">M</span>
                         )}
                       </button>
-                      {onRunScript && (
-                        <button
-                          onClick={(e) => { e.stopPropagation(); onRunScript(s); }}
-                          title="Run script"
-                          className="flex-shrink-0 opacity-0 group-hover:opacity-100 px-1.5 py-1 text-[#484F58] hover:text-green-400 transition-all"
-                        >
-                          <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" /><path strokeLinecap="round" strokeLinejoin="round" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-                        </button>
+                      {deletingId === s.id ? (
+                        <div className="flex-shrink-0 px-2 py-1">
+                          <div className="w-3 h-3 border border-[#484F58] border-t-transparent rounded-full animate-spin" />
+                        </div>
+                      ) : (
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <button
+                              onClick={(e) => e.stopPropagation()}
+                              title="More actions"
+                              className="flex-shrink-0 opacity-0 group-hover:opacity-100 px-1.5 py-1 text-[#484F58] hover:text-[#C9D1D9] transition-all rounded hover:bg-[#21262D]"
+                            >
+                              <svg className="w-3 h-3" viewBox="0 0 16 16" fill="currentColor"><circle cx="8" cy="2" r="1.5" /><circle cx="8" cy="8" r="1.5" /><circle cx="8" cy="14" r="1.5" /></svg>
+                            </button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent
+                            className="bg-[#1C2128] border-[#30363D] text-[#C9D1D9] min-w-[180px]"
+                            side="right"
+                            align="start"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            {onRunScript && (
+                              <DropdownMenuItem
+                                className="text-xs text-[#C9D1D9] focus:bg-[#21262D] focus:text-[#E6EDF3] gap-2 cursor-pointer"
+                                onSelect={() => onRunScript(s)}
+                              >
+                                <svg className="w-3 h-3 text-green-400 flex-shrink-0" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z" /></svg>
+                                Run
+                              </DropdownMenuItem>
+                            )}
+                            <DropdownMenuSub>
+                              <DropdownMenuSubTrigger
+                                disabled={packages.length === 0}
+                                className="text-xs text-[#C9D1D9] focus:bg-[#21262D] focus:text-[#E6EDF3] data-[state=open]:bg-[#21262D] data-[disabled]:opacity-40 gap-2"
+                              >
+                                <svg className="w-3 h-3 text-purple-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" /></svg>
+                                Associate to Script Set
+                              </DropdownMenuSubTrigger>
+                              <DropdownMenuSubContent className="bg-[#1C2128] border-[#30363D] text-[#C9D1D9] max-w-[220px]">
+                                {packages.map(pkg => (
+                                  <DropdownMenuItem
+                                    key={pkg.id}
+                                    className="text-xs text-[#C9D1D9] focus:bg-[#21262D] focus:text-[#E6EDF3] gap-2 cursor-pointer"
+                                    onSelect={() => void handleAssociate(s, pkg)}
+                                  >
+                                    <span className="flex-1 truncate">{pkg.title}</span>
+                                    <span className="text-[9px] text-purple-500/60 flex-shrink-0">{pkg.modules.length}m</span>
+                                  </DropdownMenuItem>
+                                ))}
+                              </DropdownMenuSubContent>
+                            </DropdownMenuSub>
+                            <DropdownMenuItem
+                              className="text-xs text-[#C9D1D9] focus:bg-[#21262D] focus:text-[#E6EDF3] gap-2 cursor-pointer"
+                              onSelect={() => onOpenScript(s.id)}
+                            >
+                              <svg className="w-3 h-3 text-[#58A6FF] flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" /><path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+                              Properties
+                            </DropdownMenuItem>
+                            <DropdownMenuSeparator className="bg-[#30363D]" />
+                            <DropdownMenuItem
+                              className="text-xs text-red-400 focus:bg-red-500/10 focus:text-red-400 gap-2 cursor-pointer"
+                              onSelect={() => setConfirmDeleteScript(s)}
+                            >
+                              <svg className="w-3 h-3 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                              Delete
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                       )}
                     </div>
                   );
@@ -1383,6 +1489,13 @@ function LibrarySidebar({
           );
         })}
       </div>
+      <ConfirmDialog
+        open={!!confirmDeleteScript}
+        title={`Delete "${confirmDeleteScript?.title ?? ""}"?`}
+        description="This will permanently remove the script from the library. This action cannot be undone."
+        onConfirm={() => void handleDeleteConfirm()}
+        onCancel={() => setConfirmDeleteScript(null)}
+      />
     </div>
   );
 }
@@ -3444,6 +3557,8 @@ export default function ScriptGeneratorPage() {
                     loadingScriptId={loadingScriptId}
                     onRunScript={setRunLibraryScriptTarget}
                     onRunModule={setRunLibraryModuleTarget}
+                    token={token}
+                    onDeleteScript={(id) => setScripts(prev => prev.filter(s => s.id !== id))}
                   />
                 )}
                 {leftMode === "results" && (
