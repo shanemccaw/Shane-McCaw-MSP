@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import { RefreshCw, CheckCircle, Zap, Download, Upload, X, ArrowLeft } from "lucide-react";
@@ -146,23 +146,80 @@ function ScoreImpactTab({ result }: { result: RunResult }) {
 
 // ── Raw Output Tab ────────────────────────────────────────────────────────────
 
+/** Escape HTML entities to prevent XSS in dangerouslySetInnerHTML output */
+function escHtml(s: string): string {
+  return s.replace(/&/g, "&#38;").replace(/</g, "&#60;").replace(/>/g, "&#62;");
+}
+
+/**
+ * Colorize a JSON string with inline style spans.
+ * Works on the HTML-escaped version so injection is not possible.
+ */
+function colorizeJson(raw: string): string {
+  const escaped = escHtml(raw);
+  // Regex groups: 1=key, 2=string value, 3=bool/null, 4=number
+  return escaped.replace(
+    /("(?:[^"\\]|\\.)*"\s*:)|("(?:[^"\\]|\\.)*")|\b(true|false|null)\b|(-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)/gm,
+    (match, keyStr, valStr, boolNull, num) => {
+      if (keyStr !== undefined)
+        return `<span style="color:#79C0FF">${match}</span>`;
+      if (valStr !== undefined)
+        return `<span style="color:#A5D6FF">${match}</span>`;
+      if (boolNull === "true" || boolNull === "false")
+        return `<span style="color:#56D364">${match}</span>`;
+      if (boolNull === "null")
+        return `<span style="color:#8B949E">${match}</span>`;
+      if (num !== undefined)
+        return `<span style="color:#FFA657">${match}</span>`;
+      return match;
+    },
+  );
+}
+
 function RawOutputTab({ result }: { result: RunResult }) {
   const [copied, setCopied] = useState(false);
-  const json = JSON.stringify(result.rawOutput, null, 2);
+
+  const { plainText, highlighted, lineCount, byteCount } = useMemo(() => {
+    // If rawOutput is a string that looks like JSON, try to parse + re-format it
+    let value: unknown = result.rawOutput;
+    if (typeof value === "string") {
+      try { value = JSON.parse(value); } catch { /* keep as string */ }
+    }
+    const plain = typeof value === "string" ? value : (JSON.stringify(value, null, 2) ?? "");
+    const lines = plain ? plain.split("\n").length : 0;
+    const bytes = new TextEncoder().encode(plain).length;
+    return {
+      plainText: plain,
+      highlighted: plain ? colorizeJson(plain) : "",
+      lineCount: lines,
+      byteCount: bytes,
+    };
+  }, [result.rawOutput]);
 
   const handleCopy = () => {
-    navigator.clipboard.writeText(json).catch(() => {});
+    navigator.clipboard.writeText(plainText).catch(() => {});
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
 
+  const lineNums = lineCount > 0 ? Array.from({ length: lineCount }, (_, i) => i + 1) : [];
+
   return (
     <div className="flex flex-col h-full gap-2">
+      {/* Toolbar */}
       <div className="flex items-center justify-between flex-shrink-0">
-        <p className="text-xs text-[#484F58]">Raw JSON output from the script run</p>
+        <div className="flex items-center gap-3">
+          <p className="text-xs text-[#484F58]">Raw JSON output</p>
+          {lineCount > 0 && (
+            <span className="text-[10px] text-[#484F58] bg-[#161B22] border border-[#21262D] rounded px-1.5 py-0.5">
+              {lineCount} lines · {byteCount < 1024 ? `${byteCount} B` : `${(byteCount / 1024).toFixed(1)} KB`}
+            </span>
+          )}
+        </div>
         <button
           onClick={handleCopy}
-          className="flex items-center gap-1.5 text-xs px-2.5 py-1 rounded border border-[#30363D] text-[#8B949E] hover:text-[#E6EDF3] hover:bg-[#21262D] transition-colors"
+          disabled={!plainText}
+          className="flex items-center gap-1.5 text-xs px-2.5 py-1 rounded border border-[#30363D] text-[#8B949E] hover:text-[#E6EDF3] hover:bg-[#21262D] transition-colors disabled:opacity-40"
         >
           {copied
             ? <svg className="w-3.5 h-3.5 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
@@ -171,9 +228,41 @@ function RawOutputTab({ result }: { result: RunResult }) {
           {copied ? "Copied" : "Copy"}
         </button>
       </div>
-      <pre className="flex-1 bg-[#0D1117] border border-[#30363D] rounded-lg p-4 text-xs text-[#C9D1D9] font-mono overflow-auto whitespace-pre leading-relaxed" style={{ fontFamily: "'Cascadia Code', 'Fira Code', 'Consolas', monospace" }}>
-        {json || "(no data)"}
-      </pre>
+
+      {/* Code block */}
+      {!plainText ? (
+        <div className="flex-1 flex items-center justify-center bg-[#0D1117] border border-[#30363D] rounded-lg">
+          <p className="text-xs text-[#484F58]">(no output data)</p>
+        </div>
+      ) : (
+        <div className="flex-1 min-h-0 bg-[#0D1117] border border-[#30363D] rounded-lg overflow-auto">
+          <div className="flex min-w-0">
+            {/* Line numbers */}
+            <div
+              className="flex-shrink-0 select-none text-right pr-3 pl-3 py-4 border-r border-[#21262D] text-[#484F58]"
+              style={{ fontFamily: "'Cascadia Code','Fira Code','Consolas',monospace", fontSize: "11px", lineHeight: "1.6" }}
+              aria-hidden
+            >
+              {lineNums.map((n) => (
+                <div key={n}>{n}</div>
+              ))}
+            </div>
+            {/* Highlighted content */}
+            <pre
+              className="flex-1 py-4 pl-4 pr-6 text-[#C9D1D9] overflow-visible"
+              style={{
+                fontFamily: "'Cascadia Code','Fira Code','Consolas',monospace",
+                fontSize: "11px",
+                lineHeight: "1.6",
+                margin: 0,
+                whiteSpace: "pre",
+              }}
+              // eslint-disable-next-line react/no-danger
+              dangerouslySetInnerHTML={{ __html: highlighted }}
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 }
