@@ -8,7 +8,7 @@ import {
   projectsTable,
   kanbanTasksTable,
 } from "@workspace/db";
-import { eq, desc, and, lte, or, isNull, count, ne } from "drizzle-orm";
+import { eq, desc, and, lte, or, isNull, count, ne, inArray } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/requireAuth";
 import { generateWorkflowTasks, daysFromNow } from "../lib/workflow-tasks";
 
@@ -256,8 +256,24 @@ router.delete("/opportunities/:id", requireAdmin, async (req: Request, res: Resp
   const [op] = await db.select({ id: opportunitiesTable.id }).from(opportunitiesTable).where(eq(opportunitiesTable.id, id)).limit(1);
   if (!op) { res.status(404).json({ error: "Opportunity not found" }); return; }
 
+  // Collect kanban task IDs linked to this opportunity's tasks before deleting them
+  const linkedKanbanTasks = await db
+    .select({ kanbanTaskId: opportunityTasksTable.kanbanTaskId })
+    .from(opportunityTasksTable)
+    .where(eq(opportunityTasksTable.opportunityId, id));
+
+  const kanbanTaskIds = linkedKanbanTasks
+    .map((r) => r.kanbanTaskId)
+    .filter((kId): kId is number => kId != null);
+
   // Delete related opportunity tasks first (FK constraint)
   await db.delete(opportunityTasksTable).where(eq(opportunityTasksTable.opportunityId, id));
+
+  // Delete the matching kanban tasks so they don't pile up as orphans
+  if (kanbanTaskIds.length > 0) {
+    await db.delete(kanbanTasksTable).where(inArray(kanbanTasksTable.id, kanbanTaskIds));
+  }
+
   await db.delete(opportunitiesTable).where(eq(opportunitiesTable.id, id));
 
   res.json({ ok: true });
