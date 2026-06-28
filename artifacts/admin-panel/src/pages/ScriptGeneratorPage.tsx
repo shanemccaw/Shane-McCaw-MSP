@@ -451,13 +451,11 @@ function PackageDrawer({
     setEditTitle(pkg.title);
     setEditCategory(pkg.category);
     setEditModules(pkg.modules.map((m) => ({ ...m, _key: makeEditKey() })));
-    setActiveModuleIdx(0);
     setEditMode(true);
   };
 
   const cancelEdit = () => {
     setEditMode(false);
-    setActiveModuleIdx(0);
   };
 
   const handleSave = async () => {
