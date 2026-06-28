@@ -15,7 +15,7 @@ import {
 } from "@workspace/db";
 import { eq, desc, asc, inArray, and } from "drizzle-orm";
 import { logger } from "../lib/logger.ts";
-import { hasPsKeywords, hasPsKeywordsFullText } from "../lib/ps-guard.ts";
+import { hasPsKeywordsFullText } from "../lib/ps-guard.ts";
 import { isAzureConfigured, pushScriptToAzure } from "../lib/azure-automation.ts";
 
 // ─── Runbook name helpers ─────────────────────────────────────────────────────
@@ -293,10 +293,11 @@ Write the complete PowerShell script followed by the permissions JSON block.`,
         .trim();
     }
 
-    // Heuristic guard: if the first 200 chars contain no recognisable PowerShell
-    // keyword, the AI likely returned only prose and the fence was absent entirely.
-    // Return a 500 so the editor is never overwritten with non-PS text.
-    if (!hasPsKeywords(scriptBody)) {
+    // Heuristic guard: if the full text contains no recognisable PowerShell keyword,
+    // the AI returned only prose (scripts may open with long comment blocks so a
+    // character-window check would give false positives). Return a 500 so the editor
+    // is never overwritten with non-PS text.
+    if (!hasPsKeywordsFullText(scriptBody)) {
       logger.error(
         { scriptBodyPrefix: scriptBody.slice(0, 300) },
         "generate endpoint: fallback result contains no PS keywords — AI returned prose only; refusing to send to client",
@@ -1232,10 +1233,10 @@ Provide the corrected script in a \`\`\`powershell fence. Then include a <fix-su
         .trim();
     }
 
-    // Heuristic guard: if the first 200 chars contain no recognisable PowerShell
-    // keyword, the AI likely returned only prose (a summary or explanation).
-    // Serving that to the client would replace the editor with non-PS text.
-    if (!hasPsKeywords(fixedScript)) {
+    // Heuristic guard: if the full text contains no recognisable PowerShell keyword,
+    // the AI returned only prose. Serving that to the client would replace the editor
+    // with non-PS text.
+    if (!hasPsKeywordsFullText(fixedScript)) {
       logger.error(
         { fixedScriptPrefix: fixedScript.slice(0, 300) },
         "fix endpoint: fallback result contains no PS keywords — AI returned prose only; refusing to overwrite editor",
@@ -1350,13 +1351,13 @@ Rules:
     // Heuristic guard: if any module's content contains no recognisable
     // PowerShell keyword, the AI returned prose instead of actual scripts.
     // Serving that to the client would overwrite the editor with non-PS text.
-    const hasProseOnly = validModules.some((m) => !hasPsKeywords(m.content));
+    const hasProseOnly = validModules.some((m) => !hasPsKeywordsFullText(m.content));
     if (hasProseOnly) {
       logger.error(
         { moduleCount: validModules.length },
         "modularize endpoint: one or more modules contain no PS keywords — AI returned prose only; refusing to overwrite editor",
       );
-      const proseModules = validModules.filter((m) => !hasPsKeywords(m.content));
+      const proseModules = validModules.filter((m) => !hasPsKeywordsFullText(m.content));
       const aiResponseText = proseModules.map((m) => `### ${m.filename}\n${m.content}`).join("\n\n").slice(0, 3000);
       res.status(500).json({ error: "AI returned a summary instead of a script. Please try again.", aiResponse: aiResponseText });
       return;
