@@ -205,10 +205,12 @@ When asked to produce a PowerShell script, you MUST:
    - [CmdletBinding()] attribute
    - A param() block with typed, documented parameters (include -TenantId, -ClientId, -ClientSecret where applicable)
    - Structured error handling via try/catch/finally blocks
-   - Write-Host / Write-Error / Write-Warning for meaningful logging
+   - Write-Output (NOT Write-Host) for all console output — Write-Host bypasses the pipeline and cannot be captured; Write-Error and Write-Warning are acceptable for error/warning streams
    - Inline comments explaining each logical section
    - Clear output (export to CSV where applicable, structured objects, or console summary)
    - $ErrorActionPreference = "Stop" at the top
+
+IMPORTANT: Never use Write-Host. Always use Write-Output for any status messages or console output.
 
 2. After the script, output a JSON block (inside a \`\`\`json fence) with the EXACT Microsoft Graph API application permissions, Exchange Management roles, SharePoint app permissions, or other service permissions required. Use this exact shape:
 {
@@ -347,9 +349,10 @@ STEP 2 — For every AUTOMATABLE task, write a complete production-ready PowerSh
   - [CmdletBinding()] attribute + param() block with typed, documented parameters (-TenantId, -ClientId, -ClientSecret where applicable)
   - $ErrorActionPreference = "Stop"
   - Structured try/catch/finally error handling
-  - Write-Host / Write-Error / Write-Warning logging
+  - Write-Output (NOT Write-Host) for all console output — Write-Error and Write-Warning are acceptable for their respective streams
   - Inline comments explaining each logical section
   - CSV export where applicable
+  - Never use Write-Host — always Write-Output
 
 STEP 3 — Choose output shape:
   - ALL tasks are HUMAN_ONLY (nothing can be automated) → type "human-only": explanatory note only, no script
@@ -1303,6 +1306,7 @@ Requirements:
 3. Main.ps1 must dot-source all other modules (using . .\\\\ModuleName.ps1) and orchestrate execution
 4. Each module must be self-contained, well-commented, and focused on ONE responsibility
 5. Preserve ALL original functionality — nothing should be lost
+6. Use Write-Output (NOT Write-Host) for any console output in the modules — Write-Host bypasses the pipeline
 
 Return ONLY a JSON array inside a \`\`\`json fence. No other text.
 
