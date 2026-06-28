@@ -2,7 +2,7 @@ import { useEffect, useState, useRef } from "react";
 import { useLocation, useSearch, Link } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
 import { CheckCircle, Clock, ArrowRight, Loader2, ShieldCheck, Phone, ShoppingCart, RefreshCw, X, Settings2 } from "lucide-react";
-import OrderWizard, { type WizardStep, type WizardSelection } from "./OrderWizard";
+import OrderWizard, { type WizardStep, type WizardSelection } from "@/components/OrderWizard";
 
 interface Service {
   id: number;

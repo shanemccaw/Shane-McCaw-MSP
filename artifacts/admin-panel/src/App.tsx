@@ -34,7 +34,6 @@ import OpportunitiesPage from "@/pages/crm/Opportunities";
 import OpportunityDetailPage from "@/pages/crm/OpportunityDetail";
 import OverviewPage from "@/pages/Overview";
 import AnalyticsPage from "@/pages/Analytics";
-import EmailActivityPage from "@/pages/EmailActivity";
 import InboxPage from "@/pages/inbox/Inbox";
 import ActivityLogPage from "@/pages/ActivityLog";
 import SharePointPage from "@/pages/SharePoint";
@@ -206,11 +205,6 @@ function Router() {
         <RequireAdmin><DashboardShell><InboxPage /></DashboardShell></RequireAdmin>
       </Route>
 
-      {/* Legacy email-activity redirect */}
-      <Route path="/email-activity">
-        <Redirect to="/inbox" />
-      </Route>
-
       {/* Activity Log */}
       <Route path="/activity-log">
         <RequireAdmin><DashboardShell><ActivityLogPage /></DashboardShell></RequireAdmin>
@@ -250,15 +244,6 @@ function Router() {
       </Route>
       <Route path="/service-page-triggers">
         <RequireAdmin><DashboardShell><ServicePageTriggersPage /></DashboardShell></RequireAdmin>
-      </Route>
-      <Route path="/script-runner">
-        <Redirect to="/script-generator" />
-      </Route>
-      <Route path="/m365-scripts">
-        <Redirect to="/script-generator" />
-      </Route>
-      <Route path="/m365-run-results">
-        <Redirect to="/script-generator" />
       </Route>
       <Route path="/script-generator">
         <RequireAdmin><DashboardShell><ScriptGeneratorPage /></DashboardShell></RequireAdmin>
