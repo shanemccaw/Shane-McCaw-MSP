@@ -344,7 +344,7 @@ function ScriptFormModal({
           name: form.name.trim(),
           description: form.description.trim() || undefined,
           runbookName: form.runbookName.trim(),
-          appRegPermissions: form.executionMode === "manual" ? [] : form.appRegPermissions.filter(p => p.permission.trim()),
+          appRegPermissions: form.appRegPermissions.filter(p => p.permission.trim()),
           aiInstructions: form.aiInstructions.trim() || undefined,
           executionMode: form.executionMode,
           manualRequirements: form.manualRequirements.trim()
@@ -526,39 +526,46 @@ function ScriptFormModal({
             </>
           )}
 
-          {form.executionMode === "automated" && (
-            <div>
-              <div className="flex items-center justify-between mb-2">
-                <label className={`${labelCls} mb-0`}>App Registration Permissions</label>
-                <button
-                  onClick={addPerm}
-                  className="flex items-center gap-1 text-[10px] font-semibold text-[#0078D4] hover:text-[#1A90E0] transition-colors"
-                >
-                  <Plus className="w-3 h-3" />Add permission
-                </button>
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <div>
+                <label className={`${labelCls} mb-0`}>
+                  {form.executionMode === "automated" ? "App Registration Permissions" : "Delegated Permissions"}
+                </label>
+                <p className="text-[10px] text-[#484F58] mt-0.5">
+                  {form.executionMode === "automated"
+                    ? "Application-level permissions granted to the service principal in Azure AD"
+                    : "Delegated permissions the customer's account needs to run this script interactively"}
+                </p>
               </div>
-              {form.appRegPermissions.length === 0 ? (
-                <p className="text-xs text-[#484F58] italic py-2">No permissions defined yet.</p>
-              ) : (
-                <div className="space-y-2">
-                  <div className="grid grid-cols-[1fr_130px_1fr_28px] gap-2 mb-1">
-                    <span className="text-[10px] font-bold uppercase text-[#484F58]">Permission</span>
-                    <span className="text-[10px] font-bold uppercase text-[#484F58]">Type</span>
-                    <span className="text-[10px] font-bold uppercase text-[#484F58]">Reason</span>
-                    <span />
-                  </div>
-                  {form.appRegPermissions.map((p, i) => (
-                    <PermissionRow
-                      key={i}
-                      perm={p}
-                      onChange={updated => updatePerm(i, updated)}
-                      onRemove={() => removePerm(i)}
-                    />
-                  ))}
-                </div>
-              )}
+              <button
+                onClick={addPerm}
+                className="flex items-center gap-1 text-[10px] font-semibold text-[#0078D4] hover:text-[#1A90E0] transition-colors"
+              >
+                <Plus className="w-3 h-3" />Add permission
+              </button>
             </div>
-          )}
+            {form.appRegPermissions.length === 0 ? (
+              <p className="text-xs text-[#484F58] italic py-2">No permissions defined yet.</p>
+            ) : (
+              <div className="space-y-2">
+                <div className="grid grid-cols-[1fr_130px_1fr_28px] gap-2 mb-1">
+                  <span className="text-[10px] font-bold uppercase text-[#484F58]">Permission</span>
+                  <span className="text-[10px] font-bold uppercase text-[#484F58]">Type</span>
+                  <span className="text-[10px] font-bold uppercase text-[#484F58]">Reason</span>
+                  <span />
+                </div>
+                {form.appRegPermissions.map((p, i) => (
+                  <PermissionRow
+                    key={i}
+                    perm={p}
+                    onChange={updated => updatePerm(i, updated)}
+                    onRemove={() => removePerm(i)}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
 
           <div>
             <label className={labelCls}>AI Instructions</label>

@@ -221,7 +221,7 @@ function ScriptFormModal({
           name: form.name.trim(),
           description: form.description.trim() || undefined,
           runbookName: form.runbookName.trim(),
-          appRegPermissions: form.executionMode === "manual" ? [] : form.appRegPermissions.filter(p => p.permission.trim()),
+          appRegPermissions: form.appRegPermissions.filter(p => p.permission.trim()),
           aiInstructions: form.aiInstructions.trim() || undefined,
           executionMode: form.executionMode,
           manualRequirements: form.manualRequirements.trim()
@@ -316,25 +316,32 @@ function ScriptFormModal({
             </div>
           )}
 
-          {form.executionMode === "automated" && (
-            <div>
-              <div className="flex items-center justify-between mb-1.5">
-                <label className={`${labelCls} mb-0`}>App Registration Permissions</label>
-                <button onClick={addPerm} className="flex items-center gap-1 text-[10px] font-semibold text-[#0078D4] hover:text-[#1A90E0]">
-                  <Plus className="w-3 h-3" />Add
-                </button>
+          <div>
+            <div className="flex items-center justify-between mb-1.5">
+              <div>
+                <label className={`${labelCls} mb-0`}>
+                  {form.executionMode === "automated" ? "App Registration Permissions" : "Delegated Permissions"}
+                </label>
+                <p className="text-[10px] text-[#484F58] mt-0.5">
+                  {form.executionMode === "automated"
+                    ? "Application-level permissions for the service principal"
+                    : "Delegated permissions the customer's account needs"}
+                </p>
               </div>
-              {form.appRegPermissions.length === 0 ? (
-                <p className="text-xs text-[#484F58] italic">No permissions defined.</p>
-              ) : (
-                <div className="space-y-1.5">
-                  {form.appRegPermissions.map((p, i) => (
-                    <PermissionRow key={i} perm={p} onChange={updated => updatePerm(i, updated)} onRemove={() => removePerm(i)} />
-                  ))}
-                </div>
-              )}
+              <button onClick={addPerm} className="flex items-center gap-1 text-[10px] font-semibold text-[#0078D4] hover:text-[#1A90E0]">
+                <Plus className="w-3 h-3" />Add
+              </button>
             </div>
-          )}
+            {form.appRegPermissions.length === 0 ? (
+              <p className="text-xs text-[#484F58] italic">No permissions defined.</p>
+            ) : (
+              <div className="space-y-1.5">
+                {form.appRegPermissions.map((p, i) => (
+                  <PermissionRow key={i} perm={p} onChange={updated => updatePerm(i, updated)} onRemove={() => removePerm(i)} />
+                ))}
+              </div>
+            )}
+          </div>
 
           <div>
             <label className={labelCls}>AI Instructions</label>
