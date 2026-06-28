@@ -304,6 +304,13 @@ export default function RunResultsSidebarPanel({ onSelectResult, selectedResultI
 
   useEffect(() => { void load(); }, [load]);
 
+  const hasRunning = results.some(r => r.status === "running");
+  useEffect(() => {
+    if (!hasRunning) return;
+    const id = setInterval(() => { void load(true); }, 12000);
+    return () => clearInterval(id);
+  }, [hasRunning, load]);
+
   const filtered = statusFilter ? results.filter(r => r.status === statusFilter) : results;
 
   return (
