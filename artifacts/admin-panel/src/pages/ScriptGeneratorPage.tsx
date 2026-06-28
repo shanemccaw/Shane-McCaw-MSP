@@ -3337,6 +3337,58 @@ export default function ScriptGeneratorPage() {
 
   return (
     <div className={`flex flex-col overflow-hidden bg-[#0D1117] ${isFullscreen ? "fixed inset-0 z-[100]" : "h-full"}`}>
+
+      {/* ── Top action bar ────────────────────────────────────────────────── */}
+      <div className="flex-shrink-0 flex items-center gap-1.5 px-4 bg-[#161B22] border-b border-[#21262D]" style={{ minHeight: 42 }}>
+        {scriptBody ? (
+          <>
+            <button onClick={handleCopy} title="Copy to clipboard" className="flex items-center gap-1 text-[11px] px-2 py-1 rounded border border-[#30363D] text-[#8B949E] hover:text-[#E6EDF3] hover:bg-[#21262D] transition-colors">
+              {copied ? <svg className="w-3 h-3 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg> : <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>}
+              {copied ? "Copied" : "Copy"}
+            </button>
+            <button onClick={handleDownload} title="Download .ps1 file" className="flex items-center gap-1 text-[11px] px-2 py-1 rounded border border-[#30363D] text-[#8B949E] hover:text-[#E6EDF3] hover:bg-[#21262D] transition-colors">
+              <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
+              .ps1
+            </button>
+            <button
+              onClick={() => { setBottomActiveTab("bugfix"); }}
+              disabled={fixing}
+              title="Fix a bug in this script"
+              className="flex items-center gap-1 text-[11px] px-2 py-1 rounded border border-red-500/30 bg-red-500/10 text-red-400 hover:bg-red-500/20 disabled:opacity-50 transition-colors"
+            >
+              {fixing ? <div className="w-3 h-3 border border-red-400/40 border-t-red-400 rounded-full animate-spin" /> : <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" /></svg>}
+              {fixing ? "Fixing…" : "Fix Bug"}
+            </button>
+            <button onClick={modularize} disabled={modularizing} title="Decompose into modules" className="flex items-center gap-1 text-[11px] px-2 py-1 rounded border border-purple-500/30 bg-purple-500/10 text-purple-400 hover:bg-purple-500/20 disabled:opacity-50 transition-colors">
+              {modularizing ? <div className="w-3 h-3 border border-purple-400/40 border-t-purple-400 rounded-full animate-spin" /> : <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" /></svg>}
+              {modularizing ? "Modularizing…" : "Modularize"}
+            </button>
+            {editorScript?.id && (
+              <button onClick={updateSavedCopy} disabled={updating} title="Push current script & permissions back to the saved library entry" className="flex items-center gap-1 text-[11px] px-2 py-1 rounded bg-green-500/10 border border-green-500/30 text-green-400 hover:bg-green-500/20 disabled:opacity-50 transition-colors">
+                {updating ? <div className="w-3 h-3 border border-green-400/40 border-t-green-400 rounded-full animate-spin" /> : <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>}
+                {updating ? "Updating…" : "Update"}
+              </button>
+            )}
+            {editorScript?.id && (
+              <button onClick={pushToAzure} disabled={azurePushDialog.open || modulePushOpen || pushValidating} title="Push to Azure Automation" className="flex items-center gap-1 text-[11px] px-2 py-1 rounded border border-[#0078D4]/30 bg-[#0078D4]/10 text-[#58A6FF] hover:bg-[#0078D4]/20 disabled:opacity-50 disabled:cursor-not-allowed transition-colors">
+                {pushValidating ? (
+                  <div className="w-3 h-3 border border-[#58A6FF]/40 border-t-[#58A6FF] rounded-full animate-spin" />
+                ) : (
+                  <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" /></svg>
+                )}
+                {pushValidating ? "Validating…" : "Azure"}
+              </button>
+            )}
+            <button onClick={() => setShowSaveModal(true)} className="flex items-center gap-1 text-[11px] px-2 py-1 rounded bg-[#0078D4]/15 border border-[#0078D4]/30 text-[#58A6FF] hover:bg-[#0078D4]/25 transition-colors">
+              <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4" /></svg>
+              Save
+            </button>
+          </>
+        ) : (
+          <span className="text-[11px] text-[#484F58] select-none">Generate or open a script to see actions</span>
+        )}
+      </div>
+
       {/* ── IDE body ──────────────────────────────────────────────────────── */}
       <div className="flex-1 min-h-0 flex overflow-hidden">
 
@@ -3435,53 +3487,6 @@ export default function ScriptGeneratorPage() {
                   </button>
                 )}
               </div>
-
-              {/* Toolbar buttons */}
-              {scriptBody && (
-                <div className="flex items-center gap-1 flex-shrink-0">
-                  <button onClick={handleCopy} title="Copy to clipboard" className="flex items-center gap-1 text-[11px] px-2 py-1 rounded border border-[#30363D] text-[#8B949E] hover:text-[#E6EDF3] hover:bg-[#21262D] transition-colors">
-                    {copied ? <svg className="w-3 h-3 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg> : <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>}
-                    {copied ? "Copied" : "Copy"}
-                  </button>
-                  <button onClick={handleDownload} title="Download .ps1 file" className="flex items-center gap-1 text-[11px] px-2 py-1 rounded border border-[#30363D] text-[#8B949E] hover:text-[#E6EDF3] hover:bg-[#21262D] transition-colors">
-                    <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
-                    .ps1
-                  </button>
-                  <button
-                    onClick={() => { setBottomActiveTab("bugfix"); }}
-                    disabled={fixing}
-                    title="Fix a bug in this script"
-                    className="flex items-center gap-1 text-[11px] px-2 py-1 rounded border border-red-500/30 bg-red-500/10 text-red-400 hover:bg-red-500/20 disabled:opacity-50 transition-colors"
-                  >
-                    {fixing ? <div className="w-3 h-3 border border-red-400/40 border-t-red-400 rounded-full animate-spin" /> : <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" /></svg>}
-                    {fixing ? "Fixing…" : "Fix Bug"}
-                  </button>
-                  <button onClick={modularize} disabled={modularizing} title="Decompose into modules" className="flex items-center gap-1 text-[11px] px-2 py-1 rounded border border-purple-500/30 bg-purple-500/10 text-purple-400 hover:bg-purple-500/20 disabled:opacity-50 transition-colors">
-                    {modularizing ? <div className="w-3 h-3 border border-purple-400/40 border-t-purple-400 rounded-full animate-spin" /> : <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" /></svg>}
-                    {modularizing ? "Modularizing…" : "Modularize"}
-                  </button>
-                  {editorScript?.id && (
-                    <button onClick={updateSavedCopy} disabled={updating} title="Push current script & permissions back to the saved library entry" className="flex items-center gap-1 text-[11px] px-2 py-1 rounded bg-green-500/10 border border-green-500/30 text-green-400 hover:bg-green-500/20 disabled:opacity-50 transition-colors">
-                      {updating ? <div className="w-3 h-3 border border-green-400/40 border-t-green-400 rounded-full animate-spin" /> : <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>}
-                      {updating ? "Updating…" : "Update"}
-                    </button>
-                  )}
-                  {editorScript?.id && (
-                    <button onClick={pushToAzure} disabled={azurePushDialog.open || modulePushOpen || pushValidating} title="Push to Azure Automation" className="flex items-center gap-1 text-[11px] px-2 py-1 rounded border border-[#0078D4]/30 bg-[#0078D4]/10 text-[#58A6FF] hover:bg-[#0078D4]/20 disabled:opacity-50 disabled:cursor-not-allowed transition-colors">
-                      {pushValidating ? (
-                        <div className="w-3 h-3 border border-[#58A6FF]/40 border-t-[#58A6FF] rounded-full animate-spin" />
-                      ) : (
-                        <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" /></svg>
-                      )}
-                      {pushValidating ? "Validating…" : "Azure"}
-                    </button>
-                  )}
-                  <button onClick={() => setShowSaveModal(true)} className="flex items-center gap-1 text-[11px] px-2 py-1 rounded bg-[#0078D4]/15 border border-[#0078D4]/30 text-[#58A6FF] hover:bg-[#0078D4]/25 transition-colors">
-                    <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4" /></svg>
-                    Save
-                  </button>
-                </div>
-              )}
 
               {/* Right panel toggle */}
               <button
