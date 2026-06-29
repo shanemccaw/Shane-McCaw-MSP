@@ -162,6 +162,30 @@ export default function ClientM365HealthTab({ clientId, fetchWithAuth, onOpenWiz
       .finally(() => setLoading(false));
   }, [clientId, fetchWithAuth]);
 
+  useEffect(() => {
+    const POLL_MS = 2.5 * 60 * 1000;
+
+    const tick = () => {
+      if (!document.hidden) {
+        void refreshSummary();
+      }
+    };
+
+    const id = setInterval(tick, POLL_MS);
+
+    const onVisibilityChange = () => {
+      if (!document.hidden) {
+        void refreshSummary();
+      }
+    };
+    document.addEventListener("visibilitychange", onVisibilityChange);
+
+    return () => {
+      clearInterval(id);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+    };
+  }, [clientId, fetchWithAuth]);
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-16">
