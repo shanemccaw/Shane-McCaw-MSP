@@ -1254,6 +1254,7 @@ function LibrarySidebar({
   onRunModule,
   token,
   onDeleteScript,
+  onModuleRemoved,
 }: {
   scripts: PsScriptListItem[];
   packages: ScriptPackageListItem[];
@@ -1266,6 +1267,7 @@ function LibrarySidebar({
   onRunModule?: (module: ScriptModuleItem) => void;
   token: string;
   onDeleteScript?: (scriptId: string) => void;
+  onModuleRemoved?: (moduleId: string, packageId: string) => void;
 }) {
   const { toast } = useToast();
   const [search, setSearch] = useState("");
@@ -1273,6 +1275,8 @@ function LibrarySidebar({
   const [expandedPackages, setExpandedPackages] = useState<Set<string>>(new Set());
   const [confirmDeleteScript, setConfirmDeleteScript] = useState<PsScriptListItem | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [confirmRemoveModule, setConfirmRemoveModule] = useState<{ mod: ScriptModuleItem; pkg: ScriptPackageListItem } | null>(null);
+  const [removingModuleId, setRemovingModuleId] = useState<string | null>(null);
 
   const handleAssociate = async (script: PsScriptListItem, pkg: ScriptPackageListItem) => {
     try {
@@ -1300,6 +1304,23 @@ function LibrarySidebar({
       toast({ title: "Failed to delete script", variant: "destructive" });
     } finally {
       setDeletingId(null);
+    }
+  };
+
+  const handleRemoveModuleConfirm = async () => {
+    if (!confirmRemoveModule) return;
+    const { mod, pkg } = confirmRemoveModule;
+    setConfirmRemoveModule(null);
+    if (!mod.id) return;
+    setRemovingModuleId(mod.id);
+    try {
+      await apiFetch(`/admin/ps-scripts/modules/${mod.id}`, token, { method: "DELETE" });
+      onModuleRemoved?.(mod.id, pkg.id);
+      toast({ title: "Module removed", description: `"${mod.filename}" has been removed from "${pkg.title}".` });
+    } catch {
+      toast({ title: "Failed to remove module", variant: "destructive" });
+    } finally {
+      setRemovingModuleId(null);
     }
   };
 
@@ -1514,6 +1535,7 @@ function LibrarySidebar({
                       </div>
                       {/* Module child rows */}
                       {isExpanded && p.modules.map((mod) => {
+                        const isRemovingThisMod = removingModuleId === mod.id;
                         return (
                           <div
                             key={`mod-${mod.id ?? mod.filename}`}
@@ -1530,14 +1552,54 @@ function LibrarySidebar({
                               </svg>
                               <span className="flex-1 text-xs text-[#8B949E] group-hover:text-[#C9D1D9] truncate min-w-0 font-mono">{mod.filename}</span>
                             </button>
-                            {onRunModule && mod.id && (
-                              <button
-                                onClick={(e) => { e.stopPropagation(); onRunModule(mod); }}
-                                title="Run module"
-                                className="flex-shrink-0 opacity-0 group-hover:opacity-100 px-1.5 py-1 text-[#484F58] hover:text-green-400 transition-all"
-                              >
-                                <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z" /></svg>
-                              </button>
+                            {isRemovingThisMod ? (
+                              <div className="flex-shrink-0 px-2 py-1">
+                                <div className="w-3 h-3 border border-[#484F58] border-t-transparent rounded-full animate-spin" />
+                              </div>
+                            ) : (
+                              <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                  <button
+                                    onClick={(e) => e.stopPropagation()}
+                                    title="More actions"
+                                    className="flex-shrink-0 opacity-0 group-hover:opacity-100 px-1.5 py-1 text-[#484F58] hover:text-[#C9D1D9] transition-all rounded hover:bg-[#21262D]"
+                                  >
+                                    <svg className="w-3 h-3" viewBox="0 0 16 16" fill="currentColor"><circle cx="8" cy="2" r="1.5" /><circle cx="8" cy="8" r="1.5" /><circle cx="8" cy="14" r="1.5" /></svg>
+                                  </button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent
+                                  className="bg-[#1C2128] border-[#30363D] text-[#C9D1D9] min-w-[180px]"
+                                  side="right"
+                                  align="start"
+                                  onClick={(e) => e.stopPropagation()}
+                                >
+                                  {onRunModule && mod.id && (
+                                    <DropdownMenuItem
+                                      className="text-xs text-[#C9D1D9] focus:bg-[#21262D] focus:text-[#E6EDF3] gap-2 cursor-pointer"
+                                      onSelect={() => onRunModule(mod)}
+                                    >
+                                      <svg className="w-3 h-3 text-green-400 flex-shrink-0" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z" /></svg>
+                                      Run
+                                    </DropdownMenuItem>
+                                  )}
+                                  <DropdownMenuItem
+                                    className="text-xs text-[#C9D1D9] focus:bg-[#21262D] focus:text-[#E6EDF3] gap-2 cursor-pointer"
+                                    onSelect={() => onOpenModule(mod, p)}
+                                  >
+                                    <svg className="w-3 h-3 text-[#58A6FF] flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" /></svg>
+                                    Open in Editor
+                                  </DropdownMenuItem>
+                                  <DropdownMenuSeparator className="bg-[#30363D]" />
+                                  <DropdownMenuItem
+                                    className="text-xs gap-2 cursor-pointer text-red-400 focus:bg-red-500/10 focus:text-red-400 data-[disabled]:opacity-40 data-[disabled]:cursor-not-allowed"
+                                    onSelect={() => mod.id && setConfirmRemoveModule({ mod, pkg: p })}
+                                    disabled={!mod.id}
+                                  >
+                                    <svg className="w-3 h-3 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M13 7a4 4 0 11-8 0 4 4 0 018 0zM9 14a6 6 0 00-6 6v1h12v-1a6 6 0 00-6-6zM21 12h-6" /></svg>
+                                    Remove from Set
+                                  </DropdownMenuItem>
+                                </DropdownMenuContent>
+                              </DropdownMenu>
                             )}
                           </div>
                         );
@@ -1556,6 +1618,13 @@ function LibrarySidebar({
         description="This will permanently remove the script from the library. This action cannot be undone."
         onConfirm={() => void handleDeleteConfirm()}
         onCancel={() => setConfirmDeleteScript(null)}
+      />
+      <ConfirmDialog
+        open={!!confirmRemoveModule}
+        title={`Remove "${confirmRemoveModule?.mod.filename ?? ""}" from set?`}
+        description={`This will detach the module from "${confirmRemoveModule?.pkg.title ?? ""}". The underlying script is not deleted.`}
+        onConfirm={() => void handleRemoveModuleConfirm()}
+        onCancel={() => setConfirmRemoveModule(null)}
       />
     </div>
   );
@@ -3675,6 +3744,13 @@ export default function ScriptGeneratorPage() {
                     onRunModule={setRunLibraryModuleTarget}
                     token={token}
                     onDeleteScript={(id) => setScripts(prev => prev.filter(s => s.id !== id))}
+                    onModuleRemoved={(moduleId, packageId) =>
+                      setPackages(prev => prev.map(pkg =>
+                        pkg.id === packageId
+                          ? { ...pkg, modules: pkg.modules.filter(m => m.id !== moduleId) }
+                          : pkg
+                      ))
+                    }
                   />
                 )}
                 {leftMode === "results" && (
