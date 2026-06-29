@@ -819,82 +819,166 @@ SCRIPT REQUIREMENTS:
 
 Do NOT output JSON. Do NOT wrap the script in any envelope or metadata object.`;
 
-    // ── Per-phase generation (2+ automatable phases) ──────────────────────────
-    // When a workflow has multiple automatable phases we make one focused API call
-    // per phase rather than one giant call. This avoids Claude Haiku's ~8 192-token
-    // output limit cutting off scripts mid-way through a large package.
-    if (automatablePhases.length >= 2) {
-      sendSSE({ type: "phase", label: `Generating ${automatablePhases.length} scripts…`, pct: 5 });
+    // Planning prompt: used to cluster each phase's tasks into logical script groups.
+    // Output is a small JSON array — stays well within token limits.
+    const PLANNING_SYSTEM = `You are a Microsoft 365 PowerShell architect.
 
+Given a list of workflow tasks for one phase, group them into logical, standalone PowerShell scripts.
+Each script should cover a coherent workload area (e.g. Conditional Access, SharePoint Inventory, Teams Lifecycle).
+
+Output ONLY a JSON array — no prose, no markdown fences, just raw JSON:
+[
+  { "description": "Conditional Access & MFA Audit", "tasks": ["Review Conditional Access policies", "Check MFA enforcement"] },
+  { "description": "SharePoint Site Inventory", "tasks": ["Export SharePoint site inventory", "Identify orphaned or abandoned sites"] }
+]
+
+Rules:
+- Each group must contain 1–5 closely related tasks
+- Aim for 2–8 groups per phase (use judgment — do NOT create a group for every single task)
+- If the phase has ≤ 4 tasks put them all in a single group
+- Use clear, short descriptions (no "Phase X" prefix)
+- Include EVERY automatable task in exactly one group`;
+
+    // ── Two-phase generation (plan then generate, 2+ automatable phases) ──────
+    // Phase 1: one fast planning call per phase → determines how many scripts to
+    //           produce and which tasks belong together in each one.
+    // Phase 2: one focused generation call per resulting script group.
+    // This avoids both the token-limit problem (one giant call) AND the
+    // coarseness problem (one script per phase for phases with 20+ tasks).
+    if (automatablePhases.length >= 2) {
       const filenameSafe = (s: string) =>
-        s.replace(/[^a-zA-Z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 45);
+        s.replace(/[^a-zA-Z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 50);
 
       const typeNoteFn = (taskType: string | null | undefined): string => {
         if (taskType === "automationBuild") return " [automate this]";
         if (taskType === "environmentHealthCheck") return " [health check / audit]";
         if (taskType === "discovery") return " [collect / query]";
+        if (taskType === "governanceSetup") return " [configure / remediate]";
         if (taskType === "manualScript") return " [interactive auth only]";
         return "";
       };
 
+      // ── Phase 1: planning calls ──────────────────────────────────────────────
+      interface ResolvedGroup {
+        phaseTitle: string;
+        groupTasks: Array<typeof workflowTemplateStepTasksTable.$inferSelect>;
+        filename: string;
+        description: string;
+      }
+
+      const allGroups: ResolvedGroup[] = [];
+      let globalCounter = 1;
+
+      for (let pi = 0; pi < automatablePhases.length; pi++) {
+        const { step, phaseTasks } = automatablePhases[pi];
+        const planPct = 5 + Math.round((pi / automatablePhases.length) * 20);
+        sendSSE({ type: "phase", label: `Planning: ${step.title}…`, pct: planPct });
+
+        let groups: Array<{ description: string; tasks: string[] }> = [];
+
+        if (phaseTasks.length <= 4) {
+          // Small phase — skip planning call, treat as one group
+          groups = [{ description: step.title, tasks: phaseTasks.map((t) => t.title) }];
+        } else {
+          try {
+            const planMsg = `Phase: ${step.title}${step.description ? "\n" + step.description : ""}
+
+Automatable tasks (${phaseTasks.length} total):
+${phaseTasks.map((t) => `- ${t.title} (${t.taskType ?? "unknown"})`).join("\n")}
+
+Group these into logical PowerShell scripts.`;
+
+            const planResponse = await anthropic.messages.create({
+              model: "claude-haiku-4-5",
+              max_tokens: 1500,
+              system: PLANNING_SYSTEM,
+              messages: [{ role: "user", content: planMsg }],
+            });
+
+            const planText = planResponse.content[0]?.type === "text" ? planResponse.content[0].text.trim() : "";
+            const parsed = jsonParse(planText) as unknown;
+            if (Array.isArray(parsed) && parsed.length > 0) {
+              groups = parsed as Array<{ description: string; tasks: string[] }>;
+            }
+          } catch (err) {
+            logger.warn({ err, phase: step.title }, "generate-from-service: planning call failed, falling back to single group");
+          }
+
+          // Fallback if planning call failed or returned nonsense
+          if (groups.length === 0) {
+            // Batch sequentially into groups of 4
+            for (let b = 0; b < phaseTasks.length; b += 4) {
+              const batch = phaseTasks.slice(b, b + 4);
+              groups.push({ description: `${step.title} (Part ${Math.floor(b / 4) + 1})`, tasks: batch.map((t) => t.title) });
+            }
+          }
+        }
+
+        // Resolve task objects from titles and assign global filenames
+        for (const g of groups) {
+          const taskTitlesLower = new Set((g.tasks ?? []).map((t: string) => t.toLowerCase()));
+          const groupTasks = phaseTasks.filter((t) => taskTitlesLower.has(t.title.toLowerCase()));
+          // Fallback: if title matching failed entirely, include all phase tasks in first group only
+          const resolvedTasks = groupTasks.length > 0 ? groupTasks : (allGroups.some((ag) => ag.phaseTitle === step.title) ? [] : phaseTasks);
+          if (resolvedTasks.length === 0) continue; // skip empty groups (already covered)
+
+          const filename = `${String(globalCounter).padStart(2, "0")}-${filenameSafe(g.description)}.ps1`;
+          globalCounter++;
+          allGroups.push({ phaseTitle: step.title, groupTasks: resolvedTasks, filename, description: g.description });
+        }
+      }
+
+      if (allGroups.length === 0) {
+        sendSSE({ type: "error", message: "Planning produced no script groups. Please try again." });
+        res.end();
+        return;
+      }
+
+      sendSSE({ type: "phase", label: `Generating ${allGroups.length} scripts…`, pct: 28 });
+      logger.info({ groupCount: allGroups.length, service: service.name }, "generate-from-service: planning complete");
+
+      // ── Phase 2: generation calls ─────────────────────────────────────────────
       const generatedModules: Array<{ filename: string; description: string; content: string }> = [];
       const humanOnlyTasksAll: string[] = [];
       const mergedPerms: PsScriptPermissions = { appPermissions: [], delegatedPermissions: [], notes: "" };
 
-      for (let i = 0; i < automatablePhases.length; i++) {
-        const { step, phaseTasks } = automatablePhases[i];
-        const stepPct = 10 + Math.round((i / automatablePhases.length) * 70);
-        sendSSE({ type: "phase", label: `Script ${i + 1}/${automatablePhases.length}: ${step.title}…`, pct: stepPct });
+      for (let gi = 0; gi < allGroups.length; gi++) {
+        const group = allGroups[gi];
+        const genPct = 30 + Math.round((gi / allGroups.length) * 52);
+        sendSSE({ type: "phase", label: `Script ${gi + 1}/${allGroups.length}: ${group.description}…`, pct: genPct });
 
-        const filename = `${String(i + 1).padStart(2, "0")}-${filenameSafe(step.title)}.ps1`;
+        const genUserMsg = `${serviceContext}
 
-        const phaseUserMsg = `${serviceContext}
+SCRIPT TO GENERATE: ${group.description}
+Phase: ${group.phaseTitle}
 
-PHASE TO AUTOMATE (${i + 1} of ${automatablePhases.length}): ${step.title}
-${step.description ? step.description + "\n" : ""}
-Tasks in this phase to automate:
-${phaseTasks.map((t) => `  - ${t.title}${typeNoteFn(t.taskType)}`).join("\n")}
+Tasks covered by this script:
+${group.groupTasks.map((t) => `  - ${t.title}${typeNoteFn(t.taskType)}`).join("\n")}
 ${baseBlock}${detailedBlock}${customBlock}
 
-Required filename for the # file: header on line 1: ${filename}`.trim();
+Required filename for the # file: header on line 1: ${group.filename}`.trim();
 
         try {
           const response = await anthropic.messages.create({
             model: "claude-haiku-4-5",
             max_tokens: 8000,
             system: PER_PHASE_SYSTEM,
-            messages: [{ role: "user", content: phaseUserMsg }],
+            messages: [{ role: "user", content: genUserMsg }],
           });
 
           const text = response.content[0]?.type === "text" ? response.content[0].text : "";
           if (!text) continue;
 
-          // The AI should name the file as requested; fall back to the first available script
           const psMap = extractPowershellFences(text);
-          const content = psMap.get(filename) ?? [...psMap.values()][0] ?? "";
+          const content = psMap.get(group.filename) ?? [...psMap.values()][0] ?? "";
 
           if (content && hasPsKeywordsFullText(content)) {
-            generatedModules.push({ filename, description: `Automation: ${step.title}`, content });
+            generatedModules.push({ filename: group.filename, description: group.description, content });
           } else {
-            logger.warn({ phase: step.title, filename }, "generate-from-service: per-phase script failed PS keyword check, skipping");
-          }
-
-          // Merge permissions and human-only tasks from this phase
-          const envJson = extractEnvelopeJson(text);
-          if (envJson && typeof envJson === "object" && !Array.isArray(envJson)) {
-            const ej = envJson as Record<string, unknown>;
-            if (Array.isArray(ej["humanOnlyTasks"]))
-              humanOnlyTasksAll.push(...(ej["humanOnlyTasks"] as string[]));
-            const perms = ej["permissions"];
-            if (perms && typeof perms === "object" && !Array.isArray(perms)) {
-              const p = perms as Record<string, unknown>;
-              if (Array.isArray(p["appPermissions"])) mergedPerms.appPermissions.push(...(p["appPermissions"] as string[]));
-              if (Array.isArray(p["delegatedPermissions"])) mergedPerms.delegatedPermissions.push(...(p["delegatedPermissions"] as string[]));
-              if (typeof p["notes"] === "string" && p["notes"] && !mergedPerms.notes) mergedPerms.notes = p["notes"];
-            }
+            logger.warn({ description: group.description, filename: group.filename }, "generate-from-service: group script failed PS keyword check, skipping");
           }
         } catch (err) {
-          logger.warn({ err, phase: step.title }, "generate-from-service: per-phase API call failed, skipping");
+          logger.warn({ err, description: group.description }, "generate-from-service: generation call failed, skipping");
         }
       }
 
@@ -915,9 +999,9 @@ Required filename for the # file: header on line 1: ${filename}`.trim();
         const m = generatedModules[0];
         const [savedSingle] = await db
           .insert(powershellScriptsTable)
-          .values({ title: `${service.name} — ${automatablePhases[0].step.title}`, category: "m365", scriptBody: m.content, permissions: mergedPerms, tags: [] })
+          .values({ title: `${service.name} — ${m.description}`, category: "m365", scriptBody: m.content, permissions: mergedPerms, tags: [] })
           .returning();
-        logger.info({ scriptId: savedSingle.id, service: service.name }, "generate-from-service: per-phase saved single script");
+        logger.info({ scriptId: savedSingle.id, service: service.name }, "generate-from-service: saved single script from plan+generate");
         sendSSE({
           type: "done",
           payload: {
@@ -959,7 +1043,7 @@ Required filename for the # file: header on line 1: ${filename}`.trim();
       const fnToId = new Map(insertedMods.map((r) => [r.filename, r.id]));
       const modulesWithIds = generatedModules.map((m) => ({ ...m, id: fnToId.get(m.filename) }));
 
-      logger.info({ packageId: pkg.id, moduleCount: modulesWithIds.length, service: service.name }, "generate-from-service: per-phase package saved");
+      logger.info({ packageId: pkg.id, moduleCount: modulesWithIds.length, service: service.name }, "generate-from-service: plan+generate package saved");
 
       sendSSE({
         type: "done",
