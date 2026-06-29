@@ -53,7 +53,7 @@ export default function WorkspaceLayout({
   );
 
   return (
-    <div className="flex min-h-full">
+    <div className="flex h-full overflow-hidden">
       {/* ── Inner workspace sidebar ── */}
       <aside
         className={`flex-shrink-0 flex flex-col bg-[#0D1117] border-r border-[#30363D] transition-all duration-200 ${
@@ -164,7 +164,7 @@ export default function WorkspaceLayout({
         </div>
 
         {/* Page content */}
-        <div className="flex-1 min-w-0">
+        <div className="flex-1 min-w-0 min-h-0 overflow-y-auto">
           {children}
         </div>
       </div>
