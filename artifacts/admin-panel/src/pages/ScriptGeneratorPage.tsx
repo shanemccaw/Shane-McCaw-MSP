@@ -171,15 +171,17 @@ async function apiFetch(path: string, token: string, opts: RequestInit = {}) {
 
 // ─── SSE streaming helper for generation endpoints ────────────────────────────
 
+type FetchFn = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
+
 async function consumeGenerationSSE<T>(
   path: string,
-  token: string,
+  fetchFn: FetchFn,
   body: Record<string, unknown>,
   onUpdate: (pct: number, label: string) => void,
 ): Promise<T> {
-  const res = await fetch(`/api${path}`, {
+  const res = await fetchFn(`/api${path}`, {
     method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
 
@@ -2296,6 +2298,7 @@ function GenerateFromServiceDialog({
   onManualScriptGenerated: (detail: PsScriptDetail) => void;
 }) {
   const { toast } = useToast();
+  const { fetchWithAuth } = useAuth();
   const [services, setServices] = useState<ServiceListItem[]>([]);
   const [loadingServices, setLoadingServices] = useState(true);
   const [selectedServiceId, setSelectedServiceId] = useState<number | null>(null);
@@ -2387,7 +2390,7 @@ function GenerateFromServiceDialog({
       };
       const result = await consumeGenerationSSE<GenResult>(
         "/admin/ps-scripts/generate-from-service",
-        token,
+        fetchWithAuth,
         {
           serviceId: selectedServiceId,
           customInstructions: customInstructions.trim() || undefined,
@@ -3034,7 +3037,7 @@ function BottomPanel({
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function ScriptGeneratorPage() {
-  const { accessToken } = useAuth();
+  const { accessToken, fetchWithAuth } = useAuth();
   const token = accessToken ?? "";
   const { toast } = useToast();
 
@@ -3255,7 +3258,7 @@ export default function ScriptGeneratorPage() {
     try {
       const result = await consumeGenerationSSE<{ script: string; permissions: PsScriptPermissions }>(
         "/admin/ps-scripts/generate",
-        token,
+        fetchWithAuth,
         { prompt: prompt.trim(), category, baseInstructions: baseInstructions.trim() || undefined, detailedInstructions: detailedInstructions.trim() || undefined },
         (pct, label) => { setGenPct(pct); if (label) setGenPhaseLabel(label); },
       );

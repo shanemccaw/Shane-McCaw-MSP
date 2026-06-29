@@ -1,4 +1,4 @@
-- [Admin Panel AuthContext fetchWithAuth](admin-panel-fetch-with-auth.md) — never set Content-Type unconditionally; FormData uploads need the browser to set it with the boundary
+- [Admin Panel AuthContext fetchWithAuth](admin-panel-fetch-with-auth.md) — never set Content-Type unconditionally; FormData uploads need the browser to set it with the boundary; access token TTL is 15min so SSE/long-running fetches MUST use fetchWithAuth not raw fetch
 - [CRM admin vs client routing](crm-admin-routing.md) — CRM artifact handles client portal; admin sections live in Admin Panel at /admin-panel/; admins hitting /crm are redirected via window.location
 - [drizzle-orm/node-postgres db.execute() returns QueryResult](drizzle-exec-rows.md) — use execRows() helper; raw db.execute() result is NOT array-iterable
 - [API server dev script PORT fallback](api-server-port-fix.md) — Replit workflow system doesn't always inject PORT; dev script must export PORT=${PORT:-8080} or server throws on startup before opening any port
