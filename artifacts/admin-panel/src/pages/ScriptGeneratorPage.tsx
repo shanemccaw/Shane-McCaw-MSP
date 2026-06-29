@@ -2357,8 +2357,6 @@ function GenerateFromServiceDialog({
       (selectedService.features?.length ?? 0) > 0);
 
   const handleDonePackage = () => {
-    if (!packageResult) return;
-    onPackageGenerated(packageResult.packageId, packageResult.title, packageResult.modules, packageResult.permissions);
     onClose();
   };
 
@@ -2403,6 +2401,8 @@ function GenerateFromServiceDialog({
       } else if (result.type === "package" && result.packageId && result.modules) {
         const pkgPerms: PsScriptPermissions = result.permissions ?? { appPermissions: [], delegatedPermissions: [], notes: "" };
         setPackageResult({ packageId: result.packageId, title: result.title, modules: result.modules, permissions: pkgPerms, taskAssociations: result.taskAssociations ?? [] });
+        // Refresh the library sidebar immediately so the package appears regardless of how the dialog is dismissed
+        onPackageGenerated(result.packageId, result.title, result.modules, pkgPerms);
       } else if (result.type === "manual" && result.savedScript) {
         onManualScriptGenerated(result.savedScript);
         toast({
