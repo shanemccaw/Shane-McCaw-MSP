@@ -179,20 +179,33 @@ function extractEnvelopeJson(text: string): unknown {
   return jsonParse(text.slice(afterNewline, closingPos).trim());
 }
 
-// Extract all ```powershell fences, keyed by the leading "# file: <filename>" comment.
+// Extract all PowerShell code fences from text, keyed by the leading "# file: <filename>" comment.
+// Falls back to a numeric index key when the header is absent so callers can always use
+// [...psMap.values()][0] as a reliable fallback.
+// Recognises ```powershell, ```PowerShell, ```ps1, and ```ps (case-insensitive).
 function extractPowershellFences(text: string): Map<string, string> {
   const scripts = new Map<string, string>();
+  const lowerText = text.toLowerCase();
   let searchFrom = 0;
+  let fallbackIdx = 0;
   while (true) {
-    const openPos = text.indexOf("```powershell", searchFrom);
+    // Find the earliest occurrence of any recognised fence marker
+    let openPos = -1;
+    for (const marker of ["```powershell", "```ps1", "```ps\n", "```ps\r"]) {
+      const pos = lowerText.indexOf(marker, searchFrom);
+      if (pos !== -1 && (openPos === -1 || pos < openPos)) openPos = pos;
+    }
     if (openPos === -1) break;
     const afterOpen = text.indexOf("\n", openPos);
     if (afterOpen === -1) break;
     const closePos = text.indexOf("```", afterOpen + 1);
     if (closePos === -1) break;
     const content = text.slice(afterOpen + 1, closePos).trimEnd();
-    const headerMatch = content.match(/^#\s*file:\s*(\S+\.ps1)/i);
-    if (headerMatch) scripts.set(headerMatch[1], content);
+    if (content) {
+      const headerMatch = content.match(/^#\s*file:\s*(\S+\.ps1)/i);
+      // Always store — use the declared filename or a numeric fallback key
+      scripts.set(headerMatch ? headerMatch[1] : `_script_${fallbackIdx++}`, content);
+    }
     searchFrom = closePos + 3;
   }
   return scripts;
