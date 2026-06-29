@@ -1,7 +1,7 @@
 import { Router, type Request, type Response } from "express";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
 import { requireAdmin } from "../middlewares/requireAuth.ts";
-import { db } from "@workspace/db";
+import { db, pool } from "@workspace/db";
 import {
   powershellScriptsTable,
   scriptPackagesTable,
@@ -959,7 +959,7 @@ Group these into logical PowerShell scripts.`;
       logger.info({ groupCount: allGroups.length, service: service.name }, "generate-from-service: planning complete");
 
       // ── Phase 2: generation calls ─────────────────────────────────────────────
-      const generatedModules: Array<{ filename: string; description: string; content: string }> = [];
+      const generatedModules: Array<{ filename: string; description: string; content: string; sourceTaskIds: number[] }> = [];
       const humanOnlyTasksAll: string[] = [];
       const mergedPerms: PsScriptPermissions = { appPermissions: [], delegatedPermissions: [], notes: "" };
 
@@ -1014,7 +1014,12 @@ Required filename (FIRST LINE of your output): ${group.filename}`.trim();
           }
 
           if (content && hasPsKeywordsFullText(content)) {
-            generatedModules.push({ filename: group.filename, description: group.description, content });
+            generatedModules.push({
+              filename: group.filename,
+              description: group.description,
+              content,
+              sourceTaskIds: group.groupTasks.map((t) => t.id),
+            });
           } else {
             logger.warn(
               { description: group.description, filename: group.filename, textPreview: rawText.slice(0, 300) },
@@ -1079,10 +1084,22 @@ Required filename (FIRST LINE of your output): ${group.filename}`.trim();
         .values({ serviceId, scriptPackageId: pkg.id, displayOrder: (maxRow2?.maxOrder ?? -1) + 1 })
         .onConflictDoNothing();
 
-      const insertedMods = await db
-        .insert(scriptModulesTable)
-        .values(generatedModules.map((m, idx) => ({ packageId: pkg.id, filename: m.filename, description: m.description, content: m.content, sortOrder: idx })))
-        .returning({ id: scriptModulesTable.id, filename: scriptModulesTable.filename });
+      // Use raw SQL so we can populate source_task_ids (array column not in drizzle schema)
+      const modParamValues: unknown[] = [];
+      const modValueClauses: string[] = [];
+      for (let mi = 0; mi < generatedModules.length; mi++) {
+        const m = generatedModules[mi];
+        const b = mi * 6;
+        modParamValues.push(pkg.id, m.filename, m.description ?? null, m.content, mi, m.sourceTaskIds ?? []);
+        modValueClauses.push(`($${b + 1}::uuid, $${b + 2}, $${b + 3}, $${b + 4}, $${b + 5}, $${b + 6}::int[])`);
+      }
+      const insertedModsResult = await pool.query<{ id: string; filename: string }>(
+        `INSERT INTO script_modules (package_id, filename, description, content, sort_order, source_task_ids)
+         VALUES ${modValueClauses.join(", ")}
+         RETURNING id, filename`,
+        modParamValues,
+      );
+      const insertedMods = insertedModsResult.rows;
 
       const fnToId = new Map(insertedMods.map((r) => [r.filename, r.id]));
       const modulesWithIds = generatedModules.map((m) => ({ ...m, id: fnToId.get(m.filename) }));
@@ -1807,6 +1824,37 @@ router.put("/admin/ps-scripts/modules/:id", requireAdmin, async (req: Request, r
   } catch (err) {
     logger.error({ err }, "Failed to update script module");
     res.status(500).json({ error: "Failed to update module" });
+  }
+});
+
+// ─── POST /api/admin/ps-scripts/modules/:id/assign-tasks ─────────────────────
+// Sets runbook_id = moduleId on every workflow task recorded as a source task
+// for this module (populated automatically during generate-from-service).
+
+router.post("/admin/ps-scripts/modules/:id/assign-tasks", requireAdmin, async (req: Request, res: Response) => {
+  const moduleId = String(req.params["id"] ?? "");
+  if (!UUID_RE.test(moduleId)) { res.status(400).json({ error: "Invalid id" }); return; }
+  try {
+    const modRow = await pool.query<{ source_task_ids: number[] }>(
+      `SELECT source_task_ids FROM script_modules WHERE id = $1`,
+      [moduleId],
+    );
+    if (modRow.rowCount === 0) { res.status(404).json({ error: "Module not found" }); return; }
+    const sourceTaskIds: number[] = modRow.rows[0]?.source_task_ids ?? [];
+    if (sourceTaskIds.length === 0) {
+      res.json({ assigned: 0, message: "No source tasks recorded for this module. Re-generate the package to capture task associations." });
+      return;
+    }
+    const updateResult = await pool.query(
+      `UPDATE workflow_template_step_tasks SET runbook_id = $1 WHERE id = ANY($2::int[]) RETURNING id`,
+      [moduleId, sourceTaskIds],
+    );
+    const assigned = updateResult.rowCount ?? 0;
+    logger.info({ moduleId, assigned }, "assign-tasks: runbook_id set on source tasks");
+    res.json({ assigned });
+  } catch (err) {
+    logger.error({ err }, "Failed to assign module to tasks");
+    res.status(500).json({ error: "Failed to assign module to tasks" });
   }
 });
 

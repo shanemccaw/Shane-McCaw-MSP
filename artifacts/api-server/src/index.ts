@@ -231,6 +231,15 @@ app.listen(port, (err) => {
   });
 
   pool.query(`
+    ALTER TABLE script_modules
+      ADD COLUMN IF NOT EXISTS source_task_ids integer[] NOT NULL DEFAULT '{}'
+  `).then(() => {
+    logger.info("Migration: script_modules.source_task_ids column ensured");
+  }).catch((err: unknown) => {
+    logger.warn({ err }, "Migration: script_modules.source_task_ids column failed (non-fatal)");
+  });
+
+  pool.query(`
     CREATE TABLE IF NOT EXISTS client_scores (
       id SERIAL PRIMARY KEY,
       client_id INTEGER NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,

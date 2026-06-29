@@ -1326,6 +1326,20 @@ function LibrarySidebar({
     }
   };
 
+  const handleAssignModuleToTask = async (mod: ScriptModuleItem) => {
+    if (!mod.id) return;
+    try {
+      const result = await apiFetch(`/admin/ps-scripts/modules/${mod.id}/assign-tasks`, token, { method: "POST" }) as { assigned: number; message?: string };
+      if (result.assigned === 0) {
+        toast({ title: "No tasks linked", description: result.message ?? "No source tasks recorded for this module. Re-generate the package to capture task associations.", variant: "destructive" });
+      } else {
+        toast({ title: `Assigned to ${result.assigned} task${result.assigned === 1 ? "" : "s"}`, description: `"${mod.filename}" is now the runbook for its source workflow task${result.assigned === 1 ? "" : "s"}.` });
+      }
+    } catch {
+      toast({ title: "Failed to assign module to task", variant: "destructive" });
+    }
+  };
+
   const togglePackageExpand = (pkgId: string, e: React.MouseEvent) => {
     e.stopPropagation();
     setExpandedPackages((prev) => {
@@ -1591,6 +1605,15 @@ function LibrarySidebar({
                                     <svg className="w-3 h-3 text-[#58A6FF] flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" /></svg>
                                     Open in Editor
                                   </DropdownMenuItem>
+                                  {mod.id && (
+                                    <DropdownMenuItem
+                                      className="text-xs text-[#C9D1D9] focus:bg-[#21262D] focus:text-[#E6EDF3] gap-2 cursor-pointer"
+                                      onSelect={() => void handleAssignModuleToTask(mod)}
+                                    >
+                                      <svg className="w-3 h-3 text-yellow-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" /></svg>
+                                      Assign to Task
+                                    </DropdownMenuItem>
+                                  )}
                                   <DropdownMenuSeparator className="bg-[#30363D]" />
                                   <DropdownMenuItem
                                     className="text-xs gap-2 cursor-pointer text-red-400 focus:bg-red-500/10 focus:text-red-400 data-[disabled]:opacity-40 data-[disabled]:cursor-not-allowed"
