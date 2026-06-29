@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
 } from "recharts";
@@ -104,25 +104,38 @@ interface Props {
   onOpenWizard?: () => void;
 }
 
+function formatRelativeTime(date: Date): string {
+  const diffMs = Date.now() - date.getTime();
+  const diffSec = Math.floor(diffMs / 1000);
+  if (diffSec < 10) return "just now";
+  if (diffSec < 60) return `${diffSec}s ago`;
+  const diffMin = Math.floor(diffSec / 60);
+  if (diffMin < 60) return `${diffMin} min ago`;
+  return date.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+}
+
 export default function ClientM365HealthTab({ clientId, fetchWithAuth, onOpenWizard }: Props) {
   const [data, setData] = useState<HealthResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [apiError, setApiError] = useState<string | null>(null);
+  const [lastPolled, setLastPolled] = useState<Date | null>(null);
+  const [, setTick] = useState(0);
 
   const [recording, setRecording] = useState(false);
   const [recordResult, setRecordResult] = useState<RecordResult | null>(null);
   const [recordError, setRecordError] = useState<string | null>(null);
 
-  const refreshSummary = async () => {
+  const refreshSummary = useCallback(async () => {
     try {
       const r = await fetchWithAuth(`/api/admin/clients/${clientId}/health/summary`);
       if (r.ok) {
         setData(await r.json() as HealthResponse);
+        setLastPolled(new Date());
       }
     } catch {
       /* non-fatal — chart keeps showing last known data */
     }
-  };
+  }, [clientId, fetchWithAuth]);
 
   const handleRecordHealth = async () => {
     setRecording(true);
@@ -154,7 +167,7 @@ export default function ClientM365HealthTab({ clientId, fetchWithAuth, onOpenWiz
         const text = await r.text().catch(() => "");
         throw new Error(`HTTP ${r.status}${text ? `: ${text.slice(0, 120)}` : ""}`);
       })
-      .then(setData)
+      .then(d => { setData(d); setLastPolled(new Date()); })
       .catch((err: unknown) => {
         setApiError(err instanceof Error ? err.message : "Failed to load health data");
         setData(null);
@@ -165,13 +178,13 @@ export default function ClientM365HealthTab({ clientId, fetchWithAuth, onOpenWiz
   useEffect(() => {
     const POLL_MS = 2.5 * 60 * 1000;
 
-    const tick = () => {
+    const poll = () => {
       if (!document.hidden) {
         void refreshSummary();
       }
     };
 
-    const id = setInterval(tick, POLL_MS);
+    const id = setInterval(poll, POLL_MS);
 
     const onVisibilityChange = () => {
       if (!document.hidden) {
@@ -184,7 +197,13 @@ export default function ClientM365HealthTab({ clientId, fetchWithAuth, onOpenWiz
       clearInterval(id);
       document.removeEventListener("visibilitychange", onVisibilityChange);
     };
-  }, [clientId, fetchWithAuth]);
+  }, [refreshSummary]);
+
+  /* Tick every 30 s so the relative timestamp ("2 min ago") stays current */
+  useEffect(() => {
+    const id = setInterval(() => setTick(t => t + 1), 30_000);
+    return () => clearInterval(id);
+  }, []);
 
   if (loading) {
     return (
@@ -332,7 +351,14 @@ export default function ClientM365HealthTab({ clientId, fetchWithAuth, onOpenWiz
           <div className="flex-1">
             <div className="flex items-start justify-between gap-4">
               <div>
-                <p className="text-[10px] font-bold uppercase tracking-wider text-[#7D8590] mb-1">Overall Health Score</p>
+                <div className="flex items-center gap-2 mb-1">
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-[#7D8590]">Overall Health Score</p>
+                  {lastPolled && (
+                    <span className="text-[10px] text-[#484F58] tabular-nums">
+                      · refreshed {formatRelativeTime(lastPolled)}
+                    </span>
+                  )}
+                </div>
                 <p className="text-3xl font-extrabold" style={{ color: overallColor }}>
                   {d.overallLatest}<span className="text-lg font-semibold text-[#484F58]">%</span>
                 </p>
