@@ -808,29 +808,37 @@ Classify each task and generate PowerShell automation scripts for all M365/Azure
       res.write(`data: ${JSON.stringify(event)}\n\n`);
     };
 
-    // System prompt for per-phase calls — deliberately simple.
-    // We do NOT use fromServicePrompt here because that prompt instructs Claude to
-    // output a JSON envelope, which means the script ends up as a JSON string field
-    // rather than in a ```powershell fence. extractPowershellFences would find nothing.
+    // System prompt for per-phase generation calls.
+    // Critically: we request RAW output (no code fence) to avoid all fence-parsing
+    // fragility. The response text IS the script — we validate with hasPsKeywordsFullText
+    // directly on the raw text rather than trying to extract from a fence.
     const PER_PHASE_SYSTEM = `You are an expert Microsoft 365 PowerShell engineer.
 
-Write a complete, standalone PowerShell automation script for the phase described.
+Write a complete, standalone PowerShell automation script for the tasks described.
 
-OUTPUT FORMAT — follow this exactly:
-1. Output ONE \`\`\`powershell code block (nothing else after it)
-2. The very first line inside the block MUST be: # file: <the required filename, e.g. 01-Phase-Name.ps1>
-3. Then write the full PowerShell script body
+OUTPUT FORMAT — very strict:
+- Output ONLY the raw PowerShell script. No markdown, no code fences, no preamble, no explanation.
+- Your FIRST line must be: # file: <the required filename provided in the user message>
+- Your SECOND line must be: [CmdletBinding()]
+- Continue immediately with the param() block.
+
+Example of the ONLY acceptable output format:
+# file: 01-Conditional-Access-Audit.ps1
+[CmdletBinding()]
+param(
+    [Parameter(Mandatory)][string]$TenantId,
+    [Parameter(Mandatory)][string]$ClientId,
+    [Parameter(Mandatory)][string]$ClientSecret
+)
+...rest of script...
 
 SCRIPT REQUIREMENTS:
-- [CmdletBinding()] attribute + param() block with typed, documented parameters
-- Application auth: -TenantId [string], -ClientId [string], -ClientSecret [string] (or -CertificateThumbprint [string])
-- Connect-MgGraph or Connect-ExchangeOnline as needed
-- Write-Output for ALL console output — never Write-Host
-- try/catch error handling on every significant operation
-- Real logic only — no placeholder stubs or TODO comments
-- Fully self-contained: runs independently without any other script present
-
-Do NOT output JSON. Do NOT wrap the script in any envelope or metadata object.`;
+- Application auth: -TenantId, -ClientId, -ClientSecret (or -CertificateThumbprint)
+- Connect-MgGraph or Connect-ExchangeOnline as needed for Microsoft Graph / Exchange
+- Write-Output for ALL output — never Write-Host
+- try/catch on every significant operation
+- Real automation logic — no placeholder stubs, no TODO comments
+- Fully self-contained: runs without any other file present`;
 
     // Planning prompt: used to cluster each phase's tasks into logical script groups.
     // Output is a small JSON array — stays well within token limits.
@@ -960,16 +968,21 @@ Group these into logical PowerShell scripts.`;
         const genPct = 30 + Math.round((gi / allGroups.length) * 52);
         sendSSE({ type: "phase", label: `Script ${gi + 1}/${allGroups.length}: ${group.description}…`, pct: genPct });
 
-        const genUserMsg = `${serviceContext}
+        const taskLines = group.groupTasks.length > 0
+          ? group.groupTasks.map((t) => `  - ${t.title}${typeNoteFn(t.taskType)}`).join("\n")
+          : `  - Automate tasks for: ${group.description}`;
 
-SCRIPT TO GENERATE: ${group.description}
-Phase: ${group.phaseTitle}
+        const genUserMsg = `SERVICE: ${service.name}
 
-Tasks covered by this script:
-${group.groupTasks.map((t) => `  - ${t.title}${typeNoteFn(t.taskType)}`).join("\n")}
+Write a PowerShell script that automates the following Microsoft 365 tasks using the Microsoft Graph API and/or Exchange Online PowerShell.
+
+TASKS TO AUTOMATE:
+${taskLines}
+
+Script context: ${group.description} (${group.phaseTitle})
 ${baseBlock}${detailedBlock}${customBlock}
 
-Required filename for the # file: header on line 1: ${group.filename}`.trim();
+Required filename (FIRST LINE of your output): ${group.filename}`.trim();
 
         try {
           const response = await anthropic.messages.create({
@@ -979,16 +992,34 @@ Required filename for the # file: header on line 1: ${group.filename}`.trim();
             messages: [{ role: "user", content: genUserMsg }],
           });
 
-          const text = response.content[0]?.type === "text" ? response.content[0].text : "";
-          if (!text) continue;
+          const rawText = response.content[0]?.type === "text" ? response.content[0].text.trim() : "";
+          if (!rawText) continue;
 
-          const psMap = extractPowershellFences(text);
-          const content = psMap.get(group.filename) ?? [...psMap.values()][0] ?? "";
+          // Raw-output strategy: the AI outputs the script directly (no fence).
+          // Use the raw text as the script body. If the AI disobeyed and wrapped it
+          // in a fence anyway, extract from the fence as a fallback.
+          let content = "";
+          if (hasPsKeywordsFullText(rawText)) {
+            // Strip any accidental fence wrapper (```powershell ... ```)
+            const psMap = extractPowershellFences(rawText);
+            content = psMap.get(group.filename) ?? [...psMap.values()][0] ?? rawText;
+          }
+
+          // Ensure # file: header is present on line 1
+          if (content) {
+            const firstLine = content.split("\n")[0]?.trim() ?? "";
+            if (!/^#\s*file:/i.test(firstLine)) {
+              content = `# file: ${group.filename}\n${content}`;
+            }
+          }
 
           if (content && hasPsKeywordsFullText(content)) {
             generatedModules.push({ filename: group.filename, description: group.description, content });
           } else {
-            logger.warn({ description: group.description, filename: group.filename }, "generate-from-service: group script failed PS keyword check, skipping");
+            logger.warn(
+              { description: group.description, filename: group.filename, textPreview: rawText.slice(0, 300) },
+              "generate-from-service: group script failed PS keyword check, skipping",
+            );
           }
         } catch (err) {
           logger.warn({ err, description: group.description }, "generate-from-service: generation call failed, skipping");
