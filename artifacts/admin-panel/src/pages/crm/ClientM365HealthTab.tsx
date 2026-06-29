@@ -113,6 +113,17 @@ export default function ClientM365HealthTab({ clientId, fetchWithAuth, onOpenWiz
   const [recordResult, setRecordResult] = useState<RecordResult | null>(null);
   const [recordError, setRecordError] = useState<string | null>(null);
 
+  const refreshSummary = async () => {
+    try {
+      const r = await fetchWithAuth(`/api/admin/clients/${clientId}/health/summary`);
+      if (r.ok) {
+        setData(await r.json() as HealthResponse);
+      }
+    } catch {
+      /* non-fatal — chart keeps showing last known data */
+    }
+  };
+
   const handleRecordHealth = async () => {
     setRecording(true);
     setRecordResult(null);
@@ -125,10 +136,8 @@ export default function ClientM365HealthTab({ clientId, fetchWithAuth, onOpenWiz
         return;
       }
       setRecordResult({ recorded: body.recorded ?? 0, scores: body.scores ?? {} });
-      // Refresh the summary data so charts update
-      fetchWithAuth(`/api/admin/clients/${clientId}/health/summary`)
-        .then(async r => { if (r.ok) setData(await r.json() as HealthResponse); })
-        .catch(() => { /* non-fatal */ });
+      // Await the summary refresh so the chart updates before the spinner stops
+      await refreshSummary();
     } catch (err) {
       setRecordError(err instanceof Error ? err.message : "Failed to record health snapshot");
     } finally {
