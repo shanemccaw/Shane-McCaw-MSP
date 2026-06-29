@@ -2473,7 +2473,7 @@ Output the corrected script, then a <fix-summary> block, then the permissions JS
 \`\`\``,
         },
         // Prefill: Claude continues from here — response IS the script body
-        { role: "assistant", content: "```powershell\n" },
+        { role: "assistant", content: "```powershell" },
       ],
     });
 
