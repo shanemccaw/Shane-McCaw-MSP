@@ -1592,6 +1592,215 @@ Required filename (FIRST LINE of your output): ${group.filename}`.trim();
   }
 });
 
+// ─── POST /api/admin/ps-scripts/generate-from-task ────────────────────────────
+// Generates a single PowerShell script for a specific workflow task, saves it
+// to the library with source_task_id, and immediately sets runbook_id on the task.
+
+const GENERATE_FROM_TASK_SYSTEM = `You are an expert Microsoft 365 PowerShell script engineer with 20+ years of experience.
+
+Given a single workflow task, classify it and generate an appropriate PowerShell script.
+
+CLASSIFY the task as one of:
+  AUTOMATABLE — runs as a service principal / app-only auth (no interactive login needed)
+  USER_ACCOUNT_REQUIRED — can be scripted but REQUIRES a real licensed user account with delegated/interactive auth
+  HUMAN_ONLY — cannot be scripted at all (meetings, approvals, document review, client calls, business decisions)
+
+Same classification rules as your general guidelines:
+  - Migration cmdlets (New-MigrationBatch etc.) → USER_ACCOUNT_REQUIRED
+  - Connect-MicrosoftTeams → USER_ACCOUNT_REQUIRED
+  - ANY Connect-MgGraph -Scopes → USER_ACCOUNT_REQUIRED
+  - Reporting, Entra, SharePoint (PnP app-only), Intune via Graph Application → AUTOMATABLE
+  - If unsure whether a cmdlet supports app-only auth → USER_ACCOUNT_REQUIRED
+
+For AUTOMATABLE and USER_ACCOUNT_REQUIRED tasks, write a complete production-ready PowerShell script:
+  - [CmdletBinding()] attribute + typed param() block
+  - $ErrorActionPreference = "Stop"
+  - Structured try/catch/finally error handling
+  - Write-Output (NOT Write-Host) for all console output — Write-Error and Write-Warning are acceptable
+  - NEVER write output to files — all results MUST go to the output stream via Write-Output
+  - FORBIDDEN: Export-Csv, Out-File, Set-Content, Add-Content, New-Item (for file creation), Write-Host
+  - For USER_ACCOUNT_REQUIRED: use interactive auth (Connect-MgGraph -Scopes, Connect-ExchangeOnline without -AppId), OMIT -ClientId/-ClientSecret/-CertificateThumbprint
+  - For AUTOMATABLE: include -TenantId, -ClientId, -ClientSecret parameters where applicable
+  - Inline comments explaining each logical section
+
+Output EXACTLY ONE of these three shapes — no prose outside the fences:
+
+Human-only (task requires human action, cannot be scripted):
+\`\`\`json
+{"type":"human-only","title":"Task Title","explanation":"Why this cannot be automated"}
+\`\`\`
+
+Single automatable script (AUTOMATABLE classification):
+\`\`\`json
+{"type":"single","title":"Brief script title max 60 chars","permissions":{"appPermissions":["e.g. User.Read.All (Microsoft Graph Application)"],"delegatedPermissions":[],"notes":"Brief note on consent"}}
+\`\`\`
+\`\`\`powershell
+# file: script.ps1
+# Complete production-ready script body
+\`\`\`
+
+Interactive script (USER_ACCOUNT_REQUIRED classification):
+\`\`\`json
+{"type":"manual","title":"Brief script title max 60 chars","permissions":{"appPermissions":[],"delegatedPermissions":["e.g. MailboxSettings.ReadWrite (Microsoft Graph Delegated)"],"notes":"Must run interactively under a licensed user account. Cannot run as an Azure Automation runbook."}}
+\`\`\`
+\`\`\`powershell
+# file: script.ps1
+# ===========================================================================
+# WARNING: MANUAL EXECUTION REQUIRED
+# This script uses delegated/interactive authentication and MUST be run
+# locally under a licensed user account with appropriate permissions.
+# It cannot run as an Azure Automation runbook or service principal.
+# ===========================================================================
+# Complete production-ready script body using interactive auth
+\`\`\``;
+
+router.post("/admin/ps-scripts/generate-from-task", requireAdmin, async (req: Request, res: Response) => {
+  const { taskId } = req.body as { taskId?: unknown };
+  if (typeof taskId !== "number" || !Number.isInteger(taskId)) {
+    res.status(400).json({ error: "taskId (integer) is required" });
+    return;
+  }
+  try {
+    const taskRow = await pool.query<{
+      id: number; title: string; description: string | null;
+      task_type: string | null; instructions: unknown; checklist: unknown;
+      workflow_template_step_id: number; step_title: string;
+    }>(
+      `SELECT t.id, t.title, t.description, t.task_type, t.instructions, t.checklist,
+              t.workflow_template_step_id, s.title AS step_title
+       FROM workflow_template_step_tasks t
+       JOIN workflow_template_steps s ON s.id = t.workflow_template_step_id
+       WHERE t.id = $1`,
+      [taskId],
+    );
+    if (taskRow.rowCount === 0) { res.status(404).json({ error: "Task not found" }); return; }
+    const task = taskRow.rows[0]!;
+
+    const instructionLines = Array.isArray(task.instructions)
+      ? (task.instructions as string[]).filter(Boolean).join("\n- ")
+      : "";
+    const checklistLines = Array.isArray(task.checklist)
+      ? (task.checklist as Array<{ label: string }>).filter(c => c.label).map(c => c.label).join("\n- ")
+      : "";
+
+    const userPrompt = [
+      `Phase: ${task.step_title}`,
+      `Task Title: ${task.title}`,
+      task.task_type ? `Task Type: ${task.task_type}` : null,
+      task.description ? `\nDescription:\n${task.description}` : null,
+      instructionLines ? `\nInstructions:\n- ${instructionLines}` : null,
+      checklistLines ? `\nChecklist items:\n- ${checklistLines}` : null,
+    ].filter(Boolean).join("\n");
+
+    const systemPrompt = await getPrompt("ps-engineer-from-task", GENERATE_FROM_TASK_SYSTEM);
+    logger.info({ taskId, title: task.title }, "generate-from-task: calling Claude");
+
+    const aiResponse = await anthropic.messages.create({
+      model: "claude-haiku-4-5",
+      max_tokens: 4096,
+      system: systemPrompt,
+      messages: [{ role: "user", content: userPrompt }],
+    });
+
+    const rawText = aiResponse.content.filter(b => b.type === "text").map(b => b.text).join("");
+
+    const jsonFenceMatch = rawText.match(/```json\s*([\s\S]*?)```/);
+    if (!jsonFenceMatch) {
+      logger.error({ rawText: rawText.slice(0, 500) }, "generate-from-task: no JSON fence");
+      res.status(500).json({ error: "AI returned unrecognised format. Please try again." });
+      return;
+    }
+    let parsed: Record<string, unknown>;
+    try {
+      parsed = JSON.parse(jsonFenceMatch[1]!) as Record<string, unknown>;
+    } catch {
+      logger.error({ raw: jsonFenceMatch[1]?.slice(0, 300) }, "generate-from-task: JSON parse failed");
+      res.status(500).json({ error: "AI returned malformed JSON. Please try again." });
+      return;
+    }
+
+    const type = typeof parsed["type"] === "string" ? parsed["type"] : "single";
+    const title = (typeof parsed["title"] === "string" ? parsed["title"].trim() : null) || task.title;
+    const permissions: PsScriptPermissions = (parsed["permissions"] as PsScriptPermissions | undefined)
+      ?? { appPermissions: [], delegatedPermissions: [], notes: "" };
+
+    if (type === "human-only") {
+      const explanation = typeof parsed["explanation"] === "string"
+        ? parsed["explanation"]
+        : "This task requires human action and cannot be automated.";
+      logger.info({ taskId }, "generate-from-task: human-only");
+      res.json({ type: "human-only", title, explanation });
+      return;
+    }
+
+    const psFenceMatch = rawText.match(/```powershell\s*([\s\S]*?)```/);
+    const scriptBody = psFenceMatch
+      ? psFenceMatch[1]!.replace(/^#\s*file:.*\n/, "").trim()
+      : "";
+
+    if (scriptBody.length < 20 || !hasPsKeywordsFullText(scriptBody)) {
+      logger.error({ scriptBodyPrefix: scriptBody.slice(0, 300) }, "generate-from-task: empty/no PS keywords");
+      res.status(500).json({ error: "AI returned an unreadable script. Please try again." });
+      return;
+    }
+
+    const tags: string[] = type === "manual" ? ["manual"] : [];
+    const runbookName = titleToRunbookName(title);
+
+    const savedRow = await pool.query<{ id: string; title: string; azure_runbook_name: string | null }>(
+      `INSERT INTO powershell_scripts (title, category, script_body, permissions, tags, source_task_id)
+       VALUES ($1, 'task', $2, $3::jsonb, $4::text[], $5)
+       RETURNING id, title, azure_runbook_name`,
+      [title, scriptBody, JSON.stringify(permissions), tags, taskId],
+    );
+    const saved = savedRow.rows[0]!;
+
+    const effectiveRunbookId = saved.azure_runbook_name ?? runbookName;
+    await pool.query(
+      `UPDATE workflow_template_step_tasks SET runbook_id = $1 WHERE id = $2`,
+      [effectiveRunbookId, taskId],
+    );
+
+    logger.info({ scriptId: saved.id, taskId, runbookId: effectiveRunbookId }, "generate-from-task: saved and linked");
+    res.json({ type, scriptId: saved.id, title: saved.title, runbookId: effectiveRunbookId });
+  } catch (err) {
+    logger.error({ err }, "generate-from-task failed");
+    res.status(500).json({ error: err instanceof Error ? err.message : "Generation failed" });
+  }
+});
+
+// ─── POST /api/admin/ps-scripts/:id/assign-task ───────────────────────────────
+// Re-links a script's source_task_id back to the task via runbook_id.
+// Used from the Script Library dropdown → "Assign to Task".
+
+router.post("/admin/ps-scripts/:id/assign-task", requireAdmin, async (req: Request, res: Response) => {
+  const scriptId = String(req.params["id"] ?? "");
+  if (!UUID_RE.test(scriptId)) { res.status(400).json({ error: "Invalid id" }); return; }
+  try {
+    const row = await pool.query<{ source_task_id: number | null; title: string; azure_runbook_name: string | null }>(
+      `SELECT source_task_id, title, azure_runbook_name FROM powershell_scripts WHERE id = $1`,
+      [scriptId],
+    );
+    if (row.rowCount === 0) { res.status(404).json({ error: "Script not found" }); return; }
+    const script = row.rows[0]!;
+    if (!script.source_task_id) {
+      res.json({ assigned: 0, message: "No source task recorded for this script." });
+      return;
+    }
+    const runbookId = script.azure_runbook_name ?? titleToRunbookName(script.title);
+    const updateResult = await pool.query(
+      `UPDATE workflow_template_step_tasks SET runbook_id = $1 WHERE id = $2 RETURNING id`,
+      [runbookId, script.source_task_id],
+    );
+    const assigned = updateResult.rowCount ?? 0;
+    logger.info({ scriptId, assigned, taskId: script.source_task_id, runbookId }, "assign-task: runbook_id set");
+    res.json({ assigned, taskId: script.source_task_id });
+  } catch (err) {
+    logger.error({ err }, "Failed to assign script to task");
+    res.status(500).json({ error: "Failed to assign script to task" });
+  }
+});
+
 // ─── GET /api/admin/ps-scripts/published ─────────────────────────────────────
 // Returns only scripts that are published to Azure (azureRunbookName IS NOT NULL)
 // Used by workflow template editor to populate the "Linked Runbook" dropdown.
@@ -1618,21 +1827,27 @@ router.get("/admin/ps-scripts/published", requireAdmin, async (_req: Request, re
 
 router.get("/admin/ps-scripts", requireAdmin, async (_req: Request, res: Response) => {
   try {
-    const scripts = await db
-      .select({
-        id: powershellScriptsTable.id,
-        title: powershellScriptsTable.title,
-        description: powershellScriptsTable.description,
-        category: powershellScriptsTable.category,
-        tags: powershellScriptsTable.tags,
-        azureRunbookName: powershellScriptsTable.azureRunbookName,
-        azureSyncedAt: powershellScriptsTable.azureSyncedAt,
-        createdAt: powershellScriptsTable.createdAt,
-        updatedAt: powershellScriptsTable.updatedAt,
-      })
-      .from(powershellScriptsTable)
-      .orderBy(desc(powershellScriptsTable.createdAt));
-    res.json(scripts);
+    const result = await pool.query<{
+      id: string; title: string; description: string | null; category: string;
+      tags: string[]; azure_runbook_name: string | null; azure_synced_at: string | null;
+      created_at: string; updated_at: string; source_task_id: number | null;
+    }>(
+      `SELECT id, title, description, category, tags, azure_runbook_name, azure_synced_at,
+              created_at, updated_at, source_task_id
+       FROM powershell_scripts ORDER BY created_at DESC`,
+    );
+    res.json(result.rows.map(r => ({
+      id: r.id,
+      title: r.title,
+      description: r.description,
+      category: r.category,
+      tags: r.tags,
+      azureRunbookName: r.azure_runbook_name,
+      azureSyncedAt: r.azure_synced_at,
+      createdAt: r.created_at,
+      updatedAt: r.updated_at,
+      sourceTaskId: r.source_task_id,
+    })));
   } catch (err) {
     logger.error({ err }, "Failed to list PS scripts");
     res.status(500).json({ error: "Failed to list scripts" });

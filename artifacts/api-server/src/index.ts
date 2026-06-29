@@ -240,6 +240,14 @@ app.listen(port, (err) => {
   });
 
   pool.query(`
+    ALTER TABLE powershell_scripts ADD COLUMN IF NOT EXISTS source_task_id integer REFERENCES workflow_template_step_tasks(id) ON DELETE SET NULL
+  `).then(() => {
+    logger.info("Migration: powershell_scripts.source_task_id column ensured");
+  }).catch((err: unknown) => {
+    logger.warn({ err }, "Migration: powershell_scripts.source_task_id column failed (non-fatal)");
+  });
+
+  pool.query(`
     CREATE TABLE IF NOT EXISTS client_scores (
       id SERIAL PRIMARY KEY,
       client_id INTEGER NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,

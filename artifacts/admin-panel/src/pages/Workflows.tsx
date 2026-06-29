@@ -962,6 +962,7 @@ function SortableTaskRow({
   task,
   onEdit,
   onDelete,
+  onGenerateScript,
   instructionSets,
   checklists,
   artifactSets,
@@ -971,6 +972,7 @@ function SortableTaskRow({
   task: StepTask;
   onEdit: (t: StepTask) => void;
   onDelete: (t: StepTask) => void;
+  onGenerateScript: (t: StepTask) => Promise<void>;
   instructionSets: AssetItem[];
   checklists: AssetItem[];
   artifactSets: AssetItem[];
@@ -978,6 +980,7 @@ function SortableTaskRow({
   publishedScripts: PublishedScript[];
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: task.id });
+  const [isGenerating, setIsGenerating] = useState(false);
 
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -1100,6 +1103,25 @@ function SortableTaskRow({
 
       {/* Action buttons */}
       <div className="flex items-center gap-0.5 flex-shrink-0 mt-0.5">
+        <button
+          onClick={e => {
+            e.stopPropagation();
+            if (isGenerating) return;
+            setIsGenerating(true);
+            onGenerateScript(task).finally(() => setIsGenerating(false));
+          }}
+          disabled={isGenerating}
+          className="p-1.5 text-[#7D8590] hover:text-violet-400 rounded hover:bg-violet-500/10 disabled:opacity-50 disabled:cursor-wait"
+          title={task.runbookId ? "Regenerate PowerShell script" : "Generate PowerShell script for this task"}
+        >
+          {isGenerating ? (
+            <div className="w-3.5 h-3.5 border border-violet-400 border-t-transparent rounded-full animate-spin" />
+          ) : (
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+            </svg>
+          )}
+        </button>
         <button
           onClick={() => onEdit(task)}
           className="p-1.5 text-[#7D8590] hover:text-[#0078D4] rounded hover:bg-[#0078D4]/10"
@@ -1784,6 +1806,25 @@ export default function WorkflowsPage() {
       `/api/admin/workflow-templates/${selected.id}/steps/${task.workflowTemplateStepId}/tasks/${task.id}`,
       { method: "DELETE" }
     );
+    await refreshSelected();
+  }
+
+  async function generateTaskScript(task: StepTask) {
+    const res = await fetchWithAuth("/api/admin/ps-scripts/generate-from-task", {
+      method: "POST",
+      body: JSON.stringify({ taskId: task.id }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({})) as { error?: string };
+      toast({ title: "Script generation failed", description: err.error ?? "Please try again.", variant: "destructive" });
+      return;
+    }
+    const result = await res.json() as { type: string; title: string; runbookId?: string; explanation?: string };
+    if (result.type === "human-only") {
+      toast({ title: "Task requires human action", description: result.explanation ?? "This task cannot be automated with PowerShell." });
+    } else {
+      toast({ title: "Script generated", description: `"${result.title}" saved to Script Library and linked to this task.` });
+    }
     await refreshSelected();
   }
 
@@ -2757,6 +2798,7 @@ export default function WorkflowsPage() {
                                     task={task}
                                     onEdit={openDrawerEdit}
                                     onDelete={t => void deleteTask(t)}
+                                    onGenerateScript={t => generateTaskScript(t)}
                                     instructionSets={instructionSets}
                                     checklists={checklists}
                                     artifactSets={artifactSets}

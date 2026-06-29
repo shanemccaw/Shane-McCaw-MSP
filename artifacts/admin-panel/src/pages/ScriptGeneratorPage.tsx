@@ -51,6 +51,7 @@ interface PsScriptListItem {
   azureSyncedAt: string | null;
   createdAt: string;
   updatedAt: string;
+  sourceTaskId?: number | null;
 }
 
 interface PsScriptDetail extends PsScriptListItem {
@@ -1340,6 +1341,19 @@ function LibrarySidebar({
     }
   };
 
+  const handleAssignScriptToTask = async (s: PsScriptListItem) => {
+    try {
+      const result = await apiFetch(`/admin/ps-scripts/${s.id}/assign-task`, token, { method: "POST" }) as { assigned: number; message?: string };
+      if (result.assigned === 0) {
+        toast({ title: "No task linked", description: result.message ?? "This script has no source task recorded. Generate it via the workflow task button to create the link.", variant: "destructive" });
+      } else {
+        toast({ title: "Assigned to workflow task", description: `"${s.title}" is now the runbook for its source workflow task.` });
+      }
+    } catch {
+      toast({ title: "Failed to assign script to task", variant: "destructive" });
+    }
+  };
+
   const togglePackageExpand = (pkgId: string, e: React.MouseEvent) => {
     e.stopPropagation();
     setExpandedPackages((prev) => {
@@ -1506,6 +1520,15 @@ function LibrarySidebar({
                               <svg className="w-3 h-3 text-[#58A6FF] flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" /><path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
                               Properties
                             </DropdownMenuItem>
+                            {s.sourceTaskId && (
+                              <DropdownMenuItem
+                                className="text-xs text-violet-400 focus:bg-violet-500/10 focus:text-violet-300 gap-2 cursor-pointer"
+                                onSelect={() => void handleAssignScriptToTask(s)}
+                              >
+                                <svg className="w-3 h-3 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
+                                Assign to Task
+                              </DropdownMenuItem>
+                            )}
                             <DropdownMenuSeparator className="bg-[#30363D]" />
                             <DropdownMenuItem
                               className="text-xs text-red-400 focus:bg-red-500/10 focus:text-red-400 gap-2 cursor-pointer"
