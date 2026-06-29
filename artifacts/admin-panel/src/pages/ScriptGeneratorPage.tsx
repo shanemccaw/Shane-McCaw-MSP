@@ -2400,6 +2400,8 @@ function GenerateFromServiceDialog({
         (pct, label) => { setGenPct(pct); if (label) setGenPhaseLabel(label); },
       );
 
+      console.log("[generate-from-service] result type:", result.type, "| packageId:", result.packageId ?? "—", "| modules:", result.modules?.length ?? "—", "| script len:", result.script?.length ?? "—");
+
       if (result.humanOnlyTasks?.length > 0) {
         setHumanOnlyTasks(result.humanOnlyTasks);
       }
@@ -4017,6 +4019,7 @@ export default function ScriptGeneratorPage() {
             setLoadedPackageTitle(null);
             setFixSummary("");
             setSummaryError(null);
+            setSelectedResult(null);
             toast({ title: "Script generated", description: title });
           }}
           onPackageGenerated={(packageId, title, mods, perms) => {
@@ -4039,6 +4042,9 @@ export default function ScriptGeneratorPage() {
             setEditingPackageId(null);
             setFixSummary("");
             setSummaryError(null);
+            setSelectedResult(null);
+            setLeftMode("library");
+            lsSet(IDE_LEFT_MODE_KEY, "library");
             toast({ title: "Package generated", description: title });
           }}
           onManualScriptGenerated={(detail) => {
