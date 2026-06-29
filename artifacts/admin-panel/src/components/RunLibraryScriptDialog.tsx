@@ -243,7 +243,7 @@ export default function RunLibraryScriptDialog({ scriptId, moduleId, scriptTitle
 
         {/* Body */}
         <div className="flex-1 overflow-y-auto p-5 space-y-4">
-          {!azureRunbookName && (
+          {!azureRunbookName && !moduleId && (
             <div className="rounded-lg bg-yellow-500/10 border border-yellow-500/30 px-4 py-3">
               <p className="text-xs text-yellow-400 font-medium">This script has not been pushed to Azure Automation yet. Push it first from the Library editor before running.</p>
             </div>
@@ -283,7 +283,7 @@ export default function RunLibraryScriptDialog({ scriptId, moduleId, scriptTitle
           {/* Run button */}
           <button
             onClick={() => void handleRun()}
-            disabled={running || !azureRunbookName || !appRegistrationId}
+            disabled={running || (!azureRunbookName && !moduleId) || !appRegistrationId}
             className="w-full flex items-center justify-center gap-2 bg-[#0078D4] text-white rounded-lg px-4 py-2.5 text-sm font-semibold hover:bg-[#006CBE] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           >
             {running ? (
