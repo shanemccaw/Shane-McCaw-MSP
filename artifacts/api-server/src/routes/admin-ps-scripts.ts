@@ -637,6 +637,13 @@ router.post("/admin/ps-scripts/generate-from-service", requireAdmin, async (req:
     // Script-type template tasks — populated below; used for per-task stub enforcement and Kanban association.
     let scriptTypeTasks: Array<typeof workflowTemplateStepTasksTable.$inferSelect> = [];
 
+    // Automatable phases — populated below when a workflow template is linked.
+    // Accessible outside the workflowTemplateId block so the per-phase generation branch can use it.
+    let automatablePhases: Array<{
+      step: typeof workflowTemplateStepsTable.$inferSelect;
+      phaseTasks: Array<typeof workflowTemplateStepTasksTable.$inferSelect>;
+    }> = [];
+
     let workflowContext = "";
     if (service.workflowTemplateId) {
       const [template] = await db
@@ -706,7 +713,7 @@ router.post("/admin/ps-scripts/generate-from-service", requireAdmin, async (req:
         // Build the MANDATORY MODULES block: one entry per PHASE that contains at least one
         // automatable task. This tells the AI to generate one standalone script per phase,
         // instead of merging everything into a single consolidated script.
-        const automatablePhases = steps
+        automatablePhases = steps
           .map((step) => {
             const phaseTasks = allTasks.filter(
               (t) =>
@@ -788,6 +795,165 @@ Classify each task and generate PowerShell automation scripts for all M365/Azure
       res.write(`data: ${JSON.stringify(event)}\n\n`);
     };
 
+    // ── Per-phase generation (2+ automatable phases) ──────────────────────────
+    // When a workflow has multiple automatable phases we make one focused API call
+    // per phase rather than one giant call. This avoids Claude Haiku's ~8 192-token
+    // output limit cutting off scripts mid-way through a large package.
+    if (automatablePhases.length >= 2) {
+      sendSSE({ type: "phase", label: `Generating ${automatablePhases.length} scripts…`, pct: 5 });
+
+      const filenameSafe = (s: string) =>
+        s.replace(/[^a-zA-Z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 45);
+
+      const typeNoteFn = (taskType: string | null | undefined): string => {
+        if (taskType === "automationBuild") return " [automate this]";
+        if (taskType === "environmentHealthCheck") return " [health check / audit]";
+        if (taskType === "discovery") return " [collect / query]";
+        if (taskType === "manualScript") return " [interactive auth only]";
+        return "";
+      };
+
+      const generatedModules: Array<{ filename: string; description: string; content: string }> = [];
+      const humanOnlyTasksAll: string[] = [];
+      const mergedPerms: PsScriptPermissions = { appPermissions: [], delegatedPermissions: [], notes: "" };
+
+      for (let i = 0; i < automatablePhases.length; i++) {
+        const { step, phaseTasks } = automatablePhases[i];
+        const stepPct = 10 + Math.round((i / automatablePhases.length) * 70);
+        sendSSE({ type: "phase", label: `Script ${i + 1}/${automatablePhases.length}: ${step.title}…`, pct: stepPct });
+
+        const filename = `${String(i + 1).padStart(2, "0")}-${filenameSafe(step.title)}.ps1`;
+
+        const phaseUserMsg = `${serviceContext}
+
+PHASE TO AUTOMATE (${i + 1} of ${automatablePhases.length}): ${step.title}
+${step.description ? step.description + "\n" : ""}
+Tasks in this phase to automate:
+${phaseTasks.map((t) => `  - ${t.title}${typeNoteFn(t.taskType)}`).join("\n")}
+${baseBlock}${detailedBlock}${customBlock}
+
+Generate ONE complete, standalone PowerShell script that automates ALL the tasks listed above.
+Output type MUST be "single". Required filename: ${filename}`.trim();
+
+        try {
+          const response = await anthropic.messages.create({
+            model: "claude-haiku-4-5",
+            max_tokens: 8000,
+            messages: [{ role: "user", content: `${fromServicePrompt}\n\n${phaseUserMsg}` }],
+          });
+
+          const text = response.content[0]?.type === "text" ? response.content[0].text : "";
+          if (!text) continue;
+
+          // The AI should name the file as requested; fall back to the first available script
+          const psMap = extractPowershellFences(text);
+          const content = psMap.get(filename) ?? [...psMap.values()][0] ?? "";
+
+          if (content && hasPsKeywordsFullText(content)) {
+            generatedModules.push({ filename, description: `Automation: ${step.title}`, content });
+          } else {
+            logger.warn({ phase: step.title, filename }, "generate-from-service: per-phase script failed PS keyword check, skipping");
+          }
+
+          // Merge permissions and human-only tasks from this phase
+          const envJson = extractEnvelopeJson(text);
+          if (envJson && typeof envJson === "object" && !Array.isArray(envJson)) {
+            const ej = envJson as Record<string, unknown>;
+            if (Array.isArray(ej["humanOnlyTasks"]))
+              humanOnlyTasksAll.push(...(ej["humanOnlyTasks"] as string[]));
+            const perms = ej["permissions"];
+            if (perms && typeof perms === "object" && !Array.isArray(perms)) {
+              const p = perms as Record<string, unknown>;
+              if (Array.isArray(p["appPermissions"])) mergedPerms.appPermissions.push(...(p["appPermissions"] as string[]));
+              if (Array.isArray(p["delegatedPermissions"])) mergedPerms.delegatedPermissions.push(...(p["delegatedPermissions"] as string[]));
+              if (typeof p["notes"] === "string" && p["notes"] && !mergedPerms.notes) mergedPerms.notes = p["notes"];
+            }
+          }
+        } catch (err) {
+          logger.warn({ err, phase: step.title }, "generate-from-service: per-phase API call failed, skipping");
+        }
+      }
+
+      // Deduplicate permissions
+      mergedPerms.appPermissions = [...new Set(mergedPerms.appPermissions)];
+      mergedPerms.delegatedPermissions = [...new Set(mergedPerms.delegatedPermissions)];
+
+      if (generatedModules.length === 0) {
+        sendSSE({ type: "error", message: "No scripts could be generated for this service. Please try again." });
+        res.end();
+        return;
+      }
+
+      sendSSE({ type: "phase", label: "Saving package to library…", pct: 85 });
+
+      // Single module → save as individual script
+      if (generatedModules.length === 1) {
+        const m = generatedModules[0];
+        const [savedSingle] = await db
+          .insert(powershellScriptsTable)
+          .values({ title: `${service.name} — ${automatablePhases[0].step.title}`, category: "m365", scriptBody: m.content, permissions: mergedPerms, tags: [] })
+          .returning();
+        logger.info({ scriptId: savedSingle.id, service: service.name }, "generate-from-service: per-phase saved single script");
+        sendSSE({
+          type: "done",
+          payload: {
+            type: "saved",
+            savedScript: {
+              id: savedSingle.id, title: savedSingle.title, description: savedSingle.description,
+              category: savedSingle.category, tags: savedSingle.tags,
+              azureRunbookName: savedSingle.azureRunbookName,
+              azureSyncedAt: savedSingle.azureSyncedAt?.toISOString() ?? null,
+              createdAt: savedSingle.createdAt.toISOString(), updatedAt: savedSingle.updatedAt.toISOString(),
+              scriptBody: savedSingle.scriptBody, permissions: savedSingle.permissions,
+            },
+            humanOnlyTasks: humanOnlyTasksAll,
+          },
+        });
+        res.end();
+        return;
+      }
+
+      // Multiple modules → save as a script package
+      const packageTitle = `${service.name} — Automation Package`;
+      const [pkg] = await db.insert(scriptPackagesTable).values({ title: packageTitle, category: "m365" }).returning();
+
+      // Auto-link to the requesting service
+      const [maxRow2] = await db
+        .select({ maxOrder: sql<number>`coalesce(max(${serviceScriptSetsTable.displayOrder}), -1)` })
+        .from(serviceScriptSetsTable)
+        .where(eq(serviceScriptSetsTable.serviceId, serviceId));
+      await db
+        .insert(serviceScriptSetsTable)
+        .values({ serviceId, scriptPackageId: pkg.id, displayOrder: (maxRow2?.maxOrder ?? -1) + 1 })
+        .onConflictDoNothing();
+
+      const insertedMods = await db
+        .insert(scriptModulesTable)
+        .values(generatedModules.map((m, idx) => ({ packageId: pkg.id, filename: m.filename, description: m.description, content: m.content, sortOrder: idx })))
+        .returning({ id: scriptModulesTable.id, filename: scriptModulesTable.filename });
+
+      const fnToId = new Map(insertedMods.map((r) => [r.filename, r.id]));
+      const modulesWithIds = generatedModules.map((m) => ({ ...m, id: fnToId.get(m.filename) }));
+
+      logger.info({ packageId: pkg.id, moduleCount: modulesWithIds.length, service: service.name }, "generate-from-service: per-phase package saved");
+
+      sendSSE({
+        type: "done",
+        payload: {
+          type: "package",
+          packageId: pkg.id,
+          title: packageTitle,
+          modules: modulesWithIds,
+          permissions: mergedPerms,
+          humanOnlyTasks: humanOnlyTasksAll,
+          taskAssociations: [],
+        },
+      });
+      res.end();
+      return;
+    }
+
+    // ── Single-call generation (0 or 1 automatable phase, or no workflow template) ──
     sendSSE({ type: "phase", label: "Sending prompt to Claude…", pct: 5 });
 
     const sseStream = anthropic.messages.stream({
