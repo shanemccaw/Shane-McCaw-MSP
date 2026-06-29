@@ -795,6 +795,30 @@ Classify each task and generate PowerShell automation scripts for all M365/Azure
       res.write(`data: ${JSON.stringify(event)}\n\n`);
     };
 
+    // System prompt for per-phase calls — deliberately simple.
+    // We do NOT use fromServicePrompt here because that prompt instructs Claude to
+    // output a JSON envelope, which means the script ends up as a JSON string field
+    // rather than in a ```powershell fence. extractPowershellFences would find nothing.
+    const PER_PHASE_SYSTEM = `You are an expert Microsoft 365 PowerShell engineer.
+
+Write a complete, standalone PowerShell automation script for the phase described.
+
+OUTPUT FORMAT — follow this exactly:
+1. Output ONE \`\`\`powershell code block (nothing else after it)
+2. The very first line inside the block MUST be: # file: <the required filename, e.g. 01-Phase-Name.ps1>
+3. Then write the full PowerShell script body
+
+SCRIPT REQUIREMENTS:
+- [CmdletBinding()] attribute + param() block with typed, documented parameters
+- Application auth: -TenantId [string], -ClientId [string], -ClientSecret [string] (or -CertificateThumbprint [string])
+- Connect-MgGraph or Connect-ExchangeOnline as needed
+- Write-Output for ALL console output — never Write-Host
+- try/catch error handling on every significant operation
+- Real logic only — no placeholder stubs or TODO comments
+- Fully self-contained: runs independently without any other script present
+
+Do NOT output JSON. Do NOT wrap the script in any envelope or metadata object.`;
+
     // ── Per-phase generation (2+ automatable phases) ──────────────────────────
     // When a workflow has multiple automatable phases we make one focused API call
     // per phase rather than one giant call. This avoids Claude Haiku's ~8 192-token
@@ -832,14 +856,14 @@ Tasks in this phase to automate:
 ${phaseTasks.map((t) => `  - ${t.title}${typeNoteFn(t.taskType)}`).join("\n")}
 ${baseBlock}${detailedBlock}${customBlock}
 
-Generate ONE complete, standalone PowerShell script that automates ALL the tasks listed above.
-Output type MUST be "single". Required filename: ${filename}`.trim();
+Required filename for the # file: header on line 1: ${filename}`.trim();
 
         try {
           const response = await anthropic.messages.create({
             model: "claude-haiku-4-5",
             max_tokens: 8000,
-            messages: [{ role: "user", content: `${fromServicePrompt}\n\n${phaseUserMsg}` }],
+            system: PER_PHASE_SYSTEM,
+            messages: [{ role: "user", content: phaseUserMsg }],
           });
 
           const text = response.content[0]?.type === "text" ? response.content[0].text : "";
