@@ -2311,6 +2311,12 @@ function GenerateFromServiceDialog({
   const [humanOnlyTasks, setHumanOnlyTasks] = useState<string[]>([]);
   const [humanOnlyExplanation, setHumanOnlyExplanation] = useState<string | null>(null);
 
+  type ManualResult = {
+    savedScript: PsScriptDetail;
+    humanOnlyTasks: string[];
+  };
+  const [manualResult, setManualResult] = useState<ManualResult | null>(null);
+
   type TaskAssociation = {
     taskTitle: string;
     taskType: string;
@@ -2405,11 +2411,7 @@ function GenerateFromServiceDialog({
         onPackageGenerated(result.packageId, result.title, result.modules, pkgPerms);
       } else if (result.type === "manual" && result.savedScript) {
         onManualScriptGenerated(result.savedScript);
-        toast({
-          title: "Manual script saved",
-          description: "This script requires interactive execution under a licensed user account.",
-        });
-        onClose();
+        setManualResult({ savedScript: result.savedScript, humanOnlyTasks: result.humanOnlyTasks ?? [] });
       } else if (result.type === "single" && result.script) {
         const perms = result.permissions ?? { appPermissions: [], delegatedPermissions: [], notes: "" };
         onScriptGenerated(result.title, result.script, perms);
@@ -2605,6 +2607,42 @@ function GenerateFromServiceDialog({
             </div>
           )}
 
+          {/* Manual script result panel — shown when workflow has USER_ACCOUNT_REQUIRED tasks */}
+          {manualResult && !packageResult && (
+            <div className="space-y-3">
+              <div className="bg-[#0D1117] border border-amber-800/50 rounded-lg overflow-hidden">
+                <div className="flex items-center gap-2 px-3 py-2 border-b border-[#21262D] bg-amber-900/15">
+                  <svg className="w-3.5 h-3.5 text-amber-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>
+                  <p className="text-[11px] font-semibold text-amber-400 flex-1">Manual script saved — requires interactive execution</p>
+                </div>
+                <div className="px-3 py-2.5 space-y-1.5">
+                  <p className="text-[11px] font-medium text-[#E6EDF3]">{manualResult.savedScript.title}</p>
+                  <p className="text-[10px] text-[#7D8590] leading-relaxed">
+                    One or more workflow tasks require a licensed user account (interactive auth). A consolidated script was generated and saved to your{" "}
+                    <span className="text-amber-400 font-medium">Scripts library</span> — look for the{" "}
+                    <span className="font-mono text-amber-400 bg-amber-500/20 px-1 rounded text-[9px]">M</span>{" "}
+                    badge in the sidebar.
+                  </p>
+                </div>
+              </div>
+              {manualResult.humanOnlyTasks.length > 0 && (
+                <div className="bg-[#0D1117] border border-[#21262D] rounded-lg overflow-hidden">
+                  <div className="px-3 py-2 border-b border-[#21262D]">
+                    <p className="text-[10px] font-semibold text-[#7D8590] uppercase tracking-wide">Human-only tasks (not scripted)</p>
+                  </div>
+                  <div className="divide-y divide-[#21262D]">
+                    {manualResult.humanOnlyTasks.map((task, i) => (
+                      <div key={i} className="flex items-start gap-2 px-3 py-1.5">
+                        <div className="w-1.5 h-1.5 rounded-full bg-[#484F58] mt-1.5 flex-shrink-0" />
+                        <span className="text-[11px] text-[#7D8590]">{task}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Package result panel — shown after successful package generation */}
           {packageResult && (
             <div className="space-y-3">
@@ -2689,6 +2727,8 @@ function GenerateFromServiceDialog({
           <p className="text-[10px] text-[#484F58] leading-relaxed">
             {packageResult
               ? "Each module will be created/updated as its own Azure Automation runbook."
+              : manualResult
+              ? "Script saved to your Scripts library. Open in editor or close to continue."
               : "AI classifies M365/Azure-automatable tasks and generates production-ready scripts. Human-only tasks are listed but not automated."}
           </p>
           <div className="flex items-center gap-2 flex-shrink-0">
@@ -2710,6 +2750,13 @@ function GenerateFromServiceDialog({
                   Push to Azure
                 </button>
               </>
+            ) : manualResult ? (
+              <button
+                onClick={onClose}
+                className="px-3 py-1.5 text-xs text-[#7D8590] hover:text-[#E6EDF3] rounded border border-[#30363D] hover:bg-[#21262D] transition-colors"
+              >
+                Done
+              </button>
             ) : (
               <>
                 <button onClick={onClose} className="px-3 py-1.5 text-xs text-[#7D8590] hover:text-[#E6EDF3] rounded border border-[#30363D] hover:bg-[#21262D] transition-colors">
