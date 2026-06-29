@@ -1171,7 +1171,42 @@ Classify each task and generate PowerShell automation scripts for all M365/Azure
       return;
     }
 
-    sendSSE({ type: "done", payload: { type: "single", title, script: scriptBody, humanOnlyTasks, permissions } });
+    // "single" — auto-save to library (same as "manual") so the script appears in the sidebar immediately.
+    const [savedSingle] = await db
+      .insert(powershellScriptsTable)
+      .values({
+        title,
+        category: "m365",
+        scriptBody,
+        permissions,
+        tags: [],
+      })
+      .returning();
+
+    logger.info(
+      { scriptId: savedSingle.id, service: service.name },
+      "generate-from-service: saved single script",
+    );
+    sendSSE({
+      type: "done",
+      payload: {
+        type: "manual",
+        savedScript: {
+          id: savedSingle.id,
+          title: savedSingle.title,
+          description: savedSingle.description,
+          category: savedSingle.category,
+          tags: savedSingle.tags,
+          azureRunbookName: savedSingle.azureRunbookName,
+          azureSyncedAt: savedSingle.azureSyncedAt?.toISOString() ?? null,
+          createdAt: savedSingle.createdAt.toISOString(),
+          updatedAt: savedSingle.updatedAt.toISOString(),
+          scriptBody: savedSingle.scriptBody,
+          permissions: savedSingle.permissions,
+        },
+        humanOnlyTasks,
+      },
+    });
     res.end();
   } catch (err) {
     logger.error({ err }, "generate-from-service failed");
