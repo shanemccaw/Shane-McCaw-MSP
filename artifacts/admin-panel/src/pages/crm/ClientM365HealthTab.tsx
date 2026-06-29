@@ -82,6 +82,22 @@ const CATEGORY_ICONS: Record<string, React.ReactNode> = {
   data: <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4" /></svg>,
 };
 
+interface RecordResult {
+  recorded: number;
+  scores: Record<string, number>;
+}
+
+const CATEGORY_LABELS: Record<string, string> = {
+  security: "Security",
+  compliance: "Compliance",
+  copilot: "Copilot",
+  governance: "Governance",
+  productivity: "Productivity",
+  identity: "Identity",
+  collaboration: "Collaboration",
+  data: "Data",
+};
+
 interface Props {
   clientId: number;
   fetchWithAuth: (url: string, init?: RequestInit) => Promise<Response>;
@@ -92,6 +108,33 @@ export default function ClientM365HealthTab({ clientId, fetchWithAuth, onOpenWiz
   const [data, setData] = useState<HealthResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [apiError, setApiError] = useState<string | null>(null);
+
+  const [recording, setRecording] = useState(false);
+  const [recordResult, setRecordResult] = useState<RecordResult | null>(null);
+  const [recordError, setRecordError] = useState<string | null>(null);
+
+  const handleRecordHealth = async () => {
+    setRecording(true);
+    setRecordResult(null);
+    setRecordError(null);
+    try {
+      const res = await fetchWithAuth(`/api/clients/${clientId}/health/record`, { method: "POST" });
+      const body = await res.json() as { recorded?: number; scores?: Record<string, number>; error?: string };
+      if (!res.ok) {
+        setRecordError(body.error ?? `HTTP ${res.status}`);
+        return;
+      }
+      setRecordResult({ recorded: body.recorded ?? 0, scores: body.scores ?? {} });
+      // Refresh the summary data so charts update
+      fetchWithAuth(`/api/admin/clients/${clientId}/health/summary`)
+        .then(async r => { if (r.ok) setData(await r.json() as HealthResponse); })
+        .catch(() => { /* non-fatal */ });
+    } catch (err) {
+      setRecordError(err instanceof Error ? err.message : "Failed to record health snapshot");
+    } finally {
+      setRecording(false);
+    }
+  };
 
   useEffect(() => {
     setLoading(true);
@@ -130,27 +173,108 @@ export default function ClientM365HealthTab({ clientId, fetchWithAuth, onOpenWiz
     );
   }
 
+  const RecordHealthButton = () => (
+    <button
+      onClick={() => void handleRecordHealth()}
+      disabled={recording}
+      className="inline-flex items-center gap-1.5 text-xs font-semibold bg-[#161B22] border border-[#30363D] text-[#E6EDF3] px-3 py-1.5 rounded-lg hover:border-[#0078D4]/60 hover:bg-[#0078D4]/8 disabled:opacity-50 transition-colors"
+    >
+      {recording ? (
+        <svg className="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+        </svg>
+      ) : (
+        <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+        </svg>
+      )}
+      {recording ? "Recording…" : "Record Health"}
+    </button>
+  );
+
+  const RecordFeedback = () => {
+    if (recordError) {
+      return (
+        <div className="mx-5 mt-4 flex items-start gap-2.5 bg-red-500/8 border border-red-500/30 rounded-xl px-4 py-3">
+          <svg className="w-3.5 h-3.5 text-red-400 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+          <div>
+            <p className="text-xs font-semibold text-red-400">Failed to record health snapshot</p>
+            <p className="text-[11px] text-red-400/70 mt-0.5 font-mono">{recordError}</p>
+          </div>
+          <button onClick={() => setRecordError(null)} className="ml-auto text-red-400/50 hover:text-red-400 transition-colors">
+            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+          </button>
+        </div>
+      );
+    }
+    if (recordResult) {
+      const entries = Object.entries(recordResult.scores);
+      return (
+        <div className="mx-5 mt-4 bg-emerald-500/8 border border-emerald-500/30 rounded-xl px-4 py-3">
+          <div className="flex items-center justify-between mb-2.5">
+            <div className="flex items-center gap-2">
+              <svg className="w-3.5 h-3.5 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+              </svg>
+              <p className="text-xs font-semibold text-emerald-400">
+                {recordResult.recorded} score{recordResult.recorded !== 1 ? "s" : ""} recorded
+              </p>
+            </div>
+            <button onClick={() => setRecordResult(null)} className="text-emerald-400/50 hover:text-emerald-400 transition-colors">
+              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+            </button>
+          </div>
+          <div className="flex flex-wrap gap-1.5">
+            {entries.map(([cat, score]) => (
+              <span
+                key={cat}
+                className="inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full border"
+                style={{
+                  color: scoreColor(score),
+                  borderColor: `${scoreColor(score)}40`,
+                  background: `${scoreColor(score)}12`,
+                }}
+              >
+                {CATEGORY_LABELS[cat] ?? cat} {score}%
+              </span>
+            ))}
+          </div>
+        </div>
+      );
+    }
+    return null;
+  };
+
   if (!data || !data.hasData) {
     return (
-      <div className="text-center py-12 px-6">
-        <svg className="w-12 h-12 mx-auto mb-4 text-[#30363D]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5}>
-          <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
-        </svg>
-        <p className="text-sm font-semibold text-[#7D8590] mb-1">No health data yet</p>
-        <p className="text-xs text-[#484F58] max-w-xs mx-auto mb-5">
-          Health snapshots are recorded each time the M365 profile is saved. Complete or update the profile to generate the first snapshot.
-        </p>
-        {onOpenWizard && (
-          <button
-            onClick={onOpenWizard}
-            className="inline-flex items-center gap-2 text-xs font-semibold bg-[#0078D4] text-white px-4 py-2 rounded-lg hover:bg-[#006CBE] transition-colors"
-          >
-            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-            </svg>
-            Open M365 Intelligence Wizard
-          </button>
-        )}
+      <div>
+        <div className="flex items-center justify-between px-5 pt-4 pb-0">
+          <span />
+          <RecordHealthButton />
+        </div>
+        <RecordFeedback />
+        <div className="text-center py-10 px-6">
+          <svg className="w-12 h-12 mx-auto mb-4 text-[#30363D]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+          </svg>
+          <p className="text-sm font-semibold text-[#7D8590] mb-1">No health data yet</p>
+          <p className="text-xs text-[#484F58] max-w-xs mx-auto mb-5">
+            Health snapshots are recorded each time the M365 profile is saved. Complete or update the profile to generate the first snapshot.
+          </p>
+          {onOpenWizard && (
+            <button
+              onClick={onOpenWizard}
+              className="inline-flex items-center gap-2 text-xs font-semibold bg-[#0078D4] text-white px-4 py-2 rounded-lg hover:bg-[#006CBE] transition-colors"
+            >
+              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+              </svg>
+              Open M365 Intelligence Wizard
+            </button>
+          )}
+        </div>
       </div>
     );
   }
@@ -162,6 +286,12 @@ export default function ClientM365HealthTab({ clientId, fetchWithAuth, onOpenWiz
 
   return (
     <div className="p-5 space-y-5">
+      {/* Record Health action row */}
+      <div className="flex items-center justify-between">
+        <p className="text-[10px] text-[#484F58]">Manual snapshot · updates charts immediately</p>
+        <RecordHealthButton />
+      </div>
+      <RecordFeedback />
       {/* Overall headline */}
       <div className="bg-[#0D1117] border border-[#30363D] rounded-xl p-5">
         <div className="flex flex-col sm:flex-row sm:items-center gap-5">

@@ -130,7 +130,7 @@ router.post("/clients/:id/health/record", requireAdmin, async (req: Request, res
       .values(inserts)
       .returning();
 
-    res.json({ recorded: inserted.length, clientId });
+    res.json({ recorded: inserted.length, clientId, scores });
   } catch (err) {
     const msg = err instanceof Error ? err.message : "Failed to record health snapshot";
     res.status(500).json({ error: msg });
