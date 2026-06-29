@@ -513,8 +513,8 @@ STEP 2 — For every task that can be scripted (AUTOMATABLE or USER_ACCOUNT_REQU
   - Structured try/catch/finally error handling
   - Write-Output (NOT Write-Host) for all console output — Write-Error and Write-Warning are acceptable for their respective streams
   - Inline comments explaining each logical section
-  - CSV export where applicable
-  - Never use Write-Host — always Write-Output
+  - NEVER write output to files — all results, status messages, and summaries MUST go to the output stream via Write-Output so they appear in the Azure Runbook job output
+  - FORBIDDEN cmdlets (never use): Export-Csv, Out-File, Set-Content, Add-Content, New-Item (for file creation), Write-Host — file writes are silently lost in Azure Automation; Write-Host bypasses the pipeline entirely
 
 STEP 3 — Choose output shape based on the NUMBER OF SCRIPTABLE TASKS (AUTOMATABLE + USER_ACCOUNT_REQUIRED combined), not by phase count:
 
