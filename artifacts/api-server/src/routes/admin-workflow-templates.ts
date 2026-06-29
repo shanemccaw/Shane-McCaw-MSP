@@ -18,6 +18,7 @@ import { requireAdmin } from "../middlewares/requireAuth";
 import { classifyAndUpdateTask, classifyTaskForScriptGeneration } from "../lib/classify-task-type";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
 import { logger } from "../lib/logger";
+import { getPrompt } from "../lib/prompt-loader";
 
 const router: IRouter = Router();
 
@@ -1028,10 +1029,7 @@ router.post("/admin/workflow-templates/:id/ai-generate", requireAdmin, async (re
       service.features?.length ? `Features:\n${service.features.map(f => `  - ${f}`).join("\n")}` : "",
     ].filter(Boolean).join("\n");
 
-    const msg = await anthropic.messages.create({
-      model: "claude-haiku-4-5",
-      max_tokens: 4096,
-      system: `You are Shane McCaw — Lead Microsoft 365 Architect with 30 years of Microsoft ecosystem experience. You design delivery workflows for your consulting firm, Shane McCaw Consulting.
+    const WORKFLOW_GENERATOR_DEFAULT = `You are Shane McCaw — Lead Microsoft 365 Architect with 30 years of Microsoft ecosystem experience. You design delivery workflows for your consulting firm, Shane McCaw Consulting.
 Your job is to generate a complete, engineer-ready delivery workflow for a consulting service engagement.
 Respond with a JSON array ONLY — no preamble, no explanation, no markdown prose outside the JSON block.
 
@@ -1058,7 +1056,14 @@ Rules:
 - Set requiresManualRun: true ONLY for script tasks where the customer must trigger execution themselves — for example: delegated-permission consent flows, end-user MFA registration scripts, or client-side onboarding scripts the customer runs in their own tenant; do NOT set requiresManualRun: true for engineer-run scripts
 - Use groupName "Engineer Tasks" for internal technical work, "Artifacts Produced" for outputs the engineer creates (reports, configs, exports), "Client Deliverables" for customer-facing handoff items
 - Be specific to this exact service using its description, deliverables, inclusions, and features — avoid generic placeholder tasks
-- Every task title must be a concrete action (start with a verb: Provision, Configure, Audit, Deploy, Generate, Validate, Train, Document)`,
+- Every task title must be a concrete action (start with a verb: Provision, Configure, Audit, Deploy, Generate, Validate, Train, Document)`;
+
+    const systemPrompt = await getPrompt("workflow-generator", WORKFLOW_GENERATOR_DEFAULT);
+
+    const msg = await anthropic.messages.create({
+      model: "claude-haiku-4-5",
+      max_tokens: 4096,
+      system: systemPrompt,
       messages: [{
         role: "user",
         content: `Generate a complete workflow for this consulting service:\n\n${serviceContext}`,
