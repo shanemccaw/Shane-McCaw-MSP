@@ -2437,9 +2437,12 @@ router.post("/admin/ps-scripts/fix", requireAdmin, async (req: Request, res: Res
   const fixSystemPrompt = await getPrompt("ps-engineer-system", SYSTEM_PROMPT);
 
   try {
+    // Assistant prefill forces Claude to begin its response with the script body
+    // immediately — no prose preamble, no "Here is the fixed script:" sentence.
+    // fullText will therefore start at the first line of the corrected PS code.
     const msg = await anthropic.messages.create({
       model: "claude-haiku-4-5",
-      max_tokens: 8192,
+      max_tokens: 16000,
       messages: [
         {
           role: "user",
@@ -2455,20 +2458,22 @@ ${scriptContent.trim()}
 BUG REPORTED BY USER:
 ${bugDescription.trim()}
 
-Provide the corrected script in a \`\`\`powershell fence. Then include a <fix-summary> block with 2-3 sentences describing what was changed and why. Finally, include the updated permissions JSON block.
+Output the corrected script, then a <fix-summary> block, then the permissions JSON. Follow this exact format with no commentary before the opening fence:
 
 \`\`\`powershell
 [corrected script here]
 \`\`\`
 
 <fix-summary>
-[Brief explanation of what was wrong and how it was fixed]
+[2-3 sentences: what was wrong and how it was fixed]
 </fix-summary>
 
 \`\`\`json
 {"appPermissions": [...], "delegatedPermissions": [...], "notes": "..."}
 \`\`\``,
         },
+        // Prefill: Claude continues from here — response IS the script body
+        { role: "assistant", content: "```powershell\n" },
       ],
     });
 
@@ -2477,49 +2482,43 @@ Provide the corrected script in a \`\`\`powershell fence. Then include a <fix-su
       res.status(500).json({ error: "Unexpected AI response format" });
       return;
     }
+    // fullText is the continuation of the prefilled "```powershell\n".
+    // Script body ends at the first closing fence on its own line.
     const fullText = block.text;
 
-    const fixSummaryMatch = fullText.match(/<fix-summary>([\s\S]*?)<\/fix-summary>/i);
-    const fixSummary = fixSummaryMatch ? fixSummaryMatch[1].trim() : "";
-
-    const summaryStart = fixSummaryMatch ? fullText.indexOf("<fix-summary>") : fullText.length;
-    const jsonStart = fullText.search(/```json/i);
-    const stopAt = Math.min(
-      summaryStart > 0 ? summaryStart : fullText.length,
-      jsonStart > 0 ? jsonStart : fullText.length,
-    );
-    const rawScript = fullText.slice(0, stopAt);
-    let fixedScript = rawScript
-      .replace(/```powershell\s*/gi, "")
-      .replace(/```\s*$/gm, "")
-      .trim();
-
-    if (fixedScript.length < 20) {
+    const closingFenceIdx = fullText.search(/^```\s*$/m);
+    let fixedScript: string;
+    if (closingFenceIdx >= 0) {
+      fixedScript = fullText.slice(0, closingFenceIdx).trim();
+    } else {
+      // Closing fence missing (unexpected truncation) — grab everything before the
+      // fix-summary or json block as a best-effort fallback.
       logger.warn(
         { rawResponsePrefix: fullText.slice(0, 500) },
-        "fix endpoint: fixedScript extraction yielded empty/short result; applying safe fallback",
+        "fix endpoint: no closing powershell fence found; using marker-based fallback",
       );
-      // Safe fallback: return the full text stripped of the JSON block and fences
-      const jsonBlockRe = /```json[\s\S]*?```/gi;
-      fixedScript = fullText
-        .replace(jsonBlockRe, "")
-        .replace(/<fix-summary>[\s\S]*?<\/fix-summary>/gi, "")
-        .replace(/```powershell\s*/gi, "")
-        .replace(/```\s*$/gm, "")
-        .trim();
+      const summaryPos = fullText.indexOf("<fix-summary>");
+      const jsonPos = fullText.search(/```json/i);
+      const stopAt = Math.min(
+        summaryPos >= 0 ? summaryPos : fullText.length,
+        jsonPos >= 0 ? jsonPos : fullText.length,
+      );
+      fixedScript = fullText.slice(0, stopAt).trim();
     }
 
-    // Heuristic guard: if the full text contains no recognisable PowerShell keyword,
-    // the AI returned only prose. Serving that to the client would replace the editor
-    // with non-PS text.
+    // Heuristic guard: if the result contains no recognisable PowerShell keyword,
+    // the AI returned only prose. Serving that would replace the editor with non-PS text.
     if (!hasPsKeywordsFullText(fixedScript)) {
       logger.error(
         { fixedScriptPrefix: fixedScript.slice(0, 300) },
-        "fix endpoint: fallback result contains no PS keywords — AI returned prose only; refusing to overwrite editor",
+        "fix endpoint: result contains no PS keywords — AI returned prose only; refusing to overwrite editor",
       );
       res.status(500).json({ error: "AI returned a summary instead of a script. Please try again.", aiResponse: fixedScript.slice(0, 3000) });
       return;
     }
+
+    const fixSummaryMatch = fullText.match(/<fix-summary>([\s\S]*?)<\/fix-summary>/i);
+    const fixSummary = fixSummaryMatch ? fixSummaryMatch[1].trim() : "";
 
     const rawPermissions = extractJson(fullText);
     let permissions: PsScriptPermissions = { appPermissions: [], delegatedPermissions: [], notes: "" };
