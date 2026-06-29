@@ -37,9 +37,14 @@ export default function ScriptProgressWidget() {
 
       const incomingRun = data as AutomationRun;
 
+      const isActive = incomingRun.status === "pending" || incomingRun.status === "running";
+
       if (incomingRun.id !== lastSeenIdRef.current) {
         lastSeenIdRef.current = incomingRun.id;
-        if (hiddenRunIdRef.current !== incomingRun.id) {
+        // Only surface a newly-seen run if it is actively in progress.
+        // A completed/failed run discovered on first poll (e.g. page refresh) is
+        // stale — don't flash the widget for it.
+        if (hiddenRunIdRef.current !== incomingRun.id && isActive) {
           setVisible(true);
         }
         if (autoHideTimerRef.current) clearTimeout(autoHideTimerRef.current);
@@ -47,7 +52,7 @@ export default function ScriptProgressWidget() {
 
       setRun(incomingRun);
 
-      if (incomingRun.status === "completed" || incomingRun.status === "failed") {
+      if (!isActive) {
         if (autoHideTimerRef.current) clearTimeout(autoHideTimerRef.current);
         autoHideTimerRef.current = setTimeout(() => {
           hiddenRunIdRef.current = incomingRun.id;
