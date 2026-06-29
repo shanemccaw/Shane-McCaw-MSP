@@ -662,10 +662,19 @@ router.post("/admin/ps-scripts/generate-from-service", requireAdmin, async (req:
                 .orderBy(asc(workflowTemplateStepTasksTable.order))
             : [];
 
-        // Collect script-type tasks for enforced per-task module generation.
+        // Collect script-type tasks for Kanban association (script / manualScript tags on kanban cards).
         scriptTypeTasks = allTasks.filter(
           (t) => t.taskType === "script" || t.taskType === "manualScript",
         );
+
+        // Task types that indicate a phase contains automatable work.
+        const AUTOMATABLE_TYPES = new Set([
+          "script",
+          "manualScript",
+          "automationBuild",
+          "environmentHealthCheck",
+          "discovery",
+        ]);
 
         workflowContext = `\n\nWORKFLOW TEMPLATE: "${template.name}"`;
         if (template.description) workflowContext += `\n${template.description}`;
@@ -694,12 +703,37 @@ router.post("/admin/ps-scripts/generate-from-service", requireAdmin, async (req:
           }
         }
 
-        // Add an explicit per-task requirement block so the AI doesn't merge or skip script-type tasks.
-        if (scriptTypeTasks.length > 0) {
-          workflowContext += `\n\nMANDATORY MODULES — each entry below is tagged "script" or "manualScript" and MUST produce its own dedicated PowerShell module. Do NOT merge two of these tasks into one module, and do NOT omit any of them:`;
-          scriptTypeTasks.forEach((t, i) => {
-            const suffix = t.taskType === "manualScript" ? " [manual — no app credentials]" : " [automated — app credentials OK]";
-            workflowContext += `\n  ${i + 1}. "${t.title}"${suffix}`;
+        // Build the MANDATORY MODULES block: one entry per PHASE that contains at least one
+        // automatable task. This tells the AI to generate one standalone script per phase,
+        // instead of merging everything into a single consolidated script.
+        const automatablePhases = steps
+          .map((step) => {
+            const phaseTasks = allTasks.filter(
+              (t) =>
+                t.workflowTemplateStepId === step.id &&
+                AUTOMATABLE_TYPES.has(t.taskType ?? ""),
+            );
+            return { step, phaseTasks };
+          })
+          .filter(({ phaseTasks }) => phaseTasks.length > 0);
+
+        if (automatablePhases.length > 0) {
+          workflowContext += `\n\nMANDATORY MODULES — each phase below contains automatable tasks and MUST produce its own dedicated PowerShell module. Do NOT merge phases into one module, and do NOT omit any of them:`;
+          automatablePhases.forEach(({ step, phaseTasks }, i) => {
+            workflowContext += `\n  ${i + 1}. "${step.title}"`;
+            phaseTasks.forEach((t) => {
+              const typeNote =
+                t.taskType === "manualScript"
+                  ? " [interactive auth only]"
+                  : t.taskType === "automationBuild"
+                    ? " [automate this]"
+                    : t.taskType === "environmentHealthCheck"
+                      ? " [health check / audit]"
+                      : t.taskType === "discovery"
+                        ? " [collect / query]"
+                        : "";
+              workflowContext += `\n     - ${t.title}${typeNote}`;
+            });
           });
         }
       }
