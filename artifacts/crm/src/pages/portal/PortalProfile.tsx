@@ -22,8 +22,8 @@ interface M365Data {
   orgName?: string;
   tenantDomain?: string;
   industry?: string;
-  employeeCount?: string;
-  licensedUserCount?: string;
+  employeeCount?: string | number;
+  licensedUserCount?: string | number;
   itContactName?: string;
   itContactEmail?: string;
   isMicrosoftPartner?: boolean;
@@ -37,9 +37,9 @@ interface M365Data {
   usesOneDrive?: boolean;
   usesYammer?: boolean;
 
-  sharepointSiteCount?: string;
-  teamCount?: string;
-  securityGroupCount?: string;
+  sharepointSiteCount?: string | number;
+  teamCount?: string | number;
+  securityGroupCount?: string | number;
   authMethod?: string;
   isHybrid?: boolean;
   hasOnPremExchange?: boolean;
@@ -59,11 +59,11 @@ interface M365Data {
   hasInsiderRisk?: boolean;
 
   hasCopilotLicenses?: boolean;
-  copilotLicenseCount?: string;
+  copilotLicenseCount?: string | number;
   copilotUseCase?: string;
   currentAITools?: string;
   dataGovernanceConcerns?: string;
-  copilotReadinessScore?: string;
+  copilotReadinessScore?: string | number;
   copilotBlockedBy?: string;
 
   engagementType?: string;
@@ -91,8 +91,9 @@ function isM365Empty(d: M365Data): boolean {
 
 const NS = <span className="text-muted-foreground/50 text-xs italic">Not set</span>;
 
-function Txt({ v }: { v: string | undefined }) {
-  return v && v.trim() ? <span className="text-sm text-[#0A2540]">{v}</span> : NS;
+function Txt({ v }: { v: string | number | undefined }) {
+  const s = v !== undefined && v !== null ? String(v) : "";
+  return s.trim() ? <span className="text-sm text-[#0A2540]">{s}</span> : NS;
 }
 
 function Bool({ v }: { v: boolean | undefined }) {
