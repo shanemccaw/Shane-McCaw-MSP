@@ -285,7 +285,7 @@ export function isAzureConfigured(): boolean {
  * Create or update a PowerShell runbook in Azure Automation and upload the
  * provided script content to its draft slot, ready for publishing.
  *
- * - If the runbook does not exist it is created with type "PowerShell".
+ * - If the runbook does not exist it is created with type "PowerShell72" (PowerShell 7.2).
  * - If the runbook already exists, `createOrUpdate` updates only metadata
  *   and the content is replaced via a direct REST PUT.
  *
@@ -309,28 +309,56 @@ export async function upsertRunbookContent(name: string, psCode: string): Promis
     );
   }
 
-  // Step 1: ensure the runbook record exists (creates if new, updates metadata if existing)
-  await client.runbook.createOrUpdate(cfg.resourceGroup, cfg.accountName, name, {
-    name,
-    location,
-    runbookType: "PowerShell",
-    description: "Managed by Shane McCaw Consulting admin panel",
-    logVerbose: false,
-    logProgress: false,
-    // draft: {} signals to Azure that this runbook starts in an editable draft state
-    draft: {},
+  // Acquire a bearer token once — reused for both the createOrUpdate and draft
+  // content upload calls below (both bypass the ARM SDK, see notes on each step).
+  const credential = new ClientSecretCredential(azCfg.tenantId, azCfg.clientId, azCfg.clientSecret);
+  const tokenResponse = await credential.getToken("https://management.azure.com/.default");
+  if (!tokenResponse?.token) {
+    throw new Error("azure-automation: failed to acquire bearer token");
+  }
+  const bearerToken = tokenResponse.token;
+
+  // Step 1: ensure the runbook record exists via a raw REST PUT.
+  // We bypass client.runbook.createOrUpdate() because the ARM SDK v10 uses an
+  // API version that predates PowerShell 7.2 support ("PowerShell72" runbook type).
+  // API version 2022-08-08 is the first to support "PowerShell72".
+  const runbookUrl =
+    `https://management.azure.com/subscriptions/${azCfg.subscriptionId}` +
+    `/resourceGroups/${azCfg.resourceGroup}` +
+    `/providers/Microsoft.Automation/automationAccounts/${azCfg.accountName}` +
+    `/runbooks/${encodeURIComponent(name)}` +
+    `?api-version=2022-08-08`;
+
+  const createRes = await fetch(runbookUrl, {
+    method: "PUT",
+    headers: {
+      "Authorization": `Bearer ${bearerToken}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      name,
+      location,
+      properties: {
+        runbookType: "PowerShell72",
+        description: "Managed by Shane McCaw Consulting admin panel",
+        logVerbose: false,
+        logProgress: false,
+        draft: {},
+      },
+    }),
   });
+
+  if (!createRes.ok) {
+    const errBody = await createRes.text().catch(() => "");
+    throw new Error(
+      `azure-automation: runbook createOrUpdate failed — HTTP ${createRes.status}: ${errBody}`,
+    );
+  }
 
   // Step 2: upload script content via a raw REST PUT.
   // We cannot use client.runbookDraft.replaceContent() because the ARM SDK
   // treats the endpoint as an LRO and tries to JSON-parse the response body
   // (which is the raw PS script text) — causing "Unexpected token 'C'..." errors.
-  const credential = new ClientSecretCredential(azCfg.tenantId, azCfg.clientId, azCfg.clientSecret);
-  const tokenResponse = await credential.getToken("https://management.azure.com/.default");
-  if (!tokenResponse?.token) {
-    throw new Error("azure-automation: failed to acquire bearer token for draft content upload");
-  }
-
   const contentUrl =
     `https://management.azure.com/subscriptions/${azCfg.subscriptionId}` +
     `/resourceGroups/${azCfg.resourceGroup}` +
@@ -341,7 +369,7 @@ export async function upsertRunbookContent(name: string, psCode: string): Promis
   const uploadRes = await fetch(contentUrl, {
     method: "PUT",
     headers: {
-      "Authorization": `Bearer ${tokenResponse.token}`,
+      "Authorization": `Bearer ${bearerToken}`,
       "Content-Type": "text/powershell",
     },
     body: psCode,
