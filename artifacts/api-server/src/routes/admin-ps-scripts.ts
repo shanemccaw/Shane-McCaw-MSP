@@ -1171,7 +1171,9 @@ Classify each task and generate PowerShell automation scripts for all M365/Azure
       return;
     }
 
-    // "single" — auto-save to library (same as "manual") so the script appears in the sidebar immediately.
+    // "single" — auto-save to library so the script appears in the sidebar immediately.
+    // Returns type "saved" (not "manual") so the client can auto-close without showing
+    // the misleading "requires interactive execution" panel.
     const [savedSingle] = await db
       .insert(powershellScriptsTable)
       .values({
@@ -1190,7 +1192,7 @@ Classify each task and generate PowerShell automation scripts for all M365/Azure
     sendSSE({
       type: "done",
       payload: {
-        type: "manual",
+        type: "saved",
         savedScript: {
           id: savedSingle.id,
           title: savedSingle.title,

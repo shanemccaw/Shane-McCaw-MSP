@@ -2377,7 +2377,7 @@ function GenerateFromServiceDialog({
     setHumanOnlyExplanation(null);
     try {
       type GenResult = {
-        type: "single" | "package" | "human-only" | "manual";
+        type: "single" | "package" | "human-only" | "manual" | "saved";
         title: string;
         explanation?: string;
         script?: string;
@@ -2414,6 +2414,11 @@ function GenerateFromServiceDialog({
         setPackageResult({ packageId: result.packageId, title: result.title, modules: result.modules, permissions: pkgPerms, taskAssociations: result.taskAssociations ?? [] });
         // Refresh the library sidebar immediately so the package appears regardless of how the dialog is dismissed
         onPackageGenerated(result.packageId, result.title, result.modules, pkgPerms);
+      } else if (result.type === "saved" && result.savedScript) {
+        // Auto-saved single script — add to library and auto-close (no misleading "manual" panel)
+        onManualScriptGenerated(result.savedScript);
+        toast({ title: "Script saved to library", description: result.savedScript.title });
+        onClose();
       } else if (result.type === "manual" && result.savedScript) {
         onManualScriptGenerated(result.savedScript);
         setManualResult({ savedScript: result.savedScript, humanOnlyTasks: result.humanOnlyTasks ?? [] });
@@ -3648,6 +3653,9 @@ export default function ScriptGeneratorPage() {
     setFixSummary("");
     setSummaryError(null);
     setOpenDrawerScriptId(null);
+    setSelectedResult(null);
+    setLeftMode("library");
+    lsSet(IDE_LEFT_MODE_KEY, "library");
   };
 
   // ── Computed values ───────────────────────────────────────────────────────────
