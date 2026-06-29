@@ -33,6 +33,7 @@ import { createRunbookJob, getJobStatus, getJobOutput, isTerminalStatus } from "
 import { runAiAnalyzer } from "../lib/ai-analyzer";
 import { parseM365ScriptOutput, normaliseProfileUpdates } from "../lib/parse-m365-script-output";
 import { getSecretValue } from "../lib/azure-keyvault";
+import { computeM365Scores, type M365ScoreCategory } from "../lib/m365-scores";
 
 const router: IRouter = Router();
 
@@ -168,23 +169,6 @@ async function applyScoreImpact(
       .values({ clientId, ...updated });
   }
 
-  const categoryMap: Array<{ historyKey: "identity" | "security" | "collaboration" | "compliance" | "copilot"; score: number }> = [
-    { historyKey: "identity",      score: updated.identity },
-    { historyKey: "security",      score: updated.security },
-    { historyKey: "collaboration", score: updated.collaboration },
-    { historyKey: "compliance",    score: updated.compliance },
-    { historyKey: "copilot",       score: updated.copilotReadiness },
-  ];
-
-  const now = new Date();
-  await db.insert(clientHealthHistoryTable).values(
-    categoryMap.map(({ historyKey, score }) => ({
-      clientId,
-      category: historyKey,
-      score,
-      recordedAt: now,
-    }))
-  );
 }
 
 /** Merge profileUpdates into client_m365_profiles. */
@@ -219,6 +203,33 @@ async function applyProfileUpdates(
       .insert(clientM365ProfilesTable)
       .values({ clientId, profile: merged });
   }
+}
+
+/**
+ * Snapshot the client's current M365 health scores derived from their profile
+ * into clientHealthHistoryTable. Called after every profile update so both the
+ * Health page and the Insights page always reflect the same source of truth.
+ */
+async function snapshotHealthFromProfile(clientId: number): Promise<void> {
+  const [row] = await db
+    .select({ profile: clientM365ProfilesTable.profile })
+    .from(clientM365ProfilesTable)
+    .where(eq(clientM365ProfilesTable.clientId, clientId))
+    .limit(1);
+
+  if (!row?.profile) return;
+
+  const scores = computeM365Scores(row.profile as Record<string, unknown>);
+  const now = new Date();
+
+  await db.insert(clientHealthHistoryTable).values(
+    (Object.entries(scores) as [M365ScoreCategory, number][]).map(([category, score]) => ({
+      clientId,
+      category,
+      score,
+      recordedAt: now,
+    }))
+  );
 }
 
 // ── Background job processor (detached — no await) ────────────────────────────
@@ -303,6 +314,11 @@ async function processRunInBackground(
       await applyProfileUpdates(customerId, mergedProfileUpdates);
     } catch (err) {
       logger.warn({ err, customerId }, "admin-m365-run: failed to apply profile updates (non-fatal)");
+    }
+    try {
+      await snapshotHealthFromProfile(customerId);
+    } catch (err) {
+      logger.warn({ err, customerId }, "admin-m365-run: failed to snapshot health scores (non-fatal)");
     }
   }
 
@@ -903,6 +919,13 @@ router.post("/admin/profile/update", requireAdmin, async (req: Request, res: Res
         .insert(clientM365ProfilesTable)
         .values({ clientId, profile: updates })
         .returning();
+    }
+
+    // Snapshot health scores from the updated profile so Health and Insights pages stay in sync
+    try {
+      await snapshotHealthFromProfile(clientId);
+    } catch (snapErr) {
+      logger.warn({ snapErr, clientId }, "admin-m365-run: failed to snapshot health after profile update (non-fatal)");
     }
 
     res.json(row);

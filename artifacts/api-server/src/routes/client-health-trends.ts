@@ -5,6 +5,7 @@ import {
 } from "@workspace/db";
 import { eq, and, gte, desc } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/requireAuth";
+import { computeM365Scores } from "../lib/m365-scores";
 
 const router = Router();
 
@@ -20,23 +21,6 @@ const HEALTH_CATEGORIES = [
 ] as const;
 
 type HealthCategory = typeof HEALTH_CATEGORIES[number];
-
-// Map from M365 profile field names to canonical category names
-const PROFILE_TO_CATEGORY: Record<string, HealthCategory> = {
-  governanceScore: "governance",
-  securityScore: "security",
-  complianceScore: "compliance",
-  copilotReadinessScore: "copilot",
-  identityScore: "identity",
-  identityProtectionScore: "identity",
-  collaborationScore: "collaboration",
-  teamsAdoptionScore: "collaboration",
-  productivityScore: "productivity",
-  adoptionScore: "productivity",
-  dataScore: "data",
-  dataGovernanceScore: "data",
-  informationProtectionScore: "data",
-};
 
 // ── GET /api/clients/:id/health/trends ────────────────────────────────────────
 // Returns last 90 days of health history for a client, grouped by category,
@@ -132,33 +116,18 @@ router.post("/clients/:id/health/record", requireAdmin, async (req: Request, res
     }
 
     const profile = profileRow[0].profile as Record<string, unknown>;
+    const scores = computeM365Scores(profile);
     const now = new Date();
 
-    // Aggregate to exactly one score per canonical category.
-    // When multiple profile fields map to the same category, take the average.
-    const categoryAccumulator: Record<string, { sum: number; count: number }> = {};
-    for (const [field, cat] of Object.entries(PROFILE_TO_CATEGORY)) {
-      const score = profile[field];
-      if (typeof score === "number" && score >= 0 && score <= 100) {
-        if (!categoryAccumulator[cat]) categoryAccumulator[cat] = { sum: 0, count: 0 };
-        categoryAccumulator[cat].sum += score;
-        categoryAccumulator[cat].count += 1;
-      }
-    }
-
-    const inserts: Array<{ clientId: number; category: HealthCategory; score: number }> = Object.entries(categoryAccumulator).map(([cat, { sum, count }]) => ({
+    const inserts = (Object.entries(scores) as [HealthCategory, number][]).map(([category, score]) => ({
       clientId,
-      category: cat as HealthCategory,
-      score: Math.round(sum / count),
+      category,
+      score,
+      recordedAt: now,
     }));
 
-    if (inserts.length === 0) {
-      res.status(422).json({ error: "M365 profile has no scorable fields" });
-      return;
-    }
-
     const inserted = await db.insert(clientHealthHistoryTable)
-      .values(inserts.map(i => ({ ...i, recordedAt: now })))
+      .values(inserts)
       .returning();
 
     res.json({ recorded: inserted.length, clientId });
@@ -208,23 +177,14 @@ router.post("/admin/health/snapshot-all", requireAdmin, async (_req: Request, re
       const profile = profileMap.get(client.id);
       if (!profile) continue;
 
-      // Aggregate to one score per canonical category (average when multiple fields map to same category)
-      const acc: Record<string, { sum: number; count: number }> = {};
-      for (const [field, cat] of Object.entries(PROFILE_TO_CATEGORY)) {
-        const score = profile[field];
-        if (typeof score === "number" && score >= 0 && score <= 100) {
-          if (!acc[cat]) acc[cat] = { sum: 0, count: 0 };
-          acc[cat].sum += score;
-          acc[cat].count += 1;
-        }
-      }
-      for (const [cat, { sum, count }] of Object.entries(acc)) {
-        allInserts.push({ clientId: client.id, category: cat as HealthCategory, score: Math.round(sum / count), recordedAt: now });
+      const scores = computeM365Scores(profile);
+      for (const [category, score] of Object.entries(scores) as [HealthCategory, number][]) {
+        allInserts.push({ clientId: client.id, category, score, recordedAt: now });
       }
     }
 
     if (allInserts.length === 0) {
-      res.json({ recorded: 0, clientsProcessed: clients.length, message: "No M365 profiles with health scores found." });
+      res.json({ recorded: 0, clientsProcessed: clients.length, message: "No M365 profiles found." });
       return;
     }
 
