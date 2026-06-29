@@ -503,12 +503,14 @@ STEP 2 — For every task that can be scripted (AUTOMATABLE or USER_ACCOUNT_REQU
   - CSV export where applicable
   - Never use Write-Host — always Write-Output
 
-STEP 3 — Choose output shape based on task classification:
-  - ALL tasks are HUMAN_ONLY (nothing can be scripted) → type "human-only": explanatory note only, no script
-  - ANY task is USER_ACCOUNT_REQUIRED (even mixed with AUTOMATABLE) → type "manual": ONE consolidated script covering all scriptable tasks using interactive auth patterns; list HUMAN_ONLY tasks in humanOnlyTasks
-  - ALL scriptable tasks are AUTOMATABLE (no USER_ACCOUNT_REQUIRED):
-      • One automatable phase (or all tasks in a single phase) → type "single": one consolidated script
-      • Multiple distinct automatable phases → type "package": one standalone script per phase — NO Main.ps1, NO orchestrator, NO dot-sourcing
+STEP 3 — Choose output shape based on the NUMBER OF SCRIPTABLE TASKS (AUTOMATABLE + USER_ACCOUNT_REQUIRED combined), not by phase count:
+
+  • NO scriptable tasks (everything is HUMAN_ONLY) → type "human-only"
+  • EXACTLY ONE scriptable task AND it is AUTOMATABLE → type "single": one standalone script
+  • TWO OR MORE scriptable tasks AND ALL are AUTOMATABLE → type "package": ONE dedicated standalone script per task (DO NOT merge tasks)
+  • ANY scriptable task is USER_ACCOUNT_REQUIRED (even if mixed with AUTOMATABLE tasks) → type "manual": one consolidated script using interactive auth for all scriptable tasks; list HUMAN_ONLY tasks in humanOnlyTasks
+
+CRITICAL: For "package" type — each task in the MANDATORY MODULES list below MUST produce its own dedicated .ps1 file. Never merge two tasks into one module, never omit a task. If a task has subtasks, treat the parent task as the module boundary.
 
 Output format — STRICT RULES:
 1. Always start with a single \`\`\`json fence containing ONLY metadata (no PowerShell code inside the JSON).
@@ -544,7 +546,7 @@ Manual script shape (use when ANY task is USER_ACCOUNT_REQUIRED) — JSON envelo
 # Complete PowerShell script body using interactive/delegated auth
 \`\`\`
 
-Single script shape (all AUTOMATABLE, one phase) — JSON envelope then one powershell fence:
+Single script shape (exactly ONE automatable task) — JSON envelope then one powershell fence:
 \`\`\`json
 {
   "type": "single",
@@ -562,14 +564,14 @@ Single script shape (all AUTOMATABLE, one phase) — JSON envelope then one powe
 # Complete PowerShell script body here
 \`\`\`
 
-Package shape (all AUTOMATABLE, multiple phases) — JSON envelope then one powershell fence per module in the same order:
+Package shape (TWO OR MORE automatable tasks — one module per task) — JSON envelope then one powershell fence per module in the same order:
 \`\`\`json
 {
   "type": "package",
   "title": "Package title (max 80 chars)",
   "modules": [
-    { "filename": "01-Phase-One.ps1", "description": "One-line description of what this script does" },
-    { "filename": "02-Phase-Two.ps1", "description": "One-line description of what this script does" }
+    { "filename": "01-Task-Name.ps1", "description": "One-line description of exactly what this task automates" },
+    { "filename": "02-Task-Name.ps1", "description": "One-line description of exactly what this task automates" }
   ],
   "humanOnlyTasks": ["human task description 1"],
   "permissions": {
@@ -580,12 +582,12 @@ Package shape (all AUTOMATABLE, multiple phases) — JSON envelope then one powe
 }
 \`\`\`
 \`\`\`powershell
-# file: 01-Phase-One.ps1
-# Fully standalone script for Phase One — includes its own auth, param block, and error handling
+# file: 01-Task-Name.ps1
+# Fully standalone script for Task One — includes its own auth, param block, and error handling
 \`\`\`
 \`\`\`powershell
-# file: 02-Phase-Two.ps1
-# Fully standalone script for Phase Two — includes its own auth, param block, and error handling
+# file: 02-Task-Name.ps1
+# Fully standalone script for Task Two — includes its own auth, param block, and error handling
 \`\`\`
 
 Rules:
