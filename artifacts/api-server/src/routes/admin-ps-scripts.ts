@@ -475,7 +475,11 @@ You will receive a consulting service definition and its delivery workflow (phas
 
 STEP 1 — CLASSIFY every task as one of THREE categories:
 
-  AUTOMATABLE — executable via app-only auth (service principal / App Registration with client credentials):
+  AUTOMATABLE — runs UNATTENDED inside an Azure Automation Runbook as a service principal (App Registration with client credentials grant). Key constraints:
+    ★ APPLICATION PERMISSIONS ONLY — never Delegated permissions. There is no signed-in user; only Microsoft Graph Application permission scopes are valid (e.g. User.Read.All, not User.Read).
+    ★ NO interactive login, no licensed user account, no MFA prompt — the script must authenticate entirely via -ClientId / -ClientSecret or a certificate.
+    ★ Output via Write-Output ONLY — Azure Automation captures only the output stream. Write-Host, Export-Csv, Out-File, Set-Content are silently lost.
+    Eligible operations:
     • Entra ID / Azure AD: user/group/license management, Conditional Access policies, app registrations, directory queries
     • Exchange Online (app-only Graph): mailbox property reads/writes that support Application permissions (Mail.ReadWrite, Calendars.ReadWrite, MailboxSettings.Read)
     • SharePoint provisioning via PnP PowerShell with -ClientId/-ClientSecret (not -Interactive)
@@ -503,8 +507,11 @@ STEP 1 — CLASSIFY every task as one of THREE categories:
     • Physical / in-person tasks, vendor negotiations
 
 STEP 2 — For every task that can be scripted (AUTOMATABLE or USER_ACCOUNT_REQUIRED), write a complete production-ready PowerShell script:
-  For AUTOMATABLE tasks:
+  For AUTOMATABLE tasks (Azure Runbook / unattended):
   - [CmdletBinding()] attribute + param() block with typed, documented parameters (-TenantId, -ClientId, -ClientSecret where applicable)
+  - Authentication MUST use app-only credentials: Connect-MgGraph -ClientId -TenantId -ClientSecret (or certificate), Connect-PnPOnline -ClientId/-ClientSecret, Connect-AzAccount -ServicePrincipal
+  - NEVER use -Scopes, -Interactive, or any delegated auth flow — the runbook has no signed-in user
+  - permissions.appPermissions must list ONLY Microsoft Graph Application scopes or Azure RBAC roles; permissions.delegatedPermissions MUST be [] (empty)
   For USER_ACCOUNT_REQUIRED tasks:
   - [CmdletBinding()] attribute + param() block — OMIT -ClientId, -ClientSecret, -CertificateThumbprint entirely
   - Use interactive auth: Connect-MgGraph -Scopes "...", Connect-ExchangeOnline (no -AppId), Connect-PnPOnline -Interactive
@@ -1601,27 +1608,38 @@ const GENERATE_FROM_TASK_SYSTEM = `You are an expert Microsoft 365 PowerShell sc
 Given a single workflow task, classify it and generate an appropriate PowerShell script.
 
 CLASSIFY the task as one of:
-  AUTOMATABLE — runs as a service principal / app-only auth (no interactive login needed)
-  USER_ACCOUNT_REQUIRED — can be scripted but REQUIRES a real licensed user account with delegated/interactive auth
+  AUTOMATABLE — runs UNATTENDED inside an Azure Automation Runbook as a service principal (App Registration with client credentials).
+    ★ APPLICATION PERMISSIONS ONLY — never Delegated permissions. There is no signed-in user; only Microsoft Graph Application scopes are valid (e.g. User.Read.All, not User.Read).
+    ★ NO interactive login, no licensed user account, no MFA — must authenticate entirely via -ClientId / -ClientSecret or a certificate.
+    ★ Output via Write-Output ONLY — Azure Automation captures only the output stream. Write-Host, Export-Csv, Out-File, Set-Content are silently lost.
+    ★ permissions.delegatedPermissions MUST be [] for every AUTOMATABLE script.
+  USER_ACCOUNT_REQUIRED — can be scripted but REQUIRES a real licensed user account with delegated/interactive auth. CANNOT run as an Azure Automation runbook or service principal.
   HUMAN_ONLY — cannot be scripted at all (meetings, approvals, document review, client calls, business decisions)
 
-Same classification rules as your general guidelines:
+Classification rules:
   - Migration cmdlets (New-MigrationBatch etc.) → USER_ACCOUNT_REQUIRED
   - Connect-MicrosoftTeams → USER_ACCOUNT_REQUIRED
   - ANY Connect-MgGraph -Scopes → USER_ACCOUNT_REQUIRED
   - Reporting, Entra, SharePoint (PnP app-only), Intune via Graph Application → AUTOMATABLE
   - If unsure whether a cmdlet supports app-only auth → USER_ACCOUNT_REQUIRED
 
-For AUTOMATABLE and USER_ACCOUNT_REQUIRED tasks, write a complete production-ready PowerShell script:
-  - [CmdletBinding()] attribute + typed param() block
+For AUTOMATABLE tasks (Azure Runbook / unattended):
+  - [CmdletBinding()] attribute + typed param() block with -TenantId, -ClientId, -ClientSecret where applicable
+  - Authentication MUST use app-only credentials: Connect-MgGraph -ClientId -TenantId -ClientSecret (or cert), Connect-PnPOnline -ClientId/-ClientSecret, Connect-AzAccount -ServicePrincipal
+  - NEVER use -Scopes, -Interactive, or any delegated auth flow — the runbook has no signed-in user
+  - Inline comments explaining each logical section
+
+For USER_ACCOUNT_REQUIRED tasks:
+  - [CmdletBinding()] attribute + typed param() block — OMIT -ClientId/-ClientSecret/-CertificateThumbprint entirely
+  - Use interactive auth: Connect-MgGraph -Scopes "...", Connect-ExchangeOnline (no -AppId), Connect-PnPOnline -Interactive
+  - Inline comments explaining each logical section
+
+Both types:
   - $ErrorActionPreference = "Stop"
   - Structured try/catch/finally error handling
   - Write-Output (NOT Write-Host) for all console output — Write-Error and Write-Warning are acceptable
-  - NEVER write output to files — all results MUST go to the output stream via Write-Output
-  - FORBIDDEN: Export-Csv, Out-File, Set-Content, Add-Content, New-Item (for file creation), Write-Host
-  - For USER_ACCOUNT_REQUIRED: use interactive auth (Connect-MgGraph -Scopes, Connect-ExchangeOnline without -AppId), OMIT -ClientId/-ClientSecret/-CertificateThumbprint
-  - For AUTOMATABLE: include -TenantId, -ClientId, -ClientSecret parameters where applicable
-  - Inline comments explaining each logical section
+  - NEVER write output to files — all results MUST go to the output stream via Write-Output so they appear in the Azure Runbook job output
+  - FORBIDDEN: Export-Csv, Out-File, Set-Content, Add-Content, New-Item (for file creation), Write-Host — file writes are silently lost in Azure Automation; Write-Host bypasses the pipeline
 
 Output EXACTLY ONE of these three shapes — no prose outside the fences:
 
@@ -1630,16 +1648,16 @@ Human-only (task requires human action, cannot be scripted):
 {"type":"human-only","title":"Task Title","explanation":"Why this cannot be automated"}
 \`\`\`
 
-Single automatable script (AUTOMATABLE classification):
+Single automatable script (AUTOMATABLE — Application permissions only, delegatedPermissions MUST be []):
 \`\`\`json
 {"type":"single","title":"Brief script title max 60 chars","permissions":{"appPermissions":["e.g. User.Read.All (Microsoft Graph Application)"],"delegatedPermissions":[],"notes":"Brief note on consent"}}
 \`\`\`
 \`\`\`powershell
 # file: script.ps1
-# Complete production-ready script body
+# Complete production-ready script body using app-only auth (-ClientId/-ClientSecret)
 \`\`\`
 
-Interactive script (USER_ACCOUNT_REQUIRED classification):
+Interactive script (USER_ACCOUNT_REQUIRED — Delegated permissions only, appPermissions MUST be []):
 \`\`\`json
 {"type":"manual","title":"Brief script title max 60 chars","permissions":{"appPermissions":[],"delegatedPermissions":["e.g. MailboxSettings.ReadWrite (Microsoft Graph Delegated)"],"notes":"Must run interactively under a licensed user account. Cannot run as an Azure Automation runbook."}}
 \`\`\`
