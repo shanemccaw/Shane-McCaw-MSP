@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import { useLocation } from "wouter";
 import {
   Dialog,
   DialogContent,
@@ -604,6 +605,7 @@ export function KanbanCardModal(props: Props) {
 
 function GenericKanbanCardModal({ task, stepTitle, open, onClose, mode = "client", fetchWithAuth, onUpdate, clientId, clientName, boardTasks, onSiblingUpdate }: Props) {
   const { toast } = useToast();
+  const [, setLocation] = useLocation();
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState<EditForm>({ title: "", description: "", priority: "", assignedTo: "", dueDate: "" });
@@ -900,6 +902,8 @@ function GenericKanbanCardModal({ task, stepTitle, open, onClose, mode = "client
                 taskId={localTask.id}
                 fetchWithAuth={fetchWithAuth}
                 onMetadataUpdate={handleMetadataUpdate}
+                onRunScript={linkedRunbook?.azureRunbookName ? () => setConfirmRunOpen(true) : undefined}
+                onOpenScript={() => setLocation("/command/scripts")}
               />
 
               <div className="border border-border rounded-lg overflow-hidden">

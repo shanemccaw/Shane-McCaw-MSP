@@ -990,23 +990,29 @@ function ScriptModalBody({
   mode,
   fetchWithAuth,
   onMetadataUpdate,
+  onRunScript,
+  onOpenScript,
 }: {
   taskId: number;
   m: Record<string, unknown>;
   mode: "admin" | "client";
   fetchWithAuth?: (url: string, options?: RequestInit) => Promise<Response>;
   onMetadataUpdate?: (meta: Record<string, unknown>) => void;
+  onRunScript?: () => void;
+  onOpenScript?: () => void;
 }) {
   const sm = m as ScriptMetadata;
   const [running, setRunning] = useState(false);
   const [logLines, setLogLines] = useState<string[]>([]);
   const [liveStatus, setLiveStatus] = useState<string>(sm.lastJobStatus ?? "Never run");
   const logEndRef = useRef<HTMLDivElement>(null);
+  const logContainerRef = useRef<HTMLDivElement>(null);
 
   const initAreas = (sm.governanceAreas !== undefined ? sm.governanceAreas : null) as string[] | null;
   const [governanceAreas, setGovernanceAreas] = useState<string[] | null>(initAreas);
 
   const canRun = !!sm.runbookName && !!sm.credentialId && !running && (governanceAreas === null || governanceAreas.length > 0);
+  const hasRun = Boolean(sm.lastJobId) || (sm.lastJobStatus !== undefined && sm.lastJobStatus !== "Never run");
 
   useEffect(() => {
     logEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -1126,23 +1132,34 @@ function ScriptModalBody({
       )}
 
       {mode === "admin" && sm.runbookName && sm.credentialId && (
-        <button
-          type="button"
-          disabled={!canRun}
-          onClick={() => void handleRun()}
-          className="inline-flex items-center gap-1.5 text-sm font-semibold text-white bg-[#0078D4] hover:bg-[#0078D4]/90 disabled:opacity-40 rounded-lg px-4 py-2 transition-colors"
-        >
-          {running ? (
-            <div className="w-3.5 h-3.5 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+        <div className="flex flex-wrap gap-2">
+          {hasRun ? (
+            <>
+              <ModalActionBtn
+                label={running ? "Running…" : "Re-Run Script"}
+                variant="primary"
+                onClick={canRun ? (onRunScript ?? (() => void handleRun())) : undefined}
+              />
+              {logLines.length > 0 && (
+                <ModalActionBtn
+                  label="View Output"
+                  onClick={() => logContainerRef.current?.scrollIntoView({ behavior: "smooth" })}
+                />
+              )}
+              <ModalActionBtn label="Open Script" onClick={onOpenScript} />
+            </>
           ) : (
-            <span className="material-symbols-outlined" style={{ fontSize: "16px" }}>play_arrow</span>
+            <ModalActionBtn
+              label={running ? "Running…" : "Run Script"}
+              variant="primary"
+              onClick={canRun ? (onRunScript ?? (() => void handleRun())) : undefined}
+            />
           )}
-          {running ? "Running…" : "Run"}
-        </button>
+        </div>
       )}
 
       {logLines.length > 0 && (
-        <div className="bg-[#0D1117] rounded-lg p-3 max-h-60 overflow-y-auto">
+        <div ref={logContainerRef} className="bg-[#0D1117] rounded-lg p-3 max-h-60 overflow-y-auto">
           <div className="flex items-center justify-between mb-2">
             <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Output</span>
             {!running && (
@@ -1180,6 +1197,8 @@ export function TypedModalSection({
   taskId,
   fetchWithAuth,
   onMetadataUpdate,
+  onRunScript,
+  onOpenScript,
 }: {
   taskType: string | null | undefined;
   metadata: Record<string, unknown> | null | undefined;
@@ -1187,6 +1206,8 @@ export function TypedModalSection({
   taskId?: number;
   fetchWithAuth?: (url: string, options?: RequestInit) => Promise<Response>;
   onMetadataUpdate?: (meta: Record<string, unknown>) => void;
+  onRunScript?: () => void;
+  onOpenScript?: () => void;
 }) {
   if (!taskType) return null;
   const cfg = TASK_TYPE_CONFIG[taskType as TaskType];
@@ -1214,6 +1235,8 @@ export function TypedModalSection({
           mode={mode}
           fetchWithAuth={fetchWithAuth}
           onMetadataUpdate={onMetadataUpdate}
+          onRunScript={onRunScript}
+          onOpenScript={onOpenScript}
         />
       )}
     </div>
