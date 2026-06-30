@@ -19,6 +19,13 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
 import { AzurePushDialog, type AzurePushDialogState } from "@/components/AzurePushDialog";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
@@ -457,6 +464,115 @@ function SaveModal({
         </div>
       </div>
     </div>
+  );
+}
+
+// ─── New Script Set dialog ────────────────────────────────────────────────────
+
+function NewScriptSetDialog({
+  open,
+  token,
+  onCreated,
+  onClose,
+}: {
+  open: boolean;
+  token: string;
+  onCreated: (pkg: ScriptPackageListItem) => void;
+  onClose: () => void;
+}) {
+  const [name, setName] = useState("");
+  const [category, setCategory] = useState("other");
+  const [tagsRaw, setTagsRaw] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  const reset = () => { setName(""); setCategory("other"); setTagsRaw(""); setError(""); setSaving(false); };
+
+  const handleOpenChange = (o: boolean) => { if (!o) { reset(); onClose(); } };
+
+  const handleSubmit = async () => {
+    if (!name.trim()) { setError("Name is required"); return; }
+    setSaving(true);
+    setError("");
+    try {
+      const tags = tagsRaw.split(",").map((t) => t.trim()).filter(Boolean);
+      const result = await apiFetch("/admin/ps-scripts/packages", token, {
+        method: "POST",
+        body: JSON.stringify({ title: name.trim(), category, tags }),
+      }) as ScriptPackageListItem;
+      reset();
+      onCreated(result);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to create set");
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={handleOpenChange}>
+      <DialogContent className="bg-[#161B22] border border-[#30363D] text-[#E6EDF3] shadow-2xl max-w-sm">
+        <DialogHeader>
+          <DialogTitle className="text-base font-semibold text-[#E6EDF3] flex items-center gap-2">
+            <svg className="w-4 h-4 text-purple-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" /></svg>
+            New Script Set
+          </DialogTitle>
+        </DialogHeader>
+
+        <div className="space-y-3 py-2">
+          <div>
+            <label className="block text-xs font-medium text-[#8B949E] mb-1">Name <span className="text-red-400">*</span></label>
+            <input
+              autoFocus
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter") void handleSubmit(); }}
+              placeholder="e.g. Monthly Audit, Onboarding Checklist"
+              className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-sm text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60 transition-colors"
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-[#8B949E] mb-1">Category</label>
+            <select
+              value={category}
+              onChange={(e) => setCategory(e.target.value)}
+              className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-sm text-[#E6EDF3] outline-none focus:border-[#0078D4]/60 transition-colors appearance-none"
+            >
+              {CATEGORIES.map((c) => (
+                <option key={c.value} value={c.value}>{c.label}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-[#8B949E] mb-1">Tags <span className="text-[#484F58]">(comma-separated, optional)</span></label>
+            <input
+              value={tagsRaw}
+              onChange={(e) => setTagsRaw(e.target.value)}
+              placeholder="e.g. audit, monthly, security"
+              className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-sm text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60 transition-colors"
+            />
+          </div>
+          {error && <p className="text-xs text-red-400">{error}</p>}
+        </div>
+
+        <DialogFooter className="gap-2 sm:gap-2">
+          <button
+            onClick={() => { reset(); onClose(); }}
+            className="px-4 py-2 text-sm font-medium text-[#7D8590] hover:text-[#E6EDF3] border border-[#30363D] rounded-lg transition-colors"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={() => void handleSubmit()}
+            disabled={saving}
+            className="bg-purple-600 hover:bg-purple-500 disabled:opacity-50 text-white text-sm font-semibold py-2 px-4 rounded-lg transition-colors flex items-center gap-2"
+          >
+            {saving ? (
+              <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> Creating…</>
+            ) : "Create Set"}
+          </button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -1258,6 +1374,7 @@ function LibrarySidebar({
   token,
   onDeleteScript,
   onModuleRemoved,
+  onNewSet,
 }: {
   scripts: PsScriptListItem[];
   packages: ScriptPackageListItem[];
@@ -1271,6 +1388,7 @@ function LibrarySidebar({
   token: string;
   onDeleteScript?: (scriptId: string) => void;
   onModuleRemoved?: (moduleId: string, packageId: string) => void;
+  onNewSet?: () => void;
 }) {
   const { toast } = useToast();
   const [search, setSearch] = useState("");
@@ -1403,12 +1521,22 @@ function LibrarySidebar({
 
   return (
     <div className="flex flex-col bg-[#0D1117] overflow-hidden" style={{ width: "100%", height: "100%" }}>
-      {/* Search */}
-      <div className="px-2 py-2 flex-shrink-0 border-b border-[#21262D]">
-        <div className="relative">
+      {/* Search + New Set button */}
+      <div className="px-2 py-2 flex-shrink-0 border-b border-[#21262D] flex items-center gap-1.5">
+        <div className="relative flex-1">
           <svg className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-[#484F58]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
           <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Filter…" className="w-full bg-[#161B22] border border-[#30363D] rounded pl-6 pr-2 py-1 text-xs text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#0078D4]/50 transition-colors" />
         </div>
+        {onNewSet && (
+          <button
+            onClick={onNewSet}
+            title="New Script Set"
+            className="flex-shrink-0 flex items-center gap-1 px-2 py-1 text-[10px] font-semibold text-purple-400 bg-purple-500/10 border border-purple-500/25 rounded hover:bg-purple-500/20 hover:text-purple-300 transition-colors whitespace-nowrap"
+          >
+            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" /></svg>
+            New Script Set
+          </button>
+        )}
       </div>
 
       {/* Tree */}
@@ -3239,6 +3367,7 @@ export default function ScriptGeneratorPage() {
   const [packages, setPackages] = useState<ScriptPackageListItem[]>([]);
   const [libraryLoading, setLibraryLoading] = useState(false);
   const [libraryLoaded, setLibraryLoaded] = useState(false);
+  const [newScriptSetDialogOpen, setNewScriptSetDialogOpen] = useState(false);
   const [loadingScriptId, setLoadingScriptId] = useState<string | null>(null);
   const [openDrawerScriptId, setOpenDrawerScriptId] = useState<string | null>(null);
   const [openDrawerPackage, setOpenDrawerPackage] = useState<ScriptPackageListItem | null>(null);
@@ -3979,6 +4108,7 @@ export default function ScriptGeneratorPage() {
                           : pkg
                       ))
                     }
+                    onNewSet={() => setNewScriptSetDialogOpen(true)}
                   />
                 )}
                 {leftMode === "results" && (
@@ -4325,6 +4455,19 @@ export default function ScriptGeneratorPage() {
           confirmState.onConfirm();
         }}
         onCancel={() => setConfirmState((s) => ({ ...s, open: false }))}
+      />
+
+      <NewScriptSetDialog
+        open={newScriptSetDialogOpen}
+        token={token}
+        onClose={() => setNewScriptSetDialogOpen(false)}
+        onCreated={(pkg) => {
+          setNewScriptSetDialogOpen(false);
+          setPackages((prev) => [pkg, ...prev]);
+          handleSidebarPackageClick(pkg);
+          setOpenDrawerPackage(pkg);
+          toast({ title: "Script Set created", description: `"${pkg.title}" is ready — add modules to it now.` });
+        }}
       />
     </div>
   );

@@ -1916,6 +1916,55 @@ router.post("/admin/ps-scripts", requireAdmin, async (req: Request, res: Respons
   }
 });
 
+// ─── POST /api/admin/ps-scripts/packages ─────────────────────────────────────
+// Manually create a named Script Set (empty, no modules). Accepts a minimal body:
+//   { title, category?, tags?, permissions? }
+// NOTE: must be registered BEFORE /:id to prevent "packages" being treated as an id
+
+router.post("/admin/ps-scripts/packages", requireAdmin, async (req: Request, res: Response) => {
+  const { title, category, tags, permissions } = req.body as {
+    title?: string;
+    category?: string;
+    tags?: string[];
+    permissions?: PsScriptPermissions;
+  };
+
+  if (!title || typeof title !== "string" || title.trim().length === 0) {
+    res.status(400).json({ error: "title is required" });
+    return;
+  }
+
+  const resolvedCategory = (typeof category === "string" && category.trim()) ? category.trim() : "other";
+  const resolvedTags = Array.isArray(tags) ? tags.map((t) => String(t).trim()).filter(Boolean) : [];
+  const resolvedPermissions: PsScriptPermissions = (
+    permissions &&
+    typeof permissions === "object" &&
+    !Array.isArray(permissions)
+  ) ? {
+    appPermissions: Array.isArray(permissions.appPermissions) ? permissions.appPermissions : [],
+    delegatedPermissions: Array.isArray(permissions.delegatedPermissions) ? permissions.delegatedPermissions : [],
+    notes: typeof permissions.notes === "string" ? permissions.notes : "",
+  } : { appPermissions: [], delegatedPermissions: [], notes: "" };
+
+  try {
+    const [created] = await db
+      .insert(scriptPackagesTable)
+      .values({
+        title: title.trim(),
+        category: resolvedCategory,
+        tags: resolvedTags,
+        permissions: resolvedPermissions,
+      })
+      .returning();
+
+    // Return in the same shape as the GET /packages list items (with empty modules)
+    res.status(201).json({ ...created, modules: [] });
+  } catch (err) {
+    logger.error({ err }, "Failed to create script package");
+    res.status(500).json({ error: "Failed to create package" });
+  }
+});
+
 // ─── GET /api/admin/ps-scripts/packages ──────────────────────────────────────
 // NOTE: must be registered BEFORE /:id to prevent "packages" being treated as an id
 
