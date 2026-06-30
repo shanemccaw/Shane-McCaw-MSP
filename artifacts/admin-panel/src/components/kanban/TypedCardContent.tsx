@@ -1140,12 +1140,16 @@ function ScriptModalBody({
                 variant="primary"
                 onClick={canRun ? (onRunScript ?? (() => void handleRun())) : undefined}
               />
-              {logLines.length > 0 && (
-                <ModalActionBtn
-                  label="View Output"
-                  onClick={() => logContainerRef.current?.scrollIntoView({ behavior: "smooth" })}
-                />
-              )}
+              <ModalActionBtn
+                label="View Output"
+                onClick={() => {
+                  if (logContainerRef.current) {
+                    logContainerRef.current.scrollIntoView({ behavior: "smooth" });
+                  } else {
+                    onOpenScript?.();
+                  }
+                }}
+              />
               <ModalActionBtn label="Open Script" onClick={onOpenScript} />
             </>
           ) : (
