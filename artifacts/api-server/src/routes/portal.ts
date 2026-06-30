@@ -13,6 +13,8 @@ import { listDriveItems, graphCredentialsPresent, createProjectFolder, uploadFil
 import { setSecretValue, getSecretValue, getSecretMetadata } from "../lib/azure-keyvault.ts";
 import { testClientCredentials } from "../lib/azure-credentials.ts";
 import { runClientScriptSequence } from "../lib/client-script-sequence.ts";
+import { advancePhaseIfComplete, syncProjectProgress as syncProjectProgressLib } from "../lib/kanban-phase-advance.ts";
+import { autoFireFirstBacklogScript } from "../lib/kanban-auto-fire.ts";
 import { uploadInvoiceToSharePoint } from "../lib/invoice-sharepoint.ts";
 import { getPortalBaseUrl } from "../lib/portal-url.ts";
 import { generateM365ProfilePdf } from "../lib/m365-profile-pdf.ts";
@@ -726,6 +728,13 @@ router.put("/portal/app-registration", requireAuth, async (req: Request, res: Re
     .catch(err => {
       req.log.error({ err, userId }, "portal/app-registration: failed to insert automation run record");
     });
+
+  // Auto-fire the first backlog Kanban script card for this client (new linkedRunbook-based flow).
+  // This runs in parallel with runClientScriptSequence (the legacy module-based flow) and is
+  // a no-op if no eligible card is found or Azure is not configured.
+  autoFireFirstBacklogScript(userId).catch(err => {
+    req.log.warn({ err, userId }, "portal/app-registration: autoFireFirstBacklogScript error (non-fatal)");
+  });
 });
 
 // ─── Client: Automation progress ──────────────────────────────────────────────
@@ -5274,61 +5283,16 @@ router.patch("/admin/kanban-tasks/:id", requireAdmin, async (req: Request, res: 
     ? await db.select({ clientUserId: projectsTable.clientUserId }).from(projectsTable).where(eq(projectsTable.id, updated.projectId))
     : [];
 
-  // Auto-progression: when a task is completed, check if its workflow step is done
-  if (updates.column === "completed" && updated.workflowStepId) {
-    const allStepTasks = await db.select().from(kanbanTasksTable)
-      .where(eq(kanbanTasksTable.workflowStepId, updated.workflowStepId));
-    const allDone = allStepTasks.length > 0 && allStepTasks.every(t => t.column === "completed");
-    if (allDone) {
-      const [completedStep] = await db.update(workflowStepsTable)
-        .set({ status: "completed", completedAt: new Date() })
-        .where(eq(workflowStepsTable.id, updated.workflowStepId))
-        .returning();
-
-      if (completedStep?.projectId) {
-        const allProjectSteps = await db.select().from(workflowStepsTable)
-          .where(eq(workflowStepsTable.projectId, completedStep.projectId))
-          .orderBy(asc(workflowStepsTable.order));
-        const currentIdx = allProjectSteps.findIndex(s => s.id === updated.workflowStepId);
-        const nextStep = allProjectSteps[currentIdx + 1];
-
-        if (nextStep && nextStep.status !== "completed") {
-          const [activatedStep] = await db.update(workflowStepsTable)
-            .set({ status: "in_progress" })
-            .where(eq(workflowStepsTable.id, nextStep.id))
-            .returning();
-
-          if (activatedStep?.workflowTemplateStepId && activatedStep.projectId) {
-            const templateTasks = await db.select().from(workflowTemplateStepTasksTable)
-              .where(eq(workflowTemplateStepTasksTable.workflowTemplateStepId, activatedStep.workflowTemplateStepId))
-              .orderBy(asc(workflowTemplateStepTasksTable.order));
-            if (templateTasks.length > 0) {
-              const resolvedMetadata = await resolveTemplateTaskMetadata(templateTasks);
-              const spawnedTasks = await db.insert(kanbanTasksTable).values(
-                templateTasks.map((t, idx) => ({
-                  projectId: activatedStep.projectId!,
-                  workflowStepId: activatedStep.id,
-                  groupName: t.groupName ?? null,
-                  title: t.title,
-                  description: t.description ?? null,
-                  column: (t.isCustomerTask ? "waiting_on_customer" : "backlog") as "backlog" | "waiting_on_customer",
-                  order: idx,
-                  taskType: t.taskType ?? null,
-                  taskMetadata: resolvedMetadata[idx],
-                }))
-              ).returning();
-              for (const spawnedTask of spawnedTasks) {
-                broadcastKanbanChange(spawnedTask.projectId, { action: "created", task: spawnedTask });
-              }
-            }
-          }
-
-        }
-      }
+  // Auto-progression: when a task is completed, check if its workflow step is done.
+  // Shared logic lives in kanban-phase-advance.ts so admin-m365-run.ts can reuse it.
+  if (updates.column === "completed" && updated.workflowStepId && updated.projectId) {
+    const { spawnedTasks } = await advancePhaseIfComplete(updated.workflowStepId, updated.projectId);
+    for (const spawnedTask of spawnedTasks) {
+      broadcastKanbanChange(spawnedTask.projectId, { action: "created", task: spawnedTask });
     }
   }
 
-  await syncProjectProgress(updated.projectId);
+  await syncProjectProgressLib(updated.projectId);
 
   const auditBase = {
     actorUserId: req.user!.id,

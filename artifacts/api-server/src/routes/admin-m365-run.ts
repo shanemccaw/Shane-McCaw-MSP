@@ -29,6 +29,7 @@ import {
 import { eq, desc, and, sql, inArray } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/requireAuth";
 import { logger } from "../lib/logger";
+import { advancePhaseIfComplete, syncProjectProgress } from "../lib/kanban-phase-advance";
 import { createRunbookJob, getJobStatus, getJobOutput, isTerminalStatus } from "../lib/azure-automation";
 import { runAiAnalyzer } from "../lib/ai-analyzer";
 import { parseM365ScriptOutput, normaliseProfileUpdates } from "../lib/parse-m365-script-output";
@@ -399,6 +400,31 @@ async function processRunInBackground(
           .where(eq(kanbanTasksTable.id, row.id));
       }
       logger.info({ kanbanIds, finalStatus }, "admin-m365-run: kanban tasks synced from script result");
+
+      // Phase advance: if script succeeded, check whether this step is fully done
+      // and activate the next phase. Works for each unique workflowStepId across the cards.
+      if (finalStatus === "completed") {
+        try {
+          const completedRows = await db
+            .select({ workflowStepId: kanbanTasksTable.workflowStepId, projectId: kanbanTasksTable.projectId })
+            .from(kanbanTasksTable)
+            .where(inArray(kanbanTasksTable.id, kanbanIds));
+
+          const stepGroups = new Map<number, number>(); // stepId → projectId
+          for (const row of completedRows) {
+            if (row.workflowStepId != null && row.projectId != null) {
+              stepGroups.set(row.workflowStepId, row.projectId);
+            }
+          }
+
+          for (const [stepId, projId] of stepGroups) {
+            await advancePhaseIfComplete(stepId, projId);
+            await syncProjectProgress(projId);
+          }
+        } catch (phaseErr) {
+          logger.warn({ phaseErr, kanbanIds }, "admin-m365-run: phase advance check failed (non-fatal)");
+        }
+      }
     } catch (patchErr) {
       logger.warn({ patchErr, kanbanIds }, "admin-m365-run: failed to sync kanban task status (non-fatal)");
     }
