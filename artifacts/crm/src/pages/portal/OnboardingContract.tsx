@@ -563,6 +563,15 @@ export default function OnboardingContract() {
       }
 
       if (url) {
+        // Clean up localStorage back-link entries so stale data doesn't
+        // surface on a future visit from a different landing page.
+        try {
+          const latestExpRaw = localStorage.getItem("onboardingLpLatestExp");
+          if (latestExpRaw) {
+            localStorage.removeItem(`onboardingLp_${latestExpRaw}`);
+          }
+          localStorage.removeItem("onboardingLpLatestExp");
+        } catch { /* localStorage unavailable — ignore */ }
         window.location.href = url;
       } else {
         throw new Error("No checkout URL returned");
@@ -1004,6 +1013,15 @@ export default function OnboardingContract() {
                 {lpUrl ? (
                   <a
                     href={lpUrl}
+                    onClick={() => {
+                      try {
+                        const latestExpRaw = localStorage.getItem("onboardingLpLatestExp");
+                        if (latestExpRaw) {
+                          localStorage.removeItem(`onboardingLp_${latestExpRaw}`);
+                        }
+                        localStorage.removeItem("onboardingLpLatestExp");
+                      } catch { /* localStorage unavailable — ignore */ }
+                    }}
                     className="inline-flex items-center gap-1.5 bg-amber-700 hover:bg-amber-800 text-white font-semibold px-4 py-2 rounded-lg text-xs transition-colors"
                   >
                     <ArrowLeft className="w-3.5 h-3.5" />
