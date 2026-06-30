@@ -322,7 +322,7 @@ function TopHeader({
         {liveVisitors !== null && liveVisitors > 0 && (
           <span className="flex items-center gap-1 bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-[10px] font-semibold px-2 py-1 rounded-full whitespace-nowrap flex-shrink-0">
             <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-            {liveVisitors} live now
+            <span key={liveVisitors} className="count-pop tabular-nums">{liveVisitors}</span>{" live now"}
           </span>
         )}
         {campaignBadges.map(c => (
@@ -531,6 +531,7 @@ export default function DashboardShell({ children }: { children: ReactNode }) {
   // ─── Live visitors ──────────────────────────────────────────────────────────
   const [liveVisitors, setLiveVisitors] = useState<number | null>(null);
   const liveTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const liveAbortRef = useRef<AbortController | null>(null);
 
   // ─── Campaign badges ────────────────────────────────────────────────────────
   const [campaignBadges, setCampaignBadges] = useState<CampaignBadge[]>([]);
@@ -565,6 +566,37 @@ export default function DashboardShell({ children }: { children: ReactNode }) {
         setLiveVisitors(d.live);
       }
     } catch {}
+  }, [fetchWithAuth]);
+
+  const startLiveSSE = useCallback(async (signal: AbortSignal) => {
+    try {
+      const res = await fetchWithAuth("/api/admin/analytics/live-stream", { signal });
+      if (!res.ok || !res.body) return false;
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+
+      while (true) {
+        if (signal.aborted) break;
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const parts = buffer.split("\n\n");
+        buffer = parts.pop() ?? "";
+        for (const part of parts) {
+          const dataLine = part.split("\n").find(l => l.startsWith("data: "));
+          if (!dataLine) continue;
+          try {
+            const parsed = JSON.parse(dataLine.slice(6)) as { live: number };
+            setLiveVisitors(parsed.live);
+          } catch {}
+        }
+      }
+      return true;
+    } catch {
+      return false;
+    }
   }, [fetchWithAuth]);
 
   const fetchCampaignBadges = useCallback(async () => {
@@ -624,12 +656,30 @@ export default function DashboardShell({ children }: { children: ReactNode }) {
   }, [location, fetchCount]);
 
   useEffect(() => {
-    void fetchLiveVisitors();
-    liveTimerRef.current = setInterval(() => void fetchLiveVisitors(), 30_000);
-    return () => {
-      if (liveTimerRef.current) clearInterval(liveTimerRef.current);
+    const abortCtrl = new AbortController();
+    liveAbortRef.current = abortCtrl;
+
+    let retryTimer: ReturnType<typeof setTimeout> | null = null;
+
+    const connect = async () => {
+      if (abortCtrl.signal.aborted) return;
+      const ok = await startLiveSSE(abortCtrl.signal);
+      if (!ok && !abortCtrl.signal.aborted) {
+        void fetchLiveVisitors();
+        liveTimerRef.current = setInterval(() => void fetchLiveVisitors(), 30_000);
+      } else if (ok && !abortCtrl.signal.aborted) {
+        retryTimer = setTimeout(() => void connect(), 3_000);
+      }
     };
-  }, [fetchLiveVisitors]);
+
+    void connect();
+
+    return () => {
+      abortCtrl.abort();
+      if (retryTimer) clearTimeout(retryTimer);
+      if (liveTimerRef.current) { clearInterval(liveTimerRef.current); liveTimerRef.current = null; }
+    };
+  }, [startLiveSSE, fetchLiveVisitors]);
 
   useEffect(() => {
     const abortCtrl = new AbortController();

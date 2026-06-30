@@ -488,4 +488,35 @@ router.get("/admin/analytics/live", adminLimiter, requireAdmin, async (req, res)
   }
 });
 
+// ─── Admin: live visitors — SSE stream ────────────────────────────────────────
+// Pushes { live: number } every 5 seconds. Auth is Bearer JWT (requireAdmin),
+// so the client must use fetchWithAuth rather than native EventSource.
+router.get("/admin/analytics/live-stream", requireAdmin, (req, res) => {
+  res.setHeader("Content-Type", "text/event-stream");
+  res.setHeader("Cache-Control", "no-cache");
+  res.setHeader("Connection", "keep-alive");
+  res.setHeader("X-Accel-Buffering", "no");
+  res.flushHeaders();
+
+  const send = (live: number): void => {
+    res.write(`data: ${JSON.stringify({ live })}\n\n`);
+  };
+
+  const push = (): void => {
+    const cutoff = new Date(Date.now() - 5 * 60 * 1000);
+    execRows<{ count: string }>(sql`
+      SELECT count(*)::text as count FROM analytics_sessions WHERE last_seen_at >= ${cutoff}
+    `)
+      .then(([row]) => send(parseInt(row?.count ?? "0")))
+      .catch(() => send(0));
+  };
+
+  push();
+  const interval = setInterval(push, 5_000);
+
+  req.on("close", () => {
+    clearInterval(interval);
+  });
+});
+
 export default router;
