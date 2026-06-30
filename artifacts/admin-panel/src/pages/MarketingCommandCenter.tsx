@@ -5822,6 +5822,12 @@ function LandingCopyPanel({
   const [genError, setGenError] = useState<string | null>(null);
   const [genSuccess, setGenSuccess] = useState(false);
 
+  // Page spec & CTA mode
+  const [pageSpec, setPageSpec] = useState("");
+  const [ctaMode, setCtaMode] = useState<"order_service" | "book_call" | "take_assessment" | "custom">("order_service");
+  const [quizType, setQuizType] = useState("copilot");
+  const [customHref, setCustomHref] = useState("");
+
   // Regenerate copy state
   const [regenerating, setRegenerating] = useState(false);
   const [regenError, setRegenError] = useState<string | null>(null);
@@ -5905,6 +5911,10 @@ function LandingCopyPanel({
           copy: liveContent,
           deliverables: allDeliverables,
           outcomes: allOutcomes,
+          spec: pageSpec.trim() || undefined,
+          ctaMode,
+          quizType: ctaMode === "take_assessment" ? quizType : undefined,
+          customHref: ctaMode === "custom" ? customHref.trim() || undefined : undefined,
         }),
       });
       if (!genRes.ok) throw new Error("Generation failed");
@@ -6007,6 +6017,68 @@ function LandingCopyPanel({
         )}
       </div>
       {!editing && <RawToggle content={liveContent} />}
+
+      {/* ── Page Spec & CTA Mode ── */}
+      {!editing && (
+        <div className="bg-[#0D1117] border border-[#30363D] rounded-xl p-4 space-y-4">
+          <div>
+            <p className="text-[10px] text-[#484F58] uppercase tracking-wide font-semibold mb-1.5">
+              Page Spec <span className="normal-case font-normal text-[#30363D]">— optional</span>
+            </p>
+            <textarea
+              value={pageSpec}
+              onChange={e => setPageSpec(e.target.value)}
+              rows={3}
+              placeholder="Describe the page structure you want. E.g.: Start with a problem/solution block, then an FAQ with 5 Copilot licensing questions, then a checklist of deliverables, then a quiz CTA for the Copilot readiness assessment."
+              className="w-full text-xs text-[#E6EDF3] bg-[#161B22] border border-[#30363D] rounded-lg px-3 py-2.5 font-sans leading-relaxed resize-y focus:outline-none focus:border-[#0078D4]/60 placeholder-[#484F58]"
+            />
+          </div>
+          <div>
+            <p className="text-[10px] text-[#484F58] uppercase tracking-wide font-semibold mb-2">CTA Mode</p>
+            <div className="flex gap-2 flex-wrap">
+              {(["order_service", "book_call", "take_assessment", "custom"] as const).map(mode => {
+                const LABELS: Record<string, string> = { order_service: "Order Service", book_call: "Book a Call", take_assessment: "Take Assessment", custom: "Custom URL" };
+                return (
+                  <button key={mode} onClick={() => setCtaMode(mode)}
+                    className={`text-[10px] px-2.5 py-1 rounded-lg border transition-colors ${ctaMode === mode ? "border-[#0078D4]/50 bg-[#0078D4]/15 text-[#58A6FF]" : "border-[#30363D] text-[#484F58] hover:text-[#7D8590]"}`}>
+                    {LABELS[mode]}
+                  </button>
+                );
+              })}
+            </div>
+            {ctaMode === "take_assessment" && (
+              <select value={quizType} onChange={e => setQuizType(e.target.value)}
+                className="mt-2 w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-1.5 text-xs text-[#E6EDF3] outline-none focus:border-[#0078D4]/60">
+                <option value="copilot">Copilot Readiness</option>
+                <option value="m365-health">M365 Tenant Health</option>
+                <option value="sharepoint">SharePoint Architecture</option>
+                <option value="power-platform">Power Platform Maturity</option>
+                <option value="security-compliance">Security &amp; Compliance</option>
+                <option value="teams">Teams Health</option>
+                <option value="migration">Migration Readiness</option>
+                <option value="governance">Governance Maturity</option>
+              </select>
+            )}
+            {ctaMode === "custom" && (
+              <input
+                type="text"
+                value={customHref}
+                onChange={e => setCustomHref(e.target.value)}
+                placeholder="/your-custom-path or https://..."
+                className="mt-2 w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-1.5 text-xs text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60 font-mono"
+              />
+            )}
+            {ctaMode !== "order_service" && (
+              <p className="mt-1.5 text-[10px] text-[#484F58]">
+                {ctaMode === "book_call" && "CTA button links to /book — Shane's scheduling page."}
+                {ctaMode === "take_assessment" && `CTA button links to /quiz/${quizType} — the ${quizType} readiness assessment.`}
+                {ctaMode === "custom" && "CTA button links to your custom URL."}
+              </p>
+            )}
+          </div>
+        </div>
+      )}
+
       <div className="flex items-center gap-3 flex-wrap">
         <button
           onClick={() => { void handleGenerate(); }}

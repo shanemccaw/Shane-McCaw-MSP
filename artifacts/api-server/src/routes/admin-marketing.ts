@@ -2220,6 +2220,72 @@ Respond with ONLY a raw JSON array — no prose, no markdown fences. Schema:
 
 // ─── Landing Page Generator ───────────────────────────────────────────────────
 
+// ── spec-driven layoutBlocks generation ──────────────────────────────────────
+
+async function generateSpecLayoutBlocks(
+  spec: string, topic: string, audience: string,
+  copy: string, deliverablesBullets: string, outcomesBullets: string,
+): Promise<Array<{ blockType: string; content: unknown }>> {
+  const copySnippet = copy.trim() ? `EXISTING COPY (source content from this):\n${copy.slice(0, 2500)}` : "";
+  const prompt = `You are building the layout blocks for a Microsoft 365 consulting landing page.
+
+AVAILABLE BLOCK TYPES — output a JSON array of {blockType, content} objects:
+
+why_this_matters: {"blockType":"why_this_matters","content":{"body":"2–3 sentences on the core problem"}}
+authority: {"blockType":"authority","content":{"heading":"...","body":"...","complianceBadges":["FedRAMP","FISMA","ITAR","GCC High"],"stats":[{"stat":"30+","label":"Years in Microsoft Ecosystem"},{"stat":"NASA","label":"Current Lead M365 Architect"},{"stat":"100%","label":"Senior Delivery — No Junior Staff"}]}}
+process: {"blockType":"process","content":{"steps":[{"step":"01","title":"...","description":"...","note":"optional"}]}}
+trust_badges: {"blockType":"trust_badges","content":{"badges":["Lead M365 Architect at NASA","30 Years Microsoft Experience","Fixed-Price Engagements","Senior-Level Delivery"]}}
+rich_text: {"blockType":"rich_text","content":{"title":"optional heading","body":"paragraph text","list":["optional","bullet points"]}}
+faq: {"blockType":"faq","content":{"title":"optional FAQ title","items":[{"q":"Question?","a":"Answer."}]}}
+testimonials: {"blockType":"testimonials","content":{"items":[{"quote":"...","author":"Name","role":"Title","company":"Company"}]}} — ONLY if real quotes exist in the copy; do NOT fabricate.
+problem_solution: {"blockType":"problem_solution","content":{"problem":"The problem.","solution":"The solution.","bullets":["optional detail"]}}
+checklist: {"blockType":"checklist","content":{"title":"optional heading","items":["Item 1","Item 2"]}}
+stats_bar: {"blockType":"stats_bar","content":{"stats":[{"value":"30+","label":"Years Experience"}]}}
+featured_quote: {"blockType":"featured_quote","content":{"quote":"A compelling pull quote.","attribution":"optional"}}
+quiz_cta: {"blockType":"quiz_cta","content":{"quizType":"copilot","title":"optional","description":"optional","buttonText":"optional"}}
+  quizType must be one of: copilot, m365-health, sharepoint, power-platform, security-compliance, teams, migration, governance
+
+PAGE SPEC:
+${spec}
+
+CAMPAIGN CONTEXT:
+Topic: ${topic}
+Audience: ${audience}
+Deliverables: ${deliverablesBullets}
+Outcomes: ${outcomesBullets}
+${copySnippet}
+
+RULES:
+- Always include an authority block (Shane McCaw, NASA Lead M365 Architect, 30+ years Microsoft)
+- Always include a trust_badges block
+- Generate 5–9 blocks in the order they should appear on the page
+- Draw all content from the copy and context — do NOT invent content
+- Do NOT fabricate testimonials
+- Output ONLY a valid JSON array, no prose, no markdown fences`;
+
+  try {
+    const msg = await anthropic.messages.create({
+      model: "claude-haiku-4-5", max_tokens: 4000,
+      messages: [{ role: "user", content: prompt }],
+    });
+    const raw = msg.content[0]?.type === "text" ? msg.content[0].text : "[]";
+    const parsed = JSON.parse(extractJson(raw)) as unknown;
+    if (Array.isArray(parsed)) return parsed as Array<{ blockType: string; content: unknown }>;
+  } catch { /* fall through to default */ }
+  return [];
+}
+
+function applyCtaMode(
+  cta: { buttonText: string; href: string; subtext?: string },
+  ctaMode?: string, quizType?: string, customHref?: string,
+): { buttonText: string; href: string; subtext?: string } {
+  if (!ctaMode || ctaMode === "order_service") return cta;
+  if (ctaMode === "book_call") return { ...cta, href: "/book", buttonText: cta.buttonText || "Book a Discovery Call", subtext: cta.subtext || "Free. No commitment." };
+  if (ctaMode === "take_assessment") return { ...cta, href: `/quiz/${quizType ?? "copilot"}`, buttonText: cta.buttonText || "Start Free Assessment" };
+  if (ctaMode === "custom" && customHref?.trim()) return { ...cta, href: customHref.trim() };
+  return cta;
+}
+
 router.post("/admin/marketing/generate/landing-page", requireAdmin, async (req: Request, res: Response) => {
   try {
     const body = req.body as {
@@ -2230,6 +2296,10 @@ router.post("/admin/marketing/generate/landing-page", requireAdmin, async (req: 
       copy?: string;
       deliverables?: string[];
       outcomes?: string[];
+      spec?: string;
+      ctaMode?: string;
+      quizType?: string;
+      customHref?: string;
     };
 
     const icpCtx = await buildICPContext();
@@ -2415,14 +2485,18 @@ Example: ["🔍","📋","🚀"]`;
           if (Array.isArray(maybeArray) && maybeArray.length === 3 && maybeArray.every(x => typeof x === "string")) icons = maybeArray as string[];
         } catch { /* keep defaults */ }
 
+        const baseCta = { buttonText: parsed.ctaButtonText ?? "Book Your Paid Assessment", href: "/contact", subtext: "Fixed price. Senior-level delivery." };
+        const fastLayoutBlocks = body.spec?.trim()
+          ? await generateSpecLayoutBlocks(body.spec, body.topic ?? "Microsoft 365 Consulting", body.audience ?? "IT decision-makers", rawCopy, deliverablesBullets, outcomesBullets)
+          : parseCopyLayoutBlocks(rawCopy);
         res.json({
           title: body.topic?.trim() || parsed.headline.split(" ").slice(0, 6).join(" "),
           headline: parsed.headline,
           subheadline: parsed.subheadline,
           valuePropBlocks: parsed.pillars.slice(0, 3).map((p, i) => ({ icon: icons[i] ?? "🔍", heading: p.heading, body: p.body })),
           socialProof: [],
-          cta: { buttonText: parsed.ctaButtonText ?? "Book Your Paid Assessment", href: "/contact", subtext: "Fixed price. Senior-level delivery." },
-          layoutBlocks: parseCopyLayoutBlocks(rawCopy),
+          cta: applyCtaMode(baseCta, body.ctaMode, body.quizType, body.customHref),
+          layoutBlocks: fastLayoutBlocks,
         });
         return;
       }
@@ -2468,7 +2542,15 @@ Output ONLY valid JSON, no prose, no markdown fences:
         socialProof: z.array(z.object({ quote: z.string(), author: z.string(), role: z.string().optional() })).default([]),
         cta: z.object({ buttonText: z.string(), href: z.string(), subtext: z.string().optional() }),
       });
-      res.json({ ...parseAiJson(extractRaw, schema), layoutBlocks: parseCopyLayoutBlocks(rawCopy) });
+      const partialResult = parseAiJson(extractRaw, schema);
+      const partialLayoutBlocks = body.spec?.trim()
+        ? await generateSpecLayoutBlocks(body.spec, body.topic ?? "Microsoft 365 Consulting", body.audience ?? "IT decision-makers", rawCopy, deliverablesBullets, outcomesBullets)
+        : parseCopyLayoutBlocks(rawCopy);
+      res.json({
+        ...partialResult,
+        cta: partialResult.cta ? applyCtaMode(partialResult.cta, body.ctaMode, body.quizType, body.customHref) : partialResult.cta,
+        layoutBlocks: partialLayoutBlocks,
+      });
       return;
     }
 
@@ -2518,7 +2600,15 @@ Generate a landing page as JSON — output ONLY valid JSON, no prose, no markdow
       socialProof: z.array(z.object({ quote: z.string(), author: z.string(), role: z.string().optional() })),
       cta: z.object({ buttonText: z.string(), href: z.string(), subtext: z.string().optional() }),
     });
-    res.json({ ...parseAiJson(raw, schema), layoutBlocks: defaultLayoutBlocks });
+    const bResult = parseAiJson(raw, schema);
+    const bLayoutBlocks = body.spec?.trim()
+      ? await generateSpecLayoutBlocks(body.spec, body.topic ?? "Microsoft 365 Consulting", body.audience ?? "IT decision-makers", "", deliverablesBullets, outcomesBullets)
+      : defaultLayoutBlocks;
+    res.json({
+      ...bResult,
+      cta: bResult.cta ? applyCtaMode(bResult.cta, body.ctaMode, body.quizType, body.customHref) : bResult.cta,
+      layoutBlocks: bLayoutBlocks,
+    });
   } catch (e) {
     if (e instanceof AiResponseError) {
       req.log.warn({ err: e }, "AI parse failed on /generate/landing-page");
@@ -2706,27 +2796,42 @@ router.get("/admin/marketing/landing-pages", requireAdmin, async (_req: Request,
 router.post("/admin/marketing/landing-pages", requireAdmin, async (req: Request, res: Response) => {
   try {
     const body = req.body as { slug?: string; title?: string; headline?: string; subheadline?: string; valuePropBlocks?: unknown[]; socialProof?: unknown[]; cta?: unknown; campaignId?: number; linkedServiceId?: number | null; published?: boolean; layoutBlocks?: unknown[] };
-    // Derive a title if missing: prefer headline, then prettify slug, then default
     const resolvedTitle = body.title?.trim()
       || body.headline?.trim()
       || (body.slug ? body.slug.replace(/-/g, " ").replace(/\b\w/g, c => c.toUpperCase()) : "")
       || "Untitled Landing Page";
-    // Auto-generate slug from title if not provided
-    const autoSlug = body.slug ?? resolvedTitle.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 60);
-    const [row] = await db.insert(landingPagesTable).values({
-      slug: autoSlug, title: resolvedTitle, headline: body.headline ?? null,
-      subheadline: body.subheadline ?? null,
-      valuePropBlocks: (body.valuePropBlocks ?? []) as Array<{ icon?: string; heading: string; body: string }>,
-      socialProof: (body.socialProof ?? []) as Array<{ quote: string; author: string; role?: string }>,
-      cta: body.cta as { buttonText: string; href: string; subtext?: string } ?? { buttonText: "Get Started", href: "/contact" },
-      layoutBlocks: (body.layoutBlocks ?? []) as Array<{ blockType: string; content: unknown }>,
-      campaignId: body.campaignId ?? null,
-      linkedServiceId: body.linkedServiceId ?? null,
-      published: body.published ?? false,
-    }).returning();
-    res.status(201).json(row);
+    const baseSlug = body.slug ?? resolvedTitle.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 60);
+    const hasUserSlug = !!body.slug;
+
+    let insertedRow: typeof landingPagesTable.$inferSelect | undefined;
+    let lastInsertErr: unknown;
+    for (let attempt = 0; attempt <= 5; attempt++) {
+      const slug = hasUserSlug || attempt === 0 ? baseSlug : `${baseSlug.slice(0, 55)}-${attempt + 1}`;
+      try {
+        ([insertedRow] = await db.insert(landingPagesTable).values({
+          slug, title: resolvedTitle, headline: body.headline ?? null,
+          subheadline: body.subheadline ?? null,
+          valuePropBlocks: (body.valuePropBlocks ?? []) as Array<{ icon?: string; heading: string; body: string }>,
+          socialProof: (body.socialProof ?? []) as Array<{ quote: string; author: string; role?: string }>,
+          cta: (body.cta ?? { buttonText: "Get Started", href: "/contact" }) as { buttonText: string; href: string; subtext?: string },
+          layoutBlocks: (body.layoutBlocks ?? []) as Array<{ blockType: string; content: unknown }>,
+          campaignId: body.campaignId ?? null,
+          linkedServiceId: body.linkedServiceId ?? null,
+          published: body.published ?? false,
+        }).returning());
+        break;
+      } catch (e) {
+        lastInsertErr = e;
+        const errText = [String(e), String((e as Error)?.cause ?? "")].join(" ").toLowerCase();
+        const isUnique = errText.includes("unique") || errText.includes("duplicate");
+        if (isUnique && !hasUserSlug && attempt < 5) continue;
+        if (isUnique) { res.status(409).json({ error: "A landing page with this slug already exists. Use a different title or URL slug." }); return; }
+        throw e;
+      }
+    }
+    if (!insertedRow) { res.status(500).json({ error: String(lastInsertErr) }); return; }
+    res.status(201).json(insertedRow);
   } catch (e) {
-    if (String(e).includes("unique")) { res.status(409).json({ error: "Slug already exists — choose a different URL slug" }); return; }
     res.status(500).json({ error: String(e) });
   }
 });
