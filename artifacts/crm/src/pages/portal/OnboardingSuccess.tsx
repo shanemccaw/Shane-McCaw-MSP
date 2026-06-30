@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useLocation, useSearch } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
-import { CheckCircle2, ArrowRight, Loader2, Calendar, MessageSquare, FolderKanban, RefreshCw, CreditCard, Eye, EyeOff, Mail } from "lucide-react";
+import { CheckCircle2, ArrowRight, Loader2, RefreshCw, CreditCard, Eye, EyeOff, Mail } from "lucide-react";
 
 interface PurchasedItem {
   name: string;
@@ -454,6 +454,26 @@ export default function OnboardingSuccess() {
             </div>
           )}
 
+          {/* What happens next */}
+          <div className="bg-[#0078D4]/6 border border-[#0078D4]/20 rounded-2xl p-5 text-left mb-6">
+            <p className="text-xs font-bold text-[#0078D4] uppercase tracking-wider mb-3">What happens next</p>
+            <div className="space-y-2.5">
+              {[
+                { n: "1", text: "Check your email and click the activation link to set your password and access your command center." },
+                { n: "2", text: "Log in to your client portal — your project workspace is waiting for you." },
+                { n: "3", text: "Submit your App Registration so Shane's automation can securely connect to your Microsoft 365 environment." },
+                { n: "4", text: "Watch as the assessment runs — your environment is scanned and scores begin populating in real time." },
+                { n: "5", text: "Your deliverables appear inside your portal: findings, scores, a prioritized task board, and recommended actions." },
+                { n: "6", text: "Shane schedules a hand-off call to walk you through the results and answer any questions." },
+              ].map(step => (
+                <div key={step.n} className="flex items-start gap-3">
+                  <div className="w-5 h-5 rounded-full bg-[#0078D4] text-white text-[10px] font-bold flex items-center justify-center flex-shrink-0 mt-0.5">{step.n}</div>
+                  <p className="text-xs text-[#0A2540] leading-relaxed">{step.text}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+
           {/* Guest account: always show email setup guidance */}
           {!user && !setupDone && (
             <div className="bg-white border border-[#0078D4]/30 rounded-2xl p-5 text-left mb-6 flex items-start gap-3">
@@ -538,40 +558,6 @@ export default function OnboardingSuccess() {
               <p className="text-sm text-emerald-800 font-medium">Password set — you're now signed in to your portal.</p>
             </div>
           )}
-
-          {/* What happens next */}
-          <div className="bg-white border border-border rounded-2xl p-6 text-left mb-8">
-            <h2 className="font-bold text-[#0A2540] mb-4 text-sm">What happens next</h2>
-            <div className="space-y-4">
-              {[
-                {
-                  icon: <Calendar className="w-4 h-4 text-[#0078D4]" />,
-                  title: "Kickoff call scheduled",
-                  desc: "Shane will email you within 1 business day to schedule your kickoff call and confirm any access requirements.",
-                },
-                {
-                  icon: <FolderKanban className="w-4 h-4 text-[#0078D4]" />,
-                  title: "Project workspace ready",
-                  desc: "Your project is live in the portal. You can track every deliverable step from your dashboard.",
-                },
-                {
-                  icon: <MessageSquare className="w-4 h-4 text-[#0078D4]" />,
-                  title: "Direct messaging open",
-                  desc: "Use the Messages tab in your portal to communicate directly with Shane throughout the engagement.",
-                },
-              ].map(({ icon, title, desc }) => (
-                <div key={title} className="flex items-start gap-3">
-                  <div className="w-8 h-8 rounded-xl bg-[#0078D4]/10 flex items-center justify-center flex-shrink-0 mt-0.5">
-                    {icon}
-                  </div>
-                  <div>
-                    <p className="text-sm font-semibold text-[#0A2540]">{title}</p>
-                    <p className="text-xs text-muted-foreground leading-relaxed">{desc}</p>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
 
           <div className="flex flex-col sm:flex-row gap-3 justify-center">
             {projectId && (
