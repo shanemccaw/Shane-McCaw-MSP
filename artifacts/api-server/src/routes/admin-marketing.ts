@@ -2255,10 +2255,51 @@ router.post("/admin/marketing/generate/landing-page", requireAdmin, async (req: 
       ? inlineOutcomes.map(o => `• ${o}`).join("\n")
       : "• Clear remediation roadmap\n• Confidence for Copilot deployment\n• Eliminates blind spots before audits";
 
-    // When existing copy is supplied, use it as the primary source for headline/subheadline
-    const copySection = body.copy?.trim()
-      ? `\nEXISTING LANDING PAGE COPY — use this as your primary source for the headline and subheadline. Extract tone and framing from it. Supplement with the offer deliverables and outcomes below for the valuePropBlocks:\n---\n${body.copy.trim()}\n---`
+    // Parse landing page copy to extract headline, subheadline, and value pillars verbatim
+    let exactHeadline: string | null = null;
+    let exactSubheadline: string | null = null;
+    let copyPillars: string[] = [];
+    const rawCopy = body.copy?.trim() ?? "";
+
+    if (rawCopy) {
+      // Support both "Headline: ..." (from generate/landing-copy output) and "HEADLINE: ..." (default format)
+      const hMatch = rawCopy.match(/^(?:HEADLINE|Headline):\s*(.+)$/m);
+      if (hMatch) exactHeadline = hMatch[1].trim().replace(/^\[|\]$/g, "");
+
+      const sMatch = rawCopy.match(/^(?:SUBHEAD(?:LINE)?|Subheadline):\s*(.+)$/m);
+      if (sMatch) exactSubheadline = sMatch[1].trim().replace(/^\[|\]$/g, "");
+
+      // Extract pillar bodies from "Pillar N — heading\n[body]" format
+      const pillarBlocks = [...rawCopy.matchAll(/^Pillar \d+[^:\n]*\n([\s\S]+?)(?=\n\nPillar|\n\nWHAT|\n\nAUTHOR|\n\nPROCESS|\n\nFINAL|$)/gm)];
+      copyPillars = pillarBlocks.map(m => m[1].trim());
+
+      // Also try bullet-point format "• ..." when no pillar blocks found
+      if (copyPillars.length === 0) {
+        const bullets = [...rawCopy.matchAll(/^[•\-]\s+(.+)$/gm)].map(m => m[1].trim());
+        if (bullets.length > 0) copyPillars = bullets;
+      }
+    }
+
+    // Build sections for the prompt based on what was extracted
+    const copySection = rawCopy
+      ? `\nLANDING PAGE COPY (authoritative source — content written and approved for this campaign):\n---\n${rawCopy}\n---`
       : "";
+
+    const headlineRule = exactHeadline
+      ? `- headline MUST be EXACTLY: "${exactHeadline}" — copy it verbatim, character for character, do not rephrase or improve`
+      : `- The headline must be risk-first (e.g. "Your M365 Tenant Is a Compliance Risk")`;
+
+    const subheadlineRule = exactSubheadline
+      ? `- subheadline MUST be EXACTLY: "${exactSubheadline}" — copy it verbatim, do not rephrase`
+      : `- The subheadline must frame the core problem the prospect faces right now`;
+
+    const valuePropContext = copyPillars.length >= 3
+      ? `\nVALUE PILLARS FROM COPY (use the heading themes below for valuePropBlocks; write concise, authoritative bodies from the pillar text):\n${copyPillars.slice(0, 3).map((p, i) => `Pillar ${i + 1}: ${p}`).join("\n\n")}`
+      : `\nOFFER DELIVERABLES TO USE IN valuePropBlocks:\n${deliverablesBullets}\n\nOFFER OUTCOMES TO USE IN valuePropBlocks:\n${outcomesBullets}`;
+
+    const valuePropRule = copyPillars.length >= 3
+      ? `- Produce exactly 3 valuePropBlocks drawn from the VALUE PILLARS above — headings should match the pillar themes, bodies must be 1–2 concise authoritative sentences`
+      : `- Produce exactly 3 valuePropBlocks drawn from the offer deliverables and outcomes above:\n  1. Clear Visibility Into Data Exposure — rewritten for this specific offer\n  2. Prioritised Remediation Roadmap — grounded in the specific deliverables\n  3. Confidence for Copilot Deployment — tied to the specific outcomes`;
 
     const prompt = `You are generating a landing page for a PAID professional Microsoft 365 service.
 ${icpCtx}
@@ -2266,6 +2307,7 @@ ${offerCtx}${copySection}
 Topic: ${body.topic ?? "Microsoft 365 Consulting"}
 Target audience: ${body.audience ?? "IT decision-makers"}
 CTA: ${body.cta ?? "Book Your Paid Assessment"}
+${valuePropContext}
 
 Match the exact tone, structure, and authority of a senior enterprise Microsoft 365 architect's real consulting pages.
 
@@ -2273,28 +2315,19 @@ RULES:
 - DO NOT use generic marketing language, hype, or "free audit" language.
 - DO NOT write long paragraphs. Keep it concise and enterprise-grade.
 - Never imply the offer is free.
-- The headline must be risk-first (e.g. "Your M365 Tenant Is a Compliance Risk").
-- The subheadline must frame the core problem the prospect faces right now.
-- Produce exactly 3 valuePropBlocks drawn from the offer deliverables and outcomes above:
-  1. Clear Visibility Into Data Exposure — rewritten for this specific offer
-  2. Prioritised Remediation Roadmap — grounded in the specific deliverables
-  3. Confidence for Copilot Deployment — tied to the specific outcomes
+- ${headlineRule.replace(/^- /, "")}
+- ${subheadlineRule.replace(/^- /, "")}
+- ${valuePropRule.replace(/^- /, "")}
 - Each valuePropBlock body must be 1–2 concise, authoritative sentences referencing the actual offer scope.
 - Each valuePropBlock icon must be a single relevant emoji (e.g. 🔍 📋 🚀 🛡️ ⚡ 📊).
 - socialProof must always be an empty array — do not fabricate testimonials.
 - The CTA buttonText should reinforce "Paid Assessment" (e.g. "Book Your Paid Assessment").
 
-OFFER DELIVERABLES TO USE IN valuePropBlocks:
-${deliverablesBullets}
-
-OFFER OUTCOMES TO USE IN valuePropBlocks:
-${outcomesBullets}
-
 Generate a landing page as JSON — output ONLY valid JSON, no prose, no markdown fences:
 {
   "title": "page title (service name — concise)",
-  "headline": "risk-first headline",
-  "subheadline": "one sentence framing the core problem",
+  "headline": "${exactHeadline ?? "risk-first headline"}",
+  "subheadline": "${exactSubheadline ?? "one sentence framing the core problem"}",
   "valuePropBlocks": [
     { "icon": "🔍", "heading": "pillar heading grounded in the offer", "body": "1–2 authoritative sentences using actual deliverables/outcomes" }
   ],
