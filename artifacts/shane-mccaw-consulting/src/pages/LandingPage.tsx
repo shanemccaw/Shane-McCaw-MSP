@@ -188,7 +188,7 @@ export default function LandingPage() {
           localStorage.setItem("onboardingLpLatestExp", String(exp));
         } catch { /* storage full or private browsing — silently skip */ }
       }
-      window.location.href = `/crm/onboarding/select?serviceId=${serviceId}`;
+      window.location.href = `/crm/portal/onboarding/select?serviceId=${serviceId}`;
     } catch (err) {
       setTokenError(err instanceof Error ? err.message : "Unable to continue. Please try again.");
       ctaClickedRef.current = false;
