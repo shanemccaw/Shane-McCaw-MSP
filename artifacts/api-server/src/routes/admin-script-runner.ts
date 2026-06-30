@@ -12,7 +12,7 @@
  */
 
 import { Router, type IRouter, type Request, type Response } from "express";
-import { db, azureTenantCredentialsTable, clientAppRegistrationsTable, clientAutomationRunsTable, usersTable, projectsTable, kanbanTasksTable, runbookJobHistoryTable } from "@workspace/db";
+import { db, azureTenantCredentialsTable, clientAppRegistrationsTable, clientAutomationRunsTable, usersTable, projectsTable, kanbanTasksTable, runbookJobHistoryTable, scriptRunResultsTable } from "@workspace/db";
 import { eq, desc } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/requireAuth";
 import { getCredential } from "../lib/azure-keyvault";
@@ -278,7 +278,25 @@ router.post("/admin/runbook-jobs", requireAdmin, async (req: Request, res: Respo
       }
     }
 
-    res.status(201).json({ jobId, status, automationRunId });
+    // Create a script_run_results placeholder so the Results tab shows this run immediately.
+    let runResultId: number | undefined;
+    try {
+      const [resultRow] = await db
+        .insert(scriptRunResultsTable)
+        .values({
+          customerId: clientUserIdForRun ?? null,
+          jobId,
+          kanbanTaskId: kanbanTaskId ?? null,
+          status: "running",
+          executionSource: "manual",
+        })
+        .returning({ id: scriptRunResultsTable.id });
+      runResultId = resultRow?.id;
+    } catch (resultErr) {
+      logger.warn({ resultErr, jobId }, "admin-script-runner: could not insert script_run_results placeholder (non-fatal)");
+    }
+
+    res.status(201).json({ jobId, status, automationRunId, runResultId });
   } catch (err) {
     logger.error({ err }, "admin-script-runner: failed to create runbook job");
     res.status(500).json({ error: "Failed to create runbook job" });
@@ -327,6 +345,21 @@ router.get("/admin/runbook-jobs/output", requireAdmin, async (req: Request, res:
           .where(eq(runbookJobHistoryTable.jobId, jobId));
       } catch (histErr) {
         logger.warn({ histErr, jobId }, "admin-script-runner: could not update job history on completion");
+      }
+
+      // Update script_run_results row with final output and status
+      try {
+        const fullOutput = outputLines.map(l => l.text).join("\n");
+        const finalStatus = statusResult.status === "Completed" ? "completed" : "failed";
+        await db
+          .update(scriptRunResultsTable)
+          .set({
+            status: finalStatus,
+            rawOutput: { text: fullOutput, azureStatus: statusResult.status },
+          })
+          .where(eq(scriptRunResultsTable.jobId, jobId));
+      } catch (resultErr) {
+        logger.warn({ resultErr, jobId }, "admin-script-runner: could not update script_run_results on completion (non-fatal)");
       }
 
       if (automationRunId) {
