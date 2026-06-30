@@ -12,7 +12,7 @@
  */
 
 import { Router, type IRouter, type Request, type Response } from "express";
-import { db, azureTenantCredentialsTable, clientAppRegistrationsTable, usersTable, kanbanTasksTable, runbookJobHistoryTable } from "@workspace/db";
+import { db, azureTenantCredentialsTable, clientAppRegistrationsTable, clientAutomationRunsTable, usersTable, kanbanTasksTable, runbookJobHistoryTable } from "@workspace/db";
 import { eq, desc } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/requireAuth";
 import { getCredential } from "../lib/azure-keyvault";
@@ -111,6 +111,7 @@ router.post("/admin/runbook-jobs", requireAdmin, async (req: Request, res: Respo
     let credentialType: "secret" | "certificate" = "secret";
     let historyCredentialId: number | null = null;
     let customerName: string = "Unknown";
+    let clientUserIdForRun: number | null = null;
 
     if (appRegistrationId) {
       // Preferred path: use client's App Registration
@@ -127,6 +128,7 @@ router.post("/admin/runbook-jobs", requireAdmin, async (req: Request, res: Respo
 
       tenantId = appReg.tenantId;
       clientId = appReg.azureClientId;
+      clientUserIdForRun = appReg.clientUserId ?? null;
 
       // Fetch customer name for the history record
       const [user] = await db
@@ -233,7 +235,26 @@ router.post("/admin/runbook-jobs", requireAdmin, async (req: Request, res: Respo
       }
     }
 
-    res.status(201).json({ jobId, status });
+    let automationRunId: number | undefined;
+    if (clientUserIdForRun) {
+      try {
+        const [autoRun] = await db
+          .insert(clientAutomationRunsTable)
+          .values({
+            clientUserId: clientUserIdForRun,
+            status: "running",
+            modulesTotal: 0,
+            modulesCompleted: 0,
+            lastLogSnippet: runbookName,
+          })
+          .returning({ id: clientAutomationRunsTable.id });
+        automationRunId = autoRun?.id;
+      } catch (autoRunErr) {
+        logger.warn({ autoRunErr, clientUserIdForRun }, "admin-script-runner: could not insert automation run (non-fatal)");
+      }
+    }
+
+    res.status(201).json({ jobId, status, automationRunId });
   } catch (err) {
     logger.error({ err }, "admin-script-runner: failed to create runbook job");
     res.status(500).json({ error: "Failed to create runbook job" });
@@ -257,6 +278,7 @@ router.get("/admin/runbook-jobs/output", requireAdmin, async (req: Request, res:
   }
   const since = req.query.since ? Number(req.query.since) : -1;
   const kanbanTaskId = req.query.kanbanTaskId ? Number(req.query.kanbanTaskId) : undefined;
+  const automationRunId = req.query.automationRunId ? Number(req.query.automationRunId) : undefined;
 
   try {
     const [statusResult, outputLines] = await Promise.all([
@@ -281,6 +303,22 @@ router.get("/admin/runbook-jobs/output", requireAdmin, async (req: Request, res:
           .where(eq(runbookJobHistoryTable.jobId, jobId));
       } catch (histErr) {
         logger.warn({ histErr, jobId }, "admin-script-runner: could not update job history on completion");
+      }
+
+      if (automationRunId) {
+        try {
+          const lastLine = outputLines.filter(l => l.text.trim()).slice(-1)[0]?.text ?? null;
+          await db
+            .update(clientAutomationRunsTable)
+            .set({
+              status: statusResult.status === "Completed" ? "completed" : "failed",
+              finishedAt: new Date(),
+              lastLogSnippet: lastLine,
+            })
+            .where(eq(clientAutomationRunsTable.id, automationRunId));
+        } catch (autoRunErr) {
+          logger.warn({ autoRunErr, automationRunId }, "admin-script-runner: could not update automation run on completion (non-fatal)");
+        }
       }
     } else {
       // Update running status in history

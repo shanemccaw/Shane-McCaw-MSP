@@ -1048,7 +1048,7 @@ function ScriptModalBody({
         return;
       }
 
-      const { jobId } = await res.json() as { jobId: string; status: string };
+      const { jobId, automationRunId } = await res.json() as { jobId: string; status: string; automationRunId?: number };
 
       let lastSeq = -1;
       let aborted = false;
@@ -1056,7 +1056,8 @@ function ScriptModalBody({
       const poll = async (): Promise<void> => {
         if (aborted) return;
         try {
-          const url = `/api/admin/runbook-jobs/output?jobId=${encodeURIComponent(jobId)}&since=${lastSeq}&kanbanTaskId=${taskId}`;
+          const autoRunParam = automationRunId ? `&automationRunId=${automationRunId}` : "";
+          const url = `/api/admin/runbook-jobs/output?jobId=${encodeURIComponent(jobId)}&since=${lastSeq}&kanbanTaskId=${taskId}${autoRunParam}`;
           const pollRes = await fetchWithAuth(url);
           if (!pollRes.ok) throw new Error("poll failed");
           const data = await pollRes.json() as {

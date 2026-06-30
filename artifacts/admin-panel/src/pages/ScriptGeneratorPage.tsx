@@ -1996,13 +1996,14 @@ function InlineScriptRunner({
         setRunning(false);
         return;
       }
-      const { jobId } = await res.json() as { jobId: string };
+      const { jobId, automationRunId } = await res.json() as { jobId: string; automationRunId?: number };
       let lastSeq = -1;
 
       const poll = async (): Promise<void> => {
         if (abortedRef.current) return;
         try {
-          const pollRes = await fetchWithAuth(`/api/admin/runbook-jobs/output?jobId=${encodeURIComponent(jobId)}&since=${lastSeq}`);
+          const autoRunParam = automationRunId ? `&automationRunId=${automationRunId}` : "";
+          const pollRes = await fetchWithAuth(`/api/admin/runbook-jobs/output?jobId=${encodeURIComponent(jobId)}&since=${lastSeq}${autoRunParam}`);
           if (!pollRes.ok) throw new Error("poll failed");
           const data = await pollRes.json() as { status: string; terminal: boolean; lines: Array<{ sequence: number; text: string }> };
           if (abortedRef.current) return;

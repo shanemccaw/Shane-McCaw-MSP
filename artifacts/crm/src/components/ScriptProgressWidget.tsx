@@ -89,11 +89,13 @@ export default function ScriptProgressWidget() {
     ? run.currentModuleName
       ? `${run.currentPackageName} — ${run.currentModuleName}`
       : run.currentPackageName
-    : isCompleted
-      ? "Setup complete"
-      : isFailed
-        ? "Setup paused"
-        : "Preparing scripts…";
+    : isActive && run.lastLogSnippet
+      ? run.lastLogSnippet
+      : isCompleted
+        ? "Setup complete"
+        : isFailed
+          ? "Setup paused"
+          : "Preparing scripts…";
 
   const stepLine = run.modulesTotal > 0
     ? `${isCompleted ? "Completed" : isFailed ? "Stopped at"  : "Configuring…"} ${run.modulesCompleted} of ${run.modulesTotal} steps`

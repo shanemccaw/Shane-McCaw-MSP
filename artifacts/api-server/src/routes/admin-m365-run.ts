@@ -573,6 +573,7 @@ router.post("/admin/run-script", requireAdmin, async (req: Request, res: Respons
         status: "running",
         modulesTotal: 1,
         modulesCompleted: 0,
+        lastLogSnippet: resolvedRunbookName,
       }).returning({ id: clientAutomationRunsTable.id });
       automationRunId = autoRun?.id;
     } catch (err) {
