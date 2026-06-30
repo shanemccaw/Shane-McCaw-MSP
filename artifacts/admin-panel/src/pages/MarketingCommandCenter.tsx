@@ -7167,8 +7167,11 @@ function CampaignBuilderWizard({ fetchWithAuth }: { fetchWithAuth: (url: string,
                 <textarea value={goal} onChange={e => setGoal(e.target.value)} rows={3} placeholder="e.g. Generate 20 qualified leads for Microsoft Copilot workshops…"
                   className="mt-1 w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-sm text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60 resize-none" />
               </div>
-              <button onClick={() => setStep(3)} disabled={!goal.trim()}
-                className="px-6 py-2 rounded-lg bg-[#0078D4] text-white text-sm font-semibold hover:bg-[#0078D4]/80 disabled:opacity-40 transition-colors">Next →</button>
+              <div className="flex gap-2">
+                <button onClick={() => setStep(1)} className="px-4 py-2 rounded-lg border border-[#30363D] text-[#7D8590] text-sm hover:text-[#E6EDF3] transition-colors">← Back</button>
+                <button onClick={() => setStep(3)} disabled={!goal.trim()}
+                  className="px-6 py-2 rounded-lg bg-[#0078D4] text-white text-sm font-semibold hover:bg-[#0078D4]/80 disabled:opacity-40 transition-colors">Next →</button>
+              </div>
             </div>
           )}
 
