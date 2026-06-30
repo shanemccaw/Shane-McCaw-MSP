@@ -31,8 +31,8 @@ router.post("/push/subscribe", requireAdmin, async (req: Request, res: Response)
       .insert(pushSubscriptionsTable)
       .values({ userId, endpoint, p256dh: keys.p256dh, auth: keys.auth })
       .onConflictDoUpdate({
-        target: pushSubscriptionsTable.endpoint,
-        set: { userId, p256dh: keys.p256dh, auth: keys.auth },
+        target: [pushSubscriptionsTable.userId, pushSubscriptionsTable.endpoint],
+        set: { p256dh: keys.p256dh, auth: keys.auth },
       });
     res.json({ ok: true });
   } catch (e) {

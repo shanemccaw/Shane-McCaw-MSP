@@ -267,6 +267,8 @@ app.listen(port, (err) => {
     logger.warn({ err }, "Migration: powershell_scripts.source_task_id column failed (non-fatal)");
   });
 
+  // push_subscriptions: all four steps run in strict order so the unique
+  // (user_id, endpoint) constraint is guaranteed before any subscribe request.
   pool.query(`
     CREATE TABLE IF NOT EXISTS push_subscriptions (
       id SERIAL PRIMARY KEY,
@@ -274,22 +276,39 @@ app.listen(port, (err) => {
       endpoint TEXT NOT NULL,
       p256dh TEXT NOT NULL,
       auth TEXT NOT NULL,
-      created_at TIMESTAMP NOT NULL DEFAULT NOW(),
-      CONSTRAINT push_subscriptions_endpoint_unique UNIQUE (endpoint)
+      created_at TIMESTAMP NOT NULL DEFAULT NOW()
     )
-  `).then(() => {
+  `)
+  .then(() => {
     logger.info("Migration: push_subscriptions table ensured");
-  }).catch((err: unknown) => {
-    logger.warn({ err }, "Migration: push_subscriptions table failed (non-fatal)");
-  });
-
-  pool.query(`
-    ALTER TABLE push_subscriptions
-    ADD CONSTRAINT IF NOT EXISTS push_subscriptions_endpoint_unique UNIQUE (endpoint)
-  `).then(() => {
-    logger.info("Migration: push_subscriptions unique endpoint constraint ensured");
-  }).catch(() => {
-    /* constraint may already exist — non-fatal */
+    return pool.query(`
+      DELETE FROM push_subscriptions
+      WHERE id NOT IN (
+        SELECT DISTINCT ON (user_id, endpoint) id
+        FROM push_subscriptions
+        ORDER BY user_id, endpoint, id DESC
+      )
+    `);
+  })
+  .then(({ rowCount }) => {
+    if ((rowCount ?? 0) > 0) logger.info({ rowCount }, "Migration: removed duplicate push_subscriptions rows");
+    return pool.query(`
+      ALTER TABLE push_subscriptions
+      DROP CONSTRAINT IF EXISTS push_subscriptions_endpoint_unique
+    `);
+  })
+  .then(() => {
+    logger.info("Migration: dropped old push_subscriptions_endpoint_unique constraint (if existed)");
+    return pool.query(`
+      CREATE UNIQUE INDEX IF NOT EXISTS push_subscriptions_user_endpoint_uidx
+      ON push_subscriptions (user_id, endpoint)
+    `);
+  })
+  .then(() => {
+    logger.info("Migration: push_subscriptions unique (user_id, endpoint) index ensured");
+  })
+  .catch((err: unknown) => {
+    logger.error({ err }, "Migration: push_subscriptions setup failed — subscribe endpoint may return 500 until resolved");
   });
 
   pool.query(`
