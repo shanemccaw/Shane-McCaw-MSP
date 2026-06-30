@@ -58,6 +58,7 @@ function buildContractHtml(
   getSelections: (s: Service) => WizardSelection[],
   clientInfo?: { company?: string; address?: string; phone?: string; email?: string },
   coupon?: { code: string; discountAmount: number; discountedTotal: number } | null,
+  isFree?: boolean,
 ): string {
   const hasRecurring = services.some(s => s.billingType === "recurring_monthly");
   const hasOneTime = services.some(s => s.billingType === "one_time");
@@ -175,16 +176,22 @@ function buildContractHtml(
       </tbody>
     </table>
 
-    <h3 style="${HEADING_STYLE}">2. Fees &amp; Payment</h3>
-    ${hasOneTime ? `<p style="${PARA_STYLE}">One-time services are payable in full at checkout before work commences. No additional charges will be incurred for the standard deliverables listed above.</p>` : ""}
+    <h3 style="${HEADING_STYLE}">2. ${isFree ? "Complimentary Service" : "Fees &amp; Payment"}</h3>
+    ${isFree
+      ? `<p style="${PARA_STYLE}">This is a complimentary service provided at no charge. No payment is required. Shane McCaw Consulting LLC reserves the right to modify or withdraw complimentary offers at any time without prior notice.</p>`
+      : `${hasOneTime ? `<p style="${PARA_STYLE}">One-time services are payable in full at checkout before work commences. No additional charges will be incurred for the standard deliverables listed above.</p>` : ""}
     ${hasRecurring ? `<p style="${PARA_STYLE}">Monthly retainer services are billed at the stated monthly rate, payable in advance on a recurring monthly basis. Either party may cancel a monthly subscription with 30 days written notice. Cancellation takes effect at the end of the current billing period.</p>` : ""}
-    <p style="${PARA_STYLE}">No refunds will be issued for one-time services once work has commenced. Monthly retainer fees for the current period are non-refundable on cancellation.</p>
+    <p style="${PARA_STYLE}">No refunds will be issued for one-time services once work has commenced. Monthly retainer fees for the current period are non-refundable on cancellation.</p>`
+    }
 
     <h3 style="${HEADING_STYLE}">3. Scope</h3>
     <p style="${PARA_STYLE}">This agreement covers only the deliverables specified in Section 1. Any additional work beyond this scope must be agreed in writing and may be subject to additional fees.</p>
 
     <h3 style="${HEADING_STYLE}">4. Delivery</h3>
-    <p style="${PARA_STYLE}">For one-time services, Consultant will deliver the agreed outputs within the stated turnaround period after receipt of payment and any required access or information from Client. Work will not commence until both payment is confirmed and all necessary access has been granted. For monthly retainers, Consultant will perform the described ongoing services throughout each billing period.</p>
+    ${isFree
+      ? `<p style="${PARA_STYLE}">Consultant will deliver the agreed outputs automatically upon execution of this agreement and receipt of any required access or information from Client. Delivery is initiated immediately after signing.</p>`
+      : `<p style="${PARA_STYLE}">For one-time services, Consultant will deliver the agreed outputs within the stated turnaround period after receipt of payment and any required access or information from Client. Work will not commence until both payment is confirmed and all necessary access has been granted. For monthly retainers, Consultant will perform the described ongoing services throughout each billing period.</p>`
+    }
 
     <h3 style="${HEADING_STYLE}">5. Revisions (One-Time Services)</h3>
     <p style="${PARA_STYLE}">One round of revisions is included within the scope of each one-time service. Additional revisions are available at Consultant's standard hourly rate.</p>
@@ -193,10 +200,16 @@ function buildContractHtml(
     <p style="${PARA_STYLE}">Each party agrees to keep the other party's confidential information confidential and not to disclose it to any third party without prior written consent. This obligation survives termination of this agreement.</p>
 
     <h3 style="${HEADING_STYLE}">7. Intellectual Property</h3>
-    <p style="${PARA_STYLE}">Upon receipt of full payment (or, for ongoing retainers, upon payment for the relevant billing period), all deliverables produced by Consultant for Client under this agreement become the sole property of Client.</p>
+    <p style="${PARA_STYLE}">${isFree
+      ? "Upon execution of this agreement, all deliverables produced by Consultant for Client under this agreement become the sole property of Client."
+      : "Upon receipt of full payment (or, for ongoing retainers, upon payment for the relevant billing period), all deliverables produced by Consultant for Client under this agreement become the sole property of Client."
+    }</p>
 
     <h3 style="${HEADING_STYLE}">8. Limitation of Liability</h3>
-    <p style="${PARA_STYLE}">Consultant's total liability under this agreement shall not exceed the total fees paid in the 12 months prior to any claim. Consultant is not liable for any indirect, incidental, or consequential damages.</p>
+    <p style="${PARA_STYLE}">${isFree
+      ? "Consultant's total liability under this agreement shall not exceed $100. Consultant is not liable for any indirect, incidental, or consequential damages."
+      : "Consultant's total liability under this agreement shall not exceed the total fees paid in the 12 months prior to any claim. Consultant is not liable for any indirect, incidental, or consequential damages."
+    }</p>
 
     <h3 style="${HEADING_STYLE}">9. Independent Contractor</h3>
     <p style="${PARA_STYLE}">Consultant is an independent contractor and not an employee of Client. Nothing in this agreement shall create any partnership, joint venture, agency, franchise, or employment relationship between the parties.</p>
@@ -657,6 +670,7 @@ export default function OnboardingContract() {
   const monthlyTotal = services
     .filter(s => s.billingType === "recurring_monthly")
     .reduce((sum, s) => sum + getDisplayPrice(s), 0);
+  const isFree = oneTimeTotal === 0 && monthlyTotal === 0;
 
   return (
     <div className="min-h-screen bg-[#F7F9FC]">
@@ -673,7 +687,7 @@ export default function OnboardingContract() {
             <span>→</span>
             <span className="text-white font-semibold">2. Sign agreement</span>
             <span>→</span>
-            <span>3. Pay & confirm</span>
+            <span>{isFree ? "3. Confirm" : "3. Pay & confirm"}</span>
           </div>
         </div>
       </div>
@@ -692,7 +706,7 @@ export default function OnboardingContract() {
 
       <div className="max-w-4xl mx-auto px-4 sm:px-6 py-6 sm:py-10">
         <div className="bg-white border border-border rounded-xl px-5 py-4 mb-6">
-          <p className="text-xs text-muted-foreground mb-3">You're purchasing</p>
+          <p className="text-xs text-muted-foreground mb-3">{isFree ? "You're claiming" : "You're purchasing"}</p>
           <div className="space-y-2">
             {services.map(s => {
               const sels = wizardSelectionsData[String(s.id)] ?? [];
@@ -719,7 +733,10 @@ export default function OnboardingContract() {
                         </span>
                       )}
                     </div>
-                    <span className="font-bold text-[#0078D4] text-sm">{displayPrice}</span>
+                    {isFree
+                      ? <span className="inline-flex items-center gap-1 text-xs font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-full px-2.5 py-0.5">Free</span>
+                      : <span className="font-bold text-[#0078D4] text-sm">{displayPrice}</span>
+                    }
                   </div>
                   {sels.length > 0 && (
                     <div className="mt-1 ml-2 space-y-0.5">
@@ -786,8 +803,8 @@ export default function OnboardingContract() {
                 )}
               </div>
 
-              {/* Early Client Offer banner — visible while the TESTIMONIAL coupon is valid in the DB */}
-              {offerAvailable && (
+              {/* Early Client Offer banner — visible while the TESTIMONIAL coupon is valid in the DB, hidden for free services */}
+              {offerAvailable && !isFree && (
                 <div className="mt-3 rounded-lg border border-[#0078D4]/40 bg-[#0078D4]/5 px-4 py-3">
                   <p className="text-sm font-semibold text-[#0A2540] mb-1">Early Client Offer</p>
                   <p className="text-sm text-muted-foreground mb-2.5">
@@ -868,11 +885,13 @@ export default function OnboardingContract() {
                 (s) => wizardSelectionsData[String(s.id)] ?? [],
                 {
                   company,
+
                   address: [street, city && addrState ? `${city}, ${addrState}` : city || addrState, zip].filter(Boolean).join(" "),
                   phone,
                   email: user?.email ?? guestInfo.email,
                 },
                 appliedCoupon,
+                isFree,
               ) }}
             />
           </div>
@@ -997,7 +1016,10 @@ export default function OnboardingContract() {
                   className="mt-0.5 w-4 h-4 accent-[#0078D4] disabled:opacity-50"
                 />
                 <span className="text-sm text-[#0A2540]">
-                  I have read and agree to the Service Agreement above. I understand that payment is required before work commences, and fees are non-refundable once work has begun.
+                  {isFree
+                    ? "I have read and agree to the Service Agreement above. I understand this is a complimentary automated service delivered upon signing."
+                    : "I have read and agree to the Service Agreement above. I understand that payment is required before work commences, and fees are non-refundable once work has begun."
+                  }
                   {!hasScrolled && <span className="block text-xs text-muted-foreground mt-1">Please scroll through the full agreement first.</span>}
                 </span>
               </label>
@@ -1069,6 +1091,8 @@ export default function OnboardingContract() {
               >
                 {submitting ? (
                   <><Loader2 className="w-4 h-4 animate-spin" /> Processing…</>
+                ) : isFree ? (
+                  <>Sign & Get Free Access <ArrowRight className="w-4 h-4" /></>
                 ) : (
                   <>Sign & Continue to Payment <ArrowRight className="w-4 h-4" /></>
                 )}
