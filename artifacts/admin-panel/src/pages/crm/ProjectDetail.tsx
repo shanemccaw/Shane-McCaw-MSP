@@ -1586,8 +1586,16 @@ export default function ProjectDetailPage() {
   const reloadAllRef = useRef(reloadAll);
   reloadAllRef.current = reloadAll;
 
+  // Always holds the latest token so onerror can detect a mid-flight refresh.
+  const accessTokenRef = useRef(accessToken);
+  accessTokenRef.current = accessToken;
+
   useEffect(() => {
     if (!projectId || !accessToken) return;
+    // Capture the token value at the time this effect runs. If accessTokenRef
+    // diverges from this, a proactive token refresh has occurred and the dep
+    // array will fire a clean re-run — we should not start a backoff cycle.
+    const tokenAtMount = accessToken;
     let es: EventSource | null = null;
     let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
     let backoff = 1000;
@@ -1595,7 +1603,11 @@ export default function ProjectDetailPage() {
 
     const connect = () => {
       if (!mounted) return;
-      es = new EventSource(`/api/admin/projects/${projectId}/kanban-events?token=${encodeURIComponent(accessToken)}`);
+      // If the token has been refreshed since this effect mounted, the dep-array
+      // re-run will create a fresh connection. Bail out to avoid a stale-token
+      // connection racing against the incoming re-run.
+      if (accessTokenRef.current !== tokenAtMount) return;
+      es = new EventSource(`/api/admin/projects/${projectId}/kanban-events?token=${encodeURIComponent(tokenAtMount)}`);
 
       es.onmessage = (event) => {
         try {
@@ -1617,6 +1629,11 @@ export default function ProjectDetailPage() {
         es?.close();
         es = null;
         if (!mounted) return;
+        // If the token was refreshed while we were connected, the dep-array
+        // change will tear down this effect and start a fresh connection with
+        // no backoff and no unnecessary data reload. Don't compete with it.
+        if (accessTokenRef.current !== tokenAtMount) return;
+        // Genuine network error — backoff and reload to catch any missed events.
         reconnectTimer = setTimeout(() => {
           backoff = Math.min(backoff * 2, 30_000);
           void reloadAllRef.current();
@@ -1632,7 +1649,7 @@ export default function ProjectDetailPage() {
       if (reconnectTimer) clearTimeout(reconnectTimer);
       es?.close();
     };
-  }, [projectId, accessToken]); // reloadAll accessed via ref above
+  }, [projectId, accessToken]); // reloadAll and accessTokenRef accessed via refs above
 
   const handleTasksChange = useCallback((updater: (tasks: KanbanTask[]) => KanbanTask[]) => {
     setTasks(prev => updater(prev));

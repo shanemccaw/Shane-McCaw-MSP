@@ -768,11 +768,19 @@ export default function PortalProjectDetail() {
   const loadProjectRef = useRef(loadProject);
   loadProjectRef.current = loadProject;
 
+  // Always holds the latest token so onerror can detect a mid-flight refresh.
+  const accessTokenRef = useRef(accessToken);
+  accessTokenRef.current = accessToken;
+
   useEffect(() => {
     if (!params.id || !accessToken) return;
     const projectId = parseInt(params.id, 10);
     if (isNaN(projectId)) return;
 
+    // Capture the token value at the time this effect runs. If accessTokenRef
+    // diverges from this, a proactive token refresh has occurred and the dep
+    // array will fire a clean re-run — we should not start a backoff cycle.
+    const tokenAtMount = accessToken;
     let es: EventSource | null = null;
     let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
     let backoff = 1000;
@@ -780,7 +788,11 @@ export default function PortalProjectDetail() {
 
     const connect = () => {
       if (!mounted) return;
-      es = new EventSource(`/api/portal/projects/${projectId}/kanban-events?token=${encodeURIComponent(accessToken)}`);
+      // If the token has been refreshed since this effect mounted, the dep-array
+      // re-run will create a fresh connection. Bail out to avoid a stale-token
+      // connection racing against the incoming re-run.
+      if (accessTokenRef.current !== tokenAtMount) return;
+      es = new EventSource(`/api/portal/projects/${projectId}/kanban-events?token=${encodeURIComponent(tokenAtMount)}`);
 
       es.onmessage = (event) => {
         try {
@@ -805,6 +817,11 @@ export default function PortalProjectDetail() {
         es?.close();
         es = null;
         if (!mounted) return;
+        // If the token was refreshed while we were connected, the dep-array
+        // change will tear down this effect and start a fresh connection with
+        // no backoff and no unnecessary data reload. Don't compete with it.
+        if (accessTokenRef.current !== tokenAtMount) return;
+        // Genuine network error — backoff and reload to catch any missed events.
         reconnectTimer = setTimeout(() => {
           backoff = Math.min(backoff * 2, 30_000);
           loadProjectRef.current();
@@ -820,7 +837,7 @@ export default function PortalProjectDetail() {
       if (reconnectTimer) clearTimeout(reconnectTimer);
       es?.close();
     };
-  }, [params.id, accessToken]); // loadProject accessed via ref above
+  }, [params.id, accessToken]); // loadProject and accessTokenRef accessed via refs above
 
   useEffect(() => { if (secondaryTab === "documents") void loadSpFiles(); }, [secondaryTab, loadSpFiles]);
 
