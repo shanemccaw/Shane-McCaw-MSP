@@ -24,6 +24,21 @@ if (Number.isNaN(port) || port <= 0) {
 
 validateStripeKeyOnStartup();
 
+// Warn at startup when VAPID push-notification keys are absent.
+// Without them all calls to sendWebPushToAdmins() are silently skipped.
+(function checkVapidConfig() {
+  const missing: string[] = [];
+  if (!process.env.VAPID_PUBLIC_KEY) missing.push("VAPID_PUBLIC_KEY");
+  if (!process.env.VAPID_PRIVATE_KEY) missing.push("VAPID_PRIVATE_KEY");
+  if (missing.length > 0) {
+    logger.warn(
+      { missingSecrets: missing },
+      "Browser push notifications are disabled — set VAPID_PUBLIC_KEY and VAPID_PRIVATE_KEY in Replit Secrets. " +
+        "Generate keys with: npx web-push generate-vapid-keys",
+    );
+  }
+})();
+
 // Warn at startup when Graph mail env vars are absent so the problem is
 // surfaced immediately in the workflow log, not only when an outreach is attempted.
 (function checkGraphMailConfig() {
