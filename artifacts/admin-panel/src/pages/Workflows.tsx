@@ -1539,12 +1539,10 @@ export default function WorkflowsPage() {
 
   const fetchPublishedScripts = useCallback(async () => {
     try {
-      const res = await fetchWithAuth("/api/admin/runbooks");
+      const res = await fetchWithAuth("/api/admin/ps-scripts/published");
       if (res.ok) {
-        const data = await res.json() as { configured: boolean; runbooks?: { name: string }[] };
-        if (data.configured && data.runbooks) {
-          setPublishedScripts(data.runbooks.map(r => ({ id: r.name, title: r.name })));
-        }
+        const data = await res.json() as { id: string; title: string; azureRunbookName: string | null }[];
+        setPublishedScripts(data.map(r => ({ id: r.id, title: r.title })));
       }
     } catch { /* ignore */ }
   }, [fetchWithAuth]);
