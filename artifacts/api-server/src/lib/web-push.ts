@@ -23,6 +23,7 @@ export interface WebPushPayload {
   title: string;
   body?: string;
   linkPath?: string | null;
+  playSound?: boolean;
 }
 
 export async function sendWebPushToAdmins(payload: WebPushPayload): Promise<void> {
@@ -54,6 +55,7 @@ export async function sendWebPushToAdmins(payload: WebPushPayload): Promise<void
     title: payload.title,
     body: payload.body ?? "",
     linkPath: payload.linkPath ?? null,
+    playSound: payload.playSound ?? false,
   });
 
   const staleIds: number[] = [];

@@ -3307,6 +3307,7 @@ async function provisionOnboardingProject(
     title: `New onboarding purchase: ${serviceNames.join(", ")}`,
     body: `${buyer.name ?? buyer.email} purchased ($${totalAmountDollars}). Project #${project.id} auto-created.`,
     linkPath: `/dashboard`,
+    playSound: true,
   });
 
   // ── Notify client ─────────────────────────────────────────────────────────
@@ -3836,6 +3837,7 @@ async function processStripeEvent(req: Request, event: import("stripe").Stripe.E
             title: `New purchase: ${buyer?.name ?? buyer?.email ?? "A client"}`,
             body: `${serviceName} — $${amountDollars}`,
             linkPath: `/crm/invoices/${newInvoice?.id ?? ""}`,
+            playSound: true,
           });
         } catch {}
       })();
@@ -3965,6 +3967,7 @@ async function processStripeEvent(req: Request, event: import("stripe").Stripe.E
               title: `New purchase: ${buyer?.name ?? buyer?.email ?? "A client"}`,
               body: `${serviceLabel} — $${totalDollars}`,
               linkPath: `/crm/invoices`,
+              playSound: true,
             });
           } catch {}
         })();
