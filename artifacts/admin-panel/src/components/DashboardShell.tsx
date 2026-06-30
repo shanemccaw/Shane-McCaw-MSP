@@ -319,11 +319,18 @@ function TopHeader({
 
       {/* Live & campaign badges — left of search, flex-wrap to handle many campaigns */}
       <div className="hidden md:flex items-center gap-1.5 flex-wrap flex-1 min-w-0">
-        {liveVisitors !== null && liveVisitors > 0 && (
-          <span className="flex items-center gap-1 bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-[10px] font-semibold px-2 py-1 rounded-full whitespace-nowrap flex-shrink-0">
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-            <span key={liveVisitors} className="count-pop tabular-nums">{liveVisitors}</span>{" live now"}
-          </span>
+        {liveVisitors !== null && (
+          liveVisitors > 0 ? (
+            <span className="flex items-center gap-1 bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-[10px] font-semibold px-2 py-1 rounded-full whitespace-nowrap flex-shrink-0">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+              <span key={liveVisitors} className="count-pop tabular-nums">{liveVisitors}</span>{" live now"}
+            </span>
+          ) : (
+            <span className="flex items-center gap-1 bg-[#161B22] border border-[#30363D] text-[#484F58] text-[10px] font-semibold px-2 py-1 rounded-full whitespace-nowrap flex-shrink-0">
+              <span className="w-1.5 h-1.5 rounded-full bg-[#30363D]" />
+              0 live now
+            </span>
+          )
         )}
         {campaignBadges.map(c => (
           <span
