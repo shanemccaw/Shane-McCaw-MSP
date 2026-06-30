@@ -1542,7 +1542,12 @@ export default function WorkflowsPage() {
       const res = await fetchWithAuth("/api/admin/ps-scripts/published");
       if (res.ok) {
         const data = await res.json() as { id: string; title: string; azureRunbookName: string | null }[];
-        setPublishedScripts(data.map(r => ({ id: r.id, title: r.title })));
+        // Use azureRunbookName as the ID so it matches what's stored in task.runbookId
+        setPublishedScripts(
+          data
+            .filter(r => r.azureRunbookName)
+            .map(r => ({ id: r.azureRunbookName as string, title: r.title }))
+        );
       }
     } catch { /* ignore */ }
   }, [fetchWithAuth]);
