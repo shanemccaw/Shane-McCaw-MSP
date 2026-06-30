@@ -3361,6 +3361,9 @@ function LandingPagesPanel({ fetchWithAuth }: { fetchWithAuth: (url: string, opt
                     {page.linkedServiceId && serviceMap.get(page.linkedServiceId)?.visibility === "landing_page_only" && (
                       <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-amber-500/20 text-amber-400 flex-shrink-0">🔒 {serviceMap.get(page.linkedServiceId)!.name}</span>
                     )}
+                    {page.published && (!page.linkedServiceId || serviceMap.get(page.linkedServiceId)?.visibility !== "landing_page_only") && (
+                      <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-amber-500/20 text-amber-300 flex-shrink-0" title="This page is live but has no active service gate — anyone can view it">⚠ No gate</span>
+                    )}
                   </div>
                   {page.published ? (
                     <p className="text-xs text-emerald-400/80 truncate mt-0.5 font-mono">{getPublicUrl(page.slug)}</p>
