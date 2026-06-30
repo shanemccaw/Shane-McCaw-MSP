@@ -156,7 +156,8 @@ export default function LandingPage() {
   }
 
   const ctaHref = page.cta?.href ?? "/contact";
-  const ctaText = page.cta?.buttonText ?? "Get Started";
+  const defaultCtaText = isLpOnly && !hasServiceAccess ? "Sign Up to Access" : "Get Started";
+  const ctaText = page.cta?.buttonText?.trim() || defaultCtaText;
 
   const blocks = page.layoutBlocks ?? [];
   const whyThisMatters = getBlock<WhyThisMattersContent>(blocks, "why_this_matters");

@@ -3132,6 +3132,8 @@ function LandingPagesPanel({ fetchWithAuth }: { fetchWithAuth: (url: string, opt
   const [suggestError, setSuggestError] = useState<string | null>(null);
   const [publicSiteUrl, setPublicSiteUrl] = useState("");
   const [copiedId, setCopiedId] = useState<number | null>(null);
+  const [ctaTextEdits, setCtaTextEdits] = useState<Record<number, string>>({});
+  const [ctaTextSaving, setCtaTextSaving] = useState<Record<number, boolean>>({});
 
   const [lpCampaigns, setLpCampaigns] = useState<Campaign[]>([]);
   const [lpOffers, setLpOffers] = useState<Offer[]>([]);
@@ -3225,6 +3227,25 @@ function LandingPagesPanel({ fetchWithAuth }: { fetchWithAuth: (url: string, opt
     });
     const updated = await r.json() as LandingPage;
     setPages(prev => prev.map(p => p.id === page.id ? updated : p));
+  };
+
+  const patchCtaButtonText = async (page: LandingPage, buttonText: string) => {
+    setCtaTextSaving(prev => ({ ...prev, [page.id]: true }));
+    try {
+      const trimmed = buttonText.trim();
+      const baseCta = page.cta ?? { href: "/contact" };
+      const newCta = trimmed
+        ? { ...baseCta, buttonText: trimmed }
+        : { ...baseCta, buttonText: null };
+      const r = await fetchWithAuth(`${API}/admin/marketing/landing-pages/${page.id}`, {
+        method: "PATCH", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ cta: newCta }),
+      });
+      const updated = await r.json() as LandingPage;
+      setPages(prev => prev.map(p => p.id === page.id ? updated : p));
+    } finally {
+      setCtaTextSaving(prev => ({ ...prev, [page.id]: false }));
+    }
   };
 
   const togglePublish = async (page: LandingPage) => {
@@ -3422,6 +3443,52 @@ function LandingPagesPanel({ fetchWithAuth }: { fetchWithAuth: (url: string, opt
                       )}
                     </div>
                   )}
+                  {(() => {
+                    const isGated = page.linkedServiceId ? serviceMap.get(page.linkedServiceId)?.visibility === "landing_page_only" : false;
+                    const currentText = ctaTextEdits[page.id] ?? page.cta?.buttonText ?? "";
+                    const placeholder = isGated ? "Sign Up to Access" : "Get Started";
+                    return (
+                      <div>
+                        <label className="text-[10px] text-[#7D8590] uppercase tracking-wide">
+                          CTA Button Text
+                        </label>
+                        {isGated && !page.cta?.buttonText && (
+                          <p className="text-[9px] text-amber-400/80 mt-0.5">
+                            🔒 Gated page — defaults to "Sign Up to Access" for visitors. Override below.
+                          </p>
+                        )}
+                        <div className="flex items-center gap-2 mt-1">
+                          <input
+                            type="text"
+                            value={currentText}
+                            placeholder={placeholder}
+                            onChange={e => setCtaTextEdits(prev => ({ ...prev, [page.id]: e.target.value }))}
+                            className="flex-1 bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-1.5 text-sm text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60"
+                          />
+                          <button
+                            onClick={() => { void patchCtaButtonText(page, currentText); }}
+                            disabled={ctaTextSaving[page.id] || currentText === (page.cta?.buttonText ?? "")}
+                            className="text-[10px] px-2 py-1.5 rounded border border-[#0078D4]/40 text-[#58A6FF] hover:bg-[#0078D4]/10 transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex-shrink-0"
+                          >
+                            {ctaTextSaving[page.id] ? "Saving…" : "Save"}
+                          </button>
+                          {page.cta?.buttonText && (
+                            <button
+                              onClick={() => {
+                                setCtaTextEdits(prev => ({ ...prev, [page.id]: "" }));
+                                void patchCtaButtonText(page, "");
+                              }}
+                              disabled={ctaTextSaving[page.id]}
+                              title="Clear override — revert to default"
+                              className="text-[10px] px-2 py-1.5 rounded border border-[#30363D] text-[#484F58] hover:text-red-400 hover:border-red-400/40 transition-colors disabled:opacity-40 flex-shrink-0"
+                            >
+                              ✕ Clear
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })()}
                   {page.valuePropBlocks.length > 0 && (
                     <>
                       <p className="text-xs text-[#7D8590]">{page.headline}</p>
