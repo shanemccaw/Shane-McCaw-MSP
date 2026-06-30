@@ -553,15 +553,31 @@ router.post("/admin/run-script", requireAdmin, async (req: Request, res: Respons
       .where(eq(powershellScriptsTable.id, libraryScriptId))
       .limit(1);
     if (!script) {
-      res.status(404).json({ error: `Library script ${libraryScriptId} not found` });
-      return;
+      // The kanban enrichment may have injected a script_modules UUID as scriptId —
+      // fall back to checking script_modules and treat it like the module path.
+      const [mod] = await db
+        .select()
+        .from(scriptModulesTable)
+        .where(eq(scriptModulesTable.id, libraryScriptId))
+        .limit(1);
+      if (!mod) {
+        res.status(404).json({ error: `Library script ${libraryScriptId} not found` });
+        return;
+      }
+      resolvedRunbookName = mod.filename
+        .replace(/\.ps1$/i, "")
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-+|-+$/g, "")
+        .slice(0, 63) || "script";
+    } else {
+      if (!script.azureRunbookName) {
+        res.status(400).json({ error: "This script has not been pushed to Azure Automation yet — push it first from the Library editor" });
+        return;
+      }
+      resolvedRunbookName = script.azureRunbookName;
+      resolvedLibraryScriptId = libraryScriptId;
     }
-    if (!script.azureRunbookName) {
-      res.status(400).json({ error: "This script has not been pushed to Azure Automation yet — push it first from the Library editor" });
-      return;
-    }
-    resolvedRunbookName = script.azureRunbookName;
-    resolvedLibraryScriptId = libraryScriptId;
   }
 
   const kanbanTaskId: number | undefined = "kanbanTaskId" in parsed.data ? (parsed.data.kanbanTaskId ?? undefined) : undefined;
