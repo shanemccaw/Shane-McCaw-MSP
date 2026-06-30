@@ -12,7 +12,7 @@
  */
 
 import { Router, type IRouter, type Request, type Response } from "express";
-import { db, azureTenantCredentialsTable, clientAppRegistrationsTable, clientAutomationRunsTable, usersTable, kanbanTasksTable, runbookJobHistoryTable } from "@workspace/db";
+import { db, azureTenantCredentialsTable, clientAppRegistrationsTable, clientAutomationRunsTable, usersTable, projectsTable, kanbanTasksTable, runbookJobHistoryTable } from "@workspace/db";
 import { eq, desc } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/requireAuth";
 import { getCredential } from "../lib/azure-keyvault";
@@ -172,6 +172,30 @@ router.post("/admin/runbook-jobs", requireAdmin, async (req: Request, res: Respo
         logger.error({ kvErr, secretName: cred.keyVaultSecretName }, "admin-script-runner: Key Vault fetch failed");
         res.status(502).json({ error: `Key Vault error: ${msg}` });
         return;
+      }
+    }
+
+    // For the legacy credentialId path: try to resolve clientUserId via kanban task → project
+    // so we can still create a clientAutomationRunsTable row and show CRM progress.
+    if (!clientUserIdForRun && kanbanTaskId) {
+      try {
+        const [taskRow] = await db
+          .select({ projectId: kanbanTasksTable.projectId })
+          .from(kanbanTasksTable)
+          .where(eq(kanbanTasksTable.id, kanbanTaskId))
+          .limit(1);
+        if (taskRow?.projectId) {
+          const [projectRow] = await db
+            .select({ clientUserId: projectsTable.clientUserId })
+            .from(projectsTable)
+            .where(eq(projectsTable.id, taskRow.projectId))
+            .limit(1);
+          if (projectRow?.clientUserId) {
+            clientUserIdForRun = projectRow.clientUserId;
+          }
+        }
+      } catch {
+        // non-fatal — proceed without automation run
       }
     }
 
