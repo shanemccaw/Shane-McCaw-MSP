@@ -25,6 +25,81 @@ import { Readable } from "stream";
 
 const router: IRouter = Router();
 
+// ─── Kanban real-time SSE registry ────────────────────────────────────────────
+// One Set<Response> per projectId; entries are removed on connection close.
+const kanbanSSEClients = new Map<number, Set<Response>>();
+
+function broadcastKanbanChange(projectId: number, payload: { action: string; task: unknown }): void {
+  const clients = kanbanSSEClients.get(projectId);
+  if (!clients?.size) return;
+  const line = `data: ${JSON.stringify(payload)}\n\n`;
+  for (const res of clients) {
+    try { res.write(line); } catch { /* disconnected — will be cleaned up on close event */ }
+  }
+}
+
+// Helper to set up common SSE response headers and keep-alive, returns cleanup fn
+function setupSSE(req: Request, res: Response, projectId: number): void {
+  res.setHeader("Content-Type", "text/event-stream");
+  res.setHeader("Cache-Control", "no-cache");
+  res.setHeader("Connection", "keep-alive");
+  res.flushHeaders();
+
+  if (!kanbanSSEClients.has(projectId)) kanbanSSEClients.set(projectId, new Set());
+  const clients = kanbanSSEClients.get(projectId)!;
+  clients.add(res);
+  res.write(": connected\n\n");
+
+  const keepAlive = setInterval(() => { try { res.write(": ping\n\n"); } catch {} }, 25_000);
+
+  req.on("close", () => {
+    clearInterval(keepAlive);
+    clients.delete(res);
+    if (clients.size === 0) kanbanSSEClients.delete(projectId);
+  });
+}
+
+// Admin: subscribe to kanban events for a project (token via query param — EventSource can't send headers)
+router.get("/admin/projects/:id/kanban-events", async (req: Request, res: Response) => {
+  const projectId = parseInt(String(req.params.id ?? ""), 10);
+  if (isNaN(projectId)) { res.status(400).json({ error: "Invalid project ID" }); return; }
+
+  const token = String(req.query.token ?? "");
+  const secret = process.env.JWT_SECRET;
+  if (!secret || !token) { res.status(401).json({ error: "Missing token" }); return; }
+
+  let user: { role: string };
+  try { user = jwt.verify(token, secret) as { role: string }; }
+  catch { res.status(401).json({ error: "Invalid or expired token" }); return; }
+  if (user.role !== "admin") { res.status(403).json({ error: "Admin access required" }); return; }
+
+  setupSSE(req, res, projectId);
+});
+
+// Portal: subscribe to kanban events for a project (token via query param)
+router.get("/portal/projects/:id/kanban-events", async (req: Request, res: Response) => {
+  const projectId = parseInt(String(req.params.id ?? ""), 10);
+  if (isNaN(projectId)) { res.status(400).json({ error: "Invalid project ID" }); return; }
+
+  const token = String(req.query.token ?? "");
+  const secret = process.env.JWT_SECRET;
+  if (!secret || !token) { res.status(401).json({ error: "Missing token" }); return; }
+
+  let user: { id: number; role: string };
+  try { user = jwt.verify(token, secret) as { id: number; role: string }; }
+  catch { res.status(401).json({ error: "Invalid or expired token" }); return; }
+
+  if (user.role === "client") {
+    const [project] = await db.select({ clientUserId: projectsTable.clientUserId })
+      .from(projectsTable).where(eq(projectsTable.id, projectId));
+    if (!project || project.clientUserId !== user.id) {
+      res.status(403).json({ error: "Access denied" }); return;
+    }
+  }
+
+  setupSSE(req, res, projectId);
+});
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 /** Upsert a client account keyed by email. Returns the user id. */
@@ -1962,6 +2037,7 @@ router.patch("/portal/kanban-tasks/:id", requireAuth, async (req: Request, res: 
     });
   }
 
+  if (updated?.projectId) broadcastKanbanChange(updated.projectId, { action: "updated", task: updated });
   res.json(updated);
 });
 
@@ -5089,6 +5165,7 @@ router.post("/admin/kanban-tasks", requireAdmin, async (req: Request, res: Respo
     clientId: createdTaskProject?.clientUserId ?? undefined,
   });
 
+  broadcastKanbanChange(task.projectId, { action: "created", task });
   res.status(201).json(task);
 });
 
@@ -5217,6 +5294,7 @@ router.patch("/admin/kanban-tasks/:id", requireAdmin, async (req: Request, res: 
     });
   }
 
+  broadcastKanbanChange(updated.projectId, { action: "updated", task: updated });
   res.json(updated);
 });
 
@@ -5331,6 +5409,7 @@ router.delete("/admin/kanban-tasks/:id", requireAdmin, async (req: Request, res:
   const [existing] = await db.select({ projectId: kanbanTasksTable.projectId }).from(kanbanTasksTable).where(eq(kanbanTasksTable.id, id));
   await db.delete(kanbanTasksTable).where(eq(kanbanTasksTable.id, id));
   if (existing?.projectId) await syncProjectProgress(existing.projectId);
+  if (existing?.projectId) broadcastKanbanChange(existing.projectId, { action: "deleted", task: { id } });
   res.json({ deleted: id });
 });
 

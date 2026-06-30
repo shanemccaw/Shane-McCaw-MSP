@@ -635,7 +635,7 @@ function SpFileViewerModal({
 
 export default function PortalProjectDetail() {
   const params = useParams<{ id: string }>();
-  const { fetchWithAuth } = useAuth();
+  const { fetchWithAuth, accessToken } = useAuth();
   const [data, setData] = useState<ProjectDetailData | null>(null);
   const [loading, setLoading] = useState(true);
   const [secondaryTab, setSecondaryTab] = useState<SecondaryTab | null>(() => {
@@ -763,6 +763,65 @@ export default function PortalProjectDetail() {
   }, [fetchWithAuth, params.id]);
 
   useEffect(() => { loadClosure(); }, [loadClosure]);
+
+  // ─── Kanban real-time SSE subscription ─────────────────────────────────────
+  const loadProjectRef = useRef(loadProject);
+  loadProjectRef.current = loadProject;
+
+  useEffect(() => {
+    if (!params.id || !accessToken) return;
+    const projectId = parseInt(params.id, 10);
+    if (isNaN(projectId)) return;
+
+    let es: EventSource | null = null;
+    let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+    let backoff = 1000;
+    let mounted = true;
+
+    const connect = () => {
+      if (!mounted) return;
+      es = new EventSource(`/api/portal/projects/${projectId}/kanban-events?token=${encodeURIComponent(accessToken)}`);
+
+      es.onmessage = (event) => {
+        try {
+          const payload = JSON.parse(event.data as string) as { action: string; task: KanbanTask & { id: number } };
+          backoff = 1000;
+          const { action, task } = payload;
+          if (action === "updated") {
+            setData(prev => prev ? { ...prev, tasks: prev.tasks.map(t => t.id === task.id ? { ...t, ...task } : t) } : prev);
+          } else if (action === "created") {
+            setData(prev => {
+              if (!prev) return prev;
+              if (prev.tasks.some(t => t.id === task.id)) return prev;
+              return { ...prev, tasks: [...prev.tasks, task] };
+            });
+          } else if (action === "deleted") {
+            setData(prev => prev ? { ...prev, tasks: prev.tasks.filter(t => t.id !== task.id) } : prev);
+          }
+        } catch { /* ignore malformed events */ }
+      };
+
+      es.onerror = () => {
+        es?.close();
+        es = null;
+        if (!mounted) return;
+        reconnectTimer = setTimeout(() => {
+          backoff = Math.min(backoff * 2, 30_000);
+          loadProjectRef.current();
+          connect();
+        }, backoff);
+      };
+    };
+
+    connect();
+
+    return () => {
+      mounted = false;
+      if (reconnectTimer) clearTimeout(reconnectTimer);
+      es?.close();
+    };
+  }, [params.id, accessToken]); // loadProject accessed via ref above
+
   useEffect(() => { if (secondaryTab === "documents") void loadSpFiles(); }, [secondaryTab, loadSpFiles]);
 
   const changeTab = useCallback((tab: SecondaryTab | null) => {

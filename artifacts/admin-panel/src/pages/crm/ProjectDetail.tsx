@@ -611,7 +611,7 @@ function DroppableColumn({
 type PendingMove = { task: KanbanTask; targetColumn: ColumnKey };
 
 function KanbanBoard({
-  projectId, tasks, steps, onTasksChange, onDelete, fetchWithAuth, toast, onCardClick, onMutation, clientUserId,
+  projectId, tasks, steps, onTasksChange, onDelete, fetchWithAuth, toast, onCardClick, onMutation, onDragStateChange, clientUserId,
 }: {
   projectId: number;
   tasks: KanbanTask[];
@@ -622,6 +622,7 @@ function KanbanBoard({
   toast: ReturnType<typeof useToast>["toast"];
   onCardClick: (task: KanbanTask) => void;
   onMutation: () => void;
+  onDragStateChange?: (draggingId: number | null) => void;
   clientUserId?: number | null;
 })  {
   const [activeTask, setActiveTask] = useState<KanbanTask | null>(null);
@@ -679,6 +680,7 @@ function KanbanBoard({
   const handleDragStart = (event: DragStartEvent) => {
     const task = (event.active.data.current as { task: KanbanTask }).task;
     setActiveTask(task);
+    onDragStateChange?.(task.id);
   };
 
   const handleDragOver = (event: { over: { id: string | number } | null }) => {
@@ -688,6 +690,7 @@ function KanbanBoard({
   const handleDragEnd = (event: DragEndEvent) => {
     setActiveTask(null);
     setOverColumnKey(null);
+    onDragStateChange?.(null);
     const { active, over } = event;
     if (!over) return;
     const task = (active.data.current as { task: KanbanTask }).task;
@@ -982,7 +985,7 @@ export default function ProjectDetailPage() {
   const [, navigate] = useLocation();
   const projectId = params?.id ? parseInt(params.id, 10) : null;
 
-  const { fetchWithAuth } = useAuth();
+  const { fetchWithAuth, accessToken } = useAuth();
   const { toast } = useToast();
 
   const [project, setProject] = useState<Project | null>(null);
@@ -990,6 +993,7 @@ export default function ProjectDetailPage() {
   const [steps, setSteps] = useState<WorkflowStep[]>([]);
   const [tasks, setTasks] = useState<KanbanTask[]>([]);
   const [linkedEmails, setLinkedEmails] = useState<LinkedEmail[]>([]);
+  const draggingIdRef = useRef<number | null>(null);
   const [loading, setLoading] = useState(true);
 
   const completedTaskCount = tasks.filter(t => t.column === "completed").length;
@@ -1483,6 +1487,58 @@ export default function ProjectDetailPage() {
   }, [projectId, fetchWithAuth]);
 
   useEffect(() => { void reloadAll(); }, [reloadAll]);
+
+  // ─── Kanban real-time SSE subscription ─────────────────────────────────────
+  const reloadAllRef = useRef(reloadAll);
+  reloadAllRef.current = reloadAll;
+
+  useEffect(() => {
+    if (!projectId || !accessToken) return;
+    let es: EventSource | null = null;
+    let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+    let backoff = 1000;
+    let mounted = true;
+
+    const connect = () => {
+      if (!mounted) return;
+      es = new EventSource(`/api/admin/projects/${projectId}/kanban-events?token=${encodeURIComponent(accessToken)}`);
+
+      es.onmessage = (event) => {
+        try {
+          const payload = JSON.parse(event.data as string) as { action: string; task: KanbanTask & { id: number } };
+          backoff = 1000;
+          const { action, task } = payload;
+          if (action === "updated") {
+            if (draggingIdRef.current === task.id) return;
+            setTasks(prev => prev.map(t => t.id === task.id ? { ...t, ...task } : t));
+          } else if (action === "created") {
+            setTasks(prev => prev.some(t => t.id === task.id) ? prev : [...prev, task]);
+          } else if (action === "deleted") {
+            setTasks(prev => prev.filter(t => t.id !== task.id));
+          }
+        } catch { /* ignore malformed events */ }
+      };
+
+      es.onerror = () => {
+        es?.close();
+        es = null;
+        if (!mounted) return;
+        reconnectTimer = setTimeout(() => {
+          backoff = Math.min(backoff * 2, 30_000);
+          void reloadAllRef.current();
+          connect();
+        }, backoff);
+      };
+    };
+
+    connect();
+
+    return () => {
+      mounted = false;
+      if (reconnectTimer) clearTimeout(reconnectTimer);
+      es?.close();
+    };
+  }, [projectId, accessToken]); // reloadAll accessed via ref above
 
   const handleTasksChange = useCallback((updater: (tasks: KanbanTask[]) => KanbanTask[]) => {
     setTasks(prev => updater(prev));
@@ -2145,6 +2201,7 @@ export default function ProjectDetailPage() {
           toast={toast}
           onCardClick={handleCardClick}
           onMutation={loadAuditLogs}
+          onDragStateChange={(id) => { draggingIdRef.current = id; }}
           clientUserId={project?.clientUserId}
         />
       </section>
