@@ -527,7 +527,7 @@ function saveLastSeenAt(ts: number): void {
 // ─── DashboardShell ───────────────────────────────────────────────────────────
 
 export default function DashboardShell({ children }: { children: ReactNode }) {
-  const { user, logout, fetchWithAuth } = useAuth();
+  const { user, logout, fetchWithAuth, accessToken } = useAuth();
   const [location] = useLocation();
   const [mobileOpen, setMobileOpen] = useState(false);
 
@@ -538,12 +538,10 @@ export default function DashboardShell({ children }: { children: ReactNode }) {
   // ─── Live visitors ──────────────────────────────────────────────────────────
   const [liveVisitors, setLiveVisitors] = useState<number | null>(null);
   const liveTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const liveAbortRef = useRef<AbortController | null>(null);
 
   // ─── Campaign badges ────────────────────────────────────────────────────────
   const [campaignBadges, setCampaignBadges] = useState<CampaignBadge[]>([]);
   const campaignTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const campaignAbortRef = useRef<AbortController | null>(null);
 
   // ─── Notification drawer ────────────────────────────────────────────────────
   const [notifDrawerOpen, setNotifDrawerOpen] = useState(false);
@@ -602,7 +600,10 @@ export default function DashboardShell({ children }: { children: ReactNode }) {
       }
       return true;
     } catch {
-      return false;
+      // An intentional abort (proactive reconnect or unmount) must be treated as
+      // a clean close (true) so the connect loop schedules a reconnect instead of
+      // falling back to polling.
+      return signal.aborted;
     }
   }, [fetchWithAuth]);
 
@@ -643,7 +644,10 @@ export default function DashboardShell({ children }: { children: ReactNode }) {
       }
       return true;
     } catch {
-      return false;
+      // An intentional abort (proactive reconnect or unmount) must be treated as
+      // a clean close (true) so the connect loop schedules a reconnect instead of
+      // falling back to polling.
+      return signal.aborted;
     }
   }, [fetchWithAuth]);
 
@@ -662,19 +666,53 @@ export default function DashboardShell({ children }: { children: ReactNode }) {
     };
   }, [location, fetchCount]);
 
+  // Returns how many ms until 1 minute before the JWT's exp claim.
+  // Returns null if the token is missing or malformed.
+  const getProactiveReconnectDelayMs = useCallback((token: string | null): number | null => {
+    if (!token) return null;
+    try {
+      const payload = JSON.parse(atob(token.split(".")[1])) as { exp?: number };
+      if (typeof payload.exp !== "number") return null;
+      const ms = payload.exp * 1000 - Date.now() - 60_000;
+      return ms > 0 ? ms : null;
+    } catch { return null; }
+  }, []);
+
   useEffect(() => {
-    const abortCtrl = new AbortController();
-    liveAbortRef.current = abortCtrl;
+    const outerAbort = new AbortController();
 
     let retryTimer: ReturnType<typeof setTimeout> | null = null;
+    let proactiveTimer: ReturnType<typeof setTimeout> | null = null;
+    let streamAbort: AbortController | null = null;
 
     const connect = async () => {
-      if (abortCtrl.signal.aborted) return;
-      const ok = await startLiveSSE(abortCtrl.signal);
-      if (!ok && !abortCtrl.signal.aborted) {
+      if (outerAbort.signal.aborted) return;
+
+      const localAbort = new AbortController();
+      streamAbort = localAbort;
+
+      // Forward the outer (unmount) abort into the per-stream controller
+      const forwardAbort = () => { if (!localAbort.signal.aborted) localAbort.abort(); };
+      outerAbort.signal.addEventListener("abort", forwardAbort);
+
+      // Proactively abort 1 minute before the current token expires so the
+      // stream reconnects while the token is still valid.
+      const delay = getProactiveReconnectDelayMs(accessToken);
+      if (delay !== null) {
+        proactiveTimer = setTimeout(() => { if (!localAbort.signal.aborted) localAbort.abort(); }, delay);
+      }
+
+      const ok = await startLiveSSE(localAbort.signal);
+
+      if (proactiveTimer) { clearTimeout(proactiveTimer); proactiveTimer = null; }
+      outerAbort.signal.removeEventListener("abort", forwardAbort);
+
+      if (outerAbort.signal.aborted) return;
+
+      if (!ok) {
         void fetchLiveVisitors();
         liveTimerRef.current = setInterval(() => void fetchLiveVisitors(), 30_000);
-      } else if (ok && !abortCtrl.signal.aborted) {
+      } else {
         retryTimer = setTimeout(() => void connect(), 3_000);
       }
     };
@@ -682,25 +720,49 @@ export default function DashboardShell({ children }: { children: ReactNode }) {
     void connect();
 
     return () => {
-      abortCtrl.abort();
+      outerAbort.abort();
+      streamAbort?.abort();
       if (retryTimer) clearTimeout(retryTimer);
+      if (proactiveTimer) clearTimeout(proactiveTimer);
       if (liveTimerRef.current) { clearInterval(liveTimerRef.current); liveTimerRef.current = null; }
     };
-  }, [startLiveSSE, fetchLiveVisitors]);
+  }, [startLiveSSE, fetchLiveVisitors, accessToken, getProactiveReconnectDelayMs]);
 
   useEffect(() => {
-    const abortCtrl = new AbortController();
-    campaignAbortRef.current = abortCtrl;
+    const outerAbort = new AbortController();
 
     let retryTimer: ReturnType<typeof setTimeout> | null = null;
+    let proactiveTimer: ReturnType<typeof setTimeout> | null = null;
+    let streamAbort: AbortController | null = null;
 
     const connect = async () => {
-      if (abortCtrl.signal.aborted) return;
-      const ok = await startCampaignSSE(abortCtrl.signal);
-      if (!ok && !abortCtrl.signal.aborted) {
+      if (outerAbort.signal.aborted) return;
+
+      const localAbort = new AbortController();
+      streamAbort = localAbort;
+
+      // Forward the outer (unmount) abort into the per-stream controller
+      const forwardAbort = () => { if (!localAbort.signal.aborted) localAbort.abort(); };
+      outerAbort.signal.addEventListener("abort", forwardAbort);
+
+      // Proactively abort 1 minute before the current token expires so the
+      // stream reconnects while the token is still valid.
+      const delay = getProactiveReconnectDelayMs(accessToken);
+      if (delay !== null) {
+        proactiveTimer = setTimeout(() => { if (!localAbort.signal.aborted) localAbort.abort(); }, delay);
+      }
+
+      const ok = await startCampaignSSE(localAbort.signal);
+
+      if (proactiveTimer) { clearTimeout(proactiveTimer); proactiveTimer = null; }
+      outerAbort.signal.removeEventListener("abort", forwardAbort);
+
+      if (outerAbort.signal.aborted) return;
+
+      if (!ok) {
         void fetchCampaignBadges();
         campaignTimerRef.current = setInterval(() => void fetchCampaignBadges(), 15_000);
-      } else if (ok && !abortCtrl.signal.aborted) {
+      } else {
         retryTimer = setTimeout(() => void connect(), 3_000);
       }
     };
@@ -708,11 +770,13 @@ export default function DashboardShell({ children }: { children: ReactNode }) {
     void connect();
 
     return () => {
-      abortCtrl.abort();
+      outerAbort.abort();
+      streamAbort?.abort();
       if (retryTimer) clearTimeout(retryTimer);
+      if (proactiveTimer) clearTimeout(proactiveTimer);
       if (campaignTimerRef.current) { clearInterval(campaignTimerRef.current); campaignTimerRef.current = null; }
     };
-  }, [startCampaignSSE, fetchCampaignBadges]);
+  }, [startCampaignSSE, fetchCampaignBadges, accessToken, getProactiveReconnectDelayMs]);
 
   useEffect(() => {
     try { localStorage.setItem(LS_SIDEBAR_COLLAPSED, String(sidebarCollapsed)); } catch {}
