@@ -269,6 +269,24 @@ export default function OnboardingContract() {
     if (stored) return stored;
     const slug = sessionStorage.getItem("onboardingLpSlug");
     if (slug) return `/lp/${slug}`;
+    // Fallback: read from localStorage (survives tab-close / session-storage wipe)
+    try {
+      const latestExpRaw = localStorage.getItem("onboardingLpLatestExp");
+      if (latestExpRaw) {
+        const lsKey = `onboardingLp_${latestExpRaw}`;
+        const raw = localStorage.getItem(lsKey);
+        if (raw) {
+          const data = JSON.parse(raw) as { slug?: string; lpUrl?: string; exp?: number };
+          if (typeof data.exp === "number" && Date.now() > data.exp * 1000) {
+            // Expired — prune and return nothing
+            localStorage.removeItem(lsKey);
+            localStorage.removeItem("onboardingLpLatestExp");
+            return null;
+          }
+          return data.lpUrl ?? (data.slug ? `/lp/${data.slug}` : null);
+        }
+      }
+    } catch { /* localStorage unavailable — ignore */ }
     return null;
   })();
 

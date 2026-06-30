@@ -116,6 +116,14 @@ export default function LandingPage() {
       sessionStorage.setItem("onboardingLpUrl", window.location.href);
       sessionStorage.setItem("onboardingLpSlug", slug ?? "");
       if (page.linkedService) sessionStorage.setItem("onboardingLpService", JSON.stringify(page.linkedService));
+      // Persist slug → localStorage so the back link survives session-storage loss
+      if (typeof exp === "number" && slug) {
+        const lsKey = `onboardingLp_${exp}`;
+        try {
+          localStorage.setItem(lsKey, JSON.stringify({ slug, lpUrl: window.location.href, exp }));
+          localStorage.setItem("onboardingLpLatestExp", String(exp));
+        } catch { /* storage full or private browsing — silently skip */ }
+      }
       window.location.href = `/crm/onboarding/select?serviceId=${serviceId}`;
     } catch (err) {
       setTokenError(err instanceof Error ? err.message : "Unable to continue. Please try again.");
