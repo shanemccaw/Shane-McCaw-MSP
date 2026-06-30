@@ -835,8 +835,21 @@ export default function PortalProjectDetail() {
 
     connect();
 
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
+        es?.close();
+        es = null;
+        backoff = 1000;
+        setSseReconnecting(false);
+        connect();
+      }
+    };
+    document.addEventListener("visibilitychange", onVisibilityChange);
+
     return () => {
       mounted = false;
+      document.removeEventListener("visibilitychange", onVisibilityChange);
       if (reconnectTimer) clearTimeout(reconnectTimer);
       es?.close();
       setSseReconnecting(false);
