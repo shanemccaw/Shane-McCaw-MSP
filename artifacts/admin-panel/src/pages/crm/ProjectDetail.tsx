@@ -3,10 +3,9 @@ import { useRoute, useLocation } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import { formatAuditEntry, type AuditLogEntry } from "@/lib/auditFormatter";
-import { subscribeToChanges, isTaskRunning, rehydratePolls, resumePollForTask } from "@/lib/scriptPoller";
+import { subscribeToChanges, isTaskRunning, rehydratePolls, resumePollForTask, startPoll, registerTaskJob } from "@/lib/scriptPoller";
 import { KanbanCardModal } from "@/components/KanbanCardModal";
 import type { KanbanCardModalTask } from "@/components/KanbanCardModal";
-import RunLibraryScriptDialog from "@/components/RunLibraryScriptDialog";
 import RunScriptConfirmDialog from "@/components/RunScriptConfirmDialog";
 import { TypedCardContent, TASK_TYPE_CONFIG } from "@/components/kanban/TypedCardContent";
 import type { TaskType } from "@/components/kanban/TypedCardContent";
@@ -194,12 +193,12 @@ function DraggableCard({
   clientName?: string | null;
 }) {
   const { toast } = useToast();
+  const { fetchWithAuth } = useAuth();
   const [expanded, setExpanded] = useState(false);
   const [customerViewOpen, setCustomerViewOpen] = useState(false);
   const [replyDraft, setReplyDraft] = useState("");
   const [replySending, setReplySending] = useState(false);
   const [replySent, setReplySent] = useState(false);
-  const [runDialogOpen, setRunDialogOpen] = useState(false);
   const [confirmRunOpen, setConfirmRunOpen] = useState(false);
   const [scriptRunning, setScriptRunning] = useState(() => isTaskRunning(task.id));
   const [, setLocation] = useLocation();
@@ -555,19 +554,6 @@ function DraggableCard({
                   {scriptRunning ? "Running…" : "Run Script"}
                 </button>
               )}
-              {linkedRunbook?.azureRunbookName && scriptRunning && (
-                <button
-                  onClick={e => { e.stopPropagation(); setRunDialogOpen(true); }}
-                  className="text-[9px] font-semibold px-1.5 py-0.5 rounded border border-emerald-500/30 bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 transition-colors flex items-center gap-0.5"
-                  title="View running script"
-                >
-                  <svg className="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                  </svg>
-                  View
-                </button>
-              )}
               {targetCols.map(col => (
                 <button
                   key={col.key}
@@ -589,7 +575,7 @@ function DraggableCard({
         </div>
       </div>
 
-      {/* Confirm run dialog */}
+      {/* Confirm run dialog — clicking Run Script fires the Azure job directly, no second dialog */}
       {confirmRunOpen && linkedRunbook?.azureRunbookName && (
         <RunScriptConfirmDialog
           scriptTitle={linkedRunbook.scriptTitle}
@@ -601,32 +587,75 @@ function DraggableCard({
             setConfirmRunOpen(false);
             setScriptRunning(true);
             onQuickMove(task, "in_progress");
-            setRunDialogOpen(true);
+
+            const runbook = linkedRunbook!;
+            void (async () => {
+              try {
+                // Resolve the client's App Registration ID
+                let appRegistrationId: number | undefined;
+                if (clientUserId != null) {
+                  const res = await fetchWithAuth("/api/admin/clients/with-azure-credentials");
+                  if (res.ok) {
+                    const clients = await res.json() as Array<{ id: number; appRegistration: { id: number } | null }>;
+                    const match = clients.find(c => c.id === clientUserId);
+                    appRegistrationId = match?.appRegistration?.id ?? undefined;
+                  }
+                }
+
+                if (!appRegistrationId) {
+                  toast({
+                    title: "No App Registration",
+                    description: "This client has no Azure App Registration linked — add one in the CRM first.",
+                    variant: "destructive",
+                  });
+                  setScriptRunning(false);
+                  return;
+                }
+
+                // Fire the Azure Automation job
+                const body: Record<string, unknown> = {
+                  libraryScriptId: runbook.scriptId,
+                  appRegistrationId,
+                  customerId: clientUserId,
+                  kanbanTaskId: task.id,
+                };
+                const r = await fetchWithAuth("/api/admin/run-script", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify(body),
+                });
+                if (!r.ok) {
+                  const errData = await r.json().catch(() => ({})) as { error?: string };
+                  throw new Error(errData.error ?? "Run failed");
+                }
+                const { jobRef } = await r.json() as { jobRef: string };
+
+                registerTaskJob(task.id, jobRef);
+                startPoll(
+                  jobRef,
+                  fetchWithAuth,
+                  null,
+                  (status) => {
+                    setScriptRunning(false);
+                    toast({
+                      title: status === "completed"
+                        ? `Script completed: ${runbook.scriptTitle}`
+                        : `Script failed: ${runbook.scriptTitle}`,
+                      description: status === "completed"
+                        ? "The runbook finished successfully. The card has been moved to Done."
+                        : "The runbook encountered an error. The card remains In Progress.",
+                      variant: status === "failed" ? "destructive" : "default",
+                    });
+                  },
+                  task.id
+                );
+              } catch (err) {
+                toast({ title: err instanceof Error ? err.message : "Run failed", variant: "destructive" });
+                setScriptRunning(false);
+              }
+            })();
           }}
           onCancel={() => setConfirmRunOpen(false)}
-        />
-      )}
-
-      {runDialogOpen && linkedRunbook?.azureRunbookName && (
-        <RunLibraryScriptDialog
-          scriptId={linkedRunbook.scriptId}
-          scriptTitle={linkedRunbook.scriptTitle}
-          azureRunbookName={linkedRunbook.azureRunbookName}
-          initialClientId={clientUserId}
-          kanbanTaskId={task.id}
-          onClose={() => {
-            setRunDialogOpen(false);
-          }}
-          onRunComplete={(status, title) => {
-            setScriptRunning(false);
-            toast({
-              title: status === "completed" ? `Script completed: ${title}` : `Script failed: ${title}`,
-              description: status === "completed"
-                ? "The runbook finished successfully. The card has been moved to Done."
-                : "The runbook encountered an error. The card remains In Progress.",
-              variant: status === "failed" ? "destructive" : "default",
-            });
-          }}
         />
       )}
     </div>
