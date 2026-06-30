@@ -1,5 +1,5 @@
 import { Router, type IRouter, type Request, type Response } from "express";
-import { db, projectsTable, clientServicesTable, servicesTable, workflowStepsTable, kanbanTasksTable, documentsTable, reportsTable, invoicesTable, messagesTable, notificationsTable, projectUpdatesTable, usersTable, contractsTable, passwordResetTokensTable, workflowTemplateStepsTable, workflowTemplateStepTasksTable, contractTemplatesTable, impersonationTokensTable, statusReportsTable, deviceTokensTable, projectClosuresTable, auditLogsTable, instructionSetsTable, checklistsTable, artifactSetsTable, deliverableSetsTable, emailsTable, emailDomainRulesTable, clientM365ProfilesTable, couponsTable, clientAppRegistrationsTable, accountSetupTokensTable, mfaEnrollmentsTable, mfaChallengesTable, webauthnCredentialsTable, webauthnChallengesTable, clientHealthHistoryTable, quizLeadsTable, scriptRunResultsTable, powershellScriptsTable, clientScoresTable, clientAutomationRunsTable, scriptPackagesTable, scriptModulesTable } from "@workspace/db";
+import { db, projectsTable, clientServicesTable, servicesTable, workflowStepsTable, kanbanTasksTable, documentsTable, reportsTable, invoicesTable, messagesTable, notificationsTable, projectUpdatesTable, usersTable, contractsTable, passwordResetTokensTable, workflowTemplateStepsTable, workflowTemplateStepTasksTable, contractTemplatesTable, impersonationTokensTable, statusReportsTable, deviceTokensTable, projectClosuresTable, auditLogsTable, instructionSetsTable, checklistsTable, artifactSetsTable, deliverableSetsTable, emailsTable, emailDomainRulesTable, clientM365ProfilesTable, couponsTable, clientAppRegistrationsTable, accountSetupTokensTable, mfaEnrollmentsTable, mfaChallengesTable, webauthnCredentialsTable, webauthnChallengesTable, clientHealthHistoryTable, quizLeadsTable, scriptRunResultsTable, powershellScriptsTable, clientScoresTable, clientAutomationRunsTable, scriptPackagesTable, scriptModulesTable, azureTenantCredentialsTable } from "@workspace/db";
 import { eq, and, desc, asc, count, sql, inArray, gte, isNotNull, isNull, or, lt } from "drizzle-orm";
 import { requireAuth, requireAdmin } from "../middlewares/requireAuth";
 import jwt from "jsonwebtoken";
@@ -4314,6 +4314,9 @@ router.get("/admin/clients/:id/delete-preview", requireAdmin, async (req: Reques
       serviceRows,
       reportRows,
       statusReportRows,
+      scriptRunRows,
+      azureCredRows,
+      quizLeadRows,
     ] = await Promise.all([
       db.select({ id: projectsTable.id }).from(projectsTable).where(eq(projectsTable.clientUserId, id)),
       db.select({ id: invoicesTable.id, status: invoicesTable.status }).from(invoicesTable).where(eq(invoicesTable.clientUserId, id)),
@@ -4323,6 +4326,9 @@ router.get("/admin/clients/:id/delete-preview", requireAdmin, async (req: Reques
         .from(clientServicesTable).where(eq(clientServicesTable.clientUserId, id)),
       db.select({ id: reportsTable.id }).from(reportsTable).where(eq(reportsTable.clientUserId, id)),
       db.select({ id: statusReportsTable.id }).from(statusReportsTable).where(eq(statusReportsTable.clientUserId, id)),
+      db.select({ id: scriptRunResultsTable.id }).from(scriptRunResultsTable).where(eq(scriptRunResultsTable.customerId, id)),
+      db.select({ id: azureTenantCredentialsTable.id }).from(azureTenantCredentialsTable).where(eq(azureTenantCredentialsTable.clientUserId, id)),
+      db.select({ id: quizLeadsTable.id }).from(quizLeadsTable).where(eq(quizLeadsTable.email, client.email)),
     ]);
 
     const unpaidInvoices = invoiceRows.filter(inv => inv.status === "due" || inv.status === "overdue").length;
@@ -4338,6 +4344,9 @@ router.get("/admin/clients/:id/delete-preview", requireAdmin, async (req: Reques
       reports: reportRows.length,
       statusReports: statusReportRows.length,
       hasActiveStripeSubscription,
+      scriptRunResults: scriptRunRows.length,
+      azureCredentials: azureCredRows.length,
+      quizLeads: quizLeadRows.length,
     });
   } catch (err) {
     req.log.error(err, "Failed to fetch client delete preview");
@@ -4350,7 +4359,7 @@ router.delete("/admin/clients/:id", requireAdmin, async (req: Request, res: Resp
     const id = parseInt(String(req.params.id ?? ""), 10);
     if (isNaN(id)) { res.status(400).json({ error: "Invalid ID" }); return; }
 
-    const [client] = await db.select({ id: usersTable.id }).from(usersTable)
+    const [client] = await db.select({ id: usersTable.id, email: usersTable.email }).from(usersTable)
       .where(and(eq(usersTable.id, id), eq(usersTable.role, "client"))).limit(1);
     if (!client) { res.status(404).json({ error: "Client not found" }); return; }
 
@@ -4384,6 +4393,11 @@ router.delete("/admin/clients/:id", requireAdmin, async (req: Request, res: Resp
     await db.delete(emailDomainRulesTable).where(eq(emailDomainRulesTable.linkedUserId, id));
     if (projectIds.length > 0) {
       await db.delete(projectsTable).where(inArray(projectsTable.id, projectIds));
+    }
+    await db.delete(scriptRunResultsTable).where(eq(scriptRunResultsTable.customerId, id));
+    await db.delete(azureTenantCredentialsTable).where(eq(azureTenantCredentialsTable.clientUserId, id));
+    if (client.email) {
+      await db.delete(quizLeadsTable).where(eq(quizLeadsTable.email, client.email));
     }
     await db.delete(usersTable).where(eq(usersTable.id, id));
 
