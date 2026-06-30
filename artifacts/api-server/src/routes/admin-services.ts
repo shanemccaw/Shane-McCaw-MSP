@@ -122,19 +122,27 @@ router.put("/admin/services/:id", requireAdmin, async (req: Request, res: Respon
 router.post("/admin/services", requireAdmin, async (req: Request, res: Response) => {
   try {
     const body = (req.body ?? {}) as Record<string, unknown>;
-    const { name, slug, billingType, deliverables, inclusions, features } = body;
+    const { name, slug, billingType, visibility, isPublic, deliverables, inclusions, features } = body;
     if (!name || typeof name !== "string" || !name.trim()) {
       res.status(400).json({ error: "name is required" }); return;
     }
     if (!slug || typeof slug !== "string" || !slug.trim()) {
       res.status(400).json({ error: "slug is required" }); return;
     }
+    const validVisibilitiesCreate = ["public", "private", "landing_page_only"] as const;
+    const resolvedCreateVisibility = validVisibilitiesCreate.includes(visibility as typeof validVisibilitiesCreate[number])
+      ? (visibility as "public" | "private" | "landing_page_only")
+      : isPublic != null
+        ? (Boolean(isPublic) ? "public" : "private")
+        : "private";
     const [created] = await db
       .insert(servicesTable)
       .values({
         name: name.trim(),
         slug: slug.trim(),
         billingType: ((billingType as string) === "recurring_monthly" ? "recurring_monthly" : "one_time") as "one_time" | "recurring_monthly",
+        visibility: resolvedCreateVisibility,
+        isPublic: resolvedCreateVisibility === "public",
         deliverables: parseStringArray(deliverables),
         inclusions: parseStringArray(inclusions),
         features: parseStringArray(features),
