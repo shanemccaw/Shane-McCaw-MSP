@@ -331,26 +331,9 @@ function DocumentBody({ m, onMarkApproved }: { m: DocumentMetadata; onMarkApprov
   );
 }
 
-function ManualScriptBody({ m }: { m: ManualScriptMetadata }) {
-  const checklist = m.checklist ?? [];
-  const checklistState = m.checklistState ?? {};
-  const done = checklist.filter(item => checklistState[item.id]).length;
-  const total = checklist.length;
+function ManualScriptBody() {
   return (
     <div className="space-y-2">
-      {total > 0 && (
-        <div>
-          <div className="flex items-center justify-between mb-1">
-            <p className="text-[10px] font-semibold text-[#0A2540]">{done}/{total} steps complete</p>
-          </div>
-          <div className="w-full bg-gray-100 rounded-full h-1.5">
-            <div
-              className="h-1.5 rounded-full bg-cyan-500 transition-all"
-              style={{ width: `${total ? (done / total) * 100 : 0}%` }}
-            />
-          </div>
-        </div>
-      )}
       <p className="text-[10px] text-muted-foreground">Click Details to download the script and upload results.</p>
     </div>
   );
@@ -358,43 +341,25 @@ function ManualScriptBody({ m }: { m: ManualScriptMetadata }) {
 
 function GenericBody({ m }: { m: Record<string, unknown> }) {
   const deliverables = (m.clientDeliverables as string[] | undefined) ?? [];
-  const checklist = (m.checklist as Array<{ id: string; label: string }> | undefined) ?? [];
-  const checklistState = (m.checklistState as Record<string, boolean> | undefined) ?? {};
-  const done = checklist.filter(item => checklistState[item.id]).length;
 
-  if (deliverables.length === 0 && checklist.length === 0) return null;
+  if (deliverables.length === 0) return null;
 
   return (
     <div className="space-y-2">
-      {checklist.length > 0 && (
-        <div>
-          <div className="flex items-center justify-between mb-1">
-            <p className="text-[10px] font-semibold text-[#0A2540]">{done}/{checklist.length} steps complete</p>
-          </div>
-          <div className="w-full bg-gray-100 rounded-full h-1.5">
-            <div
-              className="h-1.5 rounded-full bg-[#0078D4] transition-all"
-              style={{ width: `${checklist.length ? (done / checklist.length) * 100 : 0}%` }}
-            />
-          </div>
+      <div>
+        <p className="text-[10px] font-semibold text-[#0A2540] mb-0.5">What I&apos;m gathering:</p>
+        <div className="space-y-0.5">
+          {deliverables.slice(0, 3).map((d, i) => (
+            <div key={i} className="flex items-center gap-1.5">
+              <span className="w-1.5 h-1.5 rounded-full bg-[#0078D4]/50 flex-shrink-0" />
+              <span className="text-[10px] text-muted-foreground">{d}</span>
+            </div>
+          ))}
+          {deliverables.length > 3 && (
+            <p className="text-[10px] text-muted-foreground pl-3">+{deliverables.length - 3} more</p>
+          )}
         </div>
-      )}
-      {deliverables.length > 0 && (
-        <div>
-          <p className="text-[10px] font-semibold text-[#0A2540] mb-0.5">You&apos;ll receive:</p>
-          <div className="space-y-0.5">
-            {deliverables.slice(0, 3).map((d, i) => (
-              <div key={i} className="flex items-center gap-1.5">
-                <span className="w-1.5 h-1.5 rounded-full bg-[#0078D4]/50 flex-shrink-0" />
-                <span className="text-[10px] text-muted-foreground">{d}</span>
-              </div>
-            ))}
-            {deliverables.length > 3 && (
-              <p className="text-[10px] text-muted-foreground pl-3">+{deliverables.length - 3} more</p>
-            )}
-          </div>
-        </div>
-      )}
+      </div>
     </div>
   );
 }
@@ -488,7 +453,7 @@ export function TypedCardContent({
           {taskType === "discovery" && ((metadata as DiscoveryMetadata).riskScore || (metadata as DiscoveryMetadata).findingsSummary)
             ? <DiscoveryBody m={metadata as DiscoveryMetadata} />
             : taskType === "discovery" && <GenericBody m={metadata} />}
-          {taskType === "manualScript" && <ManualScriptBody m={metadata as ManualScriptMetadata} />}
+          {taskType === "manualScript" && <ManualScriptBody />}
         </div>
       )}
     </div>
@@ -553,36 +518,20 @@ function ModalClientBtn({ label, onClick }: { label: string; onClick?: () => voi
 
 function GenericModalBody({ m }: { m: Record<string, unknown> }) {
   const deliverables = (m.clientDeliverables as string[] | undefined) ?? [];
-  const checklist = (m.checklist as Array<{ id: string; label: string }> | undefined) ?? [];
-  const checklistState = (m.checklistState as Record<string, boolean> | undefined) ?? {};
-  const done = checklist.filter(it => checklistState[it.id]).length;
-  if (deliverables.length === 0 && checklist.length === 0) return null;
+  if (deliverables.length === 0) return null;
   return (
     <div className="space-y-4">
-      {checklist.length > 0 && (
-        <div>
-          <div className="flex items-center justify-between mb-1.5">
-            <span className="text-sm font-semibold text-[#0A2540]">{done}/{checklist.length} steps complete</span>
-            <span className="text-xs text-muted-foreground">{Math.round((done / checklist.length) * 100)}%</span>
-          </div>
-          <div className="w-full bg-gray-100 rounded-full h-2.5">
-            <div className="h-2.5 rounded-full bg-[#0078D4] transition-all" style={{ width: `${(done / checklist.length) * 100}%` }} />
-          </div>
+      <div>
+        <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-2">What I&apos;m gathering</p>
+        <div className="space-y-1.5">
+          {deliverables.map((d, i) => (
+            <div key={i} className="flex items-center gap-2.5 bg-blue-50 border border-blue-100 rounded-lg px-3 py-2">
+              <span className="w-2 h-2 rounded-full bg-[#0078D4] flex-shrink-0" />
+              <span className="text-sm text-[#0A2540]">{d}</span>
+            </div>
+          ))}
         </div>
-      )}
-      {deliverables.length > 0 && (
-        <div>
-          <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-2">What you&apos;ll receive</p>
-          <div className="space-y-1.5">
-            {deliverables.map((d, i) => (
-              <div key={i} className="flex items-center gap-2.5 bg-blue-50 border border-blue-100 rounded-lg px-3 py-2">
-                <span className="w-2 h-2 rounded-full bg-[#0078D4] flex-shrink-0" />
-                <span className="text-sm text-[#0A2540]">{d}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
+      </div>
     </div>
   );
 }
