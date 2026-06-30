@@ -3358,6 +3358,9 @@ function LandingPagesPanel({ fetchWithAuth }: { fetchWithAuth: (url: string, opt
                     {page.campaignId && lpCampaignMap.get(page.campaignId) && (
                       <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-[#0078D4]/15 text-[#58A6FF] flex-shrink-0">📌 {lpCampaignMap.get(page.campaignId)}</span>
                     )}
+                    {page.linkedServiceId && serviceMap.get(page.linkedServiceId)?.visibility === "landing_page_only" && (
+                      <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-amber-500/20 text-amber-400 flex-shrink-0">🔒 {serviceMap.get(page.linkedServiceId)!.name}</span>
+                    )}
                   </div>
                   {page.published ? (
                     <p className="text-xs text-emerald-400/80 truncate mt-0.5 font-mono">{getPublicUrl(page.slug)}</p>
