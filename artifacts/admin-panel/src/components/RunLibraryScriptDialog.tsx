@@ -30,6 +30,8 @@ interface Props {
   autoRun?: boolean;
 }
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export default function RunLibraryScriptDialog({ scriptId, moduleId, scriptTitle, azureRunbookName, onClose, initialClientId, kanbanTaskId, onRunComplete, autoRun }: Props) {
   const { fetchWithAuth } = useAuth();
   const { toast } = useToast();
@@ -93,17 +95,32 @@ export default function RunLibraryScriptDialog({ scriptId, moduleId, scriptTitle
     };
   }, []);
 
-  // autoRun: fire handleRun() once credentials are resolved, without requiring a second button click
+  // autoRun: fire handleRun() once credentials are resolved, without requiring a second button click.
+  // NOTE: appRegistrationId is set in a *separate* useEffect (clients → appRegistrationId), so it may
+  // still be null on the first render where loadingClients becomes false. We therefore keep re-checking
+  // on each deps change rather than marking fired immediately when appRegistrationId is null.
   const autoRunFiredRef = useRef(false);
   useEffect(() => {
     if (!autoRun || loadingClients || autoRunFiredRef.current) return;
-    autoRunFiredRef.current = true;
-    if (appRegistrationId) {
+    if (appRegistrationId != null) {
+      // Definitive: client has an app reg — fire the run
+      autoRunFiredRef.current = true;
       void handleRun();
+    } else {
+      // appRegistrationId is null — could be transient (effect ordering) or definitive (no app reg).
+      // Check the clients list directly to distinguish.
+      const client = clients.find(c => c.id === selectedClientId);
+      const definitivelyNone =
+        selectedClientId == null ||
+        (client != null && client.appRegistration == null);
+      if (definitivelyNone) {
+        // No app reg will ever appear — stop retrying; amber warning box already visible
+        autoRunFiredRef.current = true;
+      }
+      // else: client not found yet / state still settling — effect will re-fire when appRegistrationId updates
     }
-    // If appRegistrationId is null, the amber warning box below already explains the problem
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [autoRun, loadingClients, appRegistrationId]);
+  }, [autoRun, loadingClients, appRegistrationId, clients, selectedClientId]);
 
   // The backend (processRunInBackground) now owns all kanban task status writes — it bulk-updates
   // the triggering card AND all sibling cards sharing the same runbook. Patching only the triggering
@@ -117,6 +134,10 @@ export default function RunLibraryScriptDialog({ scriptId, moduleId, scriptTitle
   const handleRun = async () => {
     if (!moduleId && !scriptId) {
       toast({ title: "Script not linked", description: "This card's script metadata is incomplete — re-link it to a library script.", variant: "destructive" });
+      return;
+    }
+    if (!moduleId && scriptId && !UUID_RE.test(scriptId)) {
+      toast({ title: "Script metadata is invalid", description: "The script ID is malformed — re-link this card to a library script.", variant: "destructive" });
       return;
     }
     if (!moduleId && !azureRunbookName) {
@@ -143,8 +164,10 @@ export default function RunLibraryScriptDialog({ scriptId, moduleId, scriptTitle
         body: JSON.stringify(body),
       });
       if (!r.ok) {
-        const err = await r.json().catch(() => ({})) as { error?: string };
-        throw new Error(err.error ?? "Run failed");
+        const errData = await r.json().catch(() => ({})) as { error?: string; issues?: Array<{ message: string }> };
+        // Surface the first Zod issue message for validation failures, otherwise use the error field
+        const issueMsg = errData.issues?.[0]?.message;
+        throw new Error(issueMsg ? `${errData.error ?? "Validation error"}: ${issueMsg}` : (errData.error ?? "Run failed"));
       }
       const { jobRef: ref } = await r.json() as { jobRef: string };
       setJobRef(ref);

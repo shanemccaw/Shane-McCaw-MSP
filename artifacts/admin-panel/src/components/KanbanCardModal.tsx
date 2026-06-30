@@ -699,14 +699,22 @@ function GenericKanbanCardModal({ task, stepTitle, open, onClose, mode = "client
     if (isActiveForTask(localTask.id)) return;
     setConfirmRunOpen(false);
 
-    // Pre-flight: check the client has an App Registration before opening the run dialog
-    if (clientId != null && fetchWithAuth) {
+    // Pre-flight: clientId must be set and the client must have an App Registration
+    if (clientId == null) {
+      toast({
+        title: "No client identified",
+        description: "This card has no linked client. Assign a client in CRM before running a script.",
+        variant: "destructive",
+      });
+      return;
+    }
+    if (fetchWithAuth) {
       try {
         const r = await fetchWithAuth("/api/admin/clients/with-azure-credentials");
         if (r.ok) {
           const list = await r.json() as Array<{ id: number; appRegistration: { id: number } | null }>;
           const entry = list.find(c => c.id === clientId);
-          if (entry && !entry.appRegistration) {
+          if (!entry || !entry.appRegistration) {
             toast({
               title: "No App Registration",
               description: "This client has no App Registration. Add one in CRM before running a script.",
@@ -715,7 +723,7 @@ function GenericKanbanCardModal({ task, stepTitle, open, onClose, mode = "client
             return;
           }
         }
-      } catch { /* non-fatal — proceed, the run dialog will surface the error */ }
+      } catch { /* non-fatal — proceed, run dialog will surface the error */ }
     }
 
     setScriptRunning(true);
