@@ -616,6 +616,7 @@ function GenericKanbanCardModal({ task, stepTitle, open, onClose, mode = "client
   const [confirmRunOpen, setConfirmRunOpen] = useState(false);
   const [movingToInProgress, setMovingToInProgress] = useState(false);
   const [scriptRunning, setScriptRunning] = useState(false);
+  const [confirmedAppRegId, setConfirmedAppRegId] = useState<number | null>(null);
 
   useEffect(() => {
     if (!task) return;
@@ -722,6 +723,7 @@ function GenericKanbanCardModal({ task, stepTitle, open, onClose, mode = "client
             });
             return;
           }
+          setConfirmedAppRegId(entry.appRegistration.id);
         }
       } catch { /* non-fatal — proceed, run dialog will surface the error */ }
     }
@@ -1217,10 +1219,12 @@ function GenericKanbanCardModal({ task, stepTitle, open, onClose, mode = "client
         scriptTitle={linkedRunbook.scriptTitle}
         azureRunbookName={linkedRunbook.azureRunbookName}
         initialClientId={clientId}
+        initialAppRegistrationId={confirmedAppRegId}
         kanbanTaskId={localTask.id}
         autoRun
         onClose={() => {
           setRunDialogOpen(false);
+          setConfirmedAppRegId(null);
           if (isActiveForTask(localTask.id)) setScriptRunning(true);
         }}
         onRunComplete={handleRunComplete}

@@ -25,6 +25,10 @@ interface Props {
   azureRunbookName?: string | null;
   onClose: () => void;
   initialClientId?: number | null;
+  /** Pre-validated App Registration ID from the parent's pre-flight check.
+   *  When provided, the client list fetch is skipped entirely and autoRun
+   *  fires as soon as the component mounts — no network round-trip needed. */
+  initialAppRegistrationId?: number | null;
   kanbanTaskId?: number | null;
   onRunComplete?: (status: "completed" | "failed", scriptTitle: string) => void;
   autoRun?: boolean;
@@ -32,14 +36,15 @@ interface Props {
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-export default function RunLibraryScriptDialog({ scriptId, moduleId, scriptTitle, azureRunbookName, onClose, initialClientId, kanbanTaskId, onRunComplete, autoRun }: Props) {
+export default function RunLibraryScriptDialog({ scriptId, moduleId, scriptTitle, azureRunbookName, onClose, initialClientId, initialAppRegistrationId, kanbanTaskId, onRunComplete, autoRun }: Props) {
   const { fetchWithAuth } = useAuth();
   const { toast } = useToast();
 
   const [clients, setClients] = useState<ClientEntry[]>([]);
   const [selectedClientId, setSelectedClientId] = useState<number | null>(initialClientId ?? null);
-  const [loadingClients, setLoadingClients] = useState(true);
-  const [appRegistrationId, setAppRegistrationId] = useState<number | null>(null);
+  // If the parent already pre-validated an app reg, start with it and skip loading
+  const [loadingClients, setLoadingClients] = useState(initialAppRegistrationId == null);
+  const [appRegistrationId, setAppRegistrationId] = useState<number | null>(initialAppRegistrationId ?? null);
 
   const [running, setRunning] = useState(false);
   const [jobRef, setJobRef] = useState<string | null>(null);
@@ -50,8 +55,11 @@ export default function RunLibraryScriptDialog({ scriptId, moduleId, scriptTitle
   const terminalRef = useRef<HTMLDivElement>(null);
   const jobRefRef = useRef<string | null>(null);
 
-  // Load clients with credentials
+  // Load clients with credentials.
+  // When initialAppRegistrationId is already provided (pre-validated by parent), skip the
+  // round-trip entirely — loadingClients is already false and appRegistrationId is already set.
   useEffect(() => {
+    if (initialAppRegistrationId != null) return;
     setLoadingClients(true);
     fetchWithAuth("/api/admin/clients/with-azure-credentials")
       .then(r => r.json())
@@ -66,7 +74,7 @@ export default function RunLibraryScriptDialog({ scriptId, moduleId, scriptTitle
         toast({ title: "Failed to load clients", variant: "destructive" });
       })
       .finally(() => setLoadingClients(false));
-  }, [fetchWithAuth, toast, initialClientId]);
+  }, [fetchWithAuth, toast, initialClientId, initialAppRegistrationId]);
 
   // Auto-select App Registration when client changes
   useEffect(() => {
