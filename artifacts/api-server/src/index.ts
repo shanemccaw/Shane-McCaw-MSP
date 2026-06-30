@@ -5,6 +5,7 @@ import { initGraphSubscription } from "./lib/graph-subscription";
 import { graphCredentialsPresent } from "./lib/graph";
 import { checkManualScriptEscalations } from "./lib/manual-script-escalation";
 import { seedAiPrompts } from "./lib/prompt-loader";
+import { seedArticles } from "./lib/seed-articles";
 import { pool } from "@workspace/db";
 
 const rawPort = process.env["PORT"];
@@ -59,6 +60,10 @@ app.listen(port, (err) => {
 
   seedAiPrompts().catch((err) => {
     logger.warn({ err }, "AI prompt seed failed (non-fatal)");
+  });
+
+  seedArticles().catch((err) => {
+    logger.warn({ err }, "Article seed failed (non-fatal)");
   });
 
   // ── Daily escalation check: manual script cards stalled in Waiting on Customer ──

@@ -1411,6 +1411,22 @@ export const clientAutomationRunsTable = pgTable("client_automation_runs", {
 export type InsertClientAutomationRun = typeof clientAutomationRunsTable.$inferInsert;
 export type ClientAutomationRun = typeof clientAutomationRunsTable.$inferSelect;
 
+// ─── Blog Articles (formerly Markdown files on disk) ──────────────────────────
+export const articlesTable = pgTable("articles", {
+  id: serial("id").primaryKey(),
+  slug: text("slug").notNull().unique(),
+  category: text("category").notNull().default(""),
+  title: text("title").notNull(),
+  summary: text("summary").notNull().default(""),
+  date: text("date").notNull(),
+  content: text("content").notNull().default(""),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export type InsertArticle = typeof articlesTable.$inferInsert;
+export type Article = typeof articlesTable.$inferSelect;
+
 // ─── AI Prompts — centralised, DB-backed prompt management ────────────────────
 export const aiPromptsTable = pgTable("ai_prompts", {
   id: serial("id").primaryKey(),
